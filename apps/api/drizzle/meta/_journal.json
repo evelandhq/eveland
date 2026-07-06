@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1782885906104,
+      "tag": "0000_stiff_warpath",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782886398390,
+      "tag": "0001_lowly_timeslip",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782887320480,
+      "tag": "0002_blushing_randall_flagg",
+      "breakpoints": true
+    }
+  ]
+}

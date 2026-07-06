@@ -1,0 +1,24 @@
+{
+  "name": "eveland",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "dev": "pnpm -r --parallel dev",
+    "dev:web": "pnpm --filter @eveland/web dev",
+    "dev:api": "pnpm --filter @eveland/api dev",
+    "dev:worker": "pnpm --filter @eveland/worker dev"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
