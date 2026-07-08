@@ -13,12 +13,16 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 
 ```bash
 pnpm install
+docker compose up -d postgres          # start the database
+pnpm --filter @eveland/api db:push     # create/update tables (required on first run and after schema changes)
 pnpm --filter @eveland/api dev
 pnpm --filter @eveland/web dev
 pnpm --filter @eveland/worker dev
 ```
 
 Open `http://localhost:3000`.
+
+All three processes are required: the web form posts to the API, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
 
 Docker Compose runs the full stack (Postgres + API + web + worker) in **development mode**:
 
@@ -28,6 +32,8 @@ docker compose up
 
 The service images are `node:24-alpine` with `git` / `docker-cli` / `unzip` installed at
 startup — the app shells out to them for git import, agent deploy, and zip-upload extraction.
+
+Pick one mode: either everything in Compose, or only `postgres` in Compose and the rest natively. The Compose services run `pnpm install` inside Linux containers against the mounted workspace, which clobbers a macOS-built `node_modules`.
 
 ## Production (single-box deploy)
 
@@ -60,3 +66,5 @@ pnpm typecheck
 - API uses Postgres when `DATABASE_URL` is set; tests use the memory store.
 - `apps/api/src/db/schema.ts` and `apps/api/drizzle/` are the Postgres model and migration targets.
 - Markdown eve schedules are executable in the MVP plan; TypeScript schedules are discovery-only until the native eve schedule runtime is integrated.
+- Deployed agents get `WORKFLOW_POSTGRES_URL` injected so an `@workflow/world-postgres` agent has a durable workflow store. Set it on the worker (compose sets it for you; for native dev export `WORKFLOW_POSTGRES_URL=postgres://eveland:eveland@host.docker.internal:5432/eveland`). It must use a container-reachable host — not `localhost` — because agent containers reach the host DB via `host.docker.internal`. A project secret of the same name overrides it.
+- `NODE_ENV` gates deploys: with `NODE_ENV=production` on the worker, deploying an agent without a durable workflow world fails; unset (development) only warns. A production eveland sets `NODE_ENV=production` on the worker, which is also injected into deployed agent containers.
