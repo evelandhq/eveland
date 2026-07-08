@@ -26,6 +26,7 @@ export type EveProjectInspection = {
   summary: EveProjectSummary;
   envVars: string[];
   schedules: DiscoveredSchedule[];
+  workflowWorld: string | null;
   errors: string[];
 };
 
@@ -52,12 +53,14 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
   const schedules: DiscoveredSchedule[] = [];
   const envVars = new Set<string>();
   const errors: string[] = [];
+  let workflowWorld: string | null = null;
 
   for (const file of normalized) {
     collectEnvVars(file.path, file.content, envVars);
 
     if (file.path === `${root}agent.ts`) {
       summary.agents.push(file.path);
+      workflowWorld = detectWorkflowWorld(file.content) ?? workflowWorld;
     }
 
     if (isInstructionPath(file.path, root)) {
@@ -108,6 +111,7 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
     summary,
     envVars: [...envVars].sort(),
     schedules,
+    workflowWorld,
     errors,
   };
 }
@@ -182,4 +186,25 @@ function dedupeSummary(summary: EveProjectSummary): void {
 
 function normalizeSourcePath(input: string): string {
   return input.replaceAll("\\", "/").replace(/^(\.\/)+/, "");
+}
+
+// eve bundles the world at build time from `experimental.workflow.world`; we
+// statically read that string literal so the platform can warn/gate on a
+// missing durable world. Scoped to the experimental.workflow chain so an
+// unrelated `world:` literal elsewhere can't falsely mark the agent durable
+// (a false positive would defeat the production gate). A soft signal: values
+// behind a variable/import are reported as unconfigured, which is acceptable.
+function detectWorkflowWorld(content: string): string | null {
+  const match = content.match(
+    /\bexperimental\s*:\s*\{[\s\S]*?\bworkflow\s*:\s*\{[\s\S]*?\bworld\s*:\s*["'`](@workflow\/world-[a-z0-9-]+)["'`]/i,
+  );
+  return match?.[1] ?? null;
+}
+
+export const DURABLE_WORKFLOW_WORLD = "@workflow/world-postgres";
+
+// eveland only supplies credentials for the postgres world; any other world
+// (including unset and local) is gated out of production deploys.
+export function isDurableWorkflowWorld(world: string | null | undefined): boolean {
+  return world === DURABLE_WORKFLOW_WORLD;
 }
