@@ -58,6 +58,7 @@ services:
     environment:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
+      WORKFLOW_POSTGRES_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
       EVELAND_DATA_DIR: /workspace/.eveland-data
     volumes:
       - .:/workspace
