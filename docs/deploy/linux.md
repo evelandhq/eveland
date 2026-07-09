@@ -7,7 +7,7 @@
 - `bubblewrap` from the distro package (`apt-get install bubblewrap`). On Ubuntu 23.10+
   install it via apt: the packaged AppArmor profile permits unprivileged user
   namespaces; a source/nix install will hit EPERM.
-- A service user for deployments: `useradd --system --create-home eveland-app`.
+- A service user for deployments: `useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app`.
 - The worker process must run as root (it drives `systemd-run`, `systemctl`,
   and `chown`). Run it as a systemd service itself.
 
@@ -21,6 +21,8 @@
 | `EVELAND_CPU_QUOTA` | `200%` | systemd `CPUQuota` per deployment. |
 | `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
 | `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland-data`. |
+| `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
+| `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 
 ## How a deployment runs
 
