@@ -5,8 +5,8 @@ import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eve
 import net from "node:net";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
-import { createDockerAdapter } from "../runtime/docker.js";
 import { waitForHttpHealth } from "../runtime/health.js";
+import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
 import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
@@ -19,10 +19,6 @@ export type ProcessJobOptions = {
   allocateHostPort?: () => number | Promise<number>;
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
 };
-
-function defaultRuntime(): RuntimeAdapter {
-  return createDockerAdapter({ internalPort: Number(process.env.EVELAND_INTERNAL_PORT ?? 3000) });
-}
 
 export async function processNextJob(store: Store, workerId: string, options: ProcessJobOptions = {}): Promise<boolean> {
   const job = await store.claimNextJob(workerId);
@@ -100,7 +96,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         throw new Error(`Project ${job.projectId} has no source revision to deploy.`);
       }
 
-      const runtime = options.runtime ?? defaultRuntime();
+      const runtime = options.runtime ?? createRuntimeAdapterFromEnv();
       const currentDeployment = await store.getCurrentDeployment(job.projectId);
       const releaseId = createId("rel");
       const deploymentId = createId("dep");
