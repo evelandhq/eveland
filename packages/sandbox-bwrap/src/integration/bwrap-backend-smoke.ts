@@ -161,7 +161,7 @@ async function main(): Promise<void> {
 
     // persistence across reconnect; isolation between sessions
     await session.writeTextFile({ path: "notes/hello.txt", content: "persisted" });
-    await handle.dispose();
+    await handle.shutdown();
     const again = await backend.create({ templateKey: "smoke-template", sessionKey: "sess-1", runtimeContext });
     assert.equal(await again.session.readTextFile({ path: "notes/hello.txt" }), "persisted");
     const other = await backend.create({ templateKey: "smoke-template", sessionKey: "sess-2", runtimeContext });

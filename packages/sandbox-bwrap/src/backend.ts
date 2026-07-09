@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { SandboxBackend, SandboxSeedFile, SandboxSession } from "eve/sandbox";
+import type { SandboxBackend, SandboxSeedFile } from "eve/sandbox";
 import { SandboxTemplateNotProvisionedError } from "eve/sandbox";
 import type { BwrapSandboxCreateOptions } from "./options.js";
 import { createBwrapOptionsHash, resolveBwrapSandboxOptions } from "./options.js";
 import { resolveSessionPath, resolveTemplatePath, WORKSPACE_ROOT } from "./paths.js";
 import type { ProcessRunner } from "./process.js";
 import { createNodeProcessRunner, describeMissingPrereqs, isBwrapAvailable } from "./process.js";
+import type { BwrapSession } from "./session.js";
 import { createBwrapSession } from "./session.js";
 
 /**
@@ -56,11 +57,11 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
     probed = true;
   }
 
-  function openSession(id: string, workspaceDir: string, appRoot: string): SandboxSession {
+  function openSession(id: string, workspaceDir: string, appRoot: string): BwrapSession {
     return createBwrapSession({ id, workspaceDir, appRoot, runner, options });
   }
 
-  async function writeSeedFiles(session: SandboxSession, seedFiles: ReadonlyArray<SandboxSeedFile>): Promise<void> {
+  async function writeSeedFiles(session: BwrapSession, seedFiles: ReadonlyArray<SandboxSeedFile>): Promise<void> {
     for (const seed of seedFiles) {
       if (typeof seed.content === "string") {
         await session.writeTextFile({ path: seed.path, content: seed.content });
@@ -116,9 +117,12 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
         async captureState() {
           return { backendName: BWRAP_BACKEND_NAME, metadata: {}, sessionKey };
         },
-        // The workspace directory persists on disk; sandboxed processes die
-        // with the agent (--die-with-parent), so there is nothing to release.
-        async dispose() {},
+        // eve calls this when the server is shutting down: nothing may be left
+        // running afterwards. The workspace directory IS the durable state, so
+        // it stays on disk and the session reattaches on the next start.
+        async shutdown() {
+          await session.killAll();
+        },
       };
     },
   };

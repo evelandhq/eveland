@@ -8,7 +8,7 @@ import type { SandboxNetworkPolicy, SandboxSession } from "eve/sandbox";
 import { buildBwrapExecArgs, DEFAULT_SANDBOX_PATH } from "./args.js";
 import type { ResolvedBwrapSandboxOptions } from "./options.js";
 import { isWithinWorkspaceReal, resolveBwrapCacheRoot, resolveWorkspacePath, toHostPath, WORKSPACE_ROOT } from "./paths.js";
-import type { ProcessRunner } from "./process.js";
+import type { ProcessRunner, SpawnedProcess } from "./process.js";
 
 export interface CreateBwrapSessionInput {
   readonly id: string;
@@ -46,7 +46,17 @@ function sliceLines(text: string, startLine?: number, endLine?: number): string 
   return lines.slice((startLine ?? 1) - 1, endLine ?? lines.length).join("\n");
 }
 
-export function createBwrapSession(input: CreateBwrapSessionInput): SandboxSession {
+/**
+ * A sandbox session plus the lifecycle hook the backend handle needs.
+ * eve's `shutdown()` contract requires that nothing is left running, so the
+ * session tracks the processes it spawned and can terminate them on demand.
+ */
+export type BwrapSession = SandboxSession & {
+  /** Kills every process this session spawned that has not yet exited. Idempotent. */
+  killAll(): Promise<void>;
+};
+
+export function createBwrapSession(input: CreateBwrapSessionInput): BwrapSession {
   const { id, workspaceDir, appRoot, runner, options } = input;
   let networkPolicy: "allow-all" | "deny-all" = options.networkPolicy;
 
@@ -58,6 +68,40 @@ export function createBwrapSession(input: CreateBwrapSessionInput): SandboxSessi
       throw new Error(`bwrap sandbox: refusing to ${operation} outside ${WORKSPACE_ROOT}: ${path}`);
     }
     return hostPath;
+  }
+
+  const live = new Set<SpawnedProcess>();
+
+  // Wrap wait()/kill() rather than eagerly calling proc.wait() ourselves to
+  // watch for exit: a fire-and-forget wait() started at spawn time races
+  // ahead of the caller (its resolution is not tied to when anyone actually
+  // observes the process), so a process can be silently untracked before
+  // killAll() ever sees it. Tying removal to the caller's own wait()/kill()
+  // call keeps "still tracked" in sync with "still owned by the caller":
+  // run() untracks itself the moment its internal wait() settles, and a
+  // bare spawn() stays tracked (and killable) until its holder collects it.
+  function track(proc: SpawnedProcess): SpawnedProcess {
+    const wrapped: SpawnedProcess = {
+      pid: proc.pid,
+      stdout: proc.stdout,
+      stderr: proc.stderr,
+      async wait() {
+        try {
+          return await proc.wait();
+        } finally {
+          live.delete(wrapped);
+        }
+      },
+      async kill() {
+        try {
+          await proc.kill();
+        } finally {
+          live.delete(wrapped);
+        }
+      },
+    };
+    live.add(wrapped);
+    return wrapped;
   }
 
   async function spawnProcess(spawnOptions: { command: string; workingDirectory?: string; env?: Record<string, string>; abortSignal?: AbortSignal }) {
@@ -78,12 +122,18 @@ export function createBwrapSession(input: CreateBwrapSessionInput): SandboxSessi
       chdir: resolveWorkspacePath(spawnOptions.workingDirectory ?? WORKSPACE_ROOT),
       command: spawnOptions.command,
     });
-    return runner.spawn(argv, { abortSignal: spawnOptions.abortSignal });
+    return track(runner.spawn(argv, { abortSignal: spawnOptions.abortSignal }));
   }
 
   return {
     id,
     resolvePath: resolveWorkspacePath,
+
+    async killAll() {
+      const pending = [...live];
+      live.clear();
+      await Promise.all(pending.map((proc) => proc.kill().catch(() => undefined)));
+    },
 
     async spawn(spawnOptions) {
       return await spawnProcess(spawnOptions);

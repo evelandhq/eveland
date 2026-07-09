@@ -168,3 +168,67 @@ describe("file I/O", () => {
     expect(session.id).toBe("s1");
   });
 });
+
+describe("killAll", () => {
+  test("kills every process spawned by this session and is idempotent", async () => {
+    const killed: number[] = [];
+    let pid = 0;
+    const runner: ProcessRunner = {
+      spawn(): SpawnedProcess {
+        const id = ++pid;
+        return {
+          pid: id,
+          stdout: stringStream(""),
+          stderr: stringStream(""),
+          wait: async () => ({ exitCode: 0 }),
+          kill: async () => {
+            killed.push(id);
+          },
+        };
+      },
+    };
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), "bwrap-killall-"));
+    const workspaceDir = path.join(appRoot, "ws");
+    await mkdir(workspaceDir, { recursive: true });
+    const session = createBwrapSession({
+      id: "s1",
+      workspaceDir,
+      appRoot,
+      runner,
+      options: resolveBwrapSandboxOptions(),
+    });
+
+    await session.spawn({ command: "sleep 1" });
+    await session.spawn({ command: "sleep 2" });
+    await session.killAll();
+    await session.killAll();
+
+    expect(killed).toEqual([1, 2]);
+  });
+
+  test("run() does not leave the process registered after it exits", async () => {
+    const killed: number[] = [];
+    const runner: ProcessRunner = {
+      spawn(): SpawnedProcess {
+        return {
+          pid: 7,
+          stdout: stringStream("out"),
+          stderr: stringStream(""),
+          wait: async () => ({ exitCode: 0 }),
+          kill: async () => {
+            killed.push(7);
+          },
+        };
+      },
+    };
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), "bwrap-killall-"));
+    const workspaceDir = path.join(appRoot, "ws");
+    await mkdir(workspaceDir, { recursive: true });
+    const session = createBwrapSession({ id: "s1", workspaceDir, appRoot, runner, options: resolveBwrapSandboxOptions() });
+
+    await session.run({ command: "echo out" });
+    await session.killAll();
+
+    expect(killed).toEqual([]);
+  });
+});
