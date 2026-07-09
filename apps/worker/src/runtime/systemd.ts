@@ -28,6 +28,18 @@ export function resolveProjectSandboxCacheDir(root: string, projectId: string): 
   return path.resolve(root, processSafeName(projectId));
 }
 
+/**
+ * Root holding every project's durable sandbox cache. `select.ts` (constructing
+ * the systemd adapter) and `jobs/process.ts` (which must pass the identical
+ * path into `startProcess`, since `ProcessStartInput` carries no projectId)
+ * both call this so the two can never compute two different roots for the
+ * same env -- a typo'd env var name in one of the two call sites is now a
+ * single point of failure this function's own tests would catch.
+ */
+export function resolveSandboxCacheRoot(env: NodeJS.ProcessEnv): string {
+  return path.resolve(env.EVELAND_SANDBOX_CACHE_DIR ?? path.join(env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox"));
+}
+
 export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
   return [
     "--unit",
@@ -122,8 +134,14 @@ export type SystemdAdapterConfig = {
   buildSandbox: "bwrap" | "none";
   /** Root directory holding every project's durable eve sandbox session cache. */
   sandboxCacheDir: string;
-  /** Directory holding the built @eveland/sandbox-bwrap (its dist/), vendored into each release. */
-  backendDistDir: string;
+  /**
+   * Resolves the directory holding the built @eveland/sandbox-bwrap (its
+   * dist/), vendored into each release. A provider rather than a resolved
+   * string so constructing the adapter never touches the filesystem --
+   * it's invoked only inside `buildRelease`, at the point the backend is
+   * actually needed.
+   */
+  backendDistDir: () => string;
 };
 
 export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapter {
@@ -143,7 +161,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       // Runs after cp -a (so it has a release to write into) and before the build
       // command (so `npx eve build` compiles the generated module). `npm ci` only
       // clears node_modules, so .eveland/ survives into the compiled output.
-      const injection = await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir });
+      const injection = await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir() });
       const cacheDir = projectCacheDir(input.projectId);
       // The service user runs unprivileged under ProtectSystem=strict and cannot
       // create this directory itself, so build time (running as this process's

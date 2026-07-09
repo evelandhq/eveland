@@ -14,9 +14,11 @@ describe("createRuntimeAdapterFromEnv", () => {
     expect(() => createRuntimeAdapterFromEnv({ EVELAND_RUNTIME: "kubernetes" })).toThrow(/Unknown EVELAND_RUNTIME/);
   });
 
-  // These two only pin that construction does not throw when @eveland/sandbox-bwrap
-  // is built (true in this workspace); the path assertions live in systemd.test.ts,
-  // where buildSystemdRunArgs and resolveProjectSandboxCacheDir are pure and don't
+  // These two only pin that construction does not throw. backendDistDir resolution
+  // is deferred to buildRelease (see select.ts), so constructing the systemd adapter
+  // never touches the filesystem, regardless of whether @eveland/sandbox-bwrap is
+  // built. The path assertions live in systemd.test.ts, where buildSystemdRunArgs,
+  // resolveProjectSandboxCacheDir, and resolveSandboxCacheRoot are pure and don't
   // need the real package resolved.
   test("systemd runtime derives the sandbox cache dir from the data dir by default", () => {
     const adapter = createRuntimeAdapterFromEnv({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland-data" } as NodeJS.ProcessEnv);

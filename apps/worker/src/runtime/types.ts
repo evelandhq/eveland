@@ -45,5 +45,15 @@ export type RuntimeAdapter = {
 };
 
 export function processSafeName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9_.-]/g, "-");
+  const sanitized = value.toLowerCase().replace(/[^a-z0-9_.-]/g, "-");
+  // A result made up of nothing but dots (".", "..", "...", ...) is a path
+  // traversal segment once callers join it onto a directory (e.g.
+  // resolveProjectSandboxCacheDir, which mkdir/chown -R's the result). Not
+  // reachable today -- project ids are always nanoids -- but nothing about
+  // this function's contract rules it out, so neutralize it here rather than
+  // trust every future caller to guard against it.
+  if (/^\.+$/.test(sanitized)) {
+    return sanitized.replace(/\./g, "-");
+  }
+  return sanitized;
 }

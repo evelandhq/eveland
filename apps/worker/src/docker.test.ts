@@ -76,6 +76,12 @@ describe("processSafeName", () => {
   test("lowercases and replaces unsafe characters", () => {
     expect(processSafeName("Proj_ABC/9.x")).toBe("proj_abc-9.x");
   });
+
+  test("never returns a path-traversal segment for dots-only input", () => {
+    expect(processSafeName("..")).not.toBe("..");
+    expect(processSafeName(".")).not.toBe(".");
+    expect(processSafeName("...")).not.toBe("...");
+  });
 });
 
 describe("buildDockerStartCommand", () => {
@@ -121,6 +127,7 @@ describe("createDockerAdapter", () => {
   test("startProcess publishes the configured internal port and runs the eve start command", async () => {
     vi.mocked(execa).mockClear();
     const adapter = createDockerAdapter({ internalPort: 3000 });
+    const sandboxCacheDir = "/var/lib/eveland-data/sandbox/proj_123";
 
     const result = await adapter.startProcess({
       processName: "eveland-proj_123",
@@ -131,7 +138,7 @@ describe("createDockerAdapter", () => {
       // Set by every caller (see ProcessStartInput), but the docker adapter must
       // ignore it: containers get a fresh filesystem per run, no host directory
       // to grant.
-      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      sandboxCacheDir,
     });
 
     expect(result.internalPort).toBe(3000);
@@ -141,7 +148,13 @@ describe("createDockerAdapter", () => {
     expect(args).toContain("--publish");
     expect(args).toContain("127.0.0.1:43123:3000");
     expect(args).toContain("eveland/proj_123:rel_456");
-    expect(JSON.stringify(args)).not.toContain("sandbox");
+    // The docker adapter must not leak the sandbox cache dir or its env var
+    // name into the container's argv -- a blunt `.not.toContain("sandbox")`
+    // substring check would also pass if the dir were renamed to something
+    // that happens not to contain that word, so assert on the actual values.
+    expect(args as string[]).not.toContain(sandboxCacheDir);
+    expect(JSON.stringify(args)).not.toContain(sandboxCacheDir);
+    expect(JSON.stringify(args)).not.toContain("EVELAND_SANDBOX_CACHE_DIR");
     const runCommand = (args as string[]).at(-1);
     expect(runCommand).toContain("exec npx eve start --host 0.0.0.0 --port 3000");
   });

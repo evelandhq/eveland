@@ -43,13 +43,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # apps/worker resolves @eveland/sandbox-bwrap's built dist/ via
-      # node's module resolution at runtime (see runtime/select.ts),
-      # not just its TS types, so its tests need dist/ to exist even
-      # though dist/ is gitignored and no other test in this workspace
-      # requires a sibling package to be pre-built.
-      - name: Build @eveland/sandbox-bwrap
-        run: pnpm --filter @eveland/sandbox-bwrap build
-
       - name: Run tests
         run: pnpm -r test

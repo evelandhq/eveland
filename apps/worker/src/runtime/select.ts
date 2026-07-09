@@ -1,14 +1,19 @@
-import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { createDockerAdapter } from "./docker.js";
-import { createSystemdAdapter } from "./systemd.js";
+import { createSystemdAdapter, resolveSandboxCacheRoot } from "./systemd.js";
 import type { RuntimeAdapter } from "./types.js";
 
 /**
  * Locates the built @eveland/sandbox-bwrap that gets vendored into each release.
- * Called lazily inside the systemd branch below (never at module load), so the
- * docker runtime -- the default -- never requires this package to be built.
+ * Passed to createSystemdAdapter as a provider and invoked only inside
+ * buildRelease (see systemd.ts) -- never here, and never at module load -- so
+ * constructing any adapter, including the docker default, never touches the
+ * filesystem or requires this package to be built. A successful `resolve()`
+ * already proves dist/index.js exists (the package's "exports" map points at
+ * it, and Node's resolver checks the target file is actually there), so no
+ * separate existsSync check is needed; injectSandboxModules (sandbox-inject.ts)
+ * is the single validator for "is the backend built".
  */
 function resolveBackendDistDir(): string {
   let entry: string;
@@ -20,11 +25,7 @@ function resolveBackendDistDir(): string {
       { cause: error },
     );
   }
-  const distDir = path.dirname(entry);
-  if (!existsSync(distDir)) {
-    throw new Error(`@eveland/sandbox-bwrap dist directory is missing at ${distDir}. Run \`pnpm --filter @eveland/sandbox-bwrap build\`.`);
-  }
-  return distDir;
+  return path.dirname(entry);
 }
 
 export function createRuntimeAdapterFromEnv(env: NodeJS.ProcessEnv = process.env): RuntimeAdapter {
@@ -44,8 +45,8 @@ export function createRuntimeAdapterFromEnv(env: NodeJS.ProcessEnv = process.env
       // Each release gets a fresh directory, but eve keys session sandboxes per
       // durable session and promises a redeploy preserves a session's /workspace
       // -- so the cache must live outside the release dir, stable per project.
-      sandboxCacheDir: path.resolve(env.EVELAND_SANDBOX_CACHE_DIR ?? path.join(env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox")),
-      backendDistDir: resolveBackendDistDir(),
+      sandboxCacheDir: resolveSandboxCacheRoot(env),
+      backendDistDir: resolveBackendDistDir,
     });
   }
 

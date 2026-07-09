@@ -10,6 +10,7 @@ import {
   buildSystemdStartCommand,
   createSystemdAdapter,
   resolveProjectSandboxCacheDir,
+  resolveSandboxCacheRoot,
 } from "./systemd.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 
@@ -98,6 +99,33 @@ describe("resolveProjectSandboxCacheDir", () => {
       path.resolve("/var/lib/eveland-data/sandbox", "proj-123-"),
     );
   });
+
+  test("never resolves outside the root even for a project id that sanitizes to only dots", () => {
+    const resolved = resolveProjectSandboxCacheDir("/root", "..");
+    expect(resolved).not.toBe(path.resolve("/root", ".."));
+    expect(resolved.startsWith(path.resolve("/root") + path.sep)).toBe(true);
+  });
+});
+
+describe("resolveSandboxCacheRoot", () => {
+  test("uses EVELAND_SANDBOX_CACHE_DIR when set, overriding any data dir", () => {
+    expect(
+      resolveSandboxCacheRoot({
+        EVELAND_SANDBOX_CACHE_DIR: "/srv/sandbox",
+        EVELAND_DATA_DIR: "/var/lib/eveland-data",
+      } as NodeJS.ProcessEnv),
+    ).toBe(path.resolve("/srv/sandbox"));
+  });
+
+  test("derives <EVELAND_DATA_DIR>/sandbox when no override is set", () => {
+    expect(resolveSandboxCacheRoot({ EVELAND_DATA_DIR: "/var/lib/eveland-data" } as NodeJS.ProcessEnv)).toBe(
+      path.resolve("/var/lib/eveland-data", "sandbox"),
+    );
+  });
+
+  test("defaults to .eveland-data/sandbox when neither env var is set", () => {
+    expect(resolveSandboxCacheRoot({} as NodeJS.ProcessEnv)).toBe(path.resolve(".eveland-data", "sandbox"));
+  });
 });
 
 describe("buildSystemdStartCommand", () => {
@@ -154,8 +182,37 @@ const baseAdapterConfig = {
   cpuQuota: "200%",
   buildSandbox: "bwrap" as const,
   sandboxCacheDir: "/var/lib/eveland-data/sandbox",
-  backendDistDir: "/opt/sandbox-bwrap/dist",
+  backendDistDir: () => "/opt/sandbox-bwrap/dist",
 };
+
+describe("createSystemdAdapter backendDistDir laziness", () => {
+  test("never invokes the backendDistDir provider at construction time", () => {
+    const backendDistDir = vi.fn(() => {
+      throw new Error("should not be called until buildRelease runs");
+    });
+
+    expect(() => createSystemdAdapter({ ...baseAdapterConfig, backendDistDir })).not.toThrow();
+    expect(backendDistDir).not.toHaveBeenCalled();
+  });
+
+  test("invokes the backendDistDir provider inside buildRelease, surfacing its error", async () => {
+    const backendDistDir = vi.fn(() => {
+      throw new Error("@eveland/sandbox-bwrap is not resolvable.");
+    });
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none", backendDistDir });
+
+    await expect(
+      adapter.buildRelease({
+        projectId: "proj_123",
+        releaseId: "rel_789",
+        sourcePath: "/data/sources/proj_123",
+        buildDir: "/data/builds/proj_123/rel_789",
+        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      }),
+    ).rejects.toThrow("@eveland/sandbox-bwrap is not resolvable.");
+    expect(backendDistDir).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("createSystemdAdapter stopProcess", () => {
   test("deletes the deployment env file after stopping the unit, tolerating an already-missing file", async () => {
