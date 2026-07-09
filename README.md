@@ -20,11 +20,33 @@ pnpm --filter @eveland/worker dev
 
 Open `http://localhost:3000`.
 
-Docker Compose is available for the full service set:
+Docker Compose runs the full stack (Postgres + API + web + worker) in **development mode**:
 
 ```bash
 docker compose up
 ```
+
+The service images are `node:24-alpine` with `git` / `docker-cli` / `unzip` installed at
+startup — the app shells out to them for git import, agent deploy, and zip-upload extraction.
+
+## Production (single-box deploy)
+
+Deploy the whole stack in Docker on one Linux host by layering the production overlay. Set the
+two public URLs for the target environment in `.env`, then bring it up:
+
+```bash
+# .env
+WEB_ORIGIN=https://your-web-host
+NEXT_PUBLIC_API_URL=https://your-api-host
+
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+`docker-compose.prod.yml` runs a production build (`next build && next start`,
+`NODE_ENV=production`), uses **host networking** so the worker (health check) and API
+(playground proxy) can reach agent containers published on the host loopback, and sets
+`restart: unless-stopped` so the stack returns after a host reboot. The worker deploys
+agents through the mounted Docker socket, so the target is a Linux host running Docker.
 
 ## Verification
 

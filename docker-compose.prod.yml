@@ -1,0 +1,49 @@
+# Production overlay for a single-box (Linux) deployment where eveland runs entirely in Docker
+# and deploys agent containers on the same host via the mounted docker.sock.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Set the two public URLs in a local .env (gitignored) for the target environment:
+#   WEB_ORIGIN=https://your-web-host          # CORS allow-origin for the API
+#   NEXT_PUBLIC_API_URL=https://your-api-host  # where the browser calls the API (baked in at build)
+# They default to localhost so `up` works with no .env for a quick bring-up.
+#
+# Why host networking: deployed agent containers publish on the host's 127.0.0.1:PORT (loopback,
+# not public); the worker (health check) and api (playground proxy) reach them on that same
+# loopback only if they share the host's network. On host network the compose service DNS
+# (postgres/api) is gone, so services talk over localhost; postgres stays bridged but publishes
+# 5432 to the host. `ports: !override []` clears base published ports (incompatible with host net).
+#
+# NODE_ENV=production is set only on the runtime command — setting it container-wide makes
+# `pnpm install` skip devDependencies (tsx / the next build toolchain) and the stack fails to start.
+services:
+  postgres:
+    restart: unless-stopped
+
+  api:
+    restart: unless-stopped
+    network_mode: host
+    ports: !override []
+    command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && cd apps/api && NODE_ENV=production pnpm exec tsx --env-file=../../.env src/server.ts"
+    environment:
+      CI: "true"
+      DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
+      WEB_ORIGIN: "${WEB_ORIGIN:-http://localhost:3000}"
+
+  web:
+    restart: unless-stopped
+    network_mode: host
+    ports: !override []
+    command: sh -lc "corepack enable && pnpm install && pnpm --filter @eveland/web build && pnpm --filter @eveland/web exec next start --port 3000"
+    environment:
+      CI: "true"
+      API_URL: http://localhost:4000
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:4000}"
+
+  worker:
+    restart: unless-stopped
+    network_mode: host
+    command: sh -lc "apk add --no-cache git docker-cli && corepack enable && pnpm install && cd apps/worker && NODE_ENV=production pnpm exec tsx --env-file=../../.env src/worker.ts"
+    environment:
+      CI: "true"
+      DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland

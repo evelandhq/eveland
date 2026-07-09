@@ -13,10 +13,13 @@ services:
   api:
     image: node:24-alpine
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install && pnpm --filter @eveland/api dev"
+    # unzip (Info-ZIP): zip-upload extraction shells out to `unzip -Z1`; node:24-alpine only ships
+    # BusyBox unzip, which lacks -Z. The apk `unzip` is Info-ZIP and shadows the BusyBox applet.
+    command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && pnpm --filter @eveland/api dev"
     depends_on:
       - postgres
     environment:
+      CI: "true"
       PORT: 4000
       WEB_ORIGIN: http://localhost:3000
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
@@ -35,6 +38,7 @@ services:
     depends_on:
       - api
     environment:
+      CI: "true"
       NEXT_PUBLIC_API_URL: http://localhost:4000
       API_URL: http://api:4000
     ports:
@@ -45,11 +49,14 @@ services:
   worker:
     image: node:24-alpine
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install && pnpm --filter @eveland/worker dev"
+    # git: import_source shells out to `git clone`. docker-cli: build_deploy shells out to
+    # `docker build`/`docker run` via the mounted docker.sock. node:24-alpine ships neither.
+    command: sh -lc "apk add --no-cache git docker-cli && corepack enable && pnpm install && pnpm --filter @eveland/worker dev"
     depends_on:
       - api
       - postgres
     environment:
+      CI: "true"
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       EVELAND_DATA_DIR: /workspace/.eveland-data
     volumes:
