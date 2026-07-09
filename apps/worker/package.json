@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@eveland/api": "workspace:*",
+    "@eveland/sandbox-bwrap": "workspace:*",
     "@eveland/shared": "workspace:*",
     "execa": "^9.6.1",
     "zod": "^4.4.3"

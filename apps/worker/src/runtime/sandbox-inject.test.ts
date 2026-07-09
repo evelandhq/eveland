@@ -1,0 +1,89 @@
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, test } from "vitest";
+import { buildGeneratedSandboxModule, injectSandboxModules, resolveSandboxRoots } from "./sandbox-inject.js";
+
+async function makeRelease(): Promise<{ releaseDir: string; backendDistDir: string }> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eveland-inject-"));
+  const releaseDir = path.join(root, "release");
+  const backendDistDir = path.join(root, "dist");
+  await mkdir(path.join(releaseDir, "agent"), { recursive: true });
+  await mkdir(backendDistDir, { recursive: true });
+  await writeFile(path.join(backendDistDir, "index.js"), "export const marker = 1;\n");
+  return { releaseDir, backendDistDir };
+}
+
+describe("buildGeneratedSandboxModule", () => {
+  test("gates on bwrap availability and forwards the cache dir", () => {
+    const source = buildGeneratedSandboxModule("../.eveland/sandbox-bwrap/index.js");
+    expect(source).toContain('from "eve/sandbox"');
+    expect(source).toContain('from "../.eveland/sandbox-bwrap/index.js"');
+    expect(source).toContain("isBwrapAvailable() ? bwrap(cacheDir ? { cacheDir } : {}) : defaultBackend()");
+    expect(source).toContain("process.env.EVELAND_SANDBOX_CACHE_DIR");
+  });
+});
+
+describe("resolveSandboxRoots", () => {
+  test("finds the agent root and every subagent", async () => {
+    const { releaseDir } = await makeRelease();
+    await mkdir(path.join(releaseDir, "agent", "subagents", "researcher"), { recursive: true });
+    await mkdir(path.join(releaseDir, "agent", "subagents", "writer"), { recursive: true });
+    const roots = await resolveSandboxRoots(releaseDir);
+    expect(roots.sort()).toEqual(["agent", "agent/subagents/researcher", "agent/subagents/writer"]);
+  });
+
+  test("returns nothing when there is no agent directory", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-inject-"));
+    expect(await resolveSandboxRoots(root)).toEqual([]);
+  });
+});
+
+describe("injectSandboxModules", () => {
+  test("generates a sandbox module, vendors the backend, and reports nothing replaced", async () => {
+    const { releaseDir, backendDistDir } = await makeRelease();
+    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+
+    expect(result.generated).toEqual(["agent/sandbox.js"]);
+    expect(result.replaced).toEqual([]);
+    expect(existsSync(path.join(releaseDir, ".eveland", "sandbox-bwrap", "index.js"))).toBe(true);
+    const generated = await readFile(path.join(releaseDir, "agent", "sandbox.js"), "utf8");
+    expect(generated).toContain('from "../.eveland/sandbox-bwrap/index.js"');
+  });
+
+  test("replaces an authored sandbox module and reports it", async () => {
+    const { releaseDir, backendDistDir } = await makeRelease();
+    await writeFile(path.join(releaseDir, "agent", "sandbox.ts"), "export default {};\n");
+
+    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+
+    expect(result.replaced).toEqual(["agent/sandbox.ts"]);
+    // .ts sorts before .js in eve's module resolution, so it must be gone.
+    expect(existsSync(path.join(releaseDir, "agent", "sandbox.ts"))).toBe(false);
+    expect(existsSync(path.join(releaseDir, "agent", "sandbox.js"))).toBe(true);
+  });
+
+  test("replaces an authored sandbox directory, including its workspace seeds", async () => {
+    const { releaseDir, backendDistDir } = await makeRelease();
+    await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
+    await writeFile(path.join(releaseDir, "agent", "sandbox", "sandbox.ts"), "export default {};\n");
+
+    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+
+    expect(result.replaced).toEqual(["agent/sandbox"]);
+    expect(existsSync(path.join(releaseDir, "agent", "sandbox"))).toBe(false);
+    expect(existsSync(path.join(releaseDir, "agent", "sandbox.js"))).toBe(true);
+  });
+
+  test("generates one module per subagent, each with a correct relative import", async () => {
+    const { releaseDir, backendDistDir } = await makeRelease();
+    await mkdir(path.join(releaseDir, "agent", "subagents", "researcher"), { recursive: true });
+
+    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+
+    expect(result.generated.sort()).toEqual(["agent/sandbox.js", "agent/subagents/researcher/sandbox.js"]);
+    const sub = await readFile(path.join(releaseDir, "agent", "subagents", "researcher", "sandbox.js"), "utf8");
+    expect(sub).toContain('from "../../../.eveland/sandbox-bwrap/index.js"');
+  });
+});

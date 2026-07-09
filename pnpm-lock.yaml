@@ -109,6 +109,9 @@ importers:
       '@eveland/api':
         specifier: workspace:*
         version: link:../api
+      '@eveland/sandbox-bwrap':
+        specifier: workspace:*
+        version: link:../../packages/sandbox-bwrap
       '@eveland/shared':
         specifier: workspace:*
         version: link:../../packages/shared
