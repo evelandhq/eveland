@@ -141,6 +141,18 @@ describe("injectSandboxModules", () => {
     expect(result.replaced).toEqual(["agent/sandbox.js"]);
   });
 
+  test("an authored non-.js module is reported even when its content starts with the generated marker", async () => {
+    const { releaseDir, backendDistDir } = await makeRelease();
+    await writeFile(
+      path.join(releaseDir, "agent", "sandbox.ts"),
+      `${GENERATED_MODULE_MARKER} Do not edit.\nexport default {};\n`,
+    );
+
+    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+
+    expect(result.replaced).toEqual(["agent/sandbox.ts"]);
+  });
+
   test("removes and reports a symlinked sandbox directory regardless of type", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
     const targetDir = path.join(releaseDir, "sandbox-target");
