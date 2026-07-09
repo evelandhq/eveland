@@ -13,4 +13,5 @@ coverage/
 .DS_Store
 
 .claude/settings.local.json
+.claude/worktrees/
 docker-compose.override.yml
