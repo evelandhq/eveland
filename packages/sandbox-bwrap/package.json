@@ -1,0 +1,32 @@
+{
+  "name": "@eveland/sandbox-bwrap",
+  "version": "0.1.0",
+  "description": "bubblewrap SandboxBackend for eve agents — real exec sandboxing without Docker or KVM",
+  "type": "module",
+  "license": "MIT",
+  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "os": ["linux"],
+  "peerDependencies": {
+    "eve": "^0.17.1"
+  },
+  "devDependencies": {
+    "ai": "^7.0.7",
+    "eve": "^0.17.1",
+    "vitest": "^4.1.9"
+  }
+}
