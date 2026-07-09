@@ -22,6 +22,13 @@
       "when": 1782887320480,
       "tag": "0002_blushing_randall_flagg",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783595134749,
+      "tag": "0003_ambiguous_hobgoblin",
+      "breakpoints": true
     }
   ]
 }
