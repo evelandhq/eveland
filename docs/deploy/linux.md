@@ -29,8 +29,12 @@ Build-trust note: building a project executes that project's dependency
 lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
 sandbox as root. Imported projects — and their full dependency trees — are
 trusted only up to that sandbox's boundary (see `EVELAND_BUILD_SANDBOX` above
-and the warning below); nothing outside `releaseDir` and `npmCacheDir` should
-be reachable from a lifecycle script.
+and the warning below): nothing outside `releaseDir` and the npm cache is
+writable, and the eveland data dir (other projects' builds, sources, and
+decrypted secret env files) is hidden entirely. The rest of the host
+filesystem remains read-only visible to the build, which runs as root with
+network access — dropping the build uid via `bwrap --uid` is a planned
+follow-up hardening.
 
 > **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
 >
