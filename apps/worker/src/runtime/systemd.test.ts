@@ -13,6 +13,7 @@ import {
   resolveSandboxCacheRoot,
 } from "./systemd.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
+import { verifySandbox } from "./sandbox-verify.js";
 
 vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
@@ -29,6 +30,14 @@ vi.mock("execa", () => ({
 // tests can pin call *ordering* and the cache-dir/log-prefixing wiring in isolation.
 vi.mock("./sandbox-inject.js", () => ({
   injectSandboxModules: vi.fn().mockResolvedValue({ generated: ["agent/sandbox.js"], replaced: [] }),
+}));
+
+// verifySandbox shells out to the real vendored backend under systemd-run; it has its
+// own boundary tests in sandbox-verify.test.ts. Mocked here (mirroring injectSandboxModules
+// above) so createSystemdAdapter's buildRelease tests can pin call ordering and log wiring
+// without depending on the generic execa mock's shape (no exitCode/marker) below.
+vi.mock("./sandbox-verify.js", () => ({
+  verifySandbox: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("buildSystemdRunArgs", () => {
@@ -289,6 +298,51 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     expect(result.log).toContain("bootstrap()");
     expect(result.log).toContain("onSession()");
     expect(result.log).toContain("workspace seeds are NOT used");
+  });
+});
+
+describe("createSystemdAdapter buildRelease (sandbox verify)", () => {
+  test("verifies the sandbox after both chowns, as the service user against the release and cache dirs", async () => {
+    vi.mocked(verifySandbox).mockClear();
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    const result = await adapter.buildRelease({
+      projectId: "proj_123",
+      releaseId: "rel_789",
+      sourcePath: "/data/sources/proj_123",
+      buildDir: "/data/builds/proj_123/rel_789",
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+    });
+
+    const cacheDir = path.resolve("/var/lib/eveland-data/sandbox", "proj_123");
+    expect(verifySandbox).toHaveBeenCalledWith({
+      releaseDir: path.resolve("/data/builds/proj_123/rel_789"),
+      user: "eveland-app",
+      cacheDir,
+    });
+
+    const chownCalls = vi.mocked(execa).mock.calls;
+    const lastChownIndex = chownCalls.map(([cmd]) => cmd).lastIndexOf("chown");
+    const lastChownOrder = vi.mocked(execa).mock.invocationCallOrder[lastChownIndex]!;
+    const verifyOrder = vi.mocked(verifySandbox).mock.invocationCallOrder[0]!;
+    expect(verifyOrder).toBeGreaterThan(lastChownOrder);
+
+    expect(result.log).toContain("Sandbox self-check passed");
+  });
+
+  test("propagates a verify failure so the build itself fails", async () => {
+    vi.mocked(verifySandbox).mockRejectedValueOnce(new Error("sandbox self-check failed: bwrap missing"));
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    await expect(
+      adapter.buildRelease({
+        projectId: "proj_123",
+        releaseId: "rel_789",
+        sourcePath: "/data/sources/proj_123",
+        buildDir: "/data/builds/proj_123/rel_789",
+        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      }),
+    ).rejects.toThrow("sandbox self-check failed: bwrap missing");
   });
 });
 

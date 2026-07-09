@@ -3,6 +3,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
 import { injectSandboxModules } from "./sandbox-inject.js";
+import { verifySandbox } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 
 export type SystemdStartInput = {
@@ -186,6 +187,13 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       await execa("chown", ["-R", `${config.user}:`, releaseDir]);
       await execa("chown", ["-R", `${config.user}:`, cacheDir]);
 
+      // Runs after both chowns: the check executes as the unprivileged service
+      // user, so it needs to read the release and write the cache dir. eve build
+      // never calls prewarm on a self-hosted release and /eve/v1/health returns
+      // 200 regardless of sandbox health, so without this a host that cannot run
+      // bwrap would deploy "successfully" and only fail on a user's first turn.
+      await verifySandbox({ releaseDir, user: config.user, cacheDir });
+
       const injectionLog = [
         `Injected eve sandbox modules: ${injection.generated.join(", ") || "none"}`,
         ...(injection.replaced.length
@@ -194,6 +202,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
                 "eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.",
             ]
           : []),
+        "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",
       ].join("\n");
       return { releaseRef: releaseDir, log: `${injectionLog}\n${execution.all ?? ""}` };
     },
