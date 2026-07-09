@@ -24,6 +24,8 @@
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
+| `WORKFLOW_POSTGRES_URL` | *(unset)* | Postgres URL injected into each deployment's `EnvironmentFile` so a `@workflow/world-postgres` agent has a durable workflow store. Deployments run as a host process, so use a host-reachable address, e.g. `postgres://eveland:eveland@localhost:5432/eveland`. A project secret of the same name overrides it. |
+| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. |
 
 Build-trust note: building a project executes that project's dependency
 lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
@@ -69,6 +71,19 @@ follow-up hardening.
 >
 > Only start the worker with the new `EVELAND_RUNTIME` once the old runtime
 > has zero `eveland-*` processes left.
+
+## Durable workflow world
+
+With `NODE_ENV=production` a deploy is rejected unless the agent has a durable
+workflow store:
+
+- `agent.ts` sets `experimental.workflow.world` to `@workflow/world-postgres`,
+- `package.json` declares `@workflow/world-postgres`, and
+- `WORKFLOW_POSTGRES_URL` is set on the worker (see the table above).
+
+Unset `NODE_ENV` turns the same checks into warnings. eveland only injects the
+URL — bootstrap the `workflow` schema against that database once before the
+first deploy: `npx --package=@workflow/world-postgres bootstrap`.
 
 ## How a deployment runs
 
