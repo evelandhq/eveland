@@ -4,9 +4,36 @@
 
 - Linux with systemd (verified on Ubuntu 24.04).
 - Node.js 24 (e.g. NodeSource) and `corepack enable`.
-- `bubblewrap` from the distro package (`apt-get install bubblewrap`). On Ubuntu 23.10+
-  install it via apt: the packaged AppArmor profile permits unprivileged user
-  namespaces; a source/nix install will hit EPERM.
+- `bubblewrap` from the distro package (`apt-get install bubblewrap`). Ubuntu's
+  packaged bubblewrap ships **no** AppArmor profile, and Ubuntu sets
+  `kernel.apparmor_restrict_unprivileged_userns=1` by default, which blocks an
+  *unconfined non-root* process from creating a user namespace (root is unaffected).
+  The build sandbox described under "How a deployment runs" runs as root, so it
+  never hits this — but the agent exec sandbox (below) runs as the unprivileged
+  deployment user and needs an AppArmor profile that grants `bwrap` the `userns`
+  permission:
+
+  ```
+  abi <abi/4.0>,
+  include <tunables/global>
+
+  profile bwrap /usr/bin/bwrap flags=(unconfined) {
+    userns,
+    include if exists <local/bwrap>
+  }
+  ```
+
+  Save this as `/etc/apparmor.d/bwrap` and load it with
+  `apparmor_parser -r -W /etc/apparmor.d/bwrap` (safe to re-run; it replaces an
+  already-loaded profile). A distro whose bubblewrap package ships its own profile,
+  or a host with the sysctl disabled, needs none of this.
+- `/workspace` must exist on the host as an empty directory before any agent uses
+  the bubblewrap sandbox backend: `sudo install -d -m 0755 /workspace`. bwrap binds
+  each sandbox session directory onto `/workspace` inside the sandbox but cannot
+  create that mountpoint itself, because the sandboxed process's argv bind-mounts
+  the host root read-only first. This is unrelated to `ProtectSystem=strict` — it is
+  the same role eve's Docker backend fills by baking `/workspace` into its base
+  image.
 - A service user for deployments: `useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app`.
 - The worker process must run as root (it drives `systemd-run`, `systemctl`,
   and `chown`). Run it as a systemd service itself.
@@ -98,6 +125,30 @@ first deploy: `npx --package=@workflow/world-postgres bootstrap`.
 - Health: the worker polls `http://127.0.0.1:<hostPort>/eve/v1/health` until any
   HTTP response arrives.
 
+## Agent exec sandbox
+
+Deployed eve agents get no Docker daemon and no KVM, so eve's default sandbox chain
+degrades to the `just-bash` interpreter (no real binaries). Projects that need a real
+exec sandbox opt in to the bubblewrap backend in their `agent/sandbox.ts`:
+
+```ts
+import { defineSandbox, defaultBackend } from "eve/sandbox";
+import { bwrap, isBwrapAvailable } from "@eveland/sandbox-bwrap";
+
+export default defineSandbox({
+  backend: () => (isBwrapAvailable() ? bwrap() : defaultBackend()),
+});
+```
+
+The host prerequisites are the AppArmor profile and the `/workspace` directory
+covered above ("Host prerequisites"). The backend works inside the deployment
+unit's hardening (`NoNewPrivileges`, `ProtectSystem=strict`) because apt's `bwrap`
+is not setuid — it needs no privilege escalation, only the AppArmor grant to create
+a user namespace as the unprivileged deployment user. Sandboxed commands never see
+the deployment's environment variables (secrets stay in the agent process), and
+sandbox workspaces live under the release directory at `.eve/sandbox-cache/bwrap/`.
+See `packages/sandbox-bwrap/README.md` for the full behavior and security boundary.
+
 ## Reverse proxy
 
 If you route by path in front of a deployment, forward **both** `/eve/` and
@@ -113,8 +164,8 @@ stalls every run silently.
 
 - Deployments share one service user; per-deployment `DynamicUser` isolation is
   a follow-up.
-- The eve sandbox backend inside deployed agents is addressed separately
-  (`@eveland/sandbox-bwrap`, Plan 2).
+- Deployed agents use eve's default sandbox chain unless the project opts in to
+  `@eveland/sandbox-bwrap` (see "Agent exec sandbox" above).
 
 ## Verifying the setup: Lima integration smoke test
 
@@ -135,3 +186,8 @@ use) and rsyncs the read-only repo mount into `/opt/eveland` before running
 `pnpm install` and the smoke test as root inside the guest. A successful run
 exits 0 and prints `SMOKE OK`. If it fails, inspect the unit logs from the
 host: `limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`.
+
+The same script then runs the `@eveland/sandbox-bwrap` contract test as the
+unprivileged `eveland-app` user under deployed-agent systemd constraints
+(`NoNewPrivileges`, `ProtectSystem=strict`). A fully successful run prints both
+`SMOKE OK` and `BWRAP SMOKE OK`.
