@@ -8,6 +8,7 @@ describe("resolveBwrapSandboxOptions", () => {
       networkPolicy: "allow-all",
       hidePaths: [],
       bwrapPath: "bwrap",
+      cacheDir: null,
     });
   });
 
@@ -33,5 +34,15 @@ describe("createBwrapOptionsHash", () => {
     expect(a).toBe(b);
     expect(a).not.toBe(c);
     expect(a).toMatch(/^[0-9a-f]{16}$/);
+  });
+});
+
+describe("cacheDir option", () => {
+  test("defaults to null and is part of the options hash", () => {
+    expect(resolveBwrapSandboxOptions().cacheDir).toBeNull();
+    expect(resolveBwrapSandboxOptions({ cacheDir: "/a" }).cacheDir).toBe("/a");
+    const a = createBwrapOptionsHash(resolveBwrapSandboxOptions({ cacheDir: "/a" }));
+    const b = createBwrapOptionsHash(resolveBwrapSandboxOptions({ cacheDir: "/b" }));
+    expect(a).not.toBe(b);
   });
 });

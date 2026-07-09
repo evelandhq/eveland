@@ -16,6 +16,19 @@ namespaces.
 
 ## Usage
 
+**Deployed on eveland:** you do nothing. eveland's systemd runtime generates the sandbox
+module into the release directory at build time — one `agent/sandbox.js` per agent root,
+recursively for every subagent — and vendors this package's built output beside it, so
+agent projects never declare a sandbox backend themselves. If a project shipped its own
+`agent/sandbox.ts` (or `agent/sandbox/`), the build removes it and replaces it with the
+generated module; the build log says so. Local `eve dev` is untouched — it never runs
+the eveland build pipeline, so it falls back to eve's default backend chain (usually
+`just-bash`, or Docker where available). See `docs/deploy/linux.md` for what the build
+log looks like and what happens when the sandbox does not work on the host.
+
+**Standalone use of this package** (outside eveland, or in any project that manages its
+own `agent/sandbox.ts`) still works the manual way:
+
 ```ts
 // agent/sandbox.ts
 import { defineSandbox, defaultBackend } from "eve/sandbox";
@@ -27,6 +40,18 @@ export default defineSandbox({
 });
 ```
 
+### eve version requirement
+
+This package requires `eve` `>=0.20.0 <0.23.0` (eve's 0.x releases use caret-incompatible
+minor bumps, so this range is written out explicitly rather than as a caret range that
+would silently exclude later 0.2x releases). eve 0.20.0 removed
+`SandboxBackendHandle.dispose()` and made `shutdown()` required in its place; this
+backend implements `shutdown()` by killing every process the session has spawned that
+has not yet exited, honoring eve's contract that "nothing may be left running
+afterwards" once the handle is shut down. The session's workspace directory is not
+touched by `shutdown()` — it is the durable state, and it stays on disk so the session
+can reattach on the next start.
+
 ### Options
 
 | Option | Default | Meaning |
@@ -35,16 +60,18 @@ export default defineSandbox({
 | `networkPolicy` | `"allow-all"` | `"allow-all"` shares the host network; `"deny-all"` runs each command with no network (`--unshare-net`). `setNetworkPolicy` can switch between the two at run time; granular domain policies are rejected (use the Vercel backend for those). |
 | `hidePaths` | `[]` | Extra host paths hidden from the sandbox (each covered by an empty tmpfs). |
 | `bwrapPath` | `"bwrap"` | bwrap executable to invoke. |
+| `cacheDir` | `<appRoot>/.eve/sandbox-cache/bwrap` | Absolute directory holding templates and durable session workspaces. Pin this outside the release directory so a redeploy does not discard durable session state: since eve 0.22.0, eve keys session sandboxes per durable session, not per deployment, so an `appRoot`-derived default would silently destroy every session's `/workspace` on the next redeploy. The generated eveland module always sets this from `EVELAND_SANDBOX_CACHE_DIR` (see `docs/deploy/linux.md`). |
 
 ## How it works
 
 - **prewarm** (build time): runs the authored `bootstrap` inside bwrap against a
   staging directory, writes seed files, then atomically renames it into
-  `<appRoot>/.eve/sandbox-cache/bwrap/templates/<hash>`. Idempotent per template key +
-  options hash.
-- **create** (runtime): clones the template into
-  `<appRoot>/.eve/sandbox-cache/bwrap/sessions/<hash>` on first use. The directory IS
-  the durable session state: it persists across reconnects and process restarts.
+  `<cacheDir>/templates/<hash>` (`<cacheDir>` defaults to
+  `<appRoot>/.eve/sandbox-cache/bwrap` when the `cacheDir` option is not set). Idempotent
+  per template key + options hash.
+- **create** (runtime): clones the template into `<cacheDir>/sessions/<hash>` on first
+  use. The directory IS the durable session state: it persists across reconnects and
+  process restarts.
 - **run/spawn**: every command is one transient bwrap invocation —
   read-only host rootfs, the session directory bound read-write at `/workspace`,
   tmpfs `/tmp`, PID/IPC/UTS namespaces unshared, `--die-with-parent`.
@@ -53,7 +80,17 @@ export default defineSandbox({
 
 ## Disk usage and cache management
 
-Session and template directories persist indefinitely under `<appRoot>/.eve/sandbox-cache/bwrap/{sessions,templates}` across process restarts and reconnects, enabling fast reattach when a session resumes. Each session key gets a directory that is reused for the lifetime of the session; each template is cached per (template key, options hash) and reused across sessions. This backend intentionally does not prune either — its `dispose()` method is a no-op so that reattach is instant and stateless from the agent's perspective. On a long-lived host, this means the cache will grow with the number of durable sessions and unique templates, consuming disk space indefinitely.
+Session and template directories persist indefinitely under
+`<cacheDir>/{sessions,templates}` across process restarts and reconnects, enabling fast
+reattach when a session resumes. Each session key gets a directory that is reused for
+the lifetime of the session; each template is cached per (template key, options hash)
+and reused across sessions. This backend intentionally does not prune either — its
+`shutdown()` method only kills the session's live processes and leaves the workspace on
+disk, so reattach is instant and stateless from the agent's perspective. On a long-lived
+host, this means the cache will grow with the number of durable sessions and unique
+templates, consuming disk space indefinitely. On eveland deployments this cache lives at
+`EVELAND_SANDBOX_CACHE_DIR` (one subdirectory per project), outside every release
+directory, precisely so that redeploying a project does not touch it.
 
 Reclaiming space today requires manual intervention: identify which sessions are known dead and delete their corresponding directories under the cache root. Automatic cache pruning (e.g., based on age or LRU) is a known gap and a planned follow-up.
 

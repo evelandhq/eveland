@@ -55,6 +55,7 @@
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Postgres URL injected into each deployment's `EnvironmentFile` so a `@workflow/world-postgres` agent has a durable workflow store. Deployments run as a host process, so use a host-reachable address, e.g. `postgres://eveland:eveland@localhost:5432/eveland`. A project secret of the same name overrides it. |
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. |
+| `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland-data/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
 Build-trust note: building a project executes that project's dependency
 lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
@@ -120,26 +121,49 @@ first deploy: `npx --package=@workflow/world-postgres bootstrap`.
   `npm ci && npx eve build` runs inside bubblewrap (read-only rootfs, writable
   release dir + shared npm cache, PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`
-  with `User=eveland-app`, `ProtectSystem=strict`, `ReadWritePaths=<releaseDir>`,
-  `PrivateTmp`, `NoNewPrivileges`, `MemoryMax`, `CPUQuota`, `Restart=on-failure`.
-  The app binds `127.0.0.1:<hostPort>`; secrets arrive via a root-owned 0600
-  `EnvironmentFile`.
+  with `User=eveland-app`, `ProtectSystem=strict`,
+  `ReadWritePaths=<releaseDir>` and a second `ReadWritePaths=<sandboxCacheDir>` for the
+  project's `EVELAND_SANDBOX_CACHE_DIR` subdirectory, `PrivateTmp`, `NoNewPrivileges`,
+  `MemoryMax`, `CPUQuota`, `Restart=on-failure`. The app binds `127.0.0.1:<hostPort>`;
+  secrets arrive via a root-owned 0600 `EnvironmentFile`.
 - Health: the worker polls `http://127.0.0.1:<hostPort>/eve/v1/health` until any
   HTTP response arrives.
 
 ## Agent exec sandbox
 
 Deployed eve agents get no Docker daemon and no KVM, so eve's default sandbox chain
-degrades to the `just-bash` interpreter (no real binaries). Projects that need a real
-exec sandbox opt in to the bubblewrap backend in their `agent/sandbox.ts`:
+degrades to the `just-bash` interpreter (no real binaries). eve projects do not opt into
+a real exec sandbox themselves: for every eve project (`isEveProject`; a plain Node
+project is left alone entirely), the systemd runtime's build step generates a sandbox
+module — `agent/sandbox.js`, and one more for every subagent directory, however deeply
+nested — into the release directory, and vendors this build's `@eveland/sandbox-bwrap`
+to `<releaseDir>/.eveland/sandbox-bwrap/`. The generated module reads
+`EVELAND_SANDBOX_CACHE_DIR` from the environment and passes it to the backend as
+`cacheDir`. Nothing in the project's own source tree is touched to make this happen,
+and there is nothing for a project to author.
 
-```ts
-import { defineSandbox, defaultBackend } from "eve/sandbox";
-import { bwrap, isBwrapAvailable } from "@eveland/sandbox-bwrap";
+If the project shipped its own `agent/sandbox.ts` (or an `agent/sandbox/` directory),
+the build removes it and writes the generated module in its place — its `bootstrap()`,
+`onSession()`, and any `agent/sandbox/workspace/` seed tree are discarded and never run.
+The build log carries a line so this is never a silent surprise:
 
-export default defineSandbox({
-  backend: () => (isBwrapAvailable() ? bwrap() : defaultBackend()),
-});
+```
+WARNING: replaced the project's authored sandbox (agent/sandbox.ts). eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.
+```
+
+If an eve project has no `agent/` directory at all, injection generates nothing, the
+build does not fail, and the log instead warns that the deployed agent falls back to
+eve's default sandbox chain:
+
+```
+Injected eve sandbox modules: none
+WARNING: no agent/ directory was found at the project root, so no sandbox module could be injected. The deployed agent will fall back to eve's default sandbox backend chain.
+```
+
+Otherwise a successful build logs which modules were generated, for example:
+
+```
+Injected eve sandbox modules: agent/sandbox.js
 ```
 
 The host prerequisites are the AppArmor profile and the `/workspace` directory
@@ -147,12 +171,61 @@ covered above ("Host prerequisites"). The backend works inside the deployment
 unit's hardening (`NoNewPrivileges`, `ProtectSystem=strict`) because apt's `bwrap`
 is not setuid — it needs no privilege escalation, only the AppArmor grant to create
 a user namespace as the unprivileged deployment user. Sandboxed commands never see
-the deployment's environment variables (secrets stay in the agent process), and
-sandbox workspaces live under the release directory at `.eve/sandbox-cache/bwrap/`.
+the deployment's environment variables (secrets stay in the agent process).
 
-The sandbox cache (both session and template directories under `.eve/sandbox-cache/bwrap/`) grows with the number of durable sessions and unique templates and is never pruned automatically. When a release is deployed, a new release directory is created with a fresh cache; the old release directory's sandbox state goes away when whatever cleanup process removes superseded releases. Within a long-lived release directory, reclaiming cache space requires manual deletion of directories corresponding to known-dead sessions.
+**A build now fails when the sandbox does not work on the host, and this is deliberate.**
+eve prewarms sandboxes lazily: `eve build` never calls the backend's `prewarm`, so a
+completely broken bubblewrap setup (missing AppArmor profile, missing `/workspace`)
+does not fail the build, does not fail `eve start`, and does not fail
+`/eve/v1/health` — that endpoint returns `200` regardless of sandbox health. Left
+unchecked, the first sign of trouble would be a failed agent turn once a user's session
+actually touches the sandbox, long after the deploy was reported successful. eveland
+closes that gap with a self-check that runs right after the build, once the release and
+its sandbox cache directory are chowned to the deployment user: it runs the real
+vendored bwrap backend — prewarm, create, run, shutdown — against a scratch app root
+under the project's sandbox cache directory, as the unprivileged deployment user, under
+the same systemd hardening (`NoNewPrivileges=yes`, `ProtectSystem=strict`,
+`PrivateTmp=yes`) the deployed unit itself gets. The check's own script prints
+`SANDBOX VERIFY OK` on success, and a passing build logs:
 
-See `packages/sandbox-bwrap/README.md` for the full behavior and security boundary.
+```
+Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.
+```
+
+When the check fails — for any reason, including a script that exits 0 without printing
+its success marker — the build itself fails, and the error names the same two host
+prerequisites documented above:
+
+```
+Sandbox self-check failed: the vendored bwrap backend could not run under this host's deployment hardening. This is almost always one of two missing host prerequisites:
+  1. /etc/apparmor.d/bwrap must exist and grant `userns`. Ubuntu's apt bubblewrap ships no AppArmor profile, and kernel.apparmor_restrict_unprivileged_userns=1 then blocks non-root bwrap with "setting up uid map: Permission denied".
+  2. /workspace must already exist as an empty directory. bwrap cannot create that bind destination itself because the host root is bind-mounted read-only first.
+Captured output (exit=<code>):
+<systemd-run output>
+```
+
+Say it plainly: a passing HTTP health check does not by itself mean the sandbox works —
+that is precisely why this self-check exists.
+
+Sandbox workspaces do **not** live under the release directory. They live under
+`EVELAND_SANDBOX_CACHE_DIR` (default `$EVELAND_DATA_DIR/sandbox`), one subdirectory per
+project, because eve 0.22.0 keys session sandboxes per durable session rather than per
+deployment — a redeploy no longer discards a session's `/workspace` state. Since
+eveland gives every release a fresh release directory, deriving the cache from the
+release (as an unconfigured `@eveland/sandbox-bwrap` normally would) would have silently
+destroyed every session's workspace on the next redeploy. The deployed unit is granted
+this directory read-write via a second `ReadWritePaths=` property (alongside the one for
+the release directory itself), and the same directory is exported to the unit as
+`EVELAND_SANDBOX_CACHE_DIR`.
+
+The sandbox cache (both session and template directories under
+`EVELAND_SANDBOX_CACHE_DIR`) grows with the number of durable sessions and unique
+templates and is **not** pruned automatically — neither by a redeploy nor by anything
+else in eveland today. Reclaiming space requires manual deletion of directories
+corresponding to known-dead sessions.
+
+See `packages/sandbox-bwrap/README.md` for the full backend behavior and security
+boundary.
 
 ## Reverse proxy
 
@@ -169,8 +242,12 @@ stalls every run silently.
 
 - Deployments share one service user; per-deployment `DynamicUser` isolation is
   a follow-up.
-- Deployed agents use eve's default sandbox chain unless the project opts in to
-  `@eveland/sandbox-bwrap` (see "Agent exec sandbox" above).
+- The sandbox cache under `EVELAND_SANDBOX_CACHE_DIR` is never pruned; disk usage grows
+  with the number of durable sessions and unique templates (see "Agent exec sandbox"
+  above).
+- An eve project with no `agent/` directory, or a plain Node project, gets no injected
+  sandbox and runs on eve's default sandbox chain (`just-bash` on a host with no Docker
+  daemon and no KVM).
 
 ## Verifying the setup: Lima integration smoke test
 

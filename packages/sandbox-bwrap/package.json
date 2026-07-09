@@ -21,11 +21,11 @@
     "node": ">=24.0.0"
   },
   "peerDependencies": {
-    "eve": "^0.17.1"
+    "eve": ">=0.20.0 <0.23.0"
   },
   "devDependencies": {
     "ai": "^7.0.7",
-    "eve": "^0.17.1",
+    "eve": "0.22.1",
     "vitest": "^4.1.9"
   }
 }

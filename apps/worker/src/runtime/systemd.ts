@@ -2,7 +2,9 @@ import { execa } from "execa";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
-import type { ProcessStartInput, ProcessStartResult, ReleaseBuildInput, ReleaseBuildResult, RuntimeAdapter, RuntimeCommandContext } from "./types.js";
+import { injectSandboxModules } from "./sandbox-inject.js";
+import { verifySandbox } from "./sandbox-verify.js";
+import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 
 export type SystemdStartInput = {
   unitName: string;
@@ -12,8 +14,32 @@ export type SystemdStartInput = {
   user: string;
   memoryMax: string;
   cpuQuota: string;
+  sandboxCacheDir: string;
   command: string;
 };
+
+/**
+ * Every project's sandbox cache lives at `<root>/<processSafeName(projectId)>`.
+ * Exported so `createSystemdAdapter` (which knows the projectId at build time)
+ * and `jobs/process.ts` (which must pass the identical path into
+ * `startProcess`, since `ProcessStartInput` carries no projectId) can never
+ * compute two different paths for the same project.
+ */
+export function resolveProjectSandboxCacheDir(root: string, projectId: string): string {
+  return path.resolve(root, processSafeName(projectId));
+}
+
+/**
+ * Root holding every project's durable sandbox cache. `select.ts` (constructing
+ * the systemd adapter) and `jobs/process.ts` (which must pass the identical
+ * path into `startProcess`, since `ProcessStartInput` carries no projectId)
+ * both call this so the two can never compute two different roots for the
+ * same env -- a typo'd env var name in one of the two call sites is now a
+ * single point of failure this function's own tests would catch.
+ */
+export function resolveSandboxCacheRoot(env: NodeJS.ProcessEnv): string {
+  return path.resolve(env.EVELAND_SANDBOX_CACHE_DIR ?? path.join(env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox"));
+}
 
 export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
   return [
@@ -27,10 +53,16 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     `--property=WorkingDirectory=${input.releaseDir}`,
     `--property=EnvironmentFile=${input.envFilePath}`,
     `--property=Environment=PORT=${input.port}`,
+    `--property=Environment=EVELAND_SANDBOX_CACHE_DIR=${input.sandboxCacheDir}`,
     `--property=MemoryMax=${input.memoryMax}`,
     `--property=CPUQuota=${input.cpuQuota}`,
     "--property=ProtectSystem=strict",
     `--property=ReadWritePaths=${input.releaseDir}`,
+    // systemd list-type settings (ReadWritePaths= included) append across repeated
+    // assignments rather than overwriting -- confirmed live via `systemd-run
+    // --property=ReadWritePaths=/tmp --property=ReadWritePaths=/var/tmp` followed by
+    // `systemctl show -p ReadWritePaths`, which reported "ReadWritePaths=/tmp /var/tmp".
+    `--property=ReadWritePaths=${input.sandboxCacheDir}`,
     "--property=PrivateTmp=yes",
     "--property=NoNewPrivileges=yes",
     "sh",
@@ -101,12 +133,23 @@ export type SystemdAdapterConfig = {
   memoryMax: string;
   cpuQuota: string;
   buildSandbox: "bwrap" | "none";
+  /** Root directory holding every project's durable eve sandbox session cache. */
+  sandboxCacheDir: string;
+  /**
+   * Resolves the directory holding the built @eveland/sandbox-bwrap (its
+   * dist/), vendored into each release. A provider rather than a resolved
+   * string so constructing the adapter never touches the filesystem --
+   * it's invoked only inside `buildRelease`, at the point the backend is
+   * actually needed.
+   */
+  backendDistDir: () => string;
 };
 
 export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapter {
   const dataDir = path.resolve(config.dataDir);
   const npmCacheDir = path.resolve(dataDir, "npm-cache");
   const envDir = path.resolve(dataDir, "deployment-env");
+  const projectCacheDir = (projectId: string) => resolveProjectSandboxCacheDir(config.sandboxCacheDir, projectId);
 
   return {
     name: "systemd",
@@ -115,6 +158,25 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       await mkdir(releaseDir, { recursive: true });
       await mkdir(npmCacheDir, { recursive: true });
       await execa("cp", ["-a", `${path.resolve(input.sourcePath)}/.`, releaseDir]);
+
+      // Only eve projects ever run `npx eve start`/`npx eve build`, so only eve
+      // projects have an eve sandbox to inject a module into or self-check. A
+      // plain Node project gets neither: injecting would vendor a backend
+      // nothing imports, and verifying would run a check against a sandbox
+      // that will never exist in that release.
+      const isEveProject = input.commandContext.isEveProject;
+
+      // Runs after cp -a (so it has a release to write into) and before the build
+      // command (so `npx eve build` compiles the generated module). `npm ci` only
+      // clears node_modules, so .eveland/ survives into the compiled output.
+      const injection = isEveProject
+        ? await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir() })
+        : undefined;
+      const cacheDir = projectCacheDir(input.projectId);
+      // The service user runs unprivileged under ProtectSystem=strict and cannot
+      // create this directory itself, so build time (running as this process's
+      // own, more privileged user) must create and hand it over.
+      await mkdir(cacheDir, { recursive: true });
 
       const command = buildReleaseBuildCommand(input.commandContext);
       const execution =
@@ -132,7 +194,39 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       // The unit's fixed service user needs to own the release dir: eve's default
       // local workflow world writes .workflow-data/ into the working directory.
       await execa("chown", ["-R", `${config.user}:`, releaseDir]);
-      return { releaseRef: releaseDir, log: execution.all ?? "" };
+      await execa("chown", ["-R", `${config.user}:`, cacheDir]);
+
+      // Runs after both chowns: the check executes as the unprivileged service
+      // user, so it needs to read the release and write the cache dir. eve build
+      // never calls prewarm on a self-hosted release and /eve/v1/health returns
+      // 200 regardless of sandbox health, so without this a host that cannot run
+      // bwrap would deploy "successfully" and only fail on a user's first turn.
+      if (isEveProject) {
+        await verifySandbox({ releaseDir, user: config.user, cacheDir });
+      }
+
+      const injectionLog = injection
+        ? [
+            `Injected eve sandbox modules: ${injection.generated.join(", ") || "none"}`,
+            ...(injection.generated.length === 0
+              ? [
+                  "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
+                    "be injected. The deployed agent will fall back to eve's default sandbox backend chain.",
+                ]
+              : []),
+            ...(injection.replaced.length
+              ? [
+                  `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +
+                    "eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.",
+                ]
+              : []),
+            "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",
+          ].join("\n")
+        : undefined;
+      return {
+        releaseRef: releaseDir,
+        log: injectionLog ? `${injectionLog}\n${execution.all ?? ""}` : execution.all ?? "",
+      };
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
       await mkdir(envDir, { recursive: true });
@@ -149,6 +243,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
           user: config.user,
           memoryMax: config.memoryMax,
           cpuQuota: config.cpuQuota,
+          sandboxCacheDir: input.sandboxCacheDir,
           command: buildSystemdStartCommand(input.commandContext, input.port),
         }),
         { all: true },

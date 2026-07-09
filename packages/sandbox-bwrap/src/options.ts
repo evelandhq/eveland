@@ -13,6 +13,13 @@ export interface BwrapSandboxCreateOptions {
   readonly hidePaths?: readonly string[];
   /** bwrap executable path. Defaults to `"bwrap"` resolved via PATH. */
   readonly bwrapPath?: string;
+  /**
+   * Absolute directory holding templates and durable session workspaces.
+   * Defaults to `<appRoot>/.eve/sandbox-cache/bwrap`. Pin it outside the
+   * release directory so a redeploy does not discard durable session state
+   * (eve keys session sandboxes per durable session, not per deployment).
+   */
+  readonly cacheDir?: string;
 }
 
 /** Fully-defaulted options consumed by the backend implementation. */
@@ -21,6 +28,7 @@ export interface ResolvedBwrapSandboxOptions {
   readonly networkPolicy: BwrapNetworkPolicy;
   readonly hidePaths: readonly string[];
   readonly bwrapPath: string;
+  readonly cacheDir: string | null;
 }
 
 export function resolveBwrapSandboxOptions(options: BwrapSandboxCreateOptions = {}): ResolvedBwrapSandboxOptions {
@@ -29,6 +37,7 @@ export function resolveBwrapSandboxOptions(options: BwrapSandboxCreateOptions = 
     networkPolicy: options.networkPolicy ?? "allow-all",
     hidePaths: options.hidePaths ?? [],
     bwrapPath: options.bwrapPath ?? "bwrap",
+    cacheDir: options.cacheDir ?? null,
   };
 }
 
@@ -40,6 +49,7 @@ export function resolveBwrapSandboxOptions(options: BwrapSandboxCreateOptions = 
 export function createBwrapOptionsHash(options: ResolvedBwrapSandboxOptions): string {
   const canonical = JSON.stringify({
     bwrapPath: options.bwrapPath,
+    cacheDir: options.cacheDir,
     env: Object.fromEntries(Object.entries(options.env).sort(([a], [b]) => (a < b ? -1 : 1))),
     hidePaths: [...options.hidePaths],
     networkPolicy: options.networkPolicy,

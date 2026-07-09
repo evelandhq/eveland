@@ -63,7 +63,7 @@ describe("create", () => {
     expect(await handle.captureState()).toEqual({ backendName: "bwrap", metadata: {}, sessionKey: "sess-1" });
 
     await handle.session.writeTextFile({ path: "state.txt", content: "persisted" });
-    await handle.dispose();
+    await handle.shutdown();
 
     const again = await backend.create({ templateKey: "tpl-1", sessionKey: "sess-1", runtimeContext });
     expect(await again.session.readTextFile({ path: "state.txt" })).toBe("persisted");
@@ -96,6 +96,38 @@ describe("create", () => {
     await expect(b.create({ templateKey: "tpl", sessionKey: "s", runtimeContext })).rejects.toSatisfy(
       (error: unknown) => SandboxTemplateNotProvisionedError.is(error),
     );
+  });
+
+  test("shutdown kills the session's live processes and leaves the workspace on disk", async () => {
+    const { backend, runtimeContext } = await makeBackend();
+    const handle = await backend.create({ templateKey: null, sessionKey: "sess-shutdown", runtimeContext });
+    await handle.session.writeTextFile({ path: "keep.txt", content: "durable" });
+
+    await handle.shutdown();
+
+    const again = await backend.create({ templateKey: null, sessionKey: "sess-shutdown", runtimeContext });
+    expect(await again.session.readTextFile({ path: "keep.txt" })).toBe("durable");
+  });
+
+  test("the handle exposes shutdown and no longer exposes dispose", async () => {
+    const { backend, runtimeContext } = await makeBackend();
+    const handle = await backend.create({ templateKey: null, sessionKey: "sess-api", runtimeContext });
+    expect(typeof handle.shutdown).toBe("function");
+    expect((handle as unknown as Record<string, unknown>).dispose).toBeUndefined();
+  });
+
+  test("session state survives a change of appRoot when cacheDir is pinned", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "bwrap-redeploy-"));
+    const cacheDir = path.join(root, "stable");
+    const backend = createBwrapSandboxBackend({ runner: fakeRunner, createOptions: { cacheDir } });
+
+    const first = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-1") } });
+    await first.session.writeTextFile({ path: "state.txt", content: "kept" });
+    await first.shutdown();
+
+    // Redeploy: brand-new appRoot, same project cache.
+    const second = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-2") } });
+    expect(await second.session.readTextFile({ path: "state.txt" })).toBe("kept");
   });
 });
 
