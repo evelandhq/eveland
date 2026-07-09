@@ -17,6 +17,7 @@ limactl shell "$VM" -- sudo bash -c "
   rsync -a --delete --exclude node_modules --exclude .eveland-data --exclude .next '$REPO_DIR/' /opt/eveland/
   cd /opt/eveland
   corepack pnpm install --frozen-lockfile
+  corepack pnpm --filter @eveland/sandbox-bwrap build
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
 
@@ -31,4 +32,11 @@ limactl shell "$VM" -- sudo bash -c "
     --property=ReadWritePaths=/var/lib/eveland-app \
     --setenv=TMPDIR=/var/lib/eveland-app \
     bash -lc 'cd /opt/eveland/packages/sandbox-bwrap && ../../node_modules/.bin/tsx src/integration/bwrap-backend-smoke.ts'
+
+  # End-to-end proof: an imported eve project gets a working bwrap sandbox it
+  # never declared, and a redeploy preserves the durable session workspace.
+  # Runs as root (it drives systemd itself, the same way jobs/process.ts's
+  # real build_deploy path does).
+  EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
+    corepack pnpm --filter @eveland/worker exec tsx src/integration/agent-sandbox-e2e.ts
 "

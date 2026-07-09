@@ -13,6 +13,15 @@ import { isBwrapAvailable } from "../process.js";
 
 const SECRET = "smoke-secret-do-not-leak";
 
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function main(): Promise<void> {
   assert.equal(isBwrapAvailable(), true, "bwrap must be installed in the VM");
   process.env.SMOKE_SECRET = SECRET;
@@ -158,6 +167,14 @@ async function main(): Promise<void> {
       sleep(5000).then(() => "timeout"),
     ]);
     assert.equal(settled, "settled", "killed spawn must settle wait() promptly");
+
+    // shutdown() must leave nothing running: spawn a sleeper, shut down, and
+    // confirm the process is gone from the host.
+    const sleeper = await session.spawn({ command: "sleep 300" });
+    const sleeperPid = sleeper.pid;
+    await handle.shutdown();
+    assert.ok(sleeperPid !== undefined, "spawn must expose a pid");
+    assert.equal(processIsAlive(sleeperPid), false, "shutdown() must kill spawned processes");
 
     // persistence across reconnect; isolation between sessions
     await session.writeTextFile({ path: "notes/hello.txt", content: "persisted" });

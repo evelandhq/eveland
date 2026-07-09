@@ -5,5 +5,9 @@
     "outDir": "dist",
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  // The e2e fixture is a standalone eve project: it declares its own `eve`
+  // dependency, installed only inside its own release build in the Lima VM,
+  // and is never part of this package's own dependency graph.
+  "exclude": ["src/integration/fixtures"]
 }
