@@ -2,6 +2,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { createId } from "@eveland/shared/ids";
 import type { Database } from "./client.js";
 import {
+  chatMessageRowToChatMessage,
+  chatRowToChat,
   deploymentRowToDeployment,
   jobRowToJob,
   logRowToLog,
@@ -14,7 +16,7 @@ import {
   sourceFileRowToSourceFile,
   sourceRevisionRowToSourceRevision,
 } from "./mappers.js";
-import { deployments, jobs, logs, projects, releases, schedules, secrets, sessionEvents, sessions, sourceFiles, sourceRevisions, users } from "./schema.js";
+import { chatMessages, chats, deployments, jobs, logs, projects, releases, schedules, secrets, sessionEvents, sessions, sourceFiles, sourceRevisions, users } from "./schema.js";
 import type { CreateProjectInput, Store } from "../store.js";
 import type { JobType, LogRecord } from "../types.js";
 
@@ -111,6 +113,7 @@ export function createPostgresStore(database: Database): Store {
       await db.delete(schedules).where(eq(schedules.projectId, projectId));
       await db.delete(jobs).where(eq(jobs.projectId, projectId));
       await db.delete(secrets).where(eq(secrets.projectId, projectId));
+      await db.update(chats).set({ status: "agent_deleted", projectDeleted: true, updatedAt: new Date() }).where(eq(chats.projectId, projectId));
       const deleted = await db.delete(projects).where(eq(projects.id, projectId)).returning({ id: projects.id });
       return deleted.length > 0;
     },
@@ -480,6 +483,66 @@ export function createPostgresStore(database: Database): Store {
     async listSessionEvents(sessionId) {
       const rows = await db.select().from(sessionEvents).where(eq(sessionEvents.sessionId, sessionId)).orderBy(sessionEvents.index);
       return rows.map(sessionEventRowToSessionEvent);
+    },
+
+    async listChats(userId = defaultOwner.id) {
+      const rows = await db.select().from(chats).where(eq(chats.userId, userId)).orderBy(desc(chats.updatedAt));
+      return rows.map(chatRowToChat);
+    },
+
+    async createChat(input) {
+      await ensureDefaultOwner();
+      const [row] = await db
+        .insert(chats)
+        .values({
+          id: createId("chat"),
+          userId: input.userId ?? defaultOwner.id,
+          projectId: input.projectId,
+          projectName: input.projectName,
+          title: input.title,
+          status: "active",
+          projectDeleted: false,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to create chat.");
+      }
+      return chatRowToChat(row);
+    },
+
+    async getChat(chatId) {
+      const [row] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
+      return row ? chatRowToChat(row) : null;
+    },
+
+    async appendChatMessage(chatId, role, content) {
+      const now = new Date();
+      const [row] = await db
+        .insert(chatMessages)
+        .values({
+          id: createId("msg"),
+          chatId,
+          role,
+          content,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to append chat message.");
+      }
+
+      await db.update(chats).set({ latestMessage: content, updatedAt: now }).where(eq(chats.id, chatId));
+      return chatMessageRowToChatMessage(row);
+    },
+
+    async listChatMessages(chatId) {
+      const rows = await db.select().from(chatMessages).where(eq(chatMessages.chatId, chatId)).orderBy(chatMessages.createdAt);
+      return rows.map(chatMessageRowToChatMessage);
+    },
+
+    async markProjectChatsDeleted(projectId) {
+      await db.update(chats).set({ status: "agent_deleted", projectDeleted: true, updatedAt: new Date() }).where(eq(chats.projectId, projectId));
     },
 
     async listLogs(projectId, type?: LogRecord["type"]) {

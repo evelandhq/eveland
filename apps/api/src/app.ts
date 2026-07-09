@@ -28,6 +28,15 @@ const playgroundMessageSchema = z.object({
   message: z.string().min(1),
 });
 
+const createChatSchema = z.object({
+  projectId: z.string().min(1),
+  message: z.string().min(1),
+});
+
+const chatMessageSchema = z.object({
+  message: z.string().min(1),
+});
+
 const devSecretKey = "eveland-dev-secret-key-000000000";
 
 export type PlaygroundRunEvent = {
@@ -69,6 +78,85 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
   );
 
   app.get("/health", (c) => c.json({ ok: true, service: "eveland-api" }));
+
+  app.get("/chats", async (c) => c.json({ chats: await store.listChats() }));
+
+  app.post("/chats", async (c) => {
+    const parsed = createChatSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: "Invalid chat input", issues: parsed.error.issues }, 400);
+    }
+
+    const project = await store.getProject(parsed.data.projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+    const deployment = await store.getCurrentDeployment(project.id);
+    if (!deployment || deployment.status !== "running") {
+      return c.json({ error: "No running deployment" }, 409);
+    }
+
+    const chat = await store.createChat({
+      projectId: project.id,
+      projectName: project.name,
+      title: titleFromFirstMessage(parsed.data.message),
+    });
+    await store.appendChatMessage(chat.id, "user", parsed.data.message);
+
+    try {
+      const result = await playgroundRunner({ project, deployment, message: parsed.data.message });
+      await store.appendChatMessage(chat.id, "assistant", result.response);
+      return c.json({ chat: await store.getChat(chat.id), messages: await store.listChatMessages(chat.id) }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await store.appendChatMessage(chat.id, "assistant", `Chat request failed: ${message}`);
+      return c.json({ error: "Chat request failed", detail: message, chat: await store.getChat(chat.id), messages: await store.listChatMessages(chat.id) }, 502);
+    }
+  });
+
+  app.get("/chats/:chatId", async (c) => {
+    const chat = await store.getChat(c.req.param("chatId"));
+    if (!chat) {
+      return c.json({ error: "Chat not found" }, 404);
+    }
+    return c.json({ chat, messages: await store.listChatMessages(chat.id) });
+  });
+
+  app.post("/chats/:chatId/messages", async (c) => {
+    const parsed = chatMessageSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: "Invalid chat message", issues: parsed.error.issues }, 400);
+    }
+
+    const chat = await store.getChat(c.req.param("chatId"));
+    if (!chat) {
+      return c.json({ error: "Chat not found" }, 404);
+    }
+    if (chat.projectDeleted || chat.status === "agent_deleted") {
+      return c.json({ error: "Chat agent has been deleted" }, 409);
+    }
+
+    const project = await store.getProject(chat.projectId);
+    if (!project) {
+      await store.markProjectChatsDeleted(chat.projectId);
+      return c.json({ error: "Chat agent has been deleted" }, 409);
+    }
+    const deployment = await store.getCurrentDeployment(project.id);
+    if (!deployment || deployment.status !== "running") {
+      return c.json({ error: "No running deployment" }, 409);
+    }
+
+    await store.appendChatMessage(chat.id, "user", parsed.data.message);
+    try {
+      const result = await playgroundRunner({ project, deployment, message: parsed.data.message });
+      await store.appendChatMessage(chat.id, "assistant", result.response);
+      return c.json({ chat: await store.getChat(chat.id), messages: await store.listChatMessages(chat.id) }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await store.appendChatMessage(chat.id, "assistant", `Chat request failed: ${message}`);
+      return c.json({ error: "Chat request failed", detail: message, chat: await store.getChat(chat.id), messages: await store.listChatMessages(chat.id) }, 502);
+    }
+  });
 
   app.get("/projects", async (c) => c.json({ projects: await store.listProjects() }));
 
@@ -286,6 +374,14 @@ async function resolveExtractedSourceRoot(extractDir: string): Promise<string> {
   }
 
   return extractDir;
+}
+
+function titleFromFirstMessage(message: string): string {
+  const singleLine = message.trim().replace(/\s+/g, " ");
+  if (!singleLine) {
+    return "New Chat";
+  }
+  return singleLine.length > 80 ? `${singleLine.slice(0, 77)}...` : singleLine;
 }
 
 // An eve deployment exposes a stable HTTP API: POST /eve/v1/session starts a run

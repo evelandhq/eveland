@@ -126,6 +126,30 @@ export type ScheduleRecord = {
   nextRunAt: string | null;
 };
 
+export type ChatStatus = "active" | "agent_deleted";
+export type ChatMessageRole = "user" | "assistant";
+
+export type Chat = {
+  id: string;
+  userId: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  status: ChatStatus;
+  projectDeleted: boolean;
+  latestMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  chatId: string;
+  role: ChatMessageRole;
+  content: string;
+  createdAt: string;
+};
+
 export type LogRecord = {
   id: string;
   projectId: string;

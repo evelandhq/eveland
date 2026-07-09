@@ -1,4 +1,8 @@
 import type {
+  Chat,
+  ChatMessage,
+  ChatMessageRole,
+  ChatStatus,
   DeploymentStatus,
   DeploymentRecord,
   Job,
@@ -178,6 +182,48 @@ export function sessionEventRowToSessionEvent(row: {
     index: row.index,
     type: row.type,
     payload: row.payload,
+    createdAt: timestampToIso(row.createdAt),
+  };
+}
+
+export function chatRowToChat(row: {
+  id: string;
+  userId: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  status: string;
+  projectDeleted: boolean;
+  latestMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): Chat {
+  return {
+    id: row.id,
+    userId: row.userId,
+    projectId: row.projectId,
+    projectName: row.projectName,
+    title: row.title,
+    status: row.status as ChatStatus,
+    projectDeleted: row.projectDeleted,
+    latestMessage: row.latestMessage,
+    createdAt: timestampToIso(row.createdAt),
+    updatedAt: timestampToIso(row.updatedAt),
+  };
+}
+
+export function chatMessageRowToChatMessage(row: {
+  id: string;
+  chatId: string;
+  role: string;
+  content: string;
+  createdAt: Date;
+}): ChatMessage {
+  return {
+    id: row.id,
+    chatId: row.chatId,
+    role: row.role as ChatMessageRole,
+    content: row.content,
     createdAt: timestampToIso(row.createdAt),
   };
 }

@@ -129,6 +129,27 @@ export const sessionEvents = pgTable("session_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const chats = pgTable("chats", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  projectId: text("project_id").notNull(),
+  projectName: text("project_name").notNull(),
+  title: text("title").notNull(),
+  status: text("status").notNull(),
+  projectDeleted: boolean("project_deleted").notNull().default(false),
+  latestMessage: text("latest_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const chatMessages = pgTable("chat_messages", {
+  id: text("id").primaryKey(),
+  chatId: text("chat_id").notNull().references(() => chats.id),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const logs = pgTable("logs", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id),

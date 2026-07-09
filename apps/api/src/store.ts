@@ -17,6 +17,9 @@ import type {
   DeploymentStatus,
   SourceRevision,
   SourceFileRecord,
+  Chat,
+  ChatMessage,
+  ChatMessageRole,
 } from "./types.js";
 
 export type CreateProjectInput = {
@@ -81,6 +84,12 @@ export type Store = {
   listSchedules(projectId: string): Promise<ScheduleRecord[]>;
   listSessions(projectId: string): Promise<Session[]>;
   listSessionEvents(sessionId: string): Promise<SessionEvent[]>;
+  listChats(userId?: string): Promise<Chat[]>;
+  createChat(input: { projectId: string; projectName: string; title: string; userId?: string }): Promise<Chat>;
+  getChat(chatId: string): Promise<Chat | null>;
+  appendChatMessage(chatId: string, role: ChatMessageRole, content: string): Promise<ChatMessage>;
+  listChatMessages(chatId: string): Promise<ChatMessage[]>;
+  markProjectChatsDeleted(projectId: string): Promise<void>;
   listLogs(projectId: string, type?: LogRecord["type"]): Promise<LogRecord[]>;
 };
 
@@ -98,6 +107,8 @@ type MemoryState = {
   sourceFiles: SourceFileRecord[];
   releases: Array<{ id: string; projectId: string; sourceRevisionId: string; imageTag: string; createdAt: string }>;
   deployments: DeploymentRecord[];
+  chats: Chat[];
+  chatMessages: ChatMessage[];
 };
 
 export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
@@ -113,6 +124,8 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     sourceFiles: initialState?.sourceFiles ?? [],
     releases: initialState?.releases ?? [],
     deployments: initialState?.deployments ?? [],
+    chats: initialState?.chats ?? [],
+    chatMessages: initialState?.chatMessages ?? [],
   };
 
   return {
@@ -157,6 +170,13 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       state.logs = state.logs.filter((log) => log.projectId !== projectId);
       state.releases = state.releases.filter((release) => release.projectId !== projectId);
       state.deployments = state.deployments.filter((deployment) => deployment.projectId !== projectId);
+      for (const chat of state.chats) {
+        if (chat.projectId === projectId) {
+          chat.status = "agent_deleted";
+          chat.projectDeleted = true;
+          chat.updatedAt = new Date().toISOString();
+        }
+      }
       return state.projects.length !== before;
     },
 
@@ -420,11 +440,79 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.sessionEvents.filter((event) => event.sessionId === sessionId).sort((a, b) => a.index - b.index);
     },
 
+    async listChats(userId = defaultUserId) {
+      return state.chats
+        .filter((chat) => chat.userId === userId)
+        .map((chat) => ({ ...chat, latestMessage: getLatestChatMessage(state.chatMessages, chat.id)?.content ?? null }))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+
+    async createChat(input) {
+      const now = new Date().toISOString();
+      const chat: Chat = {
+        id: createId("chat"),
+        userId: input.userId ?? defaultUserId,
+        projectId: input.projectId,
+        projectName: input.projectName,
+        title: input.title,
+        status: "active",
+        projectDeleted: false,
+        latestMessage: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.chats.push(chat);
+      return chat;
+    },
+
+    async getChat(chatId) {
+      const chat = state.chats.find((candidate) => candidate.id === chatId);
+      if (!chat) {
+        return null;
+      }
+      return { ...chat, latestMessage: getLatestChatMessage(state.chatMessages, chat.id)?.content ?? null };
+    },
+
+    async appendChatMessage(chatId, role, content) {
+      const now = new Date().toISOString();
+      const message: ChatMessage = {
+        id: createId("msg"),
+        chatId,
+        role,
+        content,
+        createdAt: now,
+      };
+      state.chatMessages.push(message);
+      const chat = state.chats.find((candidate) => candidate.id === chatId);
+      if (chat) {
+        chat.latestMessage = content;
+        chat.updatedAt = now;
+      }
+      return message;
+    },
+
+    async listChatMessages(chatId) {
+      return state.chatMessages.filter((message) => message.chatId === chatId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
+
+    async markProjectChatsDeleted(projectId) {
+      const now = new Date().toISOString();
+      for (const chat of state.chats) {
+        if (chat.projectId === projectId) {
+          chat.status = "agent_deleted";
+          chat.projectDeleted = true;
+          chat.updatedAt = now;
+        }
+      }
+    },
+
     async listLogs(projectId, type) {
       return state.logs.filter((log) => log.projectId === projectId && (!type || log.type === type));
     },
   };
 }
+
+const defaultUserId = "user_local_admin";
 
 function createJob(projectId: string, type: JobType, payload: Record<string, unknown>): Job {
   const now = new Date().toISOString();
@@ -439,6 +527,10 @@ function createJob(projectId: string, type: JobType, payload: Record<string, unk
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function getLatestChatMessage(messages: ChatMessage[], chatId: string): ChatMessage | null {
+  return messages.filter((message) => message.chatId === chatId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
 }
 
 function toPublicSecret(secret: SecretRecord): PublicSecret {

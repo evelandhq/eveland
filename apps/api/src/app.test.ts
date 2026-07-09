@@ -212,7 +212,134 @@ describe("api app", () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ error: "No running deployment" });
   });
+
+  test("creates a chat bound to one deployed agent and lists it in chat history", async () => {
+    const store = createMemoryStore();
+    const project = await createDeployedProject(store, "Support Agent");
+    const app = createApp(store, {
+      async playgroundRunner(input) {
+        return {
+          response: `Reply from ${input.project.name}: ${input.message}`,
+        };
+      },
+    });
+
+    const response = await app.request("/chats", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, message: "Help me triage a customer issue" }),
+    });
+
+    expect(response.status).toBe(201);
+    const created = await response.json();
+    expect(created.chat).toMatchObject({
+      projectId: project.id,
+      projectName: "Support Agent",
+      title: "Help me triage a customer issue",
+      projectDeleted: false,
+    });
+    expect(created.messages).toEqual([
+      expect.objectContaining({ role: "user", content: "Help me triage a customer issue" }),
+      expect.objectContaining({ role: "assistant", content: "Reply from Support Agent: Help me triage a customer issue" }),
+    ]);
+
+    await expect((await app.request("/chats")).json()).resolves.toMatchObject({
+      chats: [expect.objectContaining({ id: created.chat.id, projectName: "Support Agent" })],
+    });
+  });
+
+  test("continues an existing chat with its originally bound agent", async () => {
+    const store = createMemoryStore();
+    const firstProject = await createDeployedProject(store, "First Agent");
+    await createDeployedProject(store, "Second Agent");
+    const runnerCalls: string[] = [];
+    const app = createApp(store, {
+      async playgroundRunner(input) {
+        runnerCalls.push(input.project.name);
+        return { response: `${input.project.name} handled ${input.message}` };
+      },
+    });
+    const createResponse = await app.request("/chats", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: firstProject.id, message: "Start with the first agent" }),
+    });
+    const { chat } = await createResponse.json();
+
+    const continueResponse = await app.request(`/chats/${chat.id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Continue this chat" }),
+    });
+
+    expect(continueResponse.status).toBe(201);
+    await expect(continueResponse.json()).resolves.toMatchObject({
+      chat: expect.objectContaining({ id: chat.id, projectId: firstProject.id, projectName: "First Agent" }),
+      messages: [
+        expect.objectContaining({ role: "user", content: "Start with the first agent" }),
+        expect.objectContaining({ role: "assistant", content: "First Agent handled Start with the first agent" }),
+        expect.objectContaining({ role: "user", content: "Continue this chat" }),
+        expect.objectContaining({ role: "assistant", content: "First Agent handled Continue this chat" }),
+      ],
+    });
+    expect(runnerCalls).toEqual(["First Agent", "First Agent"]);
+  });
+
+  test("keeps deleted-agent chat history viewable but rejects new messages", async () => {
+    const store = createMemoryStore();
+    const project = await createDeployedProject(store, "Retired Agent");
+    const app = createApp(store, {
+      async playgroundRunner(input) {
+        return { response: `Stored reply for ${input.project.name}` };
+      },
+    });
+    const createResponse = await app.request("/chats", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, message: "Preserve this conversation" }),
+    });
+    const { chat } = await createResponse.json();
+
+    await store.deleteProject(project.id);
+
+    const viewResponse = await app.request(`/chats/${chat.id}`);
+    expect(viewResponse.status).toBe(200);
+    await expect(viewResponse.json()).resolves.toMatchObject({
+      chat: expect.objectContaining({ id: chat.id, projectName: "Retired Agent", projectDeleted: true }),
+      messages: expect.arrayContaining([expect.objectContaining({ content: "Preserve this conversation" })]),
+    });
+
+    const sendResponse = await app.request(`/chats/${chat.id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Can we continue?" }),
+    });
+    expect(sendResponse.status).toBe(409);
+    await expect(sendResponse.json()).resolves.toMatchObject({ error: "Chat agent has been deleted" });
+  });
 });
+
+async function createDeployedProject(store: ReturnType<typeof createMemoryStore>, name: string) {
+  const project = await store.createProject({ name, importKind: "zip" });
+  const revision = await store.recordSourceRevision({
+    projectId: project.id,
+    kind: "zip",
+    sourcePath: "/tmp/source",
+    summary: {},
+    envVars: [],
+    files: [],
+    schedules: [],
+  });
+  await store.recordDeployment({
+    projectId: project.id,
+    sourceRevisionId: revision.id,
+    imageTag: `eveland/${project.id}:latest`,
+    containerName: `eveland-${project.id}`,
+    internalPort: 3000,
+    hostPort: 41001,
+  });
+  return project;
+}
 
 async function createZipArchiveFixture(options: { wrappedDirectory?: string } = {}): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-zip-source-"));
