@@ -76,7 +76,7 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
 
     async prewarm({ templateKey, bootstrap, seedFiles, log, runtimeContext }) {
       assertBwrapAvailable();
-      const templatePath = resolveTemplatePath(runtimeContext.appRoot, templateKey, optionsHash);
+      const templatePath = resolveTemplatePath(runtimeContext.appRoot, templateKey, optionsHash, options.cacheDir);
       if (existsSync(templatePath)) return { reused: true };
 
       log?.(`bwrap: capturing template for ${templateKey}`);
@@ -98,12 +98,12 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
 
     async create({ templateKey, sessionKey, runtimeContext }) {
       assertBwrapAvailable();
-      const sessionPath = resolveSessionPath(runtimeContext.appRoot, sessionKey);
+      const sessionPath = resolveSessionPath(runtimeContext.appRoot, sessionKey, options.cacheDir);
       if (!existsSync(sessionPath)) {
         if (templateKey === null) {
           await mkdir(sessionPath, { recursive: true });
         } else {
-          const templatePath = resolveTemplatePath(runtimeContext.appRoot, templateKey, optionsHash);
+          const templatePath = resolveTemplatePath(runtimeContext.appRoot, templateKey, optionsHash, options.cacheDir);
           if (!existsSync(templatePath)) {
             throw new SandboxTemplateNotProvisionedError({ backendName: BWRAP_BACKEND_NAME, templateKey });
           }

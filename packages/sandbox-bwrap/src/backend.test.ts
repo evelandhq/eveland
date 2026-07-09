@@ -115,6 +115,20 @@ describe("create", () => {
     expect(typeof handle.shutdown).toBe("function");
     expect((handle as unknown as Record<string, unknown>).dispose).toBeUndefined();
   });
+
+  test("session state survives a change of appRoot when cacheDir is pinned", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "bwrap-redeploy-"));
+    const cacheDir = path.join(root, "stable");
+    const backend = createBwrapSandboxBackend({ runner: fakeRunner, createOptions: { cacheDir } });
+
+    const first = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-1") } });
+    await first.session.writeTextFile({ path: "state.txt", content: "kept" });
+    await first.shutdown();
+
+    // Redeploy: brand-new appRoot, same project cache.
+    const second = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-2") } });
+    expect(await second.session.readTextFile({ path: "state.txt" })).toBe("kept");
+  });
 });
 
 describe("public API", () => {

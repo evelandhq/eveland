@@ -5,21 +5,25 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 /** Sandbox-visible workspace root; parity with eve's built-in local backends. */
 export const WORKSPACE_ROOT = "/workspace";
 
-/** Matches eve's local sandbox cache convention: <appRoot>/.eve/sandbox-cache/<backend>. */
-export function resolveBwrapCacheRoot(appRoot: string): string {
-  return join(appRoot, ".eve", "sandbox-cache", "bwrap");
+/**
+ * Templates and durable session workspaces. `cacheDir` pins the location
+ * outside the release directory; without it the cache follows eve's local
+ * convention under the app root.
+ */
+export function resolveBwrapCacheRoot(appRoot: string, cacheDir?: string | null): string {
+  return cacheDir ?? join(appRoot, ".eve", "sandbox-cache", "bwrap");
 }
 
 function keyDigest(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
-export function resolveTemplatePath(appRoot: string, templateKey: string, optionsHash: string): string {
-  return join(resolveBwrapCacheRoot(appRoot), "templates", `${keyDigest(templateKey)}-${optionsHash}`);
+export function resolveTemplatePath(appRoot: string, templateKey: string, optionsHash: string, cacheDir?: string | null): string {
+  return join(resolveBwrapCacheRoot(appRoot, cacheDir), "templates", `${keyDigest(templateKey)}-${optionsHash}`);
 }
 
-export function resolveSessionPath(appRoot: string, sessionKey: string): string {
-  return join(resolveBwrapCacheRoot(appRoot), "sessions", keyDigest(sessionKey));
+export function resolveSessionPath(appRoot: string, sessionKey: string, cacheDir?: string | null): string {
+  return join(resolveBwrapCacheRoot(appRoot, cacheDir), "sessions", keyDigest(sessionKey));
 }
 
 /** Anchors a sandbox-relative path to /workspace; absolute paths pass through. */

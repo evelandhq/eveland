@@ -82,6 +82,26 @@ describe("run and spawn", () => {
     const argv = calls[0]!;
     expect(argv.slice(argv.indexOf("--chdir"), argv.indexOf("--chdir") + 2)).toEqual(["--chdir", "/workspace/sub/dir"]);
   });
+
+  test("the overridden cache root is the path hidden by tmpfs", async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), "bwrap-cachedir-"));
+    const cacheDir = path.join(appRoot, "stable-cache");
+    const workspaceDir = path.join(cacheDir, "sessions", "s1");
+    await mkdir(workspaceDir, { recursive: true });
+    const { runner, calls } = createFakeRunner();
+    const session = createBwrapSession({
+      id: "s1",
+      workspaceDir,
+      appRoot,
+      runner,
+      options: resolveBwrapSandboxOptions({ cacheDir }),
+    });
+    await session.spawn({ command: "true" });
+    const argv = calls[0]!;
+    const secondTmpfs = argv.indexOf("--tmpfs", argv.indexOf("--tmpfs") + 1);
+    expect(argv.slice(secondTmpfs, secondTmpfs + 2)).toEqual(["--tmpfs", cacheDir]);
+    expect(argv).not.toContain(path.join(appRoot, ".eve", "sandbox-cache", "bwrap"));
+  });
 });
 
 describe("network policy", () => {

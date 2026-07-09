@@ -112,7 +112,7 @@ export function createBwrapSession(input: CreateBwrapSessionInput): BwrapSession
       ...options.env,
       ...spawnOptions.env,
     };
-    const hidePaths = [resolveBwrapCacheRoot(appRoot), ...options.hidePaths].filter((path) => existsSync(path));
+    const hidePaths = [resolveBwrapCacheRoot(appRoot, options.cacheDir), ...options.hidePaths].filter((path) => existsSync(path));
     const argv = buildBwrapExecArgs({
       bwrapPath: options.bwrapPath,
       workspaceDir,
