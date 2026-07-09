@@ -23,6 +23,48 @@
 | `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland-data`. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
+| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
+
+Build-trust note: building a project executes that project's dependency
+lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
+sandbox as root. Imported projects — and their full dependency trees — are
+trusted only up to that sandbox's boundary (see `EVELAND_BUILD_SANDBOX` above
+and the warning below); nothing outside `releaseDir` and `npmCacheDir` should
+be reachable from a lifecycle script.
+
+> **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
+>
+> Each runtime adapter's `stopProcess` only knows how to stop *its own* kind of
+> process — the systemd adapter calls `systemctl stop`, the Docker adapter
+> calls `docker rm -f`. Neither one can see or touch the other's processes. If
+> you flip `EVELAND_RUNTIME` while deployments made under the old runtime are
+> still running:
+>
+> - `stopProcess` against a deployment created under the *other* runtime is a
+>   silent no-op: the old process is never actually stopped and keeps holding
+>   its port.
+> - A redeploy under the new runtime tries to bind the same host port and
+>   crash-loops (or, on a different port, quietly leaves two versions of the
+>   app running).
+> - Health checks can false-pass against the still-running old process while
+>   the new one is broken, masking the failure.
+>
+> Treat `EVELAND_RUNTIME` as fixed per host, chosen once at provisioning time.
+> If you must migrate a host from one runtime to the other, drain it first —
+> stop and remove **every** deployment under the old runtime before flipping
+> the env var:
+>
+> ```bash
+> # systemd host being migrated away from:
+> systemctl stop 'eveland-*'
+> systemctl reset-failed 'eveland-*'
+>
+> # docker host being migrated away from:
+> docker rm -f $(docker ps -aq --filter "name=eveland-")
+> ```
+>
+> Only start the worker with the new `EVELAND_RUNTIME` once the old runtime
+> has zero `eveland-*` processes left.
 
 ## How a deployment runs
 
