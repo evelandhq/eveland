@@ -63,8 +63,20 @@ Reclaiming space today requires manual intervention: identify which sessions are
   `--clearenv` and rebuilds the environment from `PATH`, `HOME=/workspace`, `LANG`,
   plus your configured `env`. Deployment secrets in the agent's `process.env` stay
   out of sandboxed code.
-- The sandbox cache root (all other sessions and templates of the app) is hidden
-  behind a tmpfs, so sandboxed code cannot read sibling session state.
+- For code executed inside the sandbox (`run`/`spawn`), the cache root (all
+  other sessions and templates of the app) is hidden behind a tmpfs, so
+  sandboxed code cannot read sibling session state.
+- The host-side read methods (`readFile`, `readBinaryFile`, `readTextFile`)
+  are deliberately **not** containment-checked: eve's contract requires
+  absolute paths to pass through to the host filesystem unchanged, so these
+  calls can read anything the agent process itself can read — including a
+  sibling session's files or a template directory — not just paths inside
+  `/workspace`. Only the write and remove calls (`writeFile`, `writeTextFile`,
+  `writeBinaryFile`, `removePath`) are confined to the workspace, via the
+  realpath-aware check described below. In other words, the tmpfs above is a
+  boundary against a *sandboxed process*, not a boundary between sessions of
+  the same agent — all of an app's sessions and templates share one trust
+  domain on the host.
 - The rest of the host filesystem is *visible read-only* to sandboxed code, and the
   sandbox shares the host kernel. This is protection against mistakes and prompt
   injection — not multi-tenant isolation. If untrusted tenants or code that routinely
