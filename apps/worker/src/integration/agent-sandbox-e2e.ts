@@ -1,11 +1,22 @@
 // End-to-end proof, in the real Lima VM, that an imported eve project gets a
 // working bwrap sandbox it never declared, and that a redeploy preserves the
-// durable session workspace. Plain tsx script (no vitest) run against the
-// real store + processNextJob pipeline with EVELAND_RUNTIME=systemd, exactly
-// as systemd-smoke.ts does.
+// durable session workspace. Two layers combine to prove this, and both are
+// required for the script to report success:
+//   - A deterministic check that imports the generated agent/sandbox.js
+//     directly, deliberately bypassing eve's own session/runtime APIs. This
+//     proves the generated module resolves to the real bwrap backend and
+//     honors EVELAND_SANDBOX_CACHE_DIR, but says nothing about whether eve's
+//     compiled runtime ever actually loads that module.
+//   - A required live HTTP turn (runLiveHttpTurn) driven through eve's
+//     deployed .output runtime. This is the only proof that eve's compiled
+//     runtime -- not just the generated module in isolation -- invokes the
+//     injected bwrap backend for a real turn.
+// Plain tsx script (no vitest) run against the real store + processNextJob
+// pipeline with EVELAND_RUNTIME=systemd, exactly as systemd-smoke.ts does.
 import assert from "node:assert/strict";
 import { execa } from "execa";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { createMemoryStore } from "@eveland/api/store";
@@ -163,14 +174,24 @@ async function findSessionMarkers(cacheDir: string, markerName: string): Promise
   return found;
 }
 
+/** Bounded retry budget for `runLiveHttpTurn` -- see its doc comment. */
+const HTTP_TURN_MAX_ATTEMPTS = 3;
+const HTTP_TURN_RETRY_DELAY_MS = 2_000;
+
+type HttpTurnOutcome =
+  | { kind: "success"; detail: string }
+  // Looks transient (the unit may still be warming up): worth a retry.
+  | { kind: "transient"; detail: string }
+  // A real failure -- retrying would only hide a regression.
+  | { kind: "fatal"; detail: string };
+
 /**
- * Best-effort: drive one real agent turn through the deployed HTTP surface
- * (fact 7: EVE_MOCK_AUTHORED_MODELS=1 activates eve's deterministic mock
- * model adapter, so the turn needs no model credentials). Never throws --
- * returns a result the caller logs, so a failure here never fails the
- * required proof in runDeterministicCheck above.
+ * Drives one real agent turn through the deployed HTTP surface (fact 7:
+ * EVE_MOCK_AUTHORED_MODELS=1 activates eve's deterministic mock model
+ * adapter, so the turn needs no model credentials) and classifies the
+ * outcome so `runLiveHttpTurn` knows whether a retry is warranted.
  */
-async function attemptHttpTurn(input: { hostPort: number; cacheDir: string }): Promise<{ ok: boolean; detail: string }> {
+async function runHttpTurnOnce(input: { hostPort: number; cacheDir: string }): Promise<HttpTurnOutcome> {
   const markerName = "http-turn-marker.txt";
   const message = `Use the bash tool to run the command \`echo http-turn-ran > ${markerName}\`.`;
 
@@ -185,7 +206,7 @@ async function attemptHttpTurn(input: { hostPort: number; cacheDir: string }): P
     });
     const createBody = await createResponse.text();
     if (!createResponse.ok) {
-      return { ok: false, detail: `POST /eve/v1/session -> ${createResponse.status}: ${createBody}` };
+      return { kind: "transient", detail: `POST /eve/v1/session -> ${createResponse.status}: ${createBody}` };
     }
 
     let sessionId: string | undefined;
@@ -197,13 +218,13 @@ async function attemptHttpTurn(input: { hostPort: number; cacheDir: string }): P
     }
     sessionId ??= createResponse.headers.get("x-eve-session-id") ?? undefined;
     if (!sessionId) {
-      return { ok: false, detail: `No session id in create response: ${createBody}` };
+      return { kind: "transient", detail: `No session id in create response: ${createBody}` };
     }
 
     const streamUrl = `http://127.0.0.1:${input.hostPort}/eve/v1/session/${encodeURIComponent(sessionId)}/stream`;
     const streamResponse = await fetch(streamUrl, { signal: AbortSignal.timeout(20_000) });
     if (!streamResponse.ok || !streamResponse.body) {
-      return { ok: false, detail: `GET ${streamUrl} -> ${streamResponse.status}` };
+      return { kind: "transient", detail: `GET ${streamUrl} -> ${streamResponse.status}` };
     }
 
     let raw = "";
@@ -239,25 +260,63 @@ async function attemptHttpTurn(input: { hostPort: number; cacheDir: string }): P
     await reader.cancel().catch(() => undefined);
 
     if (sawFailure) {
-      return { ok: false, detail: `turn.failed observed in the event stream:\n${raw}` };
+      // A definite failure signal from eve's runtime, not an ambiguous
+      // connection/timeout problem -- do not retry.
+      return { kind: "fatal", detail: `turn.failed observed in the event stream:\n${raw}` };
     }
     if (!sawCompletion) {
-      return { ok: false, detail: `stream ended without turn.completed within timeout:\n${raw}` };
+      return { kind: "transient", detail: `stream ended without turn.completed within timeout:\n${raw}` };
     }
 
     const after = await findSessionMarkers(input.cacheDir, markerName);
     const created = after.filter((candidate) => !before.has(candidate));
     if (created.length === 0) {
+      // The turn completed but the injected backend was never invoked (or
+      // invoked and failed silently) -- a real regression, not a fluke of
+      // timing. Retrying would only hide it.
       return {
-        ok: false,
+        kind: "fatal",
         detail: `turn.completed observed, but no new ${markerName} appeared under ${input.cacheDir}/sessions. Stream:\n${raw}`,
       };
     }
 
-    return { ok: true, detail: `turn completed; marker written at ${created.join(", ")}` };
+    return { kind: "success", detail: `turn completed; marker written at ${created.join(", ")}` };
   } catch (error) {
-    return { ok: false, detail: error instanceof Error ? (error.stack ?? error.message) : String(error) };
+    // Thrown by fetch/stream on connection-level problems (refused,
+    // reset, DNS, abort) -- indistinguishable from the unit still warming
+    // up, so treated as transient.
+    return { kind: "transient", detail: error instanceof Error ? (error.stack ?? error.message) : String(error) };
   }
+}
+
+/**
+ * Required: proves eve's deployed .output runtime -- not just the generated
+ * module in isolation -- actually invokes the injected bwrap backend for a
+ * live turn. The deterministic check above deliberately bypasses eve's own
+ * runtime, so this is the only place in the script that exercises the real
+ * link between eve's compiled runtime and our generated sandbox module.
+ * Throws (rather than returning a soft result) so a regression here fails
+ * the whole script and `AGENT SANDBOX E2E OK` is never printed.
+ *
+ * The deploy unit may still be warming up when this runs, so a transient
+ * failure (connection refused, a non-2xx response, or the stream ending
+ * with neither turn.completed nor turn.failed) is retried up to
+ * HTTP_TURN_MAX_ATTEMPTS times with a short backoff between attempts. A
+ * turn that completes but writes no marker, or one that reports
+ * turn.failed, is a real failure and is never retried.
+ */
+async function runLiveHttpTurn(input: { hostPort: number; cacheDir: string }): Promise<string> {
+  const attemptDetails: string[] = [];
+  for (let attempt = 1; attempt <= HTTP_TURN_MAX_ATTEMPTS; attempt++) {
+    const outcome = await runHttpTurnOnce(input);
+    if (outcome.kind === "success") return outcome.detail;
+    attemptDetails.push(`attempt ${attempt}/${HTTP_TURN_MAX_ATTEMPTS} (${outcome.kind}): ${outcome.detail}`);
+    if (outcome.kind === "fatal") break;
+    if (attempt < HTTP_TURN_MAX_ATTEMPTS) await delay(HTTP_TURN_RETRY_DELAY_MS);
+  }
+  throw new Error(
+    `Live HTTP agent turn never proved eve's deployed runtime invokes the injected bwrap backend, after ${attemptDetails.length} attempt(s):\n\n${attemptDetails.join("\n\n")}`,
+  );
 }
 
 const store = createMemoryStore();
@@ -321,9 +380,11 @@ try {
   await runDeterministicCheck({ releaseDir: releaseDir1, cacheDir: projectCacheDir, mode: "seed" });
   console.log("Deterministic sandbox check (seed) passed against release 1.");
 
-  // --- C: best-effort real agent turn over HTTP (never fails the test) --
-  const httpTurn = await attemptHttpTurn({ hostPort: deployment.hostPort, cacheDir: projectCacheDir });
-  console.log(`Best-effort HTTP turn: ${httpTurn.ok ? "SUCCEEDED" : "did not complete"} -- ${httpTurn.detail}`);
+  // --- C: required live agent turn over HTTP -- the only proof that eve's
+  // deployed runtime (not just the generated module in isolation) invokes
+  // the injected bwrap backend for a real turn. Throws on failure. --------
+  const liveTurnDetail = await runLiveHttpTurn({ hostPort: deployment.hostPort, cacheDir: projectCacheDir });
+  console.log(`Eve's deployed runtime invoked the injected bwrap backend for a live turn -- ${liveTurnDetail}`);
 
   // --- Redeploy ----------------------------------------------------------
   await store.enqueueJob(project.id, "build_deploy");
