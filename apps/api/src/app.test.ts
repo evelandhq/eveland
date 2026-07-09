@@ -198,6 +198,65 @@ describe("api app", () => {
     await expect(store.listSessions(project.id)).resolves.toEqual([expect.objectContaining({ trigger: "playground", status: "completed" })]);
   });
 
+  test("syncs the latest git source by enqueuing an import_source job with a deploy chained", async () => {
+    const store = createMemoryStore();
+    const app = createApp(store);
+    const createResponse = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Weather Agent", importKind: "git", gitUrl: "https://example.com/weather.git" }),
+    });
+    const { project } = await createResponse.json();
+
+    const syncResponse = await app.request(`/projects/${project.id}/sync-source`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deploy: true }),
+    });
+
+    expect(syncResponse.status).toBe(202);
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      job: expect.objectContaining({
+        type: "import_source",
+        status: "queued",
+        payload: expect.objectContaining({
+          gitUrl: "https://example.com/weather.git",
+          deployAfterImport: true,
+        }),
+      }),
+    });
+  });
+
+  test("syncs a git source without deploying when no deploy flag is sent", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Sync Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
+    const app = createApp(store);
+
+    const syncResponse = await app.request(`/projects/${project.id}/sync-source`, { method: "POST" });
+
+    expect(syncResponse.status).toBe(202);
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      job: expect.objectContaining({ type: "import_source", payload: expect.objectContaining({ deployAfterImport: false }) }),
+    });
+  });
+
+  test("rejects a source sync for a zip project", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Zip Agent", importKind: "zip", sourcePath: "/tmp/zip" });
+    const app = createApp(store);
+
+    const response = await app.request(`/projects/${project.id}/sync-source`, { method: "POST" });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("git projects") });
+  });
+
+  test("returns 404 when syncing a project that does not exist", async () => {
+    const app = createApp(createMemoryStore());
+    const response = await app.request("/projects/missing/sync-source", { method: "POST" });
+    expect(response.status).toBe(404);
+  });
+
   test("rejects playground messages when no deployment is running", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Idle Agent", importKind: "zip" });

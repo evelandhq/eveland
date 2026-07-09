@@ -162,6 +162,21 @@ export async function enqueueBuildDeploy(projectId: string): Promise<Job> {
   return data.job;
 }
 
+export async function syncSource(projectId: string, options: { deploy?: boolean } = {}): Promise<Job> {
+  const response = await fetch(`${apiBaseUrl}/projects/${projectId}/sync-source`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ deploy: options.deploy ?? false }),
+  });
+  const data = (await response.json()) as { job?: Job; error?: string; detail?: string };
+
+  if (!response.ok || !data.job) {
+    throw new Error(data.detail ?? data.error ?? "Source sync request failed");
+  }
+
+  return data.job;
+}
+
 export async function getLogs(projectId: string): Promise<LogLine[]> {
   const data = await apiGet<{ logs: LogLine[] }>(`/projects/${projectId}/logs`, { logs: [] });
   return data.logs;

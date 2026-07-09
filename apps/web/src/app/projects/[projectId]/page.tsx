@@ -32,7 +32,12 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
             <h2 className="text-sm font-semibold">Deployment</h2>
             <p className="mt-1 text-xs text-muted-foreground">Current Production release and source revision.</p>
           </div>
-          <DeploymentActions projectId={projectId} canDeploy={Boolean(project?.sourceRevisionId)} />
+          <DeploymentActions
+            projectId={projectId}
+            importKind={project?.importKind === "git" ? "git" : "zip"}
+            canSync={project?.importKind === "git" && Boolean(project?.gitUrl)}
+            canDeploy={Boolean(project?.sourceRevisionId)}
+          />
         </div>
         <dl className="grid grid-cols-2 gap-px bg-border text-sm">
           {[

@@ -102,7 +102,8 @@ MVP 中只支持一个默认运行环境：`Production`。
 
 主要操作：
 
-* Deploy latest source
+* Sync & deploy（仅 Git 项目）：重新从 GitHub 拉取最新代码，成功后自动部署
+* Deploy current / Deploy latest source：用当前已记录的 Source Revision 重新构建部署
 * Restart deployment
 * Open Playground
 * 查看日志
