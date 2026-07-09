@@ -18,8 +18,38 @@ provision:
       set -eux
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
-      apt-get install -y bubblewrap rsync curl ca-certificates
+      apt-get install -y bubblewrap rsync curl ca-certificates apparmor
       curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
       apt-get install -y nodejs
       corepack enable
       id eveland-app || useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app
+
+      # Ubuntu 24.04 sets kernel.apparmor_restrict_unprivileged_userns=1,
+      # which blocks an *unconfined* non-root process from creating a user
+      # namespace (root is unaffected, which is why a root-only build sandbox
+      # would never hit this). The apt bubblewrap package (0.9.0-1ubuntu0.1)
+      # ships no AppArmor profile, so the unprivileged eveland-app user's
+      # `bwrap` invocation fails with "setting up uid map: Permission denied"
+      # unless we install one that permits userns creation. Re-running
+      # `apparmor_parser -r` replaces an already-loaded profile, so this is
+      # safe on repeated provisions.
+      cat > /etc/apparmor.d/bwrap <<'EOF'
+      abi <abi/4.0>,
+      include <tunables/global>
+
+      profile bwrap /usr/bin/bwrap flags=(unconfined) {
+        userns,
+
+        # Site-specific additions and overrides. See local/README for details.
+        include if exists <local/bwrap>
+      }
+      EOF
+      apparmor_parser -r -W /etc/apparmor.d/bwrap
+
+      # `bwrap --bind <dir> /workspace` requires /workspace to already exist
+      # on the host: our argv ro-binds `/` first, so bwrap cannot mkdir the
+      # bind destination itself (fails with "Can't mkdir /workspace:
+      # Read-only file system"). Ubuntu ships no /workspace, so create it
+      # once here — the same role eve's Docker backend fills by baking
+      # /workspace into its base image. `install -d` is idempotent.
+      install -d -m 0755 /workspace

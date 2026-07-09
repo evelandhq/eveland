@@ -19,4 +19,16 @@ limactl shell "$VM" -- sudo bash -c "
   corepack pnpm install --frozen-lockfile
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
+
+  # Agent-exec sandbox contract test, run under the same constraints as a
+  # deployed eve agent: unprivileged user, NoNewPrivileges, read-only system.
+  install -d -o eveland-app -g eveland-app /var/lib/eveland-app
+  systemd-run --wait --pipe --collect --service-type=exec \
+    --property=User=eveland-app \
+    --property=NoNewPrivileges=yes \
+    --property=ProtectSystem=strict \
+    --property=PrivateTmp=yes \
+    --property=ReadWritePaths=/var/lib/eveland-app \
+    --setenv=TMPDIR=/var/lib/eveland-app \
+    bash -lc 'cd /opt/eveland/packages/sandbox-bwrap && ../../node_modules/.bin/tsx src/integration/bwrap-backend-smoke.ts'
 "
