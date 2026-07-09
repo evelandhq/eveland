@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getLogs, getProject, getSchedules, getSessions } from "@/lib/api";
 import { DeploymentActions } from "@/components/deployment-actions";
+import { NewChatForm } from "@/components/new-chat-form";
 import { StatusBadge } from "@/components/status-badge";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,16 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
             </div>
           ))}
         </dl>
+      </div>
+
+      <div className="rounded-md border border-border bg-card">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold">New chat</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Start a conversation bound to this agent.</p>
+        </div>
+        <div className="p-4">
+          {project ? <NewChatForm projectId={project.id} projectName={project.name} disabled={project.deploymentStatus !== "running"} /> : null}
+        </div>
       </div>
 
       <div className="rounded-md border border-border bg-card">

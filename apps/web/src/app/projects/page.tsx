@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { PlusIcon } from 'lucide-react';
+import { NewChatForm } from '@/components/new-chat-form';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/status-badge';
 import { getProjects } from '@/lib/api';
@@ -16,10 +17,15 @@ export default async function ProjectsPage() {
           <h1 className="text-base font-semibold">Eveland</h1>
           <span className="text-xs text-muted-foreground">eve runtime control plane</span>
         </div>
-        <Link href="/projects/new">
-          <PlusIcon data-icon="inline-start" />
-          New project
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/chats" className="inline-flex h-8 items-center rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+            Chats
+          </Link>
+          <Link href="/projects/new">
+            <PlusIcon data-icon="inline-start" />
+            New project
+          </Link>
+        </div>
       </header>
 
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-6 py-6">
@@ -45,12 +51,13 @@ export default async function ProjectsPage() {
                 <th className="px-4 py-2 text-left font-medium">Session</th>
                 <th className="px-4 py-2 text-left font-medium">Next schedule</th>
                 <th className="px-4 py-2 text-left font-medium">Updated</th>
+                <th className="px-4 py-2 text-left font-medium">Chat</th>
               </tr>
             </thead>
             <tbody>
               {projects.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
                     No projects yet. Import a Git repo or Zip source to start the first deployment.
                   </td>
                 </tr>
@@ -79,6 +86,9 @@ export default async function ProjectsPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {new Date(project.updatedAt).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <NewChatForm projectId={project.id} projectName={project.name} disabled={project.deploymentStatus !== 'running'} compact />
                     </td>
                   </tr>
                 ))

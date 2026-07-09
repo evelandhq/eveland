@@ -57,6 +57,27 @@ export type SessionEvent = {
   createdAt: string;
 };
 
+export type Chat = {
+  id: string;
+  userId: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  status: "active" | "agent_deleted";
+  projectDeleted: boolean;
+  latestMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  chatId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
+
 export type PlaygroundResult = {
   session: Session | null;
   events: SessionEvent[];
@@ -147,6 +168,46 @@ export async function runPlaygroundMessage(projectId: string, message: string): 
   }
 
   return data;
+}
+
+export async function getChats(): Promise<Chat[]> {
+  const data = await apiGet<{ chats: Chat[] }>("/chats", { chats: [] });
+  return data.chats;
+}
+
+export async function getChat(chatId: string): Promise<{ chat: Chat; messages: ChatMessage[] } | null> {
+  const data = await apiGet<{ chat: Chat | null; messages: ChatMessage[] }>(`/chats/${chatId}`, { chat: null, messages: [] });
+  return data.chat ? { chat: data.chat, messages: data.messages } : null;
+}
+
+export async function createChat(projectId: string, message: string): Promise<{ chat: Chat; messages: ChatMessage[] }> {
+  const response = await fetch(`${apiBaseUrl}/chats`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ projectId, message }),
+  });
+  const data = (await response.json()) as { chat?: Chat; messages?: ChatMessage[]; error?: string; detail?: string };
+
+  if (!response.ok || !data.chat) {
+    throw new Error(data.detail ?? data.error ?? "Chat creation failed");
+  }
+
+  return { chat: data.chat, messages: data.messages ?? [] };
+}
+
+export async function sendChatMessage(chatId: string, message: string): Promise<{ chat: Chat; messages: ChatMessage[] }> {
+  const response = await fetch(`${apiBaseUrl}/chats/${chatId}/messages`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  const data = (await response.json()) as { chat?: Chat; messages?: ChatMessage[]; error?: string; detail?: string };
+
+  if (!response.ok || !data.chat) {
+    throw new Error(data.detail ?? data.error ?? "Chat message failed");
+  }
+
+  return { chat: data.chat, messages: data.messages ?? [] };
 }
 
 export async function enqueueBuildDeploy(projectId: string): Promise<Job> {
