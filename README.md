@@ -5,7 +5,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 ## Current MVP Slice
 
 - `packages/shared`: tested core behavior for IDs, archive path safety, eve source inspection, schedule parsing, next-run calculation, secret encryption, and runtime command inference.
-- `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` so agents deployed on the systemd runtime get a real exec sandbox without Docker/KVM (see `packages/sandbox-bwrap/README.md`).
+- `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
 - `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, BetterAuth dependency, Drizzle/Postgres schema, and Postgres-backed store when `DATABASE_URL` is set.
 - `apps/worker`: Docker runtime adapter, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
