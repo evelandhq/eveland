@@ -1,6 +1,8 @@
 import { execa } from "execa";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
+import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 
 export type DockerBuildInput = {
   contextDir: string;
@@ -83,4 +85,47 @@ export async function dockerStopAndRemove(containerName: string): Promise<void> 
   await execa("docker", ["rm", "--force", containerName], {
     reject: false,
   });
+}
+
+// Bridges the container's loopback model port to the host so eve apps that call a
+// locally running Ollama (default http://127.0.0.1:11434) reach the host daemon.
+const ollamaBridgeCommand = "socat TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434 >/dev/null 2>&1 &";
+
+export function buildDockerStartCommand(context: RuntimeCommandContext, internalPort: number): string {
+  if (context.isEveProject) {
+    // The image already ran `eve build`; serve the compiled output bound to all
+    // interfaces so the published host port can reach it.
+    return `${ollamaBridgeCommand} exec npx eve start --host 0.0.0.0 --port ${internalPort}`;
+  }
+  return inferEveRuntimeCommand({ scripts: context.scripts });
+}
+
+export type DockerAdapterConfig = {
+  internalPort: number;
+};
+
+export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter {
+  return {
+    name: "docker",
+    async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
+      const imageTag = `eveland/${processSafeName(input.projectId)}:${processSafeName(input.releaseId)}`;
+      const dockerfilePath = await writeGeneratedDockerfile(input.buildDir);
+      const log = await dockerBuild(input.sourcePath, imageTag, dockerfilePath);
+      return { releaseRef: imageTag, log };
+    },
+    async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
+      const log = await dockerRun({
+        containerName: input.processName,
+        imageTag: input.releaseRef,
+        internalPort: config.internalPort,
+        hostPort: input.port,
+        env: input.env,
+        command: buildDockerStartCommand(input.commandContext, config.internalPort),
+      });
+      return { internalPort: config.internalPort, log };
+    },
+    async stopProcess(processName: string): Promise<void> {
+      await dockerStopAndRemove(processName);
+    },
+  };
 }

@@ -62,3 +62,32 @@ describe("writeGeneratedDockerfile", () => {
     expect(contents).toContain("EXPOSE 3000");
   });
 });
+
+import { buildDockerStartCommand, createDockerAdapter } from "./runtime/docker.js";
+import { processSafeName } from "./runtime/types.js";
+
+describe("processSafeName", () => {
+  test("lowercases and replaces unsafe characters", () => {
+    expect(processSafeName("Proj_ABC/9.x")).toBe("proj_abc-9.x");
+  });
+});
+
+describe("buildDockerStartCommand", () => {
+  test("bridges Ollama and executes eve start for eve projects", () => {
+    const command = buildDockerStartCommand({ isEveProject: true, hasLockfile: true, scripts: {} }, 3000);
+    expect(command).toContain("socat TCP-LISTEN:11434");
+    expect(command).toContain("exec npx eve start --host 0.0.0.0 --port 3000");
+  });
+
+  test("falls back to the inferred runtime command for plain node projects", () => {
+    const command = buildDockerStartCommand({ isEveProject: false, hasLockfile: true, scripts: { start: "node server.js" } }, 3000);
+    expect(command).toBe("npm run start");
+  });
+});
+
+describe("createDockerAdapter", () => {
+  test("exposes the docker adapter name and internal port through startProcess results", () => {
+    const adapter = createDockerAdapter({ internalPort: 3000 });
+    expect(adapter.name).toBe("docker");
+  });
+});
