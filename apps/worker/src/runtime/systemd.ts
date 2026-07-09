@@ -210,7 +210,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
             `Injected eve sandbox modules: ${injection.generated.join(", ") || "none"}`,
             ...(injection.generated.length === 0
               ? [
-                  "WARNING: no agent/ directory (or subagent directory) was found, so no sandbox module could " +
+                  "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
                     "be injected. The deployed agent will fall back to eve's default sandbox backend chain.",
                 ]
               : []),
