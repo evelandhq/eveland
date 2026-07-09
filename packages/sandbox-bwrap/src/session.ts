@@ -7,7 +7,7 @@ import { createWriteStream } from "node:fs";
 import type { SandboxNetworkPolicy, SandboxSession } from "eve/sandbox";
 import { buildBwrapExecArgs, DEFAULT_SANDBOX_PATH } from "./args.js";
 import type { ResolvedBwrapSandboxOptions } from "./options.js";
-import { isWithinWorkspace, resolveBwrapCacheRoot, resolveWorkspacePath, toHostPath, WORKSPACE_ROOT } from "./paths.js";
+import { isWithinWorkspaceReal, resolveBwrapCacheRoot, resolveWorkspacePath, toHostPath, WORKSPACE_ROOT } from "./paths.js";
 import type { ProcessRunner } from "./process.js";
 
 export interface CreateBwrapSessionInput {
@@ -54,7 +54,7 @@ export function createBwrapSession(input: CreateBwrapSessionInput): SandboxSessi
 
   function writableHostPath(path: string, operation: string): string {
     const hostPath = host(path);
-    if (!isWithinWorkspace(hostPath, workspaceDir)) {
+    if (!isWithinWorkspaceReal(hostPath, workspaceDir)) {
       throw new Error(`bwrap sandbox: refusing to ${operation} outside ${WORKSPACE_ROOT}: ${path}`);
     }
     return hostPath;

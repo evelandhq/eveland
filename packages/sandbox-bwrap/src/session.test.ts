@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -141,6 +141,18 @@ describe("file I/O", () => {
     expect(existsSync(path.join(workspaceDir, "dir"))).toBe(false);
     await expect(session.removePath({ path: "gone.txt" })).rejects.toThrow();
     await session.removePath({ path: "gone.txt", force: true });
+  });
+
+  test("writes and removes through a planted symlink are refused", async () => {
+    const { session, workspaceDir, appRoot } = await makeSession();
+    const outside = path.join(appRoot, "outside-target");
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "victim.txt"), "precious");
+    await symlink(outside, path.join(workspaceDir, "escape"));
+
+    await expect(session.writeTextFile({ path: "escape/victim.txt", content: "pwn" })).rejects.toThrow(/workspace/);
+    await expect(session.removePath({ path: "escape/victim.txt" })).rejects.toThrow(/workspace/);
+    expect(await readFile(path.join(outside, "victim.txt"), "utf8")).toBe("precious");
   });
 
   test("reads of host paths outside the workspace pass through", async () => {

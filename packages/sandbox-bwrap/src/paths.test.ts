@@ -1,6 +1,10 @@
+import { mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   isWithinWorkspace,
+  isWithinWorkspaceReal,
   resolveBwrapCacheRoot,
   resolveSessionPath,
   resolveTemplatePath,
@@ -50,5 +54,30 @@ describe("workspace paths", () => {
     expect(isWithinWorkspace("/data/other", "/data/sess1")).toBe(false);
     // traversal normalizes out of the workspace
     expect(isWithinWorkspace(toHostPath("a/../../escape", "/data/sess1"), "/data/sess1")).toBe(false);
+  });
+});
+
+describe("isWithinWorkspaceReal", () => {
+  test("symlink escaping the workspace is rejected; inside-workspace symlink is allowed", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "bwrap-real-"));
+    const workspace = path.join(root, "workspace");
+    const outside = path.join(root, "outside");
+    mkdirSync(workspace, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    symlinkSync(outside, path.join(workspace, "escape"));
+    symlinkSync(path.join(workspace, "inner-target"), path.join(workspace, "inner-link"));
+    mkdirSync(path.join(workspace, "inner-target"), { recursive: true });
+
+    expect(isWithinWorkspaceReal(path.join(workspace, "escape", "victim.txt"), workspace)).toBe(false);
+    expect(isWithinWorkspaceReal(path.join(workspace, "inner-link", "ok.txt"), workspace)).toBe(true);
+    expect(isWithinWorkspaceReal(path.join(workspace, "new-dir", "new-file.txt"), workspace)).toBe(true);
+  });
+
+  test("dangling symlink is rejected", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "bwrap-real-"));
+    const workspace = path.join(root, "workspace");
+    mkdirSync(workspace, { recursive: true });
+    symlinkSync(path.join(root, "nowhere"), path.join(workspace, "dangling"));
+    expect(isWithinWorkspaceReal(path.join(workspace, "dangling"), workspace)).toBe(false);
   });
 });
