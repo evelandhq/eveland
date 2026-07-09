@@ -19,6 +19,8 @@
 
   profile bwrap /usr/bin/bwrap flags=(unconfined) {
     userns,
+
+    # Site-specific additions and overrides. See local/README for details.
     include if exists <local/bwrap>
   }
   ```
@@ -147,6 +149,9 @@ is not setuid — it needs no privilege escalation, only the AppArmor grant to c
 a user namespace as the unprivileged deployment user. Sandboxed commands never see
 the deployment's environment variables (secrets stay in the agent process), and
 sandbox workspaces live under the release directory at `.eve/sandbox-cache/bwrap/`.
+
+The sandbox cache (both session and template directories under `.eve/sandbox-cache/bwrap/`) grows with the number of durable sessions and unique templates and is never pruned automatically. When a release is deployed, a new release directory is created with a fresh cache; the old release directory's sandbox state goes away when whatever cleanup process removes superseded releases. Within a long-lived release directory, reclaiming cache space requires manual deletion of directories corresponding to known-dead sessions.
+
 See `packages/sandbox-bwrap/README.md` for the full behavior and security boundary.
 
 ## Reverse proxy

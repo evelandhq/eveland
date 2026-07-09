@@ -9,7 +9,7 @@ requiring a Docker daemon or KVM.
 
 eve's built-in backend chain is Vercel → Docker → microsandbox → just-bash. On a
 self-hosted Linux box without a Docker daemon or KVM (for example an eveland systemd
-deployment host), that chain bottoms out at `justbash`: a pure-JS interpreter with a
+deployment host), that chain bottoms out at `just-bash`: a pure-JS interpreter with a
 virtual filesystem that cannot run real binaries. This backend fills that gap with
 bubblewrap, which needs nothing but the `bwrap` binary and unprivileged user
 namespaces.
@@ -50,6 +50,12 @@ export default defineSandbox({
   tmpfs `/tmp`, PID/IPC/UTS namespaces unshared, `--die-with-parent`.
 - **File I/O** (`readTextFile`, `writeFile`, …): host-side operations on the session
   directory; no subprocess. Writes outside `/workspace` are refused.
+
+## Disk usage and cache management
+
+Session and template directories persist indefinitely under `<appRoot>/.eve/sandbox-cache/bwrap/{sessions,templates}` across process restarts and reconnects, enabling fast reattach when a session resumes. Each session key gets a directory that is reused for the lifetime of the session; each template is cached per (template key, options hash) and reused across sessions. This backend intentionally does not prune either — its `dispose()` method is a no-op so that reattach is instant and stateless from the agent's perspective. On a long-lived host, this means the cache will grow with the number of durable sessions and unique templates, consuming disk space indefinitely.
+
+Reclaiming space today requires manual intervention: identify which sessions are known dead and delete their corresponding directories under the cache root. Automatic cache pruning (e.g., based on age or LRU) is a known gap and a planned follow-up.
 
 ## Security boundary
 
