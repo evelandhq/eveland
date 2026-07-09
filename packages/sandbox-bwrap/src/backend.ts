@@ -6,9 +6,9 @@ import type { SandboxBackend, SandboxSeedFile, SandboxSession } from "eve/sandbo
 import { SandboxTemplateNotProvisionedError } from "eve/sandbox";
 import type { BwrapSandboxCreateOptions } from "./options.js";
 import { createBwrapOptionsHash, resolveBwrapSandboxOptions } from "./options.js";
-import { resolveSessionPath, resolveTemplatePath } from "./paths.js";
+import { resolveSessionPath, resolveTemplatePath, WORKSPACE_ROOT } from "./paths.js";
 import type { ProcessRunner } from "./process.js";
-import { createNodeProcessRunner, isBwrapAvailable } from "./process.js";
+import { createNodeProcessRunner, describeMissingPrereqs, isBwrapAvailable } from "./process.js";
 import { createBwrapSession } from "./session.js";
 
 /**
@@ -47,14 +47,12 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
 
   function assertBwrapAvailable(): void {
     if (!shouldProbe || probed) return;
-    if (!isBwrapAvailable(options.bwrapPath)) {
-      throw new Error(
-        `bubblewrap is not available (tried "${options.bwrapPath} --version"). ` +
-          "Install it with your distro package manager (Ubuntu/Debian: apt-get install bubblewrap), " +
-          "or select a different backend outside Linux, e.g. " +
-          "backend: () => (isBwrapAvailable() ? bwrap() : defaultBackend()).",
-      );
-    }
+    const missing = describeMissingPrereqs({
+      bwrapPresent: isBwrapAvailable(options.bwrapPath),
+      workspaceMountpointPresent: existsSync(WORKSPACE_ROOT),
+      bwrapPath: options.bwrapPath,
+    });
+    if (missing) throw new Error(missing);
     probed = true;
   }
 

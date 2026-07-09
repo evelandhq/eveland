@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { Readable } from "node:stream";
+import { WORKSPACE_ROOT } from "./paths.js";
 
 /** Mirrors the AI SDK SandboxProcess surface so sessions can return it directly. */
 export interface SpawnedProcess {
@@ -19,6 +20,31 @@ const SIGNAL_EXIT_CODES: Record<string, number> = { SIGINT: 130, SIGKILL: 137, S
 
 export function isBwrapAvailable(bwrapPath = "bwrap"): boolean {
   return spawnSync(bwrapPath, ["--version"], { stdio: "ignore" }).status === 0;
+}
+
+/** Explains missing host prerequisites, or null when the host is ready. */
+export function describeMissingPrereqs(probes: {
+  readonly bwrapPresent: boolean;
+  readonly workspaceMountpointPresent: boolean;
+  readonly bwrapPath: string;
+}): string | null {
+  const problems: string[] = [];
+  if (!probes.bwrapPresent) {
+    problems.push(
+      `bubblewrap is not available (tried "${probes.bwrapPath} --version"). ` +
+        "Install it with your distro package manager (Ubuntu/Debian: apt-get install bubblewrap), " +
+        "or select a different backend outside Linux, e.g. " +
+        "backend: () => (isBwrapAvailable() ? bwrap() : defaultBackend()).",
+    );
+  }
+  if (!probes.workspaceMountpointPresent) {
+    problems.push(
+      `${WORKSPACE_ROOT} does not exist on the host. bwrap binds each session directory onto ` +
+        `${WORKSPACE_ROOT} inside the sandbox, but it cannot create that mountpoint itself because the ` +
+        `host root is bind-mounted read-only first. Create it once: sudo install -d -m 0755 ${WORKSPACE_ROOT}`,
+    );
+  }
+  return problems.length === 0 ? null : problems.join(" ");
 }
 
 export function createNodeProcessRunner(): ProcessRunner {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { createNodeProcessRunner, isBwrapAvailable } from "./process.js";
+import { WORKSPACE_ROOT } from "./paths.js";
+import { createNodeProcessRunner, describeMissingPrereqs, isBwrapAvailable } from "./process.js";
 
 async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
   const chunks: Uint8Array[] = [];
@@ -49,5 +50,46 @@ describe("createNodeProcessRunner", () => {
 describe("isBwrapAvailable", () => {
   test("returns false for a missing binary", () => {
     expect(isBwrapAvailable("definitely-not-a-real-binary-xyz")).toBe(false);
+  });
+});
+
+describe("describeMissingPrereqs", () => {
+  test("returns null when bwrap is present and the workspace mountpoint exists", () => {
+    expect(
+      describeMissingPrereqs({ bwrapPresent: true, workspaceMountpointPresent: true, bwrapPath: "bwrap" }),
+    ).toBeNull();
+  });
+
+  test("reports a missing bwrap binary with the probed path and an install hint", () => {
+    const message = describeMissingPrereqs({
+      bwrapPresent: false,
+      workspaceMountpointPresent: true,
+      bwrapPath: "/custom/bwrap",
+    });
+    expect(message).toContain("/custom/bwrap");
+    expect(message).toContain("apt-get install bubblewrap");
+    expect(message).not.toContain(WORKSPACE_ROOT);
+  });
+
+  test("reports a missing workspace mountpoint naming WORKSPACE_ROOT with the fix command", () => {
+    const message = describeMissingPrereqs({
+      bwrapPresent: true,
+      workspaceMountpointPresent: false,
+      bwrapPath: "bwrap",
+    });
+    expect(message).toContain(WORKSPACE_ROOT);
+    expect(message).toContain(`sudo install -d -m 0755 ${WORKSPACE_ROOT}`);
+    expect(message).not.toContain("apt-get install bubblewrap");
+  });
+
+  test("reports both, bwrap first, when both are missing", () => {
+    const message = describeMissingPrereqs({
+      bwrapPresent: false,
+      workspaceMountpointPresent: false,
+      bwrapPath: "bwrap",
+    });
+    expect(message).toContain("apt-get install bubblewrap");
+    expect(message).toContain(WORKSPACE_ROOT);
+    expect(message?.indexOf("apt-get install bubblewrap")).toBeLessThan(message?.indexOf(WORKSPACE_ROOT) ?? -1);
   });
 });
