@@ -128,6 +128,10 @@ describe("createDockerAdapter", () => {
       port: 43123,
       env: { OPENAI_API_KEY: "sk-test-123456" },
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      // Set by every caller (see ProcessStartInput), but the docker adapter must
+      // ignore it: containers get a fresh filesystem per run, no host directory
+      // to grant.
+      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
     });
 
     expect(result.internalPort).toBe(3000);
@@ -137,6 +141,7 @@ describe("createDockerAdapter", () => {
     expect(args).toContain("--publish");
     expect(args).toContain("127.0.0.1:43123:3000");
     expect(args).toContain("eveland/proj_123:rel_456");
+    expect(JSON.stringify(args)).not.toContain("sandbox");
     const runCommand = (args as string[]).at(-1);
     expect(runCommand).toContain("exec npx eve start --host 0.0.0.0 --port 3000");
   });

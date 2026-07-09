@@ -8,6 +8,7 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { waitForHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
+import { resolveProjectSandboxCacheDir } from "../runtime/systemd.js";
 import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
 import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
@@ -174,12 +175,17 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       if (currentDeployment) {
         await runtime.stopProcess(currentDeployment.containerName);
       }
+      // Same root the systemd adapter derives in ../runtime/select.ts (EVELAND_SANDBOX_CACHE_DIR,
+      // falling back to <EVELAND_DATA_DIR>/sandbox); resolveProjectSandboxCacheDir keeps the two
+      // from drifting since ProcessStartInput carries no projectId for the adapter to recompute it.
+      const sandboxCacheRoot = process.env.EVELAND_SANDBOX_CACHE_DIR ?? path.join(process.env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox");
       const started = await runtime.startProcess({
         processName,
         releaseRef: build.releaseRef,
         port: hostPort,
         env,
         commandContext,
+        sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
       });
       await (options.waitForDeployment ?? waitForHttpHealth)({
         host: "127.0.0.1",

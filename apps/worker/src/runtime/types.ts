@@ -23,6 +23,13 @@ export type ProcessStartInput = {
   port: number;
   env: Record<string, string>;
   commandContext: RuntimeCommandContext;
+  /**
+   * Durable per-project eve sandbox session cache dir, granted read-write to the
+   * unit and exported as EVELAND_SANDBOX_CACHE_DIR by the systemd adapter. The
+   * docker adapter ignores it -- containers get a fresh filesystem per run and
+   * eve's sandbox falls back to an ephemeral cache when the env var is unset.
+   */
+  sandboxCacheDir: string;
 };
 
 export type ProcessStartResult = {
