@@ -25,27 +25,49 @@ import path from "node:path";
 // vendored backend is its sibling.
 import { createBwrapSandboxBackend } from "./sandbox-bwrap/index.js";
 
-const cacheRoot = process.env.EVELAND_SANDBOX_CACHE_DIR;
-if (!cacheRoot) {
-  console.error("EVELAND_SANDBOX_CACHE_DIR is not set");
-  process.exit(1);
+// Setting the exit code field (rather than forcing an immediate exit) lets
+// the process drain its stdout/stderr pipes naturally before it exits. stdout
+// and stderr are pipes here (execa's { all: true } upstream, and systemd-run's
+// --pipe), and forcing an exit can truncate a large diagnostic still sitting
+// in those pipe buffers.
+function fail(message) {
+  console.error(\`sandbox self-check failed: \${message}\`);
+  process.exitCode = 1;
 }
 
-const appRoot = await mkdtemp(path.join(cacheRoot, "verify-"));
-try {
-  const backend = createBwrapSandboxBackend();
-  const runtimeContext = { appRoot };
-  await backend.prewarm({ templateKey: "eveland-verify", runtimeContext, seedFiles: [] });
-  const handle = await backend.create({ templateKey: "eveland-verify", sessionKey: "eveland-verify", runtimeContext });
-  const result = await handle.session.run({ command: "echo eveland-sandbox-ok" });
-  await handle.shutdown();
-  if (result.exitCode !== 0 || !result.stdout.includes("eveland-sandbox-ok")) {
-    console.error(\`sandbox self-check failed: exit=\${result.exitCode} stdout=\${result.stdout} stderr=\${result.stderr}\`);
-    process.exit(1);
+const cacheRoot = process.env.EVELAND_SANDBOX_CACHE_DIR;
+if (!cacheRoot) {
+  fail("EVELAND_SANDBOX_CACHE_DIR is not set");
+} else {
+  // Declared outside the try so the finally block can still clean up a
+  // partially-created appRoot if mkdtemp itself is what throws.
+  let appRoot;
+  try {
+    appRoot = await mkdtemp(path.join(cacheRoot, "verify-"));
+    const backend = createBwrapSandboxBackend();
+    const runtimeContext = { appRoot };
+    await backend.prewarm({ templateKey: "eveland-verify", runtimeContext, seedFiles: [] });
+    const handle = await backend.create({ templateKey: "eveland-verify", sessionKey: "eveland-verify", runtimeContext });
+    const result = await handle.session.run({ command: "echo eveland-sandbox-ok" });
+    await handle.shutdown();
+    if (result.exitCode !== 0 || !result.stdout.includes("eveland-sandbox-ok")) {
+      fail(\`exit=\${result.exitCode} stdout=\${result.stdout} stderr=\${result.stderr}\`);
+    } else {
+      console.log("SANDBOX VERIFY OK");
+    }
+  } catch (error) {
+    // prewarm()/create()/shutdown() throwing is the real path for both named
+    // host-prerequisite failures (missing AppArmor profile, missing
+    // /workspace) -- without this catch, that throw would propagate past this
+    // script entirely as an uncaught exception, printing a raw Node stack
+    // trace instead of the same structured diagnostic every other failure
+    // path here produces.
+    fail(error instanceof Error ? (error.stack ?? error.message) : String(error));
+  } finally {
+    if (appRoot) {
+      await rm(appRoot, { force: true, recursive: true });
+    }
   }
-  console.log("SANDBOX VERIFY OK");
-} finally {
-  await rm(appRoot, { force: true, recursive: true });
 }
 `;
 }

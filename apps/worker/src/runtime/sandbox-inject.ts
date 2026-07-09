@@ -90,8 +90,12 @@ export async function injectSandboxModules(input: SandboxInjectionInput): Promis
   const roots = await resolveSandboxRoots(input.releaseDir);
   const generated: string[] = [];
   const replaced: string[] = [];
-  if (roots.length === 0) return { generated, replaced };
 
+  // Vendoring is a host-capability concern -- it must happen for every release
+  // regardless of project layout, so `verifySandbox` (which imports the
+  // vendored backend as a sibling module) always has something to import, even
+  // when this project has no agent/ directory and therefore generates no
+  // sandbox module below.
   const backendEntryPoint = path.join(input.backendDistDir, "index.js");
   const backendIsBuilt = await access(backendEntryPoint).then(
     () => true,

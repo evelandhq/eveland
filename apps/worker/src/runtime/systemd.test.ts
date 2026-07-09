@@ -301,6 +301,54 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
   });
 });
 
+describe("createSystemdAdapter buildRelease (non-eve projects)", () => {
+  test("calls neither injectSandboxModules nor verifySandbox for a non-eve project, and still succeeds", async () => {
+    vi.mocked(injectSandboxModules).mockClear();
+    vi.mocked(verifySandbox).mockClear();
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    const result = await adapter.buildRelease({
+      projectId: "proj_123",
+      releaseId: "rel_789",
+      sourcePath: "/data/sources/proj_123",
+      buildDir: "/data/builds/proj_123/rel_789",
+      commandContext: { isEveProject: false, hasLockfile: true, scripts: { start: "node server.js" } },
+    });
+
+    expect(injectSandboxModules).not.toHaveBeenCalled();
+    expect(verifySandbox).not.toHaveBeenCalled();
+    expect(result.releaseRef).toBe(path.resolve("/data/builds/proj_123/rel_789"));
+    expect(result.log).not.toContain("Injected eve sandbox modules");
+    expect(result.log).not.toContain("Sandbox self-check");
+  });
+});
+
+describe("createSystemdAdapter buildRelease (no sandbox roots found)", () => {
+  test("still vendors and verifies, but warns loudly instead of failing the build", async () => {
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({ generated: [], replaced: [] });
+    vi.mocked(verifySandbox).mockClear();
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    const result = await adapter.buildRelease({
+      projectId: "proj_123",
+      releaseId: "rel_789",
+      sourcePath: "/data/sources/proj_123",
+      buildDir: "/data/builds/proj_123/rel_789",
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+    });
+
+    const cacheDir = path.resolve("/var/lib/eveland-data/sandbox", "proj_123");
+    expect(verifySandbox).toHaveBeenCalledWith({
+      releaseDir: path.resolve("/data/builds/proj_123/rel_789"),
+      user: "eveland-app",
+      cacheDir,
+    });
+    expect(result.log).toContain("Injected eve sandbox modules: none");
+    expect(result.log).toMatch(/WARNING.*no agent\/ directory/i);
+    expect(result.log).toContain("default");
+  });
+});
+
 describe("createSystemdAdapter buildRelease (sandbox verify)", () => {
   test("verifies the sandbox after both chowns, as the service user against the release and cache dirs", async () => {
     vi.mocked(verifySandbox).mockClear();

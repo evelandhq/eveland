@@ -159,10 +159,19 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       await mkdir(npmCacheDir, { recursive: true });
       await execa("cp", ["-a", `${path.resolve(input.sourcePath)}/.`, releaseDir]);
 
+      // Only eve projects ever run `npx eve start`/`npx eve build`, so only eve
+      // projects have an eve sandbox to inject a module into or self-check. A
+      // plain Node project gets neither: injecting would vendor a backend
+      // nothing imports, and verifying would run a check against a sandbox
+      // that will never exist in that release.
+      const isEveProject = input.commandContext.isEveProject;
+
       // Runs after cp -a (so it has a release to write into) and before the build
       // command (so `npx eve build` compiles the generated module). `npm ci` only
       // clears node_modules, so .eveland/ survives into the compiled output.
-      const injection = await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir() });
+      const injection = isEveProject
+        ? await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir() })
+        : undefined;
       const cacheDir = projectCacheDir(input.projectId);
       // The service user runs unprivileged under ProtectSystem=strict and cannot
       // create this directory itself, so build time (running as this process's
@@ -192,19 +201,32 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       // never calls prewarm on a self-hosted release and /eve/v1/health returns
       // 200 regardless of sandbox health, so without this a host that cannot run
       // bwrap would deploy "successfully" and only fail on a user's first turn.
-      await verifySandbox({ releaseDir, user: config.user, cacheDir });
+      if (isEveProject) {
+        await verifySandbox({ releaseDir, user: config.user, cacheDir });
+      }
 
-      const injectionLog = [
-        `Injected eve sandbox modules: ${injection.generated.join(", ") || "none"}`,
-        ...(injection.replaced.length
-          ? [
-              `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +
-                "eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.",
-            ]
-          : []),
-        "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",
-      ].join("\n");
-      return { releaseRef: releaseDir, log: `${injectionLog}\n${execution.all ?? ""}` };
+      const injectionLog = injection
+        ? [
+            `Injected eve sandbox modules: ${injection.generated.join(", ") || "none"}`,
+            ...(injection.generated.length === 0
+              ? [
+                  "WARNING: no agent/ directory (or subagent directory) was found, so no sandbox module could " +
+                    "be injected. The deployed agent will fall back to eve's default sandbox backend chain.",
+                ]
+              : []),
+            ...(injection.replaced.length
+              ? [
+                  `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +
+                    "eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.",
+                ]
+              : []),
+            "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",
+          ].join("\n")
+        : undefined;
+      return {
+        releaseRef: releaseDir,
+        log: injectionLog ? `${injectionLog}\n${execution.all ?? ""}` : execution.all ?? "",
+      };
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
       await mkdir(envDir, { recursive: true });

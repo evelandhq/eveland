@@ -166,6 +166,21 @@ describe("injectSandboxModules", () => {
     expect(existsSync(path.join(releaseDir, "agent", "sandbox.js"))).toBe(true);
   });
 
+  test("vendors the backend even when there is no agent directory (host capability, not project layout)", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-inject-"));
+    const releaseDir = path.join(root, "release");
+    const backendDistDir = path.join(root, "dist");
+    await mkdir(releaseDir, { recursive: true });
+    await mkdir(backendDistDir, { recursive: true });
+    await writeFile(path.join(backendDistDir, "index.js"), "export const marker = 1;\n");
+
+    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+
+    expect(result.generated).toEqual([]);
+    expect(result.replaced).toEqual([]);
+    expect(existsSync(path.join(releaseDir, ".eveland", "sandbox-bwrap", "index.js"))).toBe(true);
+  });
+
   test("throws a clear error when the backend dist dir has no index.js", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "eveland-inject-"));
     const releaseDir = path.join(root, "release");
