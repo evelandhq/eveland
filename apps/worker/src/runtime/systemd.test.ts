@@ -1,5 +1,17 @@
-import { describe, expect, test } from "vitest";
-import { buildBwrapArgs, buildEnvFileContent, buildReleaseBuildCommand, buildSystemdRunArgs, buildSystemdStartCommand } from "./systemd.js";
+import { describe, expect, test, vi } from "vitest";
+import path from "node:path";
+import { rm } from "node:fs/promises";
+import { buildBwrapArgs, buildEnvFileContent, buildReleaseBuildCommand, buildSystemdRunArgs, buildSystemdStartCommand, createSystemdAdapter } from "./systemd.js";
+
+vi.mock("node:fs/promises", () => ({
+  mkdir: vi.fn().mockResolvedValue(undefined),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+  rm: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("execa", () => ({
+  execa: vi.fn().mockResolvedValue({ all: "", stdout: "", stderr: "" }),
+}));
 
 describe("buildSystemdRunArgs", () => {
   test("creates a hardened transient unit bound to the release dir", () => {
@@ -61,10 +73,11 @@ describe("buildReleaseBuildCommand", () => {
 });
 
 describe("buildBwrapArgs", () => {
-  test("mounts the rootfs read-only with a writable release dir and npm cache", () => {
+  test("mounts the rootfs read-only, shadows dataDir, then re-exposes only the release dir and npm cache", () => {
     const args = buildBwrapArgs({
-      releaseDir: "/data/builds/proj_123/rel_789",
-      npmCacheDir: "/data/npm-cache",
+      releaseDir: "/var/lib/eveland-data/builds/proj_123/rel_789",
+      npmCacheDir: "/var/lib/eveland-data/npm-cache",
+      dataDir: "/var/lib/eveland-data",
       command: "npm ci && npx eve build",
     });
 
@@ -73,13 +86,33 @@ describe("buildBwrapArgs", () => {
       "--dev", "/dev",
       "--proc", "/proc",
       "--tmpfs", "/tmp",
-      "--bind", "/data/builds/proj_123/rel_789", "/data/builds/proj_123/rel_789",
-      "--bind", "/data/npm-cache", "/data/npm-cache",
+      "--tmpfs", "/var/lib/eveland-data",
+      "--bind", "/var/lib/eveland-data/builds/proj_123/rel_789", "/var/lib/eveland-data/builds/proj_123/rel_789",
+      "--bind", "/var/lib/eveland-data/npm-cache", "/var/lib/eveland-data/npm-cache",
       "--unshare-pid",
       "--die-with-parent",
-      "--chdir", "/data/builds/proj_123/rel_789",
+      "--chdir", "/var/lib/eveland-data/builds/proj_123/rel_789",
       "sh", "-lc", "npm ci && npx eve build",
     ]);
+  });
+});
+
+describe("createSystemdAdapter stopProcess", () => {
+  test("deletes the deployment env file after stopping the unit, tolerating an already-missing file", async () => {
+    const adapter = createSystemdAdapter({
+      dataDir: "/var/lib/eveland-data",
+      user: "eveland-app",
+      memoryMax: "2G",
+      cpuQuota: "200%",
+      buildSandbox: "bwrap",
+    });
+
+    await adapter.stopProcess("eveland-proj_123-dep_456");
+
+    expect(rm).toHaveBeenCalledWith(
+      path.join("/var/lib/eveland-data", "deployment-env", "eveland-proj_123-dep_456.env"),
+      { force: true },
+    );
   });
 });
 

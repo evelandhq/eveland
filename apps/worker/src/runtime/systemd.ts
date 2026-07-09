@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
 import type { ProcessStartInput, ProcessStartResult, ReleaseBuildInput, ReleaseBuildResult, RuntimeAdapter, RuntimeCommandContext } from "./types.js";
@@ -55,6 +55,7 @@ export function buildReleaseBuildCommand(context: RuntimeCommandContext): string
 export type BwrapBuildInput = {
   releaseDir: string;
   npmCacheDir: string;
+  dataDir: string;
   command: string;
 };
 
@@ -64,6 +65,15 @@ export function buildBwrapArgs(input: BwrapBuildInput): string[] {
     "--dev", "/dev",
     "--proc", "/proc",
     "--tmpfs", "/tmp",
+    // Shadow the whole data dir (deployment-env secrets, sources, every other
+    // project's build) before re-exposing only this build's own release dir
+    // and the shared npm cache. Without this, build-time npm/eve lifecycle
+    // scripts -- which run as root, untrusted, from the imported project's
+    // dependency tree -- could read every decrypted secret on the host via
+    // the `--ro-bind / /` above. bwrap applies mounts in argument order and
+    // creates bind destinations inside its own tmpfs, so the two --bind
+    // entries below only re-open the subtrees they name.
+    "--tmpfs", input.dataDir,
     "--bind", input.releaseDir, input.releaseDir,
     "--bind", input.npmCacheDir, input.npmCacheDir,
     "--unshare-pid",
@@ -94,8 +104,9 @@ export type SystemdAdapterConfig = {
 };
 
 export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapter {
-  const npmCacheDir = path.resolve(config.dataDir, "npm-cache");
-  const envDir = path.resolve(config.dataDir, "deployment-env");
+  const dataDir = path.resolve(config.dataDir);
+  const npmCacheDir = path.resolve(dataDir, "npm-cache");
+  const envDir = path.resolve(dataDir, "deployment-env");
 
   return {
     name: "systemd",
@@ -108,7 +119,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       const command = buildReleaseBuildCommand(input.commandContext);
       const execution =
         config.buildSandbox === "bwrap"
-          ? await execa("bwrap", buildBwrapArgs({ releaseDir, npmCacheDir, command }), {
+          ? await execa("bwrap", buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command }), {
               all: true,
               env: { npm_config_cache: npmCacheDir },
             })
@@ -147,6 +158,10 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
     async stopProcess(processName: string): Promise<void> {
       await execa("systemctl", ["stop", `${processName}.service`], { reject: false });
       await execa("systemctl", ["reset-failed", `${processName}.service`], { reject: false });
+      // Secrets are decrypted onto disk for systemd's EnvironmentFile; delete them once the
+      // unit is stopped instead of leaving plaintext behind indefinitely. Release-dir reaping
+      // is out of scope (accepted disk hygiene debt) -- this only covers the env file.
+      await rm(path.join(envDir, `${processName}.env`), { force: true });
     },
   };
 }
