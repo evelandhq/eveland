@@ -1,0 +1,25 @@
+# Lima VM for eveland systemd/bwrap integration tests.
+# Start:  limactl start --name eveland-test infra/lima/eveland.yaml --tty=false
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+cpus: 4
+memory: "6GiB"
+disk: "30GiB"
+mounts:
+  - location: "~"
+    writable: false
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y bubblewrap rsync curl ca-certificates
+      curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+      apt-get install -y nodejs
+      corepack enable
+      id eveland-app || useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app

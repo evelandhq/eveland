@@ -68,16 +68,17 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
         runtime: {
-          async buildImage(contextDir, imageTag) {
-            runtimeCalls.push({ name: "buildImage", input: { contextDir, imageTag } });
-            return "build ok";
+          name: "fake",
+          async buildRelease(input) {
+            runtimeCalls.push({ name: "buildRelease", input: { sourcePath: input.sourcePath, projectId: input.projectId } });
+            return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
           },
-          async stopContainer(containerName) {
-            runtimeCalls.push({ name: "stopContainer", input: { containerName } });
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
           },
-          async runContainer(input) {
-            runtimeCalls.push({ name: "runContainer", input });
-            return "container-id";
+          async stopProcess(processName) {
+            runtimeCalls.push({ name: "stopProcess", input: { processName } });
           },
         },
         allocateHostPort() {
@@ -96,18 +97,18 @@ describe("processNextJob", () => {
     });
     expect(runtimeCalls).toEqual([
       {
-        name: "buildImage",
+        name: "buildRelease",
         input: {
-          contextDir: sourcePath,
-          imageTag: expect.stringMatching(new RegExp(`^eveland/${project.id.toLowerCase()}:rel_`)),
+          sourcePath,
+          projectId: project.id,
         },
       },
       {
-        name: "runContainer",
+        name: "startProcess",
         input: expect.objectContaining({
-          containerName: expect.stringMatching(new RegExp(`^eveland-${project.id.toLowerCase()}-dep_`)),
-          hostPort: 41001,
-          internalPort: 3000,
+          processName: expect.stringMatching(new RegExp(`^eveland-${project.id.toLowerCase()}-dep_`)),
+          releaseRef: `eveland/${project.id.toLowerCase()}:rel`,
+          port: 41001,
           env: { OPENAI_API_KEY: "sk-test-123456" },
         }),
       },
@@ -147,16 +148,17 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         runtime: {
-          async buildImage(contextDir, imageTag) {
-            runtimeCalls.push({ name: "buildImage", input: { contextDir, imageTag } });
-            return "";
+          name: "fake",
+          async buildRelease(input) {
+            runtimeCalls.push({ name: "buildRelease", input: { sourcePath: input.sourcePath, projectId: input.projectId } });
+            return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "" };
           },
-          async stopContainer(containerName) {
-            runtimeCalls.push({ name: "stopContainer", input: { containerName } });
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
           },
-          async runContainer(input) {
-            runtimeCalls.push({ name: "runContainer", input });
-            return "container-id";
+          async stopProcess(processName) {
+            runtimeCalls.push({ name: "stopProcess", input: { processName } });
           },
         },
         allocateHostPort() {
@@ -166,8 +168,8 @@ describe("processNextJob", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(runtimeCalls).toContainEqual({ name: "stopContainer", input: { containerName: current.containerName } });
-    expect(runtimeCalls).toContainEqual({ name: "runContainer", input: expect.objectContaining({ hostPort: current.hostPort }) });
+    expect(runtimeCalls).toContainEqual({ name: "stopProcess", input: { processName: current.containerName } });
+    expect(runtimeCalls).toContainEqual({ name: "startProcess", input: expect.objectContaining({ port: current.hostPort }) });
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       deploymentId: expect.not.stringMatching(/^dep_old$/),
       releaseId: expect.not.stringMatching(/^rel_old$/),
@@ -194,13 +196,14 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         runtime: {
-          async buildImage() {
-            return "";
+          name: "fake",
+          async buildRelease() {
+            return { releaseRef: "eveland/proj:rel", log: "" };
           },
-          async stopContainer() {},
-          async runContainer() {
-            return "container-id";
+          async startProcess() {
+            return { internalPort: 3000, log: "" };
           },
+          async stopProcess() {},
         },
         allocateHostPort() {
           return 41099;
