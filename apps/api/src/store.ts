@@ -7,6 +7,8 @@ import type {
   ProjectStatus,
   PublicSecret,
   DeploymentRecord,
+  ReleaseRecord,
+  RuntimeKind,
   ScheduleRecord,
   SecretRecord,
   Session,
@@ -54,6 +56,7 @@ export type Store = {
     schedules: Array<Omit<ScheduleRecord, "id" | "projectId">>;
   }): Promise<SourceRevision>;
   getCurrentSourceRevision(projectId: string): Promise<SourceRevision | null>;
+  getSourceRevision(revisionId: string): Promise<SourceRevision | null>;
   listSourceFiles(projectId: string): Promise<SourceFileRecord[]>;
   getSourceFile(projectId: string, filePath: string): Promise<SourceFileRecord | null>;
   recordDeployment(input: {
@@ -65,8 +68,10 @@ export type Store = {
     containerName: string;
     internalPort: number;
     hostPort: number;
+    runtimeKind: RuntimeKind;
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
+  getRelease(releaseId: string): Promise<ReleaseRecord | null>;
   createSession(input: {
     projectId: string;
     deploymentId?: string | null;
@@ -104,7 +109,7 @@ type MemoryState = {
   logs: LogRecord[];
   sourceRevisions: SourceRevision[];
   sourceFiles: SourceFileRecord[];
-  releases: Array<{ id: string; projectId: string; sourceRevisionId: string; imageTag: string; createdAt: string }>;
+  releases: ReleaseRecord[];
   deployments: DeploymentRecord[];
 };
 
@@ -158,14 +163,26 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async deleteProject(projectId) {
       const before = state.projects.length;
-      state.projects = state.projects.filter((project) => project.id !== projectId);
-      state.secrets = state.secrets.filter((secret) => secret.projectId !== projectId);
-      state.jobs = state.jobs.filter((job) => job.projectId !== projectId);
-      state.schedules = state.schedules.filter((schedule) => schedule.projectId !== projectId);
-      state.sessions = state.sessions.filter((session) => session.projectId !== projectId);
+      const sessionIds = state.sessions.filter((session) => session.projectId === projectId).map((session) => session.id);
+      const revisionIds = state.sourceRevisions.filter((revision) => revision.projectId === projectId).map((revision) => revision.id);
+
+      // Mirrors the Postgres store's cascade order (db/postgres-store.ts
+      // deleteProject): logs, deployments, releases, source files scoped to
+      // this project's revisions, the revisions themselves, usage events and
+      // session events scoped to this project's sessions, the sessions, then
+      // schedules/jobs/secrets, and the projects row last.
       state.logs = state.logs.filter((log) => log.projectId !== projectId);
-      state.releases = state.releases.filter((release) => release.projectId !== projectId);
       state.deployments = state.deployments.filter((deployment) => deployment.projectId !== projectId);
+      state.releases = state.releases.filter((release) => release.projectId !== projectId);
+      state.sourceFiles = state.sourceFiles.filter((file) => !revisionIds.includes(file.revisionId));
+      state.sourceRevisions = state.sourceRevisions.filter((revision) => revision.projectId !== projectId);
+      state.modelUsageEvents = state.modelUsageEvents.filter((event) => !sessionIds.includes(event.sessionId));
+      state.sessionEvents = state.sessionEvents.filter((event) => !sessionIds.includes(event.sessionId));
+      state.sessions = state.sessions.filter((session) => session.projectId !== projectId);
+      state.schedules = state.schedules.filter((schedule) => schedule.projectId !== projectId);
+      state.jobs = state.jobs.filter((job) => job.projectId !== projectId);
+      state.secrets = state.secrets.filter((secret) => secret.projectId !== projectId);
+      state.projects = state.projects.filter((project) => project.id !== projectId);
       return state.projects.length !== before;
     },
 
@@ -310,6 +327,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.sourceRevisions.find((revision) => revision.id === project?.sourceRevisionId) ?? null;
     },
 
+    async getSourceRevision(revisionId) {
+      return state.sourceRevisions.find((revision) => revision.id === revisionId) ?? null;
+    },
+
     async listSourceFiles(projectId) {
       const revision = await this.getCurrentSourceRevision(projectId);
       return revision ? state.sourceFiles.filter((file) => file.revisionId === revision.id).sort((a, b) => a.path.localeCompare(b.path)) : [];
@@ -322,7 +343,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async recordDeployment(input) {
       const now = new Date().toISOString();
-      const release = {
+      const release: ReleaseRecord = {
         id: input.releaseId ?? createId("rel"),
         projectId: input.projectId,
         sourceRevisionId: input.sourceRevisionId,
@@ -337,6 +358,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         internalPort: input.internalPort,
         hostPort: input.hostPort,
         status: "running",
+        runtimeKind: input.runtimeKind,
         createdAt: now,
         updatedAt: now,
       };
@@ -358,6 +380,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     async getCurrentDeployment(projectId) {
       const project = state.projects.find((candidate) => candidate.id === projectId);
       return state.deployments.find((deployment) => deployment.id === project?.deploymentId) ?? null;
+    },
+
+    async getRelease(releaseId) {
+      return state.releases.find((release) => release.id === releaseId) ?? null;
     },
 
     async createSession(input) {

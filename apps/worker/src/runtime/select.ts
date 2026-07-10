@@ -29,27 +29,31 @@ export function resolveBackendDistDir(): string {
   return path.dirname(entry);
 }
 
-export function createRuntimeAdapterFromEnv(env: NodeJS.ProcessEnv = process.env): RuntimeAdapter {
-  const kind = env.EVELAND_RUNTIME ?? "docker";
-
+export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: NodeJS.ProcessEnv = process.env): RuntimeAdapter {
   if (kind === "docker") {
     return createDockerAdapter({ internalPort: Number(env.EVELAND_INTERNAL_PORT ?? 3000) });
   }
 
-  if (kind === "systemd") {
-    return createSystemdAdapter({
-      dataDir: path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data"),
-      user: env.EVELAND_APP_USER ?? "eveland-app",
-      memoryMax: env.EVELAND_MEMORY_MAX ?? "2G",
-      cpuQuota: env.EVELAND_CPU_QUOTA ?? "200%",
-      buildSandbox: env.EVELAND_BUILD_SANDBOX === "none" ? "none" : "bwrap",
-      // Each release gets a fresh directory, but eve keys session sandboxes per
-      // durable session and promises a redeploy preserves a session's /workspace
-      // -- so the cache must live outside the release dir, stable per project.
-      sandboxCacheDir: resolveSandboxCacheRoot(env),
-      backendDistDir: resolveBackendDistDir,
-    });
+  return createSystemdAdapter({
+    dataDir: path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data"),
+    user: env.EVELAND_APP_USER ?? "eveland-app",
+    memoryMax: env.EVELAND_MEMORY_MAX ?? "2G",
+    cpuQuota: env.EVELAND_CPU_QUOTA ?? "200%",
+    buildSandbox: env.EVELAND_BUILD_SANDBOX === "none" ? "none" : "bwrap",
+    // Each release gets a fresh directory, but eve keys session sandboxes per
+    // durable session and promises a redeploy preserves a session's /workspace
+    // -- so the cache must live outside the release dir, stable per project.
+    sandboxCacheDir: resolveSandboxCacheRoot(env),
+    backendDistDir: resolveBackendDistDir,
+  });
+}
+
+export function createRuntimeAdapterFromEnv(env: NodeJS.ProcessEnv = process.env): RuntimeAdapter {
+  const kind = env.EVELAND_RUNTIME ?? "docker";
+
+  if (kind !== "docker" && kind !== "systemd") {
+    throw new Error(`Unknown EVELAND_RUNTIME "${kind}". Expected "docker" or "systemd".`);
   }
 
-  throw new Error(`Unknown EVELAND_RUNTIME "${kind}". Expected "docker" or "systemd".`);
+  return createRuntimeAdapterForKind(kind, env);
 }

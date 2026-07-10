@@ -91,6 +91,9 @@ export const deployments = pgTable("deployments", {
   internalPort: integer("internal_port").notNull(),
   hostPort: integer("host_port").notNull(),
   status: text("status").notNull(),
+  // No default: every caller must state which runtime adapter created the deployment.
+  // The migration backfills existing rows with 'docker' then drops the column default.
+  runtimeKind: text("runtime_kind").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

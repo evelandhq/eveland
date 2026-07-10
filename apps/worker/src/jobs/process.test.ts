@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "@eveland/api/store";
+import type { Store } from "@eveland/api/store";
 import { allocateAvailableHostPort, processNextJob } from "./process.js";
+import type { RuntimeAdapter } from "../runtime/types.js";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -80,6 +82,7 @@ describe("processNextJob", () => {
       containerName: "eveland-live",
       internalPort: 3000,
       hostPort: 41010,
+      runtimeKind: "docker",
     });
     // A re-sync whose source fails to scan (here, an empty directory) must not
     // knock the running deployment into a failed state.
@@ -121,7 +124,7 @@ describe("processNextJob", () => {
         appSecretKey: secretKey,
         workflowPostgresUrl: "",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             runtimeCalls.push({ name: "buildRelease", input: { sourcePath: input.sourcePath, projectId: input.projectId } });
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -168,6 +171,7 @@ describe("processNextJob", () => {
     ]);
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(expect.objectContaining({ line: "build ok" }));
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(expect.objectContaining({ line: "Deployment running on 127.0.0.1:41001." }));
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
   });
 
   test("redeploys by stopping the current deployment and reusing its host port", async () => {
@@ -195,13 +199,14 @@ describe("processNextJob", () => {
       containerName: "eveland-old-container",
       internalPort: 3000,
       hostPort: 41077,
+      runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "build_deploy");
 
     await expect(
       processNextJob(store, "worker-a", {
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             runtimeCalls.push({ name: "buildRelease", input: { sourcePath: input.sourcePath, projectId: input.projectId } });
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "" };
@@ -227,6 +232,85 @@ describe("processNextJob", () => {
       deploymentId: expect.not.stringMatching(/^dep_old$/),
       releaseId: expect.not.stringMatching(/^rel_old$/),
     });
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
+  });
+
+  test("redeploys across runtime kinds by stopping the old deployment through the adapter that owns it", async () => {
+    const activeRuntimeCalls: Array<{ name: string; input: unknown }> = [];
+    const oldRuntimeStopCalls: Array<{ processName: string }> = [];
+    let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Cross Kind Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // The current deployment was made by systemd; the worker's active runtime
+    // below is docker. Only the systemd adapter may stop the systemd unit.
+    const current = await store.recordDeployment({
+      releaseId: "rel_old",
+      deploymentId: "dep_old",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_old",
+      containerName: "eveland-old-systemd-unit",
+      internalPort: 3000,
+      hostPort: 41078,
+      runtimeKind: "systemd",
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    const oldKindAdapter: RuntimeAdapter = {
+      name: "systemd",
+      async buildRelease() {
+        throw new Error("the old deployment's adapter must never be asked to build");
+      },
+      async startProcess() {
+        throw new Error("the old deployment's adapter must never be asked to start");
+      },
+      async stopProcess(processName) {
+        oldRuntimeStopCalls.push({ processName });
+      },
+    };
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "" };
+          },
+          async startProcess(input) {
+            activeRuntimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            activeRuntimeCalls.push({ name: "stopProcess", input: { processName } });
+          },
+        },
+        runtimeForKind(kind) {
+          runtimeForKindCalledWith = kind;
+          return oldKindAdapter;
+        },
+        allocateHostPort() {
+          throw new Error("existing deployments should keep their port");
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeForKindCalledWith).toBe("systemd");
+    expect(oldRuntimeStopCalls).toEqual([{ processName: current.containerName }]);
+    expect(activeRuntimeCalls.some((call) => call.name === "stopProcess")).toBe(false);
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
   });
 
   test("fails a build_deploy job when the deployment port never becomes reachable", async () => {
@@ -249,7 +333,7 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease() {
             return { releaseRef: "eveland/proj:rel", log: "" };
           },
@@ -298,7 +382,7 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
           },
@@ -352,7 +436,7 @@ describe("processNextJob", () => {
         appSecretKey: secretKey,
         workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
           },
@@ -397,7 +481,7 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -444,7 +528,7 @@ describe("processNextJob", () => {
         nodeEnv: "development",
         workflowPostgresUrl: "",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -491,7 +575,7 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         workflowPostgresUrl: "",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -535,7 +619,7 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5452/eveland",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -584,7 +668,7 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5452/eveland",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -603,6 +687,359 @@ describe("processNextJob", () => {
 
     expect(buildCalled).toBe(true);
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "deployed" });
+  });
+
+  test("restarts the current deployment by stopping and starting it on the recorded runtime kind", async () => {
+    const secretKey = "eveland-test-secret-key-00000000";
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Restart Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: ["OPENAI_API_KEY"],
+      files: [],
+      schedules: [],
+    });
+    await store.upsertSecret(
+      project.id,
+      "OPENAI_API_KEY",
+      JSON.stringify(encryptSecretValue("sk-test-restart", secretKey)),
+    );
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_cur",
+      deploymentId: "dep_cur",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_cur",
+      containerName: "eveland-cur-container",
+      internalPort: 3000,
+      hostPort: 41050,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        appSecretKey: secretKey,
+        workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            runtimeCalls.push({ name: "stopProcess", input: { processName } });
+          },
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeCalls).toEqual([
+      { name: "stopProcess", input: { processName: deployment.containerName } },
+      {
+        name: "startProcess",
+        input: expect.objectContaining({
+          processName: deployment.containerName,
+          releaseRef: "eveland/proj:rel_cur",
+          port: deployment.hostPort,
+          env: {
+            WORKFLOW_POSTGRES_URL: "postgres://platform@host.docker.internal:5432/eveland",
+            OPENAI_API_KEY: "sk-test-restart",
+          },
+        }),
+      },
+    ]);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ deploymentStatus: "running" });
+    await expect(store.listLogs(project.id, "deploy")).resolves.toEqual([
+      expect.objectContaining({ line: "Restart requested." }),
+      expect.objectContaining({ line: `Deployment running on 127.0.0.1:${deployment.hostPort}.` }),
+    ]);
+  });
+
+  test("resolves the runtime adapter by the deployment's recorded runtimeKind when no runtime override is injected", async () => {
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Restart Systemd Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_systemd",
+      deploymentId: "dep_systemd",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_systemd",
+      containerName: "eveland-systemd-unit",
+      internalPort: 3000,
+      hostPort: 41051,
+      runtimeKind: "systemd",
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    // The deployment was made by systemd; only the systemd adapter may stop and
+    // restart its unit, regardless of what runtime kind the worker defaults to.
+    const systemdAdapter: RuntimeAdapter = {
+      name: "systemd",
+      async buildRelease() {
+        throw new Error("restart must never build a release");
+      },
+      async startProcess(input) {
+        runtimeCalls.push({ name: "startProcess", input });
+        return { internalPort: 3000, log: "started" };
+      },
+      async stopProcess(processName) {
+        runtimeCalls.push({ name: "stopProcess", input: { processName } });
+      },
+    };
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtimeForKind(kind) {
+          runtimeForKindCalledWith = kind;
+          return systemdAdapter;
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeForKindCalledWith).toBe("systemd");
+    expect(runtimeCalls).toEqual([
+      { name: "stopProcess", input: { processName: deployment.containerName } },
+      expect.objectContaining({ name: "startProcess" }),
+    ]);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ deploymentStatus: "running" });
+  });
+
+  test("fails a restart_deployment job when there is no deployment to restart", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "No Deployment Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "failed" });
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({ line: expect.stringContaining("No deployment to restart.") }),
+    );
+  });
+
+  test("fails a restart_deployment job when the deployment's release record is missing", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Corrupt State Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordDeployment({
+      releaseId: "rel_missing",
+      deploymentId: "dep_missing",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_missing",
+      containerName: "eveland-missing-container",
+      internalPort: 3000,
+      hostPort: 41052,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+    // Simulates corrupt state: the deployment's release row is gone even though
+    // the deployment itself still is (a deployment without its release is not
+    // recoverable, so restart must fail loudly rather than guess).
+    const storeWithMissingRelease: Store = {
+      ...store,
+      async getRelease() {
+        return null;
+      },
+    };
+
+    await expect(processNextJob(storeWithMissingRelease, "worker-a")).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "failed" });
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({ line: expect.stringContaining("rel_missing") }),
+    );
+  });
+
+  test("delete_project stops the deployment through its recorded runtimeKind adapter, logging before stopping, then deletes the project last", async () => {
+    const calls: string[] = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Delete Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_del",
+      deploymentId: "dep_del",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_del",
+      containerName: "eveland-del-systemd-unit",
+      internalPort: 3000,
+      hostPort: 41060,
+      runtimeKind: "systemd",
+    });
+    await store.enqueueJob(project.id, "delete_project");
+
+    let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
+    // Only the systemd adapter may stop a systemd unit; the worker's active
+    // default runtime (docker, injected as `options.runtime` in other tests)
+    // must never be consulted for stopping a deployment it doesn't own.
+    const stopAdapter: RuntimeAdapter = {
+      name: "systemd",
+      async buildRelease() {
+        throw new Error("delete_project must never build a release");
+      },
+      async startProcess() {
+        throw new Error("delete_project must never start a process");
+      },
+      async stopProcess(processName) {
+        calls.push(`stopProcess:${processName}`);
+      },
+    };
+    const spyingStore: Store = {
+      ...store,
+      async appendLog(input) {
+        calls.push(`appendLog:${input.line}`);
+        return store.appendLog(input);
+      },
+      async updateProjectState(projectId, state) {
+        calls.push("updateProjectState");
+        return store.updateProjectState(projectId, state);
+      },
+      async deleteProject(projectId) {
+        calls.push(`deleteProject:${projectId}`);
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(
+      processNextJob(spyingStore, "worker-a", {
+        runtimeForKind(kind) {
+          runtimeForKindCalledWith = kind;
+          return stopAdapter;
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeForKindCalledWith).toBe("systemd");
+    // The log must land before the process is stopped, and nothing --
+    // no log, no state update -- may follow the delete.
+    expect(calls).toEqual([
+      "appendLog:Stopping deployment before deleting project.",
+      `stopProcess:${deployment.containerName}`,
+      `deleteProject:${project.id}`,
+    ]);
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+  });
+
+  test("delete_project with no current deployment deletes the project without stopping or logging anything", async () => {
+    const calls: string[] = [];
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "No Deployment Delete Agent", importKind: "zip", sourcePath: "/tmp/no-deployment" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "delete_project");
+
+    const spyingStore: Store = {
+      ...store,
+      async appendLog(input) {
+        calls.push(`appendLog:${input.line}`);
+        return store.appendLog(input);
+      },
+      async deleteProject(projectId) {
+        calls.push(`deleteProject:${projectId}`);
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(processNextJob(spyingStore, "worker-a")).resolves.toBe(true);
+
+    expect(calls).toEqual([`deleteProject:${project.id}`]);
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+  });
+
+  test("delete_project is idempotent: a re-run against an already-gone project returns silently", async () => {
+    const calls: string[] = [];
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Already Gone Agent", importKind: "zip", sourcePath: "/tmp/already-gone" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "delete_project");
+
+    // Simulates a half-finished delete_project retry: the project row is
+    // already gone (e.g. a prior run got as far as store.deleteProject before
+    // crashing), but nothing else about the store is touched.
+    const storeWithProjectGone: Store = {
+      ...store,
+      async getProject(projectId) {
+        calls.push(`getProject:${projectId}`);
+        return null;
+      },
+      async getCurrentDeployment(projectId) {
+        calls.push(`getCurrentDeployment:${projectId}`);
+        return store.getCurrentDeployment(projectId);
+      },
+      async deleteProject(projectId) {
+        calls.push(`deleteProject:${projectId}`);
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(processNextJob(storeWithProjectGone, "worker-a")).resolves.toBe(true);
+
+    // The handler must return immediately after the missing getProject check --
+    // it must never call getCurrentDeployment or deleteProject again.
+    expect(calls).toEqual([`getProject:${project.id}`]);
   });
 });
 

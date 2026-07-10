@@ -92,6 +92,7 @@ describe("memory store jobs", () => {
       containerName: "eveland-proj-dep_123",
       internalPort: 3000,
       hostPort: 41001,
+      runtimeKind: "docker",
     });
 
     await expect(store.getProject(project.id)).resolves.toMatchObject({
@@ -105,7 +106,130 @@ describe("memory store jobs", () => {
       releaseId: deployment.releaseId,
       containerName: "eveland-proj-dep_123",
       hostPort: 41001,
+      runtimeKind: "docker",
     });
+  });
+
+  test("round-trips runtimeKind through recordDeployment for the systemd adapter", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Systemd Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_456",
+      containerName: "eveland-proj-dep_456",
+      internalPort: 3000,
+      hostPort: 41002,
+      runtimeKind: "systemd",
+    });
+
+    expect(deployment.runtimeKind).toBe("systemd");
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "systemd" });
+  });
+
+  test("getRelease returns the release by id and null when absent", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Release Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_789",
+      containerName: "eveland-proj-dep_789",
+      internalPort: 3000,
+      hostPort: 41003,
+      runtimeKind: "docker",
+    });
+
+    await expect(store.getRelease(deployment.releaseId)).resolves.toMatchObject({
+      id: deployment.releaseId,
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_789",
+    });
+    await expect(store.getRelease("rel_does_not_exist")).resolves.toBeNull();
+  });
+
+  test("getSourceRevision returns the revision by id and null when absent", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Revision Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+
+    await expect(store.getSourceRevision(revision.id)).resolves.toMatchObject({
+      id: revision.id,
+      projectId: project.id,
+      sourcePath: "/tmp/source",
+    });
+    await expect(store.getSourceRevision("src_does_not_exist")).resolves.toBeNull();
+  });
+
+  test("deleteProject cascades to the project's source revision, source files, session events, and usage events", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Deletable Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [{ path: "agent/instructions.md", content: "You are concise." }],
+      schedules: [],
+    });
+    const session = await store.createSession({
+      projectId: project.id,
+      deploymentId: null,
+      trigger: "playground",
+      scheduleId: null,
+    });
+    await store.appendSessionEvent(session.id, "message", { role: "user", content: "Hello" });
+    await store.recordModelUsage(session.id, {
+      turnId: "turn_0",
+      stepIndex: 0,
+      finishReason: "stop",
+      inputTokens: 120,
+      outputTokens: 30,
+      cacheReadTokens: 80,
+      cacheWriteTokens: 10,
+      costUsd: 0.0042,
+      usageReported: true,
+    });
+
+    await expect(store.deleteProject(project.id)).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+    // The behavioral divergence this guards against: getSourceRevision looks
+    // revisions up directly by id (unlike getCurrentSourceRevision, which
+    // requires the project row), so a deleted project's revision must not
+    // still be findable here the way it would be in Postgres.
+    await expect(store.getSourceRevision(revision.id)).resolves.toBeNull();
+    await expect(store.listSessionEvents(session.id)).resolves.toEqual([]);
+    await expect(store.listModelUsageEvents(session.id)).resolves.toEqual([]);
   });
 
   test("records a playground session timeline in event order", async () => {

@@ -161,6 +161,7 @@ describe("api app", () => {
       containerName: "eveland-playground",
       internalPort: 3000,
       hostPort: 41001,
+      runtimeKind: "docker",
     });
     const runnerCalls: unknown[] = [];
     const app = createApp(store, {
@@ -218,6 +219,7 @@ describe("api app", () => {
       containerName: "eveland-token",
       internalPort: 3000,
       hostPort: 41002,
+      runtimeKind: "docker",
     });
     const app = createApp(store, {
       async playgroundRunner() {
@@ -316,6 +318,7 @@ describe("api app", () => {
       containerName: "eveland-streaming-usage",
       internalPort: 3000,
       hostPort: address.port,
+      runtimeKind: "docker",
     });
     const app = createApp(store);
     const responsePromise = app.request(`/projects/${project.id}/playground`, {
@@ -367,6 +370,7 @@ describe("api app", () => {
       containerName: "eveland-concurrent-stream",
       internalPort: 3000,
       hostPort: 41003,
+      runtimeKind: "docker",
     });
 
     const appendSessionEvent = store.appendSessionEvent;
@@ -490,6 +494,7 @@ describe("api app", () => {
       containerName: "eveland-subagent-usage",
       internalPort: 3000,
       hostPort: address.port,
+      runtimeKind: "docker",
     });
 
     try {
@@ -589,6 +594,7 @@ describe("api app", () => {
       containerName: "eveland-missing-child",
       internalPort: 3000,
       hostPort: address.port,
+      runtimeKind: "docker",
     });
 
     try {
@@ -671,6 +677,7 @@ describe("api app", () => {
       containerName: "eveland-remote-boundary",
       internalPort: 3000,
       hostPort: address.port,
+      runtimeKind: "docker",
     });
 
     try {
@@ -762,6 +769,31 @@ describe("api app", () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ error: "No running deployment" });
+  });
+
+  test("returns 404 when deleting a project that does not exist", async () => {
+    const app = createApp(createMemoryStore());
+
+    const response = await app.request("/projects/missing", { method: "DELETE" });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Project not found" });
+  });
+
+  test("enqueues a delete_project job and leaves the project in place until the worker runs it", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Delete Me Agent", importKind: "zip", sourcePath: "/tmp/delete-me" });
+    const app = createApp(store);
+
+    const response = await app.request(`/projects/${project.id}`, { method: "DELETE" });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      job: expect.objectContaining({ type: "delete_project", status: "queued", projectId: project.id }),
+    });
+    // The delete only happens once the worker processes the job; the DELETE
+    // request itself must not remove the project row.
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ id: project.id });
   });
 });
 
