@@ -37,7 +37,12 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await store.failJob(job.id, message);
-    await store.updateProjectState(job.projectId, { status: "failed", deploymentStatus: "failed" });
+    // A failed import never touches the running container, so it must not report a
+    // live deployment as failed; only deploy/restart jobs change deployment status.
+    await store.updateProjectState(
+      job.projectId,
+      job.type === "import_source" ? { status: "failed" } : { status: "failed", deploymentStatus: "failed" },
+    );
     await store.appendLog({
       projectId: job.projectId,
       type: "runtime",
@@ -87,6 +92,17 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         type: "build",
         line: `Source import completed for ${project.name}.`,
       });
+
+      // A re-sync can opt into deploying the freshly imported source in one step;
+      // enqueued only after a successful import so a failed pull never deploys.
+      if (job.payload.deployAfterImport === true) {
+        await store.enqueueJob(job.projectId, "build_deploy");
+        await store.appendLog({
+          projectId: job.projectId,
+          type: "build",
+          line: `Queued deploy of the latest source for ${project.name}.`,
+        });
+      }
       return;
     }
     case "build_deploy": {

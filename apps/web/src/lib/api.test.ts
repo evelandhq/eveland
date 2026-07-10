@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { enqueueBuildDeploy } from "./api";
+import { enqueueBuildDeploy, syncSource } from "./api";
 
 describe("web api helpers", () => {
   afterEach(() => {
@@ -37,5 +37,40 @@ describe("web api helpers", () => {
     );
 
     await expect(enqueueBuildDeploy("missing")).rejects.toThrow("Project not found");
+  });
+
+  test("syncs source and asks the API to deploy the latest commit", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ job: { id: "job_sync", type: "import_source", status: "queued" } }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(syncSource("proj_123", { deploy: true })).resolves.toMatchObject({
+      id: "job_sync",
+      type: "import_source",
+      status: "queued",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/sync-source", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deploy: true }),
+    });
+  });
+
+  test("throws the API error when a source sync fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ error: "Only git projects can sync source from a repository." }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    await expect(syncSource("proj_zip")).rejects.toThrow("Only git projects can sync source");
   });
 });

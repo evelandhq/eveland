@@ -36,6 +36,58 @@ describe("processNextJob", () => {
     await expect(store.listLogs(project.id, "build")).resolves.toEqual([
       expect.objectContaining({ line: "Source import completed for Import Agent." }),
     ]);
+    // Without a deploy flag the import must not chain a build_deploy job.
+    await expect(store.claimNextJob("worker-idle")).resolves.toBeNull();
+  });
+
+  test("chains a build_deploy job after a deploy-flagged import", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "CD Agent", importKind: "zip", sourcePath });
+    const initialImport = await store.claimNextJob("worker-a");
+    await store.completeJob(initialImport!.id);
+    await store.enqueueJob(project.id, "import_source", { importKind: "zip", sourcePath, deployAfterImport: true });
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+
+    const chained = await store.claimNextJob("worker-b");
+    expect(chained).toMatchObject({ type: "build_deploy", status: "running" });
+    await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
+      expect.objectContaining({ line: expect.stringContaining("Queued deploy of the latest source") }),
+    );
+  });
+
+  test("a failed re-sync import leaves an already-running deployment's status untouched", async () => {
+    const store = createMemoryStore();
+    const badSource = await mkdtemp(path.join(os.tmpdir(), "eveland-empty-"));
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Live Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
+    const initialImport = await store.claimNextJob("worker-a");
+    await store.completeJob(initialImport!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/live:rel_1",
+      containerName: "eveland-live",
+      internalPort: 3000,
+      hostPort: 41010,
+    });
+    // A re-sync whose source fails to scan (here, an empty directory) must not
+    // knock the running deployment into a failed state.
+    await store.enqueueJob(project.id, "import_source", { importKind: "git", sourcePath: badSource });
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "running" });
   });
 
   test("returns false when no queued job exists", async () => {

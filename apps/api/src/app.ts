@@ -109,6 +109,25 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
     return c.json({ job }, 202);
   });
 
+  app.post("/projects/:projectId/sync-source", async (c) => {
+    const projectId = c.req.param("projectId");
+    const project = await store.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+    if (project.importKind !== "git" || !project.gitUrl) {
+      return c.json({ error: "Only git projects can sync source from a repository." }, 400);
+    }
+
+    const deploy = await readSyncDeployFlag(c);
+    const job = await store.enqueueJob(projectId, "import_source", {
+      importKind: "git",
+      gitUrl: project.gitUrl,
+      deployAfterImport: deploy,
+    });
+    return c.json({ job }, 202);
+  });
+
   app.post("/projects/:projectId/restart", async (c) => {
     const projectId = c.req.param("projectId");
     const project = await store.getProject(projectId);
@@ -221,6 +240,17 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
 
 function isMultipartRequest(c: Context): boolean {
   return (c.req.header("content-type") ?? "").toLowerCase().includes("multipart/form-data");
+}
+
+// The sync body is optional; only `{ "deploy": true }` opts into an automatic
+// deploy of the freshly synced source, otherwise the sync just refreshes it.
+async function readSyncDeployFlag(c: Context): Promise<boolean> {
+  try {
+    const body = (await c.req.json()) as unknown;
+    return typeof body === "object" && body !== null && (body as { deploy?: unknown }).deploy === true;
+  } catch {
+    return false;
+  }
 }
 
 async function createZipProjectFromUpload(c: Context, store: Store, dataDir: string) {
