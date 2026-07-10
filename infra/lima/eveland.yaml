@@ -18,7 +18,7 @@ provision:
       set -eux
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
-      apt-get install -y bubblewrap rsync curl ca-certificates apparmor
+      apt-get install -y bubblewrap rsync curl ca-certificates apparmor git
       curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
       apt-get install -y nodejs
       corepack enable

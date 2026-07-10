@@ -60,6 +60,7 @@ services:
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       WORKFLOW_POSTGRES_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
       EVELAND_DATA_DIR: /workspace/.eveland-data
+      EVELAND_RUNTIME: docker
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock

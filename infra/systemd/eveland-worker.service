@@ -1,0 +1,26 @@
+# Host worker for the eveland systemd runtime. Install:
+#   cp infra/systemd/eveland-worker.service /etc/systemd/system/
+#   install -d -m 0750 /etc/eveland
+#   cp infra/systemd/eveland-worker.env.example /etc/eveland/eveland-worker.env  # then edit
+#   systemctl daemon-reload && systemctl enable --now eveland-worker
+# Assumes the repo is checked out at /opt/eveland with dependencies installed
+# (pnpm install) and @eveland/sandbox-bwrap built. The worker refuses to start
+# (preflight) if a host prerequisite is missing — see docs/deploy/linux.md.
+[Unit]
+Description=eveland worker (systemd runtime)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+# Root on purpose: the worker drives systemd-run, systemctl and chown. Deployed
+# agents themselves run unprivileged (User=eveland-app transient units).
+User=root
+WorkingDirectory=/opt/eveland
+EnvironmentFile=/etc/eveland/eveland-worker.env
+ExecStart=/usr/bin/env corepack pnpm --filter @eveland/worker exec tsx src/worker.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
