@@ -900,6 +900,7 @@ describe("processNextJob", () => {
       expect.objectContaining({ line: expect.stringContaining("rel_missing") }),
     );
   });
+
   test("delete_project stops the deployment through its recorded runtimeKind adapter, logging before stopping, then deletes the project last", async () => {
     const calls: string[] = [];
     const store = createMemoryStore();
