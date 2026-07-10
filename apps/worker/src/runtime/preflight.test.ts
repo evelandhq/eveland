@@ -4,7 +4,10 @@ import { assertWorkerPreflight, collectSystemdPreflightIssues, type PreflightDep
 /**
  * Every dep passing by default so each test only needs to override the one
  * thing it's exercising. `canTraverseAs`/`userExists` etc. are `vi.fn()` so
- * tests can also assert a dep was (or wasn't) invoked at all.
+ * tests can also assert a dep was (or wasn't) invoked at all. `commandExists`
+ * and `userExists` return `true` for any name, so this fixture needs no edit
+ * when a check gains another required binary (e.g. `runuser`) or user (e.g.
+ * the build user) -- every name it's asked about already passes.
  */
 function makePassingDeps(env: NodeJS.ProcessEnv = { EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland" }): PreflightDeps {
   return {
@@ -135,6 +138,20 @@ describe("collectSystemdPreflightIssues", () => {
     expect(commandExists).not.toHaveBeenCalledWith("bwrap");
   });
 
+  test("requires runuser unconditionally -- the build itself now runs under it, not just the traversal probe", async () => {
+    const deps = makePassingDeps();
+    deps.commandExists = vi.fn(async (name: string) => name !== "runuser");
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(issues.some((issue) => issue.includes("runuser"))).toBe(true);
+  });
+
+  test("still requires runuser when EVELAND_BUILD_SANDBOX=none, unlike bwrap", async () => {
+    const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland", EVELAND_BUILD_SANDBOX: "none" });
+    deps.commandExists = vi.fn(async (name: string) => name !== "runuser");
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(issues.some((issue) => issue.includes("runuser"))).toBe(true);
+  });
+
   test("flags a missing app user, defaulting the name to eveland-app", async () => {
     const deps = makePassingDeps();
     deps.userExists = vi.fn(async () => false);
@@ -147,6 +164,30 @@ describe("collectSystemdPreflightIssues", () => {
     deps.userExists = vi.fn(async () => false);
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("custom-app"))).toBe(true);
+  });
+
+  test("flags a missing build user, defaulting the name to eveland-build, and names EVELAND_BUILD_USER plus the useradd fix", async () => {
+    const deps = makePassingDeps();
+    deps.userExists = vi.fn(async (name: string) => name !== "eveland-build");
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(
+      issues.some((issue) => issue.includes("eveland-build") && issue.includes("EVELAND_BUILD_USER") && issue.includes("useradd")),
+    ).toBe(true);
+  });
+
+  test("flags a missing build user using EVELAND_BUILD_USER when set", async () => {
+    const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland", EVELAND_BUILD_USER: "custom-build" });
+    deps.userExists = vi.fn(async (name: string) => name !== "custom-build");
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(issues.some((issue) => issue.includes("custom-build"))).toBe(true);
+  });
+
+  test("flags both the app user and the build user missing independently, one issue each", async () => {
+    const deps = makePassingDeps();
+    deps.userExists = vi.fn(async () => false);
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(issues.filter((issue) => issue.includes("eveland-app"))).toHaveLength(1);
+    expect(issues.filter((issue) => issue.includes("eveland-build"))).toHaveLength(1);
   });
 
   test("flags a missing /workspace directory", async () => {

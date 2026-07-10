@@ -3,7 +3,7 @@ import { createMemoryStore } from "@eveland/api/store";
 import type { Store } from "@eveland/api/store";
 import { allocateAvailableHostPort, processNextJob } from "./process.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -357,6 +357,177 @@ describe("processNextJob", () => {
       deploymentId: null,
       releaseId: null,
     });
+  });
+
+  test("stops the newly started process (not the old deployment) when the health check fails after a successful start", async () => {
+    let capturedProcessName: string | null = null;
+    const stopCalls: string[] = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "New Process Cleanup Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // An existing deployment so the OLD process's stop (outside the cleanup
+    // block) and the NEW process's cleanup stop can be told apart.
+    const oldDeployment = await store.recordDeployment({
+      releaseId: "rel_old",
+      deploymentId: "dep_old",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_old",
+      containerName: "eveland-old-container",
+      internalPort: 3000,
+      hostPort: 41110,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            return { releaseRef: "eveland/proj:rel_new", log: "" };
+          },
+          async startProcess(input) {
+            capturedProcessName = input.processName;
+            return { internalPort: 3000, log: "" };
+          },
+          async stopProcess(processName) {
+            stopCalls.push(processName);
+          },
+        },
+        allocateHostPort() {
+          throw new Error("existing deployments should keep their port");
+        },
+        async waitForDeployment() {
+          throw new Error("port never opened");
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(capturedProcessName).not.toBeNull();
+    expect(stopCalls).toEqual([oldDeployment.containerName, capturedProcessName]);
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: "dep_old" });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "failed",
+      deploymentStatus: "failed",
+    });
+  });
+
+  test("does not attempt to stop the new process when startProcess itself fails (nothing was started)", async () => {
+    let stopCalled = false;
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Start Fail Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            return { releaseRef: "eveland/proj:rel", log: "" };
+          },
+          async startProcess() {
+            throw new Error("failed to start transient unit");
+          },
+          async stopProcess() {
+            stopCalled = true;
+          },
+        },
+        allocateHostPort() {
+          return 41111;
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(stopCalled).toBe(false);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "failed",
+      deploymentStatus: "failed",
+    });
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({ line: expect.stringContaining("failed to start transient unit") }),
+    );
+  });
+
+  test("keeps the original health-check error and separately logs a cleanup stopProcess failure", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Double Fail Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            return { releaseRef: "eveland/proj:rel", log: "" };
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "" };
+          },
+          async stopProcess() {
+            throw new Error("systemctl stop timed out");
+          },
+        },
+        allocateHostPort() {
+          return 41112;
+        },
+        async waitForDeployment() {
+          throw new Error("port 41112 did not open");
+        },
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "failed",
+      deploymentStatus: "failed",
+    });
+    // The cleanup failure is logged as its own line, before the generic
+    // "Job failed" line -- and the ORIGINAL health error, not the cleanup
+    // error, is what the job ultimately fails with.
+    await expect(store.listLogs(project.id, "runtime")).resolves.toEqual([
+      expect.objectContaining({ line: "Cleanup after failed deploy also failed: systemctl stop timed out" }),
+      expect.objectContaining({
+        line: expect.stringMatching(/port 41112 did not open/),
+      }),
+    ]);
+    const jobFailedLine = (await store.listLogs(project.id, "runtime"))[1]?.line ?? "";
+    expect(jobFailedLine).not.toContain("systemctl stop timed out");
   });
 
   test("injects WORKFLOW_POSTGRES_URL and NODE_ENV for a durable world in production", async () => {
@@ -831,6 +1002,67 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({ deploymentStatus: "running" });
   });
 
+  test("stops the restarted process when its health check fails after restart's own stop and start succeed", async () => {
+    const stopCalls: string[] = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Restart Cleanup Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_restart_fail",
+      deploymentId: "dep_restart_fail",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_restart_fail",
+      containerName: "eveland-restart-fail-container",
+      internalPort: 3000,
+      hostPort: 41113,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "" };
+          },
+          async stopProcess(processName) {
+            stopCalls.push(processName);
+          },
+        },
+        async waitForDeployment() {
+          throw new Error("restarted process never became healthy");
+        },
+      }),
+    ).resolves.toBe(true);
+
+    // Once for the restart's own stop of the running deployment, once more
+    // for cleanup of the freshly restarted (but unhealthy) replacement.
+    expect(stopCalls).toEqual([deployment.containerName, deployment.containerName]);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "failed",
+      deploymentStatus: "failed",
+    });
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({ line: expect.stringContaining("restarted process never became healthy") }),
+    );
+  });
+
   test("fails a restart_deployment job when there is no deployment to restart", async () => {
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();
@@ -898,6 +1130,69 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "failed" });
     await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
       expect.objectContaining({ line: expect.stringContaining("rel_missing") }),
+    );
+  });
+
+  test("fails a restart_deployment job loudly when the revision's source directory has vanished from disk, without stopping the running process first", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Vanished Source Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    // A real temp dir, then removed -- the revision's sourcePath row still
+    // points at it, but nothing exists there anymore on disk.
+    const vanishedSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-vanished-"));
+    await rm(vanishedSourcePath, { recursive: true, force: true });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: vanishedSourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordDeployment({
+      releaseId: "rel_vanished",
+      deploymentId: "dep_vanished",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_vanished",
+      containerName: "eveland-vanished-container",
+      internalPort: 3000,
+      hostPort: 41060,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    const stopCalls: string[] = [];
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            throw new Error("restart must never start a process when the source dir is missing");
+          },
+          async stopProcess(processName) {
+            stopCalls.push(processName);
+          },
+        },
+      }),
+    ).resolves.toBe(true);
+
+    // The missing-source check must run before the pre-restart stop, so a
+    // vanished source dir never takes the currently running process down.
+    expect(stopCalls).toEqual([]);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "failed" });
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({
+        line: expect.stringContaining(
+          `Source directory for revision ${revision.id} is missing: ${vanishedSourcePath}. Re-import the source and deploy instead.`,
+        ),
+      }),
     );
   });
 

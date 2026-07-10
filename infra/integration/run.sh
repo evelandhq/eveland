@@ -25,6 +25,10 @@ limactl shell "$VM" -- sudo bash -c "
   # git became a required binary would never pick it up without this guard.
   command -v git >/dev/null || apt-get install -y git
 
+  # Same reuse problem for the build user: a VM created before EVELAND_BUILD_USER
+  # became a required preflight check would never pick it up otherwise.
+  id -u eveland-build >/dev/null 2>&1 || useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
+
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
 

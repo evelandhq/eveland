@@ -37,6 +37,7 @@ export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: Nod
   return createSystemdAdapter({
     dataDir: path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data"),
     user: env.EVELAND_APP_USER ?? "eveland-app",
+    buildUser: env.EVELAND_BUILD_USER ?? "eveland-build",
     memoryMax: env.EVELAND_MEMORY_MAX ?? "2G",
     cpuQuota: env.EVELAND_CPU_QUOTA ?? "200%",
     buildSandbox: env.EVELAND_BUILD_SANDBOX === "none" ? "none" : "bwrap",

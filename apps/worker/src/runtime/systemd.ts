@@ -99,10 +99,12 @@ export function buildBwrapArgs(input: BwrapBuildInput): string[] {
     "--tmpfs", "/tmp",
     // Shadow the whole data dir (deployment-env secrets, sources, every other
     // project's build) before re-exposing only this build's own release dir
-    // and the shared npm cache. Without this, build-time npm/eve lifecycle
-    // scripts -- which run as root, untrusted, from the imported project's
-    // dependency tree -- could read every decrypted secret on the host via
-    // the `--ro-bind / /` above. bwrap applies mounts in argument order and
+    // and the shared npm cache. The build runs as the unprivileged build user,
+    // not root, so the root-owned 0600 deployment-env secret files are already
+    // unreadable through the `--ro-bind / /` above regardless of this mask --
+    // this tmpfs is defense-in-depth, hiding the paths the build user COULD
+    // otherwise read through that read-only bind: other projects' imported
+    // sources and build output. bwrap applies mounts in argument order and
     // creates bind destinations inside its own tmpfs, so the two --bind
     // entries below only re-open the subtrees they name.
     "--tmpfs", input.dataDir,
@@ -111,8 +113,24 @@ export function buildBwrapArgs(input: BwrapBuildInput): string[] {
     "--unshare-pid",
     "--die-with-parent",
     "--chdir", input.releaseDir,
+    // util-linux `runuser` (without -m/--preserve-environment) resets HOME to
+    // the build user's passwd entry once it switches users, so an execa-env
+    // HOME never survives into this sandbox -- it must be (re)injected here,
+    // after the switch. See the comment beside `buildEnv` in buildRelease for
+    // why HOME must point at releaseDir at all.
+    "--setenv", "HOME", input.releaseDir,
     "sh", "-lc", input.command,
   ];
+}
+
+/**
+ * Wraps an argv so `execa("runuser", ...)` runs it as `user` instead of the
+ * worker's own (root, in production) user. `--` stops `runuser` from parsing
+ * any of the wrapped command's own leading flags (e.g. bwrap's `--ro-bind`)
+ * as arguments to `runuser` itself.
+ */
+export function buildRunAsUserArgs(user: string, argv: string[]): string[] {
+  return ["-u", user, "--", ...argv];
 }
 
 export function buildEnvFileContent(env: Record<string, string>): string {
@@ -166,6 +184,8 @@ async function runSystemctl(subcommand: string, unit: string): Promise<void> {
 export type SystemdAdapterConfig = {
   dataDir: string;
   user: string;
+  /** Unix user the build (`npm ci`/`npx eve build`, i.e. third-party lifecycle scripts) runs as. */
+  buildUser: string;
   memoryMax: string;
   cpuQuota: string;
   buildSandbox: "bwrap" | "none";
@@ -214,18 +234,66 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       // own, more privileged user) must create and hand it over.
       await mkdir(cacheDir, { recursive: true });
 
+      // Hand the release and the shared npm cache to the unprivileged build user
+      // before any third-party lifecycle script (npm ci/npx eve build) runs. The
+      // npm cache may still be root-owned from installs that predate this change
+      // (or from an earlier build that failed before its own handover), so this
+      // chown cannot be conditional on prior ownership -- a recursive chown on
+      // every build is the accepted correctness-first cost of not tracking cache
+      // ownership state separately.
+      await execa("chown", ["-R", `${config.buildUser}:`, releaseDir]);
+      await execa("chown", ["-R", `${config.buildUser}:`, npmCacheDir]);
+
       const command = buildReleaseBuildCommand(input.commandContext);
+      // The build env execa passes must contain nothing secret: npm/eve
+      // lifecycle scripts run untrusted, from the imported project's own
+      // dependency tree, and can read this process's env via
+      // /proc/self/environ regardless of the unprivileged build user --
+      // execa extends process.env by default, so extendEnv: false plus this
+      // explicit allowlist is what actually keeps APP_SECRET_KEY,
+      // DATABASE_URL, WORKFLOW_POSTGRES_URL etc. out of the build. PATH and
+      // npm_config_cache both survive runuser's user switch unmodified, so
+      // they can ride here.
+      //
+      // HOME is deliberately NOT included here. It still must end up set to
+      // releaseDir rather than the build user's real passwd-entry home: the
+      // build user cannot use root's HOME (no read access to it), npm
+      // consults $HOME/.npmrc during install, and lifecycle scripts commonly
+      // write caches under $HOME -- and even the build user's own real home
+      // is useless in bwrap mode, since only releaseDir and the npm cache are
+      // bound read-write there, so a lifecycle script writing e.g. ~/.cache
+      // under any other HOME would hit the read-only rootfs. But util-linux
+      // `runuser` (without -m/--preserve-environment) always resets HOME (and
+      // SHELL/USER/LOGNAME) to the target user's passwd entry once it
+      // switches users, so an execa-env HOME here would be silently discarded
+      // -- it must instead be injected AFTER the switch: bwrap's own
+      // `--setenv HOME` (see buildBwrapArgs) in bwrap mode, or an
+      // `env HOME=...` wrapper in none mode, below.
+      const buildEnv = {
+        PATH: process.env.PATH ?? "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        npm_config_cache: npmCacheDir,
+      };
       const execution =
         config.buildSandbox === "bwrap"
-          ? await execa("bwrap", buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command }), {
-              all: true,
-              env: { npm_config_cache: npmCacheDir },
-            })
-          : await execa("sh", ["-lc", command], {
-              all: true,
-              cwd: releaseDir,
-              env: { npm_config_cache: npmCacheDir },
-            });
+          ? // Running bwrap as the unprivileged build user relies on the same
+            // AppArmor grant the deployed agent's own sandbox already requires
+            // (/etc/apparmor.d/bwrap, userns) -- see docs/deploy/linux.md for
+            // the host provisioning that grants it; not re-documented here.
+            await execa(
+              "runuser",
+              buildRunAsUserArgs(config.buildUser, ["bwrap", ...buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command })]),
+              { all: true, env: buildEnv, extendEnv: false },
+            )
+          : await execa(
+              "runuser",
+              buildRunAsUserArgs(config.buildUser, ["env", `HOME=${releaseDir}`, "sh", "-lc", command]),
+              {
+                all: true,
+                cwd: releaseDir,
+                env: buildEnv,
+                extendEnv: false,
+              },
+            );
 
       // The unit's fixed service user needs to own the release dir: eve's default
       // local workflow world writes .workflow-data/ into the working directory.

@@ -114,7 +114,10 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
 
   // 5. Required binaries. `git` is required unconditionally -- the worker
   // shells out to `git clone` for import_source jobs (source/importer.ts).
-  const requiredBinaries = ["systemd-run", "systemctl", "node", "git", ...(deps.env.EVELAND_BUILD_SANDBOX === "none" ? [] : ["bwrap"])];
+  // `runuser` is also unconditional: the build itself now runs under it
+  // (systemd.ts's buildRelease), not just check 9's traversal probe below --
+  // that holds even when EVELAND_BUILD_SANDBOX=none, unlike `bwrap`.
+  const requiredBinaries = ["systemd-run", "systemctl", "node", "git", "runuser", ...(deps.env.EVELAND_BUILD_SANDBOX === "none" ? [] : ["bwrap"])];
   for (const bin of requiredBinaries) {
     if (!(await deps.commandExists(bin))) {
       issues.push(`Required binary "${bin}" was not found on PATH. Install it before starting the worker.`);
@@ -126,6 +129,16 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   const appUserExists = await deps.userExists(appUser);
   if (!appUserExists) {
     issues.push(`App user "${appUser}" does not exist. Create it (e.g. "useradd --system --no-create-home ${appUser}") before starting the worker.`);
+  }
+
+  // 6b. The build user exists -- npm ci/npx eve build's third-party lifecycle
+  // scripts now run as this user via `runuser` (systemd.ts's buildRelease),
+  // not as the worker's own root user.
+  const buildUser = deps.env.EVELAND_BUILD_USER ?? "eveland-build";
+  if (!(await deps.userExists(buildUser))) {
+    issues.push(
+      `Build user "${buildUser}" does not exist (configure via EVELAND_BUILD_USER). Create it (e.g. "useradd --system --home-dir /var/lib/${buildUser} --create-home ${buildUser}") before starting the worker.`,
+    );
   }
 
   // 7. /workspace exists and is a directory -- bwrap's bind destination (see sandbox-verify.ts);

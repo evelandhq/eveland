@@ -8,10 +8,11 @@
   packaged bubblewrap ships **no** AppArmor profile, and Ubuntu sets
   `kernel.apparmor_restrict_unprivileged_userns=1` by default, which blocks an
   *unconfined non-root* process from creating a user namespace (root is unaffected).
-  The build sandbox described under "How a deployment runs" runs as root, so it
-  never hits this — but the agent exec sandbox (below) runs as the unprivileged
-  deployment user and needs an AppArmor profile that grants `bwrap` the `userns`
-  permission:
+  Both the build sandbox (described under "How a deployment runs", which runs
+  `bwrap` as the unprivileged build user, not root) and the agent exec sandbox
+  (below, which runs as the unprivileged deployment user) are unconfined non-root
+  processes creating a user namespace, so both need an AppArmor profile that
+  grants `bwrap` the `userns` permission:
 
   ```
   abi <abi/4.0>,
@@ -37,6 +38,10 @@
   the same role eve's Docker backend fills by baking `/workspace` into its base
   image.
 - A service user for deployments: `useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app`.
+- A second service user for builds: `useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build`.
+  Dependency lifecycle scripts (`npm ci`/`npx eve build`) run as this user inside
+  the build sandbox, not as the worker's own root user (see the build-trust note
+  under "Worker configuration" below).
 - The worker process must run as root (it drives `systemd-run`, `systemctl`,
   and `chown`). Run it as a systemd service itself.
 - `git`: the worker shells out to `git clone` for `import_source` jobs.
@@ -65,11 +70,13 @@ one side unable to find files the other wrote.
 Under `EVELAND_RUNTIME=systemd`, the worker refuses to start until every host
 prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
 systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path, the
-`systemd-run`, `systemctl`, `node`, `git` and `bwrap` binaries on `PATH` (`bwrap` is
-skipped when `EVELAND_BUILD_SANDBOX=none`), the app user (`EVELAND_APP_USER`,
-default `eveland-app`) existing, `/workspace` existing as a directory, the
-vendored sandbox backend being built (`pnpm --filter @eveland/sandbox-bwrap
-build`), and the app user being able to traverse the data dir. It reports
+`systemd-run`, `systemctl`, `node`, `git` and `runuser` binaries on `PATH`
+unconditionally, plus `bwrap` unless `EVELAND_BUILD_SANDBOX=none`, the app user
+(`EVELAND_APP_USER`, default `eveland-app`) and the build user
+(`EVELAND_BUILD_USER`, default `eveland-build`) existing, `/workspace` existing
+as a directory, the vendored sandbox backend being built (`pnpm --filter
+@eveland/sandbox-bwrap build`), and the app user being able to traverse the
+data dir. It reports
 every failing check at once instead of stopping at the first — the same
 one-complete-punch-list approach as the sandbox self-check under "Agent exec
 sandbox" below.
@@ -83,6 +90,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | --- | --- | --- |
 | `EVELAND_RUNTIME` | `docker` | Set `systemd` on the deploy host. |
 | `EVELAND_APP_USER` | `eveland-app` | Unix user deployments run as. |
+| `EVELAND_BUILD_USER` | `eveland-build` | Unix user the build (`npm ci`/`npx eve build`, i.e. third-party lifecycle scripts) runs as. |
 | `EVELAND_MEMORY_MAX` | `2G` | systemd `MemoryMax` per deployment. |
 | `EVELAND_CPU_QUOTA` | `200%` | systemd `CPUQuota` per deployment. |
 | `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
@@ -96,14 +104,26 @@ runs it against the Lima VM as part of the integration smoke test.
 
 Build-trust note: building a project executes that project's dependency
 lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
-sandbox as root. Imported projects — and their full dependency trees — are
-trusted only up to that sandbox's boundary (see `EVELAND_BUILD_SANDBOX` above
-and the warning below): nothing outside `releaseDir` and the npm cache is
-writable, and the eveland data dir (other projects' builds, sources, and
-decrypted secret env files) is hidden entirely. The rest of the host
-filesystem remains read-only visible to the build, which runs as root with
-network access — dropping the build uid via `bwrap --uid` is a planned
-follow-up hardening.
+sandbox as the unprivileged build user (`EVELAND_BUILD_USER`, default
+`eveland-build`), not as root. Imported projects — and their full dependency
+trees — are trusted only up to that sandbox's boundary (see
+`EVELAND_BUILD_SANDBOX` above and the warning below): nothing outside
+`releaseDir` and the npm cache is writable, and the eveland data dir (other
+projects' builds, sources, and decrypted secret env files) is hidden entirely
+— the bwrap mask applies regardless of which user is inside it. The rest of
+the host filesystem remains read-only visible to the build, which still has
+network access, but because the build no longer runs as root, its lifecycle
+scripts also lose root's read access to that read-only host filesystem.
+
+Worker secrets are hidden entirely too, but not by the filesystem mask above:
+the worker process's own environment (`APP_SECRET_KEY`, `DATABASE_URL`,
+`WORKFLOW_POSTGRES_URL`, and anything else on its `process.env`) would
+otherwise be inherited by the build subprocess and readable by lifecycle
+scripts via `/proc/self/environ`, regardless of the unprivileged build user or
+the bwrap mask. Both build modes (`bwrap` and `none`) instead build the
+subprocess's environment from a fixed allowlist — `PATH`, `HOME`, and
+`npm_config_cache` — rather than inheriting the worker's own environment, so
+no worker secret ever reaches the build.
 
 > **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
 >
@@ -187,8 +207,9 @@ first deploy: `npx --package=@workflow/world-postgres bootstrap`.
 ## How a deployment runs
 
 - Build: source is copied to `$EVELAND_DATA_DIR/builds/<project>/<release>`, then
-  `npm ci && npx eve build` runs inside bubblewrap (read-only rootfs, writable
-  release dir + shared npm cache, PID namespace).
+  `npm ci && npx eve build` runs as the unprivileged build user (`EVELAND_BUILD_USER`)
+  inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
+  PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`
   with `User=eveland-app`, `ProtectSystem=strict`,
   `ReadWritePaths=<releaseDir>` and a second `ReadWritePaths=<sandboxCacheDir>` for the

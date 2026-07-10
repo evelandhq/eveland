@@ -110,25 +110,32 @@ export function createPostgresStore(database: Database): Store {
     },
 
     async deleteProject(projectId) {
-      await db.delete(logs).where(eq(logs.projectId, projectId));
-      await db.delete(deployments).where(eq(deployments.projectId, projectId));
-      await db.delete(releases).where(eq(releases.projectId, projectId));
-      const relatedRevisions = await db.select({ id: sourceRevisions.id }).from(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
-      for (const revision of relatedRevisions) {
-        await db.delete(sourceFiles).where(eq(sourceFiles.revisionId, revision.id));
-      }
-      await db.delete(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
-      const relatedSessions = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.projectId, projectId));
-      for (const session of relatedSessions) {
-        await db.delete(modelUsageEvents).where(eq(modelUsageEvents.sessionId, session.id));
-        await db.delete(sessionEvents).where(eq(sessionEvents.sessionId, session.id));
-      }
-      await db.delete(sessions).where(eq(sessions.projectId, projectId));
-      await db.delete(schedules).where(eq(schedules.projectId, projectId));
-      await db.delete(jobs).where(eq(jobs.projectId, projectId));
-      await db.delete(secrets).where(eq(secrets.projectId, projectId));
-      const deleted = await db.delete(projects).where(eq(projects.id, projectId)).returning({ id: projects.id });
-      return deleted.length > 0;
+      // Wrapped in a transaction: this cascade is ~12 sequential statements, and
+      // a crash partway through previously left a half-deleted project -- e.g.
+      // the delete_project job's own row (deleted a few statements before the
+      // projects row) gone while the projects row it targets survives, losing
+      // the retry trail. All-or-nothing keeps a crash mid-cascade a no-op.
+      return db.transaction(async (tx) => {
+        await tx.delete(logs).where(eq(logs.projectId, projectId));
+        await tx.delete(deployments).where(eq(deployments.projectId, projectId));
+        await tx.delete(releases).where(eq(releases.projectId, projectId));
+        const relatedRevisions = await tx.select({ id: sourceRevisions.id }).from(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
+        for (const revision of relatedRevisions) {
+          await tx.delete(sourceFiles).where(eq(sourceFiles.revisionId, revision.id));
+        }
+        await tx.delete(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
+        const relatedSessions = await tx.select({ id: sessions.id }).from(sessions).where(eq(sessions.projectId, projectId));
+        for (const session of relatedSessions) {
+          await tx.delete(modelUsageEvents).where(eq(modelUsageEvents.sessionId, session.id));
+          await tx.delete(sessionEvents).where(eq(sessionEvents.sessionId, session.id));
+        }
+        await tx.delete(sessions).where(eq(sessions.projectId, projectId));
+        await tx.delete(schedules).where(eq(schedules.projectId, projectId));
+        await tx.delete(jobs).where(eq(jobs.projectId, projectId));
+        await tx.delete(secrets).where(eq(secrets.projectId, projectId));
+        const deleted = await tx.delete(projects).where(eq(projects.id, projectId)).returning({ id: projects.id });
+        return deleted.length > 0;
+      });
     },
 
     async listSecrets(projectId) {
