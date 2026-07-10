@@ -149,9 +149,11 @@ Reclaiming space today requires manual intervention: identify which sessions are
   *unconfined non-root* process calling `bwrap` fails with
   `bwrap: setting up uid map: Permission denied` unless the host loads an AppArmor
   profile that grants `bwrap` the `userns` permission. Root is unaffected by this
-  sysctl, which is why a root-only build sandbox never hits it — only sandboxes that
-  run as an unprivileged user, like this one, do. See
-  `docs/deploy/linux.md` for the profile and the install command.
+  sysctl, but nothing here runs as root: eveland's systemd runtime runs both this
+  backend (as the deployment user) and its own build sandbox (as a separate,
+  unprivileged build user) as unconfined non-root userns creators, so both need the
+  same AppArmor grant. See `docs/deploy/linux.md` for the profile and the install
+  command.
 - `/workspace` must pre-exist on the host as an empty directory. `bwrap` binds each
   session directory onto `/workspace` inside the sandbox but cannot create that mount
   destination itself, because the host root is bind-mounted read-only first

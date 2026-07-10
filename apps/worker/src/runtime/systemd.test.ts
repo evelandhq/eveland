@@ -181,6 +181,7 @@ describe("buildBwrapArgs", () => {
       "--unshare-pid",
       "--die-with-parent",
       "--chdir", "/var/lib/eveland-data/builds/proj_123/rel_789",
+      "--setenv", "HOME", "/var/lib/eveland-data/builds/proj_123/rel_789",
       "sh", "-lc", "npm ci && npx eve build",
     ]);
   });
@@ -429,12 +430,19 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
     // shapes; cast the found call to the (file, args, options) shape actually used
     // by every call site in systemd.ts so the destructure below type-checks.
     const [, runuserArgs, runuserOptions] = calls[runuserIndex]! as unknown as [string, string[], Record<string, unknown>];
-    expect(runuserArgs).toEqual(["-u", "eveland-build", "--", "sh", "-lc", "npm ci && npx eve build"]);
+    // HOME rides as an `env` wrapper inside the runuser'd argv, not as an execa
+    // env var: runuser (without -m) resets HOME to the build user's own passwd
+    // entry after the user switch, so an execa-env HOME would never survive.
+    expect(runuserArgs).toEqual(["-u", "eveland-build", "--", "env", `HOME=${releaseDir}`, "sh", "-lc", "npm ci && npx eve build"]);
     expect(runuserOptions).toMatchObject({
       all: true,
       cwd: releaseDir,
-      env: { npm_config_cache: npmCacheDir, HOME: releaseDir },
+      env: { npm_config_cache: npmCacheDir },
+      extendEnv: false,
     });
+    // The execa env must never carry HOME (it would be discarded by runuser
+    // anyway) nor any worker secret -- see the dedicated secrecy test below.
+    expect(runuserOptions.env).not.toHaveProperty("HOME");
   });
 
   test("wraps the bwrap invocation with runuser in bwrap mode, keeping the inner bwrap argv unchanged", async () => {
@@ -466,10 +474,64 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
       "bwrap",
       ...buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command: "npm ci && npx eve build" }),
     ]);
+    // buildBwrapArgs (asserted above) already carries `--setenv HOME
+    // <releaseDir>` inside the sandbox -- runuser (without -m) would discard
+    // an execa-env HOME after the user switch, so it must not ride here.
     expect(options).toMatchObject({
       all: true,
-      env: { npm_config_cache: npmCacheDir, HOME: releaseDir },
+      env: { npm_config_cache: npmCacheDir },
+      extendEnv: false,
     });
+    expect((options.env as Record<string, unknown>)).not.toHaveProperty("HOME");
+  });
+
+  test("passes extendEnv:false and only PATH/npm_config_cache in the build env, excluding worker secrets even when process.env carries them", async () => {
+    vi.mocked(execa).mockClear();
+    const secretEnvKeys = ["APP_SECRET_KEY", "DATABASE_URL", "WORKFLOW_POSTGRES_URL"] as const;
+    const originalValues = secretEnvKeys.map((key) => process.env[key]);
+    secretEnvKeys.forEach((key) => {
+      process.env[key] = `secret-value-for-${key}`;
+    });
+
+    try {
+      const npmCacheDir = path.resolve("/var/lib/eveland-data", "npm-cache");
+
+      for (const buildSandbox of ["bwrap", "none"] as const) {
+        vi.mocked(execa).mockClear();
+        const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox });
+
+        await adapter.buildRelease({
+          projectId: "proj_123",
+          releaseId: "rel_789",
+          sourcePath: "/data/sources/proj_123",
+          buildDir: "/data/builds/proj_123/rel_789",
+          commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+        });
+
+        const calls = vi.mocked(execa).mock.calls;
+        const runuserCall = calls.find(([cmd]) => cmd === "runuser");
+        expect(runuserCall).toBeDefined();
+        const [, , options] = runuserCall! as unknown as [string, string[], Record<string, unknown>];
+
+        expect(options.extendEnv).toBe(false);
+        expect(options.env).toEqual({
+          PATH: process.env.PATH,
+          npm_config_cache: npmCacheDir,
+        });
+        for (const key of secretEnvKeys) {
+          expect(options.env).not.toHaveProperty(key);
+        }
+      }
+    } finally {
+      secretEnvKeys.forEach((key, index) => {
+        const original = originalValues[index];
+        if (original === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = original;
+        }
+      });
+    }
   });
 });
 

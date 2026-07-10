@@ -115,6 +115,16 @@ the host filesystem remains read-only visible to the build, which still has
 network access, but because the build no longer runs as root, its lifecycle
 scripts also lose root's read access to that read-only host filesystem.
 
+Worker secrets are hidden entirely too, but not by the filesystem mask above:
+the worker process's own environment (`APP_SECRET_KEY`, `DATABASE_URL`,
+`WORKFLOW_POSTGRES_URL`, and anything else on its `process.env`) would
+otherwise be inherited by the build subprocess and readable by lifecycle
+scripts via `/proc/self/environ`, regardless of the unprivileged build user or
+the bwrap mask. Both build modes (`bwrap` and `none`) instead build the
+subprocess's environment from a fixed allowlist — `PATH`, `HOME`, and
+`npm_config_cache` — rather than inheriting the worker's own environment, so
+no worker secret ever reaches the build.
+
 > **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
 >
 > Every deployment record stores the `runtimeKind` (`docker` or `systemd`) of

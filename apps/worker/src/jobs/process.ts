@@ -328,6 +328,11 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         throw error;
       }
 
+      // Deliberately outside the try above, unlike build_deploy's matching
+      // recordDeployment block: this process is already tracked by an
+      // existing deployment row, so a store failure here must not stop a
+      // healthy, known process the way build_deploy must reap its own
+      // untracked new one.
       await store.updateProjectState(job.projectId, { deploymentStatus: "running" });
       await store.appendLog({
         projectId: job.projectId,
