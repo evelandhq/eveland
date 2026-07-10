@@ -80,9 +80,10 @@ function defaultDeps(env: NodeJS.ProcessEnv): PreflightDeps {
  * checks 8/9 gracefully no-op when their own inputs are missing (check 8 via
  * its own try/catch below; check 9 skips entirely when EVELAND_DATA_DIR is
  * unset or not absolute, since there's nothing safe to mkdir -- check 4
- * already reported either case), and check 9's traversal probe is
- * skipped when check 6 (app user) already failed -- there's no user to probe
- * traversal as.
+ * already reported either case), and check 9's two traversal probes are each
+ * skipped independently when their own user is missing -- the app-user probe
+ * when check 6 (app user) failed, the build-user probe when check 6b (build
+ * user) failed -- there's no user to probe traversal as either way.
  */
 export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promise<string[]> {
   const issues: string[] = [];
@@ -135,7 +136,8 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   // scripts now run as this user via `runuser` (systemd.ts's buildRelease),
   // not as the worker's own root user.
   const buildUser = deps.env.EVELAND_BUILD_USER ?? "eveland-build";
-  if (!(await deps.userExists(buildUser))) {
+  const buildUserExists = await deps.userExists(buildUser);
+  if (!buildUserExists) {
     issues.push(
       `Build user "${buildUser}" does not exist (configure via EVELAND_BUILD_USER). Create it (e.g. "useradd --system --home-dir /var/lib/${buildUser} --create-home ${buildUser}") before starting the worker.`,
     );
@@ -176,6 +178,19 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
         `App user "${appUser}" cannot traverse the data dir "${dataDir}". Releases are chowned to that user under ` +
           `<dataDir>/builds, but a non-traversable ancestor (e.g. mode 0700) still blocks the unit at start -- ` +
           `ensure every ancestor directory grants execute/traverse permission to "${appUser}" (e.g. "chmod o+x" each ancestor).`,
+      );
+    }
+    // Sibling probe for the build user: same skip semantics (no build user to probe as
+    // when check 6b failed; no dir to probe when mkdir did), independent of whether the
+    // app-user probe above passed. The build runs as this user under <dataDir>/builds
+    // and the npm cache, so a non-traversable ancestor fails the first build with a
+    // confusing npm EACCES rather than a clear preflight message.
+    if (dataDirCreated && buildUserExists && !(await deps.canTraverseAs(buildUser, dataDir))) {
+      issues.push(
+        `Build user "${buildUser}" cannot traverse the data dir "${dataDir}". The build runs as that user under ` +
+          `<dataDir>/builds and the shared npm cache, but a non-traversable ancestor (e.g. mode 0700) fails the ` +
+          `first build with a confusing npm EACCES -- ensure every ancestor directory grants execute/traverse ` +
+          `permission to "${buildUser}" (e.g. "chmod o+x" each ancestor).`,
       );
     }
   }

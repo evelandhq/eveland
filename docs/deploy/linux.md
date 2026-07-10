@@ -123,9 +123,19 @@ the worker process's own environment (`APP_SECRET_KEY`, `DATABASE_URL`,
 otherwise be inherited by the build subprocess and readable by lifecycle
 scripts via `/proc/self/environ`, regardless of the unprivileged build user or
 the bwrap mask. Both build modes (`bwrap` and `none`) instead build the
-subprocess's environment from a fixed allowlist — `PATH`, `HOME`, and
-`npm_config_cache` — rather than inheriting the worker's own environment, so
-no worker secret ever reaches the build.
+subprocess's environment from a fixed allowlist — `PATH` and `npm_config_cache`
+— rather than inheriting the worker's own environment, so no worker secret
+ever reaches the build. `HOME` is not part of that allowlist: `runuser`
+(without `-m`/`--preserve-environment`) resets `HOME`, `SHELL`, `USER` and
+`LOGNAME` to the build user's own passwd entry as part of the user switch, so
+an execa-supplied `HOME` would just be discarded — it is instead injected
+*after* the switch, pointed at the release directory, via bwrap's own
+`--setenv HOME` in `bwrap` mode or an `env HOME=...` wrapper in `none` mode.
+The allowlist also deliberately drops operator proxy configuration
+(`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`, `npm_config_registry`): a build on a
+host that requires a proxy to reach the npm registry needs a mirror reachable
+without env-borne proxy config today; passing those through under an explicit
+opt-in is possible future work.
 
 > **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
 >
