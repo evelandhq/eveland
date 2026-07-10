@@ -39,7 +39,7 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
     await store.completeJob(job.id);
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     await store.failJob(job.id, message);
     // A failed import never touches the running container, so it must not report a
     // live deployment as failed; only deploy/restart jobs change deployment status.
@@ -198,38 +198,53 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // then appends the per-project suffix, since ProcessStartInput carries no
       // projectId for the adapter to recompute it from.
       const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
-      const started = await runtime.startProcess({
-        processName,
-        releaseRef: build.releaseRef,
-        port: hostPort,
-        env,
-        commandContext,
-        sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
-      });
-      await (options.waitForDeployment ?? waitForHttpHealth)({
-        host: "127.0.0.1",
-        port: hostPort,
-        timeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
-      });
+      // Tracks the process this job itself started, distinct from
+      // `currentDeployment`'s old process stopped above -- only the NEW
+      // process is this block's responsibility to clean up.
+      let startedProcess: string | null = null;
+      try {
+        const started = await runtime.startProcess({
+          processName,
+          releaseRef: build.releaseRef,
+          port: hostPort,
+          env,
+          commandContext,
+          sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+        });
+        startedProcess = processName;
+        await (options.waitForDeployment ?? waitForHttpHealth)({
+          host: "127.0.0.1",
+          port: hostPort,
+          timeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
+        });
 
-      const deployment = await store.recordDeployment({
-        releaseId,
-        deploymentId,
-        projectId: job.projectId,
-        sourceRevisionId: revision.id,
-        imageTag: build.releaseRef,
-        containerName: processName,
-        internalPort: started.internalPort,
-        hostPort,
-        runtimeKind: runtime.name,
-      });
-      await store.updateProjectState(job.projectId, { status: "deployed", deploymentStatus: "running" });
-      await store.appendLog({
-        projectId: job.projectId,
-        deploymentId: deployment.id,
-        type: "deploy",
-        line: `Deployment running on 127.0.0.1:${hostPort}.`,
-      });
+        const deployment = await store.recordDeployment({
+          releaseId,
+          deploymentId,
+          projectId: job.projectId,
+          sourceRevisionId: revision.id,
+          imageTag: build.releaseRef,
+          containerName: processName,
+          internalPort: started.internalPort,
+          hostPort,
+          runtimeKind: runtime.name,
+        });
+        await store.updateProjectState(job.projectId, { status: "deployed", deploymentStatus: "running" });
+        await store.appendLog({
+          projectId: job.projectId,
+          deploymentId: deployment.id,
+          type: "deploy",
+          line: `Deployment running on 127.0.0.1:${hostPort}.`,
+        });
+      } catch (error) {
+        if (startedProcess) {
+          // The systemd adapter's stopProcess already removes the decrypted
+          // EnvironmentFile and the unit's exit frees the port -- stopping the
+          // process we just started IS the full cleanup, nothing further.
+          await stopStartedProcessOnFailure(store, job.projectId, runtime, startedProcess, "deploy");
+        }
+        throw error;
+      }
       return;
     }
     case "restart_deployment": {
@@ -273,19 +288,33 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       await adapter.stopProcess(deployment.containerName);
       // Same pairing build_deploy uses -- see the comment there.
       const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
-      await adapter.startProcess({
-        processName: deployment.containerName,
-        releaseRef: release.imageTag,
-        port: deployment.hostPort,
-        env,
-        commandContext,
-        sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
-      });
-      await (options.waitForDeployment ?? waitForHttpHealth)({
-        host: "127.0.0.1",
-        port: deployment.hostPort,
-        timeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
-      });
+      // Tracks whether the restart's own startProcess (above stop notwithstanding)
+      // actually came up, so a startProcess failure -- nothing running under this
+      // name -- doesn't trigger a pointless (or misleading) extra stop call.
+      let restarted = false;
+      try {
+        await adapter.startProcess({
+          processName: deployment.containerName,
+          releaseRef: release.imageTag,
+          port: deployment.hostPort,
+          env,
+          commandContext,
+          sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+        });
+        restarted = true;
+        await (options.waitForDeployment ?? waitForHttpHealth)({
+          host: "127.0.0.1",
+          port: deployment.hostPort,
+          timeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
+        });
+      } catch (error) {
+        if (restarted) {
+          // A restart that cannot come up healthy must not leave a
+          // crash-looping unit behind while the project reads failed.
+          await stopStartedProcessOnFailure(store, job.projectId, adapter, deployment.containerName, "restart");
+        }
+        throw error;
+      }
 
       await store.updateProjectState(job.projectId, { deploymentStatus: "running" });
       await store.appendLog({
@@ -343,6 +372,32 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       return;
     }
   }
+}
+
+// Shared by build_deploy and restart_deployment: stops a process that this job
+// itself just started but that never became healthy. Cleanup failure is only
+// ever logged, never thrown, so it can never mask the original deploy/restart
+// error that triggered the cleanup.
+async function stopStartedProcessOnFailure(
+  store: Store,
+  projectId: string,
+  adapter: RuntimeAdapter,
+  processName: string,
+  phase: "deploy" | "restart",
+): Promise<void> {
+  try {
+    await adapter.stopProcess(processName);
+  } catch (cleanupError) {
+    await store.appendLog({
+      projectId,
+      type: "runtime",
+      line: `Cleanup after failed ${phase} also failed: ${errorMessage(cleanupError)}`,
+    });
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // Shared by build_deploy and restart_deployment. Durable-workflow gating is
