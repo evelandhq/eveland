@@ -1,5 +1,6 @@
 import type { Context, Hono } from "hono";
 import { projectIdFromShortId, projectShortId } from "@eveland/shared/ids";
+import { normalizePublicOrigin } from "@eveland/shared/public-origin";
 import type { Store } from "./store.js";
 
 // The public surface of an agent is the eve contract only: the /eve/v1 session
@@ -25,7 +26,7 @@ const hopByHopHeaders = [
 const DEFAULT_UPSTREAM_HEADER_TIMEOUT_MS = 15_000;
 
 export interface AgentGatewayOptions {
-  readonly upstreamHeaderTimeoutMs?: number;
+  upstreamHeaderTimeoutMs?: number;
 }
 
 /**
@@ -41,12 +42,17 @@ export function registerAgentGateway(app: Hono, store: Store, options: AgentGate
   app.get("/.well-known/eve/agents.json", async (c) => {
     const origin = resolvePublicOrigin(c);
     const projects = await store.listProjects();
-    const agents = projects
-      .filter((project) => project.deploymentStatus === "running")
-      .map((project) => {
-        const shortId = projectShortId(project.id);
-        return { id: shortId, name: project.name, url: `${origin}/a/${shortId}` };
-      });
+    const agents: Array<{ id: string; name: string; url: string }> = [];
+    // Same liveness source as the /a/* gateway below, so every listed agent is
+    // one the gateway will actually proxy instead of answering 503.
+    for (const project of projects) {
+      const deployment = await store.getCurrentDeployment(project.id);
+      if (deployment?.status !== "running") {
+        continue;
+      }
+      const shortId = projectShortId(project.id);
+      agents.push({ id: shortId, name: project.name, url: `${origin}/a/${shortId}` });
+    }
     return c.json({ agents }, 200, { "access-control-allow-origin": "*" });
   });
 
@@ -82,8 +88,20 @@ export function registerAgentGateway(app: Hono, store: Store, options: AgentGate
 }
 
 function resolvePublicOrigin(c: Context): string {
-  const configured = process.env.EVELAND_PUBLIC_ORIGIN?.trim().replace(/\/+$/, "");
-  return configured || new URL(c.req.url).origin;
+  const configured = normalizePublicOrigin(process.env.EVELAND_PUBLIC_ORIGIN);
+  if (configured) {
+    return configured;
+  }
+  // Without EVELAND_PUBLIC_ORIGIN the request itself is the only origin signal,
+  // and behind a TLS-terminating proxy the socket says http:// — trust the
+  // proxy's forwarded headers first (first value; proxies append in a chain).
+  const requestUrl = new URL(c.req.url);
+  const forwardedHost = c.req.header("x-forwarded-host")?.split(",")[0]?.trim();
+  if (!forwardedHost) {
+    return requestUrl.origin;
+  }
+  const forwardedProto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim();
+  return `${forwardedProto || requestUrl.protocol.replace(":", "")}://${forwardedHost}`;
 }
 
 function splitAgentPath(pathname: string): [shortId: string, agentPath: string] {
@@ -172,7 +190,12 @@ async function proxyRequest(c: Context, upstreamUrl: string, prefix: string, hea
       ...(body ? { duplex: "half" } : {}),
     } as RequestInit);
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    // The raw error names the internal 127.0.0.1:<hostPort> target, which must
+    // not reach public callers; the full error goes to the server log instead.
+    console.error(`agent gateway: upstream fetch failed for ${upstreamUrl}`, error);
+    const detail = headerDeadline.signal.aborted
+      ? "Upstream did not send response headers in time"
+      : "Upstream connection failed";
     return c.json({ error: "Agent deployment is unreachable", detail }, 502);
   } finally {
     clearTimeout(timer);

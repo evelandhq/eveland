@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./ids": "./src/ids.ts",
+    "./public-origin": "./src/public-origin.ts",
     "./runtime": "./src/runtime.ts",
     "./secrets": "./src/secrets.ts",
     "./source": "./src/source.ts",

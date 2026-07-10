@@ -137,18 +137,26 @@ describe("agent gateway", () => {
     const response = await app.request(`/a/${shortId}/eve/v1/session`, { method: "POST", body: "{}" });
 
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toMatchObject({ error: "Agent deployment is unreachable" });
+    // The detail must stay generic: the raw fetch error names the internal
+    // 127.0.0.1:<hostPort> target.
+    await expect(response.json()).resolves.toEqual({
+      error: "Agent deployment is unreachable",
+      detail: "Upstream connection failed",
+    });
   });
 
   test("returns 502 when the deployment accepts the socket but never sends headers", async () => {
     // Handler never responds, so the connection hangs past the header deadline.
     const port = await startUpstream(() => {});
-    const { app, shortId } = await createDeployedAgent(port, { agentGatewayUpstreamTimeoutMs: 150 });
+    const { app, shortId } = await createDeployedAgent(port, { agentGatewayUpstreamHeaderTimeoutMs: 150 });
 
     const response = await app.request(`/a/${shortId}/eve/v1/session`, { method: "POST", body: "{}" });
 
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toMatchObject({ error: "Agent deployment is unreachable" });
+    await expect(response.json()).resolves.toEqual({
+      error: "Agent deployment is unreachable",
+      detail: "Upstream did not send response headers in time",
+    });
   });
 
   test("rewrites relative redirect locations back under the agent prefix", async () => {
@@ -204,6 +212,31 @@ describe("agent directory", () => {
 
     const body = (await response.json()) as { agents: Array<{ url: string }> };
     expect(body.agents[0]?.url).toBe(`https://eve.example.com/a/${shortId}`);
+  });
+
+  test("derives agent urls from x-forwarded-proto/host when no public origin is set", async () => {
+    const port = await startUpstream((_req, res) => res.end());
+    const { app, shortId } = await createDeployedAgent(port);
+
+    const response = await app.request("http://gateway.internal/.well-known/eve/agents.json", {
+      headers: { "x-forwarded-proto": "https", "x-forwarded-host": "eve.example.com, gateway.internal" },
+    });
+
+    const body = (await response.json()) as { agents: Array<{ url: string }> };
+    expect(body.agents[0]?.url).toBe(`https://eve.example.com/a/${shortId}`);
+  });
+
+  test("uses the same liveness source as the gateway, not the project status field", async () => {
+    const store = createMemoryStore();
+    // Project claims to be running but has no deployment the gateway could
+    // proxy to; listing it would advertise an agent that answers 503.
+    const project = await store.createProject({ name: "Stale Status Agent", importKind: "zip" });
+    await store.updateProjectState(project.id, { deploymentStatus: "running" });
+    const app = createApp(store);
+
+    const response = await app.request("/.well-known/eve/agents.json");
+
+    await expect(response.json()).resolves.toEqual({ agents: [] });
   });
 
   test("returns an empty directory when nothing is deployed", async () => {

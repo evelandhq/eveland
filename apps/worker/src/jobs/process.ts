@@ -1,6 +1,7 @@
 import type { Store } from "@eveland/api/store";
 import type { Job } from "@eveland/api/types";
 import { createId, projectShortId } from "@eveland/shared/ids";
+import { normalizePublicOrigin } from "@eveland/shared/public-origin";
 import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eveland/shared/secrets";
 import { DURABLE_WORKFLOW_WORLD, isDurableWorkflowWorld } from "@eveland/shared/source";
 import net from "node:net";
@@ -449,10 +450,12 @@ async function composeDeploymentEnv(
 }
 
 // Defaults to the API's local address so a box with no EVELAND_PUBLIC_ORIGIN
-// (local dev, bare compose) still hands agents a reachable gateway base.
+// (local dev, bare compose) still hands agents a reachable gateway base. PORT
+// belongs to the API server, not the worker — the fallback only holds when
+// both processes share the root .env, which is the local-dev arrangement.
 function resolvePublicOrigin(options: ProcessJobOptions): string {
-  const configured = (options.publicOrigin ?? process.env.EVELAND_PUBLIC_ORIGIN)?.trim().replace(/\/+$/, "");
-  return configured || `http://localhost:${process.env.PORT ?? 4000}`;
+  const configured = normalizePublicOrigin(options.publicOrigin ?? process.env.EVELAND_PUBLIC_ORIGIN);
+  return configured ?? `http://localhost:${process.env.PORT ?? 4000}`;
 }
 
 async function readRuntimeSecrets(store: Store, projectId: string, appSecretKey: string): Promise<Record<string, string>> {

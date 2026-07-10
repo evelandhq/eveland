@@ -76,9 +76,12 @@ which returns `{ "agents": [{ "id": "<shortId>", "name": "...", "url": "<api ori
 
 Authentication is the agent's own concern (the eve channel `auth` option); the platform
 does not add one. `EVELAND_PUBLIC_ORIGIN` is handed to every deployed agent as
-`WORKFLOW_LOCAL_BASE_URL=${EVELAND_PUBLIC_ORIGIN}/a/<shortId>` so workflow webhook and
-callback URLs it mints are externally reachable; unset, it falls back to
-`http://localhost:$PORT` for local development.
+`WORKFLOW_LOCAL_BASE_URL=${EVELAND_PUBLIC_ORIGIN}/a/<shortId>` so the durable-workflow
+webhook URLs it mints are externally reachable; unset, it falls back to
+`http://localhost:$PORT` for local development. Known limitation: eve resolves
+remote-agent *callback* URLs against the origin only, dropping the `/a/<shortId>` path
+prefix, so projects that dispatch to remote agents are not yet supported through the
+gateway.
 
 ## Verification
 
