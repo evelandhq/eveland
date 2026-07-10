@@ -138,9 +138,18 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   // 9. The data dir is usable: mkdir it, then confirm the app user can traverse it.
   // Skipped entirely when EVELAND_DATA_DIR is unset (check 4 already reported that).
   if (dataDir) {
-    await deps.mkdir(dataDir);
-    // No user to probe traversal as when check 6 already failed.
-    if (appUserExists && !(await deps.canTraverseAs(appUser, dataDir))) {
+    // A throwing mkdir (e.g. EACCES when check 3's root requirement is also
+    // violated) must become one more issue, not reject the whole collection
+    // and discard everything checks 1-8 already found.
+    let dataDirCreated = true;
+    try {
+      await deps.mkdir(dataDir);
+    } catch (error) {
+      dataDirCreated = false;
+      issues.push(`Could not create the data dir "${dataDir}": ${error instanceof Error ? error.message : String(error)}. Ensure the worker can create it, or create it manually.`);
+    }
+    // No user to probe traversal as when check 6 failed; no dir to probe when mkdir did.
+    if (dataDirCreated && appUserExists && !(await deps.canTraverseAs(appUser, dataDir))) {
       issues.push(
         `App user "${appUser}" cannot traverse the data dir "${dataDir}". Releases are chowned to that user under ` +
           `<dataDir>/builds, but a non-traversable ancestor (e.g. mode 0700) still blocks the unit at start -- ` +

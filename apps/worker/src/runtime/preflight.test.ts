@@ -196,6 +196,22 @@ describe("collectSystemdPreflightIssues", () => {
     expect(deps.canTraverseAs).not.toHaveBeenCalled();
   });
 
+  test("converts a throwing mkdir into an issue, keeps earlier issues, and skips the traversal probe", async () => {
+    const deps = makePassingDeps();
+    deps.getuid = vi.fn(() => 1000);
+    deps.mkdir = vi.fn(async () => {
+      throw new Error("EACCES: permission denied, mkdir '/var/lib/eveland'");
+    });
+    const canTraverseAs = vi.fn(async () => true);
+    deps.canTraverseAs = canTraverseAs;
+
+    const issues = await collectSystemdPreflightIssues(deps);
+
+    expect(issues.some((issue) => issue.includes("/var/lib/eveland") && issue.includes("EACCES"))).toBe(true);
+    expect(issues.some((issue) => /root/i.test(issue) && issue.includes("1000"))).toBe(true);
+    expect(canTraverseAs).not.toHaveBeenCalled();
+  });
+
   test("reports every failure together, not just the first", async () => {
     const deps = makePassingDeps();
     deps.platform = "darwin";
