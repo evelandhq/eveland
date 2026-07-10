@@ -107,28 +107,40 @@ follow-up hardening.
 
 > **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
 >
-> Each runtime adapter's `stopProcess` only knows how to stop *its own* kind of
-> process — the systemd adapter calls `systemctl stop`, the Docker adapter
-> calls `docker rm -f`. Neither one can see or touch the other's processes. If
-> you flip `EVELAND_RUNTIME` while deployments made under the old runtime are
-> still running:
+> Every deployment record stores the `runtimeKind` (`docker` or `systemd`) of
+> the adapter that created it, and `restart_deployment`, `delete_project`, and
+> a redeploy's teardown of the previous release (`build_deploy`) all resolve
+> their `stopProcess` call from that recorded value — never from the worker's
+> current `EVELAND_RUNTIME`. So as long as a deployment's `runtimeKind` is
+> correct, stopping, restarting, or deleting it always reaches the adapter
+> that actually owns the process, even after `EVELAND_RUNTIME` has moved on.
 >
-> - `stopProcess` against a deployment created under the *other* runtime is a
->   silent no-op: the old process is never actually stopped and keeps holding
->   its port.
-> - A redeploy under the new runtime tries to bind the same host port and
->   crash-loops (or, on a different port, quietly leaves two versions of the
->   app running).
+> The risk that remains is a `runtimeKind` that is *wrong* for what actually
+> created the process — true of every deployment row that existed before this
+> column shipped. Its migration (`pnpm --filter @eveland/api db:generate` to
+> regenerate the migration SQL, already checked in as
+> `apps/api/drizzle/0003_watery_zodiak.sql`, then `db:push` to apply it against
+> the target database) backfills every existing row with `runtime_kind =
+> 'docker'`, whether or not a `docker` adapter actually made it. A host that
+> was already running `EVELAND_RUNTIME=systemd` before upgrading gets every one
+> of its existing deployments mislabeled this way, and stopping, restarting, or
+> deleting one of them afterward resolves the Docker adapter against what is
+> actually a systemd unit:
+>
+> - `stopProcess` against the wrong adapter is a silent no-op: the old process
+>   is never actually stopped and keeps holding its port.
+> - A redeploy tries to bind the same host port and crash-loops (or, on a
+>   different port, quietly leaves two versions of the app running).
 > - Health checks can false-pass against the still-running old process while
 >   the new one is broken, masking the failure.
 >
 > Treat `EVELAND_RUNTIME` as fixed per host, chosen once at provisioning time.
-> If you must migrate a host from one runtime to the other, drain it first —
-> stop and remove **every** deployment under the old runtime before flipping
-> the env var:
+> Drain a host first — stop and remove **every** deployment — both before
+> flipping `EVELAND_RUNTIME` and before applying this migration on a host that
+> is not already `docker`:
 >
 > ```bash
-> # systemd host being migrated away from:
+> # systemd host being migrated away from, or upgrading across this migration:
 > systemctl stop 'eveland-*'
 > systemctl reset-failed 'eveland-*'
 >
@@ -136,8 +148,18 @@ follow-up hardening.
 > docker rm -f $(docker ps -aq --filter "name=eveland-")
 > ```
 >
-> Only start the worker with the new `EVELAND_RUNTIME` once the old runtime
-> has zero `eveland-*` processes left.
+> Only start the worker (with the new `EVELAND_RUNTIME`, if changing it) once
+> the old runtime has zero `eveland-*` processes left.
+
+### Deleting a project
+
+`DELETE /projects/:projectId` is asynchronous: like `build-deploy`,
+`sync-source`, and `restart`, it enqueues a job — `delete_project` — and
+returns `202` immediately instead of deleting inline. The job stops the
+project's running deployment first, resolving the adapter from the
+deployment's recorded `runtimeKind` (same routing as `restart_deployment`
+above), and only removes the project record once that stop call returns —
+deleting a project no longer leaves its process running and holding its port.
 
 ## Durable workflow world
 
