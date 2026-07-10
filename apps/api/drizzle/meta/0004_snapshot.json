@@ -1,6 +1,6 @@
 {
-  "id": "e9cd0c70-dbce-4889-9957-1df1e4d7f0ff",
-  "prevId": "fdb97167-3b09-4aec-b343-e684500af4db",
+  "id": "ece260d7-20eb-4916-93b9-cff88dc0b798",
+  "prevId": "e9cd0c70-dbce-4889-9957-1df1e4d7f0ff",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -46,6 +46,12 @@
         },
         "status": {
           "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "runtime_kind": {
+          "name": "runtime_kind",
           "type": "text",
           "primaryKey": false,
           "notNull": true

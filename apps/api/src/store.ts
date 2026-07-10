@@ -15,11 +15,13 @@ import type {
   SessionEvent,
   SessionStatus,
   SessionTrigger,
+  ModelUsageEvent,
   LogRecord,
   DeploymentStatus,
   SourceRevision,
   SourceFileRecord,
 } from "./types.js";
+import type { ModelStepUsage } from "./usage.js";
 
 export type CreateProjectInput = {
   name: string;
@@ -79,6 +81,10 @@ export type Store = {
     continuationToken?: string | null;
   }): Promise<Session>;
   appendSessionEvent(sessionId: string, type: string, payload: unknown): Promise<SessionEvent>;
+  recordModelUsage(
+    sessionId: string,
+    usage: ModelStepUsage & { eveSessionId?: string; agentId?: string | null; agentName?: string | null },
+  ): Promise<ModelUsageEvent>;
   completeSession(
     sessionId: string,
     input: { status: SessionStatus; eveSessionId?: string | null; continuationToken?: string | null },
@@ -86,6 +92,7 @@ export type Store = {
   listSchedules(projectId: string): Promise<ScheduleRecord[]>;
   listSessions(projectId: string): Promise<Session[]>;
   listSessionEvents(sessionId: string): Promise<SessionEvent[]>;
+  listModelUsageEvents(sessionId: string): Promise<ModelUsageEvent[]>;
   listLogs(projectId: string, type?: LogRecord["type"]): Promise<LogRecord[]>;
 };
 
@@ -98,6 +105,7 @@ type MemoryState = {
   schedules: ScheduleRecord[];
   sessions: Session[];
   sessionEvents: SessionEvent[];
+  modelUsageEvents: ModelUsageEvent[];
   logs: LogRecord[];
   sourceRevisions: SourceRevision[];
   sourceFiles: SourceFileRecord[];
@@ -113,6 +121,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     schedules: initialState?.schedules ?? [],
     sessions: initialState?.sessions ?? [],
     sessionEvents: initialState?.sessionEvents ?? [],
+    modelUsageEvents: initialState?.modelUsageEvents ?? [],
     logs: initialState?.logs ?? [],
     sourceRevisions: initialState?.sourceRevisions ?? [],
     sourceFiles: initialState?.sourceFiles ?? [],
@@ -159,14 +168,15 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
       // Mirrors the Postgres store's cascade order (db/postgres-store.ts
       // deleteProject): logs, deployments, releases, source files scoped to
-      // this project's revisions, the revisions themselves, session events
-      // scoped to this project's sessions, the sessions, then
+      // this project's revisions, the revisions themselves, usage events and
+      // session events scoped to this project's sessions, the sessions, then
       // schedules/jobs/secrets, and the projects row last.
       state.logs = state.logs.filter((log) => log.projectId !== projectId);
       state.deployments = state.deployments.filter((deployment) => deployment.projectId !== projectId);
       state.releases = state.releases.filter((release) => release.projectId !== projectId);
       state.sourceFiles = state.sourceFiles.filter((file) => !revisionIds.includes(file.revisionId));
       state.sourceRevisions = state.sourceRevisions.filter((revision) => revision.projectId !== projectId);
+      state.modelUsageEvents = state.modelUsageEvents.filter((event) => !sessionIds.includes(event.sessionId));
       state.sessionEvents = state.sessionEvents.filter((event) => !sessionIds.includes(event.sessionId));
       state.sessions = state.sessions.filter((session) => session.projectId !== projectId);
       state.schedules = state.schedules.filter((schedule) => schedule.projectId !== projectId);
@@ -389,6 +399,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         status: "running",
         startedAt: now,
         completedAt: null,
+        usage: emptySessionTokenUsage(),
       };
       state.sessions.push(session);
       const project = state.projects.find((candidate) => candidate.id === input.projectId);
@@ -409,6 +420,38 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         createdAt: new Date().toISOString(),
       };
       state.sessionEvents.push(event);
+      return event;
+    },
+
+    async recordModelUsage(sessionId, usage) {
+      const session = state.sessions.find((candidate) => candidate.id === sessionId);
+      if (!session) {
+        throw new Error(`Session ${sessionId} not found.`);
+      }
+
+      const eveSessionId = usage.eveSessionId ?? sessionId;
+      const existing = state.modelUsageEvents.find(
+        (event) =>
+          event.sessionId === sessionId &&
+          event.eveSessionId === eveSessionId &&
+          event.turnId === usage.turnId &&
+          event.stepIndex === usage.stepIndex,
+      );
+      if (existing) {
+        return existing;
+      }
+
+      const event: ModelUsageEvent = {
+        id: createId("usage"),
+        sessionId,
+        ...usage,
+        eveSessionId,
+        agentId: usage.agentId ?? null,
+        agentName: usage.agentName ?? null,
+        createdAt: new Date().toISOString(),
+      };
+      state.modelUsageEvents.push(event);
+      addUsageToSession(session, event);
       return event;
     },
 
@@ -445,10 +488,50 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.sessionEvents.filter((event) => event.sessionId === sessionId).sort((a, b) => a.index - b.index);
     },
 
+    async listModelUsageEvents(sessionId) {
+      return state.modelUsageEvents.filter((event) => event.sessionId === sessionId);
+    },
+
     async listLogs(projectId, type) {
       return state.logs.filter((log) => log.projectId === projectId && (!type || log.type === type));
     },
   };
+}
+
+function emptySessionTokenUsage(): Session["usage"] {
+  return {
+    status: "none",
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    costUsd: null,
+    reportedSteps: 0,
+    missingSteps: 0,
+  };
+}
+
+function addUsageToSession(session: Session, event: ModelUsageEvent): void {
+  session.usage.inputTokens += event.inputTokens ?? 0;
+  session.usage.outputTokens += event.outputTokens ?? 0;
+  session.usage.cacheReadTokens += event.cacheReadTokens ?? 0;
+  session.usage.cacheWriteTokens += event.cacheWriteTokens ?? 0;
+  if (event.costUsd !== null) {
+    session.usage.costUsd = (session.usage.costUsd ?? 0) + event.costUsd;
+  }
+  if (event.usageReported) {
+    session.usage.reportedSteps += 1;
+  } else {
+    session.usage.missingSteps += 1;
+  }
+  session.usage.status =
+    session.usage.reportedSteps > 0
+      ? session.usage.missingSteps > 0
+        ? "partial"
+        : "reported"
+      : session.usage.missingSteps > 0
+        ? "missing"
+        : "none";
 }
 
 function createJob(projectId: string, type: JobType, payload: Record<string, unknown>): Job {

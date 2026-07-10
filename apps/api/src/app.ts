@@ -10,6 +10,7 @@ import { encryptSecretValue } from "@eveland/shared/secrets";
 import { z } from "zod";
 import type { Store } from "./store.js";
 import type { DeploymentRecord, LogRecord, Project } from "./types.js";
+import { parseStepUsageEvent } from "./usage.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -33,6 +34,11 @@ const devSecretKey = "eveland-dev-secret-key-000000000";
 export type PlaygroundRunEvent = {
   type: string;
   payload: unknown;
+  source?: {
+    eveSessionId: string;
+    agentId: string | null;
+    agentName: string | null;
+  };
 };
 
 export type PlaygroundRunResult = {
@@ -46,6 +52,7 @@ export type PlaygroundRunnerInput = {
   project: Project;
   deployment: DeploymentRecord;
   message: string;
+  onEvent?: (event: PlaygroundRunEvent) => Promise<void>;
 };
 
 export type PlaygroundRunner = (input: PlaygroundRunnerInput) => Promise<PlaygroundRunResult>;
@@ -169,9 +176,26 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
     await store.appendSessionEvent(session.id, "message", { role: "user", content: parsed.data.message });
 
     try {
-      const result = await playgroundRunner({ project, deployment, message: parsed.data.message });
+      let eventPersistence = Promise.resolve();
+      const persistEvent = (event: PlaygroundRunEvent, fallbackEveSessionId?: string | null) => {
+        const queued = eventPersistence.then(async () => {
+          await store.appendSessionEvent(session.id, event.type, event.payload);
+          const usage = parseStepUsageEvent(event.type, event.payload);
+          if (usage) {
+            await store.recordModelUsage(session.id, {
+              ...usage,
+              eveSessionId: event.source?.eveSessionId ?? fallbackEveSessionId ?? session.id,
+              agentId: event.source?.agentId ?? null,
+              agentName: event.source?.agentName ?? null,
+            });
+          }
+        });
+        eventPersistence = queued.catch(() => undefined);
+        return queued;
+      };
+      const result = await playgroundRunner({ project, deployment, message: parsed.data.message, onEvent: persistEvent });
       for (const event of result.events ?? [{ type: "model_response", payload: { content: result.response } }]) {
-        await store.appendSessionEvent(session.id, event.type, event.payload);
+        await persistEvent(event, result.eveSessionId);
       }
       const completed = await store.completeSession(session.id, {
         status: "completed",
@@ -233,6 +257,10 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
 
   app.get("/sessions/:sessionId/events", async (c) => {
     return c.json({ events: await store.listSessionEvents(c.req.param("sessionId")) });
+  });
+
+  app.get("/sessions/:sessionId/usage", async (c) => {
+    return c.json({ usage: await store.listModelUsageEvents(c.req.param("sessionId")) });
   });
 
   app.get("/projects/:projectId/logs", async (c) => {
@@ -348,21 +376,25 @@ async function runDeploymentPlayground(input: PlaygroundRunnerInput): Promise<Pl
 
   if (!sessionId) {
     const content = extractResponseText(startBody, startText);
+    const event = { type: "model_response", payload: { content } } satisfies PlaygroundRunEvent;
+    await input.onEvent?.(event);
     return {
       response: content,
       eveSessionId: null,
       continuationToken,
-      events: [{ type: "model_response", payload: { content } }],
+      events: input.onEvent ? [] : [event],
     };
   }
 
-  const streamed = await streamEveSession(base, sessionId);
+  const streamed = await streamEveSession(base, sessionId, input.onEvent);
+  const modelResponse = { type: "model_response", payload: { content: streamed.response } } satisfies PlaygroundRunEvent;
+  await input.onEvent?.(modelResponse);
 
   return {
     response: streamed.response,
     eveSessionId: sessionId,
     continuationToken,
-    events: [...streamed.events, { type: "model_response", payload: { content: streamed.response } }],
+    events: input.onEvent ? [] : [...streamed.events, modelResponse],
   };
 }
 
@@ -379,7 +411,12 @@ const terminalEventTypes = new Set([
 // Streaming deltas are noisy for the session timeline; we keep lifecycle events only.
 const deltaEventTypes = new Set(["message.appended", "reasoning.appended"]);
 
-async function streamEveSession(base: string, sessionId: string): Promise<{ response: string; events: PlaygroundRunEvent[] }> {
+async function streamEveSession(
+  base: string,
+  sessionId: string,
+  onEvent?: (event: PlaygroundRunEvent) => Promise<void>,
+  visitedSessionIds: Set<string> = new Set([sessionId]),
+): Promise<{ response: string; events: PlaygroundRunEvent[] }> {
   const timeoutMs = Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -388,6 +425,9 @@ async function streamEveSession(base: string, sessionId: string): Promise<{ resp
   let completedMessage: string | null = null;
   let latestPartial = "";
   let failureMessage: string | null = null;
+  let agentId: string | null = null;
+  let agentName: string | null = null;
+  const childStreams: Promise<void>[] = [];
 
   try {
     const response = await fetch(`${base}/eve/v1/session/${encodeURIComponent(sessionId)}/stream`, {
@@ -428,6 +468,11 @@ async function streamEveSession(base: string, sessionId: string): Promise<{ resp
           const type = typeof event.type === "string" ? event.type : "event";
           const data = (isRecord(event.data) ? event.data : event) as Record<string, unknown>;
 
+          if (type === "session.started" && isRecord(data.runtime)) {
+            agentId = getString(data.runtime, "agentId");
+            agentName = getString(data.runtime, "agentName");
+          }
+
           if (type === "message.appended") {
             latestPartial = getString(data, "messageSoFar") ?? latestPartial;
           } else if (type === "message.completed") {
@@ -442,7 +487,47 @@ async function streamEveSession(base: string, sessionId: string): Promise<{ resp
           }
 
           if (!deltaEventTypes.has(type)) {
-            events.push({ type, payload: data });
+            const streamedEvent = {
+              type,
+              payload: data,
+              source: { eveSessionId: sessionId, agentId, agentName },
+            } satisfies PlaygroundRunEvent;
+            events.push(streamedEvent);
+            await onEvent?.(streamedEvent);
+          }
+
+          if (type === "subagent.called") {
+            const childSessionId = getString(data, "childSessionId");
+            if (childSessionId && !visitedSessionIds.has(childSessionId)) {
+              visitedSessionIds.add(childSessionId);
+              const remote = isRecord(data.remote) ? data.remote : null;
+
+              if (remote) {
+                childStreams.push(
+                  onEvent?.({
+                    type: "usage.collection_failed",
+                    payload: {
+                      eveSessionId: childSessionId,
+                      message: "Remote subagent usage collection requires a managed deployment mapping.",
+                    },
+                    source: { eveSessionId: childSessionId, agentId: null, agentName: getString(data, "name") },
+                  }) ?? Promise.resolve(),
+                );
+                continue;
+              }
+
+              const childStream = streamEveSession(base, childSessionId, onEvent, visitedSessionIds)
+                .then(() => undefined)
+                .catch(async (error) => {
+                  const message = error instanceof Error ? error.message : String(error);
+                  await onEvent?.({
+                    type: "usage.collection_failed",
+                    payload: { eveSessionId: childSessionId, message },
+                    source: { eveSessionId: childSessionId, agentId: null, agentName: getString(data, "name") },
+                  });
+                });
+              childStreams.push(childStream);
+            }
           }
 
           if (terminalEventTypes.has(type)) {
@@ -462,6 +547,8 @@ async function streamEveSession(base: string, sessionId: string): Promise<{ resp
   } finally {
     clearTimeout(timer);
   }
+
+  await Promise.all(childStreams);
 
   const response = completedMessage ?? latestPartial;
 

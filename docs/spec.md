@@ -144,6 +144,8 @@ Sessions 是核心运行历史。
 * 开始时间
 * 状态：Running / Completed / Failed / Waiting Approval
 * 当前 Deployment
+* Input / Output / Total token 消耗
+* Usage 完整性（完整 / 部分缺失 / Provider 未报告）
 
 进入 Session 后展示 Eve 的事件时间线：
 
@@ -155,6 +157,14 @@ message
 → step complete
 → final response / failure
 ```
+
+同时按实际执行的 Eve agent / subagent 展示：
+
+* 模型调用步数
+* Input tokens
+* Output tokens
+* Cache read / write tokens
+* Provider 或 Gateway 返回的成本（如有）
 
 支持按以下条件筛选：
 

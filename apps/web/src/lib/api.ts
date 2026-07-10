@@ -46,6 +46,18 @@ export type Session = {
   status: string;
   startedAt: string;
   completedAt: string | null;
+  usage: SessionTokenUsage;
+};
+
+export type SessionTokenUsage = {
+  status: "none" | "reported" | "partial" | "missing";
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number | null;
+  reportedSteps: number;
+  missingSteps: number;
 };
 
 export type SessionEvent = {
@@ -54,6 +66,24 @@ export type SessionEvent = {
   index: number;
   type: string;
   payload: unknown;
+  createdAt: string;
+};
+
+export type ModelUsageEvent = {
+  id: string;
+  sessionId: string;
+  eveSessionId: string;
+  agentId: string | null;
+  agentName: string | null;
+  turnId: string;
+  stepIndex: number;
+  finishReason: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  costUsd: number | null;
+  usageReported: boolean;
   createdAt: string;
 };
 
@@ -132,6 +162,11 @@ export async function getSessions(projectId: string): Promise<Session[]> {
 export async function getSessionEvents(sessionId: string): Promise<SessionEvent[]> {
   const data = await apiGet<{ events: SessionEvent[] }>(`/sessions/${sessionId}/events`, { events: [] });
   return data.events;
+}
+
+export async function getSessionUsage(sessionId: string): Promise<ModelUsageEvent[]> {
+  const data = await apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`, { usage: [] });
+  return data.usage;
 }
 
 export async function runPlaygroundMessage(projectId: string, message: string): Promise<PlaygroundResult> {

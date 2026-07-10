@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { deploymentRowToDeployment, projectRowToProject, timestampToIso } from "./mappers.js";
+import { deploymentRowToDeployment, projectRowToProject, sessionRowToSession, timestampToIso } from "./mappers.js";
 
 describe("db mappers", () => {
   test("converts nullable project timestamp fields to public API shape", () => {
@@ -72,6 +72,41 @@ describe("db mappers", () => {
       runtimeKind: "systemd",
       createdAt: "2026-07-01T01:00:00.000Z",
       updatedAt: "2026-07-01T02:00:00.000Z",
+    });
+  });
+
+  test("maps persisted token totals onto a session", () => {
+    expect(
+      sessionRowToSession({
+        id: "sess_123",
+        projectId: "proj_123",
+        deploymentId: "dep_123",
+        eveSessionId: "eve_123",
+        continuationToken: null,
+        trigger: "playground",
+        scheduleId: null,
+        status: "completed",
+        startedAt: new Date("2026-07-10T01:00:00.000Z"),
+        completedAt: new Date("2026-07-10T01:01:00.000Z"),
+        inputTokens: 120,
+        outputTokens: 30,
+        cacheReadTokens: 80,
+        cacheWriteTokens: 10,
+        costUsd: 0.0042,
+        usageReportedSteps: 1,
+        usageMissingSteps: 0,
+      }),
+    ).toMatchObject({
+      usage: {
+        status: "reported",
+        inputTokens: 120,
+        outputTokens: 30,
+        cacheReadTokens: 80,
+        cacheWriteTokens: 10,
+        costUsd: 0.0042,
+        reportedSteps: 1,
+        missingSteps: 0,
+      },
     });
   });
 });

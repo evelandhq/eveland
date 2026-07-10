@@ -151,6 +151,13 @@ export function sessionRowToSession(row: {
   status: string;
   startedAt: Date;
   completedAt: Date | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number | null;
+  usageReportedSteps: number;
+  usageMissingSteps: number;
 }): Session {
   return {
     id: row.id,
@@ -163,6 +170,23 @@ export function sessionRowToSession(row: {
     status: row.status as SessionStatus,
     startedAt: timestampToIso(row.startedAt),
     completedAt: timestampToIso(row.completedAt),
+    usage: {
+      status:
+        row.usageReportedSteps > 0
+          ? row.usageMissingSteps > 0
+            ? "partial"
+            : "reported"
+          : row.usageMissingSteps > 0
+            ? "missing"
+            : "none",
+      inputTokens: row.inputTokens,
+      outputTokens: row.outputTokens,
+      cacheReadTokens: row.cacheReadTokens,
+      cacheWriteTokens: row.cacheWriteTokens,
+      costUsd: row.costUsd,
+      reportedSteps: row.usageReportedSteps,
+      missingSteps: row.usageMissingSteps,
+    },
   };
 }
 
