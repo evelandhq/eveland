@@ -27,13 +27,14 @@ provision:
 
       # Ubuntu 24.04 sets kernel.apparmor_restrict_unprivileged_userns=1,
       # which blocks an *unconfined* non-root process from creating a user
-      # namespace (root is unaffected, which is why a root-only build sandbox
-      # would never hit this). The apt bubblewrap package (0.9.0-1ubuntu0.1)
-      # ships no AppArmor profile, so the unprivileged eveland-app user's
-      # `bwrap` invocation fails with "setting up uid map: Permission denied"
-      # unless we install one that permits userns creation. Re-running
-      # `apparmor_parser -r` replaces an already-loaded profile, so this is
-      # safe on repeated provisions.
+      # namespace -- and both sandboxes are exactly that: the build sandbox
+      # runs bwrap via runuser as eveland-build, and the agent exec sandbox
+      # runs as eveland-app. The apt bubblewrap package (0.9.0-1ubuntu0.1)
+      # ships no AppArmor profile, so either user's `bwrap` invocation fails
+      # with "setting up uid map: Permission denied" unless we install one
+      # that permits userns creation. Re-running `apparmor_parser -r`
+      # replaces an already-loaded profile, so this is safe on repeated
+      # provisions.
       cat > /etc/apparmor.d/bwrap <<'EOF'
       abi <abi/4.0>,
       include <tunables/global>
