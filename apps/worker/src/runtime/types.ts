@@ -38,7 +38,9 @@ export type ProcessStartResult = {
 };
 
 export type RuntimeAdapter = {
-  readonly name: string;
+  // Structural match for the api's RuntimeKind (apps/api/src/types.ts) -- do not
+  // import that type here; the worker package must not depend on api.
+  readonly name: "docker" | "systemd";
   buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult>;
   startProcess(input: ProcessStartInput): Promise<ProcessStartResult>;
   stopProcess(processName: string): Promise<void>;

@@ -1,5 +1,17 @@
 import { describe, expect, test } from "vitest";
-import { createRuntimeAdapterFromEnv } from "./select.js";
+import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "./select.js";
+
+describe("createRuntimeAdapterForKind", () => {
+  test("constructs the docker adapter", () => {
+    expect(createRuntimeAdapterForKind("docker", {}).name).toBe("docker");
+  });
+
+  test("constructs the systemd adapter", () => {
+    expect(createRuntimeAdapterForKind("systemd", { EVELAND_DATA_DIR: "/var/lib/eveland-data" } as NodeJS.ProcessEnv).name).toBe(
+      "systemd",
+    );
+  });
+});
 
 describe("createRuntimeAdapterFromEnv", () => {
   test("defaults to the docker adapter", () => {
