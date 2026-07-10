@@ -1,5 +1,7 @@
-# Production overlay for a single-box (Linux) deployment where eveland runs entirely in Docker
-# and deploys agent containers on the same host via the mounted docker.sock.
+# Production overlay for a single-box (Linux) deployment. API/Web/Postgres run in Docker
+# Compose; the worker runs on the host as a systemd service (infra/systemd/eveland-worker.service,
+# see docs/deploy/linux.md). For legacy Docker-runtime installs, the containerized worker is
+# available via `--profile docker-worker`.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
@@ -7,6 +9,9 @@
 #   WEB_ORIGIN=https://your-web-host          # CORS allow-origin for the API
 #   NEXT_PUBLIC_API_URL=https://your-api-host  # where the browser calls the API (baked in at build)
 # They default to localhost so `up` works with no .env for a quick bring-up.
+#
+# Deployed agent data lives under /var/lib/eveland on the host, bind-mounted into the API at the
+# same absolute path so database sourcePath values are valid in both places.
 #
 # Why host networking: deployed agent containers publish on the host's 127.0.0.1:PORT (loopback,
 # not public); the worker (health check) and api (playground proxy) reach them on that same
@@ -29,6 +34,11 @@ services:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
       WEB_ORIGIN: "${WEB_ORIGIN:-http://localhost:3000}"
+      EVELAND_DATA_DIR: /var/lib/eveland
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/eveland:/var/lib/eveland
 
   web:
     restart: unless-stopped
@@ -41,9 +51,16 @@ services:
       NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:4000}"
 
   worker:
+    profiles: ["docker-worker"]
     restart: unless-stopped
     network_mode: host
     command: sh -lc "apk add --no-cache git docker-cli && corepack enable && pnpm install && cd apps/worker && NODE_ENV=production pnpm exec tsx --env-file=../../.env src/worker.ts"
     environment:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
+      EVELAND_RUNTIME: docker
+      EVELAND_DATA_DIR: /var/lib/eveland
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/eveland:/var/lib/eveland
