@@ -15,7 +15,7 @@ import type { RuntimeAdapter } from "./types.js";
  * separate existsSync check is needed; injectSandboxModules (sandbox-inject.ts)
  * is the single validator for "is the backend built".
  */
-function resolveBackendDistDir(): string {
+export function resolveBackendDistDir(): string {
   let entry: string;
   try {
     entry = createRequire(import.meta.url).resolve("@eveland/sandbox-bwrap");
