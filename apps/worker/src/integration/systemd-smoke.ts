@@ -1,9 +1,12 @@
 import { createMemoryStore } from "@eveland/api/store";
 import { execa } from "execa";
-import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { processNextJob } from "../jobs/process.js";
+import { resolveRuntimeKind } from "../runtime/select.js";
+import { processSafeName } from "../runtime/types.js";
 
 async function pathExists(target: string): Promise<boolean> {
   return await stat(target).then(
@@ -12,7 +15,21 @@ async function pathExists(target: string): Promise<boolean> {
   );
 }
 
-if (process.env.EVELAND_RUNTIME !== "systemd") {
+// Resolves once the TCP connect settles either way: `false` means something is
+// listening (connected), `true` means the port is free (refused/reset). No
+// timeout of its own -- a loopback connect refusal is effectively instant, and
+// this only ever runs against a port this script itself just stopped using.
+async function isPortFree(port: number): Promise<boolean> {
+  return await new Promise((resolve) => {
+    const socket = net.connect({ host: "127.0.0.1", port }, () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once("error", () => resolve(true));
+  });
+}
+
+if (resolveRuntimeKind(process.env) !== "systemd") {
   throw new Error("Run with EVELAND_RUNTIME=systemd (this smoke test exercises the systemd adapter).");
 }
 
@@ -99,6 +116,92 @@ try {
   if (deletedProject) throw new Error(`Project still present after delete: ${JSON.stringify(deletedProject)}`);
 
   console.log("DELETE OK");
+
+  // --- build_deploy cleanup on health-check timeout: prove PR 3's fix on a real host --
+  // stopping the process this job itself started also removes its EnvironmentFile and
+  // frees its port. The fixture's start command runs but never binds HTTP, so
+  // startProcess succeeds and waitForHttpHealth is the piece that must time out. ---
+  const failSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-smoke-fail-"));
+  await mkdir(path.join(failSourcePath, "agent"), { recursive: true });
+  await writeFile(path.join(failSourcePath, "agent", "instructions.md"), "Smoke fixture (never healthy).\n");
+  await writeFile(
+    path.join(failSourcePath, "package.json"),
+    // No "eve" dependency, same as the fixture above -- this is a plain Node
+    // start command. `sleep` starts a real process (so startProcess succeeds)
+    // but never binds a socket on $PORT, so the health check can only time out.
+    JSON.stringify({ name: "eveland-smoke-fail", version: "0.0.0", scripts: { start: "sleep 30" } }, null, 2),
+  );
+
+  const failProject = await store.createProject({ name: "Systemd Smoke Fail", importKind: "zip", sourcePath: failSourcePath });
+  if (!(await processNextJob(store, "smoke-worker"))) throw new Error("fail-fixture import_source job did not run.");
+  const failImported = await store.getProject(failProject.id);
+  if (failImported?.status !== "imported") throw new Error(`Fail-fixture import failed: ${JSON.stringify(failImported)}`);
+
+  await store.enqueueJob(failProject.id, "build_deploy");
+
+  // build_deploy reads EVELAND_HEALTH_TIMEOUT_MS straight off process.env per call (see
+  // jobs/process.ts), not from job options -- shrink it for just this one job so the
+  // timeout this step is proving takes ~1s instead of the default 15s, then restore
+  // whatever was there before so it can't leak into anything that runs after this step.
+  const previousHealthTimeoutMs = process.env.EVELAND_HEALTH_TIMEOUT_MS;
+  process.env.EVELAND_HEALTH_TIMEOUT_MS = "1000";
+  // Fixed and well outside EVELAND_DEPLOYMENT_PORT's default allocation range so it can
+  // never collide with a port a real deployment picked earlier in this same run --
+  // build_deploy only calls allocateAvailableHostPort for a *new* project (no
+  // currentDeployment yet), which this fail-fixture is, so injecting this wins outright.
+  const failHostPort = 44100;
+  let failDeployRan: boolean;
+  try {
+    failDeployRan = await processNextJob(store, "smoke-worker", { allocateHostPort: () => failHostPort });
+  } finally {
+    if (previousHealthTimeoutMs === undefined) delete process.env.EVELAND_HEALTH_TIMEOUT_MS;
+    else process.env.EVELAND_HEALTH_TIMEOUT_MS = previousHealthTimeoutMs;
+  }
+  if (!failDeployRan) throw new Error("build_deploy (expected-fail) job did not run.");
+
+  const failedProject = await store.getProject(failProject.id);
+  if (failedProject?.status !== "failed" || failedProject.deploymentStatus !== "failed") {
+    const logs = await store.listLogs(failProject.id, "runtime");
+    throw new Error(`Expected the failed deploy to mark the project failed: ${JSON.stringify({ failedProject, logs })}`);
+  }
+
+  // Pin WHY it failed: only a health timeout exercises the started-process cleanup
+  // path this step exists to prove. A deploy that died earlier (e.g. in the build)
+  // also ends "failed" with no unit/env-file/port residue, and every assertion below
+  // would pass without the cleanup code ever running.
+  const failRuntimeLogs = await store.listLogs(failProject.id, "runtime");
+  if (!failRuntimeLogs.some((log) => log.line.includes("did not respond within"))) {
+    throw new Error(`Expected a health-timeout failure, got: ${JSON.stringify(failRuntimeLogs.map((log) => log.line))}`);
+  }
+
+  // The health-check timeout is thrown before recordDeployment ever runs, so no
+  // deployment row -- and no exact unit/env-file name -- exists to look up. Glob by
+  // this project's processSafeName prefix instead; the deploymentId suffix is the only
+  // unknown, and a fresh createId("dep") for this project can never collide with the
+  // deleted project's own units above.
+  const failUnitPrefix = `eveland-${processSafeName(failProject.id)}-`;
+  // Same glob support systemctl already relies on for stop/reset-failed (see the
+  // finally block below); is-active supports unit-name globbing too.
+  const failUnitStatus = await execa("systemctl", ["is-active", `${failUnitPrefix}*`], { reject: false });
+  if (failUnitStatus.exitCode === 0) throw new Error(`Unit still active after failed deploy: ${failUnitStatus.stdout}`);
+
+  const failEnvDir = path.join(path.resolve(process.env.EVELAND_DATA_DIR ?? ".eveland-data"), "deployment-env");
+  const leftoverEnvFiles = (await readdir(failEnvDir).catch(() => [])).filter((name) => name.startsWith(failUnitPrefix));
+  if (leftoverEnvFiles.length) {
+    throw new Error(`Deployment env file(s) still present after failed deploy: ${leftoverEnvFiles.join(", ")}`);
+  }
+
+  if (!(await isPortFree(failHostPort))) throw new Error(`Port ${failHostPort} still accepting connections after failed deploy.`);
+
+  console.log("CLEANUP OK");
+
+  // Re-proves delete_project on a project that never reached recordDeployment (no
+  // deployment row at all, taking the `if (deployment)` branch's else path in
+  // jobs/process.ts's delete_project case).
+  await store.enqueueJob(failProject.id, "delete_project");
+  if (!(await processNextJob(store, "smoke-worker"))) throw new Error("delete_project (fail fixture) job did not run.");
+  const deletedFailProject = await store.getProject(failProject.id);
+  if (deletedFailProject) throw new Error(`Fail-fixture project still present after delete: ${JSON.stringify(deletedFailProject)}`);
 } finally {
   // Best-effort cleanup covering every exit path, including a health-check timeout where a
   // transient unit is already running but no deployment record was ever written (so we don't

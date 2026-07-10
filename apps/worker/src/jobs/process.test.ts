@@ -1063,6 +1063,65 @@ describe("processNextJob", () => {
     );
   });
 
+  test("stops the pre-restart process exactly once when startProcess itself fails during restart (nothing new was started)", async () => {
+    const stopCalls: string[] = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Restart Start Fail Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_restart_start_fail",
+      deploymentId: "dep_restart_start_fail",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_restart_start_fail",
+      containerName: "eveland-restart-start-fail-container",
+      internalPort: 3000,
+      hostPort: 41114,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            throw new Error("failed to start transient unit");
+          },
+          async stopProcess(processName) {
+            stopCalls.push(processName);
+          },
+        },
+      }),
+    ).resolves.toBe(true);
+
+    // Only the pre-restart stop ran: `restarted` stays false when startProcess
+    // itself throws, so there is nothing new to clean up and the cleanup stop
+    // must not fire a second time.
+    expect(stopCalls).toEqual([deployment.containerName]);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "failed",
+      deploymentStatus: "failed",
+    });
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({ line: expect.stringContaining("failed to start transient unit") }),
+    );
+  });
+
   test("fails a restart_deployment job when there is no deployment to restart", async () => {
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();

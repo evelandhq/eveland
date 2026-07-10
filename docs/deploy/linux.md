@@ -67,7 +67,9 @@ one side unable to find files the other wrote.
 
 ### Startup preflight
 
-Under `EVELAND_RUNTIME=systemd`, the worker refuses to start until every host
+When the resolved runtime is systemd — an explicit `EVELAND_RUNTIME=systemd`,
+or `NODE_ENV=production` with `EVELAND_RUNTIME` unset — the worker refuses to
+start until every host
 prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
 systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path, the
 `systemd-run`, `systemctl`, `node`, `git` and `runuser` binaries on `PATH`
@@ -88,7 +90,7 @@ runs it against the Lima VM as part of the integration smoke test.
 
 | Env var | Default | Meaning |
 | --- | --- | --- |
-| `EVELAND_RUNTIME` | `docker` | Set `systemd` on the deploy host. |
+| `EVELAND_RUNTIME` | `docker`; `systemd` when `NODE_ENV=production` | Set `systemd` explicitly on the deploy host. An explicit value always wins over the `NODE_ENV`-based default. |
 | `EVELAND_APP_USER` | `eveland-app` | Unix user deployments run as. |
 | `EVELAND_BUILD_USER` | `eveland-build` | Unix user the build (`npm ci`/`npx eve build`, i.e. third-party lifecycle scripts) runs as. |
 | `EVELAND_MEMORY_MAX` | `2G` | systemd `MemoryMax` per deployment. |
@@ -99,7 +101,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Postgres URL injected into each deployment's `EnvironmentFile` so a `@workflow/world-postgres` agent has a durable workflow store. Deployments run as a host process, so use a host-reachable address, e.g. `postgres://eveland:eveland@localhost:5432/eveland`. A project secret of the same name overrides it. |
-| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. |
+| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. Note `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
 Build-trust note: building a project executes that project's dependency
@@ -121,9 +123,19 @@ the worker process's own environment (`APP_SECRET_KEY`, `DATABASE_URL`,
 otherwise be inherited by the build subprocess and readable by lifecycle
 scripts via `/proc/self/environ`, regardless of the unprivileged build user or
 the bwrap mask. Both build modes (`bwrap` and `none`) instead build the
-subprocess's environment from a fixed allowlist — `PATH`, `HOME`, and
-`npm_config_cache` — rather than inheriting the worker's own environment, so
-no worker secret ever reaches the build.
+subprocess's environment from a fixed allowlist — `PATH` and `npm_config_cache`
+— rather than inheriting the worker's own environment, so no worker secret
+ever reaches the build. `HOME` is not part of that allowlist: `runuser`
+(without `-m`/`--preserve-environment`) resets `HOME`, `SHELL`, `USER` and
+`LOGNAME` to the build user's own passwd entry as part of the user switch, so
+an execa-supplied `HOME` would just be discarded — it is instead injected
+*after* the switch, pointed at the release directory, via bwrap's own
+`--setenv HOME` in `bwrap` mode or an `env HOME=...` wrapper in `none` mode.
+The allowlist also deliberately drops operator proxy configuration
+(`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`, `npm_config_registry`): a build on a
+host that requires a proxy to reach the npm registry needs a mirror reachable
+without env-borne proxy config today; passing those through under an explicit
+opt-in is possible future work.
 
 > **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
 >
@@ -164,10 +176,14 @@ no worker secret ever reaches the build.
 > - Health checks can false-pass against the still-running old process while
 >   the new one is broken, masking the failure.
 >
-> Treat `EVELAND_RUNTIME` as fixed per host, chosen once at provisioning time.
+> Treat the **resolved** runtime as fixed per host, chosen once at provisioning
+> time — and remember there are two ways to change it: flipping `EVELAND_RUNTIME`,
+> or setting `NODE_ENV=production` on a host that leaves `EVELAND_RUNTIME` unset
+> (the production default is `systemd`). The preflight catches an accidental flip
+> loudly, but drain first regardless.
 > Drain a host first — stop and remove **every** deployment — both before
-> flipping `EVELAND_RUNTIME` and before applying this migration on a host that
-> is not already `docker`:
+> switching the resolved runtime and before applying this migration on a host
+> that is not already `docker`:
 >
 > ```bash
 > # systemd host being migrated away from, or upgrading across this migration:
@@ -338,6 +354,20 @@ stalls every run silently.
 - An eve project with no `agent/` directory, or a plain Node project, gets no injected
   sandbox and runs on eve's default sandbox chain (`just-bash` on a host with no Docker
   daemon and no KVM).
+- **Deployments do not survive a host reboot.** Every deployment runs as a
+  `systemd-run --collect` **transient** unit (see "How a deployment runs" above) —
+  transient units are held only in systemd's in-memory unit table, not as unit files on
+  disk, so they do not come back after a reboot the way an installed unit does. The
+  worker itself is unaffected: it's installed via `infra/systemd/eveland-worker.service`
+  and comes back on boot like any other enabled systemd service. But every deployment it
+  had running is simply gone from systemd's perspective post-reboot — not stopped, not
+  failed, just never re-created — while its row in the store still reads
+  `deploymentStatus: "running"`, which is now stale. Recovering after a reboot today
+  means manually restarting or redeploying every affected project (`restart_deployment`
+  re-runs `startProcess` against the existing release; `build_deploy` also works and
+  additionally rebuilds). There is no reconciliation loop that reconciles store state
+  against actual running units at worker startup and re-creates what's missing — that's
+  explicit future work (PR 5+ territory), not something this v1 does implicitly.
 
 ## Verifying the setup: Lima integration smoke test
 

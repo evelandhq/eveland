@@ -23,9 +23,10 @@ import { createMemoryStore } from "@eveland/api/store";
 import type { DeploymentRecord } from "@eveland/api/types";
 import { encryptSecretValue } from "@eveland/shared/secrets";
 import { processNextJob } from "../jobs/process.js";
+import { resolveRuntimeKind } from "../runtime/select.js";
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
 
-if (process.env.EVELAND_RUNTIME !== "systemd") {
+if (resolveRuntimeKind(process.env) !== "systemd") {
   throw new Error("Run with EVELAND_RUNTIME=systemd (this test exercises the systemd + bwrap sandbox injection path).");
 }
 

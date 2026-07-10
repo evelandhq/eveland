@@ -42,6 +42,36 @@ describe("assertWorkerPreflight", () => {
     expect(deps.commandExists).not.toHaveBeenCalled();
   });
 
+  test("runs the full preflight when NODE_ENV=production resolves the systemd default, even with EVELAND_RUNTIME unset", async () => {
+    // The gate must follow the RESOLVED runtime, not the raw env var: a
+    // production host relying on the systemd default gets the same safety net
+    // as one that sets EVELAND_RUNTIME=systemd explicitly.
+    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_DATA_DIR: "/var/lib/eveland" };
+    const deps = makePassingDeps(env);
+    await expect(assertWorkerPreflight(env, deps)).resolves.toBeUndefined();
+    expect(deps.getuid).toHaveBeenCalled();
+    expect(deps.commandExists).toHaveBeenCalled();
+    expect(deps.userExists).toHaveBeenCalled();
+    expect(deps.canTraverseAs).toHaveBeenCalledWith("eveland-app", "/var/lib/eveland");
+    expect(deps.backendDistDir).toHaveBeenCalled();
+  });
+
+  test("collects issues on the NODE_ENV=production default path, not just the explicit-systemd one", async () => {
+    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_DATA_DIR: "/var/lib/eveland" };
+    const deps = makePassingDeps(env);
+    deps.platform = "darwin";
+    await expect(assertWorkerPreflight(env, deps)).rejects.toThrow(/^systemd runtime preflight failed:/);
+  });
+
+  test("stays a no-op when NODE_ENV=production but EVELAND_RUNTIME=docker is explicit", async () => {
+    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_RUNTIME: "docker" };
+    const deps = makePassingDeps(env);
+    await expect(assertWorkerPreflight(env, deps)).resolves.toBeUndefined();
+    expect(deps.getuid).not.toHaveBeenCalled();
+    expect(deps.commandExists).not.toHaveBeenCalled();
+    expect(deps.backendDistDir).not.toHaveBeenCalled();
+  });
+
   test("resolves when every check passes", async () => {
     const deps = makePassingDeps();
     await expect(assertWorkerPreflight(deps.env, deps)).resolves.toBeUndefined();
@@ -220,12 +250,21 @@ describe("collectSystemdPreflightIssues", () => {
     expect(issues.some((issue) => /traverse/i.test(issue) && issue.includes("/var/lib/eveland"))).toBe(true);
   });
 
-  test("mkdirs the data dir and probes app-user traversal on it", async () => {
+  test("flags the build user being unable to traverse the data dir, independent of the app-user probe passing", async () => {
+    const deps = makePassingDeps();
+    deps.canTraverseAs = vi.fn(async (user: string) => user !== "eveland-build");
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(issues.some((issue) => /traverse/i.test(issue) && issue.includes("eveland-build") && issue.includes("/var/lib/eveland"))).toBe(true);
+    expect(issues.some((issue) => /traverse/i.test(issue) && issue.includes("eveland-app"))).toBe(false);
+  });
+
+  test("mkdirs the data dir and probes both app-user and build-user traversal on it", async () => {
     const deps = makePassingDeps();
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues).toEqual([]);
     expect(deps.mkdir).toHaveBeenCalledWith("/var/lib/eveland");
     expect(deps.canTraverseAs).toHaveBeenCalledWith("eveland-app", "/var/lib/eveland");
+    expect(deps.canTraverseAs).toHaveBeenCalledWith("eveland-build", "/var/lib/eveland");
   });
 
   test("skips the traversal probe when the app user does not exist, without a duplicate issue", async () => {
@@ -236,6 +275,17 @@ describe("collectSystemdPreflightIssues", () => {
     const issues = await collectSystemdPreflightIssues(deps);
     expect(canTraverseAs).not.toHaveBeenCalled();
     expect(issues.filter((issue) => /eveland-app/.test(issue))).toHaveLength(1);
+  });
+
+  test("skips the build-user traversal probe when the build user does not exist, without a duplicate issue (app user still probed)", async () => {
+    const deps = makePassingDeps();
+    deps.userExists = vi.fn(async (name: string) => name !== "eveland-build");
+    const canTraverseAs = vi.fn(async () => true);
+    deps.canTraverseAs = canTraverseAs;
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(canTraverseAs).toHaveBeenCalledWith("eveland-app", "/var/lib/eveland");
+    expect(canTraverseAs).not.toHaveBeenCalledWith("eveland-build", "/var/lib/eveland");
+    expect(issues.filter((issue) => /eveland-build/.test(issue))).toHaveLength(1);
   });
 
   test("skips the data-dir-usable check entirely when EVELAND_DATA_DIR is unset, reporting only issue 4", async () => {
