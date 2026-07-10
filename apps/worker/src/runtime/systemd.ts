@@ -127,6 +127,42 @@ export function buildEnvFileContent(env: Record<string, string>): string {
   return lines.length ? `${lines.join("\n")}\n` : "";
 }
 
+export type SystemctlCommandOutcome = {
+  failed: boolean;
+  exitCode?: number;
+  stderr?: string;
+};
+
+/**
+ * `systemctl stop`/`reset-failed` exit non-zero both when the unit was never
+ * loaded -- an idempotent no-op eveland relies on (a half-finished delete
+ * re-run, or a redeploy after the unit already exited and was reaped) --
+ * and when systemctl itself is unusable (CLI missing, permission denied,
+ * unknown failure). Only the former is safe to swallow silently; the caller
+ * must throw on everything else so a missing/unreachable runtime fails the
+ * job loudly instead of orphaning the process.
+ */
+export function isBenignSystemctlStopFailure(outcome: SystemctlCommandOutcome): boolean {
+  if (!outcome.failed) {
+    return true;
+  }
+  const stderr = outcome.stderr ?? "";
+  return /not loaded/i.test(stderr) || /not found/i.test(stderr) || /no such/i.test(stderr);
+}
+
+async function runSystemctl(subcommand: string, unit: string): Promise<void> {
+  const result = await execa("systemctl", [subcommand, unit], { reject: false });
+  const outcome: SystemctlCommandOutcome = { failed: result.failed, exitCode: result.exitCode, stderr: result.stderr };
+  if (isBenignSystemctlStopFailure(outcome)) {
+    return;
+  }
+  throw new Error(
+    `systemctl ${subcommand} ${unit} failed (exit ${outcome.exitCode ?? "none -- systemctl may be missing"}): ${
+      outcome.stderr || "no stderr captured"
+    }`,
+  );
+}
+
 export type SystemdAdapterConfig = {
   dataDir: string;
   user: string;
@@ -251,8 +287,9 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       return { internalPort: input.port, log: result.all ?? "" };
     },
     async stopProcess(processName: string): Promise<void> {
-      await execa("systemctl", ["stop", `${processName}.service`], { reject: false });
-      await execa("systemctl", ["reset-failed", `${processName}.service`], { reject: false });
+      const unit = `${processName}.service`;
+      await runSystemctl("stop", unit);
+      await runSystemctl("reset-failed", unit);
       // Secrets are decrypted onto disk for systemd's EnvironmentFile; delete them once the
       // unit is stopped instead of leaving plaintext behind indefinitely. Release-dir reaping
       // is out of scope (accepted disk hygiene debt) -- this only covers the env file.

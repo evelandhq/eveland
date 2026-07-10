@@ -154,14 +154,25 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async deleteProject(projectId) {
       const before = state.projects.length;
-      state.projects = state.projects.filter((project) => project.id !== projectId);
-      state.secrets = state.secrets.filter((secret) => secret.projectId !== projectId);
-      state.jobs = state.jobs.filter((job) => job.projectId !== projectId);
-      state.schedules = state.schedules.filter((schedule) => schedule.projectId !== projectId);
-      state.sessions = state.sessions.filter((session) => session.projectId !== projectId);
+      const sessionIds = state.sessions.filter((session) => session.projectId === projectId).map((session) => session.id);
+      const revisionIds = state.sourceRevisions.filter((revision) => revision.projectId === projectId).map((revision) => revision.id);
+
+      // Mirrors the Postgres store's cascade order (db/postgres-store.ts
+      // deleteProject): logs, deployments, releases, source files scoped to
+      // this project's revisions, the revisions themselves, session events
+      // scoped to this project's sessions, the sessions, then
+      // schedules/jobs/secrets, and the projects row last.
       state.logs = state.logs.filter((log) => log.projectId !== projectId);
-      state.releases = state.releases.filter((release) => release.projectId !== projectId);
       state.deployments = state.deployments.filter((deployment) => deployment.projectId !== projectId);
+      state.releases = state.releases.filter((release) => release.projectId !== projectId);
+      state.sourceFiles = state.sourceFiles.filter((file) => !revisionIds.includes(file.revisionId));
+      state.sourceRevisions = state.sourceRevisions.filter((revision) => revision.projectId !== projectId);
+      state.sessionEvents = state.sessionEvents.filter((event) => !sessionIds.includes(event.sessionId));
+      state.sessions = state.sessions.filter((session) => session.projectId !== projectId);
+      state.schedules = state.schedules.filter((schedule) => schedule.projectId !== projectId);
+      state.jobs = state.jobs.filter((job) => job.projectId !== projectId);
+      state.secrets = state.secrets.filter((secret) => secret.projectId !== projectId);
+      state.projects = state.projects.filter((project) => project.id !== projectId);
       return state.projects.length !== before;
     },
 

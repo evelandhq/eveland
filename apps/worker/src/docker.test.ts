@@ -3,7 +3,14 @@ import { execa } from "execa";
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { buildDockerBuildArgs, buildDockerRunArgs, buildDockerStartCommand, createDockerAdapter, writeGeneratedDockerfile } from "./runtime/docker.js";
+import {
+  buildDockerBuildArgs,
+  buildDockerRunArgs,
+  buildDockerStartCommand,
+  createDockerAdapter,
+  isBenignDockerStopFailure,
+  writeGeneratedDockerfile,
+} from "./runtime/docker.js";
 import { processSafeName } from "./runtime/types.js";
 
 // Module-scoped: every test in this file runs against the mocked execa. This is safe
@@ -166,5 +173,73 @@ describe("createDockerAdapter", () => {
     await adapter.stopProcess("eveland-proj_123");
 
     expect(vi.mocked(execa).mock.calls).toEqual([["docker", ["rm", "--force", "eveland-proj_123"], { reject: false }]]);
+  });
+
+  test("stopProcess tolerates 'No such container' as a benign not-found (idempotent re-run)", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: true,
+      exitCode: 1,
+      stderr: "Error: No such container: eveland-proj_123",
+      all: "",
+    } as never);
+    const adapter = createDockerAdapter({ internalPort: 3000 });
+
+    await expect(adapter.stopProcess("eveland-proj_123")).resolves.toBeUndefined();
+  });
+
+  test("stopProcess throws naming the command and stderr when the docker daemon is unreachable", async () => {
+    vi.mocked(execa).mockClear();
+    const stderr = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?";
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr, all: "" } as never);
+    const adapter = createDockerAdapter({ internalPort: 3000 });
+
+    await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(/docker rm --force eveland-proj_123 failed/);
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr, all: "" } as never);
+    await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(stderr);
+  });
+
+  test("stopProcess throws when the docker CLI itself cannot be spawned (ENOENT)", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: undefined, stderr: "", all: "" } as never);
+    const adapter = createDockerAdapter({ internalPort: 3000 });
+
+    await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(/docker rm --force eveland-proj_123 failed/);
+  });
+
+  test("stopProcess throws on an unknown non-zero exit", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr: "permission denied", all: "" } as never);
+    const adapter = createDockerAdapter({ internalPort: 3000 });
+
+    await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(/permission denied/);
+  });
+});
+
+describe("isBenignDockerStopFailure", () => {
+  test("tolerates a successful call", () => {
+    expect(isBenignDockerStopFailure({ failed: false })).toBe(true);
+  });
+
+  test("tolerates 'No such container' -- the idempotent not-found case", () => {
+    expect(isBenignDockerStopFailure({ failed: true, exitCode: 1, stderr: "Error: No such container: eveland-proj_123" })).toBe(true);
+  });
+
+  test("does not tolerate a spawn failure (docker CLI missing, no exit code or stderr)", () => {
+    expect(isBenignDockerStopFailure({ failed: true, exitCode: undefined, stderr: "" })).toBe(false);
+  });
+
+  test("does not tolerate a daemon-unreachable error", () => {
+    expect(
+      isBenignDockerStopFailure({
+        failed: true,
+        exitCode: 1,
+        stderr: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+      }),
+    ).toBe(false);
+  });
+
+  test("does not tolerate an unknown non-zero exit", () => {
+    expect(isBenignDockerStopFailure({ failed: true, exitCode: 1, stderr: "permission denied" })).toBe(false);
   });
 });

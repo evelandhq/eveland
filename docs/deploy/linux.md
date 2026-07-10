@@ -127,8 +127,18 @@ follow-up hardening.
 > deleting one of them afterward resolves the Docker adapter against what is
 > actually a systemd unit:
 >
-> - `stopProcess` against the wrong adapter is a silent no-op: the old process
->   is never actually stopped and keeps holding its port.
+> - `stopProcess` against the wrong adapter fails one of two ways, depending on
+>   whether that adapter's own runtime is actually present on the host. If it
+>   is (e.g. this host also runs the Docker Compose stack for API/Web/Postgres,
+>   so `docker` is on `PATH` and its daemon is reachable), the mismatched stop
+>   is a silent no-op: `docker rm -f <name>` against a name that was never a
+>   real container just reports "No such container", and the actual systemd
+>   unit is never touched. If the wrong adapter's runtime isn't present at all
+>   (no `docker`/`systemctl` binary, or an unreachable daemon), the stop
+>   attempt now fails loudly instead — the job is marked failed and the error
+>   names the command and its captured output.
+> - Either way, the old process is never actually stopped and keeps holding
+>   its port.
 > - A redeploy tries to bind the same host port and crash-loops (or, on a
 >   different port, quietly leaves two versions of the app running).
 > - Health checks can false-pass against the still-running old process while

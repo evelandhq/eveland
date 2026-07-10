@@ -81,10 +81,41 @@ export async function dockerRun(input: DockerRunInput): Promise<string> {
   return result.all ?? "";
 }
 
+export type DockerCommandOutcome = {
+  failed: boolean;
+  exitCode?: number;
+  stderr?: string;
+};
+
+/**
+ * `docker rm --force` exits non-zero both when the named container simply
+ * doesn't exist -- an idempotent no-op eveland relies on (a half-finished
+ * delete re-run, or a redeploy after the container already crashed and was
+ * reaped) -- and when docker itself is unusable (CLI missing, daemon down,
+ * permission denied). Only the former is safe to swallow silently; the
+ * caller must throw on everything else so a missing/unreachable runtime
+ * fails the job loudly instead of orphaning the process.
+ */
+export function isBenignDockerStopFailure(outcome: DockerCommandOutcome): boolean {
+  if (!outcome.failed) {
+    return true;
+  }
+  return /No such container/i.test(outcome.stderr ?? "");
+}
+
 export async function dockerStopAndRemove(containerName: string): Promise<void> {
-  await execa("docker", ["rm", "--force", containerName], {
+  const result = await execa("docker", ["rm", "--force", containerName], {
     reject: false,
   });
+  const outcome: DockerCommandOutcome = { failed: result.failed, exitCode: result.exitCode, stderr: result.stderr };
+  if (isBenignDockerStopFailure(outcome)) {
+    return;
+  }
+  throw new Error(
+    `docker rm --force ${containerName} failed (exit ${outcome.exitCode ?? "none -- docker CLI may be missing or unreachable"}): ${
+      outcome.stderr || "no stderr captured"
+    }`,
+  );
 }
 
 // Bridges the container's loopback model port to the host so eve apps that call a

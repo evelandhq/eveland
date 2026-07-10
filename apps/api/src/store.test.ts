@@ -189,6 +189,37 @@ describe("memory store jobs", () => {
     await expect(store.getSourceRevision("src_does_not_exist")).resolves.toBeNull();
   });
 
+  test("deleteProject cascades to the project's source revision, source files, and session events", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Deletable Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [{ path: "agent/instructions.md", content: "You are concise." }],
+      schedules: [],
+    });
+    const session = await store.createSession({
+      projectId: project.id,
+      deploymentId: null,
+      trigger: "playground",
+      scheduleId: null,
+    });
+    await store.appendSessionEvent(session.id, "message", { role: "user", content: "Hello" });
+
+    await expect(store.deleteProject(project.id)).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+    // The behavioral divergence this guards against: getSourceRevision looks
+    // revisions up directly by id (unlike getCurrentSourceRevision, which
+    // requires the project row), so a deleted project's revision must not
+    // still be findable here the way it would be in Postgres.
+    await expect(store.getSourceRevision(revision.id)).resolves.toBeNull();
+    await expect(store.listSessionEvents(session.id)).resolves.toEqual([]);
+  });
+
   test("records a playground session timeline in event order", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Session Agent", importKind: "zip" });

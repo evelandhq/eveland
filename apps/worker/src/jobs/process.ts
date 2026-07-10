@@ -304,6 +304,11 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         return;
       }
 
+      // Known limitation: a build_deploy in progress on another worker, between
+      // its startProcess and recordDeployment calls, has a live process this
+      // delete cannot see yet (the deployment row doesn't exist until
+      // recordDeployment runs), so that process can be orphaned by a
+      // concurrent delete. Reaping orphans is a later-PR concern.
       const deployment = await store.getCurrentDeployment(job.projectId);
       if (deployment) {
         await store.appendLog({
@@ -321,10 +326,11 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // Must be the last statement in this case, and nothing may follow it --
       // the Postgres store enforces FK integrity, so any write referencing
       // this project once its row is gone (a log line, a state update) would
-      // throw. That also makes processNextJob's generic failure path safe here:
-      // if this handler throws, it can only have thrown before this line, at
-      // which point the project row still exists, so the failure path's own
-      // updateProjectState + appendLog against job.projectId succeed normally.
+      // throw. On any throw here -- before or during this call, since
+      // deleteProject is not transactional -- the project row still exists,
+      // because both stores delete the projects row last inside deleteProject;
+      // that's what keeps processNextJob's generic failure path
+      // (updateProjectState + appendLog against job.projectId) safe.
       await store.deleteProject(job.projectId);
       return;
     }

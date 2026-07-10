@@ -9,6 +9,7 @@ import {
   buildSystemdRunArgs,
   buildSystemdStartCommand,
   createSystemdAdapter,
+  isBenignSystemctlStopFailure,
   resolveProjectSandboxCacheDir,
   resolveSandboxCacheRoot,
 } from "./systemd.js";
@@ -233,6 +234,81 @@ describe("createSystemdAdapter stopProcess", () => {
       path.join("/var/lib/eveland-data", "deployment-env", "eveland-proj_123-dep_456.env"),
       { force: true },
     );
+  });
+
+  test("tolerates a not-loaded unit on both stop and reset-failed, and still deletes the env file", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(rm).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: true, exitCode: 5, stderr: "Unit eveland-proj_123-dep_456.service not loaded.", all: "" } as never)
+      .mockResolvedValueOnce({ failed: true, exitCode: 5, stderr: "Unit eveland-proj_123-dep_456.service not loaded.", all: "" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.stopProcess("eveland-proj_123-dep_456")).resolves.toBeUndefined();
+    expect(rm).toHaveBeenCalledWith(
+      path.join("/var/lib/eveland-data", "deployment-env", "eveland-proj_123-dep_456.env"),
+      { force: true },
+    );
+  });
+
+  test("throws naming the command and stderr when systemctl stop fails for an unknown reason", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr: "Access denied", all: "" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.stopProcess("eveland-proj_123-dep_456")).rejects.toThrow(
+      /systemctl stop eveland-proj_123-dep_456\.service failed/,
+    );
+  });
+
+  test("throws when reset-failed fails for an unknown reason even though stop succeeded", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false, exitCode: 0, stderr: "", all: "" } as never)
+      .mockResolvedValueOnce({ failed: true, exitCode: 1, stderr: "Access denied", all: "" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.stopProcess("eveland-proj_123-dep_456")).rejects.toThrow(
+      /systemctl reset-failed eveland-proj_123-dep_456\.service failed/,
+    );
+  });
+
+  test("throws when systemctl itself cannot be spawned (ENOENT, no exit code or stderr)", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: undefined, stderr: "", all: "" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.stopProcess("eveland-proj_123-dep_456")).rejects.toThrow(/systemctl stop/);
+  });
+});
+
+describe("isBenignSystemctlStopFailure", () => {
+  test("tolerates a successful call", () => {
+    expect(isBenignSystemctlStopFailure({ failed: false })).toBe(true);
+  });
+
+  test("tolerates a not-loaded unit -- the idempotent no-op case", () => {
+    expect(
+      isBenignSystemctlStopFailure({ failed: true, exitCode: 5, stderr: "Unit eveland-proj_123-dep_456.service not loaded." }),
+    ).toBe(true);
+  });
+
+  test("tolerates the 'not loaded, or not found' phrasing from newer systemd", () => {
+    expect(
+      isBenignSystemctlStopFailure({
+        failed: true,
+        exitCode: 5,
+        stderr: "Unit eveland-proj_123-dep_456.service not loaded, or not found.",
+      }),
+    ).toBe(true);
+  });
+
+  test("does not tolerate a spawn failure (systemctl missing, no exit code or stderr)", () => {
+    expect(isBenignSystemctlStopFailure({ failed: true, exitCode: undefined, stderr: "" })).toBe(false);
+  });
+
+  test("does not tolerate an unknown non-zero exit", () => {
+    expect(isBenignSystemctlStopFailure({ failed: true, exitCode: 1, stderr: "Access denied" })).toBe(false);
   });
 });
 
