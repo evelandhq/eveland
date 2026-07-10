@@ -32,7 +32,7 @@ export type SecretRecord = {
 
 export type PublicSecret = Omit<SecretRecord, "encryptedValue">;
 
-export type JobType = "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule";
+export type JobType = "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "delete_project";
 export type JobStatus = "queued" | "running" | "completed" | "failed";
 
 export type Job = {

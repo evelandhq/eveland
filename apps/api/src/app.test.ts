@@ -272,6 +272,31 @@ describe("api app", () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ error: "No running deployment" });
   });
+
+  test("returns 404 when deleting a project that does not exist", async () => {
+    const app = createApp(createMemoryStore());
+
+    const response = await app.request("/projects/missing", { method: "DELETE" });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Project not found" });
+  });
+
+  test("enqueues a delete_project job and leaves the project in place until the worker runs it", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Delete Me Agent", importKind: "zip", sourcePath: "/tmp/delete-me" });
+    const app = createApp(store);
+
+    const response = await app.request(`/projects/${project.id}`, { method: "DELETE" });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      job: expect.objectContaining({ type: "delete_project", status: "queued", projectId: project.id }),
+    });
+    // The delete only happens once the worker processes the job; the DELETE
+    // request itself must not remove the project row.
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ id: project.id });
+  });
 });
 
 async function createZipArchiveFixture(options: { wrappedDirectory?: string } = {}): Promise<string> {

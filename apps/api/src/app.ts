@@ -95,8 +95,13 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
   });
 
   app.delete("/projects/:projectId", async (c) => {
-    const deleted = await store.deleteProject(c.req.param("projectId"));
-    return c.json({ deleted });
+    const projectId = c.req.param("projectId");
+    const project = await store.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+    const job = await store.enqueueJob(projectId, "delete_project");
+    return c.json({ job }, 202);
   });
 
   app.post("/projects/:projectId/build-deploy", async (c) => {

@@ -900,6 +900,146 @@ describe("processNextJob", () => {
       expect.objectContaining({ line: expect.stringContaining("rel_missing") }),
     );
   });
+  test("delete_project stops the deployment through its recorded runtimeKind adapter, logging before stopping, then deletes the project last", async () => {
+    const calls: string[] = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Delete Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_del",
+      deploymentId: "dep_del",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_del",
+      containerName: "eveland-del-systemd-unit",
+      internalPort: 3000,
+      hostPort: 41060,
+      runtimeKind: "systemd",
+    });
+    await store.enqueueJob(project.id, "delete_project");
+
+    let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
+    // Only the systemd adapter may stop a systemd unit; the worker's active
+    // default runtime (docker, injected as `options.runtime` in other tests)
+    // must never be consulted for stopping a deployment it doesn't own.
+    const stopAdapter: RuntimeAdapter = {
+      name: "systemd",
+      async buildRelease() {
+        throw new Error("delete_project must never build a release");
+      },
+      async startProcess() {
+        throw new Error("delete_project must never start a process");
+      },
+      async stopProcess(processName) {
+        calls.push(`stopProcess:${processName}`);
+      },
+    };
+    const spyingStore: Store = {
+      ...store,
+      async appendLog(input) {
+        calls.push(`appendLog:${input.line}`);
+        return store.appendLog(input);
+      },
+      async updateProjectState(projectId, state) {
+        calls.push("updateProjectState");
+        return store.updateProjectState(projectId, state);
+      },
+      async deleteProject(projectId) {
+        calls.push(`deleteProject:${projectId}`);
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(
+      processNextJob(spyingStore, "worker-a", {
+        runtimeForKind(kind) {
+          runtimeForKindCalledWith = kind;
+          return stopAdapter;
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeForKindCalledWith).toBe("systemd");
+    // The log must land before the process is stopped, and nothing --
+    // no log, no state update -- may follow the delete.
+    expect(calls).toEqual([
+      "appendLog:Stopping deployment before deleting project.",
+      `stopProcess:${deployment.containerName}`,
+      `deleteProject:${project.id}`,
+    ]);
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+  });
+
+  test("delete_project with no current deployment deletes the project without stopping or logging anything", async () => {
+    const calls: string[] = [];
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "No Deployment Delete Agent", importKind: "zip", sourcePath: "/tmp/no-deployment" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "delete_project");
+
+    const spyingStore: Store = {
+      ...store,
+      async appendLog(input) {
+        calls.push(`appendLog:${input.line}`);
+        return store.appendLog(input);
+      },
+      async deleteProject(projectId) {
+        calls.push(`deleteProject:${projectId}`);
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(processNextJob(spyingStore, "worker-a")).resolves.toBe(true);
+
+    expect(calls).toEqual([`deleteProject:${project.id}`]);
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+  });
+
+  test("delete_project is idempotent: a re-run against an already-gone project returns silently", async () => {
+    const calls: string[] = [];
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Already Gone Agent", importKind: "zip", sourcePath: "/tmp/already-gone" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "delete_project");
+
+    // Simulates a half-finished delete_project retry: the project row is
+    // already gone (e.g. a prior run got as far as store.deleteProject before
+    // crashing), but nothing else about the store is touched.
+    const storeWithProjectGone: Store = {
+      ...store,
+      async getProject(projectId) {
+        calls.push(`getProject:${projectId}`);
+        return null;
+      },
+      async getCurrentDeployment(projectId) {
+        calls.push(`getCurrentDeployment:${projectId}`);
+        return store.getCurrentDeployment(projectId);
+      },
+      async deleteProject(projectId) {
+        calls.push(`deleteProject:${projectId}`);
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(processNextJob(storeWithProjectGone, "worker-a")).resolves.toBe(true);
+
+    // The handler must return immediately after the missing getProject check --
+    // it must never call getCurrentDeployment or deleteProject again.
+    expect(calls).toEqual([`getProject:${project.id}`]);
+  });
 });
 
 async function createFixtureEveProject(

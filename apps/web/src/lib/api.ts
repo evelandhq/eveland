@@ -65,7 +65,7 @@ export type PlaygroundResult = {
 export type Job = {
   id: string;
   projectId: string;
-  type: "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule";
+  type: "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "delete_project";
   status: "queued" | "running" | "completed" | "failed";
   payload: Record<string, unknown>;
   attempts: number;

@@ -296,6 +296,38 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       });
       return;
     }
+    case "delete_project": {
+      const project = await store.getProject(job.projectId);
+      if (!project) {
+        // Idempotent re-run of a half-finished delete: the project row is
+        // already gone, so there is nothing left to stop or remove.
+        return;
+      }
+
+      const deployment = await store.getCurrentDeployment(job.projectId);
+      if (deployment) {
+        await store.appendLog({
+          projectId: job.projectId,
+          type: "deploy",
+          line: "Stopping deployment before deleting project.",
+        });
+        // Same reasoning as restart_deployment: only the adapter matching the
+        // deployment's own recorded runtimeKind may stop it -- never whatever
+        // runtime kind the worker currently defaults to.
+        const stopAdapter = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+        await stopAdapter.stopProcess(deployment.containerName);
+      }
+
+      // Must be the last statement in this case, and nothing may follow it --
+      // the Postgres store enforces FK integrity, so any write referencing
+      // this project once its row is gone (a log line, a state update) would
+      // throw. That also makes processNextJob's generic failure path safe here:
+      // if this handler throws, it can only have thrown before this line, at
+      // which point the project row still exists, so the failure path's own
+      // updateProjectState + appendLog against job.projectId succeed normally.
+      await store.deleteProject(job.projectId);
+      return;
+    }
     case "trigger_schedule": {
       await store.appendLog({
         projectId: job.projectId,
