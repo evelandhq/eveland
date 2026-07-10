@@ -350,6 +350,20 @@ stalls every run silently.
 - An eve project with no `agent/` directory, or a plain Node project, gets no injected
   sandbox and runs on eve's default sandbox chain (`just-bash` on a host with no Docker
   daemon and no KVM).
+- **Deployments do not survive a host reboot.** Every deployment runs as a
+  `systemd-run --collect` **transient** unit (see "How a deployment runs" above) —
+  transient units are held only in systemd's in-memory unit table, not as unit files on
+  disk, so they do not come back after a reboot the way an installed unit does. The
+  worker itself is unaffected: it's installed via `infra/systemd/eveland-worker.service`
+  and comes back on boot like any other enabled systemd service. But every deployment it
+  had running is simply gone from systemd's perspective post-reboot — not stopped, not
+  failed, just never re-created — while its row in the store still reads
+  `deploymentStatus: "running"`, which is now stale. Recovering after a reboot today
+  means manually restarting or redeploying every affected project (`restart_deployment`
+  re-runs `startProcess` against the existing release; `build_deploy` also works and
+  additionally rebuilds). There is no reconciliation loop that reconciles store state
+  against actual running units at worker startup and re-creates what's missing — that's
+  explicit future work (PR 5+ territory), not something this v1 does implicitly.
 
 ## Verifying the setup: Lima integration smoke test
 
