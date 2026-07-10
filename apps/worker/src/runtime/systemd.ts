@@ -115,6 +115,16 @@ export function buildBwrapArgs(input: BwrapBuildInput): string[] {
   ];
 }
 
+/**
+ * Wraps an argv so `execa("runuser", ...)` runs it as `user` instead of the
+ * worker's own (root, in production) user. `--` stops `runuser` from parsing
+ * any of the wrapped command's own leading flags (e.g. bwrap's `--ro-bind`)
+ * as arguments to `runuser` itself.
+ */
+export function buildRunAsUserArgs(user: string, argv: string[]): string[] {
+  return ["-u", user, "--", ...argv];
+}
+
 export function buildEnvFileContent(env: Record<string, string>): string {
   const lines = Object.entries(env)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -166,6 +176,8 @@ async function runSystemctl(subcommand: string, unit: string): Promise<void> {
 export type SystemdAdapterConfig = {
   dataDir: string;
   user: string;
+  /** Unix user the build (`npm ci`/`npx eve build`, i.e. third-party lifecycle scripts) runs as. */
+  buildUser: string;
   memoryMax: string;
   cpuQuota: string;
   buildSandbox: "bwrap" | "none";
@@ -214,17 +226,36 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       // own, more privileged user) must create and hand it over.
       await mkdir(cacheDir, { recursive: true });
 
+      // Hand the release and the shared npm cache to the unprivileged build user
+      // before any third-party lifecycle script (npm ci/npx eve build) runs. The
+      // npm cache may still be root-owned from installs that predate this change
+      // (or from an earlier build that failed before its own handover), so this
+      // chown cannot be conditional on prior ownership -- a recursive chown on
+      // every build is the accepted correctness-first cost of not tracking cache
+      // ownership state separately.
+      await execa("chown", ["-R", `${config.buildUser}:`, releaseDir]);
+      await execa("chown", ["-R", `${config.buildUser}:`, npmCacheDir]);
+
       const command = buildReleaseBuildCommand(input.commandContext);
+      // HOME must point at the release dir, not root's real $HOME: the build
+      // user has no read access to root's home directory, and npm consults
+      // $HOME/.npmrc during install.
+      const buildEnv = { npm_config_cache: npmCacheDir, HOME: releaseDir };
       const execution =
         config.buildSandbox === "bwrap"
-          ? await execa("bwrap", buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command }), {
-              all: true,
-              env: { npm_config_cache: npmCacheDir },
-            })
-          : await execa("sh", ["-lc", command], {
+          ? // Running bwrap as the unprivileged build user relies on the same
+            // AppArmor grant the deployed agent's own sandbox already requires
+            // (/etc/apparmor.d/bwrap, userns) -- see docs/deploy/linux.md for
+            // the host provisioning that grants it; not re-documented here.
+            await execa(
+              "runuser",
+              buildRunAsUserArgs(config.buildUser, ["bwrap", ...buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command })]),
+              { all: true, env: buildEnv },
+            )
+          : await execa("runuser", buildRunAsUserArgs(config.buildUser, ["sh", "-lc", command]), {
               all: true,
               cwd: releaseDir,
-              env: { npm_config_cache: npmCacheDir },
+              env: buildEnv,
             });
 
       // The unit's fixed service user needs to own the release dir: eve's default

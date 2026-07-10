@@ -6,6 +6,7 @@ import {
   buildBwrapArgs,
   buildEnvFileContent,
   buildReleaseBuildCommand,
+  buildRunAsUserArgs,
   buildSystemdRunArgs,
   buildSystemdStartCommand,
   createSystemdAdapter,
@@ -188,6 +189,7 @@ describe("buildBwrapArgs", () => {
 const baseAdapterConfig = {
   dataDir: "/var/lib/eveland-data",
   user: "eveland-app",
+  buildUser: "eveland-build",
   memoryMax: "2G",
   cpuQuota: "200%",
   buildSandbox: "bwrap" as const,
@@ -327,7 +329,7 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
 
     const execaCalls = vi.mocked(execa).mock.calls;
     const cpCallIndex = execaCalls.findIndex(([cmd]) => cmd === "cp");
-    const buildCallIndex = execaCalls.findIndex(([cmd]) => cmd === "sh");
+    const buildCallIndex = execaCalls.findIndex(([cmd]) => cmd === "runuser");
     expect(cpCallIndex).toBeGreaterThanOrEqual(0);
     expect(buildCallIndex).toBeGreaterThan(cpCallIndex);
 
@@ -374,6 +376,100 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     expect(result.log).toContain("bootstrap()");
     expect(result.log).toContain("onSession()");
     expect(result.log).toContain("workspace seeds are NOT used");
+  });
+});
+
+describe("createSystemdAdapter buildRelease (build user handover)", () => {
+  test("chowns the release and npm cache to the build user before the build, then to the app user after (none mode)", async () => {
+    vi.mocked(execa).mockClear();
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    await adapter.buildRelease({
+      projectId: "proj_123",
+      releaseId: "rel_789",
+      sourcePath: "/data/sources/proj_123",
+      buildDir: "/data/builds/proj_123/rel_789",
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+    });
+
+    const releaseDir = path.resolve("/data/builds/proj_123/rel_789");
+    const npmCacheDir = path.resolve("/var/lib/eveland-data", "npm-cache");
+    const cacheDir = path.resolve("/var/lib/eveland-data/sandbox", "proj_123");
+
+    const calls = vi.mocked(execa).mock.calls;
+    const order = vi.mocked(execa).mock.invocationCallOrder;
+
+    const buildUserChownReleaseIndex = calls.findIndex(
+      ([cmd, args]) => cmd === "chown" && Array.isArray(args) && args[1] === "eveland-build:" && args[2] === releaseDir,
+    );
+    const buildUserChownCacheIndex = calls.findIndex(
+      ([cmd, args]) => cmd === "chown" && Array.isArray(args) && args[1] === "eveland-build:" && args[2] === npmCacheDir,
+    );
+    const runuserIndex = calls.findIndex(([cmd]) => cmd === "runuser");
+    const appUserChownReleaseIndex = calls.findIndex(
+      ([cmd, args]) => cmd === "chown" && Array.isArray(args) && args[1] === "eveland-app:" && args[2] === releaseDir,
+    );
+    const appUserChownCacheIndex = calls.findIndex(
+      ([cmd, args]) => cmd === "chown" && Array.isArray(args) && args[1] === "eveland-app:" && args[2] === cacheDir,
+    );
+
+    expect(buildUserChownReleaseIndex).toBeGreaterThanOrEqual(0);
+    expect(buildUserChownCacheIndex).toBeGreaterThanOrEqual(0);
+    expect(runuserIndex).toBeGreaterThanOrEqual(0);
+    expect(appUserChownReleaseIndex).toBeGreaterThanOrEqual(0);
+    expect(appUserChownCacheIndex).toBeGreaterThanOrEqual(0);
+
+    // chown-to-build-user happens before the build call; chown-to-app-user after.
+    expect(order[buildUserChownReleaseIndex]!).toBeLessThan(order[runuserIndex]!);
+    expect(order[buildUserChownCacheIndex]!).toBeLessThan(order[runuserIndex]!);
+    expect(order[runuserIndex]!).toBeLessThan(order[appUserChownReleaseIndex]!);
+    expect(order[runuserIndex]!).toBeLessThan(order[appUserChownCacheIndex]!);
+
+    // execa's overloaded signature makes Parameters<> resolve to a union of tuple
+    // shapes; cast the found call to the (file, args, options) shape actually used
+    // by every call site in systemd.ts so the destructure below type-checks.
+    const [, runuserArgs, runuserOptions] = calls[runuserIndex]! as unknown as [string, string[], Record<string, unknown>];
+    expect(runuserArgs).toEqual(["-u", "eveland-build", "--", "sh", "-lc", "npm ci && npx eve build"]);
+    expect(runuserOptions).toMatchObject({
+      all: true,
+      cwd: releaseDir,
+      env: { npm_config_cache: npmCacheDir, HOME: releaseDir },
+    });
+  });
+
+  test("wraps the bwrap invocation with runuser in bwrap mode, keeping the inner bwrap argv unchanged", async () => {
+    vi.mocked(execa).mockClear();
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "bwrap" });
+
+    await adapter.buildRelease({
+      projectId: "proj_123",
+      releaseId: "rel_789",
+      sourcePath: "/data/sources/proj_123",
+      buildDir: "/data/builds/proj_123/rel_789",
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+    });
+
+    const releaseDir = path.resolve("/data/builds/proj_123/rel_789");
+    const npmCacheDir = path.resolve("/var/lib/eveland-data", "npm-cache");
+    const dataDir = path.resolve("/var/lib/eveland-data");
+
+    const calls = vi.mocked(execa).mock.calls;
+    const runuserCall = calls.find(([cmd]) => cmd === "runuser");
+    expect(runuserCall).toBeDefined();
+    // See the cast comment in the sibling "none mode" test above.
+    const [, args, options] = runuserCall! as unknown as [string, string[], Record<string, unknown>];
+
+    expect(args).toEqual([
+      "-u",
+      "eveland-build",
+      "--",
+      "bwrap",
+      ...buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command: "npm ci && npx eve build" }),
+    ]);
+    expect(options).toMatchObject({
+      all: true,
+      env: { npm_config_cache: npmCacheDir, HOME: releaseDir },
+    });
   });
 });
 
@@ -467,6 +563,31 @@ describe("createSystemdAdapter buildRelease (sandbox verify)", () => {
         commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       }),
     ).rejects.toThrow("sandbox self-check failed: bwrap missing");
+  });
+});
+
+describe("buildRunAsUserArgs", () => {
+  test("wraps an argv with runuser's user-select and argument-terminator flags", () => {
+    expect(buildRunAsUserArgs("eveland-build", ["sh", "-lc", "npm ci"])).toEqual([
+      "-u",
+      "eveland-build",
+      "--",
+      "sh",
+      "-lc",
+      "npm ci",
+    ]);
+  });
+
+  test("leaves the wrapped argv's own arguments untouched, including nested flags", () => {
+    expect(buildRunAsUserArgs("eveland-build", ["bwrap", "--ro-bind", "/", "/"])).toEqual([
+      "-u",
+      "eveland-build",
+      "--",
+      "bwrap",
+      "--ro-bind",
+      "/",
+      "/",
+    ]);
   });
 });
 
