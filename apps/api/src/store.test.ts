@@ -142,4 +142,102 @@ describe("memory store jobs", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({ latestSessionStatus: "completed" });
     expect(completed).toMatchObject({ id: session.id, status: "completed" });
   });
+
+  test("records a model step and updates the session token totals", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Usage Agent", importKind: "zip" });
+    const session = await store.createSession({
+      projectId: project.id,
+      deploymentId: "dep_usage",
+      trigger: "playground",
+    });
+
+    const usageEvent = await store.recordModelUsage(session.id, {
+      turnId: "turn_0",
+      stepIndex: 0,
+      finishReason: "stop",
+      inputTokens: 120,
+      outputTokens: 30,
+      cacheReadTokens: 80,
+      cacheWriteTokens: 10,
+      costUsd: 0.0042,
+      usageReported: true,
+    });
+
+    expect(usageEvent).toMatchObject({ sessionId: session.id, turnId: "turn_0", stepIndex: 0, inputTokens: 120 });
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        usage: {
+          status: "reported",
+          inputTokens: 120,
+          outputTokens: 30,
+          cacheReadTokens: 80,
+          cacheWriteTokens: 10,
+          costUsd: 0.0042,
+          reportedSteps: 1,
+          missingSteps: 0,
+        },
+      }),
+    ]);
+    await expect(store.listModelUsageEvents(session.id)).resolves.toEqual([usageEvent]);
+  });
+
+  test("does not count the same completed model step twice", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Replay Agent", importKind: "zip" });
+    const session = await store.createSession({ projectId: project.id, trigger: "playground" });
+    const step = {
+      turnId: "turn_0",
+      stepIndex: 0,
+      finishReason: "stop",
+      inputTokens: 12,
+      outputTokens: 4,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      costUsd: null,
+      usageReported: true,
+    };
+
+    const first = await store.recordModelUsage(session.id, step);
+    const replayed = await store.recordModelUsage(session.id, step);
+
+    expect(replayed.id).toBe(first.id);
+    await expect(store.listModelUsageEvents(session.id)).resolves.toHaveLength(1);
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({ usage: expect.objectContaining({ inputTokens: 12, outputTokens: 4, reportedSteps: 1 }) }),
+    ]);
+  });
+
+  test("tracks completed steps whose provider omitted token usage", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Missing Usage Agent", importKind: "zip" });
+    const session = await store.createSession({ projectId: project.id, trigger: "playground" });
+
+    await store.recordModelUsage(session.id, {
+      turnId: "turn_0",
+      stepIndex: 0,
+      finishReason: "stop",
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      costUsd: null,
+      usageReported: false,
+    });
+
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        usage: {
+          status: "missing",
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd: null,
+          reportedSteps: 0,
+          missingSteps: 1,
+        },
+      }),
+    ]);
+  });
 });

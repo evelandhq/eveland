@@ -102,6 +102,36 @@ export type Session = {
   status: SessionStatus;
   startedAt: string;
   completedAt: string | null;
+  usage: SessionTokenUsage;
+};
+
+export type SessionTokenUsage = {
+  status: "none" | "reported" | "partial" | "missing";
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number | null;
+  reportedSteps: number;
+  missingSteps: number;
+};
+
+export type ModelUsageEvent = {
+  id: string;
+  sessionId: string;
+  eveSessionId: string;
+  agentId: string | null;
+  agentName: string | null;
+  turnId: string;
+  stepIndex: number;
+  finishReason: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  costUsd: number | null;
+  usageReported: boolean;
+  createdAt: string;
 };
 
 export type SessionEvent = {
