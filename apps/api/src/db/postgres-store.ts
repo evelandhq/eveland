@@ -14,7 +14,21 @@ import {
   sourceFileRowToSourceFile,
   sourceRevisionRowToSourceRevision,
 } from "./mappers.js";
-import { deployments, jobs, logs, projects, releases, schedules, secrets, sessionEvents, sessions, sourceFiles, sourceRevisions, users } from "./schema.js";
+import {
+  deployments,
+  jobs,
+  logs,
+  modelUsageEvents,
+  projects,
+  releases,
+  schedules,
+  secrets,
+  sessionEvents,
+  sessions,
+  sourceFiles,
+  sourceRevisions,
+  users,
+} from "./schema.js";
 import type { CreateProjectInput, Store } from "../store.js";
 import type { JobType, LogRecord } from "../types.js";
 
@@ -105,6 +119,7 @@ export function createPostgresStore(database: Database): Store {
       await db.delete(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
       const relatedSessions = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.projectId, projectId));
       for (const session of relatedSessions) {
+        await db.delete(modelUsageEvents).where(eq(modelUsageEvents.sessionId, session.id));
         await db.delete(sessionEvents).where(eq(sessionEvents.sessionId, session.id));
       }
       await db.delete(sessions).where(eq(sessions.projectId, projectId));
@@ -440,6 +455,68 @@ export function createPostgresStore(database: Database): Store {
       return sessionEventRowToSessionEvent(row);
     },
 
+    async recordModelUsage(sessionId, usage) {
+      return db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(modelUsageEvents)
+          .values({
+            id: createId("usage"),
+            sessionId,
+            eveSessionId: usage.eveSessionId ?? sessionId,
+            agentId: usage.agentId ?? null,
+            agentName: usage.agentName ?? null,
+            turnId: usage.turnId,
+            stepIndex: usage.stepIndex,
+            finishReason: usage.finishReason,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
+            costUsd: usage.costUsd,
+            usageReported: usage.usageReported,
+          })
+          .onConflictDoNothing({
+            target: [modelUsageEvents.sessionId, modelUsageEvents.eveSessionId, modelUsageEvents.turnId, modelUsageEvents.stepIndex],
+          })
+          .returning();
+
+        if (!inserted) {
+          const [existing] = await tx
+            .select()
+            .from(modelUsageEvents)
+            .where(
+              and(
+                eq(modelUsageEvents.sessionId, sessionId),
+                eq(modelUsageEvents.eveSessionId, usage.eveSessionId ?? sessionId),
+                eq(modelUsageEvents.turnId, usage.turnId),
+                eq(modelUsageEvents.stepIndex, usage.stepIndex),
+              ),
+            )
+            .limit(1);
+          if (!existing) {
+            throw new Error("Failed to read the existing model usage event.");
+          }
+          return modelUsageRowToModelUsageEvent(existing);
+        }
+
+        await tx
+          .update(sessions)
+          .set({
+            inputTokens: sql`${sessions.inputTokens} + ${usage.inputTokens ?? 0}`,
+            outputTokens: sql`${sessions.outputTokens} + ${usage.outputTokens ?? 0}`,
+            cacheReadTokens: sql`${sessions.cacheReadTokens} + ${usage.cacheReadTokens ?? 0}`,
+            cacheWriteTokens: sql`${sessions.cacheWriteTokens} + ${usage.cacheWriteTokens ?? 0}`,
+            ...(usage.costUsd === null ? {} : { costUsd: sql`coalesce(${sessions.costUsd}, 0) + ${usage.costUsd}` }),
+            ...(usage.usageReported
+              ? { usageReportedSteps: sql`${sessions.usageReportedSteps} + 1` }
+              : { usageMissingSteps: sql`${sessions.usageMissingSteps} + 1` }),
+          })
+          .where(eq(sessions.id, sessionId));
+
+        return modelUsageRowToModelUsageEvent(inserted);
+      });
+    },
+
     async completeSession(sessionId, input) {
       const [row] = await db
         .update(sessions)
@@ -482,6 +559,15 @@ export function createPostgresStore(database: Database): Store {
       return rows.map(sessionEventRowToSessionEvent);
     },
 
+    async listModelUsageEvents(sessionId) {
+      const rows = await db
+        .select()
+        .from(modelUsageEvents)
+        .where(eq(modelUsageEvents.sessionId, sessionId))
+        .orderBy(modelUsageEvents.createdAt);
+      return rows.map(modelUsageRowToModelUsageEvent);
+    },
+
     async listLogs(projectId, type?: LogRecord["type"]) {
       const rows = await db
         .select()
@@ -490,5 +576,25 @@ export function createPostgresStore(database: Database): Store {
         .orderBy(logs.createdAt);
       return rows.map(logRowToLog);
     },
+  };
+}
+
+function modelUsageRowToModelUsageEvent(row: typeof modelUsageEvents.$inferSelect) {
+  return {
+    id: row.id,
+    sessionId: row.sessionId,
+    eveSessionId: row.eveSessionId,
+    agentId: row.agentId,
+    agentName: row.agentName,
+    turnId: row.turnId,
+    stepIndex: row.stepIndex,
+    finishReason: row.finishReason,
+    inputTokens: row.inputTokens,
+    outputTokens: row.outputTokens,
+    cacheReadTokens: row.cacheReadTokens,
+    cacheWriteTokens: row.cacheWriteTokens,
+    costUsd: row.costUsd,
+    usageReported: row.usageReported,
+    createdAt: row.createdAt.toISOString(),
   };
 }

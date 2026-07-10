@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, doublePrecision, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -118,7 +118,38 @@ export const sessions = pgTable("sessions", {
   status: text("status").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+  outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+  cacheReadTokens: bigint("cache_read_tokens", { mode: "number" }).notNull().default(0),
+  cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull().default(0),
+  costUsd: doublePrecision("cost_usd"),
+  usageReportedSteps: integer("usage_reported_steps").notNull().default(0),
+  usageMissingSteps: integer("usage_missing_steps").notNull().default(0),
 });
+
+export const modelUsageEvents = pgTable(
+  "model_usage_events",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id").notNull().references(() => sessions.id),
+    eveSessionId: text("eve_session_id").notNull(),
+    agentId: text("agent_id"),
+    agentName: text("agent_name"),
+    turnId: text("turn_id").notNull(),
+    stepIndex: integer("step_index").notNull(),
+    finishReason: text("finish_reason"),
+    inputTokens: bigint("input_tokens", { mode: "number" }),
+    outputTokens: bigint("output_tokens", { mode: "number" }),
+    cacheReadTokens: bigint("cache_read_tokens", { mode: "number" }),
+    cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }),
+    costUsd: doublePrecision("cost_usd"),
+    usageReported: boolean("usage_reported").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("model_usage_session_eve_turn_step_idx").on(table.sessionId, table.eveSessionId, table.turnId, table.stepIndex),
+  ],
+);
 
 export const sessionEvents = pgTable("session_events", {
   id: text("id").primaryKey(),
