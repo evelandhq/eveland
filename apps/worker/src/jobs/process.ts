@@ -7,7 +7,7 @@ import net from "node:net";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { waitForHttpHealth } from "../runtime/health.js";
-import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
+import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
 import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
 import { importGitSource, getGitCommitSha } from "../source/importer.js";
@@ -17,6 +17,10 @@ const devSecretKey = "eveland-dev-secret-key-000000000";
 
 export type ProcessJobOptions = {
   runtime?: RuntimeAdapter;
+  // Test injection point mirroring `runtime`, used to resolve the adapter that
+  // owns a *previous* deployment when its runtimeKind differs from the
+  // worker's current runtime.
+  runtimeForKind?: (kind: "docker" | "systemd") => RuntimeAdapter;
   appSecretKey?: string;
   allocateHostPort?: () => number | Promise<number>;
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
@@ -189,7 +193,16 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       }
 
       if (currentDeployment) {
-        await runtime.stopProcess(currentDeployment.containerName);
+        // Each adapter can only stop its own kind of process (a docker adapter
+        // has no idea how to stop a systemd unit and vice versa), and the old
+        // deployment's recorded runtimeKind is authoritative here -- NOT the
+        // worker's current runtime, which may have moved on to a different
+        // kind since that deployment was made.
+        const stopAdapter =
+          currentDeployment.runtimeKind === runtime.name
+            ? runtime
+            : (options.runtimeForKind ?? createRuntimeAdapterForKind)(currentDeployment.runtimeKind);
+        await stopAdapter.stopProcess(currentDeployment.containerName);
       }
       // Same root the systemd adapter derives in ../runtime/select.ts -- both call
       // resolveSandboxCacheRoot so the two can never drift. resolveProjectSandboxCacheDir
@@ -219,6 +232,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         containerName: processName,
         internalPort: started.internalPort,
         hostPort,
+        runtimeKind: runtime.name,
       });
       await store.updateProjectState(job.projectId, { status: "deployed", deploymentStatus: "running" });
       await store.appendLog({

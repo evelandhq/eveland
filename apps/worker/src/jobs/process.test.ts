@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "@eveland/api/store";
 import { allocateAvailableHostPort, processNextJob } from "./process.js";
+import type { RuntimeAdapter } from "../runtime/types.js";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -80,6 +81,7 @@ describe("processNextJob", () => {
       containerName: "eveland-live",
       internalPort: 3000,
       hostPort: 41010,
+      runtimeKind: "docker",
     });
     // A re-sync whose source fails to scan (here, an empty directory) must not
     // knock the running deployment into a failed state.
@@ -121,7 +123,7 @@ describe("processNextJob", () => {
         appSecretKey: secretKey,
         workflowPostgresUrl: "",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             runtimeCalls.push({ name: "buildRelease", input: { sourcePath: input.sourcePath, projectId: input.projectId } });
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -168,6 +170,7 @@ describe("processNextJob", () => {
     ]);
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(expect.objectContaining({ line: "build ok" }));
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(expect.objectContaining({ line: "Deployment running on 127.0.0.1:41001." }));
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
   });
 
   test("redeploys by stopping the current deployment and reusing its host port", async () => {
@@ -195,13 +198,14 @@ describe("processNextJob", () => {
       containerName: "eveland-old-container",
       internalPort: 3000,
       hostPort: 41077,
+      runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "build_deploy");
 
     await expect(
       processNextJob(store, "worker-a", {
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             runtimeCalls.push({ name: "buildRelease", input: { sourcePath: input.sourcePath, projectId: input.projectId } });
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "" };
@@ -227,6 +231,85 @@ describe("processNextJob", () => {
       deploymentId: expect.not.stringMatching(/^dep_old$/),
       releaseId: expect.not.stringMatching(/^rel_old$/),
     });
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
+  });
+
+  test("redeploys across runtime kinds by stopping the old deployment through the adapter that owns it", async () => {
+    const activeRuntimeCalls: Array<{ name: string; input: unknown }> = [];
+    const oldRuntimeStopCalls: Array<{ processName: string }> = [];
+    let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Cross Kind Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // The current deployment was made by systemd; the worker's active runtime
+    // below is docker. Only the systemd adapter may stop the systemd unit.
+    const current = await store.recordDeployment({
+      releaseId: "rel_old",
+      deploymentId: "dep_old",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_old",
+      containerName: "eveland-old-systemd-unit",
+      internalPort: 3000,
+      hostPort: 41078,
+      runtimeKind: "systemd",
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    const oldKindAdapter: RuntimeAdapter = {
+      name: "systemd",
+      async buildRelease() {
+        throw new Error("the old deployment's adapter must never be asked to build");
+      },
+      async startProcess() {
+        throw new Error("the old deployment's adapter must never be asked to start");
+      },
+      async stopProcess(processName) {
+        oldRuntimeStopCalls.push({ processName });
+      },
+    };
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "" };
+          },
+          async startProcess(input) {
+            activeRuntimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            activeRuntimeCalls.push({ name: "stopProcess", input: { processName } });
+          },
+        },
+        runtimeForKind(kind) {
+          runtimeForKindCalledWith = kind;
+          return oldKindAdapter;
+        },
+        allocateHostPort() {
+          throw new Error("existing deployments should keep their port");
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeForKindCalledWith).toBe("systemd");
+    expect(oldRuntimeStopCalls).toEqual([{ processName: current.containerName }]);
+    expect(activeRuntimeCalls.some((call) => call.name === "stopProcess")).toBe(false);
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
   });
 
   test("fails a build_deploy job when the deployment port never becomes reachable", async () => {
@@ -249,7 +332,7 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease() {
             return { releaseRef: "eveland/proj:rel", log: "" };
           },
@@ -298,7 +381,7 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
           },
@@ -352,7 +435,7 @@ describe("processNextJob", () => {
         appSecretKey: secretKey,
         workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
           },
@@ -397,7 +480,7 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -444,7 +527,7 @@ describe("processNextJob", () => {
         nodeEnv: "development",
         workflowPostgresUrl: "",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -491,7 +574,7 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         workflowPostgresUrl: "",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -535,7 +618,7 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5452/eveland",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
@@ -584,7 +667,7 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5452/eveland",
         runtime: {
-          name: "fake",
+          name: "docker",
           async buildRelease(input) {
             buildCalled = true;
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
