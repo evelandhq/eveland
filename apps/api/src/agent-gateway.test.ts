@@ -94,7 +94,16 @@ describe("agent gateway", () => {
     });
     const { app, shortId } = await createDeployedAgent(port);
 
-    for (const path of [`/a/${shortId}/admin`, `/a/${shortId}/eve/%2e%2e/admin`, `/a/${shortId}/`]) {
+    for (const path of [
+      `/a/${shortId}/admin`,
+      `/a/${shortId}/eve/%2e%2e/admin`,
+      // Encoded separator: an upstream router that decodes %2f could split here.
+      `/a/${shortId}/eve/%2e%2e%2fadmin`,
+      `/a/${shortId}/eve/%5c%2e%2e/admin`,
+      // Doubly-encoded dot segment: decodes to `..` in two passes.
+      `/a/${shortId}/eve/%252e%252e/admin`,
+      `/a/${shortId}/`,
+    ]) {
       const response = await app.request(path);
       expect(response.status, path).toBe(404);
     }
@@ -124,6 +133,17 @@ describe("agent gateway", () => {
     const closedPort = await startUpstream((_req, res) => res.end());
     await new Promise<void>((resolve) => servers.pop()!.close(() => resolve()));
     const { app, shortId } = await createDeployedAgent(closedPort);
+
+    const response = await app.request(`/a/${shortId}/eve/v1/session`, { method: "POST", body: "{}" });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({ error: "Agent deployment is unreachable" });
+  });
+
+  test("returns 502 when the deployment accepts the socket but never sends headers", async () => {
+    // Handler never responds, so the connection hangs past the header deadline.
+    const port = await startUpstream(() => {});
+    const { app, shortId } = await createDeployedAgent(port, { agentGatewayUpstreamTimeoutMs: 150 });
 
     const response = await app.request(`/a/${shortId}/eve/v1/session`, { method: "POST", body: "{}" });
 
@@ -196,7 +216,10 @@ describe("agent directory", () => {
   });
 });
 
-async function createDeployedAgent(hostPort: number): Promise<{ app: ReturnType<typeof createApp>; store: Store; shortId: string }> {
+async function createDeployedAgent(
+  hostPort: number,
+  appOptions?: Parameters<typeof createApp>[1],
+): Promise<{ app: ReturnType<typeof createApp>; store: Store; shortId: string }> {
   const store = createMemoryStore();
   const project = await store.createProject({ name: "Gateway Agent", importKind: "zip" });
   await store.recordDeployment({
@@ -208,7 +231,7 @@ async function createDeployedAgent(hostPort: number): Promise<{ app: ReturnType<
     hostPort,
     runtimeKind: "docker",
   });
-  return { app: createApp(store), store, shortId: projectShortId(project.id) };
+  return { app: createApp(store, appOptions), store, shortId: projectShortId(project.id) };
 }
 
 async function startUpstream(handler: UpstreamHandler): Promise<number> {

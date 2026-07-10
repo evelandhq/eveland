@@ -61,6 +61,7 @@ export type PlaygroundRunner = (input: PlaygroundRunnerInput) => Promise<Playgro
 export type AppOptions = {
   playgroundRunner?: PlaygroundRunner;
   dataDir?: string;
+  agentGatewayUpstreamTimeoutMs?: number;
 };
 
 export function createApp(store: Store, options: AppOptions = {}): Hono {
@@ -71,7 +72,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
   // Registered before the CORS middleware on purpose: agent traffic is public
   // and each eve channel owns its own CORS policy, so the platform's
   // WEB_ORIGIN-scoped headers must not apply to /a/*.
-  registerAgentGateway(app, store);
+  registerAgentGateway(app, store, { upstreamHeaderTimeoutMs: options.agentGatewayUpstreamTimeoutMs });
 
   app.use(
     "*",

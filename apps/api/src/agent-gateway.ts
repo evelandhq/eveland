@@ -18,12 +18,23 @@ const hopByHopHeaders = [
   "upgrade",
 ];
 
+// Bound the wait for the upstream to return response headers. A deployment that
+// accepts the socket but never answers would otherwise pin gateway resources
+// until Node's runtime defaults expire; the deadline is cleared once headers
+// arrive so long-lived eve conversation streams are never cut off.
+const DEFAULT_UPSTREAM_HEADER_TIMEOUT_MS = 15_000;
+
+export interface AgentGatewayOptions {
+  readonly upstreamHeaderTimeoutMs?: number;
+}
+
 /**
  * Public entrypoint for deployed agents: `/a/<shortId>/<agent path>` is
  * stream-proxied to the agent's deployment on `127.0.0.1:<hostPort>` with the
  * `/a/<shortId>` prefix stripped, so agents keep serving their fixed eve routes.
  */
-export function registerAgentGateway(app: Hono, store: Store): void {
+export function registerAgentGateway(app: Hono, store: Store, options: AgentGatewayOptions = {}): void {
+  const upstreamHeaderTimeoutMs = options.upstreamHeaderTimeoutMs ?? DEFAULT_UPSTREAM_HEADER_TIMEOUT_MS;
   // Public discovery document: lets clients list connectable agents without
   // access to the management API. Served with a wildcard CORS header because
   // it sits in front of the platform CORS middleware like the rest of /a/*.
@@ -66,7 +77,7 @@ export function registerAgentGateway(app: Hono, store: Store): void {
     }
 
     const upstreamUrl = `http://127.0.0.1:${deployment.hostPort}${agentPath}${requestUrl.search}`;
-    return proxyRequest(c, upstreamUrl, `/a/${shortId}`);
+    return proxyRequest(c, upstreamUrl, `/a/${shortId}`, upstreamHeaderTimeoutMs);
   });
 }
 
@@ -88,24 +99,42 @@ function isPublicAgentPath(pathname: string): boolean {
   if (!publicPathPrefixes.some((prefix) => pathname.startsWith(prefix))) {
     return false;
   }
+  // An encoded separator survives URL parsing here but an upstream router may
+  // decode `%2f`/`%5c` before matching and split the path on it, so a segment
+  // like `%2e%2e%2fadmin` would normalize past the public prefix. eve routes
+  // never contain encoded separators, so reject them outright.
+  if (/%2f|%5c/i.test(pathname)) {
+    return false;
+  }
   // `..` in plain form is already normalized away by URL parsing, but a
   // percent-encoded dot segment survives it and would be re-normalized by the
-  // upstream router into a path outside the public prefixes.
+  // upstream router into a path outside the public prefixes. Decode each
+  // segment fully (a doubly-encoded `%252e` decodes to `.` in two passes)
+  // before the dot-segment check.
   return pathname.split("/").every((segment) => {
-    const decoded = safeDecode(segment);
+    const decoded = fullyDecode(segment);
     return decoded !== "." && decoded !== "..";
   });
 }
 
-function safeDecode(segment: string): string {
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    return segment;
+function fullyDecode(segment: string): string {
+  let current = segment;
+  for (let pass = 0; pass < 5; pass += 1) {
+    let next: string;
+    try {
+      next = decodeURIComponent(current);
+    } catch {
+      return current;
+    }
+    if (next === current) {
+      return next;
+    }
+    current = next;
   }
+  return current;
 }
 
-async function proxyRequest(c: Context, upstreamUrl: string, prefix: string): Promise<Response> {
+async function proxyRequest(c: Context, upstreamUrl: string, prefix: string, headerTimeoutMs: number): Promise<Response> {
   const requestUrl = new URL(c.req.url);
   const headers = new Headers(c.req.raw.headers);
   for (const name of hopByHopHeaders) {
@@ -124,6 +153,13 @@ async function proxyRequest(c: Context, upstreamUrl: string, prefix: string): Pr
   const method = c.req.method;
   const body = method === "GET" || method === "HEAD" ? undefined : c.req.raw.body;
 
+  // Abort the upstream when the client disconnects, or when the header deadline
+  // passes. The timer is cleared as soon as headers arrive so the deadline only
+  // guards the connect/first-byte phase and not the streamed body.
+  const headerDeadline = new AbortController();
+  const timer = setTimeout(() => headerDeadline.abort(), headerTimeoutMs);
+  const signal = AbortSignal.any([headerDeadline.signal, c.req.raw.signal]);
+
   let upstream: Response;
   try {
     upstream = await fetch(upstreamUrl, {
@@ -131,12 +167,15 @@ async function proxyRequest(c: Context, upstreamUrl: string, prefix: string): Pr
       headers,
       body,
       redirect: "manual",
+      signal,
       // Node's fetch requires half-duplex to stream a request body.
       ...(body ? { duplex: "half" } : {}),
     } as RequestInit);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return c.json({ error: "Agent deployment is unreachable", detail }, 502);
+  } finally {
+    clearTimeout(timer);
   }
 
   const responseHeaders = new Headers(upstream.headers);
