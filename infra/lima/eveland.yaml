@@ -23,6 +23,7 @@ provision:
       apt-get install -y nodejs
       corepack enable
       id eveland-app || useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app
+      id eveland-build || useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
 
       # Ubuntu 24.04 sets kernel.apparmor_restrict_unprivileged_userns=1,
       # which blocks an *unconfined* non-root process from creating a user
