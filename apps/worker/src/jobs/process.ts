@@ -156,18 +156,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       const processName = `eveland-${processSafeName(project.id)}-${processSafeName(deploymentId)}`;
       const buildDir = path.join(process.env.EVELAND_DATA_DIR ?? ".eveland-data", "builds", project.id, releaseId);
       const hostPort = currentDeployment?.hostPort ?? (await (options.allocateHostPort ?? allocateAvailableHostPort)());
-      const secrets = await readRuntimeSecrets(store, job.projectId, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
-      // Platform-injected credentials; a project secret of the same name overrides the platform WORKFLOW_POSTGRES_URL.
-      const injectedCredentials = {
-        ...(workflowPostgresUrl ? { WORKFLOW_POSTGRES_URL: workflowPostgresUrl } : {}),
-        ...secrets,
-      };
-      // NODE_ENV is platform-owned and injected only in production; kept out of the mask list so build logs aren't scrubbed of the word "production".
-      const env = {
-        ...injectedCredentials,
-        ...(isProduction ? { NODE_ENV: "production" } : {}),
-      };
-      const secretValues = Object.values(injectedCredentials);
+      const { env, secretValues } = await composeDeploymentEnv(store, project.id, options);
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
 
       await store.updateProjectState(job.projectId, { status: "build_pending", deploymentStatus: "building" });
@@ -244,13 +233,67 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       return;
     }
     case "restart_deployment": {
+      // Flip to "starting" and log immediately, before any of the loads below can
+      // throw -- a restart that fails loudly still leaves a visible trail (the
+      // generic failure path in processNextJob then overwrites this to "failed").
       await store.updateProjectState(job.projectId, { deploymentStatus: "starting" });
       await store.appendLog({
         projectId: job.projectId,
         type: "deploy",
         line: "Restart requested.",
       });
+
+      const project = await store.getProject(job.projectId);
+      if (!project) {
+        throw new Error(`Project ${job.projectId} not found.`);
+      }
+      const deployment = await store.getCurrentDeployment(job.projectId);
+      if (!deployment) {
+        throw new Error("No deployment to restart.");
+      }
+      // A deployment always points at a release and a source revision; either
+      // being gone is corrupt state, not a recoverable condition -- fail loudly
+      // rather than restart with guessed values.
+      const release = await store.getRelease(deployment.releaseId);
+      if (!release) {
+        throw new Error(`Release ${deployment.releaseId} not found for deployment ${deployment.id}.`);
+      }
+      const revision = await store.getSourceRevision(release.sourceRevisionId);
+      if (!revision) {
+        throw new Error(`Source revision ${release.sourceRevisionId} not found for release ${release.id}.`);
+      }
+
+      // An injected `options.runtime` wins outright (test convenience, mirrors
+      // build_deploy); otherwise resolve strictly by the deployment's recorded
+      // kind -- the worker's current default runtime is irrelevant here.
+      const adapter = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+      const { env } = await composeDeploymentEnv(store, project.id, options);
+      const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
+
+      await adapter.stopProcess(deployment.containerName);
+      // Same pairing build_deploy uses -- see the comment there.
+      const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
+      await adapter.startProcess({
+        processName: deployment.containerName,
+        releaseRef: release.imageTag,
+        port: deployment.hostPort,
+        env,
+        commandContext,
+        sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+      });
+      await (options.waitForDeployment ?? waitForHttpHealth)({
+        host: "127.0.0.1",
+        port: deployment.hostPort,
+        timeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
+      });
+
       await store.updateProjectState(job.projectId, { deploymentStatus: "running" });
+      await store.appendLog({
+        projectId: job.projectId,
+        deploymentId: deployment.id,
+        type: "deploy",
+        line: `Deployment running on 127.0.0.1:${deployment.hostPort}.`,
+      });
       return;
     }
     case "trigger_schedule": {
@@ -262,6 +305,32 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       return;
     }
   }
+}
+
+// Shared by build_deploy and restart_deployment. Durable-workflow gating is
+// NOT part of this: build_deploy only calls this after deciding the deploy may
+// proceed, and restart never re-gates an already-deployed release.
+async function composeDeploymentEnv(
+  store: Store,
+  projectId: string,
+  options: ProcessJobOptions,
+): Promise<{ env: Record<string, string>; secretValues: string[] }> {
+  const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
+  const isProduction = nodeEnv === "production";
+  const workflowPostgresUrl = options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
+  const secrets = await readRuntimeSecrets(store, projectId, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
+  // Platform-injected credentials; a project secret of the same name overrides the platform WORKFLOW_POSTGRES_URL.
+  const injectedCredentials = {
+    ...(workflowPostgresUrl ? { WORKFLOW_POSTGRES_URL: workflowPostgresUrl } : {}),
+    ...secrets,
+  };
+  // NODE_ENV is platform-owned and injected only in production; kept out of the mask list so build logs aren't scrubbed of the word "production".
+  const env = {
+    ...injectedCredentials,
+    ...(isProduction ? { NODE_ENV: "production" } : {}),
+  };
+  const secretValues = Object.values(injectedCredentials);
+  return { env, secretValues };
 }
 
 async function readRuntimeSecrets(store: Store, projectId: string, appSecretKey: string): Promise<Record<string, string>> {
