@@ -9,6 +9,8 @@ import type {
   ProjectImportKind,
   ProjectStatus,
   PublicSecret,
+  ReleaseRecord,
+  RuntimeKind,
   ScheduleRecord,
   Session,
   SessionEvent,
@@ -246,6 +248,7 @@ export function deploymentRowToDeployment(row: {
   internalPort: number;
   hostPort: number;
   status: string;
+  runtimeKind: string;
   createdAt: Date;
   updatedAt: Date;
 }): DeploymentRecord {
@@ -257,8 +260,25 @@ export function deploymentRowToDeployment(row: {
     internalPort: row.internalPort,
     hostPort: row.hostPort,
     status: row.status as DeploymentStatus,
+    runtimeKind: row.runtimeKind as RuntimeKind,
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
+  };
+}
+
+export function releaseRowToRelease(row: {
+  id: string;
+  projectId: string;
+  sourceRevisionId: string;
+  imageTag: string;
+  createdAt: Date;
+}): ReleaseRecord {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    sourceRevisionId: row.sourceRevisionId,
+    imageTag: row.imageTag,
+    createdAt: timestampToIso(row.createdAt),
   };
 }
 

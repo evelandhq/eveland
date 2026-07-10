@@ -7,6 +7,8 @@ import type {
   ProjectStatus,
   PublicSecret,
   DeploymentRecord,
+  ReleaseRecord,
+  RuntimeKind,
   ScheduleRecord,
   SecretRecord,
   Session,
@@ -52,6 +54,7 @@ export type Store = {
     schedules: Array<Omit<ScheduleRecord, "id" | "projectId">>;
   }): Promise<SourceRevision>;
   getCurrentSourceRevision(projectId: string): Promise<SourceRevision | null>;
+  getSourceRevision(revisionId: string): Promise<SourceRevision | null>;
   listSourceFiles(projectId: string): Promise<SourceFileRecord[]>;
   getSourceFile(projectId: string, filePath: string): Promise<SourceFileRecord | null>;
   recordDeployment(input: {
@@ -63,8 +66,10 @@ export type Store = {
     containerName: string;
     internalPort: number;
     hostPort: number;
+    runtimeKind: RuntimeKind;
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
+  getRelease(releaseId: string): Promise<ReleaseRecord | null>;
   createSession(input: {
     projectId: string;
     deploymentId?: string | null;
@@ -96,7 +101,7 @@ type MemoryState = {
   logs: LogRecord[];
   sourceRevisions: SourceRevision[];
   sourceFiles: SourceFileRecord[];
-  releases: Array<{ id: string; projectId: string; sourceRevisionId: string; imageTag: string; createdAt: string }>;
+  releases: ReleaseRecord[];
   deployments: DeploymentRecord[];
 };
 
@@ -301,6 +306,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.sourceRevisions.find((revision) => revision.id === project?.sourceRevisionId) ?? null;
     },
 
+    async getSourceRevision(revisionId) {
+      return state.sourceRevisions.find((revision) => revision.id === revisionId) ?? null;
+    },
+
     async listSourceFiles(projectId) {
       const revision = await this.getCurrentSourceRevision(projectId);
       return revision ? state.sourceFiles.filter((file) => file.revisionId === revision.id).sort((a, b) => a.path.localeCompare(b.path)) : [];
@@ -313,7 +322,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async recordDeployment(input) {
       const now = new Date().toISOString();
-      const release = {
+      const release: ReleaseRecord = {
         id: input.releaseId ?? createId("rel"),
         projectId: input.projectId,
         sourceRevisionId: input.sourceRevisionId,
@@ -328,6 +337,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         internalPort: input.internalPort,
         hostPort: input.hostPort,
         status: "running",
+        runtimeKind: input.runtimeKind,
         createdAt: now,
         updatedAt: now,
       };
@@ -349,6 +359,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     async getCurrentDeployment(projectId) {
       const project = state.projects.find((candidate) => candidate.id === projectId);
       return state.deployments.find((deployment) => deployment.id === project?.deploymentId) ?? null;
+    },
+
+    async getRelease(releaseId) {
+      return state.releases.find((release) => release.id === releaseId) ?? null;
     },
 
     async createSession(input) {

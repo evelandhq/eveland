@@ -3,6 +3,7 @@ export type ProjectStatus = "import_pending" | "imported" | "invalid" | "build_p
 export type DeploymentStatus = "not_deployed" | "building" | "starting" | "running" | "stopped" | "failed";
 export type SessionStatus = "running" | "completed" | "failed" | "waiting_approval";
 export type SessionTrigger = "playground" | "cron" | "webhook" | "channel" | "api";
+export type RuntimeKind = "docker" | "systemd";
 
 export type Project = {
   id: string;
@@ -79,6 +80,7 @@ export type DeploymentRecord = {
   internalPort: number;
   hostPort: number;
   status: DeploymentStatus;
+  runtimeKind: RuntimeKind;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { projectRowToProject, timestampToIso } from "./mappers.js";
+import { deploymentRowToDeployment, projectRowToProject, timestampToIso } from "./mappers.js";
 
 describe("db mappers", () => {
   test("converts nullable project timestamp fields to public API shape", () => {
@@ -42,5 +42,36 @@ describe("db mappers", () => {
 
   test("accepts null timestamps where API fields are nullable", () => {
     expect(timestampToIso(null)).toBeNull();
+  });
+
+  test("maps a deployment row's runtime_kind column onto the RuntimeKind field", () => {
+    const createdAt = new Date("2026-07-01T01:00:00.000Z");
+    const updatedAt = new Date("2026-07-01T02:00:00.000Z");
+
+    const deployment = deploymentRowToDeployment({
+      id: "dep_123",
+      projectId: "proj_123",
+      releaseId: "rel_123",
+      containerName: "eveland-proj-dep_123",
+      internalPort: 3000,
+      hostPort: 41001,
+      status: "running",
+      runtimeKind: "systemd",
+      createdAt,
+      updatedAt,
+    });
+
+    expect(deployment).toEqual({
+      id: "dep_123",
+      projectId: "proj_123",
+      releaseId: "rel_123",
+      containerName: "eveland-proj-dep_123",
+      internalPort: 3000,
+      hostPort: 41001,
+      status: "running",
+      runtimeKind: "systemd",
+      createdAt: "2026-07-01T01:00:00.000Z",
+      updatedAt: "2026-07-01T02:00:00.000Z",
+    });
   });
 });

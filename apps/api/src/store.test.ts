@@ -92,6 +92,7 @@ describe("memory store jobs", () => {
       containerName: "eveland-proj-dep_123",
       internalPort: 3000,
       hostPort: 41001,
+      runtimeKind: "docker",
     });
 
     await expect(store.getProject(project.id)).resolves.toMatchObject({
@@ -105,7 +106,87 @@ describe("memory store jobs", () => {
       releaseId: deployment.releaseId,
       containerName: "eveland-proj-dep_123",
       hostPort: 41001,
+      runtimeKind: "docker",
     });
+  });
+
+  test("round-trips runtimeKind through recordDeployment for the systemd adapter", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Systemd Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_456",
+      containerName: "eveland-proj-dep_456",
+      internalPort: 3000,
+      hostPort: 41002,
+      runtimeKind: "systemd",
+    });
+
+    expect(deployment.runtimeKind).toBe("systemd");
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "systemd" });
+  });
+
+  test("getRelease returns the release by id and null when absent", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Release Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_789",
+      containerName: "eveland-proj-dep_789",
+      internalPort: 3000,
+      hostPort: 41003,
+      runtimeKind: "docker",
+    });
+
+    await expect(store.getRelease(deployment.releaseId)).resolves.toMatchObject({
+      id: deployment.releaseId,
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_789",
+    });
+    await expect(store.getRelease("rel_does_not_exist")).resolves.toBeNull();
+  });
+
+  test("getSourceRevision returns the revision by id and null when absent", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Revision Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+
+    await expect(store.getSourceRevision(revision.id)).resolves.toMatchObject({
+      id: revision.id,
+      projectId: project.id,
+      sourcePath: "/tmp/source",
+    });
+    await expect(store.getSourceRevision("src_does_not_exist")).resolves.toBeNull();
   });
 
   test("records a playground session timeline in event order", async () => {

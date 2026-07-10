@@ -160,6 +160,7 @@ describe("api app", () => {
       containerName: "eveland-playground",
       internalPort: 3000,
       hostPort: 41001,
+      runtimeKind: "docker",
     });
     const runnerCalls: unknown[] = [];
     const app = createApp(store, {

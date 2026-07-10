@@ -6,6 +6,7 @@ import {
   jobRowToJob,
   logRowToLog,
   projectRowToProject,
+  releaseRowToRelease,
   secretRowToSecretRecord,
   scheduleRowToSchedule,
   secretRowToPublicSecret,
@@ -310,6 +311,11 @@ export function createPostgresStore(database: Database): Store {
       return revision ? sourceRevisionRowToSourceRevision(revision) : null;
     },
 
+    async getSourceRevision(revisionId) {
+      const [revision] = await db.select().from(sourceRevisions).where(eq(sourceRevisions.id, revisionId)).limit(1);
+      return revision ? sourceRevisionRowToSourceRevision(revision) : null;
+    },
+
     async listSourceFiles(projectId) {
       const revision = await this.getCurrentSourceRevision(projectId);
       if (!revision) {
@@ -359,6 +365,7 @@ export function createPostgresStore(database: Database): Store {
           internalPort: input.internalPort,
           hostPort: input.hostPort,
           status: "running",
+          runtimeKind: input.runtimeKind,
         })
         .returning();
 
@@ -388,6 +395,11 @@ export function createPostgresStore(database: Database): Store {
 
       const [deployment] = await db.select().from(deployments).where(eq(deployments.id, project.deploymentId)).limit(1);
       return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
+    async getRelease(releaseId) {
+      const [release] = await db.select().from(releases).where(eq(releases.id, releaseId)).limit(1);
+      return release ? releaseRowToRelease(release) : null;
     },
 
     async createSession(input) {
