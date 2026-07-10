@@ -18,6 +18,12 @@ limactl shell "$VM" -- sudo bash -c "
   cd /opt/eveland
   corepack pnpm install --frozen-lockfile
   corepack pnpm --filter @eveland/sandbox-bwrap build
+
+  # Asserts the real preflight passes on a freshly-provisioned host -- the PR's
+  # completion criterion. Uses the VM's existing data dir.
+  EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
+    corepack pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
 

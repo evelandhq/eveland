@@ -40,6 +40,42 @@
 - The worker process must run as root (it drives `systemd-run`, `systemctl`,
   and `chown`). Run it as a systemd service itself.
 
+## Production topology
+
+- **API, Web, Postgres** run in Docker Compose:
+  `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. The
+  prod overlay no longer starts a containerized worker (see the header comment
+  in `docker-compose.prod.yml`); `--profile docker-worker` restores it for
+  legacy Docker-runtime installs that have not migrated to the host worker.
+- **The worker** runs on the host as a systemd service, not in a container:
+  install `infra/systemd/eveland-worker.service` and configure
+  `infra/systemd/eveland-worker.env.example` per the instructions in the unit
+  file's own header comment.
+
+Both sides share one data directory, `/var/lib/eveland`: the API container
+bind-mounts it at that same absolute path, matching the host worker's
+`EVELAND_DATA_DIR`. They have to agree, because a project's stored
+`sourcePath` is written by whichever side imports the project and read by
+whichever side later serves or deploys it — a mismatched mount would leave
+one side unable to find files the other wrote.
+
+### Startup preflight
+
+Under `EVELAND_RUNTIME=systemd`, the worker refuses to start until every host
+prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
+systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path, the
+`systemd-run`, `systemctl`, `node` and `bwrap` binaries on `PATH` (`bwrap` is
+skipped when `EVELAND_BUILD_SANDBOX=none`), the app user (`EVELAND_APP_USER`,
+default `eveland-app`) existing, `/workspace` existing as a directory, the
+vendored sandbox backend being built (`pnpm --filter @eveland/sandbox-bwrap
+build`), and the app user being able to traverse the data dir. It reports
+every failing check at once instead of stopping at the first — the same
+one-complete-punch-list approach as the sandbox self-check under "Agent exec
+sandbox" below.
+`apps/worker/src/integration/preflight-check.ts` runs this same check
+standalone and prints `PREFLIGHT OK` on success; `infra/integration/run.sh`
+runs it against the Lima VM as part of the integration smoke test.
+
 ## Worker configuration
 
 | Env var | Default | Meaning |
@@ -49,13 +85,13 @@
 | `EVELAND_MEMORY_MAX` | `2G` | systemd `MemoryMax` per deployment. |
 | `EVELAND_CPU_QUOTA` | `200%` | systemd `CPUQuota` per deployment. |
 | `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
-| `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland-data`. |
+| `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland`. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Postgres URL injected into each deployment's `EnvironmentFile` so a `@workflow/world-postgres` agent has a durable workflow store. Deployments run as a host process, so use a host-reachable address, e.g. `postgres://eveland:eveland@localhost:5432/eveland`. A project secret of the same name overrides it. |
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. |
-| `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland-data/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
+| `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
 Build-trust note: building a project executes that project's dependency
 lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
