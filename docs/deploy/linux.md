@@ -88,7 +88,7 @@ runs it against the Lima VM as part of the integration smoke test.
 
 | Env var | Default | Meaning |
 | --- | --- | --- |
-| `EVELAND_RUNTIME` | `docker` | Set `systemd` on the deploy host. |
+| `EVELAND_RUNTIME` | `docker`; `systemd` when `NODE_ENV=production` | Set `systemd` explicitly on the deploy host. An explicit value always wins over the `NODE_ENV`-based default. |
 | `EVELAND_APP_USER` | `eveland-app` | Unix user deployments run as. |
 | `EVELAND_BUILD_USER` | `eveland-build` | Unix user the build (`npm ci`/`npx eve build`, i.e. third-party lifecycle scripts) runs as. |
 | `EVELAND_MEMORY_MAX` | `2G` | systemd `MemoryMax` per deployment. |

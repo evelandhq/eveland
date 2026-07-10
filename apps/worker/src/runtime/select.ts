@@ -49,8 +49,24 @@ export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: Nod
   });
 }
 
+/**
+ * Explicit `EVELAND_RUNTIME` always wins, so a legacy Docker production host opts
+ * out with one env var. Absent that, `NODE_ENV=production` resolves to `systemd`
+ * -- it's the supported production shape (see docs/deploy/linux.md) -- while dev
+ * and CI (no `NODE_ENV=production`) keep the `docker` default they already rely on.
+ */
+export function resolveRuntimeKind(env: NodeJS.ProcessEnv): string {
+  if (env.EVELAND_RUNTIME) {
+    return env.EVELAND_RUNTIME;
+  }
+  if (env.NODE_ENV === "production") {
+    return "systemd";
+  }
+  return "docker";
+}
+
 export function createRuntimeAdapterFromEnv(env: NodeJS.ProcessEnv = process.env): RuntimeAdapter {
-  const kind = env.EVELAND_RUNTIME ?? "docker";
+  const kind = resolveRuntimeKind(env);
 
   if (kind !== "docker" && kind !== "systemd") {
     throw new Error(`Unknown EVELAND_RUNTIME "${kind}". Expected "docker" or "systemd".`);
