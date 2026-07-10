@@ -3,7 +3,7 @@ import { createMemoryStore } from "@eveland/api/store";
 import type { Store } from "@eveland/api/store";
 import { allocateAvailableHostPort, processNextJob } from "./process.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -1130,6 +1130,69 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "failed" });
     await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
       expect.objectContaining({ line: expect.stringContaining("rel_missing") }),
+    );
+  });
+
+  test("fails a restart_deployment job loudly when the revision's source directory has vanished from disk, without stopping the running process first", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Vanished Source Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    // A real temp dir, then removed -- the revision's sourcePath row still
+    // points at it, but nothing exists there anymore on disk.
+    const vanishedSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-vanished-"));
+    await rm(vanishedSourcePath, { recursive: true, force: true });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: vanishedSourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordDeployment({
+      releaseId: "rel_vanished",
+      deploymentId: "dep_vanished",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_vanished",
+      containerName: "eveland-vanished-container",
+      internalPort: 3000,
+      hostPort: 41060,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    const stopCalls: string[] = [];
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            throw new Error("restart must never start a process when the source dir is missing");
+          },
+          async stopProcess(processName) {
+            stopCalls.push(processName);
+          },
+        },
+      }),
+    ).resolves.toBe(true);
+
+    // The missing-source check must run before the pre-restart stop, so a
+    // vanished source dir never takes the currently running process down.
+    expect(stopCalls).toEqual([]);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "failed" });
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({
+        line: expect.stringContaining(
+          `Source directory for revision ${revision.id} is missing: ${vanishedSourcePath}. Re-import the source and deploy instead.`,
+        ),
+      }),
     );
   });
 

@@ -277,6 +277,18 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       if (!revision) {
         throw new Error(`Source revision ${release.sourceRevisionId} not found for release ${release.id}.`);
       }
+      // readPackageJson swallows a vanished sourcePath into {isEveProject:false}
+      // rather than throwing, so resolveRuntimeCommandContext below would silently
+      // resolve a wrong (non-eve) start command instead of failing -- checked here,
+      // before the pre-restart stopProcess, so a missing source dir never takes the
+      // currently running process down.
+      try {
+        await access(revision.sourcePath);
+      } catch {
+        throw new Error(
+          `Source directory for revision ${revision.id} is missing: ${revision.sourcePath}. Re-import the source and deploy instead.`,
+        );
+      }
 
       // An injected `options.runtime` wins outright (test convenience, mirrors
       // build_deploy); otherwise resolve strictly by the deployment's recorded
