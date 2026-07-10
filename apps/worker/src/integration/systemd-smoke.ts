@@ -165,6 +165,15 @@ try {
     throw new Error(`Expected the failed deploy to mark the project failed: ${JSON.stringify({ failedProject, logs })}`);
   }
 
+  // Pin WHY it failed: only a health timeout exercises the started-process cleanup
+  // path this step exists to prove. A deploy that died earlier (e.g. in the build)
+  // also ends "failed" with no unit/env-file/port residue, and every assertion below
+  // would pass without the cleanup code ever running.
+  const failRuntimeLogs = await store.listLogs(failProject.id, "runtime");
+  if (!failRuntimeLogs.some((log) => log.line.includes("did not respond within"))) {
+    throw new Error(`Expected a health-timeout failure, got: ${JSON.stringify(failRuntimeLogs.map((log) => log.line))}`);
+  }
+
   // The health-check timeout is thrown before recordDeployment ever runs, so no
   // deployment row -- and no exact unit/env-file name -- exists to look up. Glob by
   // this project's processSafeName prefix instead; the deploymentId suffix is the only

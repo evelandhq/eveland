@@ -101,7 +101,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Postgres URL injected into each deployment's `EnvironmentFile` so a `@workflow/world-postgres` agent has a durable workflow store. Deployments run as a host process, so use a host-reachable address, e.g. `postgres://eveland:eveland@localhost:5432/eveland`. A project secret of the same name overrides it. |
-| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. |
+| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. Note `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
 Build-trust note: building a project executes that project's dependency
@@ -176,10 +176,14 @@ opt-in is possible future work.
 > - Health checks can false-pass against the still-running old process while
 >   the new one is broken, masking the failure.
 >
-> Treat `EVELAND_RUNTIME` as fixed per host, chosen once at provisioning time.
+> Treat the **resolved** runtime as fixed per host, chosen once at provisioning
+> time — and remember there are two ways to change it: flipping `EVELAND_RUNTIME`,
+> or setting `NODE_ENV=production` on a host that leaves `EVELAND_RUNTIME` unset
+> (the production default is `systemd`). The preflight catches an accidental flip
+> loudly, but drain first regardless.
 > Drain a host first — stop and remove **every** deployment — both before
-> flipping `EVELAND_RUNTIME` and before applying this migration on a host that
-> is not already `docker`:
+> switching the resolved runtime and before applying this migration on a host
+> that is not already `docker`:
 >
 > ```bash
 > # systemd host being migrated away from, or upgrading across this migration:

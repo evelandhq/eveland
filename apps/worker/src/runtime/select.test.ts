@@ -38,6 +38,13 @@ describe("resolveRuntimeKind", () => {
   test("passes through an unknown explicit value unvalidated", () => {
     expect(resolveRuntimeKind({ EVELAND_RUNTIME: "kubernetes" } as NodeJS.ProcessEnv)).toBe("kubernetes");
   });
+
+  // Before the default flip an empty string threw at adapter construction ("" is not
+  // nullish); the truthiness check now deliberately treats it as unset.
+  test("treats an empty-string EVELAND_RUNTIME as unset", () => {
+    expect(resolveRuntimeKind({ EVELAND_RUNTIME: "" } as NodeJS.ProcessEnv)).toBe("docker");
+    expect(resolveRuntimeKind({ EVELAND_RUNTIME: "", NODE_ENV: "production" } as NodeJS.ProcessEnv)).toBe("systemd");
+  });
 });
 
 describe("createRuntimeAdapterFromEnv", () => {
