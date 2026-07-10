@@ -94,19 +94,29 @@ describe("collectSystemdPreflightIssues", () => {
     expect(issues.some((issue) => issue.includes("EVELAND_DATA_DIR") && /not set/i.test(issue) && issue.includes("/var/lib/eveland"))).toBe(true);
   });
 
-  test("flags a relative EVELAND_DATA_DIR", async () => {
+  test("flags a relative EVELAND_DATA_DIR, and skips check 9 entirely rather than mkdir-ing it relative to cwd", async () => {
     const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "relative-data-dir" });
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("relative-data-dir") && /absolute/i.test(issue))).toBe(true);
+    expect(deps.mkdir).not.toHaveBeenCalled();
+    expect(deps.canTraverseAs).not.toHaveBeenCalled();
   });
 
   test("flags each missing required binary by name", async () => {
     const deps = makePassingDeps();
-    deps.commandExists = vi.fn(async (name: string) => name !== "systemd-run" && name !== "node");
+    deps.commandExists = vi.fn(async (name: string) => name !== "systemd-run" && name !== "node" && name !== "git");
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("systemd-run"))).toBe(true);
     expect(issues.some((issue) => issue.includes("node"))).toBe(true);
+    expect(issues.some((issue) => issue.includes("git"))).toBe(true);
     expect(issues.some((issue) => issue.includes("systemctl"))).toBe(false);
+  });
+
+  test("requires git unconditionally -- the worker shells out to git clone for source imports", async () => {
+    const deps = makePassingDeps();
+    deps.commandExists = vi.fn(async (name: string) => name !== "git");
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(issues.some((issue) => issue.includes('"git"'))).toBe(true);
   });
 
   test("requires bwrap by default", async () => {

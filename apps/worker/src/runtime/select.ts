@@ -6,14 +6,15 @@ import type { RuntimeAdapter } from "./types.js";
 
 /**
  * Locates the built @eveland/sandbox-bwrap that gets vendored into each release.
- * Passed to createSystemdAdapter as a provider and invoked only inside
- * buildRelease (see systemd.ts) -- never here, and never at module load -- so
- * constructing any adapter, including the docker default, never touches the
- * filesystem or requires this package to be built. A successful `resolve()`
- * already proves dist/index.js exists (the package's "exports" map points at
- * it, and Node's resolver checks the target file is actually there), so no
- * separate existsSync check is needed; injectSandboxModules (sandbox-inject.ts)
- * is the single validator for "is the backend built".
+ * Passed to createSystemdAdapter as a provider and invoked inside buildRelease
+ * (see systemd.ts) and by the startup preflight's built-backend check
+ * (runtime/preflight.ts) -- never at module load -- so constructing any
+ * adapter, including the docker default, never touches the filesystem or
+ * requires this package to be built. A successful `resolve()` already proves
+ * dist/index.js exists (the package's "exports" map points at it, and Node's
+ * resolver checks the target file is actually there), so no separate
+ * existsSync check is needed; injectSandboxModules (sandbox-inject.ts) remains
+ * the validator of the backend's contents.
  */
 export function resolveBackendDistDir(): string {
   let entry: string;

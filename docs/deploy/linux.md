@@ -39,6 +39,7 @@
 - A service user for deployments: `useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app`.
 - The worker process must run as root (it drives `systemd-run`, `systemctl`,
   and `chown`). Run it as a systemd service itself.
+- `git`: the worker shells out to `git clone` for `import_source` jobs.
 
 ## Production topology
 
@@ -64,7 +65,7 @@ one side unable to find files the other wrote.
 Under `EVELAND_RUNTIME=systemd`, the worker refuses to start until every host
 prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
 systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path, the
-`systemd-run`, `systemctl`, `node` and `bwrap` binaries on `PATH` (`bwrap` is
+`systemd-run`, `systemctl`, `node`, `git` and `bwrap` binaries on `PATH` (`bwrap` is
 skipped when `EVELAND_BUILD_SANDBOX=none`), the app user (`EVELAND_APP_USER`,
 default `eveland-app`) existing, `/workspace` existing as a directory, the
 vendored sandbox backend being built (`pnpm --filter @eveland/sandbox-bwrap

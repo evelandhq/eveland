@@ -20,7 +20,11 @@ limactl shell "$VM" -- sudo bash -c "
   corepack pnpm --filter @eveland/sandbox-bwrap build
 
   # Asserts the real preflight passes on a freshly-provisioned host -- the PR's
-  # completion criterion. Uses the VM's existing data dir.
+  # completion criterion. Uses the VM's existing data dir. The VM is reused
+  # across runs and only provisions on first creation, so a VM created before
+  # git became a required binary would never pick it up without this guard.
+  command -v git >/dev/null || apt-get install -y git
+
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
 

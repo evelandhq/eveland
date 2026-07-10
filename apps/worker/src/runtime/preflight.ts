@@ -36,8 +36,12 @@ async function defaultMkdir(p: string): Promise<void> {
 
 async function defaultCommandExists(name: string): Promise<boolean> {
   // `command` is a shell builtin, not an executable -- there is nothing on
-  // PATH to exec directly, so this must run through a shell.
-  const result = await execa("sh", ["-lc", `command -v ${name}`], { reject: false });
+  // PATH to exec directly, so this must run through a shell. Use a non-login
+  // shell (`-c`, not `-lc`): a login shell sources root's profile, which can
+  // put a binary on PATH that the worker's own child processes (execa calls
+  // against the plain service PATH, no profile sourced) would never see --
+  // this probe must see exactly the PATH the worker's own children get.
+  const result = await execa("sh", ["-c", `command -v ${name}`], { reject: false });
   return result.exitCode === 0;
 }
 
@@ -75,7 +79,8 @@ function defaultDeps(env: NodeJS.ProcessEnv): PreflightDeps {
  * Checks 4-9 still run even when an earlier check already failed, except:
  * checks 8/9 gracefully no-op when their own inputs are missing (check 8 via
  * its own try/catch below; check 9 skips entirely when EVELAND_DATA_DIR is
- * unset, since there's nothing to mkdir), and check 9's traversal probe is
+ * unset or not absolute, since there's nothing safe to mkdir -- check 4
+ * already reported either case), and check 9's traversal probe is
  * skipped when check 6 (app user) already failed -- there's no user to probe
  * traversal as.
  */
@@ -107,8 +112,9 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
     issues.push(`EVELAND_DATA_DIR ("${dataDir}") must be an absolute path (e.g. "/var/lib/eveland") shared by the API container and this worker.`);
   }
 
-  // 5. Required binaries.
-  const requiredBinaries = ["systemd-run", "systemctl", "node", ...(deps.env.EVELAND_BUILD_SANDBOX === "none" ? [] : ["bwrap"])];
+  // 5. Required binaries. `git` is required unconditionally -- the worker
+  // shells out to `git clone` for import_source jobs (source/importer.ts).
+  const requiredBinaries = ["systemd-run", "systemctl", "node", "git", ...(deps.env.EVELAND_BUILD_SANDBOX === "none" ? [] : ["bwrap"])];
   for (const bin of requiredBinaries) {
     if (!(await deps.commandExists(bin))) {
       issues.push(`Required binary "${bin}" was not found on PATH. Install it before starting the worker.`);
@@ -136,8 +142,11 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   }
 
   // 9. The data dir is usable: mkdir it, then confirm the app user can traverse it.
-  // Skipped entirely when EVELAND_DATA_DIR is unset (check 4 already reported that).
-  if (dataDir) {
+  // Skipped entirely when EVELAND_DATA_DIR is unset or relative (check 4 already
+  // reported either case) -- a relative value would otherwise get mkdir'd relative
+  // to the worker's cwd, littering a stray directory that select.ts would never
+  // resolve to the same path, on top of a second, confusing issue.
+  if (dataDir && path.isAbsolute(dataDir)) {
     // A throwing mkdir (e.g. EACCES when check 3's root requirement is also
     // violated) must become one more issue, not reject the whole collection
     // and discard everything checks 1-8 already found.
