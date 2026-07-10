@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { processNextJob } from "../jobs/process.js";
+import { resolveRuntimeKind } from "../runtime/select.js";
 
 async function pathExists(target: string): Promise<boolean> {
   return await stat(target).then(
@@ -12,7 +13,7 @@ async function pathExists(target: string): Promise<boolean> {
   );
 }
 
-if (process.env.EVELAND_RUNTIME !== "systemd") {
+if (resolveRuntimeKind(process.env) !== "systemd") {
   throw new Error("Run with EVELAND_RUNTIME=systemd (this smoke test exercises the systemd adapter).");
 }
 

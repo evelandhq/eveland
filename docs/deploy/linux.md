@@ -67,7 +67,9 @@ one side unable to find files the other wrote.
 
 ### Startup preflight
 
-Under `EVELAND_RUNTIME=systemd`, the worker refuses to start until every host
+When the resolved runtime is systemd — an explicit `EVELAND_RUNTIME=systemd`,
+or `NODE_ENV=production` with `EVELAND_RUNTIME` unset — the worker refuses to
+start until every host
 prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
 systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path, the
 `systemd-run`, `systemctl`, `node`, `git` and `runuser` binaries on `PATH`

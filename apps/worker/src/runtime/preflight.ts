@@ -1,7 +1,7 @@
 import { execa } from "execa";
 import { access, mkdir as fsMkdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { resolveBackendDistDir } from "./select.js";
+import { resolveBackendDistDir, resolveRuntimeKind } from "./select.js";
 
 export type PreflightDeps = {
   env: NodeJS.ProcessEnv;
@@ -184,11 +184,14 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
 }
 
 /**
- * No-op unless EVELAND_RUNTIME=systemd -- the docker runtime has no host
- * prerequisites for this worker to preflight.
+ * No-op unless the RESOLVED runtime is systemd -- the docker runtime has no
+ * host prerequisites for this worker to preflight. Gating on
+ * resolveRuntimeKind, not the raw EVELAND_RUNTIME, matters: a production host
+ * (NODE_ENV=production, EVELAND_RUNTIME unset) defaults to the systemd adapter
+ * and must get the same preflight as an explicit EVELAND_RUNTIME=systemd.
  */
 export async function assertWorkerPreflight(env: NodeJS.ProcessEnv, overrides: Partial<PreflightDeps> = {}): Promise<void> {
-  if (env.EVELAND_RUNTIME !== "systemd") {
+  if (resolveRuntimeKind(env) !== "systemd") {
     return;
   }
 

@@ -42,6 +42,36 @@ describe("assertWorkerPreflight", () => {
     expect(deps.commandExists).not.toHaveBeenCalled();
   });
 
+  test("runs the full preflight when NODE_ENV=production resolves the systemd default, even with EVELAND_RUNTIME unset", async () => {
+    // The gate must follow the RESOLVED runtime, not the raw env var: a
+    // production host relying on the systemd default gets the same safety net
+    // as one that sets EVELAND_RUNTIME=systemd explicitly.
+    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_DATA_DIR: "/var/lib/eveland" };
+    const deps = makePassingDeps(env);
+    await expect(assertWorkerPreflight(env, deps)).resolves.toBeUndefined();
+    expect(deps.getuid).toHaveBeenCalled();
+    expect(deps.commandExists).toHaveBeenCalled();
+    expect(deps.userExists).toHaveBeenCalled();
+    expect(deps.canTraverseAs).toHaveBeenCalledWith("eveland-app", "/var/lib/eveland");
+    expect(deps.backendDistDir).toHaveBeenCalled();
+  });
+
+  test("collects issues on the NODE_ENV=production default path, not just the explicit-systemd one", async () => {
+    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_DATA_DIR: "/var/lib/eveland" };
+    const deps = makePassingDeps(env);
+    deps.platform = "darwin";
+    await expect(assertWorkerPreflight(env, deps)).rejects.toThrow(/^systemd runtime preflight failed:/);
+  });
+
+  test("stays a no-op when NODE_ENV=production but EVELAND_RUNTIME=docker is explicit", async () => {
+    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_RUNTIME: "docker" };
+    const deps = makePassingDeps(env);
+    await expect(assertWorkerPreflight(env, deps)).resolves.toBeUndefined();
+    expect(deps.getuid).not.toHaveBeenCalled();
+    expect(deps.commandExists).not.toHaveBeenCalled();
+    expect(deps.backendDistDir).not.toHaveBeenCalled();
+  });
+
   test("resolves when every check passes", async () => {
     const deps = makePassingDeps();
     await expect(assertWorkerPreflight(deps.env, deps)).resolves.toBeUndefined();
