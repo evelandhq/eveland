@@ -45,6 +45,7 @@ two public URLs for the target environment in `.env`, then bring it up:
 # .env
 WEB_ORIGIN=https://your-web-host
 NEXT_PUBLIC_API_URL=https://your-api-host
+EVELAND_PUBLIC_ORIGIN=https://your-api-host
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
@@ -54,6 +55,30 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 (playground proxy) can reach agent containers published on the host loopback, and sets
 `restart: unless-stopped` so the stack returns after a host reboot. The worker deploys
 agents through the mounted Docker socket, so the target is a Linux host running Docker.
+
+## Public agent endpoints
+
+Every deployed agent is reachable through the API's agent gateway at
+`<api origin>/a/<shortId>/...`, where `<shortId>` is the project id without its `proj_`
+prefix. The gateway stream-proxies to the agent's deployment and exposes only the eve
+contract surface — the `/eve/v1` session API and channel webhooks, plus durable-workflow
+webhooks under `/.well-known/workflow/` — so eve clients can point their `host` at
+`<api origin>/a/<shortId>` directly:
+
+```
+POST https://your-api-host/a/<shortId>/eve/v1/session
+GET  https://your-api-host/a/<shortId>/eve/v1/session/<sessionId>/stream
+```
+
+The running agents are discoverable at `GET <api origin>/.well-known/eve/agents.json`,
+which returns `{ "agents": [{ "id": "<shortId>", "name": "...", "url": "<api origin>/a/<shortId>" }] }`
+(CORS `*`), so clients can list connectable agents without the management API.
+
+Authentication is the agent's own concern (the eve channel `auth` option); the platform
+does not add one. `EVELAND_PUBLIC_ORIGIN` is handed to every deployed agent as
+`WORKFLOW_LOCAL_BASE_URL=${EVELAND_PUBLIC_ORIGIN}/a/<shortId>` so workflow webhook and
+callback URLs it mints are externally reachable; unset, it falls back to
+`http://localhost:$PORT` for local development.
 
 ## Verification
 

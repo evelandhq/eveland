@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { assertSafeArchivePath } from "@eveland/shared/archive";
 import { encryptSecretValue } from "@eveland/shared/secrets";
 import { z } from "zod";
+import { registerAgentGateway } from "./agent-gateway.js";
 import type { Store } from "./store.js";
 import type { DeploymentRecord, LogRecord, Project } from "./types.js";
 import { parseStepUsageEvent } from "./usage.js";
@@ -66,6 +67,11 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
   const app = new Hono();
   const playgroundRunner = options.playgroundRunner ?? runDeploymentPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
+
+  // Registered before the CORS middleware on purpose: agent traffic is public
+  // and each eve channel owns its own CORS policy, so the platform's
+  // WEB_ORIGIN-scoped headers must not apply to /a/*.
+  registerAgentGateway(app, store);
 
   app.use(
     "*",

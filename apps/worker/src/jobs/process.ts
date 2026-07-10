@@ -1,6 +1,6 @@
 import type { Store } from "@eveland/api/store";
 import type { Job } from "@eveland/api/types";
-import { createId } from "@eveland/shared/ids";
+import { createId, projectShortId } from "@eveland/shared/ids";
 import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eveland/shared/secrets";
 import { DURABLE_WORKFLOW_WORLD, isDurableWorkflowWorld } from "@eveland/shared/source";
 import net from "node:net";
@@ -26,6 +26,7 @@ export type ProcessJobOptions = {
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
   workflowPostgresUrl?: string;
   nodeEnv?: string;
+  publicOrigin?: string;
 };
 
 export async function processNextJob(store: Store, workerId: string, options: ProcessJobOptions = {}): Promise<boolean> {
@@ -434,13 +435,24 @@ async function composeDeploymentEnv(
     ...(workflowPostgresUrl ? { WORKFLOW_POSTGRES_URL: workflowPostgresUrl } : {}),
     ...secrets,
   };
+  // The agent's public base URL behind the /a/<shortId> gateway; eve reads
+  // WORKFLOW_LOCAL_BASE_URL to mint externally reachable workflow webhook
+  // and callback URLs. Not a secret, so it stays out of the mask list.
   // NODE_ENV is platform-owned and injected only in production; kept out of the mask list so build logs aren't scrubbed of the word "production".
   const env = {
+    WORKFLOW_LOCAL_BASE_URL: `${resolvePublicOrigin(options)}/a/${projectShortId(projectId)}`,
     ...injectedCredentials,
     ...(isProduction ? { NODE_ENV: "production" } : {}),
   };
   const secretValues = Object.values(injectedCredentials);
   return { env, secretValues };
+}
+
+// Defaults to the API's local address so a box with no EVELAND_PUBLIC_ORIGIN
+// (local dev, bare compose) still hands agents a reachable gateway base.
+function resolvePublicOrigin(options: ProcessJobOptions): string {
+  const configured = (options.publicOrigin ?? process.env.EVELAND_PUBLIC_ORIGIN)?.trim().replace(/\/+$/, "");
+  return configured || `http://localhost:${process.env.PORT ?? 4000}`;
 }
 
 async function readRuntimeSecrets(store: Store, projectId: string, appSecretKey: string): Promise<Record<string, string>> {

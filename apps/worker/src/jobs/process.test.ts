@@ -7,6 +7,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { projectShortId } from "@eveland/shared/ids";
 import { encryptSecretValue } from "@eveland/shared/secrets";
 
 describe("processNextJob", () => {
@@ -123,6 +124,7 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
         workflowPostgresUrl: "",
+        publicOrigin: "https://eve-api.example.com/",
         runtime: {
           name: "docker",
           async buildRelease(input) {
@@ -165,7 +167,11 @@ describe("processNextJob", () => {
           processName: expect.stringMatching(new RegExp(`^eveland-${project.id.toLowerCase()}-dep_`)),
           releaseRef: `eveland/${project.id.toLowerCase()}:rel`,
           port: 41001,
-          env: { OPENAI_API_KEY: "sk-test-123456" },
+          // The trailing slash on publicOrigin must be normalized away.
+          env: {
+            OPENAI_API_KEY: "sk-test-123456",
+            WORKFLOW_LOCAL_BASE_URL: `https://eve-api.example.com/a/${projectShortId(project.id)}`,
+          },
         }),
       },
     ]);
@@ -578,6 +584,57 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "deployed" });
   });
 
+  test("lets a project secret override the injected WORKFLOW_LOCAL_BASE_URL", async () => {
+    const secretKey = "eveland-test-secret-key-00000000";
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Custom Base Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.upsertSecret(
+      project.id,
+      "WORKFLOW_LOCAL_BASE_URL",
+      JSON.stringify(encryptSecretValue("https://agent.example.com", secretKey)),
+    );
+    await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        appSecretKey: secretKey,
+        workflowPostgresUrl: "",
+        publicOrigin: "https://eve-api.example.com",
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
+          },
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {},
+        },
+        allocateHostPort() {
+          return 41009;
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    const run = runtimeCalls.find((call) => call.name === "startProcess");
+    expect((run?.input as { env: Record<string, string> }).env.WORKFLOW_LOCAL_BASE_URL).toBe("https://agent.example.com");
+  });
+
   test("lets a project secret override the injected WORKFLOW_POSTGRES_URL", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
@@ -927,6 +984,7 @@ describe("processNextJob", () => {
           env: {
             WORKFLOW_POSTGRES_URL: "postgres://platform@host.docker.internal:5432/eveland",
             OPENAI_API_KEY: "sk-test-restart",
+            WORKFLOW_LOCAL_BASE_URL: `http://localhost:4000/a/${projectShortId(project.id)}`,
           },
         }),
       },
