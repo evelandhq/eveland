@@ -68,6 +68,7 @@ export type Store = {
   completeJob(jobId: string): Promise<void>;
   failJob(jobId: string, error: string): Promise<void>;
   updateProjectState(projectId: string, state: { status?: ProjectStatus; deploymentStatus?: DeploymentStatus }): Promise<Project | null>;
+  updateProjectSlug(projectId: string, slug: string): Promise<Project | null>;
   appendLog(input: { projectId: string; deploymentId?: string | null; type: LogRecord["type"]; line: string }): Promise<LogRecord>;
   recordSourceRevision(input: {
     projectId: string;
@@ -291,6 +292,19 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
       project.status = nextState.status ?? project.status;
       project.deploymentStatus = nextState.deploymentStatus ?? project.deploymentStatus;
+      project.updatedAt = new Date().toISOString();
+      return project;
+    },
+
+    async updateProjectSlug(projectId, slug) {
+      const project = state.projects.find((candidate) => candidate.id === projectId);
+      if (!project) {
+        return null;
+      }
+      if (state.projects.some((candidate) => candidate.id !== projectId && candidate.slug === slug)) {
+        throw new SlugConflictError(slug);
+      }
+      project.slug = slug;
       project.updatedAt = new Date().toISOString();
       return project;
     },

@@ -403,3 +403,31 @@ describe("memory store project slugs", () => {
     ).rejects.toBeInstanceOf(SlugConflictError);
   });
 });
+
+describe("memory store updateProjectSlug", () => {
+  test("renames the slug and bumps updatedAt", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git" });
+    const updated = await store.updateProjectSlug(project.id, "renamed-agent");
+    expect(updated?.slug).toBe("renamed-agent");
+    expect((await store.getProject(project.id))?.slug).toBe("renamed-agent");
+  });
+
+  test("returns null for an unknown project", async () => {
+    const store = createMemoryStore();
+    await expect(store.updateProjectSlug("proj_missing", "whatever")).resolves.toBeNull();
+  });
+
+  test("throws SlugConflictError when another project holds the slug", async () => {
+    const store = createMemoryStore();
+    const first = await store.createProject({ name: "First", importKind: "git", gitUrl: "https://example.com/f.git" });
+    const second = await store.createProject({ name: "Second", importKind: "git", gitUrl: "https://example.com/s.git" });
+    await expect(store.updateProjectSlug(second.id, first.slug)).rejects.toBeInstanceOf(SlugConflictError);
+  });
+
+  test("is a no-op success when setting a project's own slug", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git" });
+    await expect(store.updateProjectSlug(project.id, project.slug)).resolves.toMatchObject({ slug: project.slug });
+  });
+});

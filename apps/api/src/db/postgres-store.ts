@@ -269,6 +269,18 @@ export function createPostgresStore(database: Database): Store {
       return row ? projectRowToProject(row) : null;
     },
 
+    async updateProjectSlug(projectId, slug) {
+      try {
+        const [row] = await db.update(projects).set({ slug, updatedAt: new Date() }).where(eq(projects.id, projectId)).returning();
+        return row ? projectRowToProject(row) : null;
+      } catch (error) {
+        if (isUniqueSlugViolation(error)) {
+          throw new SlugConflictError(slug);
+        }
+        throw error;
+      }
+    },
+
     async appendLog(input) {
       const [row] = await db
         .insert(logs)
