@@ -13,7 +13,8 @@
     "dev": "pnpm -r --parallel dev",
     "dev:web": "pnpm --filter @eveland/web dev",
     "dev:api": "pnpm --filter @eveland/api dev",
-    "dev:worker": "pnpm --filter @eveland/worker dev"
+    "dev:worker": "pnpm --filter @eveland/worker dev",
+    "dev:gateway": "pnpm --filter @eveland/gateway dev"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
