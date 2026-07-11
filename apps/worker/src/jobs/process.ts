@@ -227,6 +227,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           containerName: processName,
           internalPort: started.internalPort,
           hostPort,
+          hostAddress: "127.0.0.1",
           runtimeKind: runtime.name,
         });
         await store.updateProjectState(job.projectId, { status: "deployed", deploymentStatus: "running" });

@@ -92,6 +92,7 @@ describe("memory store jobs", () => {
       containerName: "eveland-proj-dep_123",
       internalPort: 3000,
       hostPort: 41001,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
 
@@ -106,6 +107,7 @@ describe("memory store jobs", () => {
       releaseId: deployment.releaseId,
       containerName: "eveland-proj-dep_123",
       hostPort: 41001,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
   });
@@ -130,11 +132,39 @@ describe("memory store jobs", () => {
       containerName: "eveland-proj-dep_456",
       internalPort: 3000,
       hostPort: 41002,
+      hostAddress: "127.0.0.1",
       runtimeKind: "systemd",
     });
 
     expect(deployment.runtimeKind).toBe("systemd");
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "systemd" });
+  });
+
+  test("recordDeployment persists hostAddress", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      commitSha: "abc123",
+      sourcePath: "/tmp/src",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "img:1",
+      containerName: "eveland-demo",
+      internalPort: 3000,
+      hostPort: 41000,
+      hostAddress: "127.0.0.1",
+      runtimeKind: "docker",
+    });
+    expect(deployment.hostAddress).toBe("127.0.0.1");
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ hostAddress: "127.0.0.1" });
   });
 
   test("getRelease returns the release by id and null when absent", async () => {
@@ -156,6 +186,7 @@ describe("memory store jobs", () => {
       containerName: "eveland-proj-dep_789",
       internalPort: 3000,
       hostPort: 41003,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
 

@@ -417,6 +417,7 @@ export function createPostgresStore(database: Database): Store {
           containerName: input.containerName,
           internalPort: input.internalPort,
           hostPort: input.hostPort,
+          hostAddress: input.hostAddress,
           status: "running",
           runtimeKind: input.runtimeKind,
         })

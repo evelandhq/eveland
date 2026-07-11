@@ -93,6 +93,7 @@ export type Store = {
     containerName: string;
     internalPort: number;
     hostPort: number;
+    hostAddress: string;
     runtimeKind: RuntimeKind;
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
@@ -397,6 +398,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         containerName: input.containerName,
         internalPort: input.internalPort,
         hostPort: input.hostPort,
+        hostAddress: input.hostAddress,
         status: "running",
         runtimeKind: input.runtimeKind,
         createdAt: now,

@@ -95,6 +95,7 @@ export const deployments = pgTable("deployments", {
   containerName: text("container_name").notNull(),
   internalPort: integer("internal_port").notNull(),
   hostPort: integer("host_port").notNull(),
+  hostAddress: text("host_address").notNull(),
   status: text("status").notNull(),
   // No default: every caller must state which runtime adapter created the deployment.
   // The migration backfills existing rows with 'docker' then drops the column default.

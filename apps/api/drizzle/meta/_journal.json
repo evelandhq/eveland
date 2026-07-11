@@ -43,6 +43,13 @@
       "when": 1783741709670,
       "tag": "0005_clever_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783741994447,
+      "tag": "0006_busy_susan_delgado",
+      "breakpoints": true
     }
   ]
 }

@@ -80,6 +80,7 @@ export type DeploymentRecord = {
   containerName: string;
   internalPort: number;
   hostPort: number;
+  hostAddress: string;
   status: DeploymentStatus;
   runtimeKind: RuntimeKind;
   createdAt: string;

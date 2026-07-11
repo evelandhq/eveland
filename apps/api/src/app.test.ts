@@ -285,6 +285,7 @@ describe("api app", () => {
       containerName: "eveland-playground",
       internalPort: 3000,
       hostPort: 41001,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     const runnerCalls: unknown[] = [];
@@ -343,6 +344,7 @@ describe("api app", () => {
       containerName: "eveland-token",
       internalPort: 3000,
       hostPort: 41002,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     const app = createApp(store, {
@@ -442,6 +444,7 @@ describe("api app", () => {
       containerName: "eveland-streaming-usage",
       internalPort: 3000,
       hostPort: address.port,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     const app = createApp(store);
@@ -494,6 +497,7 @@ describe("api app", () => {
       containerName: "eveland-concurrent-stream",
       internalPort: 3000,
       hostPort: 41003,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
 
@@ -618,6 +622,7 @@ describe("api app", () => {
       containerName: "eveland-subagent-usage",
       internalPort: 3000,
       hostPort: address.port,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
 
@@ -718,6 +723,7 @@ describe("api app", () => {
       containerName: "eveland-missing-child",
       internalPort: 3000,
       hostPort: address.port,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
 
@@ -801,6 +807,7 @@ describe("api app", () => {
       containerName: "eveland-remote-boundary",
       internalPort: 3000,
       hostPort: address.port,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
 

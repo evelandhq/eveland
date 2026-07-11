@@ -82,6 +82,7 @@ describe("processNextJob", () => {
       containerName: "eveland-live",
       internalPort: 3000,
       hostPort: 41010,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     // A re-sync whose source fails to scan (here, an empty directory) must not
@@ -199,6 +200,7 @@ describe("processNextJob", () => {
       containerName: "eveland-old-container",
       internalPort: 3000,
       hostPort: 41077,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "build_deploy");
@@ -264,6 +266,7 @@ describe("processNextJob", () => {
       containerName: "eveland-old-systemd-unit",
       internalPort: 3000,
       hostPort: 41078,
+      hostAddress: "127.0.0.1",
       runtimeKind: "systemd",
     });
     await store.enqueueJob(project.id, "build_deploy");
@@ -387,6 +390,7 @@ describe("processNextJob", () => {
       containerName: "eveland-old-container",
       internalPort: 3000,
       hostPort: 41110,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "build_deploy");
@@ -891,6 +895,7 @@ describe("processNextJob", () => {
       containerName: "eveland-cur-container",
       internalPort: 3000,
       hostPort: 41050,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "restart_deployment");
@@ -964,6 +969,7 @@ describe("processNextJob", () => {
       containerName: "eveland-systemd-unit",
       internalPort: 3000,
       hostPort: 41051,
+      hostAddress: "127.0.0.1",
       runtimeKind: "systemd",
     });
     await store.enqueueJob(project.id, "restart_deployment");
@@ -1027,6 +1033,7 @@ describe("processNextJob", () => {
       containerName: "eveland-restart-fail-container",
       internalPort: 3000,
       hostPort: 41113,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "restart_deployment");
@@ -1088,6 +1095,7 @@ describe("processNextJob", () => {
       containerName: "eveland-restart-start-fail-container",
       internalPort: 3000,
       hostPort: 41114,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "restart_deployment");
@@ -1171,6 +1179,7 @@ describe("processNextJob", () => {
       containerName: "eveland-missing-container",
       internalPort: 3000,
       hostPort: 41052,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "restart_deployment");
@@ -1220,6 +1229,7 @@ describe("processNextJob", () => {
       containerName: "eveland-vanished-container",
       internalPort: 3000,
       hostPort: 41060,
+      hostAddress: "127.0.0.1",
       runtimeKind: "docker",
     });
     await store.enqueueJob(project.id, "restart_deployment");
@@ -1280,6 +1290,7 @@ describe("processNextJob", () => {
       containerName: "eveland-del-systemd-unit",
       internalPort: 3000,
       hostPort: 41060,
+      hostAddress: "127.0.0.1",
       runtimeKind: "systemd",
     });
     await store.enqueueJob(project.id, "delete_project");

@@ -273,6 +273,7 @@ export function deploymentRowToDeployment(row: {
   containerName: string;
   internalPort: number;
   hostPort: number;
+  hostAddress: string;
   status: string;
   runtimeKind: string;
   createdAt: Date;
@@ -285,6 +286,7 @@ export function deploymentRowToDeployment(row: {
     containerName: row.containerName,
     internalPort: row.internalPort,
     hostPort: row.hostPort,
+    hostAddress: row.hostAddress,
     status: row.status as DeploymentStatus,
     runtimeKind: row.runtimeKind as RuntimeKind,
     createdAt: timestampToIso(row.createdAt),
