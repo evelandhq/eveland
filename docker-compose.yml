@@ -25,6 +25,9 @@ services:
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       APP_SECRET_KEY: eveland-dev-secret-key-000000000
       EVELAND_DATA_DIR: /workspace/.eveland-data
+      EVELAND_AGENT_DOMAIN: lvh.me
+      EVELAND_AGENT_URL_SCHEME: http
+      EVELAND_AGENT_URL_PORT: 8080
     ports:
       - "4000:4000"
     volumes:
@@ -61,9 +64,35 @@ services:
       WORKFLOW_POSTGRES_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
       EVELAND_DATA_DIR: /workspace/.eveland-data
       EVELAND_RUNTIME: docker
+      EVELAND_AGENT_DOMAIN: lvh.me
+      EVELAND_AGENT_URL_SCHEME: http
+      EVELAND_AGENT_URL_PORT: 8080
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
+
+  gateway:
+    image: node:24-alpine
+    working_dir: /workspace
+    command: sh -lc "corepack enable && pnpm install && pnpm --filter @eveland/gateway dev"
+    depends_on:
+      - postgres
+    environment:
+      CI: "true"
+      PORT: 8080
+      DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
+      EVELAND_AGENT_DOMAIN: lvh.me
+      EVELAND_AGENT_URL_SCHEME: http
+      EVELAND_AGENT_URL_PORT: 8080
+      # Agent containers publish on the Docker host loopback; from this container,
+      # host.docker.internal resolves back to that host via the extra_hosts mapping.
+      EVELAND_GATEWAY_UPSTREAM_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/workspace
 
 volumes:
   eveland-postgres:

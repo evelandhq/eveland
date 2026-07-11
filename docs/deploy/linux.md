@@ -48,7 +48,7 @@
 
 ## Production topology
 
-- **API, Web, Postgres** run in Docker Compose:
+- **API, Web, Gateway, Postgres** run in Docker Compose:
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. The
   prod overlay no longer starts a containerized worker (see the header comment
   in `docker-compose.prod.yml`); `--profile docker-worker` restores it for
@@ -64,6 +64,14 @@ bind-mounts it at that same absolute path, matching the host worker's
 `sourcePath` is written by whichever side imports the project and read by
 whichever side later serves or deploys it — a mismatched mount would leave
 one side unable to find files the other wrote.
+
+Production Compose requires `APP_SECRET_KEY` and `EVELAND_AGENT_DOMAIN` in the
+host environment or `.env` before `docker compose config` succeeds. Use the same
+`APP_SECRET_KEY` for the API and any worker, including the optional
+`--profile docker-worker` container, so stored project secrets can be decrypted
+by the process that deploys them. The prod overlay defaults public agent URLs to
+`https://<slug>.$EVELAND_AGENT_DOMAIN` with no port unless
+`EVELAND_AGENT_URL_SCHEME` or `EVELAND_AGENT_URL_PORT` are explicitly set.
 
 ### Startup preflight
 
@@ -99,7 +107,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland`. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
-| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
+| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must exactly match the API's `APP_SECRET_KEY` because the API encrypts secrets and the worker decrypts them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Postgres URL injected into each deployment's `EnvironmentFile` so a `@workflow/world-postgres` agent has a durable workflow store. Deployments run as a host process, so use a host-reachable address, e.g. `postgres://eveland:eveland@localhost:5432/eveland`. A project secret of the same name overrides it. |
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. Note `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
@@ -339,6 +347,81 @@ If you route by path in front of a deployment, forward **both** `/eve/` and
 `/.well-known/workflow/`. The workflow world delivers run callbacks to
 `/.well-known/workflow/v1/flow`; forwarding only `/eve/` lets sessions start but
 stalls every run silently.
+
+### Agent gateway
+
+Point wildcard DNS for the agent apex at this host, and terminate a wildcard
+certificate for `*.agent-apex.example.com` plus the apex itself at the reverse
+proxy. Forward plaintext HTTP to the gateway on `127.0.0.1:8080`, preserving the
+incoming `Host` header and setting the usual `X-Forwarded-*` headers (`Proto`,
+`Host`, and `For`).
+
+The gateway trusts ingress-set `X-Forwarded-Proto` and `X-Forwarded-Host` values
+when they are already present, appends to `X-Forwarded-For`, and synthesizes
+missing forwarded headers only for direct/dev traffic. Do not expose the gateway
+directly to untrusted clients in production: a direct client can spoof
+`X-Forwarded-*` headers in v1. Put a trusted reverse proxy in front of it and
+have that proxy overwrite inbound client-supplied `X-Forwarded-Proto`,
+`X-Forwarded-Host`, and `X-Forwarded-For` before forwarding to the gateway.
+
+The gateway reserves `/healthz` for its own health check on any host. On the apex
+host, `/.well-known/eve/agents.json` serves public discovery. On slug hosts, proxy
+all paths verbatim to the deployment, including `/eve/` and
+`/.well-known/workflow/`; do not rewrite or special-case those paths in the reverse
+proxy.
+
+`EVELAND_AGENT_DOMAIN` is the DNS apex used for slug hosts, for example
+`agents.example.com`; the corresponding public discovery URL is
+`https://agents.example.com/.well-known/eve/agents.json`. Changing a project's slug
+immediately invalidates the old domain. The gateway does not redirect from the old
+slug to the new one.
+
+When upgrading an existing install across the slug/gateway migrations, apply the
+checked-in SQL files before running `db:push`:
+
+```bash
+psql "$DATABASE_URL" -f apps/api/drizzle/0005_clever_rictor.sql
+psql "$DATABASE_URL" -f apps/api/drizzle/0006_busy_susan_delgado.sql
+pnpm --filter @eveland/api db:push
+```
+
+Run them in that order. `apps/api/drizzle/0005_clever_rictor.sql` adds and
+backfills project slugs before enforcing NOT NULL and unique constraints;
+`apps/api/drizzle/0006_busy_susan_delgado.sql` adds and backfills deployment
+`host_address` before enforcing NOT NULL. Skipping either file can leave
+`db:push` trying to add constraints against rows that do not yet have valid
+values.
+
+The route invalidation triggers are not in a checked-in migration file. They are
+installed idempotently by API startup through
+`apps/api/src/db/notify-triggers.ts` (`ensureRouteNotifyTriggers`) after the API
+creates its Postgres store. It invalidates route cache entries on project slug,
+deployment pointer, and deployment status updates, plus project and deployment
+deletes. The trigger DDL expects the slug and host-address columns to exist, so
+start the new API only after the two SQL files and `db:push` have completed.
+
+Recommended rollout order:
+
+1. Stop old API and gateway processes, leaving Postgres running.
+2. Apply `apps/api/drizzle/0005_clever_rictor.sql`.
+3. Apply `apps/api/drizzle/0006_busy_susan_delgado.sql`.
+4. Run `pnpm --filter @eveland/api db:push`.
+5. Start the new API and confirm it starts cleanly; this installs or replaces
+   the `eveland_projects_route_notify` and `eveland_deployments_route_notify`
+   triggers.
+6. Start the gateway behind the trusted reverse proxy, then start or restart the
+   worker with matching `EVELAND_AGENT_DOMAIN`, `EVELAND_AGENT_URL_SCHEME`, and
+   `EVELAND_AGENT_URL_PORT`.
+
+Rollback after the migrations have been applied should roll services back in the
+opposite order: stop the worker first so it cannot enqueue new gateway-aware
+deploys, stop the gateway, then roll API/Web back together. Leave the two schema
+migrations in place; older code ignores the additional `projects.slug`,
+`deployments.host_address`, and trigger objects, while dropping those columns
+would break any rows or URLs created after the upgrade. If API startup fails
+while installing triggers, keep the old API stopped, fix the database or
+permissions issue, and restart the new API so `ensureRouteNotifyTriggers` can
+run again.
 
 ## Logs
 

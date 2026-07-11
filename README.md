@@ -7,6 +7,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/shared`: tested core behavior for IDs, archive path safety, eve source inspection, schedule parsing, next-run calculation, secret encryption, and runtime command inference.
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
 - `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, provider-reported per-agent token usage collected from Eve session streams, BetterAuth dependency, Drizzle/Postgres schema, and Postgres-backed store when `DATABASE_URL` is set.
+- `apps/gateway`: HTTP/WebSocket reverse gateway for public `slug.<agent-domain>` agent hosts, apex discovery, and Postgres-backed route lookup.
 - `apps/worker`: Docker runtime adapter, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
 
@@ -17,15 +18,22 @@ pnpm install
 docker compose up -d postgres          # start the database
 pnpm --filter @eveland/api db:push     # create/update tables (required on first run and after schema changes)
 pnpm --filter @eveland/api dev
+EVELAND_AGENT_DOMAIN=lvh.me EVELAND_AGENT_URL_SCHEME=http EVELAND_AGENT_URL_PORT=8080 pnpm --filter @eveland/gateway dev
 pnpm --filter @eveland/web dev
-pnpm --filter @eveland/worker dev
+EVELAND_AGENT_DOMAIN=lvh.me EVELAND_AGENT_URL_SCHEME=http EVELAND_AGENT_URL_PORT=8080 pnpm --filter @eveland/worker dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000`. The gateway listens on `http://localhost:8080`;
+`lvh.me` is the local default because it resolves wildcard agent hosts back to
+localhost.
 
-All three processes are required: the web form posts to the API, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
+All four processes are required: the web form posts to the API, the gateway serves
+public agent URLs, and imports, builds, and deploys are executed by the worker's job
+polling — without it, projects stay pending after upload. `EVELAND_AGENT_DOMAIN` is
+required anywhere the gateway or worker needs to build agent URLs.
 
-Docker Compose runs the full stack (Postgres + API + web + worker) in **development mode**:
+Docker Compose runs the full stack (Postgres + API + web + gateway + worker) in
+**development mode**:
 
 ```bash
 docker compose up
@@ -38,22 +46,34 @@ Pick one mode: either everything in Compose, or only `postgres` in Compose and t
 
 ## Production (single-box deploy)
 
-Deploy the whole stack in Docker on one Linux host by layering the production overlay. Set the
-two public URLs for the target environment in `.env`, then bring it up:
+Run the production Compose stack on one Linux host by layering the production overlay. Set the
+public URLs and agent apex domain for the target environment in `.env`, then start the
+Compose-managed services:
 
 ```bash
 # .env
 WEB_ORIGIN=https://your-web-host
 NEXT_PUBLIC_API_URL=https://your-api-host
+EVELAND_AGENT_DOMAIN=agents.example.com
+EVELAND_AGENT_URL_SCHEME=https
+EVELAND_AGENT_URL_PORT=
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-`docker-compose.prod.yml` runs a production build (`next build && next start`,
-`NODE_ENV=production`), uses **host networking** so the worker (health check) and API
-(playground proxy) can reach agent containers published on the host loopback, and sets
-`restart: unless-stopped` so the stack returns after a host reboot. The worker deploys
-agents through the mounted Docker socket, so the target is a Linux host running Docker.
+That default command starts API, Web, Gateway, and Postgres. The production worker is a
+host systemd service: install, configure, enable, and start
+`infra/systemd/eveland-worker.service` using
+`infra/systemd/eveland-worker.env.example` and `docs/deploy/linux.md`. Imports,
+builds, and deploys require that worker; without it, uploaded projects stay pending.
+
+`docker-compose.prod.yml` runs the API/Web/Gateway in production mode (`next build &&
+next start`, `NODE_ENV=production`), uses **host networking** so the API and Gateway can
+reach host-local services and agent ports, and sets `restart: unless-stopped` so the
+Compose stack returns after a host reboot. The host systemd worker is not part of the
+Compose overlay and does not use a Compose-mounted Docker socket. `--profile
+docker-worker` starts the legacy containerized Docker-runtime worker instead; do not run
+that worker and the host systemd worker at the same time.
 
 ## Verification
 

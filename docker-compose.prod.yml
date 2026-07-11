@@ -1,14 +1,19 @@
-# Production overlay for a single-box (Linux) deployment. API/Web/Postgres run in Docker
+# Production overlay for a single-box (Linux) deployment. API/Web/Gateway/Postgres run in Docker
 # Compose; the worker runs on the host as a systemd service (infra/systemd/eveland-worker.service,
 # see docs/deploy/linux.md). For legacy Docker-runtime installs, the containerized worker is
 # available via `--profile docker-worker`.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
-# Set the two public URLs in a local .env (gitignored) for the target environment:
-#   WEB_ORIGIN=https://your-web-host          # CORS allow-origin for the API
-#   NEXT_PUBLIC_API_URL=https://your-api-host  # where the browser calls the API (baked in at build)
-# They default to localhost so `up` works with no .env for a quick bring-up.
+# Set the public URLs in a local .env (gitignored) for the target environment:
+#   WEB_ORIGIN=https://your-web-host             # CORS allow-origin for the API
+#   NEXT_PUBLIC_API_URL=https://your-api-host    # where the browser calls the API (baked in at build)
+#   APP_SECRET_KEY=replace-with-the-same-32-byte-api-worker-secret
+#   EVELAND_AGENT_DOMAIN=agents.example.com      # apex host for agent subdomains
+#   EVELAND_AGENT_URL_SCHEME=https               # optional; defaults to https in this overlay
+#   EVELAND_AGENT_URL_PORT=                      # optional; defaults to empty
+# The web/API URLs default to localhost for a quick bring-up; APP_SECRET_KEY and
+# EVELAND_AGENT_DOMAIN are required so production never inherits dev gateway settings.
 #
 # Deployed agent data lives under /var/lib/eveland on the host, bind-mounted into the API at the
 # same absolute path so database sourcePath values are valid in both places.
@@ -33,8 +38,12 @@ services:
     environment:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
+      APP_SECRET_KEY: "${APP_SECRET_KEY:?APP_SECRET_KEY is required and must match the worker when docker-worker is enabled}"
       WEB_ORIGIN: "${WEB_ORIGIN:-http://localhost:3000}"
       EVELAND_DATA_DIR: /var/lib/eveland
+      EVELAND_AGENT_DOMAIN: "${EVELAND_AGENT_DOMAIN:?EVELAND_AGENT_DOMAIN is required for production agent URLs}"
+      EVELAND_AGENT_URL_SCHEME: "${EVELAND_AGENT_URL_SCHEME:-https}"
+      EVELAND_AGENT_URL_PORT: "${EVELAND_AGENT_URL_PORT:-}"
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
@@ -50,6 +59,26 @@ services:
       API_URL: http://localhost:4000
       NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:4000}"
 
+  gateway:
+    image: node:24-alpine
+    working_dir: /workspace
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    network_mode: host
+    ports: !override []
+    extra_hosts: !override []
+    command: sh -lc "corepack enable && pnpm install && cd apps/gateway && NODE_ENV=production pnpm exec tsx --env-file=../../.env src/server.ts"
+    environment: !override
+      CI: "true"
+      PORT: 8080
+      DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
+      EVELAND_AGENT_DOMAIN: "${EVELAND_AGENT_DOMAIN:?EVELAND_AGENT_DOMAIN is required for production gateway routing}"
+      EVELAND_AGENT_URL_SCHEME: "${EVELAND_AGENT_URL_SCHEME:-https}"
+      EVELAND_AGENT_URL_PORT: "${EVELAND_AGENT_URL_PORT:-}"
+    volumes:
+      - .:/workspace
+
   worker:
     profiles: ["docker-worker"]
     restart: unless-stopped
@@ -63,8 +92,12 @@ services:
     environment:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
+      APP_SECRET_KEY: "${APP_SECRET_KEY:?APP_SECRET_KEY is required and must match the API}"
       EVELAND_RUNTIME: docker
       EVELAND_DATA_DIR: /var/lib/eveland
+      EVELAND_AGENT_DOMAIN: "${EVELAND_AGENT_DOMAIN:?EVELAND_AGENT_DOMAIN is required for production agent URLs}"
+      EVELAND_AGENT_URL_SCHEME: "${EVELAND_AGENT_URL_SCHEME:-https}"
+      EVELAND_AGENT_URL_PORT: "${EVELAND_AGENT_URL_PORT:-}"
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
