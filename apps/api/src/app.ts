@@ -5,20 +5,30 @@ import { promisify } from "node:util";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
+import { isValidProjectSlug, mintAgentUrl, type AgentUrlEnv } from "@eveland/shared/agent-domain";
 import { assertSafeArchivePath } from "@eveland/shared/archive";
 import { encryptSecretValue } from "@eveland/shared/secrets";
 import { z } from "zod";
-import type { Store } from "./store.js";
+import { SlugConflictError, type Store } from "./store.js";
 import type { DeploymentRecord, LogRecord, Project } from "./types.js";
 import { parseStepUsageEvent } from "./usage.js";
 
 const execFileAsync = promisify(execFile);
 
+const projectSlugSchema = z
+  .string()
+  .refine(isValidProjectSlug, { message: "Slug must be a DNS-safe label: [a-z0-9-], max 63 chars, no leading/trailing hyphen, not reserved." });
+
 const createProjectSchema = z.object({
   name: z.string().min(1),
   importKind: z.enum(["git", "zip"]),
   gitUrl: z.string().url().optional().nullable(),
+  slug: projectSlugSchema.optional(),
 });
+
+const updateProjectSchema = z.object({
+  slug: projectSlugSchema,
+}).strict();
 
 const secretSchema = z.object({
   key: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
@@ -60,12 +70,15 @@ export type PlaygroundRunner = (input: PlaygroundRunnerInput) => Promise<Playgro
 export type AppOptions = {
   playgroundRunner?: PlaygroundRunner;
   dataDir?: string;
+  agentUrlEnv?: AgentUrlEnv;
 };
 
 export function createApp(store: Store, options: AppOptions = {}): Hono {
   const app = new Hono();
   const playgroundRunner = options.playgroundRunner ?? runDeploymentPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
+  const agentUrlEnv = options.agentUrlEnv ?? (process.env as AgentUrlEnv);
+  const toProjectResponse = (project: Project) => ({ ...project, agentUrl: mintAgentUrl(project.slug, agentUrlEnv) });
 
   app.use(
     "*",
@@ -77,11 +90,11 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
 
   app.get("/health", (c) => c.json({ ok: true, service: "eveland-api" }));
 
-  app.get("/projects", async (c) => c.json({ projects: await store.listProjects() }));
+  app.get("/projects", async (c) => c.json({ projects: (await store.listProjects()).map(toProjectResponse) }));
 
   app.post("/projects", async (c) => {
     if (isMultipartRequest(c)) {
-      return createZipProjectFromUpload(c, store, dataDir);
+      return createZipProjectFromUpload(c, store, dataDir, toProjectResponse);
     }
 
     const parsed = createProjectSchema.safeParse(await c.req.json());
@@ -89,8 +102,15 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
       return c.json({ error: "Invalid project input", issues: parsed.error.issues }, 400);
     }
 
-    const project = await store.createProject(parsed.data);
-    return c.json({ project }, 201);
+    try {
+      const project = await store.createProject({ ...parsed.data, slug: parsed.data.slug ?? null });
+      return c.json({ project: toProjectResponse(project) }, 201);
+    } catch (error) {
+      if (error instanceof SlugConflictError) {
+        return c.json({ error: error.message }, 409);
+      }
+      throw error;
+    }
   });
 
   app.get("/projects/:projectId", async (c) => {
@@ -98,7 +118,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
-    return c.json({ project });
+    return c.json({ project: toProjectResponse(project) });
   });
 
   app.delete("/projects/:projectId", async (c) => {
@@ -109,6 +129,32 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
     }
     const job = await store.enqueueJob(projectId, "delete_project");
     return c.json({ job }, 202);
+  });
+
+  app.patch("/projects/:projectId", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Malformed JSON" }, 400);
+    }
+
+    const parsed = updateProjectSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "Invalid project update", issues: parsed.error.issues }, 400);
+    }
+    try {
+      const project = await store.updateProjectSlug(c.req.param("projectId"), parsed.data.slug);
+      if (!project) {
+        return c.json({ error: "Project not found" }, 404);
+      }
+      return c.json({ project: toProjectResponse(project) });
+    } catch (error) {
+      if (error instanceof SlugConflictError) {
+        return c.json({ error: error.message }, 409);
+      }
+      throw error;
+    }
   });
 
   app.post("/projects/:projectId/build-deploy", async (c) => {
@@ -286,7 +332,7 @@ async function readSyncDeployFlag(c: Context): Promise<boolean> {
   }
 }
 
-async function createZipProjectFromUpload(c: Context, store: Store, dataDir: string) {
+async function createZipProjectFromUpload(c: Context, store: Store, dataDir: string, toProjectResponse: (project: Project) => Project & { agentUrl: string | null }) {
   const form = await c.req.formData();
   const name = form.get("name");
   const archive = form.get("archive");
@@ -305,7 +351,7 @@ async function createZipProjectFromUpload(c: Context, store: Store, dataDir: str
     importKind: "zip",
     sourcePath,
   });
-  return c.json({ project }, 201);
+  return c.json({ project: toProjectResponse(project) }, 201);
 }
 
 async function extractZipUpload(archive: File, dataDir: string): Promise<string> {

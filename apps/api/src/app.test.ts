@@ -71,6 +71,130 @@ describe("api app", () => {
     await expect(readFile(path.join(String(sourcePath), "agent", "instructions.md"), "utf8")).resolves.toBe("You are a helpful test agent.");
   });
 
+  describe("project slugs and agent urls", () => {
+    const agentUrlEnv = { EVELAND_AGENT_DOMAIN: "lvh.me", EVELAND_AGENT_URL_SCHEME: "http", EVELAND_AGENT_URL_PORT: "8080" };
+
+    test("returns slug and minted agentUrl on create and get", async () => {
+      const app = createApp(createMemoryStore(), { agentUrlEnv });
+      const createResponse = await app.request("/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Weather Agent", importKind: "git", gitUrl: "https://example.com/w.git" }),
+      });
+      const created = await createResponse.json();
+      expect(created.project.slug).toBe("weather-agent");
+      expect(created.project.agentUrl).toBe("http://weather-agent.lvh.me:8080");
+
+      const getResponse = await app.request(`/projects/${created.project.id}`);
+      await expect(getResponse.json()).resolves.toMatchObject({
+        project: { slug: "weather-agent", agentUrl: "http://weather-agent.lvh.me:8080" },
+      });
+    });
+
+    test("agentUrl is null when the agent domain is not configured", async () => {
+      const app = createApp(createMemoryStore(), { agentUrlEnv: {} });
+      const response = await app.request("/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Weather Agent", importKind: "git", gitUrl: "https://example.com/w.git" }),
+      });
+      await expect(response.json()).resolves.toMatchObject({ project: { agentUrl: null } });
+    });
+
+    test("accepts an explicit valid slug and rejects an invalid one on create", async () => {
+      const app = createApp(createMemoryStore(), { agentUrlEnv });
+      const ok = await app.request("/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git", slug: "my-demo" }),
+      });
+      expect(ok.status).toBe(201);
+      await expect(ok.json()).resolves.toMatchObject({ project: { slug: "my-demo" } });
+
+      const bad = await app.request("/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git", slug: "Bad_Slug" }),
+      });
+      expect(bad.status).toBe(400);
+    });
+
+    test("PATCH updates the slug, validates, and maps conflicts to 409", async () => {
+      const store = createMemoryStore();
+      const app = createApp(store, { agentUrlEnv });
+      const first = await store.createProject({ name: "First", importKind: "git", gitUrl: "https://example.com/f.git" });
+      const second = await store.createProject({ name: "Second", importKind: "git", gitUrl: "https://example.com/s.git" });
+
+      const renamed = await app.request(`/projects/${second.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: "second-agent" }),
+      });
+      expect(renamed.status).toBe(200);
+      await expect(renamed.json()).resolves.toMatchObject({
+        project: { slug: "second-agent", agentUrl: "http://second-agent.lvh.me:8080" },
+      });
+
+      const invalid = await app.request(`/projects/${second.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: "-bad-" }),
+      });
+      expect(invalid.status).toBe(400);
+
+      const reserved = await app.request(`/projects/${second.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: "www" }),
+      });
+      expect(reserved.status).toBe(400);
+
+      const conflict = await app.request(`/projects/${second.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: first.slug }),
+      });
+      expect(conflict.status).toBe(409);
+
+      const missing = await app.request("/projects/proj_missing", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: "whatever-slug" }),
+      });
+      expect(missing.status).toBe(404);
+    });
+
+    test("PATCH rejects fields other than slug", async () => {
+      const store = createMemoryStore();
+      const app = createApp(store, { agentUrlEnv });
+      const project = await store.createProject({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git" });
+
+      const response = await app.request(`/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: "renamed-demo", name: "Ignored" }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(store.getProject(project.id)).resolves.toMatchObject({ slug: "demo" });
+    });
+
+    test("PATCH maps malformed JSON to 400", async () => {
+      const store = createMemoryStore();
+      const app = createApp(store, { agentUrlEnv });
+      const project = await store.createProject({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git" });
+
+      const response = await app.request(`/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: "Malformed JSON" });
+    });
+  });
+
   test("uses the only top-level directory in a zip archive as the source root", async () => {
     const store = createMemoryStore();
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
