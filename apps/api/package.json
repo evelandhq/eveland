@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./db/client": "./src/db/client.ts",
+    "./db/schema": "./src/db/schema.ts",
     "./store": "./src/store.ts",
     "./store-factory": "./src/store-factory.ts",
     "./types": "./src/types.ts"

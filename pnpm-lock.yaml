@@ -52,6 +52,25 @@ importers:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
 
+  apps/gateway:
+    dependencies:
+      '@eveland/api':
+        specifier: workspace:*
+        version: link:../api
+      '@eveland/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(kysely@0.29.2)(postgres@3.4.9)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
+    devDependencies:
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
+
   apps/web:
     dependencies:
       '@base-ui/react':
