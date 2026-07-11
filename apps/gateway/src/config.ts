@@ -14,7 +14,12 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv): GatewayConfig {
   const issues: string[] = [];
   const databaseUrl = nonBlank(env.DATABASE_URL);
   const agentDomain = normalizeAgentDomain(env.EVELAND_AGENT_DOMAIN);
-  const port = parsePort(env.PORT, "PORT", 8080, issues);
+  // EVELAND_GATEWAY_PORT exists because native dev shares one .env across apps
+  // and the API also reads PORT — a shared file can't set the two ports apart.
+  const gatewayPort = nonBlank(env.EVELAND_GATEWAY_PORT);
+  const port = gatewayPort
+    ? parsePort(gatewayPort, "EVELAND_GATEWAY_PORT", 8080, issues)
+    : parsePort(env.PORT, "PORT", 8080, issues);
   const upstreamTimeoutMs = parsePositiveInteger(
     env.EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS,
     "EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS",

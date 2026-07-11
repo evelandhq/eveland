@@ -37,6 +37,21 @@ describe("loadGatewayConfig", () => {
     });
   });
 
+  test("EVELAND_GATEWAY_PORT wins over the shared PORT", () => {
+    const config = loadGatewayConfig({
+      ...validEnv,
+      PORT: "4000",
+      EVELAND_GATEWAY_PORT: "8090",
+    } as NodeJS.ProcessEnv);
+    expect(config.port).toBe(8090);
+  });
+
+  test("rejects an invalid EVELAND_GATEWAY_PORT", () => {
+    expect(() =>
+      loadGatewayConfig({ ...validEnv, EVELAND_GATEWAY_PORT: "70000" } as NodeJS.ProcessEnv),
+    ).toThrow(/EVELAND_GATEWAY_PORT/);
+  });
+
   test("aggregates every missing required variable into one error", () => {
     expect(() => loadGatewayConfig({} as NodeJS.ProcessEnv)).toThrow(/DATABASE_URL[\s\S]*EVELAND_AGENT_DOMAIN/);
   });
