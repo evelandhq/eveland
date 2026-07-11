@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircleIcon, RefreshCwIcon, RocketIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,20 +20,44 @@ export function DeploymentActions({
   canDeploy: boolean;
 }) {
   const router = useRouter();
+  const actionLock = useRef(false);
+  const actionVersion = useRef(0);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [queued, setQueued] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    actionVersion.current += 1;
+    actionLock.current = false;
+    setPending(null);
+    setQueued(false);
+    setError(null);
+  }, [projectId]);
+
   async function run(action: PendingAction) {
+    if (actionLock.current) {
+      return;
+    }
+    actionLock.current = true;
+    const requestVersion = actionVersion.current;
     setPending(action);
+    setQueued(false);
     setError(null);
 
     try {
       await (action === "sync" ? syncSource(projectId, { deploy: true }) : enqueueBuildDeploy(projectId));
+      if (actionVersion.current !== requestVersion) {
+        return;
+      }
+      setQueued(true);
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Request failed");
-    } finally {
+      if (actionVersion.current !== requestVersion) {
+        return;
+      }
+      actionLock.current = false;
       setPending(null);
+      setError(caught instanceof Error ? caught.message : "Request failed");
     }
   }
 
@@ -44,8 +68,8 @@ export function DeploymentActions({
       <div className="flex items-center gap-2">
         {importKind === "git" ? (
           <Button type="button" onClick={() => run("sync")} disabled={!canSync || busy} title="Pull the latest commit from GitHub, then deploy it">
-            <RefreshCwIcon data-icon="inline-start" className={pending === "sync" ? "animate-spin" : undefined} />
-            Sync &amp; deploy
+            <RefreshCwIcon data-icon="inline-start" className={pending === "sync" && !queued ? "animate-spin" : undefined} />
+            {pending === "sync" ? (queued ? "Sync queued" : "Syncing...") : "Sync & deploy"}
           </Button>
         ) : null}
         <Button
@@ -55,8 +79,8 @@ export function DeploymentActions({
           disabled={!canDeploy || busy}
           title="Rebuild and deploy the current source revision"
         >
-          {pending === "deploy" ? <LoaderCircleIcon data-icon="inline-start" className="animate-spin" /> : <RocketIcon data-icon="inline-start" />}
-          {importKind === "git" ? "Deploy current" : "Deploy latest"}
+          {pending === "deploy" && !queued ? <LoaderCircleIcon data-icon="inline-start" className="animate-spin" /> : <RocketIcon data-icon="inline-start" />}
+          {pending === "deploy" ? (queued ? "Deploy queued" : "Deploying...") : importKind === "git" ? "Deploy current" : "Deploy latest"}
         </Button>
       </div>
       {error ? <p className="max-w-72 text-right text-xs text-destructive">{error}</p> : null}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { enqueueBuildDeploy, getSessionUsage, syncSource } from "./api";
+import { enqueueBuildDeploy, getSessionUsage, syncSource, updateProjectSlug } from "./api";
 
 describe("web api helpers", () => {
   afterEach(() => {
@@ -72,6 +72,55 @@ describe("web api helpers", () => {
     );
 
     await expect(syncSource("proj_zip")).rejects.toThrow("Only git projects can sync source");
+  });
+
+  test("updates a project slug", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ project: { id: "proj_123", slug: "new-agent", agentUrl: "http://new-agent.lvh.me:8080" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(updateProjectSlug("proj_123", "new-agent")).resolves.toMatchObject({
+      id: "proj_123",
+      slug: "new-agent",
+      agentUrl: "http://new-agent.lvh.me:8080",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug: "new-agent" }),
+    });
+  });
+
+  test("throws the API error when a project slug is already taken", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ error: "Project slug is already taken." }), {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    await expect(updateProjectSlug("proj_123", "taken-agent")).rejects.toThrow("Project slug is already taken.");
+  });
+
+  test("throws the validation issue when a project slug update is invalid", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ issues: [{ message: "Slug must be DNS-safe." }] }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    await expect(updateProjectSlug("proj_123", "bad slug")).rejects.toThrow("Slug must be DNS-safe.");
   });
 
   test("loads per-agent usage for a session", async () => {

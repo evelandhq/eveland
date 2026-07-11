@@ -1,6 +1,8 @@
 export type Project = {
   id: string;
   name: string;
+  slug: string;
+  agentUrl: string | null;
   importKind: "git" | "zip";
   gitUrl: string | null;
   status: string;
@@ -144,6 +146,21 @@ export async function getProject(projectId: string): Promise<Project | null> {
   return data.project;
 }
 
+export async function updateProjectSlug(projectId: string, slug: string): Promise<Project> {
+  const response = await fetch(`${apiBaseUrl}/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ slug }),
+  });
+  const data = await parseApiResponse<{ project?: Project; error?: unknown; issues?: unknown }>(response);
+
+  if (!response.ok || !data?.project) {
+    throw new Error(getApiErrorMessage(data, "Failed to update slug"));
+  }
+
+  return data.project;
+}
+
 export async function getSecrets(projectId: string): Promise<PublicSecret[]> {
   const data = await apiGet<{ secrets: PublicSecret[] }>(`/projects/${projectId}/secrets`, { secrets: [] });
   return data.secrets;
@@ -246,4 +263,32 @@ async function apiGet<T>(path: string, fallback: T): Promise<T> {
   } catch {
     return fallback;
   }
+}
+
+async function parseApiResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text();
+  if (!text.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
+function getApiErrorMessage(data: { error?: unknown; issues?: unknown } | null, fallback: string): string {
+  if (typeof data?.error === "string") {
+    return data.error;
+  }
+
+  if (Array.isArray(data?.issues)) {
+    const [issue] = data.issues;
+    if (issue && typeof issue === "object" && "message" in issue && typeof issue.message === "string") {
+      return issue.message;
+    }
+  }
+
+  return fallback;
 }
