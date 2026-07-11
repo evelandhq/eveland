@@ -144,9 +144,23 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
       return c.json({ error: "Invalid project update", issues: parsed.error.issues }, 400);
     }
     try {
-      const project = await store.updateProjectSlug(c.req.param("projectId"), parsed.data.slug);
+      const projectId = c.req.param("projectId");
+      const existing = await store.getProject(projectId);
+      if (!existing) {
+        return c.json({ error: "Project not found" }, 404);
+      }
+      // Copied before the update: the memory store hands out live references,
+      // so existing.slug would read the new value after updateProjectSlug.
+      const previousSlug = existing.slug;
+      const project = await store.updateProjectSlug(projectId, parsed.data.slug);
       if (!project) {
         return c.json({ error: "Project not found" }, 404);
+      }
+      // A deployed agent bakes its own slug host into the container env
+      // (WORKFLOW_LOCAL_BASE_URL); without a restart its workflow queue keeps
+      // calling back to the now-invalidated old domain and every turn fails.
+      if (project.slug !== previousSlug && project.deploymentId) {
+        await store.enqueueJob(projectId, "restart_deployment");
       }
       return c.json({ project: toProjectResponse(project) });
     } catch (error) {

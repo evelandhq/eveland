@@ -164,6 +164,64 @@ describe("api app", () => {
       expect(missing.status).toBe(404);
     });
 
+    test("PATCH slug change restarts a deployed project; unchanged or undeployed slugs do not", async () => {
+      const store = createMemoryStore();
+      const app = createApp(store, { agentUrlEnv });
+      const deployed = await store.createProject({ name: "Deployed", importKind: "git", gitUrl: "https://example.com/d.git" });
+      const undeployed = await store.createProject({ name: "Undeployed", importKind: "git", gitUrl: "https://example.com/u.git" });
+      const revision = await store.recordSourceRevision({
+        projectId: deployed.id,
+        kind: "git",
+        sourcePath: "/tmp/deployed-src",
+        summary: {},
+        envVars: [],
+        files: [],
+        schedules: [],
+      });
+      await store.recordDeployment({
+        projectId: deployed.id,
+        sourceRevisionId: revision.id,
+        imageTag: "img-1",
+        containerName: "container-1",
+        internalPort: 3000,
+        hostPort: 41000,
+        hostAddress: "127.0.0.1",
+        runtimeKind: "docker",
+      });
+      // createProject auto-enqueues import_source jobs; drain them so the
+      // claims below observe only what PATCH enqueues.
+      while (await store.claimNextJob("drain")) {
+        // claiming flips each job to running, which is enough to skip it
+      }
+
+      const changed = await app.request(`/projects/${deployed.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: "deployed-renamed" }),
+      });
+      expect(changed.status).toBe(200);
+      await expect(store.claimNextJob("test-worker")).resolves.toMatchObject({
+        projectId: deployed.id,
+        type: "restart_deployment",
+      });
+
+      const unchanged = await app.request(`/projects/${deployed.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: "deployed-renamed" }),
+      });
+      expect(unchanged.status).toBe(200);
+      await expect(store.claimNextJob("test-worker")).resolves.toBeNull();
+
+      const noDeployment = await app.request(`/projects/${undeployed.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: "undeployed-renamed" }),
+      });
+      expect(noDeployment.status).toBe(200);
+      await expect(store.claimNextJob("test-worker")).resolves.toBeNull();
+    });
+
     test("PATCH rejects fields other than slug", async () => {
       const store = createMemoryStore();
       const app = createApp(store, { agentUrlEnv });

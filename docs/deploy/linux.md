@@ -374,7 +374,10 @@ proxy.
 `agents.example.com`; the corresponding public discovery URL is
 `https://agents.example.com/.well-known/eve/agents.json`. Changing a project's slug
 immediately invalidates the old domain. The gateway does not redirect from the old
-slug to the new one.
+slug to the new one. When the slug of a project with a current deployment changes,
+the API enqueues a `restart_deployment` job automatically: the running container's
+self-referential env (`WORKFLOW_LOCAL_BASE_URL`) still names the old host, and until
+the restart re-injects it every workflow queue callback fails with a gateway 404.
 
 When upgrading an existing install across the slug/gateway migrations, apply the
 checked-in SQL files before running `db:push`:
