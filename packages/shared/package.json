@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./agent-domain": "./src/agent-domain.ts",
     "./ids": "./src/ids.ts",
     "./runtime": "./src/runtime.ts",
     "./secrets": "./src/secrets.ts",
