@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "@eveland/api/store";
 import type { Store } from "@eveland/api/store";
 import { allocateAvailableHostPort, processNextJob } from "./process.js";
-import type { RuntimeAdapter } from "../runtime/types.js";
+import type { ProcessStartInput, RuntimeAdapter } from "../runtime/types.js";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -173,6 +173,44 @@ describe("processNextJob", () => {
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(expect.objectContaining({ line: "build ok" }));
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(expect.objectContaining({ line: "Deployment running on 127.0.0.1:41001." }));
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
+  });
+
+  test("build_deploy injects WORKFLOW_LOCAL_BASE_URL from the project slug", async () => {
+    const { project, started } = await runBuildDeployCapturingStart({
+      agentUrlEnv: { EVELAND_AGENT_DOMAIN: "lvh.me", EVELAND_AGENT_URL_SCHEME: "http", EVELAND_AGENT_URL_PORT: "8080" },
+    });
+
+    expect(started.env.WORKFLOW_LOCAL_BASE_URL).toBe(`http://${project.slug}.lvh.me:8080`);
+  });
+
+  test("a project secret named WORKFLOW_LOCAL_BASE_URL overrides the injected value", async () => {
+    const { started } = await runBuildDeployCapturingStart({
+      agentUrlEnv: { EVELAND_AGENT_DOMAIN: "lvh.me", EVELAND_AGENT_URL_SCHEME: "http", EVELAND_AGENT_URL_PORT: "8080" },
+      workflowLocalBaseUrlSecret: "https://override.example",
+    });
+
+    expect(started.env.WORKFLOW_LOCAL_BASE_URL).toBe("https://override.example");
+  });
+
+  test("no domain configured: variable absent and a deploy warning is logged", async () => {
+    const { store, project, started } = await runBuildDeployCapturingStart({ agentUrlEnv: {} });
+
+    expect(started.env.WORKFLOW_LOCAL_BASE_URL).toBeUndefined();
+    const logs = await store.listLogs(project.id, "deploy");
+    expect(logs.some((log) => log.line.includes("EVELAND_AGENT_DOMAIN is not set"))).toBe(true);
+  });
+
+  test("extraHosts maps the agent's own domain to host-gateway only for dev docker deploys", async () => {
+    const dev = await runBuildDeployCapturingStart({
+      agentUrlEnv: { EVELAND_AGENT_DOMAIN: "lvh.me", EVELAND_AGENT_URL_SCHEME: "http", EVELAND_AGENT_URL_PORT: "8080" },
+    });
+    expect(dev.started.extraHosts).toEqual([`${dev.project.slug}.lvh.me:host-gateway`]);
+
+    const production = await runBuildDeployCapturingStart({
+      agentUrlEnv: { EVELAND_AGENT_DOMAIN: "lvh.me", EVELAND_AGENT_URL_SCHEME: "http", EVELAND_AGENT_URL_PORT: "8080" },
+      nodeEnv: "production",
+    });
+    expect(production.started.extraHosts).toEqual([]);
   });
 
   test("redeploys by stopping the current deployment and reusing its host port", async () => {
@@ -610,6 +648,7 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
         workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
+        agentUrlEnv: { EVELAND_AGENT_DOMAIN: "lvh.me", EVELAND_AGENT_URL_SCHEME: "http", EVELAND_AGENT_URL_PORT: "8080" },
         runtime: {
           name: "docker",
           async buildRelease(input) {
@@ -904,6 +943,7 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
         workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
+        agentUrlEnv: { EVELAND_AGENT_DOMAIN: "lvh.me", EVELAND_AGENT_URL_SCHEME: "http", EVELAND_AGENT_URL_PORT: "8080" },
         runtime: {
           name: "docker",
           async buildRelease() {
@@ -931,6 +971,7 @@ describe("processNextJob", () => {
           port: deployment.hostPort,
           env: {
             WORKFLOW_POSTGRES_URL: "postgres://platform@host.docker.internal:5432/eveland",
+            WORKFLOW_LOCAL_BASE_URL: `http://${project.slug}.lvh.me:8080`,
             OPENAI_API_KEY: "sk-test-restart",
           },
         }),
@@ -1424,4 +1465,64 @@ async function createFixtureEveProject(
   await writeFile(path.join(root, "agent", "instructions.md"), "You are concise.");
   await writeFile(path.join(root, "agent", "schedules", "daily.md"), "---\ncron: \"0 8 * * *\"\n---\nReport.");
   return root;
+}
+
+async function runBuildDeployCapturingStart(input: {
+  agentUrlEnv: { EVELAND_AGENT_DOMAIN?: string; EVELAND_AGENT_URL_SCHEME?: string; EVELAND_AGENT_URL_PORT?: string };
+  workflowLocalBaseUrlSecret?: string;
+  nodeEnv?: string;
+}): Promise<{ store: Store; project: Awaited<ReturnType<Store["createProject"]>>; started: ProcessStartInput }> {
+  const secretKey = "eveland-test-secret-key-00000000";
+  const store = createMemoryStore();
+  const sourcePath = await createFixtureEveProject({ dependencies: { "@workflow/world-postgres": "1.0.0" } });
+  const project = await store.createProject({ name: "Agent URL Test", importKind: "zip", sourcePath });
+  const importJob = await store.claimNextJob("worker-a");
+  await store.completeJob(importJob!.id);
+  await store.recordSourceRevision({
+    projectId: project.id,
+    kind: "zip",
+    sourcePath,
+    summary: { workflowWorld: "@workflow/world-postgres" },
+    envVars: [],
+    files: [],
+    schedules: [],
+  });
+  if (input.workflowLocalBaseUrlSecret) {
+    await store.upsertSecret(
+      project.id,
+      "WORKFLOW_LOCAL_BASE_URL",
+      JSON.stringify(encryptSecretValue(input.workflowLocalBaseUrlSecret, secretKey)),
+    );
+  }
+  await store.enqueueJob(project.id, "build_deploy");
+
+  let started: ProcessStartInput | null = null;
+  await expect(
+    processNextJob(store, "worker-a", {
+      appSecretKey: secretKey,
+      workflowPostgresUrl: "postgres://workflow",
+      agentUrlEnv: input.agentUrlEnv,
+      nodeEnv: input.nodeEnv,
+      runtime: {
+        name: "docker",
+        async buildRelease(buildInput) {
+          return { releaseRef: `eveland/${buildInput.projectId.toLowerCase()}:rel`, log: "" };
+        },
+        async startProcess(startInput) {
+          started = startInput;
+          return { internalPort: 3000, log: "" };
+        },
+        async stopProcess() {},
+      },
+      allocateHostPort() {
+        return 41044;
+      },
+      async waitForDeployment() {},
+    }),
+  ).resolves.toBe(true);
+
+  if (!started) {
+    throw new Error("Expected processNextJob to start a process.");
+  }
+  return { store, project, started };
 }

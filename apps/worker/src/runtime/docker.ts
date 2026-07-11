@@ -17,6 +17,7 @@ export type DockerRunInput = {
   hostPort: number;
   env: Record<string, string>;
   command: string;
+  extraHosts?: string[];
 };
 
 export function buildDockerRunArgs(input: DockerRunInput): string[] {
@@ -33,6 +34,10 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     "--publish",
     `127.0.0.1:${input.hostPort}:${input.internalPort}`,
   ];
+
+  for (const extraHost of input.extraHosts ?? []) {
+    args.push("--add-host", extraHost);
+  }
 
   for (const [key, value] of Object.entries(input.env).sort(([a], [b]) => a.localeCompare(b))) {
     args.push("--env", `${key}=${value}`);
@@ -152,6 +157,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         hostPort: input.port,
         env: input.env,
         command: buildDockerStartCommand(input.commandContext, config.internalPort),
+        extraHosts: input.extraHosts,
       });
       return { internalPort: config.internalPort, log };
     },

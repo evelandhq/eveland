@@ -1,5 +1,6 @@
 import type { Store } from "@eveland/api/store";
-import type { Job } from "@eveland/api/types";
+import type { Job, Project } from "@eveland/api/types";
+import { mintAgentUrl, normalizeAgentDomain, type AgentUrlEnv } from "@eveland/shared/agent-domain";
 import { createId } from "@eveland/shared/ids";
 import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eveland/shared/secrets";
 import { DURABLE_WORKFLOW_WORLD, isDurableWorkflowWorld } from "@eveland/shared/source";
@@ -26,6 +27,7 @@ export type ProcessJobOptions = {
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
   workflowPostgresUrl?: string;
   nodeEnv?: string;
+  agentUrlEnv?: AgentUrlEnv;
 };
 
 export async function processNextJob(store: Store, workerId: string, options: ProcessJobOptions = {}): Promise<boolean> {
@@ -156,8 +158,14 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       const processName = `eveland-${processSafeName(project.id)}-${processSafeName(deploymentId)}`;
       const buildDir = path.join(process.env.EVELAND_DATA_DIR ?? ".eveland-data", "builds", project.id, releaseId);
       const hostPort = currentDeployment?.hostPort ?? (await (options.allocateHostPort ?? allocateAvailableHostPort)());
-      const { env, secretValues } = await composeDeploymentEnv(store, project.id, options);
+      const { env, secretValues } = await composeDeploymentEnv(store, project, options);
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
+      const extraHosts = resolveExtraHosts({
+        runtimeName: runtime.name,
+        slug: project.slug,
+        isProduction,
+        agentUrlEnv: options.agentUrlEnv ?? (process.env as AgentUrlEnv),
+      });
 
       await store.updateProjectState(job.projectId, { status: "build_pending", deploymentStatus: "building" });
       await store.appendLog({
@@ -210,6 +218,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           env,
           commandContext,
           sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+          extraHosts,
         });
         startedProcess = processName;
         await (options.waitForDeployment ?? waitForHttpHealth)({
@@ -295,8 +304,15 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // build_deploy); otherwise resolve strictly by the deployment's recorded
       // kind -- the worker's current default runtime is irrelevant here.
       const adapter = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
-      const { env } = await composeDeploymentEnv(store, project.id, options);
+      const { env } = await composeDeploymentEnv(store, project, options);
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
+      const isProduction = (options.nodeEnv ?? process.env.NODE_ENV) === "production";
+      const extraHosts = resolveExtraHosts({
+        runtimeName: adapter.name,
+        slug: project.slug,
+        isProduction,
+        agentUrlEnv: options.agentUrlEnv ?? (process.env as AgentUrlEnv),
+      });
 
       await adapter.stopProcess(deployment.containerName);
       // Same pairing build_deploy uses -- see the comment there.
@@ -313,6 +329,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           env,
           commandContext,
           sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+          extraHosts,
         });
         restarted = true;
         await (options.waitForDeployment ?? waitForHttpHealth)({
@@ -373,11 +390,10 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // Must be the last statement in this case, and nothing may follow it --
       // the Postgres store enforces FK integrity, so any write referencing
       // this project once its row is gone (a log line, a state update) would
-      // throw. On any throw here -- before or during this call, since
-      // deleteProject is not transactional -- the project row still exists,
-      // because both stores delete the projects row last inside deleteProject;
-      // that's what keeps processNextJob's generic failure path
-      // (updateProjectState + appendLog against job.projectId) safe.
+      // throw. On any failure, the memory store has not deleted the project
+      // row yet and the Postgres transaction rolls back, which keeps
+      // processNextJob's generic failure path (updateProjectState + appendLog
+      // against job.projectId) safe.
       await store.deleteProject(job.projectId);
       return;
     }
@@ -423,16 +439,26 @@ function errorMessage(error: unknown): string {
 // proceed, and restart never re-gates an already-deployed release.
 async function composeDeploymentEnv(
   store: Store,
-  projectId: string,
+  project: Project,
   options: ProcessJobOptions,
 ): Promise<{ env: Record<string, string>; secretValues: string[] }> {
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
   const isProduction = nodeEnv === "production";
   const workflowPostgresUrl = options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
-  const secrets = await readRuntimeSecrets(store, projectId, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
-  // Platform-injected credentials; a project secret of the same name overrides the platform WORKFLOW_POSTGRES_URL.
+  const agentUrlEnv = options.agentUrlEnv ?? (process.env as AgentUrlEnv);
+  const workflowLocalBaseUrl = mintAgentUrl(project.slug, agentUrlEnv);
+  if (!workflowLocalBaseUrl) {
+    await store.appendLog({
+      projectId: project.id,
+      type: "deploy",
+      line: "Warning: EVELAND_AGENT_DOMAIN is not set; WORKFLOW_LOCAL_BASE_URL was not injected.",
+    });
+  }
+  const secrets = await readRuntimeSecrets(store, project.id, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
+  // Platform-injected credentials; project secrets of the same name override them.
   const injectedCredentials = {
     ...(workflowPostgresUrl ? { WORKFLOW_POSTGRES_URL: workflowPostgresUrl } : {}),
+    ...(workflowLocalBaseUrl ? { WORKFLOW_LOCAL_BASE_URL: workflowLocalBaseUrl } : {}),
     ...secrets,
   };
   // NODE_ENV is platform-owned and injected only in production; kept out of the mask list so build logs aren't scrubbed of the word "production".
@@ -442,6 +468,19 @@ async function composeDeploymentEnv(
   };
   const secretValues = Object.values(injectedCredentials);
   return { env, secretValues };
+}
+
+function resolveExtraHosts(input: {
+  runtimeName: "docker" | "systemd";
+  slug: string;
+  isProduction: boolean;
+  agentUrlEnv: AgentUrlEnv;
+}): string[] {
+  const domain = normalizeAgentDomain(input.agentUrlEnv.EVELAND_AGENT_DOMAIN);
+  if (input.isProduction || input.runtimeName !== "docker" || !domain) {
+    return [];
+  }
+  return [`${input.slug}.${domain}:host-gateway`];
 }
 
 async function readRuntimeSecrets(store: Store, projectId: string, appSecretKey: string): Promise<Record<string, string>> {

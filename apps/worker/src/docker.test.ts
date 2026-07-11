@@ -62,6 +62,21 @@ describe("buildDockerRunArgs", () => {
       "npm run start",
     ]);
   });
+
+  test("buildDockerRunArgs adds one --add-host per extraHosts entry", () => {
+    const args = buildDockerRunArgs({
+      containerName: "eveland-demo",
+      imageTag: "img:1",
+      internalPort: 3000,
+      hostPort: 41000,
+      env: {},
+      command: "npx eve start",
+      extraHosts: ["demo.lvh.me:host-gateway"],
+    });
+    const index = args.indexOf("demo.lvh.me:host-gateway");
+    expect(index).toBeGreaterThan(0);
+    expect(args[index - 1]).toBe("--add-host");
+  });
 });
 
 describe("writeGeneratedDockerfile", () => {

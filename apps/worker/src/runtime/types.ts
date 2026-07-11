@@ -30,6 +30,12 @@ export type ProcessStartInput = {
    * eve's sandbox falls back to an ephemeral cache when the env var is unset.
    */
   sandboxCacheDir: string;
+  /**
+   * Additional container host mappings (docker --add-host format "name:target").
+   * Dev-only plumbing so an agent container can resolve its own public domain to
+   * the host gateway; the systemd adapter ignores it (host processes use system DNS).
+   */
+  extraHosts?: string[];
 };
 
 export type ProcessStartResult = {
