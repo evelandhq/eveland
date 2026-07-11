@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "./store.js";
+import { createMemoryStore, SlugConflictError } from "./store.js";
 
 describe("memory store jobs", () => {
   test("claims queued jobs once and tracks completion", async () => {
@@ -363,5 +363,43 @@ describe("memory store jobs", () => {
         },
       }),
     ]);
+  });
+});
+
+describe("memory store project slugs", () => {
+  test("auto-generates a slug from the project name", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Weather Agent", importKind: "git", gitUrl: "https://example.com/w.git" });
+    expect(project.slug).toBe("weather-agent");
+  });
+
+  test("falls back to a suffixed 'agent' slug for non-latin names", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "天气助手", importKind: "git", gitUrl: "https://example.com/w.git" });
+    expect(project.slug).toMatch(/^agent(-[0-9a-z]{4})?$/);
+  });
+
+  test("suffixes duplicates so slugs stay unique", async () => {
+    const store = createMemoryStore();
+    const first = await store.createProject({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git" });
+    const second = await store.createProject({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git" });
+    expect(first.slug).toBe("demo");
+    expect(second.slug).toMatch(/^demo-[0-9a-z]{4}$/);
+    expect(second.slug).not.toBe(first.slug);
+  });
+
+  test("suffixes a name that slugifies to a reserved label", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "API", importKind: "git", gitUrl: "https://example.com/a.git" });
+    expect(project.slug).toMatch(/^api-[0-9a-z]{4}$/);
+  });
+
+  test("respects an explicitly requested slug and rejects a taken one", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Demo", importKind: "git", gitUrl: "https://example.com/d.git", slug: "custom-slug" });
+    expect(project.slug).toBe("custom-slug");
+    await expect(
+      store.createProject({ name: "Other", importKind: "git", gitUrl: "https://example.com/o.git", slug: "custom-slug" }),
+    ).rejects.toBeInstanceOf(SlugConflictError);
   });
 });

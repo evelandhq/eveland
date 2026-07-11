@@ -59,9 +59,13 @@ one aggregated error) when `DATABASE_URL` or `EVELAND_AGENT_DOMAIN` is missing.
   slugifies to nothing (e.g. all CJK) falls back to `agent`. On unique-index conflict
   the store retries with a 4-char random suffix. The suffix needs a lowercase+digit
   alphabet — the existing `createId` alphabet contains uppercase and is not DNS-safe.
-- Migration: add nullable column → backfill (slugified `name`, suffixed with a slice of
-  `id` on collision) → set NOT NULL + unique index. Same tighten-after-backfill shape
-  as the `runtimeKind` migration.
+- Migration: add nullable column → backfill every existing row as
+  `<slugified-name-prefix>-<deterministic-row-number>`, with a global fixed-width
+  row-number suffix sized before truncating the prefix → set NOT NULL + unique index.
+  This intentionally differs from runtime generation: it suffixes every existing row
+  so long shared prefixes cannot collide, the unique suffix is never truncated away,
+  labels never end in `-`, and reserved bare labels such as `api` are not produced.
+  Same tighten-after-backfill shape as the `runtimeKind` migration.
 
 ### `deployments.hostAddress`
 

@@ -25,6 +25,7 @@ export type ProjectRow = {
   id: string;
   ownerId: string;
   name: string;
+  slug: string;
   importKind: string;
   gitUrl: string | null;
   status: string;
@@ -42,6 +43,7 @@ export function projectRowToProject(row: ProjectRow): Project {
   return {
     id: row.id,
     name: row.name,
+    slug: row.slug,
     importKind: row.importKind as ProjectImportKind,
     gitUrl: row.gitUrl,
     status: row.status as ProjectStatus,

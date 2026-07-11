@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { createSlugSuffix, isValidProjectSlug, slugifyProjectName } from "@eveland/shared/agent-domain";
 import { createId } from "@eveland/shared/ids";
 import type { Database } from "./client.js";
 import {
@@ -31,6 +32,7 @@ import {
   users,
 } from "./schema.js";
 import type { CreateProjectInput, Store } from "../store.js";
+import { SlugConflictError } from "../store.js";
 import type { JobType, LogRecord } from "../types.js";
 
 const defaultOwner = {
@@ -78,30 +80,47 @@ export function createPostgresStore(database: Database): Store {
 
     async createProject(input: CreateProjectInput) {
       await ensureDefaultOwner();
-      const [row] = await db
-        .insert(projects)
-        .values({
-          id: createId("proj"),
-          ownerId: defaultOwner.id,
-          name: input.name,
-          importKind: input.importKind,
-          gitUrl: input.gitUrl ?? null,
-          status: "import_pending",
-          deploymentStatus: "not_deployed",
-        })
-        .returning();
+      const requestedSlug = input.slug ?? null;
+      const base = slugifyProjectName(input.name);
+      let candidate = requestedSlug ?? (isValidProjectSlug(base) ? base : `${base}-${createSlugSuffix()}`);
 
-      if (!row) {
-        throw new Error("Failed to create project.");
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const [row] = await db
+            .insert(projects)
+            .values({
+              id: createId("proj"),
+              ownerId: defaultOwner.id,
+              name: input.name,
+              slug: candidate,
+              importKind: input.importKind,
+              gitUrl: input.gitUrl ?? null,
+              status: "import_pending",
+              deploymentStatus: "not_deployed",
+            })
+            .returning();
+
+          if (!row) {
+            throw new Error("Failed to create project.");
+          }
+
+          await createJob(row.id, "import_source", {
+            importKind: input.importKind,
+            gitUrl: input.gitUrl ?? null,
+            sourcePath: input.sourcePath ?? null,
+          });
+
+          return projectRowToProject(row);
+        } catch (error) {
+          if (!isUniqueSlugViolation(error)) {
+            throw error;
+          }
+          if (requestedSlug || attempt >= 5) {
+            throw new SlugConflictError(candidate);
+          }
+          candidate = `${base}-${createSlugSuffix()}`;
+        }
       }
-
-      await createJob(row.id, "import_source", {
-        importKind: input.importKind,
-        gitUrl: input.gitUrl ?? null,
-        sourcePath: input.sourcePath ?? null,
-      });
-
-      return projectRowToProject(row);
     },
 
     async getProject(projectId) {
@@ -616,4 +635,15 @@ function modelUsageRowToModelUsageEvent(row: typeof modelUsageEvents.$inferSelec
     usageReported: row.usageReported,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+// postgres-js surfaces unique violations as code 23505; scope to the slug index
+// so an unrelated constraint never triggers a slug retry.
+function isUniqueSlugViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: string }).code === "23505" &&
+    String((error as { constraint_name?: string }).constraint_name ?? "") === "projects_slug_idx"
+  );
 }

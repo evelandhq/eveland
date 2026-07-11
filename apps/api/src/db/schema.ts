@@ -8,22 +8,27 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const projects = pgTable("projects", {
-  id: text("id").primaryKey(),
-  ownerId: text("owner_id").notNull().references(() => users.id),
-  name: text("name").notNull(),
-  importKind: text("import_kind").notNull(),
-  gitUrl: text("git_url"),
-  status: text("status").notNull(),
-  deploymentStatus: text("deployment_status").notNull(),
-  sourceRevisionId: text("source_revision_id"),
-  releaseId: text("release_id"),
-  deploymentId: text("deployment_id"),
-  latestSessionStatus: text("latest_session_status"),
-  nextScheduleAt: timestamp("next_schedule_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    importKind: text("import_kind").notNull(),
+    gitUrl: text("git_url"),
+    status: text("status").notNull(),
+    deploymentStatus: text("deployment_status").notNull(),
+    sourceRevisionId: text("source_revision_id"),
+    releaseId: text("release_id"),
+    deploymentId: text("deployment_id"),
+    latestSessionStatus: text("latest_session_status"),
+    nextScheduleAt: timestamp("next_schedule_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("projects_slug_idx").on(table.slug)],
+);
 
 export const secrets = pgTable(
   "secrets",

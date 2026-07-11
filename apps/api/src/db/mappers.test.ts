@@ -10,6 +10,7 @@ describe("db mappers", () => {
       id: "proj_123",
       ownerId: "user_local_admin",
       name: "Weather Agent",
+      slug: "weather-agent",
       importKind: "git",
       gitUrl: null,
       status: "import_pending",
@@ -26,6 +27,7 @@ describe("db mappers", () => {
     expect(project).toEqual({
       id: "proj_123",
       name: "Weather Agent",
+      slug: "weather-agent",
       importKind: "git",
       gitUrl: null,
       status: "import_pending",

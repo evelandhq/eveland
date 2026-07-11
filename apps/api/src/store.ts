@@ -1,4 +1,5 @@
 import { createId } from "@eveland/shared/ids";
+import { createSlugSuffix, isValidProjectSlug, slugifyProjectName } from "@eveland/shared/agent-domain";
 import type {
   Job,
   JobType,
@@ -28,7 +29,30 @@ export type CreateProjectInput = {
   importKind: ProjectImportKind;
   gitUrl?: string | null;
   sourcePath?: string | null;
+  slug?: string | null;
 };
+
+export class SlugConflictError extends Error {
+  constructor(slug: string) {
+    super(`Project slug "${slug}" is already taken.`);
+    this.name = "SlugConflictError";
+  }
+}
+
+export function resolveRequestedOrGeneratedSlug(input: { slug?: string | null; name: string }, isTaken: (slug: string) => boolean): string {
+  if (input.slug) {
+    if (isTaken(input.slug)) {
+      throw new SlugConflictError(input.slug);
+    }
+    return input.slug;
+  }
+  const base = slugifyProjectName(input.name);
+  let candidate = isValidProjectSlug(base) ? base : `${base}-${createSlugSuffix()}`;
+  while (isTaken(candidate)) {
+    candidate = `${base}-${createSlugSuffix()}`;
+  }
+  return candidate;
+}
 
 export type Store = {
   listProjects(): Promise<Project[]>;
@@ -136,9 +160,11 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async createProject(input) {
       const now = new Date().toISOString();
+      const slug = resolveRequestedOrGeneratedSlug(input, (candidate) => state.projects.some((project) => project.slug === candidate));
       const project: Project = {
         id: createId("proj"),
         name: input.name,
+        slug,
         importKind: input.importKind,
         gitUrl: input.gitUrl ?? null,
         status: "import_pending",

@@ -8,6 +8,7 @@ export type RuntimeKind = "docker" | "systemd";
 export type Project = {
   id: string;
   name: string;
+  slug: string;
   importKind: ProjectImportKind;
   gitUrl: string | null;
   status: ProjectStatus;
