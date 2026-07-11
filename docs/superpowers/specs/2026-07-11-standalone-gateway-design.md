@@ -115,8 +115,10 @@ inject a fake and never touch the DB.
 
 ### LISTEN/NOTIFY
 
-- DB triggers (created in the migration, not application-level notify calls) publish
-  to channel `eveland_routes`:
+- DB triggers, installed idempotently at api startup (`ensureRouteNotifyTriggers`),
+  publish to channel `eveland_routes`. This repo applies schema with
+  `drizzle-kit push`, which cannot run trigger DDL or backfills, so trigger creation
+  lives in api startup rather than a migration file:
   - `projects`: UPDATE touching `slug`, `deployment_id`, or `deployment_status` →
     `pg_notify` with the old slug (and the new slug when it changed); DELETE → old slug.
   - `deployments`: UPDATE touching `status`, `host_port`, or `host_address`, plus

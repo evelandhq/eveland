@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     "./db/client": "./src/db/client.ts",
+    "./db/notify-triggers": "./src/db/notify-triggers.ts",
+    "./db/postgres-store": "./src/db/postgres-store.ts",
     "./db/schema": "./src/db/schema.ts",
     "./store": "./src/store.ts",
     "./store-factory": "./src/store-factory.ts",

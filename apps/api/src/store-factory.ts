@@ -1,10 +1,11 @@
-import { createDatabase } from "./db/client.js";
+import { createDatabase, type Database } from "./db/client.js";
 import { createPostgresStore } from "./db/postgres-store.js";
 import { createMemoryStore, type Store } from "./store.js";
 
 export type StoreFactoryResult = {
   store: Store;
   close(): Promise<void>;
+  database?: Database;
 };
 
 export function createStoreFromEnv(): StoreFactoryResult {
@@ -27,5 +28,6 @@ export function createStoreFromEnv(): StoreFactoryResult {
   return {
     store: createPostgresStore(database),
     close: database.close,
+    database,
   };
 }

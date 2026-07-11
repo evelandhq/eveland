@@ -1,9 +1,14 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+import { ensureRouteNotifyTriggers } from "./db/notify-triggers.js";
 import { createStoreFromEnv } from "./store-factory.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const storeFactory = createStoreFromEnv();
+
+if (storeFactory.database) {
+  await ensureRouteNotifyTriggers(storeFactory.database.client);
+}
 
 serve({
   fetch: createApp(storeFactory.store).fetch,
