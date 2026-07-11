@@ -4,6 +4,7 @@ import { buildForwardHeaders, filterUpstreamResponseHeaders } from "./headers.js
 import { classifyHost } from "./host.js";
 import { createRouteCache } from "./route-cache.js";
 import type { AgentRoute, RouteSource } from "./route-source.js";
+import { handleUpgrade } from "./upgrade.js";
 
 export function resolveUpstreamAddress(route: AgentRoute, config: GatewayConfig): string {
   const isLoopback = route.hostAddress === "127.0.0.1" || route.hostAddress === "::1" || route.hostAddress === "localhost";
@@ -84,6 +85,8 @@ export function createGatewayServer(deps: { config: GatewayConfig; routeSource: 
 
     proxyRequest(req, res, route, config);
   });
+
+  server.on("upgrade", handleUpgrade({ config, resolveRoute }));
 
   return server;
 }
