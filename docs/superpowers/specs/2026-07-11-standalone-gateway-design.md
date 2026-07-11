@@ -119,8 +119,8 @@ inject a fake and never touch the DB.
   to channel `eveland_routes`:
   - `projects`: UPDATE touching `slug`, `deployment_id`, or `deployment_status` →
     `pg_notify` with the old slug (and the new slug when it changed); DELETE → old slug.
-  - `deployments`: UPDATE touching `status`, `host_port`, or `host_address` → notify
-    with the owning project's slug (looked up in the trigger).
+  - `deployments`: UPDATE touching `status`, `host_port`, or `host_address`, plus
+    DELETE → notify with the owning project's slug (looked up in the trigger).
   - Triggers rather than store-level calls so every future write path — new job types,
     manual SQL repair — invalidates automatically.
 - The gateway uses postgres-js `listen('eveland_routes', ...)`. A message evicts that
@@ -160,10 +160,15 @@ Order per request:
   `proxy-authenticate`, `proxy-authorization`.
 - Upstream **header-phase timeout** `EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS` (default
   30s): applies until response headers arrive; after that the stream is unbounded.
+- Client aborts while an async route lookup is in flight stop before opening an
+  upstream HTTP or WebSocket connection.
 - **WebSocket**: `server.on("upgrade")` runs the same host/route resolution, dials the
   upstream with `net.connect`, writes the request line + filtered headers, then pipes
   the two sockets raw in both directions. Failure before the handshake completes
   answers with a raw 502 and destroys the socket.
+- Shutdown is bounded: SIGINT/SIGTERM stop accepting new sockets, allow a short
+  graceful drain window, then destroy remaining active sockets before closing the
+  route source.
 
 ### Error mapping
 
