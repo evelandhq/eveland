@@ -1,6 +1,7 @@
 import http from "node:http";
 import type { GatewayConfig } from "./config.js";
 import { buildForwardHeaders, filterUpstreamResponseHeaders } from "./headers.js";
+import { handleDiscovery } from "./discovery.js";
 import { classifyHost } from "./host.js";
 import { createRouteCache } from "./route-cache.js";
 import type { AgentRoute, RouteSource } from "./route-source.js";
@@ -48,6 +49,10 @@ export function createGatewayServer(deps: { config: GatewayConfig; routeSource: 
     const classification = classifyHost(req.headers.host, config.agentDomain);
 
     if (classification.kind === "apex") {
+      if (req.method === "GET" && req.url?.split("?")[0] === "/.well-known/eve/agents.json") {
+        await handleDiscovery(res, { routeSource, config });
+        return;
+      }
       sendJson(res, 404, { error: "Not found" });
       return;
     }

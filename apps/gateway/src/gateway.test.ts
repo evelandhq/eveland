@@ -496,6 +496,48 @@ describe("gateway websocket upgrades", () => {
   });
 });
 
+describe("discovery", () => {
+  test("serves running agents with minted urls on the apex host only", async () => {
+    const port = await startGateway(
+      makeConfig(),
+      makeRouteSource({
+        demo: { slug: "demo", name: "Demo", hostAddress: "127.0.0.1", hostPort: 41000 },
+        other: { slug: "other", name: "Other", hostAddress: "127.0.0.1", hostPort: 41001 },
+      }),
+    );
+    const response = await fetch(`http://lvh.me:${port}/.well-known/eve/agents.json`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    const body = await response.json();
+    expect(body.agents).toEqual(
+      expect.arrayContaining([
+        { slug: "demo", name: "Demo", url: "http://demo.lvh.me:8080" },
+        { slug: "other", name: "Other", url: "http://other.lvh.me:8080" },
+      ]),
+    );
+  });
+
+  test("apex host 404s everything else", async () => {
+    const port = await startGateway(makeConfig(), makeRouteSource({}));
+    const response = await fetch(`http://lvh.me:${port}/anything`);
+    expect(response.status).toBe(404);
+  });
+
+  test("the discovery path on an agent host proxies to the agent, not the gateway", async () => {
+    const upstream = createServer((req, res) => {
+      res.end(JSON.stringify({ from: "agent", path: req.url }));
+    });
+    const upstreamPort = await listen(upstream);
+    const port = await startGateway(
+      makeConfig(),
+      makeRouteSource({ demo: { slug: "demo", name: "Demo", hostAddress: "127.0.0.1", hostPort: upstreamPort } }),
+    );
+    const response = await fetch(`http://demo.lvh.me:${port}/.well-known/eve/agents.json`);
+    await expect(response.json()).resolves.toEqual({ from: "agent", path: "/.well-known/eve/agents.json" });
+  });
+});
+
 function rawUpgrade(port: number, host: string): Promise<string> {
   return rawUpgradeUntil(port, host);
 }

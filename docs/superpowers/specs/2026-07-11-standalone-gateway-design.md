@@ -150,11 +150,10 @@ Order per request:
   are piped as streams with **no buffering** (NDJSON long-poll streams are the primary
   workload; response headers are written the moment upstream headers arrive).
 - The original `Host` header is preserved (the agent's view of itself is its public
-  domain). `x-forwarded-for` is appended; `x-forwarded-proto` / `x-forwarded-host` are
-  passed through when already set and synthesized otherwise. The deployment contract
-  is that the gateway sits behind a trusted ingress which sets them; when exposed
-  directly (dev) a client can spoof them, which is accepted for v1 — the gateway makes
-  no auth decisions on these headers.
+  domain). Trusted-ingress `x-forwarded-proto` / `x-forwarded-host` values pass
+  through when already set and are synthesized otherwise; `x-forwarded-for` is
+  appended. When exposed directly (dev), clients can spoof `x-forwarded-*` in v1,
+  which is accepted because the gateway makes no auth decisions on these headers.
 - Hop-by-hop headers are stripped in both directions: `connection`, `keep-alive`,
   `te`, `trailer`, `transfer-encoding`, `upgrade` (outside the upgrade path),
   `proxy-authenticate`, `proxy-authorization`.
@@ -175,7 +174,7 @@ Order per request:
 | Case | Response |
 |---|---|
 | Host doesn't match the agent domain / multi-level subdomain / unknown slug | 404 JSON |
-| Slug exists but no current deployment | 503 JSON |
+| Slug exists but no current deployment | 404 JSON — indistinguishable from an unknown slug because the routing query only returns running deployments |
 | Upstream `ECONNREFUSED` (deployment swap window) | 503 JSON |
 | Other upstream connect/stream errors | 502 JSON |
 | Upstream header-phase timeout | 504 JSON |
@@ -288,8 +287,9 @@ Pure unit (no sockets, no DB):
 In-process integration (real ephemeral-port sockets, fake `RouteSource`, real local
 upstream server):
 - NDJSON streaming passes through chunk-by-chunk (evidence of no buffering).
-- `x-forwarded-*` injection and client-spoofed header stripping.
-- Full error-path matrix: 404 / 503 no-deployment / 503 ECONNREFUSED / 502 / 504.
+- `x-forwarded-*` behavior: trusted-ingress values pass through and direct clients can
+  spoof them in v1.
+- Full error-path matrix: 404 / 404 no-deployment / 503 ECONNREFUSED / 502 / 504.
 - WebSocket upgrade echo round-trip.
 - Discovery endpoint content and headers.
 
