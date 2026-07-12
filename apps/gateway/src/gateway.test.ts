@@ -28,6 +28,23 @@ function listen(server: Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)));
 }
 
+// A destroyed client only proves the *client* side saw the close; the gateway's
+// end of the socket learns about it a TCP round-trip plus a few event-loop
+// turns later, so a fixed setImmediate is a race on slow runners. The server's
+// live connection count reaching zero is the deterministic signal that the
+// gateway-side close handlers have run.
+async function waitForNoConnections(server: Server): Promise<void> {
+  for (;;) {
+    const open = await new Promise<number>((resolve, reject) => {
+      server.getConnections((error, count) => (error ? reject(error) : resolve(count)));
+    });
+    if (open === 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 function makeConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
   return {
     port: 0,
@@ -261,7 +278,8 @@ describe("gateway", () => {
       lookupStarted.resolve();
       return lookup.promise;
     };
-    const port = await startGateway(makeConfig(), routeSource);
+    const gateway = createGatewayServer({ config: makeConfig(), routeSource });
+    const port = await listen(gateway);
 
     const client = connect(port, "127.0.0.1");
     sockets.add(client);
@@ -271,7 +289,7 @@ describe("gateway", () => {
     await lookupStarted.promise;
     client.destroy();
     await clientClosed;
-    await new Promise((resolve) => setImmediate(resolve));
+    await waitForNoConnections(gateway);
 
     lookup.resolve({ slug: "demo", name: "Demo", hostAddress: "127.0.0.1", hostPort: upstreamPort });
     await new Promise((resolve) => setImmediate(resolve));
@@ -477,17 +495,26 @@ describe("gateway websocket upgrades", () => {
       lookupStarted.resolve();
       return lookup.promise;
     };
-    const port = await startGateway(makeConfig(), routeSource);
+    const gateway = createGatewayServer({ config: makeConfig(), routeSource });
+    const gatewaySideSocket = deferred<Socket>();
+    gateway.once("connection", (candidate) => gatewaySideSocket.resolve(candidate));
+    const port = await listen(gateway);
 
     const client = connect(port, "127.0.0.1");
     sockets.add(client);
     await onceEvent(client, "connect");
+    // The gateway only skips the upstream connect once *its* side of the
+    // socket has observed the disconnect; the client-side close alone races
+    // the FIN across the loopback (an upgrade socket is detached from the
+    // HTTP parser, so a FIN surfaces as 'end', not 'close').
+    const gatewaySocket = await gatewaySideSocket.promise;
+    const gatewaySawDisconnect = onceAnyEvent(gatewaySocket, ["end", "close", "error"]);
     const clientClosed = onceAnyEvent(client, ["close", "error"]);
     client.write("GET /ws HTTP/1.1\r\nHost: demo.lvh.me\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
     await lookupStarted.promise;
     client.destroy();
     await clientClosed;
-    await new Promise((resolve) => setImmediate(resolve));
+    await gatewaySawDisconnect;
 
     lookup.resolve({ slug: "demo", name: "Demo", hostAddress: "127.0.0.1", hostPort: upstreamPort });
     await new Promise((resolve) => setImmediate(resolve));

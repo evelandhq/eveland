@@ -33,6 +33,7 @@ export function handleUpgrade(deps: {
         route = await deps.resolveRoute(classification.slug);
       } catch {
         if (closed.isClosed()) {
+          socket.destroy();
           return;
         }
         closed.cleanup();
@@ -40,6 +41,7 @@ export function handleUpgrade(deps: {
         return;
       }
       if (closed.isClosed()) {
+        socket.destroy();
         return;
       }
       closed.cleanup();
@@ -60,11 +62,17 @@ function trackSocketClosed(socket: Duplex): { isClosed: () => boolean; cleanup: 
   };
   socket.once("close", markClosed);
   socket.once("error", markClosed);
+  // An upgrade socket is detached from the HTTP parser, so nothing else
+  // reacts to 'end': a client that sends FIN during route lookup would
+  // otherwise stay half-open forever and look alive. Pre-handshake, a
+  // half-closed client cannot complete a websocket handshake anyway.
+  socket.once("end", markClosed);
   return {
     isClosed: () => closed || socket.destroyed,
     cleanup() {
       socket.off("close", markClosed);
       socket.off("error", markClosed);
+      socket.off("end", markClosed);
     },
   };
 }
