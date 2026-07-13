@@ -2,6 +2,7 @@ import { execa } from "execa";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
+import { prepareReleaseTree } from "./prepare-release.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 
 export type DockerBuildInput = {
@@ -15,6 +16,7 @@ export type DockerRunInput = {
   imageTag: string;
   internalPort: number;
   hostPort: number;
+  observerOutboxDir: string;
   env: Record<string, string>;
   command: string;
 };
@@ -32,6 +34,10 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     "host.docker.internal:host-gateway",
     "--publish",
     `127.0.0.1:${input.hostPort}:${input.internalPort}`,
+    "--volume",
+    `${input.observerOutboxDir}:/var/lib/eveland-observer`,
+    "--env",
+    "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer",
   ];
 
   for (const [key, value] of Object.entries(input.env).sort(([a], [b]) => a.localeCompare(b))) {
@@ -140,9 +146,13 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const imageTag = `eveland/${processSafeName(input.projectId)}:${processSafeName(input.releaseId)}`;
+      const injection = await prepareReleaseTree({ sourcePath: input.sourcePath, buildDir: input.buildDir });
       const dockerfilePath = await writeGeneratedDockerfile(input.buildDir);
-      const log = await dockerBuild(input.sourcePath, imageTag, dockerfilePath);
-      return { releaseRef: imageTag, log };
+      const log = await dockerBuild(input.buildDir, imageTag, dockerfilePath);
+      return {
+        releaseRef: imageTag,
+        log: `${log}${log && !log.endsWith("\n") ? "\n" : ""}Injected Eveland observer hooks: ${injection.injectedFiles.join(", ") || "none"}`,
+      };
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
       const log = await dockerRun({
@@ -150,6 +160,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         imageTag: input.releaseRef,
         internalPort: config.internalPort,
         hostPort: input.port,
+        observerOutboxDir: input.observerOutboxDir,
         env: input.env,
         command: buildDockerStartCommand(input.commandContext, config.internalPort),
       });

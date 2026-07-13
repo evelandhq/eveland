@@ -116,6 +116,7 @@ export const sessions = pgTable("sessions", {
   deploymentId: text("deployment_id"),
   eveSessionId: text("eve_session_id"),
   continuationToken: text("continuation_token"),
+  rootNodeId: text("root_node_id"),
   trigger: text("trigger").notNull(),
   scheduleId: text("schedule_id"),
   status: text("status").notNull(),
@@ -130,11 +131,36 @@ export const sessions = pgTable("sessions", {
   usageMissingSteps: integer("usage_missing_steps").notNull().default(0),
 });
 
+export const sessionNodes = pgTable(
+  "session_nodes",
+  {
+    id: text("id").primaryKey(),
+    rootSessionId: text("root_session_id").notNull().references(() => sessions.id),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    eveSessionId: text("eve_session_id").notNull(),
+    parentNodeId: text("parent_node_id"),
+    parentEveSessionId: text("parent_eve_session_id"),
+    startedDeploymentId: text("started_deployment_id").notNull().references(() => deployments.id),
+    lastObservedDeploymentId: text("last_observed_deployment_id").notNull().references(() => deployments.id),
+    agentId: text("agent_id"),
+    agentName: text("agent_name"),
+    nodeId: text("node_id"),
+    channelKind: text("channel_kind"),
+    modelId: text("model_id"),
+    eveVersion: text("eve_version"),
+    status: text("status").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("session_nodes_project_eve_idx").on(table.projectId, table.eveSessionId)],
+);
+
 export const modelUsageEvents = pgTable(
   "model_usage_events",
   {
     id: text("id").primaryKey(),
     sessionId: text("session_id").notNull().references(() => sessions.id),
+    sessionNodeId: text("session_node_id").references(() => sessionNodes.id),
     eveSessionId: text("eve_session_id").notNull(),
     agentId: text("agent_id"),
     agentName: text("agent_name"),
@@ -151,17 +177,31 @@ export const modelUsageEvents = pgTable(
   },
   (table) => [
     uniqueIndex("model_usage_session_eve_turn_step_idx").on(table.sessionId, table.eveSessionId, table.turnId, table.stepIndex),
+    uniqueIndex("model_usage_node_turn_step_idx").on(table.sessionNodeId, table.turnId, table.stepIndex),
   ],
 );
 
-export const sessionEvents = pgTable("session_events", {
-  id: text("id").primaryKey(),
-  sessionId: text("session_id").notNull().references(() => sessions.id),
-  index: integer("index").notNull(),
-  type: text("type").notNull(),
-  payload: jsonb("payload").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const sessionEvents = pgTable(
+  "session_events",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id").notNull().references(() => sessions.id),
+    sessionNodeId: text("session_node_id").references(() => sessionNodes.id),
+    observerEventId: text("observer_event_id"),
+    eventFingerprint: text("event_fingerprint"),
+    observedDeploymentId: text("observed_deployment_id").references(() => deployments.id),
+    sourceSequence: integer("source_sequence"),
+    index: integer("index").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").notNull(),
+    eventAt: timestamp("event_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("session_events_node_observer_idx").on(table.sessionNodeId, table.observerEventId),
+    uniqueIndex("session_events_node_fingerprint_idx").on(table.sessionNodeId, table.eventFingerprint),
+  ],
+);
 
 export const logs = pgTable("logs", {
   id: text("id").primaryKey(),

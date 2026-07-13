@@ -11,11 +11,11 @@ import {
   getEveString as getString,
   isEveRecord as isRecord,
   parseEveJsonObject as parseJsonObject,
-  parseStepUsageEvent,
 } from "@eveland/core/eve";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
+import type { CollectorHealth } from "@eveland/session-collector/health";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
@@ -66,6 +66,7 @@ export type PlaygroundRunner = (input: PlaygroundRunnerInput) => Promise<Playgro
 export type AppOptions = {
   playgroundRunner?: PlaygroundRunner;
   dataDir?: string;
+  collectorHealth?: () => CollectorHealth;
 };
 
 export function createApp(store: Store, options: AppOptions = {}): Hono {
@@ -82,6 +83,21 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
   );
 
   app.get("/health", (c) => c.json({ ok: true, service: "eveland-api" }));
+
+  app.get("/internal/collector/health", (c) =>
+    c.json(
+      options.collectorHealth?.() ?? {
+        status: "healthy",
+        lastProcessedAt: null,
+        backlogEvents: 0,
+        backlogBytes: 0,
+        oldestEventAge: 0,
+        quarantinedEvents: 0,
+        lastError: null,
+        mode: "disabled",
+      },
+    ),
+  );
 
   app.get("/projects", async (c) => c.json({ projects: await store.listProjects() }));
 
@@ -183,25 +199,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
 
     try {
       let eventPersistence = Promise.resolve();
-      const persistEvent = (event: PlaygroundRunEvent, fallbackEveSessionId?: string | null) => {
+      const persistEvent = (event: PlaygroundRunEvent) => {
         const queued = eventPersistence.then(async () => {
           await store.appendSessionEvent(session.id, event.type, event.payload);
-          const usage = parseStepUsageEvent(event.type, event.payload);
-          if (usage) {
-            await store.recordModelUsage(session.id, {
-              ...usage,
-              eveSessionId: event.source?.eveSessionId ?? fallbackEveSessionId ?? session.id,
-              agentId: event.source?.agentId ?? null,
-              agentName: event.source?.agentName ?? null,
-            });
-          }
         });
         eventPersistence = queued.catch(() => undefined);
         return queued;
       };
       const result = await playgroundRunner({ project, deployment, message: parsed.data.message, onEvent: persistEvent });
       for (const event of result.events ?? [{ type: "model_response", payload: { content: result.response } }]) {
-        await persistEvent(event, result.eveSessionId);
+        await persistEvent(event);
       }
       const completed = await store.completeSession(session.id, {
         status: "completed",
@@ -267,6 +274,10 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
 
   app.get("/sessions/:sessionId/usage", async (c) => {
     return c.json({ usage: await store.listModelUsageEvents(c.req.param("sessionId")) });
+  });
+
+  app.get("/sessions/:sessionId/nodes", async (c) => {
+    return c.json({ nodes: await store.listSessionNodes(c.req.param("sessionId")) });
   });
 
   app.get("/projects/:projectId/logs", async (c) => {
@@ -421,7 +432,6 @@ async function streamEveSession(
   base: string,
   sessionId: string,
   onEvent?: (event: PlaygroundRunEvent) => Promise<void>,
-  visitedSessionIds: Set<string> = new Set([sessionId]),
 ): Promise<{ response: string; events: PlaygroundRunEvent[] }> {
   const timeoutMs = Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000);
   const controller = new AbortController();
@@ -433,7 +443,6 @@ async function streamEveSession(
   let failureMessage: string | null = null;
   let agentId: string | null = null;
   let agentName: string | null = null;
-  const childStreams: Promise<void>[] = [];
 
   try {
     const response = await fetch(`${base}/eve/v1/session/${encodeURIComponent(sessionId)}/stream`, {
@@ -502,40 +511,6 @@ async function streamEveSession(
             await onEvent?.(streamedEvent);
           }
 
-          if (type === "subagent.called") {
-            const childSessionId = getString(data, "childSessionId");
-            if (childSessionId && !visitedSessionIds.has(childSessionId)) {
-              visitedSessionIds.add(childSessionId);
-              const remote = isRecord(data.remote) ? data.remote : null;
-
-              if (remote) {
-                childStreams.push(
-                  onEvent?.({
-                    type: "usage.collection_failed",
-                    payload: {
-                      eveSessionId: childSessionId,
-                      message: "Remote subagent usage collection requires a managed deployment mapping.",
-                    },
-                    source: { eveSessionId: childSessionId, agentId: null, agentName: getString(data, "name") },
-                  }) ?? Promise.resolve(),
-                );
-                continue;
-              }
-
-              const childStream = streamEveSession(base, childSessionId, onEvent, visitedSessionIds)
-                .then(() => undefined)
-                .catch(async (error) => {
-                  const message = error instanceof Error ? error.message : String(error);
-                  await onEvent?.({
-                    type: "usage.collection_failed",
-                    payload: { eveSessionId: childSessionId, message },
-                    source: { eveSessionId: childSessionId, agentId: null, agentName: getString(data, "name") },
-                  });
-                });
-              childStreams.push(childStream);
-            }
-          }
-
           if (terminalEventTypes.has(type)) {
             done = true;
             break;
@@ -553,8 +528,6 @@ async function streamEveSession(
   } finally {
     clearTimeout(timer);
   }
-
-  await Promise.all(childStreams);
 
   const response = completedMessage ?? latestPartial;
 

@@ -41,6 +41,7 @@ export type Session = {
   deploymentId: string | null;
   eveSessionId: string | null;
   continuationToken: string | null;
+  rootNodeId: string | null;
   trigger: string;
   scheduleId: string | null;
   status: string;
@@ -66,7 +67,41 @@ export type SessionEvent = {
   index: number;
   type: string;
   payload: unknown;
+  sessionNodeId: string | null;
+  observerEventId: string | null;
+  eventFingerprint: string | null;
+  observedDeploymentId: string | null;
+  sourceSequence: number | null;
+  eventAt: string;
   createdAt: string;
+};
+
+export type SessionNode = {
+  id: string;
+  rootSessionId: string;
+  projectId: string;
+  eveSessionId: string;
+  parentNodeId: string | null;
+  parentEveSessionId: string | null;
+  startedDeploymentId: string;
+  lastObservedDeploymentId: string;
+  agentId: string | null;
+  agentName: string | null;
+  nodeId: string | null;
+  channelKind: string | null;
+  modelId: string | null;
+  eveVersion: string | null;
+  status: string;
+};
+
+export type CollectorHealth = {
+  status: "healthy" | "delayed" | "degraded";
+  lastProcessedAt: string | null;
+  backlogEvents: number;
+  backlogBytes: number;
+  oldestEventAge: number;
+  quarantinedEvents: number;
+  lastError: string | null;
 };
 
 export type ModelUsageEvent = {
@@ -167,6 +202,23 @@ export async function getSessionEvents(sessionId: string): Promise<SessionEvent[
 export async function getSessionUsage(sessionId: string): Promise<ModelUsageEvent[]> {
   const data = await apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`, { usage: [] });
   return data.usage;
+}
+
+export async function getSessionNodes(sessionId: string): Promise<SessionNode[]> {
+  const data = await apiGet<{ nodes: SessionNode[] }>(`/sessions/${sessionId}/nodes`, { nodes: [] });
+  return data.nodes;
+}
+
+export async function getCollectorHealth(): Promise<CollectorHealth> {
+  return apiGet<CollectorHealth>("/internal/collector/health", {
+    status: "degraded",
+    lastProcessedAt: null,
+    backlogEvents: 0,
+    backlogBytes: 0,
+    oldestEventAge: 0,
+    quarantinedEvents: 0,
+    lastError: "Collector health is unavailable.",
+  });
 }
 
 export async function runPlaygroundMessage(projectId: string, message: string): Promise<PlaygroundResult> {

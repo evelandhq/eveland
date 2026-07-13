@@ -30,6 +30,8 @@ export type ProcessStartInput = {
    * eve's sandbox falls back to an ephemeral cache when the env var is unset.
    */
   sandboxCacheDir: string;
+  /** Deployment-scoped durable observer outbox directory visible to the runtime. */
+  observerOutboxDir: string;
 };
 
 export type ProcessStartResult = {

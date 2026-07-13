@@ -35,6 +35,13 @@ limactl shell "$VM" -- sudo bash -c "
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
 
+  # Observer vertical slice under the real systemd hardening: a direct private-port
+  # turn (including a directory-form subagent) writes the shared outbox, then the
+  # collector projects one root tree and replay-safe usage.
+  EVELAND_RUNTIME=systemd STORE_DRIVER=memory EVELAND_BUILD_SANDBOX=bwrap \
+    EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_OBSERVER_ROOT=/var/lib/eveland-data/observer \
+    corepack pnpm exec tsx infra/integration/observer-e2e.mts
+
   # Agent-exec sandbox contract test, run under the same constraints as a
   # deployed eve agent: unprivileged user, NoNewPrivileges, read-only system.
   install -d -o eveland-app -g eveland-app /var/lib/eveland-app

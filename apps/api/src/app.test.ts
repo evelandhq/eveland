@@ -19,6 +19,25 @@ describe("api app", () => {
     await expect(response.json()).resolves.toEqual({ ok: true, service: "eveland-api" });
   });
 
+  test("reports collector degradation separately from API liveness", async () => {
+    const app = createApp(createMemoryStore(), {
+      collectorHealth: () => ({
+        status: "degraded",
+        lastProcessedAt: null,
+        backlogEvents: 4,
+        backlogBytes: 2048,
+        oldestEventAge: 30_000,
+        quarantinedEvents: 1,
+        lastError: "invalid envelope",
+      }),
+    });
+
+    expect((await app.request("/health")).status).toBe(200);
+    const response = await app.request("/internal/collector/health");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ status: "degraded", backlogEvents: 4 });
+  });
+
   test("creates a project and returns it in the project list", async () => {
     const app = createApp(createMemoryStore());
 
@@ -200,7 +219,7 @@ describe("api app", () => {
     await expect(store.listSessions(project.id)).resolves.toEqual([expect.objectContaining({ trigger: "playground", status: "completed" })]);
   });
 
-  test("records token usage from completed Eve model steps", async () => {
+  test("leaves token usage projection to the observer collector", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Token Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
@@ -250,22 +269,11 @@ describe("api app", () => {
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      session: {
-        usage: {
-          status: "reported",
-          inputTokens: 90,
-          outputTokens: 10,
-          cacheReadTokens: 50,
-          cacheWriteTokens: 0,
-          costUsd: null,
-          reportedSteps: 1,
-          missingSteps: 0,
-        },
-      },
+      session: { usage: { status: "none", inputTokens: 0, outputTokens: 0, reportedSteps: 0 } },
     });
   });
 
-  test("persists model-step usage before the Eve turn finishes", async () => {
+  test("does not project model-step usage from the Playground transport stream", async () => {
     let streamResponse: ServerResponse | null = null;
     let markStepSent!: () => void;
     const stepSent = new Promise<void>((resolve) => {
@@ -329,11 +337,9 @@ describe("api app", () => {
 
     try {
       await stepSent;
-      await vi.waitFor(async () => {
-        await expect(store.listSessions(project.id)).resolves.toEqual([
-          expect.objectContaining({ usage: expect.objectContaining({ inputTokens: 25, outputTokens: 5 }) }),
-        ]);
-      });
+      await expect(store.listSessions(project.id)).resolves.toEqual([
+        expect.objectContaining({ usage: expect.objectContaining({ status: "none", inputTokens: 0, outputTokens: 0 }) }),
+      ]);
 
       streamResponse!.write(
         `${JSON.stringify({
@@ -407,7 +413,7 @@ describe("api app", () => {
     expect(maxActiveWrites).toBe(1);
   });
 
-  test("attributes usage from child session streams to the subagent that consumed it", async () => {
+  test("leaves child-session usage attribution to the observer collector", async () => {
     const eveServer = createServer((request, response) => {
       if (request.method === "POST" && request.url === "/eve/v1/session") {
         response.writeHead(202, { "content-type": "application/json" });
@@ -505,11 +511,8 @@ describe("api app", () => {
       });
       expect(response.status).toBe(201);
       const [session] = await store.listSessions(project.id);
-      expect(session?.usage).toMatchObject({ inputTokens: 50, outputTokens: 7, reportedSteps: 2 });
-      await expect(store.listModelUsageEvents(session!.id)).resolves.toEqual([
-        expect.objectContaining({ eveSessionId: "eve_child", agentId: "agent_researcher", agentName: "Researcher", inputTokens: 40 }),
-        expect.objectContaining({ eveSessionId: "eve_root", agentId: "agent_root", agentName: "Root agent", inputTokens: 10 }),
-      ]);
+      expect(session?.usage).toMatchObject({ status: "none", inputTokens: 0, outputTokens: 0, reportedSteps: 0 });
+      await expect(store.listModelUsageEvents(session!.id)).resolves.toEqual([]);
     } finally {
       await new Promise<void>((resolve, reject) => eveServer.close((error) => (error ? reject(error) : resolve())));
     }
@@ -542,7 +545,7 @@ describe("api app", () => {
     });
   });
 
-  test("does not fail the root turn when a child usage stream cannot be collected", async () => {
+  test("does not fail the root turn when a child stream is unavailable", async () => {
     const eveServer = createServer((request, response) => {
       if (request.method === "POST" && request.url === "/eve/v1/session") {
         response.writeHead(202, { "content-type": "application/json" });
@@ -606,9 +609,9 @@ describe("api app", () => {
 
       expect(response.status).toBe(201);
       const [session] = await store.listSessions(project.id);
-      expect(session?.usage).toMatchObject({ inputTokens: 8, outputTokens: 2 });
-      await expect(store.listSessionEvents(session!.id)).resolves.toContainEqual(
-        expect.objectContaining({ type: "usage.collection_failed", payload: expect.objectContaining({ eveSessionId: "eve_unavailable_child" }) }),
+      expect(session?.usage).toMatchObject({ status: "none", inputTokens: 0, outputTokens: 0 });
+      await expect(store.listSessionEvents(session!.id)).resolves.not.toContainEqual(
+        expect.objectContaining({ type: "usage.collection_failed" }),
       );
     } finally {
       await new Promise<void>((resolve, reject) => eveServer.close((error) => (error ? reject(error) : resolve())));

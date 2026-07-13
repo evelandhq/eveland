@@ -14,6 +14,7 @@
   "dependencies": {
     "@eveland/core": "workspace:*",
     "@eveland/db": "workspace:*",
+    "@eveland/session-collector": "workspace:*",
     "@hono/node-server": "^2.0.6",
     "better-auth": "^1.6.23",
     "hono": "^4.12.27",

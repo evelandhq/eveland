@@ -3,6 +3,8 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { injectSandboxModules } from "./sandbox-inject.js";
+import { prepareReleaseTree } from "./prepare-release.js";
+import { verifyObserverOutbox } from "./observer-verify.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 
@@ -15,6 +17,7 @@ export type SystemdStartInput = {
   memoryMax: string;
   cpuQuota: string;
   sandboxCacheDir: string;
+  observerOutboxDir: string;
   command: string;
 };
 
@@ -54,6 +57,7 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     `--property=EnvironmentFile=${input.envFilePath}`,
     `--property=Environment=PORT=${input.port}`,
     `--property=Environment=EVELAND_SANDBOX_CACHE_DIR=${input.sandboxCacheDir}`,
+    `--property=Environment=EVELAND_OBSERVER_OUTBOX_DIR=${input.observerOutboxDir}`,
     `--property=MemoryMax=${input.memoryMax}`,
     `--property=CPUQuota=${input.cpuQuota}`,
     "--property=ProtectSystem=strict",
@@ -63,6 +67,7 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     // --property=ReadWritePaths=/tmp --property=ReadWritePaths=/var/tmp` followed by
     // `systemctl show -p ReadWritePaths`, which reported "ReadWritePaths=/tmp /var/tmp".
     `--property=ReadWritePaths=${input.sandboxCacheDir}`,
+    `--property=ReadWritePaths=${input.observerOutboxDir}`,
     "--property=PrivateTmp=yes",
     "--property=NoNewPrivileges=yes",
     "sh",
@@ -211,9 +216,8 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
     name: "systemd",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const releaseDir = path.resolve(input.buildDir);
-      await mkdir(releaseDir, { recursive: true });
       await mkdir(npmCacheDir, { recursive: true });
-      await execa("cp", ["-a", `${path.resolve(input.sourcePath)}/.`, releaseDir]);
+      const observerInjection = await prepareReleaseTree({ sourcePath: input.sourcePath, buildDir: releaseDir });
 
       // Only eve projects ever run `npx eve start`/`npx eve build`, so only eve
       // projects have an eve sandbox to inject a module into or self-check. A
@@ -329,11 +333,20 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         : undefined;
       return {
         releaseRef: releaseDir,
-        log: injectionLog ? `${injectionLog}\n${execution.all ?? ""}` : execution.all ?? "",
+        log: [
+          `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
+          injectionLog,
+          execution.all ?? "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
       };
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
       await mkdir(envDir, { recursive: true });
+      await mkdir(input.observerOutboxDir, { recursive: true });
+      await execa("chown", ["-R", `${config.user}:`, input.observerOutboxDir]);
+      await verifyObserverOutbox({ user: config.user, outboxDir: input.observerOutboxDir });
       const envFilePath = path.join(envDir, `${input.processName}.env`);
       await writeFile(envFilePath, buildEnvFileContent(input.env), { mode: 0o600 });
 
@@ -348,6 +361,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
           memoryMax: config.memoryMax,
           cpuQuota: config.cpuQuota,
           sandboxCacheDir: input.sandboxCacheDir,
+          observerOutboxDir: input.observerOutboxDir,
           command: buildSystemdStartCommand(input.commandContext, input.port),
         }),
         { all: true },

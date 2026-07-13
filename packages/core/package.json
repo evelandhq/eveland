@@ -7,6 +7,7 @@
     "./contracts": "./src/contracts.ts",
     "./eve": "./src/eve.ts",
     "./ids": "./src/ids.ts",
+    "./observer": "./src/observer.ts",
     "./schedules": "./src/schedules.ts",
     "./source": "./src/source.ts",
     "./server/archive": "./src/server/archive.ts",
@@ -20,7 +21,8 @@
   },
   "dependencies": {
     "cron-parser": "^5.6.1",
-    "nanoid": "^5.1.16"
+    "nanoid": "^5.1.16",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

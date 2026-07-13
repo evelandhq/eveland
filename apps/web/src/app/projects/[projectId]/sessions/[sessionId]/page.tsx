@@ -1,4 +1,4 @@
-import { getSessionEvents, getSessionUsage, getSessions } from "@/lib/api"
+import { getSessionEvents, getSessionNodes, getSessionUsage, getSessions } from "@/lib/api"
 import { formatTokenCount, formatUsd, groupModelUsageByAgent } from "@/lib/usage"
 
 export default async function SessionTimelinePage({
@@ -7,10 +7,11 @@ export default async function SessionTimelinePage({
   params: Promise<{ projectId: string; sessionId: string }>
 }) {
   const { projectId, sessionId } = await params
-  const [events, sessions, usageEvents] = await Promise.all([
+  const [events, sessions, usageEvents, nodes] = await Promise.all([
     getSessionEvents(sessionId),
     getSessions(projectId),
     getSessionUsage(sessionId),
+    getSessionNodes(sessionId),
   ])
   const session = sessions.find((candidate) => candidate.id === sessionId)
   const usage = session?.usage
@@ -79,6 +80,25 @@ export default async function SessionTimelinePage({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      ) : null}
+      {nodes.length > 0 ? (
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Session tree</h3>
+          <div className="mt-2 grid gap-2">
+            {nodes.map((node) => (
+              <div key={node.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 rounded-sm border border-border px-3 py-2 text-xs">
+                <div className="min-w-0">
+                  <div className="font-medium">{node.parentNodeId ? "↳ " : ""}{node.agentName ?? node.agentId ?? "Unknown agent"}</div>
+                  <div className="mt-1 truncate font-mono text-muted-foreground">{node.eveSessionId}</div>
+                </div>
+                <div className="text-right text-muted-foreground">
+                  <div>{node.status}</div>
+                  <div className="mt-1">{node.modelId ?? node.channelKind ?? "local"}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
