@@ -5,8 +5,10 @@ describe("browser auth API", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   test("signs in with credentialed browser requests", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ member: { email: "admin@example.com", role: "admin" } }), {
+    const fetchMock = vi.fn(async (url: string | URL | Request) =>
+      new Response(JSON.stringify(String(url).endsWith("/auth/session")
+        ? { member: { email: "admin@example.com", role: "admin" } }
+        : { user: { email: "admin@example.com" } }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
@@ -14,11 +16,15 @@ describe("browser auth API", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(signIn("admin@example.com", "admin-password")).resolves.toMatchObject({ role: "admin" });
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/auth/sign-in", {
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:4000/api/auth/sign-in/email", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: "admin@example.com", password: "admin-password" }),
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:4000/auth/session", {
+      method: "GET",
+      credentials: "include",
     });
   });
 

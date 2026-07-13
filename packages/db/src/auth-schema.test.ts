@@ -1,16 +1,43 @@
 import { getTableColumns } from "drizzle-orm";
 import { describe, expect, test } from "vitest";
-import { authSessions, invitations, projects, teamMemberships, teams, users } from "./schema.js";
+import {
+  authAccounts,
+  authSessions,
+  authVerifications,
+  invitations,
+  projects,
+  teamMemberships,
+  teams,
+  users,
+} from "./schema.js";
 
-describe("team auth schema", () => {
-  test("stores password hashes, teams, memberships, invitations, and sessions", () => {
-    expect(Object.keys(getTableColumns(users))).toContain("passwordHash");
-    expect(Object.keys(getTableColumns(teams))).toEqual(expect.arrayContaining(["id", "name"]));
-    expect(Object.keys(getTableColumns(teamMemberships))).toEqual(expect.arrayContaining(["teamId", "userId", "role"]));
-    expect(Object.keys(getTableColumns(invitations))).toEqual(
-      expect.arrayContaining(["teamId", "email", "tokenHash", "status", "expiresAt", "invitedByUserId"]),
-    );
-    expect(Object.keys(getTableColumns(authSessions))).toEqual(expect.arrayContaining(["userId", "tokenHash", "expiresAt"]));
+describe("Better Auth team schema", () => {
+  test("uses Better Auth user, account, session, and verification fields", () => {
+    expect(Object.keys(getTableColumns(users))).toEqual(expect.arrayContaining([
+      "id", "email", "emailVerified", "name", "image", "role", "banned",
+    ]));
+    expect(Object.keys(getTableColumns(users))).not.toContain("passwordHash");
+    expect(Object.keys(getTableColumns(authAccounts))).toEqual(expect.arrayContaining([
+      "id", "accountId", "providerId", "userId", "password", "accessToken", "refreshToken",
+    ]));
+    expect(Object.keys(getTableColumns(authSessions))).toEqual(expect.arrayContaining([
+      "id", "userId", "token", "expiresAt", "ipAddress", "userAgent", "activeOrganizationId",
+    ]));
+    expect(Object.keys(getTableColumns(authSessions))).not.toContain("tokenHash");
+    expect(Object.keys(getTableColumns(authVerifications))).toEqual(expect.arrayContaining([
+      "id", "identifier", "value", "expiresAt",
+    ]));
+  });
+
+  test("maps Better Auth Organization records onto Eveland's default team", () => {
+    expect(Object.keys(getTableColumns(teams))).toEqual(expect.arrayContaining(["id", "name", "slug", "logo", "metadata"]));
+    expect(Object.keys(getTableColumns(teamMemberships))).toEqual(expect.arrayContaining([
+      "id", "organizationId", "userId", "role", "createdAt",
+    ]));
+    expect(Object.keys(getTableColumns(invitations))).toEqual(expect.arrayContaining([
+      "id", "organizationId", "email", "role", "status", "expiresAt", "inviterId",
+    ]));
+    expect(Object.keys(getTableColumns(invitations))).not.toContain("tokenHash");
     expect(Object.keys(getTableColumns(projects))).toContain("teamId");
   });
 });

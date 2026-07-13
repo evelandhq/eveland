@@ -38,10 +38,12 @@ describe("Compose controller security boundaries", () => {
     expect(serviceBlock(productionCompose, "gateway")).not.toContain("/var/lib/eveland");
   });
 
-  it("requires an explicit initial admin password and defaults the admin email", () => {
+  it("requires Better Auth and initial admin secrets explicitly", () => {
     const api = serviceBlock(developmentCompose, "api");
 
     expect(api).toContain("EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}");
     expect(api).toContain('EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"');
+    expect(api).toContain('BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}"');
+    expect(api).toContain("BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}");
   });
 });

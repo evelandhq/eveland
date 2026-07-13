@@ -14,25 +14,23 @@ export type Invitation = {
   id: string;
   email: string;
   role: "admin" | "member";
-  status: "pending" | "accepted" | "revoked";
+  status: "pending" | "accepted" | "rejected" | "canceled";
   expiresAt: string;
   invitedByUserId: string;
-  acceptedAt: string | null;
   createdAt: string;
-  updatedAt: string;
 };
 
 export async function signIn(email: string, password: string): Promise<Member> {
-  const data = await clientRequest<{ member: Member }>("/auth/sign-in", {
+  await clientRequest("/api/auth/sign-in/email", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  return data.member;
+  return clientRequest<{ member: Member }>("/auth/session", { method: "GET" }).then((data) => data.member);
 }
 
 export async function signOut(): Promise<void> {
-  await clientRequest("/auth/sign-out", { method: "POST" });
+  await clientRequest("/api/auth/sign-out", { method: "POST" });
 }
 
 export async function inviteMember(email: string): Promise<{ invitation: Invitation; inviteUrl: string }> {
@@ -122,7 +120,7 @@ export async function syncSource(projectId: string, options: { deploy?: boolean 
 async function clientRequest<T = unknown>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, { ...init, credentials: "include" });
   if (response.status === 204) return undefined as T;
-  const data = (await response.json().catch(() => ({}))) as T & { error?: string; detail?: string };
-  if (!response.ok) throw new Error(data.detail ?? data.error ?? `Request failed with ${response.status}`);
+  const data = (await response.json().catch(() => ({}))) as T & { error?: string; detail?: string; message?: string };
+  if (!response.ok) throw new Error(data.detail ?? data.error ?? data.message ?? `Request failed with ${response.status}`);
   return data;
 }

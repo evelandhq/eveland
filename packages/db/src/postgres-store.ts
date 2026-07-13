@@ -37,25 +37,16 @@ import {
   sourceFiles,
   sourceRevisions,
   routeTargets,
-  authSessions,
-  invitations,
-  teamMemberships,
   teams,
   users,
 } from "./schema.js";
 import { DEFAULT_TEAM_ID, type CreateProjectInput, type Store } from "./store.js";
 import type {
-  AuthPrincipal,
-  AuthSessionRecord,
   DeploymentStatus,
   JobType,
   LogRecord,
   SessionStatus,
   SessionTrigger,
-  TeamInvitation,
-  TeamMember,
-  TeamRole,
-  UserRecord,
 } from "@eveland/core/contracts";
 import { validateRouteTargets } from "@eveland/core/routing";
 
@@ -64,66 +55,6 @@ const defaultOwner = {
   email: "admin@example.com",
   name: "Local Admin",
 };
-
-type UserRow = typeof users.$inferSelect;
-type MembershipRow = typeof teamMemberships.$inferSelect;
-type InvitationRow = typeof invitations.$inferSelect;
-type AuthSessionRow = typeof authSessions.$inferSelect;
-
-function userRowToUser(row: UserRow): UserRecord {
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    passwordHash: row.passwordHash,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function membershipRowToMember(membership: MembershipRow, user: UserRow): TeamMember {
-  return {
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    role: membership.role as TeamRole,
-    joinedAt: membership.createdAt.toISOString(),
-  };
-}
-
-function invitationRowToInvitation(row: InvitationRow): TeamInvitation {
-  return {
-    id: row.id,
-    email: row.email,
-    role: row.role as TeamRole,
-    status: row.status as TeamInvitation["status"],
-    tokenHash: row.tokenHash,
-    expiresAt: row.expiresAt.toISOString(),
-    invitedByUserId: row.invitedByUserId,
-    acceptedAt: row.acceptedAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function authSessionRowToRecord(row: AuthSessionRow): AuthSessionRecord {
-  return {
-    id: row.id,
-    userId: row.userId,
-    tokenHash: row.tokenHash,
-    expiresAt: row.expiresAt.toISOString(),
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function sortMembers(left: TeamMember, right: TeamMember): number {
-  return Number(right.role === "admin") - Number(left.role === "admin") || left.joinedAt.localeCompare(right.joinedAt);
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
 
 export function createPostgresStore(database: Database): Store {
   const { db } = database;
@@ -216,12 +147,8 @@ export function createPostgresStore(database: Database): Store {
 
   async function ensureDefaultOwner() {
     await db.transaction(async (tx) => {
-      await tx.insert(teams).values({ id: DEFAULT_TEAM_ID, name: "Eveland" }).onConflictDoNothing({ target: teams.id });
+      await tx.insert(teams).values({ id: DEFAULT_TEAM_ID, name: "Eveland", slug: "eveland" }).onConflictDoNothing({ target: teams.id });
       await tx.insert(users).values(defaultOwner).onConflictDoNothing({ target: users.id });
-      await tx
-        .insert(teamMemberships)
-        .values({ teamId: DEFAULT_TEAM_ID, userId: defaultOwner.id, role: "admin" })
-        .onConflictDoNothing({ target: [teamMemberships.teamId, teamMemberships.userId] });
     });
   }
 
@@ -245,252 +172,6 @@ export function createPostgresStore(database: Database): Store {
   }
 
   return {
-    async ensureDefaultAdmin(input) {
-      const email = normalizeEmail(input.email);
-      return db.transaction(async (tx) => {
-        await tx.insert(teams).values({ id: DEFAULT_TEAM_ID, name: "Eveland" }).onConflictDoNothing({ target: teams.id });
-        let [user] = await tx.select().from(users).where(eq(users.id, defaultOwner.id)).limit(1);
-        if (!user) [user] = await tx.select().from(users).where(eq(users.email, email)).limit(1);
-        if (!user) {
-          await tx
-            .insert(users)
-            .values({ id: defaultOwner.id, email, name: input.name, passwordHash: input.passwordHash })
-            .onConflictDoNothing({ target: users.id });
-          [user] = await tx.select().from(users).where(eq(users.id, defaultOwner.id)).limit(1);
-        }
-        if (user && !user.passwordHash) {
-          [user] = await tx
-            .update(users)
-            .set({ email, name: input.name, passwordHash: input.passwordHash, updatedAt: new Date() })
-            .where(eq(users.id, user.id))
-            .returning();
-        }
-        if (!user) throw new Error("Failed to create the default admin");
-        await tx
-          .insert(teamMemberships)
-          .values({ teamId: DEFAULT_TEAM_ID, userId: user.id, role: "admin" })
-          .onConflictDoNothing({ target: [teamMemberships.teamId, teamMemberships.userId] });
-        return userRowToUser(user);
-      });
-    },
-
-    async getUserByEmail(email) {
-      const [user] = await db.select().from(users).where(eq(users.email, normalizeEmail(email))).limit(1);
-      return user ? userRowToUser(user) : null;
-    },
-
-    async listMembers() {
-      const rows = await db
-        .select({ membership: teamMemberships, user: users })
-        .from(teamMemberships)
-        .innerJoin(users, eq(users.id, teamMemberships.userId))
-        .where(eq(teamMemberships.teamId, DEFAULT_TEAM_ID));
-      return rows.map(({ membership, user }) => membershipRowToMember(membership, user)).sort(sortMembers);
-    },
-
-    async listInvitations() {
-      const rows = await db
-        .select()
-        .from(invitations)
-        .where(and(eq(invitations.teamId, DEFAULT_TEAM_ID), eq(invitations.status, "pending")))
-        .orderBy(desc(invitations.createdAt));
-      return rows.map(invitationRowToInvitation);
-    },
-
-    async getInvitationByTokenHash(tokenHash) {
-      const [row] = await db.select().from(invitations).where(eq(invitations.tokenHash, tokenHash)).limit(1);
-      return row ? invitationRowToInvitation(row) : null;
-    },
-
-    async createInvitation(input) {
-      const email = normalizeEmail(input.email);
-      return db.transaction(async (tx) => {
-        const [member] = await tx
-          .select({ userId: teamMemberships.userId })
-          .from(teamMemberships)
-          .innerJoin(users, eq(users.id, teamMemberships.userId))
-          .where(and(eq(teamMemberships.teamId, DEFAULT_TEAM_ID), eq(users.email, email)))
-          .limit(1);
-        if (member) throw new Error("User is already a team member");
-        await tx
-          .update(invitations)
-          .set({ status: "revoked", updatedAt: new Date() })
-          .where(and(eq(invitations.teamId, DEFAULT_TEAM_ID), eq(invitations.email, email), eq(invitations.status, "pending")));
-        const [row] = await tx
-          .insert(invitations)
-          .values({
-            id: createId("invite"),
-            teamId: DEFAULT_TEAM_ID,
-            email,
-            role: input.role,
-            status: "pending",
-            tokenHash: input.tokenHash,
-            expiresAt: new Date(input.expiresAt),
-            invitedByUserId: input.invitedByUserId,
-          })
-          .returning();
-        if (!row) throw new Error("Failed to create invitation");
-        return invitationRowToInvitation(row);
-      });
-    },
-
-    async reissueInvitation(id, input) {
-      const [existing] = await db.select().from(invitations).where(eq(invitations.id, id)).limit(1);
-      if (!existing) throw new Error("Invitation not found");
-      if (existing.status !== "pending") throw new Error("Invitation is no longer pending");
-      const [row] = await db
-        .update(invitations)
-        .set({ tokenHash: input.tokenHash, expiresAt: new Date(input.expiresAt), updatedAt: new Date() })
-        .where(and(eq(invitations.id, id), eq(invitations.status, "pending")))
-        .returning();
-      if (!row) throw new Error("Invitation is no longer pending");
-      return invitationRowToInvitation(row);
-    },
-
-    async revokeInvitation(id) {
-      const [existing] = await db.select().from(invitations).where(eq(invitations.id, id)).limit(1);
-      if (!existing) return false;
-      if (existing.status !== "pending") throw new Error("Invitation is no longer pending");
-      const [row] = await db
-        .update(invitations)
-        .set({ status: "revoked", updatedAt: new Date() })
-        .where(and(eq(invitations.id, id), eq(invitations.status, "pending")))
-        .returning({ id: invitations.id });
-      if (!row) throw new Error("Invitation is no longer pending");
-      return true;
-    },
-
-    async acceptInvitation(input) {
-      return db.transaction(async (tx) => {
-        const [invitation] = await tx
-          .select()
-          .from(invitations)
-          .where(eq(invitations.tokenHash, input.tokenHash))
-          .limit(1)
-          .for("update");
-        if (!invitation) throw new Error("Invitation not found");
-        if (invitation.status !== "pending") throw new Error("Invitation is no longer pending");
-        const acceptedAt = new Date(input.acceptedAt);
-        if (invitation.expiresAt.getTime() <= acceptedAt.getTime()) throw new Error("Invitation has expired");
-        let [user] = await tx.select().from(users).where(eq(users.email, invitation.email)).limit(1);
-        if (!user) {
-          if (!input.passwordHash) throw new Error("Password is required for a new member");
-          [user] = await tx
-            .insert(users)
-            .values({
-              id: createId("user"),
-              email: invitation.email,
-              name: input.name,
-              passwordHash: input.passwordHash,
-              createdAt: acceptedAt,
-              updatedAt: acceptedAt,
-            })
-            .returning();
-        } else {
-          [user] = await tx.update(users).set({ name: input.name, updatedAt: acceptedAt }).where(eq(users.id, user.id)).returning();
-        }
-        if (!user) throw new Error("Failed to create invited user");
-        const [membership] = await tx
-          .insert(teamMemberships)
-          .values({ teamId: DEFAULT_TEAM_ID, userId: user.id, role: invitation.role, createdAt: acceptedAt, updatedAt: acceptedAt })
-          .onConflictDoUpdate({
-            target: [teamMemberships.teamId, teamMemberships.userId],
-            set: { role: invitation.role, updatedAt: acceptedAt },
-          })
-          .returning();
-        await tx
-          .update(invitations)
-          .set({ status: "accepted", acceptedAt, updatedAt: acceptedAt })
-          .where(eq(invitations.id, invitation.id));
-        if (!membership) throw new Error("Failed to create team membership");
-        return membershipRowToMember(membership, user);
-      });
-    },
-
-    async updateMemberRole(userId, role) {
-      return db.transaction(async (tx) => {
-        const [membership] = await tx
-          .select()
-          .from(teamMemberships)
-          .where(and(eq(teamMemberships.teamId, DEFAULT_TEAM_ID), eq(teamMemberships.userId, userId)))
-          .limit(1)
-          .for("update");
-        if (!membership) throw new Error("Member not found");
-        const [adminCount] = await tx
-          .select({ value: sql<number>`count(*)::int` })
-          .from(teamMemberships)
-          .where(and(eq(teamMemberships.teamId, DEFAULT_TEAM_ID), eq(teamMemberships.role, "admin")));
-        if (membership.role === "admin" && role !== "admin" && (adminCount?.value ?? 0) === 1) {
-          throw new Error("Cannot demote the last admin");
-        }
-        const [updated] = await tx
-          .update(teamMemberships)
-          .set({ role, updatedAt: new Date() })
-          .where(and(eq(teamMemberships.teamId, DEFAULT_TEAM_ID), eq(teamMemberships.userId, userId)))
-          .returning();
-        const [user] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
-        if (!updated || !user) throw new Error("Member not found");
-        return membershipRowToMember(updated, user);
-      });
-    },
-
-    async removeMember(userId) {
-      return db.transaction(async (tx) => {
-        const [membership] = await tx
-          .select()
-          .from(teamMemberships)
-          .where(and(eq(teamMemberships.teamId, DEFAULT_TEAM_ID), eq(teamMemberships.userId, userId)))
-          .limit(1)
-          .for("update");
-        if (!membership) return false;
-        const [adminCount] = await tx
-          .select({ value: sql<number>`count(*)::int` })
-          .from(teamMemberships)
-          .where(and(eq(teamMemberships.teamId, DEFAULT_TEAM_ID), eq(teamMemberships.role, "admin")));
-        if (membership.role === "admin" && (adminCount?.value ?? 0) === 1) {
-          throw new Error("Cannot remove the last admin");
-        }
-        await tx.delete(authSessions).where(eq(authSessions.userId, userId));
-        await tx
-          .delete(teamMemberships)
-          .where(and(eq(teamMemberships.teamId, DEFAULT_TEAM_ID), eq(teamMemberships.userId, userId)));
-        return true;
-      });
-    },
-
-    async createAuthSession(input) {
-      const [row] = await db
-        .insert(authSessions)
-        .values({ id: createId("authsess"), userId: input.userId, tokenHash: input.tokenHash, expiresAt: new Date(input.expiresAt) })
-        .returning();
-      if (!row) throw new Error("Failed to create auth session");
-      return authSessionRowToRecord(row);
-    },
-
-    async getAuthSession(tokenHash, now = new Date().toISOString()) {
-      const [row] = await db
-        .select({ session: authSessions, membership: teamMemberships, user: users })
-        .from(authSessions)
-        .innerJoin(users, eq(users.id, authSessions.userId))
-        .innerJoin(
-          teamMemberships,
-          and(eq(teamMemberships.userId, authSessions.userId), eq(teamMemberships.teamId, DEFAULT_TEAM_ID)),
-        )
-        .where(eq(authSessions.tokenHash, tokenHash))
-        .limit(1);
-      if (!row || row.session.expiresAt.getTime() <= Date.parse(now)) return null;
-      return membershipRowToMember(row.membership, row.user);
-    },
-
-    async deleteAuthSession(tokenHash) {
-      const rows = await db.delete(authSessions).where(eq(authSessions.tokenHash, tokenHash)).returning({ id: authSessions.id });
-      return rows.length > 0;
-    },
-
-    async revokeUserSessions(userId) {
-      await db.delete(authSessions).where(eq(authSessions.userId, userId));
-    },
-
     async listProjects() {
       const rows = await db.select().from(projects).orderBy(desc(projects.updatedAt));
       return rows.map(projectRowToProject);

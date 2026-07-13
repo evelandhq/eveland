@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/store.ts",
+    "./client": "./src/client.ts",
     "./factory": "./src/store-factory.ts",
     "./schema": "./src/schema.ts"
   },

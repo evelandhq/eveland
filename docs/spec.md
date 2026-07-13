@@ -57,8 +57,9 @@ MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持�
 
 * 默认邮箱：`admin@example.com`，可由 `EVELAND_ADMIN_EMAIL` 覆盖
 * 初始密码：必须由 `EVELAND_ADMIN_PASSWORD` 提供，至少 12 个字符
-* 密码使用 Argon2id 哈希保存，不内置生产默认密码
-* 登录 Session 使用 HttpOnly、SameSite=Lax Cookie，服务端只保存 token 哈希
+* 用户、密码账户与 Session 使用 Better Auth；团队成员与邀请使用 Organization plugin
+* 不内置生产默认密码；`BETTER_AUTH_SECRET` 必须独立配置且至少 32 个字符
+* 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
 
 除健康检查和邀请接受外，所有控制面 API 都要求有效成员 Session。公开 Agent Gateway 流量使用独立认证边界。
 
@@ -97,7 +98,7 @@ Members 位于全局导航，与 Projects、Deployments、Usage 同级。
 * 将成员设为 Admin / Member
 * 移除成员；移除后立即撤销其所有登录 Session，团队项目不删除
 
-最后一个 Admin 不能被移除或降级。邀请 token 仅以 SHA-256 哈希形式保存。
+最后一个 Admin 不能被移除或降级。邀请链接使用 256-bit 不透明随机标识，接受后立即失效。
 
 ---
 

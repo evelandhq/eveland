@@ -8,3 +8,15 @@ export function resolveAdminConfig(env: Record<string, string | undefined>) {
     password,
   };
 }
+
+export function resolveBetterAuthConfig(env: Record<string, string | undefined>) {
+  const secret = env.BETTER_AUTH_SECRET;
+  if (!secret) throw new Error("BETTER_AUTH_SECRET is required.");
+  if (secret.length < 32) throw new Error("BETTER_AUTH_SECRET must be at least 32 characters.");
+  return {
+    secret,
+    baseURL: env.BETTER_AUTH_URL?.trim() || `http://localhost:${env.PORT ?? "4000"}`,
+    webOrigin: env.WEB_ORIGIN?.trim() || "http://localhost:3000",
+    cookieDomain: env.EVELAND_COOKIE_DOMAIN?.trim() || undefined,
+  };
+}

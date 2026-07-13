@@ -25,12 +25,6 @@ import type {
   ResolvedAgentRoute,
   RouteTarget,
   SessionBinding,
-  AuthPrincipal,
-  AuthSessionRecord,
-  TeamInvitation,
-  TeamMember,
-  TeamRole,
-  UserRecord,
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -52,32 +46,6 @@ export type CreateProjectInput = {
 export const DEFAULT_TEAM_ID = "team_local";
 
 export type Store = {
-  ensureDefaultAdmin(input: { email: string; name: string; passwordHash: string }): Promise<UserRecord>;
-  getUserByEmail(email: string): Promise<UserRecord | null>;
-  listMembers(): Promise<TeamMember[]>;
-  listInvitations(): Promise<TeamInvitation[]>;
-  getInvitationByTokenHash(tokenHash: string): Promise<TeamInvitation | null>;
-  createInvitation(input: {
-    email: string;
-    role: TeamRole;
-    tokenHash: string;
-    expiresAt: string;
-    invitedByUserId: string;
-  }): Promise<TeamInvitation>;
-  reissueInvitation(id: string, input: { tokenHash: string; expiresAt: string }): Promise<TeamInvitation>;
-  revokeInvitation(id: string): Promise<boolean>;
-  acceptInvitation(input: {
-    tokenHash: string;
-    name: string;
-    passwordHash?: string;
-    acceptedAt: string;
-  }): Promise<TeamMember>;
-  updateMemberRole(userId: string, role: TeamRole): Promise<TeamMember>;
-  removeMember(userId: string): Promise<boolean>;
-  createAuthSession(input: { userId: string; tokenHash: string; expiresAt: string }): Promise<AuthSessionRecord>;
-  getAuthSession(tokenHash: string, now?: string): Promise<AuthPrincipal | null>;
-  deleteAuthSession(tokenHash: string): Promise<boolean>;
-  revokeUserSessions(userId: string): Promise<void>;
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<Project>;
   getProject(projectId: string): Promise<Project | null>;
@@ -167,10 +135,6 @@ export type Store = {
 export type StoreState = MemoryState;
 
 type MemoryState = {
-  users: UserRecord[];
-  members: TeamMember[];
-  invitations: TeamInvitation[];
-  authSessions: AuthSessionRecord[];
   projects: Project[];
   secrets: SecretRecord[];
   jobs: Job[];
@@ -191,10 +155,6 @@ type MemoryState = {
 
 export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
   const state: MemoryState = {
-    users: initialState?.users ?? [],
-    members: initialState?.members ?? [],
-    invitations: initialState?.invitations ?? [],
-    authSessions: initialState?.authSessions ?? [],
     projects: initialState?.projects ?? [],
     secrets: initialState?.secrets ?? [],
     jobs: initialState?.jobs ?? [],
@@ -214,196 +174,6 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
   };
 
   return {
-    async ensureDefaultAdmin(input) {
-      const email = normalizeEmail(input.email);
-      let user = state.users.find((candidate) => candidate.email === email);
-      if (!user) {
-        const now = new Date().toISOString();
-        user = {
-          id: createId("user"),
-          email,
-          name: input.name,
-          passwordHash: input.passwordHash,
-          createdAt: now,
-          updatedAt: now,
-        };
-        state.users.push(user);
-      }
-      if (!state.members.some((member) => member.userId === user.id)) {
-        state.members.push({
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: "admin",
-          joinedAt: new Date().toISOString(),
-        });
-      }
-      return { ...user };
-    },
-
-    async getUserByEmail(email) {
-      const user = state.users.find((candidate) => candidate.email === normalizeEmail(email));
-      return user ? { ...user } : null;
-    },
-
-    async listMembers() {
-      return [...state.members].sort(
-        (left, right) => Number(right.role === "admin") - Number(left.role === "admin") || left.joinedAt.localeCompare(right.joinedAt),
-      );
-    },
-
-    async listInvitations() {
-      return state.invitations
-        .filter((invitation) => invitation.status === "pending")
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-    },
-
-    async getInvitationByTokenHash(tokenHash) {
-      const invitation = state.invitations.find((candidate) => candidate.tokenHash === tokenHash);
-      return invitation ? { ...invitation } : null;
-    },
-
-    async createInvitation(input) {
-      const email = normalizeEmail(input.email);
-      if (state.members.some((member) => member.email === email)) {
-        throw new Error("User is already a team member");
-      }
-      for (const invitation of state.invitations) {
-        if (invitation.email === email && invitation.status === "pending") {
-          invitation.status = "revoked";
-          invitation.updatedAt = new Date().toISOString();
-        }
-      }
-      const now = new Date().toISOString();
-      const invitation: TeamInvitation = {
-        id: createId("invite"),
-        email,
-        role: input.role,
-        status: "pending",
-        tokenHash: input.tokenHash,
-        expiresAt: input.expiresAt,
-        invitedByUserId: input.invitedByUserId,
-        acceptedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      state.invitations.push(invitation);
-      return { ...invitation };
-    },
-
-    async reissueInvitation(id, input) {
-      const invitation = state.invitations.find((candidate) => candidate.id === id);
-      if (!invitation) throw new Error("Invitation not found");
-      if (invitation.status !== "pending") throw new Error("Invitation is no longer pending");
-      invitation.tokenHash = input.tokenHash;
-      invitation.expiresAt = input.expiresAt;
-      invitation.updatedAt = new Date().toISOString();
-      return { ...invitation };
-    },
-
-    async revokeInvitation(id) {
-      const invitation = state.invitations.find((candidate) => candidate.id === id);
-      if (!invitation) return false;
-      if (invitation.status !== "pending") throw new Error("Invitation is no longer pending");
-      invitation.status = "revoked";
-      invitation.updatedAt = new Date().toISOString();
-      return true;
-    },
-
-    async acceptInvitation(input) {
-      const invitation = state.invitations.find((candidate) => candidate.tokenHash === input.tokenHash);
-      if (!invitation) throw new Error("Invitation not found");
-      if (invitation.status !== "pending") throw new Error("Invitation is no longer pending");
-      if (Date.parse(invitation.expiresAt) <= Date.parse(input.acceptedAt)) throw new Error("Invitation has expired");
-
-      let user = state.users.find((candidate) => candidate.email === invitation.email);
-      if (!user) {
-        if (!input.passwordHash) throw new Error("Password is required for a new member");
-        user = {
-          id: createId("user"),
-          email: invitation.email,
-          name: input.name,
-          passwordHash: input.passwordHash,
-          createdAt: input.acceptedAt,
-          updatedAt: input.acceptedAt,
-        };
-        state.users.push(user);
-      } else {
-        user.name = input.name;
-        user.updatedAt = input.acceptedAt;
-      }
-
-      let member = state.members.find((candidate) => candidate.userId === user.id);
-      if (!member) {
-        member = {
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: invitation.role,
-          joinedAt: input.acceptedAt,
-        };
-        state.members.push(member);
-      }
-      invitation.status = "accepted";
-      invitation.acceptedAt = input.acceptedAt;
-      invitation.updatedAt = input.acceptedAt;
-      return { ...member };
-    },
-
-    async updateMemberRole(userId, role) {
-      const member = state.members.find((candidate) => candidate.userId === userId);
-      if (!member) throw new Error("Member not found");
-      if (member.role === "admin" && role !== "admin" && countMemoryAdmins(state) === 1) {
-        throw new Error("Cannot demote the last admin");
-      }
-      member.role = role;
-      return { ...member };
-    },
-
-    async removeMember(userId) {
-      const member = state.members.find((candidate) => candidate.userId === userId);
-      if (!member) return false;
-      if (member.role === "admin" && countMemoryAdmins(state) === 1) {
-        throw new Error("Cannot remove the last admin");
-      }
-      state.members = state.members.filter((candidate) => candidate.userId !== userId);
-      state.authSessions = state.authSessions.filter((session) => session.userId !== userId);
-      return true;
-    },
-
-    async createAuthSession(input) {
-      const now = new Date().toISOString();
-      const session: AuthSessionRecord = {
-        id: createId("authsess"),
-        userId: input.userId,
-        tokenHash: input.tokenHash,
-        expiresAt: input.expiresAt,
-        createdAt: now,
-        updatedAt: now,
-      };
-      state.authSessions.push(session);
-      return { ...session };
-    },
-
-    async getAuthSession(tokenHash, now = new Date().toISOString()) {
-      const session = state.authSessions.find(
-        (candidate) => candidate.tokenHash === tokenHash && Date.parse(candidate.expiresAt) > Date.parse(now),
-      );
-      if (!session) return null;
-      const member = state.members.find((candidate) => candidate.userId === session.userId);
-      return member ? { ...member } : null;
-    },
-
-    async deleteAuthSession(tokenHash) {
-      const previousLength = state.authSessions.length;
-      state.authSessions = state.authSessions.filter((candidate) => candidate.tokenHash !== tokenHash);
-      return state.authSessions.length !== previousLength;
-    },
-
-    async revokeUserSessions(userId) {
-      state.authSessions = state.authSessions.filter((candidate) => candidate.userId !== userId);
-    },
-
     async listProjects() {
       return [...state.projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     },
@@ -1047,14 +817,6 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.logs.filter((log) => log.projectId === projectId && (!type || log.type === type));
     },
   };
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-function countMemoryAdmins(state: MemoryState): number {
-  return state.members.filter((member) => member.role === "admin").length;
 }
 
 function ensureMemorySessionNode(

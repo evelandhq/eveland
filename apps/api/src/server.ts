@@ -3,12 +3,46 @@ import path from "node:path";
 import { createCollectorRuntime } from "@eveland/session-collector";
 import { createApp } from "./app.js";
 import { createStoreFromEnv } from "@eveland/db/factory";
-import { argon2PasswordHasher, createAuthService } from "./auth.js";
-import { resolveAdminConfig } from "./auth-config.js";
+import {
+  authAccounts,
+  authSessions,
+  authVerifications,
+  invitations,
+  teamMemberships,
+  teams,
+  users,
+} from "@eveland/db/schema";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { memoryAdapter } from "better-auth/adapters/memory";
+import { createBetterAuthRuntime } from "./auth.js";
+import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const storeFactory = createStoreFromEnv();
-const auth = createAuthService(storeFactory.store, { hasher: argon2PasswordHasher });
+const betterAuthConfig = resolveBetterAuthConfig(process.env);
+const authDatabase = storeFactory.database
+  ? drizzleAdapter(storeFactory.database.db, {
+      provider: "pg",
+      schema: {
+        user: users,
+        session: authSessions,
+        account: authAccounts,
+        verification: authVerifications,
+        organization: teams,
+        member: teamMemberships,
+        invitation: invitations,
+      },
+    })
+  : memoryAdapter({
+      user: [],
+      session: [],
+      account: [],
+      verification: [],
+      organization: [],
+      member: [],
+      invitation: [],
+    });
+const auth = createBetterAuthRuntime({ database: authDatabase, ...betterAuthConfig });
 await auth.bootstrapDefaultAdmin(resolveAdminConfig(process.env));
 const collectorMode = process.env.EVELAND_COLLECTOR_MODE ?? "embedded";
 const collector =
