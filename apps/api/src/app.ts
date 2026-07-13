@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import type { LogRecord } from "@eveland/core/contracts";
+import type { AuthPrincipal, TeamInvitation } from "@eveland/core/contracts";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
@@ -16,6 +17,11 @@ import {
   type PlaygroundRunEvent,
   type PlaygroundRunner,
 } from "./gateway-playground.js";
+import {
+  clearSessionCookie,
+  serializeSessionCookie,
+  type AuthService,
+} from "./auth.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +38,25 @@ const secretSchema = z.object({
 
 const playgroundMessageSchema = z.object({
   message: z.string().min(1),
+});
+
+const signInSchema = z.object({
+  email: z.email(),
+  password: z.string().min(1),
+});
+
+const invitationSchema = z.object({
+  email: z.email(),
+});
+
+const memberRoleSchema = z.object({
+  role: z.enum(["admin", "member"]),
+});
+
+const acceptInvitationSchema = z.object({
+  token: z.string().min(1),
+  name: z.string().trim().min(1),
+  password: z.string().min(12),
 });
 
 const targetsArraySchema = z.array(z.object({
@@ -61,6 +86,9 @@ function validateTargetsPayload(
 const devSecretKey = "eveland-dev-secret-key-000000000";
 
 export type AppOptions = {
+  auth?: AuthService;
+  webOrigin?: string;
+  cookieDomain?: string;
   appSecretKey?: string;
   playgroundRunner?: PlaygroundRunner;
   dataDir?: string;
@@ -70,17 +98,23 @@ export type AppOptions = {
   invalidateGatewayRoutes?: (hostnames: string[]) => Promise<void>;
 };
 
-export function createApp(store: Store, options: AppOptions = {}): Hono {
-  const app = new Hono();
+export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variables: { principal: AuthPrincipal } }> {
+  const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
+  if (!options.auth && process.env.NODE_ENV !== "test") {
+    throw new Error("Control-plane authentication is required outside tests.");
+  }
   const appSecretKey = options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
   assertValidSecretKey(appSecretKey);
   const playgroundRunner = options.playgroundRunner ?? runGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
+  const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
+  const secureCookies = new URL(webOrigin).protocol === "https:";
+  const cookieDomain = options.cookieDomain ?? process.env.EVELAND_COOKIE_DOMAIN;
 
   app.use(
     "*",
     cors({
-      origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
+      origin: webOrigin,
       credentials: true,
     }),
   );
@@ -101,6 +135,116 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
       },
     ),
   );
+
+  if (options.auth) {
+    app.post("/auth/sign-in", async (c) => {
+      const parsed = signInSchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) return c.json({ error: "Invalid sign-in input" }, 400);
+      try {
+        const session = await options.auth!.signIn(parsed.data.email, parsed.data.password);
+        c.header("set-cookie", serializeSessionCookie(session.token, session.expiresAt, secureCookies, cookieDomain));
+        return c.json({ member: session.principal });
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+
+    app.post("/invitations/accept", async (c) => {
+      const parsed = acceptInvitationSchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) return c.json({ error: "Invalid invitation acceptance", issues: parsed.error.issues }, 400);
+      try {
+        const session = await options.auth!.acceptInvitation(parsed.data);
+        c.header("set-cookie", serializeSessionCookie(session.token, session.expiresAt, secureCookies, cookieDomain));
+        return c.json({ member: session.principal });
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+
+    app.use("*", async (c, next) => {
+      const principal = await options.auth!.authenticate(c.req.raw);
+      if (!principal) return c.json({ error: "Authentication required" }, 401);
+      c.set("principal", principal);
+      await next();
+    });
+
+    app.get("/auth/session", (c) => c.json({ member: c.get("principal") }));
+
+    app.post("/auth/sign-out", async (c) => {
+      await options.auth!.signOut(c.req.raw);
+      c.header("set-cookie", clearSessionCookie(secureCookies, cookieDomain));
+      return c.json({ ok: true });
+    });
+
+    app.get("/members", async (c) => c.json({ members: await options.auth!.listMembers(c.get("principal")) }));
+
+    app.get("/invitations", async (c) => {
+      try {
+        const invitations = await options.auth!.listInvitations(c.get("principal"));
+        return c.json({ invitations: invitations.map(publicInvitation) });
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+
+    app.post("/invitations", async (c) => {
+      const parsed = invitationSchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) return c.json({ error: "Invalid invitation input", issues: parsed.error.issues }, 400);
+      try {
+        const issued = await options.auth!.invite(c.get("principal"), parsed.data.email);
+        return c.json(
+          {
+            invitation: publicInvitation(issued.invitation),
+            inviteUrl: `${webOrigin}/accept-invite?token=${encodeURIComponent(issued.token)}`,
+          },
+          201,
+        );
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+
+    app.post("/invitations/:invitationId/resend", async (c) => {
+      try {
+        const issued = await options.auth!.reissueInvitation(c.get("principal"), c.req.param("invitationId"));
+        return c.json({
+          invitation: publicInvitation(issued.invitation),
+          inviteUrl: `${webOrigin}/accept-invite?token=${encodeURIComponent(issued.token)}`,
+        });
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+
+    app.delete("/invitations/:invitationId", async (c) => {
+      try {
+        const revoked = await options.auth!.revokeInvitation(c.get("principal"), c.req.param("invitationId"));
+        return revoked ? c.body(null, 204) : c.json({ error: "Invitation not found" }, 404);
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+
+    app.patch("/members/:userId", async (c) => {
+      const parsed = memberRoleSchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) return c.json({ error: "Invalid member role" }, 400);
+      try {
+        const member = await options.auth!.updateMemberRole(c.get("principal"), c.req.param("userId"), parsed.data.role);
+        return c.json({ member });
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+
+    app.delete("/members/:userId", async (c) => {
+      try {
+        const removed = await options.auth!.removeMember(c.get("principal"), c.req.param("userId"));
+        return removed ? c.body(null, 204) : c.json({ error: "Member not found" }, 404);
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+  }
 
   app.get("/projects", async (c) => c.json({ projects: await store.listProjects() }));
 
@@ -404,6 +548,22 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
   });
 
   return app;
+}
+
+function publicInvitation(invitation: TeamInvitation) {
+  const { tokenHash: _tokenHash, ...publicFields } = invitation;
+  return publicFields;
+}
+
+function authErrorResponse(c: Context, error: unknown): Response {
+  const message = error instanceof Error ? error.message : "Authentication request failed";
+  if (message === "Admin access required") return c.json({ error: message }, 403);
+  if (message === "Invalid email or password") return c.json({ error: message }, 401);
+  if (message.includes("last admin") || message.includes("already a team member") || message.includes("no longer pending")) {
+    return c.json({ error: message }, 409);
+  }
+  if (message.includes("not found")) return c.json({ error: message }, 404);
+  return c.json({ error: message }, 400);
 }
 
 async function invalidateGateway(options: AppOptions, hostnames: string[]): Promise<void> {

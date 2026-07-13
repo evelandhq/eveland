@@ -1,4 +1,4 @@
-import { getSecrets } from "@/lib/api";
+import { getSecrets } from "@/lib/server-api";
 import { SecretForm } from "@/components/secret-form";
 
 export const dynamic = "force-dynamic";

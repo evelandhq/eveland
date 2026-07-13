@@ -3,9 +3,13 @@ import path from "node:path";
 import { createCollectorRuntime } from "@eveland/session-collector";
 import { createApp } from "./app.js";
 import { createStoreFromEnv } from "@eveland/db/factory";
+import { argon2PasswordHasher, createAuthService } from "./auth.js";
+import { resolveAdminConfig } from "./auth-config.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const storeFactory = createStoreFromEnv();
+const auth = createAuthService(storeFactory.store, { hasher: argon2PasswordHasher });
+await auth.bootstrapDefaultAdmin(resolveAdminConfig(process.env));
 const collectorMode = process.env.EVELAND_COLLECTOR_MODE ?? "embedded";
 const collector =
   collectorMode === "disabled"
@@ -21,7 +25,10 @@ const collector =
 collector?.start();
 
 serve({
-  fetch: createApp(storeFactory.store, { collectorHealth: collector ? () => collector.getHealth() : undefined }).fetch,
+  fetch: createApp(storeFactory.store, {
+    auth,
+    collectorHealth: collector ? () => collector.getHealth() : undefined,
+  }).fetch,
   port,
 });
 

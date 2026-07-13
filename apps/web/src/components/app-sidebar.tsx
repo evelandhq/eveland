@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowLeftIcon, SproutIcon } from "lucide-react"
 import { ProjectNav } from "@/components/project-nav"
+import { SignOutButton } from "@/components/sign-out-button"
 import {
   Sidebar,
   SidebarContent,
@@ -26,6 +27,7 @@ import {
 export function AppSidebar() {
   const pathname = usePathname()
   const projectId = getProjectIdFromPathname(pathname)
+  if (pathname === "/login" || pathname.startsWith("/accept-invite")) return null
 
   return (
     <Sidebar collapsible="icon">
@@ -88,9 +90,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <p className="px-2 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
-          eve runtime control plane
-        </p>
+        <SignOutButton />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

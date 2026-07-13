@@ -1,17 +1,78 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, doublePrecision, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
   name: text("name"),
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const teams = pgTable("teams", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const teamMemberships = pgTable(
+  "team_memberships",
+  {
+    teamId: text("team_id").notNull().references(() => teams.id),
+    userId: text("user_id").notNull().references(() => users.id),
+    role: text("role").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.teamId, table.userId] }),
+    check("team_memberships_role_check", sql`${table.role} in ('admin', 'member')`),
+    index("team_memberships_user_idx").on(table.userId),
+  ],
+);
+
+export const invitations = pgTable(
+  "invitations",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id").notNull().references(() => teams.id),
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    status: text("status").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    invitedByUserId: text("invited_by_user_id").notNull().references(() => users.id),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("invitations_role_check", sql`${table.role} in ('admin', 'member')`),
+    check("invitations_status_check", sql`${table.status} in ('pending', 'accepted', 'revoked')`),
+    index("invitations_team_status_idx").on(table.teamId, table.status),
+    index("invitations_email_idx").on(table.email),
+  ],
+);
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("auth_sessions_user_idx").on(table.userId), index("auth_sessions_expires_idx").on(table.expiresAt)],
+);
+
 export const projects = pgTable("projects", {
   id: text("id").primaryKey(),
   routingKey: text("routing_key").notNull().unique(),
+  teamId: text("team_id").notNull().default("team_local").references(() => teams.id),
   ownerId: text("owner_id").notNull().references(() => users.id),
   name: text("name").notNull(),
   importKind: text("import_kind").notNull(),

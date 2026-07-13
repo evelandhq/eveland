@@ -1,4 +1,4 @@
-import { getSessionEvents, getSessionNodes, getSessionUsage, getSessions } from "@/lib/api"
+import { getSessionEvents, getSessionNodes, getSessionUsage, getSessions } from "@/lib/server-api"
 import { formatTokenCount, formatUsd, groupModelUsageByAgent } from "@/lib/usage"
 
 export default async function SessionTimelinePage({

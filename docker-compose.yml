@@ -25,6 +25,9 @@ services:
       WEB_ORIGIN: http://localhost:3000
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       APP_SECRET_KEY: eveland-dev-secret-key-000000000
+      EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}
+      EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"
+      EVELAND_COOKIE_DOMAIN: ${EVELAND_COOKIE_DOMAIN:-}
       EVELAND_DATA_DIR: /workspace/.eveland-data
       EVELAND_OBSERVER_ROOT: /workspace/.eveland-data/observer
       EVELAND_COLLECTOR_MODE: embedded

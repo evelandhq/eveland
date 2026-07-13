@@ -37,4 +37,11 @@ describe("Compose controller security boundaries", () => {
     expect(gateway).not.toContain("/var/lib/eveland");
     expect(serviceBlock(productionCompose, "gateway")).not.toContain("/var/lib/eveland");
   });
+
+  it("requires an explicit initial admin password and defaults the admin email", () => {
+    const api = serviceBlock(developmentCompose, "api");
+
+    expect(api).toContain("EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}");
+    expect(api).toContain('EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"');
+  });
 });

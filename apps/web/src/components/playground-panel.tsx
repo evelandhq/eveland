@@ -5,7 +5,8 @@ import { LoaderCircleIcon, SendIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Textarea } from "@/components/ui/textarea"
-import { runPlaygroundMessage, type Session, type SessionEvent } from "@/lib/api"
+import { runPlaygroundMessage } from "@/lib/client-api"
+import type { Session, SessionEvent } from "@/lib/api"
 
 type PlaygroundPanelProps = {
   projectId: string

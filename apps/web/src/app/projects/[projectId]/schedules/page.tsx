@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSchedules } from "@/lib/api";
+import { getSchedules } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 

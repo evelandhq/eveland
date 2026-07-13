@@ -15,7 +15,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
-import { getSourceFile, getSourceFiles } from '@/lib/api';
+import { getSourceFile, getSourceFiles } from '@/lib/server-api';
 import { cn } from '@/lib/utils';
 import { getSourceLanguage, highlightSourceCode } from '@/lib/source-highlight';
 

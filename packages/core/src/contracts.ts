@@ -4,6 +4,48 @@ export type DeploymentStatus = "not_deployed" | "building" | "starting" | "runni
 export type SessionStatus = "running" | "waiting" | "completed" | "failed" | "waiting_approval";
 export type SessionTrigger = "playground" | "cron" | "webhook" | "channel" | "api" | "direct_http";
 export type RuntimeKind = "docker" | "systemd";
+export type TeamRole = "admin" | "member";
+
+export type UserRecord = {
+  id: string;
+  email: string;
+  name: string | null;
+  passwordHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TeamMember = {
+  userId: string;
+  email: string;
+  name: string | null;
+  role: TeamRole;
+  joinedAt: string;
+};
+
+export type TeamInvitation = {
+  id: string;
+  email: string;
+  role: TeamRole;
+  status: "pending" | "accepted" | "revoked";
+  tokenHash: string;
+  expiresAt: string;
+  invitedByUserId: string;
+  acceptedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AuthPrincipal = TeamMember;
+
+export type AuthSessionRecord = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type Project = {
   id: string;

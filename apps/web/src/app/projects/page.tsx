@@ -20,7 +20,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
-import { getCollectorHealth, getProjects } from '@/lib/api';
+import { getCollectorHealth, getProjects } from '@/lib/server-api';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';

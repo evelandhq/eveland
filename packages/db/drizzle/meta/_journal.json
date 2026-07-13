@@ -78,6 +78,13 @@
       "when": 1783922430275,
       "tag": "0010_clammy_bromley",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783938684879,
+      "tag": "0011_colossal_puppet_master",
+      "breakpoints": true
     }
   ]
 }
