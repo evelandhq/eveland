@@ -1,0 +1,56 @@
+---
+title: 部署 Eve 项目
+description: 导入源码、配置 Secrets、构建 Preview，并安全提升到生产。
+---
+
+Eveland 部署普通的 Eve 项目。继续按照 Eve 的标准文件位置组织 Agent instructions、tools、skills、channels、connections、subagents、sandboxes 和 schedules。
+
+## 1. 导入源码
+
+可以使用：
+
+- Git 仓库 URL；或
+- 包含项目的 Zip 压缩包。
+
+Eveland 会生成 Source Revision、验证项目结构，并提供只读源码视图。Git Project 可以使用 **Sync & deploy** 拉取新 Revision；Zip Revision 始终是固定快照。
+
+## 2. 配置 Secrets
+
+在 **Secrets** 页面添加所需的 Provider Key 和应用环境变量。Secret value 会加密保存，仅在运行时注入，并且不会再次显示。
+
+Secrets 不会进入：
+
+- Git 仓库或上传的 Zip
+- Build Log
+- Source 浏览页
+- Session 时间线
+
+同名 Project Secret 会覆盖 Eveland 提供的环境变量。
+
+## 3. 构建与部署
+
+**Build & Deploy** 会准备 Release 目录、安装依赖、运行 `eve build`、分配私有回环端口、启动 Deployment，并等待 Eve 健康检查接口响应。
+
+开发环境中，Worker 默认使用 Docker。在 Linux 生产安装中，宿主机 Worker 使用 systemd 和无特权应用用户。
+
+## 4. 测试 Preview
+
+每次成功构建都会在当前生产 Deployment 旁启动。使用不可变 Preview Host 和 Playground 检查：
+
+- 最终响应与 Streaming 行为
+- Tool 与 Subagent 事件
+- Runtime stdout/stderr
+- Token 用量与完整性
+- 所需的 Connections 与 Schedules
+
+原始动态端口只是私有实现细节，请使用 Preview Host。
+
+## 5. 提升或回滚
+
+提升会原子更新 Stable Route，不会重新构建 Release。已有 Session 保持绑定在原 Deployment，新 Session 使用更新后的路由。
+
+回滚是相反方向的路由操作：选择仍在保留期内的健康 Deployment，将 Stable Route 移回去。
+
+## 保留规则
+
+Eveland 至少保留最新三个 Release Artifact。当某个 Release 仍被可变 Route 选中，或它的 Deployment 仍拥有活跃 SessionBinding 时，不能归档它。

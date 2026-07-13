@@ -1,0 +1,46 @@
+---
+title: 故障排查
+description: 诊断常见的导入、构建、部署、路由与可观察性问题。
+---
+
+从真正失败的 Job 或 Session 开始。Eveland 将 Build Log、Deploy Log、Runtime output 和 Session timeline 分开，让每类故障都有更准确的位置。
+
+## Project 导入后一直处于 Pending
+
+确认 Worker 正在运行，并与 API 连接同一个数据库。导入和部署都是队列 Job；只有 Web 与 API 无法执行它们。
+
+如果 Worker 运行在 Compose 中，确认 `EVELAND_HOST_DATA_DIR` 是工作区数据目录在宿主机上的绝对路径。API 与 Worker 必须将保存的 `sourcePath` 解析到同一份文件。
+
+## Zip 导入提示 Source Path 缺失
+
+请使用真正的 multipart 文件上传压缩包。文件名或 JSON 占位符不会创建源码内容。随后检查 Import Job Error 与配置数据根目录下的解压目录。
+
+## 构建成功但健康检查失败
+
+检查 Deploy Log 与 Runtime stderr。确认 Deployment 监听分配的 `EVELAND_DEPLOYMENT_PORT`，并在配置的超时前响应 `/eve/v1/health`。
+
+在 systemd 上，还应检查 transient unit：
+
+```bash
+systemctl status 'eveland-*'
+journalctl -u 'eveland-*' --since -15m
+```
+
+## 公开 Agent Host 返回 404 或 502
+
+逐项确认：
+
+- DNS 与 TLS 覆盖通配 Agent domain。
+- Traefik 将通配 Host 转发到 Gateway，而不是 Deployment 端口。
+- Domain 已加入 `EVELAND_AGENT_BASE_DOMAINS`。
+- 选中的 Deployment 正在运行，并且只绑定到 loopback。
+
+## Usage 不完整或缺失
+
+Eveland 只记录 Eve 在 `step.completed.data.usage` 中报告的 Provider Usage，不估算缺失值。将零当作真实消耗前，先检查 Session 的 Usage completeness 与 Collector health。
+
+目录形式的 Subagent 有独立 Observer Hook。文件形式的 Subagent 目前没有 Eve 提供的同等公开观察面，因此可能表现为已知覆盖缺口。
+
+## systemd Preflight 失败
+
+运行独立 Preflight，并解决它输出的完整列表。常见原因包括数据目录不是绝对路径、Service User 缺失、没有 `/workspace` 目录、Sandbox Package 尚未构建，或 Ubuntu 阻止 bubblewrap user namespace。

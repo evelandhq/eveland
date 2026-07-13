@@ -13,6 +13,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private.
 - `apps/worker`: Docker runtime adapter, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
+- `apps/docs`: Bilingual public website and documentation for `eveland.ai`, built with Next.js and Fumadocs. It keeps the marketing site separate from the authenticated control panel and publishes English and Chinese routes, search, sitemap, and `llms.txt`.
 
 ## Local Development
 
@@ -27,6 +28,12 @@ pnpm --filter @eveland/worker dev
 ```
 
 Open `http://localhost:3000`.
+
+Run the public website separately on `http://localhost:3001`:
+
+```bash
+pnpm dev:docs
+```
 
 All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
 

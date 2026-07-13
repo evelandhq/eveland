@@ -1,0 +1,46 @@
+---
+title: Troubleshooting
+description: Diagnose common import, build, deployment, routing, and observability failures.
+---
+
+Start with the job or session that actually failed. Eveland separates build logs, deploy logs, runtime output, and session timelines so each failure has a more precise home.
+
+## A project stays pending after import
+
+Confirm Worker is running and connected to the same database as API. Imports and deploys are queued jobs; Web and API alone cannot execute them.
+
+For a Compose Worker, verify that `EVELAND_HOST_DATA_DIR` is the host-absolute path to the workspace data directory. API and Worker must resolve the stored `sourcePath` to the same files.
+
+## A Zip import reports a missing source path
+
+Send the archive as a real multipart file upload. A filename or JSON placeholder does not create source content. Then inspect the import job error and the extracted directory under the configured data root.
+
+## Build succeeds but health checks fail
+
+Check deploy logs and runtime stderr. Confirm the deployment listens on its allocated `EVELAND_DEPLOYMENT_PORT` and responds at `/eve/v1/health` before the configured timeout.
+
+On systemd, also inspect the transient unit:
+
+```bash
+systemctl status 'eveland-*'
+journalctl -u 'eveland-*' --since -15m
+```
+
+## The public agent host returns 404 or 502
+
+Verify that:
+
+- DNS and TLS cover the wildcard agent domain.
+- Traefik forwards that wildcard host to Gateway, not to a deployment port.
+- the domain is listed in `EVELAND_AGENT_BASE_DOMAINS`.
+- the selected deployment is running and bound only to loopback.
+
+## Usage is partial or missing
+
+Eveland records only provider usage reported by Eve in `step.completed.data.usage`; it does not estimate absent values. Check the session’s usage completeness and collector health before treating zero as real consumption.
+
+Directory-form subagents have independent observer hooks. File-form subagents do not currently expose the same public observation surface in Eve and may appear as a documented coverage gap.
+
+## systemd preflight fails
+
+Run the standalone preflight and resolve the complete list it prints. Common causes are a relative data directory, missing service users, no `/workspace` directory, an unbuilt sandbox package, or Ubuntu blocking bubblewrap user namespaces.
