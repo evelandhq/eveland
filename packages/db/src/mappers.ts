@@ -378,12 +378,14 @@ export function sessionBindingRowToSessionBinding(row: {
   requestId: string;
   remoteIp: string | null;
   affinityFingerprint: string | null;
+  affinitySource: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): SessionBinding {
   return {
     ...row,
     trigger: row.trigger as SessionBinding["trigger"],
+    affinitySource: row.affinitySource as SessionBinding["affinitySource"],
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };

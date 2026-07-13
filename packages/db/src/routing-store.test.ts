@@ -145,6 +145,7 @@ describe("routing repository", () => {
       requestId: "req_1",
       remoteIp: "203.0.113.10",
       affinityFingerprint: null,
+      affinitySource: null,
     });
 
     await expect(store.listSessions(project.id)).resolves.toEqual([
@@ -186,6 +187,7 @@ describe("routing repository", () => {
       requestId: "req_playground",
       remoteIp: null,
       affinityFingerprint: null,
+      affinitySource: null,
     });
 
     const completed = await store.completeSession(session.id, { status: "completed", eveSessionId: "eve_playground" });

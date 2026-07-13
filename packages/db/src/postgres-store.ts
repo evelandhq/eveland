@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
-import { createId, createRoutingKey } from "@eveland/core/ids";
+import { claimRoutingKey, createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { Database } from "./client.js";
@@ -174,23 +174,28 @@ export function createPostgresStore(database: Database): Store {
 
     async createProject(input: CreateProjectInput) {
       await ensureDefaultOwner();
-      const [row] = await db
-        .insert(projects)
-        .values({
-          id: createId("proj"),
-          routingKey: createRoutingKey("p"),
-          ownerId: defaultOwner.id,
-          name: input.name,
-          importKind: input.importKind,
-          gitUrl: input.gitUrl ?? null,
-          status: "import_pending",
-          deploymentStatus: "not_deployed",
-        })
-        .returning();
-
-      if (!row) {
-        throw new Error("Failed to create project.");
-      }
+      const row = await claimRoutingKey("p", async (routingKey) => {
+        try {
+          const [claimed] = await db
+            .insert(projects)
+            .values({
+              id: createId("proj"),
+              routingKey,
+              ownerId: defaultOwner.id,
+              name: input.name,
+              importKind: input.importKind,
+              gitUrl: input.gitUrl ?? null,
+              status: "import_pending",
+              deploymentStatus: "not_deployed",
+            })
+            .returning();
+          if (!claimed) throw new Error("Failed to create project.");
+          return claimed;
+        } catch (error) {
+          if (isUniqueConstraint(error, "projects_routing_key_unique")) return null;
+          throw error;
+        }
+      });
 
       await createJob(row.id, "import_source", {
         importKind: input.importKind,
@@ -479,24 +484,29 @@ export function createPostgresStore(database: Database): Store {
         throw new Error("Failed to create release.");
       }
 
-      const [deploymentRow] = await db
-        .insert(deployments)
-        .values({
-          id: input.deploymentId ?? createId("dep"),
-          deploymentKey: createRoutingKey("d"),
-          projectId: input.projectId,
-          releaseId: releaseRow.id,
-          containerName: input.containerName,
-          internalPort: input.internalPort,
-          hostPort: input.hostPort,
-          status: "running",
-          runtimeKind: input.runtimeKind,
-        })
-        .returning();
-
-      if (!deploymentRow) {
-        throw new Error("Failed to create deployment.");
-      }
+      const deploymentRow = await claimRoutingKey("d", async (deploymentKey) => {
+        try {
+          const [claimed] = await db
+            .insert(deployments)
+            .values({
+              id: input.deploymentId ?? createId("dep"),
+              deploymentKey,
+              projectId: input.projectId,
+              releaseId: releaseRow.id,
+              containerName: input.containerName,
+              internalPort: input.internalPort,
+              hostPort: input.hostPort,
+              status: "running",
+              runtimeKind: input.runtimeKind,
+            })
+            .returning();
+          if (!claimed) throw new Error("Failed to create deployment.");
+          return claimed;
+        } catch (error) {
+          if (isUniqueConstraint(error, "deployments_deployment_key_unique")) return null;
+          throw error;
+        }
+      });
 
       await db
         .update(projects)
@@ -1411,4 +1421,10 @@ function recordValue(value: unknown): Record<string, unknown> | null {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function isUniqueConstraint(error: unknown, constraint: string): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const record = error as { code?: unknown; constraint_name?: unknown; constraint?: unknown };
+  return record.code === "23505" && (record.constraint_name === constraint || record.constraint === constraint);
 }

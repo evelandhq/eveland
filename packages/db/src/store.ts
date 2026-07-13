@@ -1,4 +1,4 @@
-import { createId, createRoutingKey } from "@eveland/core/ids";
+import { claimRoutingKey, createId } from "@eveland/core/ids";
 import type {
   AgentRoute,
   Job,
@@ -178,24 +178,27 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async createProject(input) {
       const now = new Date().toISOString();
-      const project: Project = {
-        id: createId("proj"),
-        routingKey: createRoutingKey("p"),
-        name: input.name,
-        importKind: input.importKind,
-        gitUrl: input.gitUrl ?? null,
-        status: "import_pending",
-        deploymentStatus: "not_deployed",
-        sourceRevisionId: null,
-        releaseId: null,
-        deploymentId: null,
-        latestSessionStatus: null,
-        nextScheduleAt: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      state.projects.push(project);
+      const project = await claimRoutingKey("p", async (routingKey) => {
+        if (state.projects.some((candidate) => candidate.routingKey === routingKey)) return null;
+        const claimed: Project = {
+          id: createId("proj"),
+          routingKey,
+          name: input.name,
+          importKind: input.importKind,
+          gitUrl: input.gitUrl ?? null,
+          status: "import_pending",
+          deploymentStatus: "not_deployed",
+          sourceRevisionId: null,
+          releaseId: null,
+          deploymentId: null,
+          latestSessionStatus: null,
+          nextScheduleAt: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        state.projects.push(claimed);
+        return claimed;
+      });
       state.jobs.push(createJob(project.id, "import_source", { importKind: input.importKind, gitUrl: input.gitUrl ?? null, sourcePath: input.sourcePath ?? null }));
       return project;
     },
@@ -398,21 +401,25 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         imageTag: input.imageTag,
         createdAt: now,
       };
-      const deployment: DeploymentRecord = {
-        id: input.deploymentId ?? createId("dep"),
-        deploymentKey: createRoutingKey("d"),
-        projectId: input.projectId,
-        releaseId: release.id,
-        containerName: input.containerName,
-        internalPort: input.internalPort,
-        hostPort: input.hostPort,
-        status: "running",
-        runtimeKind: input.runtimeKind,
-        createdAt: now,
-        updatedAt: now,
-      };
+      const deployment = await claimRoutingKey("d", async (deploymentKey) => {
+        if (state.deployments.some((candidate) => candidate.deploymentKey === deploymentKey)) return null;
+        const claimed: DeploymentRecord = {
+          id: input.deploymentId ?? createId("dep"),
+          deploymentKey,
+          projectId: input.projectId,
+          releaseId: release.id,
+          containerName: input.containerName,
+          internalPort: input.internalPort,
+          hostPort: input.hostPort,
+          status: "running",
+          runtimeKind: input.runtimeKind,
+          createdAt: now,
+          updatedAt: now,
+        };
+        state.deployments.push(claimed);
+        return claimed;
+      });
       state.releases.push(release);
-      state.deployments.push(deployment);
 
       const project = state.projects.find((candidate) => candidate.id === input.projectId);
       if (project && !project.deploymentId) {

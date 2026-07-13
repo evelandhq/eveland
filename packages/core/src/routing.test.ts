@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { affinityBucket, selectWeightedTarget, validateRouteTargets, isDeploymentProtected } from "./routing.js";
+import { affinityBucket, affinityBucketForRoute, selectWeightedTarget, validateRouteTargets, isDeploymentProtected } from "./routing.js";
 
 describe("route policy", () => {
   test("uses a deterministic 10,000 bucket and honors 90/10 then 50/50 weights", () => {
@@ -14,6 +14,14 @@ describe("route policy", () => {
     expect(keys.filter((key) => selectWeightedTarget(ninetyTen, key)?.deploymentId === "dep_b").length).toBeGreaterThan(60);
     expect(keys.filter((key) => selectWeightedTarget(ninetyTen, key)?.deploymentId === "dep_b").length).toBeLessThan(140);
     expect(keys.filter((key) => selectWeightedTarget(fiftyFifty, key)?.deploymentId === "dep_b").length).toBeGreaterThan(430);
+  });
+
+  test("scopes deterministic affinity to the route id and policy revision", () => {
+    const key = "client-version-key";
+
+    expect(affinityBucketForRoute("route_a", 7, key)).toBe(affinityBucketForRoute("route_a", 7, key));
+    expect(affinityBucketForRoute("route_a", 7, key)).not.toBe(affinityBucketForRoute("route_a", 8, key));
+    expect(affinityBucketForRoute("route_a", 7, key)).not.toBe(affinityBucketForRoute("route_b", 7, key));
   });
 
   test("rejects more than two targets, duplicate deployments, and invalid totals", () => {

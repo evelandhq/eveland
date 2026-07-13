@@ -152,6 +152,7 @@ export type SessionBinding = {
   requestId: string;
   remoteIp: string | null;
   affinityFingerprint: string | null;
+  affinitySource: "cookie" | "version_key" | "generated" | null;
   createdAt: string;
   updatedAt: string;
 };

@@ -7,10 +7,17 @@ const allowedBaseDomains = (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.loc
   .split(",")
   .map((value) => value.trim().toLowerCase())
   .filter(Boolean);
+const affinitySecret =
+  process.env.EVELAND_GATEWAY_AFFINITY_SECRET ??
+  (process.env.NODE_ENV === "production" ? null : "eveland-dev-affinity-secret");
+if (!affinitySecret) throw new Error("EVELAND_GATEWAY_AFFINITY_SECRET is required in production.");
 const { store, close } = createStoreFromEnv();
 await store.reconcileAgentRoutes(allowedBaseDomains[0] ?? "agent.localhost");
 const app = createGatewayApp(store, {
   allowedBaseDomains,
+  affinitySecret,
+  affinityCookieSecure: (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME ?? "http") === "https",
+  maxRequestBodyBytes: Number(process.env.EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES ?? 10_485_760),
   internalServiceToken:
     process.env.EVELAND_GATEWAY_SERVICE_TOKEN ??
     (process.env.NODE_ENV === "production" ? undefined : "eveland-dev-gateway-token"),
