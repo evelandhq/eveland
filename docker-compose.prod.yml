@@ -41,7 +41,6 @@ services:
       EVELAND_GATEWAY_PUBLIC_PORT: 0
     volumes:
       - .:/workspace
-      - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/eveland:/var/lib/eveland
 
   gateway:

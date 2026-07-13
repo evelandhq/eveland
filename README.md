@@ -30,7 +30,9 @@ Open `http://localhost:3000`.
 
 All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
 
-Docker Compose runs the full stack (Postgres + API + Gateway + web + worker) in **development mode**:
+Docker Compose runs the full stack (Postgres + API + Gateway + web + worker) in **development mode**.
+Only the worker receives the Docker controller socket; Gateway masks `.eveland-data` so the public
+proxy cannot read imported project sources, observer outboxes, or encrypted project secrets:
 
 ```bash
 docker compose up

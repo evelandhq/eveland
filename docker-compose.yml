@@ -35,7 +35,6 @@ services:
       - "4000:4000"
     volumes:
       - .:/workspace
-      - /var/run/docker.sock:/var/run/docker.sock
 
   gateway:
     image: node:24-alpine
@@ -56,6 +55,9 @@ services:
       - "4080:4080"
     volumes:
       - .:/workspace
+      # The repository bind is for live application code only. Hide imported project
+      # sources, observer outboxes, and encrypted secret material from the public proxy.
+      - eveland-gateway-data-mask:/workspace/.eveland-data
 
   web:
     image: node:24-alpine
@@ -98,3 +100,4 @@ services:
 
 volumes:
   eveland-postgres:
+  eveland-gateway-data-mask:
