@@ -1,5 +1,5 @@
-import Link from "next/link"
-import { FileCodeIcon } from "lucide-react"
+import Link from 'next/link';
+import { FileCodeIcon } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -7,43 +7,42 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from '@/components/ui/card';
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty"
-import { getSourceFile, getSourceFiles } from "@/lib/api"
-import { cn } from "@/lib/utils"
-import { getSourceLanguage, highlightSourceCode } from "@/lib/source-highlight"
+} from '@/components/ui/empty';
+import { getSourceFile, getSourceFiles } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { getSourceLanguage, highlightSourceCode } from '@/lib/source-highlight';
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic';
 
 export default async function SourcePage({
   params,
   searchParams,
 }: {
-  params: Promise<{ projectId: string }>
-  searchParams: Promise<{ path?: string }>
+  params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ path?: string }>;
 }) {
-  const { projectId } = await params
-  const { path } = await searchParams
-  const files = await getSourceFiles(projectId)
-  const selectedPath = path ?? files[0]?.path ?? null
-  const selectedFile = selectedPath ? await getSourceFile(projectId, selectedPath) : null
+  const { projectId } = await params;
+  const { path } = await searchParams;
+  const files = await getSourceFiles(projectId);
+  const selectedPath = path ?? files[0]?.path ?? null;
+  const selectedFile = selectedPath ? await getSourceFile(projectId, selectedPath) : null;
   const highlightedSource = selectedFile
     ? await highlightSourceCode(selectedFile.content, selectedFile.path)
-    : null
-  const selectedLanguage = selectedFile ? getSourceLanguage(selectedFile.path) : null
+    : null;
+  const selectedLanguage = selectedFile ? getSourceLanguage(selectedFile.path) : null;
 
   return (
     <div className="grid min-w-0 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
       <Card size="sm" className="h-fit lg:sticky lg:top-16">
         <CardHeader>
           <CardTitle>Source files</CardTitle>
-          <CardDescription>Browse the indexed project revision.</CardDescription>
         </CardHeader>
         <CardContent>
           <nav className="flex max-h-[calc(100svh-16rem)] flex-col gap-px overflow-auto text-xs">
@@ -52,8 +51,8 @@ export default async function SourcePage({
                 key={file.path}
                 href={`/projects/${projectId}/source?path=${encodeURIComponent(file.path)}`}
                 className={cn(
-                  "truncate rounded-sm px-2 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground",
-                  file.path === selectedPath && "bg-muted font-medium text-foreground",
+                  'truncate rounded-sm px-2 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground',
+                  file.path === selectedPath && 'bg-muted font-medium text-foreground',
                 )}
               >
                 {file.path}
@@ -62,16 +61,22 @@ export default async function SourcePage({
           </nav>
         </CardContent>
         <CardFooter className="border-t text-xs text-muted-foreground">
-          {files.length} indexed {files.length === 1 ? "file" : "files"}
+          {files.length} indexed {files.length === 1 ? 'file' : 'files'}
         </CardFooter>
       </Card>
 
       <Card size="sm" className="min-w-0">
         <CardHeader>
-          <CardTitle className="truncate">{selectedFile?.path ?? "File content"}</CardTitle>
-          <CardDescription>
-            {selectedFile ? `${selectedLanguage} · ${selectedFile.size.toLocaleString()} bytes` : "Select a source file to inspect it."}
-          </CardDescription>
+          <CardTitle className="truncate">
+            <div className="flex items-center gap-2">
+              <div>{selectedFile?.path ?? 'File content'}</div>
+              <div className="text-xs text-muted-foreground">
+                {selectedFile
+                  ? `${selectedLanguage} · ${selectedFile.size.toLocaleString()} bytes`
+                  : 'Select a source file to inspect it.'}
+              </div>
+            </div>
+          </CardTitle>
         </CardHeader>
         <CardContent className="-mx-(--card-spacing)">
           {highlightedSource ? (
@@ -91,11 +96,7 @@ export default async function SourcePage({
             </Empty>
           )}
         </CardContent>
-        <CardFooter className="justify-between text-xs text-muted-foreground">
-          <span>{selectedLanguage ?? "text"}</span>
-          <span>{selectedFile?.path.split("/").at(-1) ?? "No file"}</span>
-        </CardFooter>
       </Card>
     </div>
-  )
+  );
 }

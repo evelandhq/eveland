@@ -1,8 +1,8 @@
-import Link from "next/link"
-import { AlertTriangleIcon, ArrowUpRightIcon, FolderPlusIcon, PlusIcon } from "lucide-react"
-import { StatusBadge } from "@/components/status-badge"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
+import Link from 'next/link';
+import { AlertTriangleIcon, ArrowUpRightIcon, FolderPlusIcon, PlusIcon } from 'lucide-react';
+import { StatusBadge } from '@/components/status-badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardAction,
@@ -11,7 +11,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from '@/components/ui/card';
 import {
   Empty,
   EmptyContent,
@@ -19,24 +19,26 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty"
-import { getCollectorHealth, getProjects } from "@/lib/api"
+} from '@/components/ui/empty';
+import { getCollectorHealth, getProjects } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic';
 
 export default async function ProjectsPage() {
-  const [projects, collector] = await Promise.all([getProjects(), getCollectorHealth()])
+  const [projects, collector] = await Promise.all([getProjects(), getCollectorHealth()]);
 
   return (
     <div className="min-h-[calc(100svh-3rem)] bg-background">
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
-        {collector.status !== "healthy" ? (
+        {collector.status !== 'healthy' ? (
           <Alert>
             <AlertTriangleIcon />
             <AlertTitle>Session collector {collector.status}</AlertTitle>
             <AlertDescription>
-              {collector.backlogEvents} queued events · {collector.backlogBytes} bytes · oldest {collector.oldestEventAge} ms · {collector.quarantinedEvents} quarantined
-              {collector.lastError ? ` · ${collector.lastError}` : ""}
+              {collector.backlogEvents} queued events · {collector.backlogBytes} bytes · oldest{' '}
+              {collector.oldestEventAge} ms · {collector.quarantinedEvents} quarantined
+              {collector.lastError ? ` · ${collector.lastError}` : ''}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -50,10 +52,13 @@ export default async function ProjectsPage() {
           </div>
           <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
             <span className="text-xs text-muted-foreground">{projects.length} total</span>
-            <Button render={<Link href="/projects/new" />}>
+            <Link
+              href="/projects/new"
+              className={cn(buttonVariants({ variant: 'link' }), 'text-foreground')}
+            >
               <PlusIcon data-icon="inline-start" />
               New project
-            </Button>
+            </Link>
           </div>
         </div>
 
@@ -105,7 +110,7 @@ export default async function ProjectsPage() {
                     <div>
                       <dt className="text-xs text-muted-foreground">Next schedule</dt>
                       <dd className="mt-2 truncate text-xs font-medium">
-                        {project.nextScheduleAt ?? "None"}
+                        {project.nextScheduleAt ?? 'None'}
                       </dd>
                     </div>
                   </dl>
@@ -114,13 +119,17 @@ export default async function ProjectsPage() {
                   <span className="text-xs text-muted-foreground">
                     Updated {new Date(project.updatedAt).toLocaleString()}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    render={<Link href={`/projects/${project.id}`} aria-label={`Open ${project.name}`} />}
+
+                  <Link
+                    href={`/projects/${project.id}`}
+                    aria-label={`Open ${project.name}`}
+                    className={cn(
+                      buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+                      'text-foreground',
+                    )}
                   >
                     <ArrowUpRightIcon />
-                  </Button>
+                  </Link>
                 </CardFooter>
               </Card>
             ))}
@@ -128,5 +137,5 @@ export default async function ProjectsPage() {
         )}
       </section>
     </div>
-  )
+  );
 }
