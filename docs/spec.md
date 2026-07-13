@@ -281,6 +281,8 @@ Eve Deployment (127.0.0.1 private upstream)
 
 每个 Deployment 对应一个独立运行进程（Docker 或 systemd），并拥有不可变 preview Host。Project stable Host 是可变路由；原始动态端口不是产品 URL，也不公开暴露。
 
+Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。
+
 容器运行 Eve 项目，平台负责：
 
 * Build 与启动

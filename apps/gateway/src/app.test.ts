@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterEach, describe, expect, test } from "vitest";
 import { createGatewayApp, type GatewayRepository, type ResolvedAgentRoute } from "./app.js";
+import { affinityBucket } from "@eveland/core/routing";
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 
@@ -121,6 +122,38 @@ describe("Gateway", () => {
     await expect(workflow.text()).resolves.toBe("proxied:/.well-known/workflow/v1/flow");
   });
 
+  test("uses deterministic weighted affinity and keeps continuations pinned after route promotion", async () => {
+    const first = await startUpstream((_request, response) => {
+      response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": "eve_weighted" });
+      response.end(JSON.stringify({ deployment: "a", sessionId: "eve_weighted" }));
+    });
+    const second = await startUpstream((_request, response) => {
+      response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": "eve_weighted" });
+      response.end(JSON.stringify({ deployment: "b", sessionId: "eve_weighted" }));
+    });
+    const weighted = route({
+      targets: [
+        { routeId: "route_project", deploymentId: "dep_a", weight: 9_000, variantName: "control", hostPort: first.port, status: "running" },
+        { routeId: "route_project", deploymentId: "dep_b", weight: 1_000, variantName: "candidate", hostPort: second.port, status: "running" },
+      ],
+    });
+    const repo = repository([weighted]);
+    const app = createGatewayApp(repo, { allowedBaseDomains: ["agent.localhost"], routeCacheTtlMs: 0 });
+    const affinity = Array.from({ length: 10_000 }, (_, index) => `bucket-${index}`).find((key) => affinityBucket(key) >= 9_000)!;
+    const selectedCookie = `eveland_affinity=${affinity}`;
+    const initial = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST", headers: { host: "p-alpha.agent.localhost", cookie: selectedCookie, "content-type": "application/json" }, body: "{}",
+    });
+    await expect(initial.json()).resolves.toMatchObject({ deployment: "b" });
+
+    weighted.targets = [{ routeId: "route_project", deploymentId: "dep_a", weight: 10_000, variantName: "control", hostPort: first.port, status: "running" }];
+    const continuation = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_weighted", {
+      method: "POST", headers: { host: "p-alpha.agent.localhost", cookie: selectedCookie },
+    });
+    await expect(continuation.json()).resolves.toMatchObject({ deployment: "b" });
+    expect(repo.bindings).toContainEqual(expect.objectContaining({ deploymentId: "dep_b", variantName: "candidate", affinityFingerprint: expect.stringMatching(/^sha256-[a-f0-9]{64}$/) }));
+  });
+
   test("keeps the privileged Playground path service-authenticated and uses loopback Host", async () => {
     const seenHosts: string[] = [];
     const upstream = await startUpstream((request, response) => {
@@ -220,6 +253,21 @@ function route(
 
 function repository(routes: ResolvedAgentRoute[]): GatewayRepository & { bindings: Array<Record<string, unknown>> } {
   const bindings: Array<Record<string, unknown>> = [];
+  const deployments = new Map(
+    routes.flatMap((route) => route.targets).map((target) => [target.deploymentId, {
+      id: target.deploymentId,
+      deploymentKey: `d-${target.deploymentId}`,
+      projectId: "proj_1",
+      releaseId: `rel-${target.deploymentId}`,
+      containerName: target.deploymentId,
+      internalPort: 3000,
+      hostPort: target.hostPort,
+      status: target.status,
+      runtimeKind: "docker" as const,
+      createdAt: "2026-07-13T00:00:00.000Z",
+      updatedAt: "2026-07-13T00:00:00.000Z",
+    }] as const),
+  );
   return {
     bindings,
     async findRouteByHostname(hostname) {
@@ -227,6 +275,9 @@ function repository(routes: ResolvedAgentRoute[]): GatewayRepository & { binding
     },
     async findProjectRoute(projectId) {
       return routes.find((candidate) => candidate.projectId === projectId && candidate.kind === "project") ?? null;
+    },
+    async getDeployment(deploymentId) {
+      return deployments.get(deploymentId) ?? null;
     },
     async findSessionBinding(projectId, eveSessionId) {
       return (bindings.find((binding) => binding.projectId === projectId && binding.eveSessionId === eveSessionId) as never) ?? null;

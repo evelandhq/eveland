@@ -1,18 +1,21 @@
 import Link from "next/link";
-import { getAgentEndpoints, getLogs, getProject, getSchedules, getSessions } from "@/lib/api";
+import { getAgentEndpoints, getDeploymentOverview, getLogs, getProject, getSchedules, getSessions, getVariantMetrics } from "@/lib/api";
 import { DeploymentActions } from "@/components/deployment-actions";
+import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
 import { StatusBadge } from "@/components/status-badge";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectOverviewPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const [project, endpoints, sessions, schedules, logs] = await Promise.all([
+  const [project, endpoints, sessions, schedules, logs, deploymentOverview, variantMetrics] = await Promise.all([
     getProject(projectId),
     getAgentEndpoints(projectId),
     getSessions(projectId),
     getSchedules(projectId),
     getLogs(projectId),
+    getDeploymentOverview(projectId),
+    getVariantMetrics(projectId),
   ]);
   const recentFailureLog = project?.status === "failed" || project?.deploymentStatus === "failed" ? findRecentFailureLog(logs) : null;
 
@@ -69,6 +72,56 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
             </div>
           ))}
         </dl>
+      </div>
+
+      <div className="rounded-md border border-border bg-card lg:col-span-2">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold">Deployments &amp; traffic</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Preview, promote, rollback, weighted traffic, drain, and artifact protection.</p>
+        </div>
+        <div className="divide-y divide-border">
+          {deploymentOverview.deployments.map((deployment) => {
+            const stableRoute = deploymentOverview.routes.find((route) => route.kind === "project") ?? null;
+            const retention = deploymentOverview.retention.find((entry) => entry.deployment.id === deployment.id);
+            return (
+              <div key={deployment.id} className="grid gap-3 p-4 text-sm md:grid-cols-[1fr_auto] md:items-center">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono font-medium">{deployment.deploymentKey}</span>
+                    <StatusBadge status={deployment.status} />
+                    {project?.deploymentId === deployment.id ? <span className="text-xs text-muted-foreground">production</span> : null}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {deployment.runtimeKind} · {retention?.protected ? `protected: ${retention.reasons.join(", ")}` : "eligible for archive"}
+                  </p>
+                </div>
+                <DeploymentTrafficActions
+                  projectId={projectId}
+                  deploymentId={deployment.id}
+                  productionDeploymentId={project?.deploymentId ?? null}
+                  stableRouteId={stableRoute?.id ?? null}
+                  status={deployment.status}
+                  retentionProtected={retention?.protected ?? true}
+                />
+              </div>
+            );
+          })}
+          {deploymentOverview.deployments.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No deployments yet.</p> : null}
+        </div>
+      </div>
+
+      <div className="rounded-md border border-border bg-card lg:col-span-2">
+        <div className="border-b border-border px-4 py-3"><h2 className="text-sm font-semibold">Variant metrics</h2></div>
+        <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4">
+          {variantMetrics.map((metric) => (
+            <div key={metric.variantName} className="bg-card p-4 text-sm">
+              <p className="font-medium">{metric.variantName}</p>
+              <p className="mt-2 text-xs text-muted-foreground">{metric.success} success / {metric.failure} failed · {Math.round(metric.averageLatencyMs)}ms avg</p>
+              <p className="mt-1 text-xs text-muted-foreground">{metric.tokens} tokens · ${metric.costUsd.toFixed(4)}</p>
+            </div>
+          ))}
+          {variantMetrics.length === 0 ? <p className="bg-card p-4 text-sm text-muted-foreground">No variant sessions yet.</p> : null}
+        </div>
       </div>
 
       <div className="rounded-md border border-border bg-card">

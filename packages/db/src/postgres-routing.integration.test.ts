@@ -70,6 +70,30 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
     await expect(
       store.completeSession(playground.id, { status: "completed", eveSessionId: "eve_gateway_playground" }),
     ).resolves.toMatchObject({ routeId: stable!.id, trigger: "playground" });
+
+    const candidate = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "gateway-candidate",
+      containerName: `gateway-candidate-${Date.now()}`,
+      internalPort: 3000,
+      hostPort: 41997,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, candidate.id, "agent.localhost");
+    await store.updateRouteTargets(stable!.id, [
+      { deploymentId: deployment.id, weight: 9_000, variantName: "control" },
+      { deploymentId: candidate.id, weight: 1_000, variantName: "candidate" },
+    ]);
+    await expect(store.findProjectRoute(project.id)).resolves.toMatchObject({ policyRevision: 2, targets: [
+      expect.objectContaining({ deploymentId: deployment.id, weight: 9_000 }),
+      expect.objectContaining({ deploymentId: candidate.id, weight: 1_000 }),
+    ] });
+    await store.promoteDeployment(project.id, candidate.id);
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: candidate.id });
+    await expect(store.findRouteByHostname(`${deployment.deploymentKey}--${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+      targets: [expect.objectContaining({ deploymentId: deployment.id })],
+    });
   }, 30_000);
 });
 

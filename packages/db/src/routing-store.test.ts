@@ -1,8 +1,71 @@
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import type { DeploymentRecord } from "@eveland/core/contracts";
 import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "./store.js";
 
 describe("routing repository", () => {
+  test("keeps concurrent deployments, atomically promotes and splits stable traffic, and preserves previews", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Concurrent Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/concurrent", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const first = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "first", containerName: "first", internalPort: 3000, hostPort: 41001, runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, first.id, "agent.localhost");
+    const second = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "second", containerName: "second", internalPort: 3000, hostPort: 41002, runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
+
+    expect(await store.listDeployments(project.id)).toHaveLength(2);
+    const stable = await store.findProjectRoute(project.id);
+    expect(stable?.targets).toEqual([expect.objectContaining({ deploymentId: first.id, weight: 10_000 })]);
+    await store.updateRouteTargets(stable!.id, [
+      { deploymentId: first.id, weight: 9_000, variantName: "control" },
+      { deploymentId: second.id, weight: 1_000, variantName: "candidate" },
+    ]);
+    await expect(store.findProjectRoute(project.id)).resolves.toMatchObject({
+      policyRevision: 2,
+      targets: [
+        expect.objectContaining({ deploymentId: first.id, weight: 9_000 }),
+        expect.objectContaining({ deploymentId: second.id, weight: 1_000 }),
+      ],
+    });
+    await store.promoteDeployment(project.id, second.id);
+    await expect(store.findProjectRoute(project.id)).resolves.toMatchObject({
+      policyRevision: 3,
+      targets: [expect.objectContaining({ deploymentId: second.id, weight: 10_000 })],
+    });
+    await expect(store.findRouteByHostname(`${first.deploymentKey}--${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+      targets: [expect.objectContaining({ deploymentId: first.id })],
+    });
+  });
+
+  test("creates named aliases and reports retention protection from routes and active sessions", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Retention Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/retention", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const deployments: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      deployments.push(await store.recordDeployment({
+        projectId: project.id, sourceRevisionId: revision.id, imageTag: `v${index}`, containerName: `v${index}`, internalPort: 3000,
+        hostPort: 41100 + index, runtimeKind: "docker",
+      }));
+    }
+    await store.ensureDeploymentRoutes(project.id, deployments[3]!.id, "agent.localhost");
+    const alias = await store.ensureAliasRoute(project.id, "canary", "agent.localhost", [
+      { deploymentId: deployments[2]!.id, weight: 10_000, variantName: "canary" },
+    ]);
+    expect(alias.hostname).toBe(`canary--${project.routingKey}.agent.localhost`);
+    const policy = await store.getDeploymentRetention(project.id, 3);
+    expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({ protected: false });
+    expect(policy.find((entry) => entry.deployment.id === deployments[2]!.id)).toMatchObject({ protected: true, reasons: expect.arrayContaining(["route_target", "recent_artifact"]) });
+  });
+
   test("assigns DNS-safe immutable project and deployment keys and materializes stable/preview routes", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Gateway Agent", importKind: "zip" });

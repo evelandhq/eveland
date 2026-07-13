@@ -1,6 +1,8 @@
 import http from "node:http";
+import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import type { ResolvedAgentRoute, SessionBinding as GatewaySessionBinding } from "@eveland/core/contracts";
+import type { DeploymentRecord, ResolvedAgentRoute, SessionBinding as GatewaySessionBinding } from "@eveland/core/contracts";
+import { selectWeightedTarget } from "@eveland/core/routing";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono } from "hono";
 
@@ -9,6 +11,7 @@ export type { ResolvedAgentRoute } from "@eveland/core/contracts";
 export type GatewayRepository = {
   findRouteByHostname(hostname: string): Promise<ResolvedAgentRoute | null>;
   findProjectRoute(projectId: string): Promise<ResolvedAgentRoute | null>;
+  getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
   findSessionBinding(projectId: string, eveSessionId: string): Promise<GatewaySessionBinding | null>;
   bindSession(input: Omit<GatewaySessionBinding, "id" | "createdAt" | "updatedAt">): Promise<unknown>;
 };
@@ -46,7 +49,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     }
     const route = await repository.findProjectRoute(context.req.param("projectId"));
     if (!route?.enabled) return context.json({ error: "Project route not found" }, 404);
-    const target = selectTarget(route, null);
+    const target = await resolveTarget(repository, route, null, crypto.randomUUID());
     if (!target) return context.json({ error: "No running deployment target" }, 503);
 
     const authority = `localhost:${target.hostPort}`;
@@ -122,12 +125,12 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
 
     const requestUrl = new URL(context.req.url);
     const pathSessionId = sessionIdFromPath(requestUrl.pathname);
-    const binding = pathSessionId ? await repository.findSessionBinding(route.projectId, pathSessionId) : null;
-    const target = selectTarget(route, binding);
-    if (!target) return context.json({ error: "No running deployment target" }, 503);
-
     const requestId = crypto.randomUUID();
     const remoteIp = remoteAddress(context);
+    const affinity = affinityKey(context.req.raw.headers, remoteIp, requestId);
+    const binding = pathSessionId ? await repository.findSessionBinding(route.projectId, pathSessionId) : null;
+    const target = await resolveTarget(repository, route, binding, affinity.key);
+    if (!target) return context.json({ error: "No running deployment target" }, 503);
     const upstream = await proxyToDeployment({
       port: target.hostPort,
       path: `${requestUrl.pathname}${requestUrl.search}`,
@@ -148,7 +151,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
           variantName: target.variantName,
           requestId,
           remoteIp,
-          affinityFingerprint: null,
+        affinityFingerprint: affinity.fingerprint,
         });
       }
     }
@@ -305,11 +308,39 @@ async function pipeWebBody(body: ReadableStream<Uint8Array>, request: http.Clien
   }
 }
 
-function selectTarget(route: ResolvedAgentRoute, binding: GatewaySessionBinding | null): ResolvedAgentRoute["targets"][number] | null {
+async function resolveTarget(
+  repository: GatewayRepository,
+  route: ResolvedAgentRoute,
+  binding: GatewaySessionBinding | null,
+  affinityKey: string,
+): Promise<ResolvedAgentRoute["targets"][number] | null> {
   if (binding) {
-    return route.targets.find((target) => target.deploymentId === binding.deploymentId && target.status === "running") ?? null;
+    const routed = route.targets.find(
+      (target) => target.deploymentId === binding.deploymentId && (target.status === "running" || target.status === "draining"),
+    );
+    if (routed) return routed;
+    const deployment = await repository.getDeployment(binding.deploymentId);
+    if (deployment && (deployment.status === "running" || deployment.status === "draining")) {
+      return {
+        routeId: route.id,
+        deploymentId: deployment.id,
+        weight: 0,
+        variantName: binding.variantName,
+        hostPort: deployment.hostPort,
+        status: deployment.status,
+      };
+    }
+    return null;
   }
-  return route.targets.find((target) => target.weight > 0 && target.status === "running") ?? null;
+  const eligible = route.targets.filter((target) => target.status === "running");
+  if (eligible.length === 0) return null;
+  return selectWeightedTarget(eligible, affinityKey);
+}
+
+function affinityKey(headers: Headers, remoteIp: string | null, requestId: string): { key: string; fingerprint: string } {
+  const cookie = headers.get("cookie")?.match(/(?:^|;\s*)eveland_affinity=([^;]+)/)?.[1];
+  const key = cookie ? decodeURIComponent(cookie) : `${remoteIp ?? "unknown"}|${headers.get("user-agent") ?? "unknown"}|${requestId}`;
+  return { key, fingerprint: `sha256-${createHash("sha256").update(key).digest("hex")}` };
 }
 
 function buildUpstreamHeaders(

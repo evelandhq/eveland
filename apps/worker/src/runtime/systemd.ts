@@ -377,5 +377,8 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       // is out of scope (accepted disk hygiene debt) -- this only covers the env file.
       await rm(path.join(envDir, `${processName}.env`), { force: true });
     },
+    async removeRelease(releaseRef: string): Promise<void> {
+      await rm(path.resolve(releaseRef), { recursive: true, force: true });
+    },
   };
 }

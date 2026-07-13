@@ -1,6 +1,6 @@
 export type ProjectImportKind = "git" | "zip";
 export type ProjectStatus = "import_pending" | "imported" | "invalid" | "build_pending" | "deployed" | "failed";
-export type DeploymentStatus = "not_deployed" | "building" | "starting" | "running" | "stopped" | "failed";
+export type DeploymentStatus = "not_deployed" | "building" | "starting" | "running" | "draining" | "stopped" | "archived" | "failed";
 export type SessionStatus = "running" | "waiting" | "completed" | "failed" | "waiting_approval";
 export type SessionTrigger = "playground" | "cron" | "webhook" | "channel" | "api" | "direct_http";
 export type RuntimeKind = "docker" | "systemd";
@@ -33,7 +33,7 @@ export type SecretRecord = {
 
 export type PublicSecret = Omit<SecretRecord, "encryptedValue">;
 
-export type JobType = "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "delete_project";
+export type JobType = "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "archive_deployment" | "delete_project";
 export type JobStatus = "queued" | "running" | "completed" | "failed";
 
 export type Job = {

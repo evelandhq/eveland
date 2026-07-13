@@ -7,6 +7,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
+import type { DeploymentRecord } from "@eveland/core/contracts";
 
 describe("processNextJob", () => {
   test("invalidates each materialized Gateway hostname when service credentials are configured", async () => {
@@ -210,7 +211,7 @@ describe("processNextJob", () => {
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
   });
 
-  test("redeploys by stopping the current deployment and reusing its host port", async () => {
+  test("deploys a concurrent preview without stopping current or reusing its host port", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();
@@ -255,23 +256,22 @@ describe("processNextJob", () => {
             runtimeCalls.push({ name: "stopProcess", input: { processName } });
           },
         },
-        allocateHostPort() {
-          throw new Error("existing deployments should keep their port");
-        },
+        allocateHostPort: () => Promise.resolve(41078),
         async waitForDeployment() {},
       }),
     ).resolves.toBe(true);
 
-    expect(runtimeCalls).toContainEqual({ name: "stopProcess", input: { processName: current.containerName } });
-    expect(runtimeCalls).toContainEqual({ name: "startProcess", input: expect.objectContaining({ port: current.hostPort }) });
+    expect(runtimeCalls).not.toContainEqual({ name: "stopProcess", input: { processName: current.containerName } });
+    expect(runtimeCalls).toContainEqual({ name: "startProcess", input: expect.objectContaining({ port: 41078 }) });
+    await expect(store.listDeployments(project.id)).resolves.toHaveLength(2);
     await expect(store.getProject(project.id)).resolves.toMatchObject({
-      deploymentId: expect.not.stringMatching(/^dep_old$/),
-      releaseId: expect.not.stringMatching(/^rel_old$/),
+      deploymentId: "dep_old",
+      releaseId: "rel_old",
     });
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
   });
 
-  test("redeploys across runtime kinds by stopping the old deployment through the adapter that owns it", async () => {
+  test("deploys across runtime kinds without touching the old runtime process", async () => {
     const activeRuntimeCalls: Array<{ name: string; input: unknown }> = [];
     const oldRuntimeStopCalls: Array<{ processName: string }> = [];
     let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
@@ -336,17 +336,44 @@ describe("processNextJob", () => {
           runtimeForKindCalledWith = kind;
           return oldKindAdapter;
         },
-        allocateHostPort() {
-          throw new Error("existing deployments should keep their port");
-        },
+        allocateHostPort: () => Promise.resolve(41079),
         async waitForDeployment() {},
       }),
     ).resolves.toBe(true);
 
-    expect(runtimeForKindCalledWith).toBe("systemd");
-    expect(oldRuntimeStopCalls).toEqual([{ processName: current.containerName }]);
+    expect(runtimeForKindCalledWith).toBeNull();
+    expect(oldRuntimeStopCalls).toEqual([]);
     expect(activeRuntimeCalls.some((call) => call.name === "stopProcess")).toBe(false);
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: current.id, runtimeKind: "systemd" });
+  });
+
+  test("archives only an unprotected artifact outside the recent-three retention window", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Retention Worker", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({ projectId: project.id, kind: "zip", sourcePath, summary: {}, envVars: [], files: [], schedules: [] });
+    const versions: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      versions.push(await store.recordDeployment({ projectId: project.id, sourceRevisionId: revision.id, imageTag: `image:v${index}`, containerName: `process-v${index}`, internalPort: 3000, hostPort: 41200 + index, runtimeKind: "docker" }));
+    }
+    await store.ensureDeploymentRoutes(project.id, versions[3]!.id, "agent.localhost");
+    await store.promoteDeployment(project.id, versions[3]!.id);
+    await store.enqueueJob(project.id, "archive_deployment", { deploymentId: versions[0]!.id });
+    const calls: string[] = [];
+
+    await expect(processNextJob(store, "worker-a", { runtime: {
+      name: "docker",
+      async buildRelease() { throw new Error("not used"); },
+      async startProcess() { throw new Error("not used"); },
+      async stopProcess(name) { calls.push(`stop:${name}`); },
+      async removeRelease(ref) { calls.push(`remove:${ref}`); },
+    } })).resolves.toBe(true);
+
+    expect(calls).toEqual(["stop:process-v0", "remove:image:v0"]);
+    await expect(store.getDeployment(versions[0]!.id)).resolves.toMatchObject({ status: "archived" });
+    await expect(store.getDeployment(versions[1]!.id)).resolves.toMatchObject({ status: "running" });
   });
 
   test("fails a build_deploy job when the deployment port never becomes reachable", async () => {
@@ -442,9 +469,7 @@ describe("processNextJob", () => {
             stopCalls.push(processName);
           },
         },
-        allocateHostPort() {
-          throw new Error("existing deployments should keep their port");
-        },
+        allocateHostPort: () => Promise.resolve(41111),
         async waitForDeployment() {
           throw new Error("port never opened");
         },
@@ -452,11 +477,11 @@ describe("processNextJob", () => {
     ).resolves.toBe(true);
 
     expect(capturedProcessName).not.toBeNull();
-    expect(stopCalls).toEqual([oldDeployment.containerName, capturedProcessName]);
+    expect(stopCalls).toEqual([capturedProcessName]);
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: "dep_old" });
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "failed",
-      deploymentStatus: "failed",
+      deploymentStatus: "running",
     });
   });
 
@@ -1367,7 +1392,7 @@ describe("processNextJob", () => {
     // The log must land before the process is stopped, and nothing --
     // no log, no state update -- may follow the delete.
     expect(calls).toEqual([
-      "appendLog:Stopping deployment before deleting project.",
+      "appendLog:Stopping 1 deployment(s) before deleting project.",
       `stopProcess:${deployment.containerName}`,
       `deleteProject:${project.id}`,
     ]);

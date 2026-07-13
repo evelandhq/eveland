@@ -28,6 +28,13 @@ import type {
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import { validateRouteTargets } from "@eveland/core/routing";
+
+export type DeploymentRetention = {
+  deployment: DeploymentRecord;
+  protected: boolean;
+  reasons: Array<"route_target" | "active_session" | "recent_artifact">;
+};
 
 export type CreateProjectInput = {
   name: string;
@@ -77,6 +84,7 @@ export type Store = {
     runtimeKind: RuntimeKind;
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
+  listDeployments(projectId: string): Promise<DeploymentRecord[]>;
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
   updateDeploymentStatus(deploymentId: string, status: DeploymentStatus): Promise<DeploymentRecord | null>;
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
@@ -85,6 +93,15 @@ export type Store = {
   findRouteByHostname(hostname: string): Promise<ResolvedAgentRoute | null>;
   findProjectRoute(projectId: string): Promise<ResolvedAgentRoute | null>;
   listProjectRoutes(projectId: string): Promise<ResolvedAgentRoute[]>;
+  updateRouteTargets(routeId: string, targets: Array<Omit<RouteTarget, "routeId">>): Promise<ResolvedAgentRoute>;
+  promoteDeployment(projectId: string, deploymentId: string): Promise<ResolvedAgentRoute>;
+  ensureAliasRoute(
+    projectId: string,
+    alias: string,
+    baseDomain: string,
+    targets: Array<Omit<RouteTarget, "routeId">>,
+  ): Promise<ResolvedAgentRoute>;
+  getDeploymentRetention(projectId: string, keepRecent?: number): Promise<DeploymentRetention[]>;
   findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
   bindSession(input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt">): Promise<SessionBinding>;
   createSession(input: {
@@ -398,7 +415,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       state.deployments.push(deployment);
 
       const project = state.projects.find((candidate) => candidate.id === input.projectId);
-      if (project) {
+      if (project && !project.deploymentId) {
         project.status = "deployed";
         project.deploymentStatus = "running";
         project.releaseId = release.id;
@@ -412,6 +429,15 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     async getCurrentDeployment(projectId) {
       const project = state.projects.find((candidate) => candidate.id === projectId);
       return state.deployments.find((deployment) => deployment.id === project?.deploymentId) ?? null;
+    },
+
+    async listDeployments(projectId) {
+      return state.deployments
+        .filter((deployment) => deployment.projectId === projectId)
+        .sort(
+          (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) || state.deployments.indexOf(right) - state.deployments.indexOf(left),
+        );
     },
 
     async getDeployment(deploymentId) {
@@ -446,11 +472,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         kind: "deployment",
         deploymentId,
       });
-      state.routeTargets = state.routeTargets.filter((target) => target.routeId !== stable.id && target.routeId !== preview.id);
-      state.routeTargets.push(
-        { routeId: stable.id, deploymentId, weight: 10_000, variantName: null },
-        { routeId: preview.id, deploymentId, weight: 10_000, variantName: null },
-      );
+      const stableHasTargets = state.routeTargets.some((target) => target.routeId === stable.id);
+      state.routeTargets = state.routeTargets.filter((target) => target.routeId !== preview.id);
+      if (!stableHasTargets) state.routeTargets.push({ routeId: stable.id, deploymentId, weight: 10_000, variantName: null });
+      state.routeTargets.push({ routeId: preview.id, deploymentId, weight: 10_000, variantName: null });
       return [stable, preview];
     },
 
@@ -482,6 +507,80 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     async listProjectRoutes(projectId) {
       const routes = state.agentRoutes.filter((candidate) => candidate.projectId === projectId);
       return Promise.all(routes.map((route) => this.findRouteByHostname(route.hostname))).then((resolved) => resolved.filter(Boolean) as ResolvedAgentRoute[]);
+    },
+
+    async updateRouteTargets(routeId, targets) {
+      validateRouteTargets(targets);
+      const route = state.agentRoutes.find((candidate) => candidate.id === routeId);
+      if (!route) throw new Error("Agent route not found.");
+      for (const target of targets) {
+        const deployment = state.deployments.find((candidate) => candidate.id === target.deploymentId);
+        if (!deployment || deployment.projectId !== route.projectId) throw new Error("Route target deployment does not belong to the project.");
+        if (target.weight > 0 && deployment.status !== "running") throw new Error("A weighted route target must be running.");
+      }
+      state.routeTargets = state.routeTargets.filter((target) => target.routeId !== routeId);
+      state.routeTargets.push(...targets.map((target) => ({ routeId, ...target })));
+      route.policyRevision += 1;
+      route.updatedAt = new Date().toISOString();
+      return (await this.findRouteByHostname(route.hostname))!;
+    },
+
+    async promoteDeployment(projectId, deploymentId) {
+      const route = await this.findProjectRoute(projectId);
+      if (!route) throw new Error("Project route not found.");
+      const updated = await this.updateRouteTargets(route.id, [{ deploymentId, weight: 10_000, variantName: null }]);
+      const project = state.projects.find((candidate) => candidate.id === projectId);
+      const deployment = state.deployments.find((candidate) => candidate.id === deploymentId);
+      if (project && deployment) {
+        project.deploymentId = deployment.id;
+        project.releaseId = deployment.releaseId;
+        project.deploymentStatus = deployment.status;
+        project.updatedAt = new Date().toISOString();
+      }
+      return updated;
+    },
+
+    async ensureAliasRoute(projectId, alias, baseDomain, targets) {
+      validateRouteTargets(targets);
+      if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(alias)) throw new Error("Alias must be a DNS-safe label.");
+      const project = state.projects.find((candidate) => candidate.id === projectId);
+      if (!project) throw new Error("Project not found.");
+      const hostname = `${alias}--${project.routingKey}.${normalizeBaseDomain(baseDomain)}`;
+      const existed = state.agentRoutes.some((candidate) => candidate.hostname === hostname);
+      const route = upsertMemoryRoute(state, { projectId, hostname, kind: "alias" });
+      for (const target of targets) {
+        const deployment = state.deployments.find((candidate) => candidate.id === target.deploymentId);
+        if (!deployment || deployment.projectId !== projectId || (target.weight > 0 && deployment.status !== "running")) {
+          throw new Error("Alias target must be a running deployment in this project.");
+        }
+      }
+      state.routeTargets = state.routeTargets.filter((target) => target.routeId !== route.id);
+      state.routeTargets.push(...targets.map((target) => ({ routeId: route.id, ...target })));
+      if (existed) route.policyRevision += 1;
+      route.updatedAt = new Date().toISOString();
+      return (await this.findRouteByHostname(hostname))!;
+    },
+
+    async getDeploymentRetention(projectId, keepRecent = 3) {
+      const deployments = await this.listDeployments(projectId);
+      const recent = new Set(deployments.slice(0, keepRecent).map((deployment) => deployment.id));
+      const mutableRouteIds = new Set(state.agentRoutes.filter((route) => route.kind !== "deployment").map((route) => route.id));
+      const targeted = new Set(state.routeTargets.filter((target) => mutableRouteIds.has(target.routeId)).map((target) => target.deploymentId));
+      const active = new Set(
+        state.sessionBindings
+          .filter((binding) => {
+            const session = state.sessions.find((candidate) => candidate.projectId === binding.projectId && candidate.eveSessionId === binding.eveSessionId);
+            return binding.projectId === projectId && (!session || !["completed", "failed"].includes(session.status));
+          })
+          .map((binding) => binding.deploymentId),
+      );
+      return deployments.map((deployment) => {
+        const reasons: DeploymentRetention["reasons"] = [];
+        if (targeted.has(deployment.id)) reasons.push("route_target");
+        if (active.has(deployment.id)) reasons.push("active_session");
+        if (recent.has(deployment.id)) reasons.push("recent_artifact");
+        return { deployment, protected: reasons.length > 0, reasons };
+      });
     },
 
     async findSessionBinding(projectId, eveSessionId) {

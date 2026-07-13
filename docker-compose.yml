@@ -30,6 +30,7 @@ services:
       EVELAND_COLLECTOR_MODE: embedded
       EVELAND_GATEWAY_INTERNAL_URL: http://gateway:4080
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
+      EVELAND_RELEASE_RETENTION: ${EVELAND_RELEASE_RETENTION:-3}
     ports:
       - "4000:4000"
     volumes:

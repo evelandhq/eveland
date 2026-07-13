@@ -58,6 +58,41 @@ export type AgentEndpoints = {
   previews: string[];
 };
 
+export type Deployment = {
+  id: string;
+  deploymentKey: string;
+  projectId: string;
+  releaseId: string;
+  hostPort: number;
+  status: "running" | "draining" | "stopped" | "archived" | "failed";
+  runtimeKind: "docker" | "systemd";
+  createdAt: string;
+};
+
+export type AgentRoute = {
+  id: string;
+  hostname: string;
+  kind: "project" | "deployment" | "alias";
+  policyRevision: number;
+  targets: Array<{ deploymentId: string; weight: number; variantName: string | null }>;
+};
+
+export type DeploymentOverview = {
+  deployments: Deployment[];
+  routes: AgentRoute[];
+  retention: Array<{ deployment: Deployment; protected: boolean; reasons: string[] }>;
+};
+
+export type VariantMetric = {
+  variantName: string;
+  sessions: number;
+  success: number;
+  failure: number;
+  averageLatencyMs: number;
+  tokens: number;
+  costUsd: number;
+};
+
 export type SessionTokenUsage = {
   status: "none" | "reported" | "partial" | "missing";
   inputTokens: number;
@@ -138,7 +173,7 @@ export type PlaygroundResult = {
 export type Job = {
   id: string;
   projectId: string;
-  type: "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "delete_project";
+  type: "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "archive_deployment" | "delete_project";
   status: "queued" | "running" | "completed" | "failed";
   payload: Record<string, unknown>;
   attempts: number;
@@ -189,6 +224,15 @@ export async function getProject(projectId: string): Promise<Project | null> {
 
 export async function getAgentEndpoints(projectId: string): Promise<AgentEndpoints> {
   return apiGet<AgentEndpoints>(`/projects/${projectId}/endpoints`, { stable: null, previews: [] });
+}
+
+export async function getDeploymentOverview(projectId: string): Promise<DeploymentOverview> {
+  return apiGet<DeploymentOverview>(`/projects/${projectId}/deployments`, { deployments: [], routes: [], retention: [] });
+}
+
+export async function getVariantMetrics(projectId: string): Promise<VariantMetric[]> {
+  const data = await apiGet<{ variants: VariantMetric[] }>(`/projects/${projectId}/variant-metrics`, { variants: [] });
+  return data.variants;
 }
 
 export async function getSecrets(projectId: string): Promise<PublicSecret[]> {
@@ -261,6 +305,28 @@ export async function enqueueBuildDeploy(projectId: string): Promise<Job> {
   return data.job;
 }
 
+export async function promoteDeployment(projectId: string, deploymentId: string): Promise<void> {
+  await apiMutation(`/projects/${projectId}/deployments/${deploymentId}/promote`, { method: "POST" });
+}
+
+export async function drainDeployment(projectId: string, deploymentId: string): Promise<void> {
+  await apiMutation(`/projects/${projectId}/deployments/${deploymentId}/drain`, { method: "POST" });
+}
+
+export async function archiveDeployment(projectId: string, deploymentId: string): Promise<void> {
+  await apiMutation(`/projects/${projectId}/deployments/${deploymentId}/archive`, { method: "POST" });
+}
+
+export async function updateRouteTargets(
+  projectId: string,
+  routeId: string,
+  targets: Array<{ deploymentId: string; weight: number; variantName: string | null }>,
+): Promise<void> {
+  await apiMutation(`/projects/${projectId}/routes/${routeId}/targets`, {
+    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ targets }),
+  });
+}
+
 export async function syncSource(projectId: string, options: { deploy?: boolean } = {}): Promise<Job> {
   const response = await fetch(`${apiBaseUrl}/projects/${projectId}/sync-source`, {
     method: "POST",
@@ -309,5 +375,13 @@ async function apiGet<T>(path: string, fallback: T): Promise<T> {
     return (await response.json()) as T;
   } catch {
     return fallback;
+  }
+}
+
+async function apiMutation(path: string, init: RequestInit): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}${path}`, init);
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: string; detail?: string };
+    throw new Error(data.detail ?? data.error ?? `Request failed with ${response.status}`);
   }
 }
