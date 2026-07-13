@@ -43,10 +43,22 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
     await store.failJob(job.id, message);
     // A failed import never touches the running container, so it must not report a
     // live deployment as failed; only deploy/restart jobs change deployment status.
-    await store.updateProjectState(
-      job.projectId,
-      job.type === "import_source" ? { status: "failed" } : { status: "failed", deploymentStatus: "failed" },
-    );
+    if (job.type === "build_deploy") {
+      const production = await store.getCurrentDeployment(job.projectId);
+      await store.updateProjectState(
+        job.projectId,
+        production && (production.status === "running" || production.status === "draining")
+          ? { status: "failed", deploymentStatus: production.status }
+          : { status: "failed", deploymentStatus: "failed" },
+      );
+    } else if (job.type !== "archive_deployment") {
+      await store.updateProjectState(
+        job.projectId,
+        job.type === "restart_deployment"
+          ? { status: "failed", deploymentStatus: "failed" }
+          : { status: "failed" },
+      );
+    }
     await store.appendLog({
       projectId: job.projectId,
       type: "runtime",
@@ -150,12 +162,14 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       }
 
       const runtime = options.runtime ?? createRuntimeAdapterFromEnv();
-      const currentDeployment = await store.getCurrentDeployment(job.projectId);
       const releaseId = createId("rel");
       const deploymentId = createId("dep");
       const processName = `eveland-${processSafeName(project.id)}-${processSafeName(deploymentId)}`;
       const buildDir = path.join(process.env.EVELAND_DATA_DIR ?? ".eveland-data", "builds", project.id, releaseId);
-      const hostPort = currentDeployment?.hostPort ?? (await (options.allocateHostPort ?? allocateAvailableHostPort)());
+      // A Deployment is an immutable previewable version. Never recycle a port
+      // from the production target: old and new versions must be able to run
+      // concurrently until an explicit promote/drain decision is made.
+      const hostPort = await (options.allocateHostPort ?? allocateAvailableHostPort)();
       const { env, secretValues } = await composeDeploymentEnv(store, project.id, options);
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
 
@@ -181,19 +195,6 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         });
       }
 
-      if (currentDeployment) {
-        // Each adapter can only stop its own kind of process (a docker adapter
-        // has no idea how to stop a systemd unit and vice versa), and the old
-        // deployment's recorded runtimeKind is authoritative here -- NOT the
-        // worker's current runtime, which may have moved on to a different
-        // kind since that deployment was made.
-        const stopAdapter =
-          currentDeployment.runtimeKind === runtime.name
-            ? runtime
-            : (options.runtimeForKind ?? createRuntimeAdapterForKind)(currentDeployment.runtimeKind);
-        await stopAdapter.stopProcess(currentDeployment.containerName);
-        await store.updateDeploymentStatus(currentDeployment.id, "stopped");
-      }
       // Same root the systemd adapter derives in ../runtime/select.ts -- both call
       // resolveSandboxCacheRoot so the two can never drift. resolveProjectSandboxCacheDir
       // then appends the per-project suffix, since ProcessStartInput carries no
@@ -201,9 +202,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
       const observerOutbox = resolveObserverOutboxDirs(process.env, project.id, deploymentId);
       await mkdir(observerOutbox.workerDir, { recursive: true });
-      // Tracks the process this job itself started, distinct from
-      // `currentDeployment`'s old process stopped above -- only the NEW
-      // process is this block's responsibility to clean up.
+      // Only the process started by this job is its cleanup responsibility.
       let startedProcess: string | null = null;
       try {
         const started = await runtime.startProcess({
@@ -362,6 +361,31 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       });
       return;
     }
+    case "archive_deployment": {
+      const deploymentId = typeof job.payload.deploymentId === "string" ? job.payload.deploymentId : null;
+      if (!deploymentId) throw new Error("Archive job missing deploymentId.");
+      const deployment = await store.getDeployment(deploymentId);
+      if (!deployment || deployment.projectId !== job.projectId) throw new Error("Deployment not found for archive.");
+      const configuredRetention = Number(process.env.EVELAND_RELEASE_RETENTION ?? 3);
+      const retention = await store.getDeploymentRetention(
+        job.projectId,
+        Number.isFinite(configuredRetention) ? Math.max(3, Math.floor(configuredRetention)) : 3,
+      );
+      const policy = retention.find((entry) => entry.deployment.id === deployment.id);
+      if (!policy || policy.protected) {
+        throw new Error(`Deployment is protected from archive${policy?.reasons.length ? `: ${policy.reasons.join(", ")}` : "."}`);
+      }
+      const adapter =
+        options.runtime?.name === deployment.runtimeKind
+          ? options.runtime
+          : (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+      if (deployment.status === "running" || deployment.status === "draining") await adapter.stopProcess(deployment.containerName);
+      const release = await store.getRelease(deployment.releaseId);
+      if (release && adapter.removeRelease) await adapter.removeRelease(release.imageTag);
+      await store.updateDeploymentStatus(deployment.id, "archived");
+      await store.appendLog({ projectId: job.projectId, deploymentId, type: "deploy", line: `Deployment ${deployment.deploymentKey} archived by retention policy.` });
+      return;
+    }
     case "delete_project": {
       const project = await store.getProject(job.projectId);
       if (!project) {
@@ -375,18 +399,22 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // delete cannot see yet (the deployment row doesn't exist until
       // recordDeployment runs), so that process can be orphaned by a
       // concurrent delete. Reaping orphans is a later-PR concern.
-      const deployment = await store.getCurrentDeployment(job.projectId);
-      if (deployment) {
+      const liveDeployments = (await store.listDeployments(job.projectId)).filter(
+        (deployment) => deployment.status === "running" || deployment.status === "draining",
+      );
+      if (liveDeployments.length > 0) {
         await store.appendLog({
           projectId: job.projectId,
           type: "deploy",
-          line: "Stopping deployment before deleting project.",
+          line: `Stopping ${liveDeployments.length} deployment(s) before deleting project.`,
         });
-        // Same reasoning as restart_deployment: only the adapter matching the
-        // deployment's own recorded runtimeKind may stop it -- never whatever
-        // runtime kind the worker currently defaults to.
-        const stopAdapter = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
-        await stopAdapter.stopProcess(deployment.containerName);
+        for (const deployment of liveDeployments) {
+          const stopAdapter =
+            options.runtime?.name === deployment.runtimeKind
+              ? options.runtime
+              : (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+          await stopAdapter.stopProcess(deployment.containerName);
+        }
       }
 
       // Must be the last statement in this case, and nothing may follow it --

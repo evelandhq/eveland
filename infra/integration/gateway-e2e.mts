@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { serve } from "../../apps/gateway/node_modules/@hono/node-server/dist/index.mjs";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import { affinityBucket } from "../../packages/core/src/routing.js";
 import { createStoreFromEnv } from "../../packages/db/src/store-factory.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
@@ -20,7 +21,7 @@ async function main(): Promise<void> {
   const runtime = createRuntimeAdapterFromEnv();
   const project = await store.createProject({ name: `Gateway E2E ${Date.now()}`, importKind: "zip", sourcePath: FIXTURE });
   await store.upsertSecret(project.id, "EVE_MOCK_AUTHORED_MODELS", JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)));
-  let processName: string | null = null;
+  const processNames: string[] = [];
   let server: ReturnType<typeof serve> | null = null;
   try {
     assert.equal(await processNextJob(store, "gateway-e2e", { appSecretKey: APP_SECRET_KEY }), true);
@@ -28,7 +29,20 @@ async function main(): Promise<void> {
     assert.equal(await processNextJob(store, "gateway-e2e", { appSecretKey: APP_SECRET_KEY }), true);
     const deployment = await store.getCurrentDeployment(project.id);
     assert.ok(deployment);
-    processName = deployment.containerName;
+    processNames.push(deployment.containerName);
+    await store.enqueueJob(project.id, "build_deploy");
+    assert.equal(await processNextJob(store, "gateway-e2e", { appSecretKey: APP_SECRET_KEY }), true);
+    const deployments = await store.listDeployments(project.id);
+    assert.equal(deployments.length, 2, "one project should keep two concurrent Deployments");
+    const candidate = deployments.find((item) => item.id !== deployment.id);
+    assert.ok(candidate);
+    processNames.push(candidate.containerName);
+    const stableBeforeSplit = await store.findProjectRoute(project.id);
+    assert.ok(stableBeforeSplit);
+    await store.updateRouteTargets(stableBeforeSplit.id, [
+      { deploymentId: deployment.id, weight: 9_000, variantName: "control" },
+      { deploymentId: candidate.id, weight: 1_000, variantName: "candidate" },
+    ]);
 
     const app = createGatewayApp(store, {
       allowedBaseDomains: ["agent.localhost", "agents.example.com"],
@@ -41,7 +55,9 @@ async function main(): Promise<void> {
     if (!address || typeof address === "string") throw new Error("Gateway E2E server did not bind.");
     const gatewayPort = address.port;
     const localHost = `${project.routingKey}.agent.localhost:4080`;
-    const previewRoute = (await store.listProjectRoutes(project.id)).find((route) => route.kind === "deployment");
+    const previewRoutes = (await store.listProjectRoutes(project.id)).filter((route) => route.kind === "deployment");
+    assert.equal(previewRoutes.length, 2);
+    const previewRoute = previewRoutes.find((route) => route.targets[0]?.deploymentId === deployment.id);
     assert.ok(previewRoute);
     const previewHealth = await gatewayRequest(gatewayPort, {
       host: `${previewRoute.hostname}:4080`,
@@ -50,22 +66,26 @@ async function main(): Promise<void> {
     });
     assert.equal(previewHealth.statusCode, 200, `immutable preview route failed: ${previewHealth.body}`);
 
+    const candidateAffinity = Array.from({ length: 10_000 }, (_, index) => `e2e-${index}`).find((key) => affinityBucket(key) >= 9_000);
+    assert.ok(candidateAffinity);
     const created = await gatewayRequest(gatewayPort, {
       host: localHost,
       path: "/eve/v1/session",
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie: `eveland_affinity=${candidateAffinity}` },
       body: JSON.stringify({ message: "Ask the researcher to verify Gateway streaming." }),
     });
     assert.equal(created.statusCode, 202, `*.localhost should receive Eve localDev access: ${created.body}`);
     const createdBody = JSON.parse(created.body) as { sessionId?: string };
     const eveSessionId = created.headers["x-eve-session-id"]?.toString() ?? createdBody.sessionId;
     assert.ok(eveSessionId);
+    await expectBinding(store, project.id, eveSessionId, candidate.id);
+    await store.promoteDeployment(project.id, candidate.id);
     const streamed = await gatewayStream(gatewayPort, localHost, eveSessionId);
     assert.ok(streamed.firstChunkMs < streamed.completedMs, `first NDJSON chunk was buffered: ${JSON.stringify(streamed)}`);
-    await expectBinding(store, project.id, eveSessionId, deployment.id);
+    await expectBinding(store, project.id, eveSessionId, candidate.id);
 
-    const dockerPort = runtime.name === "docker" ? await execFileAsync("docker", ["port", processName!]) : null;
+    const dockerPort = runtime.name === "docker" ? await execFileAsync("docker", ["port", candidate.containerName]) : null;
     if (dockerPort) assert.match(dockerPort.stdout, /-> 127\.0\.0\.1:/m, `Agent port was publicly bound: ${dockerPort.stdout}`);
 
     await store.reconcileAgentRoutes("agents.example.com");
@@ -81,11 +101,11 @@ async function main(): Promise<void> {
     assert.equal(production.statusCode, 401, `production Host spoofing reached Eve localDev: ${production.body}`);
 
     console.log(
-      `GATEWAY E2E OK runtime=${runtime.name} preview=200 localDev=202 production=401 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
+      `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10 pinned=1 promoted=1 preview=200 localDev=202 production=401 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
     );
   } finally {
     if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
-    if (processName) await runtime.stopProcess(processName).catch(() => undefined);
+    await Promise.all(processNames.map((processName) => runtime.stopProcess(processName).catch(() => undefined)));
     await close();
   }
 }

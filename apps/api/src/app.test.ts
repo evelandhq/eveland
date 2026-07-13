@@ -95,6 +95,39 @@ describe("api app", () => {
     expect(JSON.stringify(body)).not.toContain("41000");
   });
 
+  test("atomically promotes, rolls traffic weights, creates aliases, and invalidates Gateway cache", async () => {
+    const store = createMemoryStore();
+    const invalidated: string[][] = [];
+    const project = await store.createProject({ name: "Traffic Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({ projectId: project.id, kind: "zip", sourcePath: "/tmp/traffic", summary: {}, envVars: [], files: [], schedules: [] });
+    const first = await store.recordDeployment({ projectId: project.id, sourceRevisionId: revision.id, imageTag: "a", containerName: "a", internalPort: 3000, hostPort: 41001, runtimeKind: "docker" });
+    await store.ensureDeploymentRoutes(project.id, first.id, "agent.localhost");
+    const second = await store.recordDeployment({ projectId: project.id, sourceRevisionId: revision.id, imageTag: "b", containerName: "b", internalPort: 3000, hostPort: 41002, runtimeKind: "docker" });
+    await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
+    const app = createApp(store, { invalidateGatewayRoutes: async (hostnames) => { invalidated.push(hostnames); } });
+    const stable = await store.findProjectRoute(project.id);
+
+    const split = await app.request(`/projects/${project.id}/routes/${stable!.id}/targets`, {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ targets: [
+        { deploymentId: first.id, weight: 9_000, variantName: "control" },
+        { deploymentId: second.id, weight: 1_000, variantName: "candidate" },
+      ] }),
+    });
+    expect(split.status).toBe(200);
+    await expect(split.json()).resolves.toMatchObject({ route: { policyRevision: 2 } });
+
+    const promote = await app.request(`/projects/${project.id}/deployments/${second.id}/promote`, { method: "POST" });
+    expect(promote.status).toBe(200);
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: second.id });
+    const alias = await app.request(`/projects/${project.id}/aliases`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ alias: "canary", targets: [
+        { deploymentId: second.id, weight: 10_000, variantName: "canary" },
+      ] }),
+    });
+    expect(alias.status).toBe(201);
+    expect(invalidated.flat()).toEqual(expect.arrayContaining([`${project.routingKey}.agent.localhost`, `canary--${project.routingKey}.agent.localhost`]));
+  });
+
   test("creates a zip project from an uploaded archive and stores the extracted source path", async () => {
     const store = createMemoryStore();
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));

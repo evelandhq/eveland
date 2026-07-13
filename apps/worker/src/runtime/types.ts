@@ -46,6 +46,7 @@ export type RuntimeAdapter = {
   buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult>;
   startProcess(input: ProcessStartInput): Promise<ProcessStartResult>;
   stopProcess(processName: string): Promise<void>;
+  removeRelease?(releaseRef: string): Promise<void>;
 };
 
 export function processSafeName(value: string): string {

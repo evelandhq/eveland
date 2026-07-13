@@ -169,5 +169,8 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     async stopProcess(processName: string): Promise<void> {
       await dockerStopAndRemove(processName);
     },
+    async removeRelease(releaseRef: string): Promise<void> {
+      await execa("docker", ["image", "rm", releaseRef], { all: true });
+    },
   };
 }

@@ -34,6 +34,30 @@ const playgroundMessageSchema = z.object({
   message: z.string().min(1),
 });
 
+const targetsArraySchema = z.array(z.object({
+    deploymentId: z.string().min(1),
+    weight: z.number().int().min(0).max(10_000),
+    variantName: z.string().min(1).nullable(),
+  })).min(1).max(2);
+
+const routeTargetsSchema = z.object({ targets: targetsArraySchema }).superRefine(validateTargetsPayload);
+const aliasSchema = z.object({
+  alias: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/),
+  targets: targetsArraySchema,
+}).superRefine(validateTargetsPayload);
+
+function validateTargetsPayload(
+  value: { targets: Array<{ deploymentId: string; weight: number }> },
+  context: z.RefinementCtx,
+): void {
+  if (value.targets.reduce((sum, target) => sum + target.weight, 0) !== 10_000) {
+    context.addIssue({ code: "custom", path: ["targets"], message: "Route target weights must total 10,000." });
+  }
+  if (new Set(value.targets.map((target) => target.deploymentId)).size !== value.targets.length) {
+    context.addIssue({ code: "custom", path: ["targets"], message: "Route target deployments must be unique." });
+  }
+}
+
 const devSecretKey = "eveland-dev-secret-key-000000000";
 
 export type AppOptions = {
@@ -42,6 +66,7 @@ export type AppOptions = {
   collectorHealth?: () => CollectorHealth;
   gatewayPublicScheme?: "http" | "https";
   gatewayPublicPort?: number | null;
+  invalidateGatewayRoutes?: (hostnames: string[]) => Promise<void>;
 };
 
 export function createApp(store: Store, options: AppOptions = {}): Hono {
@@ -109,6 +134,77 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
       stable: routes.find((route) => route.kind === "project") ? url(routes.find((route) => route.kind === "project")!.hostname) : null,
       previews: routes.filter((route) => route.kind === "deployment").map((route) => url(route.hostname)).sort(),
     });
+  });
+
+  app.get("/projects/:projectId/deployments", async (c) => {
+    const projectId = c.req.param("projectId");
+    const [deployments, retention, routes] = await Promise.all([
+      store.listDeployments(projectId), store.getDeploymentRetention(projectId), store.listProjectRoutes(projectId),
+    ]);
+    return c.json({ deployments, retention, routes });
+  });
+
+  app.get("/projects/:projectId/variant-metrics", async (c) => {
+    const sessions = await store.listSessions(c.req.param("projectId"));
+    const groups = new Map<string, { variantName: string; sessions: number; success: number; failure: number; latencyMs: number; tokens: number; costUsd: number }>();
+    for (const session of sessions) {
+      const variantName = session.variantName ?? "unassigned";
+      const group = groups.get(variantName) ?? { variantName, sessions: 0, success: 0, failure: 0, latencyMs: 0, tokens: 0, costUsd: 0 };
+      group.sessions += 1;
+      if (session.status === "completed") group.success += 1;
+      if (session.status === "failed") group.failure += 1;
+      if (session.completedAt) group.latencyMs += Math.max(0, Date.parse(session.completedAt) - Date.parse(session.startedAt));
+      group.tokens += session.usage.inputTokens + session.usage.outputTokens + session.usage.cacheReadTokens + session.usage.cacheWriteTokens;
+      group.costUsd += session.usage.costUsd ?? 0;
+      groups.set(variantName, group);
+    }
+    return c.json({ variants: [...groups.values()].map((group) => ({ ...group, averageLatencyMs: group.sessions ? group.latencyMs / group.sessions : 0 })) });
+  });
+
+  app.post("/projects/:projectId/deployments/:deploymentId/promote", async (c) => {
+    const route = await store.promoteDeployment(c.req.param("projectId"), c.req.param("deploymentId"));
+    await invalidateGateway(options, [route.hostname]);
+    return c.json({ route });
+  });
+
+  app.post("/projects/:projectId/deployments/:deploymentId/drain", async (c) => {
+    const deployment = await store.getDeployment(c.req.param("deploymentId"));
+    if (!deployment || deployment.projectId !== c.req.param("projectId")) return c.json({ error: "Deployment not found" }, 404);
+    const routes = await store.listProjectRoutes(deployment.projectId);
+    if (routes.some((route) => route.targets.some((target) => target.deploymentId === deployment.id && target.weight > 0))) {
+      return c.json({ error: "Set this deployment route weight to zero before draining." }, 409);
+    }
+    const updated = await store.updateDeploymentStatus(deployment.id, "draining");
+    return c.json({ deployment: updated });
+  });
+
+  app.post("/projects/:projectId/deployments/:deploymentId/archive", async (c) => {
+    const projectId = c.req.param("projectId");
+    const deploymentId = c.req.param("deploymentId");
+    const policy = (await store.getDeploymentRetention(projectId)).find((entry) => entry.deployment.id === deploymentId);
+    if (!policy) return c.json({ error: "Deployment not found" }, 404);
+    if (policy.protected) return c.json({ error: "Deployment is protected from archive", reasons: policy.reasons }, 409);
+    const job = await store.enqueueJob(projectId, "archive_deployment", { deploymentId });
+    return c.json({ job }, 202);
+  });
+
+  app.put("/projects/:projectId/routes/:routeId/targets", async (c) => {
+    const input = routeTargetsSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: "Invalid route targets", detail: input.error.flatten() }, 400);
+    const routes = await store.listProjectRoutes(c.req.param("projectId"));
+    if (!routes.some((route) => route.id === c.req.param("routeId"))) return c.json({ error: "Route not found" }, 404);
+    const route = await store.updateRouteTargets(c.req.param("routeId"), input.data.targets);
+    await invalidateGateway(options, [route.hostname]);
+    return c.json({ route });
+  });
+
+  app.post("/projects/:projectId/aliases", async (c) => {
+    const input = aliasSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: "Invalid alias route", detail: input.error.flatten() }, 400);
+    const baseDomain = (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost").split(",")[0]!.trim();
+    const route = await store.ensureAliasRoute(c.req.param("projectId"), input.data.alias, baseDomain, input.data.targets);
+    await invalidateGateway(options, [route.hostname]);
+    return c.json({ route }, 201);
   });
 
   app.delete("/projects/:projectId", async (c) => {
@@ -274,6 +370,21 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
   });
 
   return app;
+}
+
+async function invalidateGateway(options: AppOptions, hostnames: string[]): Promise<void> {
+  if (options.invalidateGatewayRoutes) return options.invalidateGatewayRoutes(hostnames);
+  const gatewayUrl = process.env.EVELAND_GATEWAY_INTERNAL_URL;
+  const token = process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
+  if (!gatewayUrl || !token) return;
+  for (const hostname of hostnames) {
+    const response = await fetch(`${gatewayUrl.replace(/\/$/, "")}/internal/cache/invalidate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ hostname }),
+    });
+    if (!response.ok) throw new Error(`Gateway cache invalidation failed with ${response.status}.`);
+  }
 }
 
 function isMultipartRequest(c: Context): boolean {

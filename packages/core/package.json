@@ -8,6 +8,7 @@
     "./eve": "./src/eve.ts",
     "./ids": "./src/ids.ts",
     "./observer": "./src/observer.ts",
+    "./routing": "./src/routing.ts",
     "./schedules": "./src/schedules.ts",
     "./source": "./src/source.ts",
     "./server/archive": "./src/server/archive.ts",
