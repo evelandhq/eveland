@@ -1,10 +1,11 @@
 import { and, desc, eq, or, sql } from "drizzle-orm";
-import { createId } from "@eveland/core/ids";
+import { createId, createRoutingKey } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { Database } from "./client.js";
 import {
   deploymentRowToDeployment,
+  agentRouteRowToAgentRoute,
   jobRowToJob,
   logRowToLog,
   projectRowToProject,
@@ -17,9 +18,11 @@ import {
   sessionRowToSession,
   sourceFileRowToSourceFile,
   sourceRevisionRowToSourceRevision,
+  sessionBindingRowToSessionBinding,
 } from "./mappers.js";
 import {
   deployments,
+  agentRoutes,
   jobs,
   logs,
   modelUsageEvents,
@@ -28,14 +31,16 @@ import {
   schedules,
   secrets,
   sessionEvents,
+  sessionBindings,
   sessionNodes,
   sessions,
   sourceFiles,
   sourceRevisions,
+  routeTargets,
   users,
 } from "./schema.js";
 import type { CreateProjectInput, Store } from "./store.js";
-import type { JobType, LogRecord, SessionStatus, SessionTrigger } from "@eveland/core/contracts";
+import type { DeploymentStatus, JobType, LogRecord, SessionStatus, SessionTrigger } from "@eveland/core/contracts";
 
 const defaultOwner = {
   id: "user_local_admin",
@@ -45,6 +50,92 @@ const defaultOwner = {
 
 export function createPostgresStore(database: Database): Store {
   const { db } = database;
+
+  async function ensureDeploymentRoutes(projectId: string, deploymentId: string, baseDomain: string) {
+    const domain = normalizeBaseDomain(baseDomain);
+    return db.transaction(async (tx) => {
+      const [project] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+      const [deployment] = await tx
+        .select()
+        .from(deployments)
+        .where(and(eq(deployments.id, deploymentId), eq(deployments.projectId, projectId)))
+        .limit(1);
+      if (!project || !deployment) throw new Error("Cannot create Agent routes for an unknown project or deployment.");
+
+      let [stable] = await tx
+        .select()
+        .from(agentRoutes)
+        .where(and(eq(agentRoutes.projectId, projectId), eq(agentRoutes.kind, "project")))
+        .limit(1);
+      if (stable) {
+        [stable] = await tx
+          .update(agentRoutes)
+          .set({ hostname: `${project.routingKey}.${domain}`, enabled: true, updatedAt: new Date() })
+          .where(eq(agentRoutes.id, stable.id))
+          .returning();
+      } else {
+        [stable] = await tx
+          .insert(agentRoutes)
+          .values({
+            id: createId("route"),
+            projectId,
+            hostname: `${project.routingKey}.${domain}`,
+            kind: "project",
+            enabled: true,
+            policyRevision: 1,
+          })
+          .returning();
+      }
+      if (!stable) throw new Error("Failed to materialize the stable Agent route.");
+
+      const [previewMatch] = await tx
+        .select({ route: agentRoutes })
+        .from(agentRoutes)
+        .innerJoin(routeTargets, eq(routeTargets.routeId, agentRoutes.id))
+        .where(
+          and(
+            eq(agentRoutes.projectId, projectId),
+            eq(agentRoutes.kind, "deployment"),
+            eq(routeTargets.deploymentId, deploymentId),
+          ),
+        )
+        .limit(1);
+      let preview = previewMatch?.route;
+      if (preview) {
+        [preview] = await tx
+          .update(agentRoutes)
+          .set({ hostname: `${deployment.deploymentKey}--${project.routingKey}.${domain}`, enabled: true, updatedAt: new Date() })
+          .where(eq(agentRoutes.id, preview.id))
+          .returning();
+      } else {
+        [preview] = await tx
+          .insert(agentRoutes)
+          .values({
+            id: createId("route"),
+            projectId,
+            hostname: `${deployment.deploymentKey}--${project.routingKey}.${domain}`,
+            kind: "deployment",
+            enabled: true,
+            policyRevision: 1,
+          })
+          .returning();
+      }
+      if (!preview) throw new Error("Failed to materialize the deployment preview route.");
+
+      await tx.delete(routeTargets).where(eq(routeTargets.routeId, stable.id));
+      await tx
+        .insert(routeTargets)
+        .values({ routeId: stable.id, deploymentId, weight: 10_000, variantName: null });
+      await tx
+        .insert(routeTargets)
+        .values({ routeId: preview.id, deploymentId, weight: 10_000, variantName: null })
+        .onConflictDoUpdate({
+          target: [routeTargets.routeId, routeTargets.deploymentId],
+          set: { weight: 10_000, variantName: null },
+        });
+      return [agentRouteRowToAgentRoute(stable), agentRouteRowToAgentRoute(preview)];
+    });
+  }
 
   async function ensureDefaultOwner() {
     await db
@@ -86,6 +177,7 @@ export function createPostgresStore(database: Database): Store {
         .insert(projects)
         .values({
           id: createId("proj"),
+          routingKey: createRoutingKey("p"),
           ownerId: defaultOwner.id,
           name: input.name,
           importKind: input.importKind,
@@ -121,13 +213,6 @@ export function createPostgresStore(database: Database): Store {
       // the retry trail. All-or-nothing keeps a crash mid-cascade a no-op.
       return db.transaction(async (tx) => {
         await tx.delete(logs).where(eq(logs.projectId, projectId));
-        await tx.delete(deployments).where(eq(deployments.projectId, projectId));
-        await tx.delete(releases).where(eq(releases.projectId, projectId));
-        const relatedRevisions = await tx.select({ id: sourceRevisions.id }).from(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
-        for (const revision of relatedRevisions) {
-          await tx.delete(sourceFiles).where(eq(sourceFiles.revisionId, revision.id));
-        }
-        await tx.delete(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
         const relatedSessions = await tx.select({ id: sessions.id }).from(sessions).where(eq(sessions.projectId, projectId));
         for (const session of relatedSessions) {
           await tx.delete(modelUsageEvents).where(eq(modelUsageEvents.sessionId, session.id));
@@ -135,6 +220,17 @@ export function createPostgresStore(database: Database): Store {
         }
         await tx.delete(sessionNodes).where(eq(sessionNodes.projectId, projectId));
         await tx.delete(sessions).where(eq(sessions.projectId, projectId));
+        const relatedRoutes = await tx.select({ id: agentRoutes.id }).from(agentRoutes).where(eq(agentRoutes.projectId, projectId));
+        await tx.delete(sessionBindings).where(eq(sessionBindings.projectId, projectId));
+        for (const route of relatedRoutes) await tx.delete(routeTargets).where(eq(routeTargets.routeId, route.id));
+        await tx.delete(agentRoutes).where(eq(agentRoutes.projectId, projectId));
+        await tx.delete(deployments).where(eq(deployments.projectId, projectId));
+        await tx.delete(releases).where(eq(releases.projectId, projectId));
+        const relatedRevisions = await tx.select({ id: sourceRevisions.id }).from(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
+        for (const revision of relatedRevisions) {
+          await tx.delete(sourceFiles).where(eq(sourceFiles.revisionId, revision.id));
+        }
+        await tx.delete(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
         await tx.delete(schedules).where(eq(schedules.projectId, projectId));
         await tx.delete(jobs).where(eq(jobs.projectId, projectId));
         await tx.delete(secrets).where(eq(secrets.projectId, projectId));
@@ -386,6 +482,7 @@ export function createPostgresStore(database: Database): Store {
         .insert(deployments)
         .values({
           id: input.deploymentId ?? createId("dep"),
+          deploymentKey: createRoutingKey("d"),
           projectId: input.projectId,
           releaseId: releaseRow.id,
           containerName: input.containerName,
@@ -429,9 +526,128 @@ export function createPostgresStore(database: Database): Store {
       return deployment ? deploymentRowToDeployment(deployment) : null;
     },
 
+    async updateDeploymentStatus(deploymentId, status) {
+      const [deployment] = await db
+        .update(deployments)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(deployments.id, deploymentId))
+        .returning();
+      return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
     async getRelease(releaseId) {
       const [release] = await db.select().from(releases).where(eq(releases.id, releaseId)).limit(1);
       return release ? releaseRowToRelease(release) : null;
+    },
+
+    ensureDeploymentRoutes,
+
+    async reconcileAgentRoutes(baseDomain) {
+      const rows = await db.select({ projectId: projects.id, deploymentId: projects.deploymentId }).from(projects);
+      for (const row of rows) {
+        if (row.deploymentId) await ensureDeploymentRoutes(row.projectId, row.deploymentId, baseDomain);
+      }
+    },
+
+    async findRouteByHostname(hostname) {
+      const [route] = await db.select().from(agentRoutes).where(eq(agentRoutes.hostname, hostname.toLowerCase())).limit(1);
+      if (!route) return null;
+      const targets = await db
+        .select({
+          routeId: routeTargets.routeId,
+          deploymentId: routeTargets.deploymentId,
+          weight: routeTargets.weight,
+          variantName: routeTargets.variantName,
+          hostPort: deployments.hostPort,
+          status: deployments.status,
+        })
+        .from(routeTargets)
+        .innerJoin(deployments, eq(deployments.id, routeTargets.deploymentId))
+        .where(eq(routeTargets.routeId, route.id));
+      return {
+        ...agentRouteRowToAgentRoute(route),
+        targets: targets.map((target) => ({ ...target, status: target.status as DeploymentStatus })),
+      };
+    },
+
+    async findProjectRoute(projectId) {
+      const [route] = await db
+        .select()
+        .from(agentRoutes)
+        .where(and(eq(agentRoutes.projectId, projectId), eq(agentRoutes.kind, "project")))
+        .limit(1);
+      if (!route) return null;
+      const targets = await db
+        .select({
+          routeId: routeTargets.routeId,
+          deploymentId: routeTargets.deploymentId,
+          weight: routeTargets.weight,
+          variantName: routeTargets.variantName,
+          hostPort: deployments.hostPort,
+          status: deployments.status,
+        })
+        .from(routeTargets)
+        .innerJoin(deployments, eq(deployments.id, routeTargets.deploymentId))
+        .where(eq(routeTargets.routeId, route.id));
+      return {
+        ...agentRouteRowToAgentRoute(route),
+        targets: targets.map((target) => ({ ...target, status: target.status as DeploymentStatus })),
+      };
+    },
+
+    async listProjectRoutes(projectId) {
+      const routeRows = await db.select().from(agentRoutes).where(eq(agentRoutes.projectId, projectId));
+      const resolved = [];
+      for (const route of routeRows) {
+        const targets = await db
+          .select({
+            routeId: routeTargets.routeId,
+            deploymentId: routeTargets.deploymentId,
+            weight: routeTargets.weight,
+            variantName: routeTargets.variantName,
+            hostPort: deployments.hostPort,
+            status: deployments.status,
+          })
+          .from(routeTargets)
+          .innerJoin(deployments, eq(deployments.id, routeTargets.deploymentId))
+          .where(eq(routeTargets.routeId, route.id));
+        resolved.push({
+          ...agentRouteRowToAgentRoute(route),
+          targets: targets.map((target) => ({ ...target, status: target.status as DeploymentStatus })),
+        });
+      }
+      return resolved;
+    },
+
+    async findSessionBinding(projectId, eveSessionId) {
+      const [binding] = await db
+        .select()
+        .from(sessionBindings)
+        .where(and(eq(sessionBindings.projectId, projectId), eq(sessionBindings.eveSessionId, eveSessionId)))
+        .limit(1);
+      return binding ? sessionBindingRowToSessionBinding(binding) : null;
+    },
+
+    async bindSession(input) {
+      const [binding] = await db
+        .insert(sessionBindings)
+        .values({ id: createId("bind"), ...input })
+        .onConflictDoUpdate({
+          target: [sessionBindings.projectId, sessionBindings.eveSessionId],
+          set: { ...input, updatedAt: new Date() },
+        })
+        .returning();
+      if (!binding) throw new Error("Failed to persist the Gateway SessionBinding.");
+      await db
+        .update(sessions)
+        .set({
+          trigger: input.trigger,
+          routeId: input.routeId,
+          variantName: input.variantName,
+          deploymentId: input.deploymentId,
+        })
+        .where(and(eq(sessions.projectId, input.projectId), eq(sessions.eveSessionId, input.eveSessionId)));
+      return sessionBindingRowToSessionBinding(binding);
     },
 
     async createSession(input) {
@@ -572,6 +788,8 @@ export function createPostgresStore(database: Database): Store {
               .set({
                 rootNodeId: current.rootNodeId ?? observed.rootNodeId,
                 deploymentId: current.deploymentId ?? observed.deploymentId,
+                routeId: current.routeId ?? observed.routeId,
+                variantName: current.variantName ?? observed.variantName,
                 inputTokens: sql`${sessions.inputTokens} + ${observed.inputTokens}`,
                 outputTokens: sql`${sessions.outputTokens} + ${observed.outputTokens}`,
                 cacheReadTokens: sql`${sessions.cacheReadTokens} + ${observed.cacheReadTokens}`,
@@ -589,12 +807,33 @@ export function createPostgresStore(database: Database): Store {
           }
         }
 
+        const [binding] = input.eveSessionId
+          ? await tx
+              .select()
+              .from(sessionBindings)
+              .where(
+                and(
+                  eq(sessionBindings.projectId, current!.projectId),
+                  eq(sessionBindings.eveSessionId, input.eveSessionId),
+                ),
+              )
+              .limit(1)
+          : [];
+
         const [row] = await tx
           .update(sessions)
           .set({
             status: input.status,
             eveSessionId: input.eveSessionId,
             continuationToken: input.continuationToken,
+            ...(binding
+              ? {
+                  trigger: binding.trigger,
+                  routeId: binding.routeId,
+                  variantName: binding.variantName,
+                  deploymentId: binding.deploymentId,
+                }
+              : {}),
             completedAt: input.status === "running" ? null : new Date(),
           })
           .where(eq(sessions.id, sessionId))
@@ -633,6 +872,16 @@ export function createPostgresStore(database: Database): Store {
       return db.transaction(async (tx) => {
         const [deployment] = await tx.select().from(deployments).where(eq(deployments.id, envelope.deploymentId)).limit(1);
         if (!deployment) throw new Error(`Observer deployment ${envelope.deploymentId} is not managed by Eveland.`);
+        const [binding] = await tx
+          .select()
+          .from(sessionBindings)
+          .where(
+            and(
+              eq(sessionBindings.projectId, deployment.projectId),
+              eq(sessionBindings.eveSessionId, envelope.eveSessionId),
+            ),
+          )
+          .limit(1);
 
         let [node] = await tx
           .select()
@@ -680,6 +929,16 @@ export function createPostgresStore(database: Database): Store {
               )[0]
             : undefined;
           if (!parent && envelope.parentEveSessionId) {
+            const [parentBinding] = await tx
+              .select()
+              .from(sessionBindings)
+              .where(
+                and(
+                  eq(sessionBindings.projectId, deployment.projectId),
+                  eq(sessionBindings.eveSessionId, envelope.parentEveSessionId),
+                ),
+              )
+              .limit(1);
             [sessionRow] = await tx
               .select()
               .from(sessions)
@@ -696,11 +955,13 @@ export function createPostgresStore(database: Database): Store {
                 .values({
                   id: createId("sess"),
                   projectId: deployment.projectId,
-                  deploymentId: envelope.deploymentId,
+                  deploymentId: parentBinding?.deploymentId ?? envelope.deploymentId,
                   eveSessionId: envelope.parentEveSessionId,
                   continuationToken: null,
                   rootNodeId: null,
-                  trigger: "direct_http",
+                  routeId: parentBinding?.routeId ?? null,
+                  variantName: parentBinding?.variantName ?? null,
+                  trigger: parentBinding?.trigger ?? "direct_http",
                   scheduleId: null,
                   status: "running",
                   startedAt: new Date(envelope.eventAt),
@@ -743,11 +1004,13 @@ export function createPostgresStore(database: Database): Store {
               .values({
                 id: createId("sess"),
                 projectId: deployment.projectId,
-                deploymentId: envelope.deploymentId,
+                deploymentId: binding?.deploymentId ?? envelope.deploymentId,
                 eveSessionId: envelope.eveSessionId,
                 continuationToken: null,
                 rootNodeId: null,
-                trigger: triggerFromObserverChannel(envelope.channelKind),
+                routeId: binding?.routeId ?? null,
+                variantName: binding?.variantName ?? null,
+                trigger: binding?.trigger ?? triggerFromObserverChannel(envelope.channelKind),
                 scheduleId: null,
                 status: "running",
                 startedAt: new Date(envelope.eventAt),
@@ -1018,6 +1281,12 @@ function triggerFromObserverChannel(channelKind: string | null): SessionTrigger 
   if (channelKind?.startsWith("channel:")) return "channel";
   if (channelKind && channelKind !== "http" && channelKind !== "eve") return "webhook";
   return "direct_http";
+}
+
+function normalizeBaseDomain(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
+  if (!normalized || !/^[a-z0-9.-]+$/.test(normalized)) throw new Error(`Invalid Agent base domain: ${value}`);
+  return normalized;
 }
 
 function observerStatus(type: string, current: string): SessionStatus | null {

@@ -192,6 +192,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
             ? runtime
             : (options.runtimeForKind ?? createRuntimeAdapterForKind)(currentDeployment.runtimeKind);
         await stopAdapter.stopProcess(currentDeployment.containerName);
+        await store.updateDeploymentStatus(currentDeployment.id, "stopped");
       }
       // Same root the systemd adapter derives in ../runtime/select.ts -- both call
       // resolveSandboxCacheRoot so the two can never drift. resolveProjectSandboxCacheDir
@@ -231,6 +232,19 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           internalPort: started.internalPort,
           hostPort,
           runtimeKind: runtime.name,
+        });
+        const materializedRoutes = await store.ensureDeploymentRoutes(
+          project.id,
+          deployment.id,
+          (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost").split(",")[0]!.trim(),
+        );
+        await invalidateGatewayRouteCache(process.env, materializedRoutes).catch(async (error) => {
+          await store.appendLog({
+            projectId: project.id,
+            deploymentId: deployment.id,
+            type: "deploy",
+            line: `Gateway cache invalidation deferred to TTL: ${error instanceof Error ? error.message : String(error)}`,
+          });
         });
         await store.updateProjectState(job.projectId, { status: "deployed", deploymentStatus: "running" });
         await store.appendLog({
@@ -541,6 +555,24 @@ export function resolveObserverOutboxDirs(
     workerDir: path.join(dataDir, suffix),
     hostDir: path.join(hostDataDir, suffix),
   };
+}
+
+export async function invalidateGatewayRouteCache(
+  env: NodeJS.ProcessEnv,
+  routes: Array<{ hostname: string }>,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<void> {
+  const gatewayUrl = env.EVELAND_GATEWAY_INTERNAL_URL?.replace(/\/$/, "");
+  const serviceToken = env.EVELAND_GATEWAY_SERVICE_TOKEN;
+  if (!gatewayUrl || !serviceToken) return;
+  for (const route of routes) {
+    const response = await fetchImplementation(`${gatewayUrl}/internal/cache/invalidate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${serviceToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ hostname: route.hostname }),
+    });
+    if (!response.ok) throw new Error(`Gateway returned ${response.status} while invalidating ${route.hostname}.`);
+  }
 }
 
 async function isTcpPortAvailable(host: string, port: number): Promise<boolean> {

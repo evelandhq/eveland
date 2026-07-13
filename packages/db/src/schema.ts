@@ -1,4 +1,5 @@
-import { bigint, boolean, doublePrecision, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { bigint, boolean, check, doublePrecision, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -10,6 +11,7 @@ export const users = pgTable("users", {
 
 export const projects = pgTable("projects", {
   id: text("id").primaryKey(),
+  routingKey: text("routing_key").notNull().unique(),
   ownerId: text("owner_id").notNull().references(() => users.id),
   name: text("name").notNull(),
   importKind: text("import_kind").notNull(),
@@ -85,6 +87,7 @@ export const releases = pgTable("releases", {
 
 export const deployments = pgTable("deployments", {
   id: text("id").primaryKey(),
+  deploymentKey: text("deployment_key").notNull().unique(),
   projectId: text("project_id").notNull().references(() => projects.id),
   releaseId: text("release_id").notNull().references(() => releases.id),
   containerName: text("container_name").notNull(),
@@ -97,6 +100,57 @@ export const deployments = pgTable("deployments", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const agentRoutes = pgTable(
+  "agent_routes",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    hostname: text("hostname").notNull(),
+    kind: text("kind").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    policyRevision: integer("policy_revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("agent_routes_hostname_idx").on(table.hostname),
+    check("agent_routes_kind_check", sql`${table.kind} in ('project', 'deployment', 'alias')`),
+  ],
+);
+
+export const routeTargets = pgTable(
+  "route_targets",
+  {
+    routeId: text("route_id").notNull().references(() => agentRoutes.id),
+    deploymentId: text("deployment_id").notNull().references(() => deployments.id),
+    weight: integer("weight").notNull(),
+    variantName: text("variant_name"),
+  },
+  (table) => [
+    uniqueIndex("route_targets_route_deployment_idx").on(table.routeId, table.deploymentId),
+    check("route_targets_weight_check", sql`${table.weight} between 0 and 10000`),
+  ],
+);
+
+export const sessionBindings = pgTable(
+  "session_bindings",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    eveSessionId: text("eve_session_id").notNull(),
+    routeId: text("route_id").notNull().references(() => agentRoutes.id),
+    deploymentId: text("deployment_id").notNull().references(() => deployments.id),
+    trigger: text("trigger").notNull(),
+    variantName: text("variant_name"),
+    requestId: text("request_id").notNull(),
+    remoteIp: text("remote_ip"),
+    affinityFingerprint: text("affinity_fingerprint"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("session_bindings_project_eve_idx").on(table.projectId, table.eveSessionId)],
+);
 
 export const sourceFiles = pgTable(
   "source_files",
@@ -117,6 +171,8 @@ export const sessions = pgTable("sessions", {
   eveSessionId: text("eve_session_id"),
   continuationToken: text("continuation_token"),
   rootNodeId: text("root_node_id"),
+  routeId: text("route_id").references(() => agentRoutes.id),
+  variantName: text("variant_name"),
   trigger: text("trigger").notNull(),
   scheduleId: text("schedule_id"),
   status: text("status").notNull(),

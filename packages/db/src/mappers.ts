@@ -20,10 +20,13 @@ import type {
   SecretRecord,
   SourceFileRecord,
   SourceRevision,
+  AgentRoute,
+  SessionBinding,
 } from "@eveland/core/contracts";
 
 export type ProjectRow = {
   id: string;
+  routingKey: string;
   ownerId: string;
   name: string;
   importKind: string;
@@ -42,6 +45,7 @@ export type ProjectRow = {
 export function projectRowToProject(row: ProjectRow): Project {
   return {
     id: row.id,
+    routingKey: row.routingKey,
     name: row.name,
     importKind: row.importKind as ProjectImportKind,
     gitUrl: row.gitUrl,
@@ -148,6 +152,8 @@ export function sessionRowToSession(row: {
   eveSessionId: string | null;
   continuationToken: string | null;
   rootNodeId: string | null;
+  routeId: string | null;
+  variantName: string | null;
   trigger: string;
   scheduleId: string | null;
   status: string;
@@ -168,6 +174,8 @@ export function sessionRowToSession(row: {
     eveSessionId: row.eveSessionId,
     continuationToken: row.continuationToken,
     rootNodeId: row.rootNodeId,
+    routeId: row.routeId,
+    variantName: row.variantName,
     trigger: row.trigger as SessionTrigger,
     scheduleId: row.scheduleId,
     status: row.status as SessionStatus,
@@ -308,6 +316,7 @@ export function sourceFileRowToSourceFile(row: {
 
 export function deploymentRowToDeployment(row: {
   id: string;
+  deploymentKey: string;
   projectId: string;
   releaseId: string;
   containerName: string;
@@ -320,6 +329,7 @@ export function deploymentRowToDeployment(row: {
 }): DeploymentRecord {
   return {
     id: row.id,
+    deploymentKey: row.deploymentKey,
     projectId: row.projectId,
     releaseId: row.releaseId,
     containerName: row.containerName,
@@ -327,6 +337,50 @@ export function deploymentRowToDeployment(row: {
     hostPort: row.hostPort,
     status: row.status as DeploymentStatus,
     runtimeKind: row.runtimeKind as RuntimeKind,
+    createdAt: timestampToIso(row.createdAt),
+    updatedAt: timestampToIso(row.updatedAt),
+  };
+}
+
+export function agentRouteRowToAgentRoute(row: {
+  id: string;
+  projectId: string;
+  hostname: string;
+  kind: string;
+  enabled: boolean;
+  policyRevision: number;
+  createdAt: Date;
+  updatedAt: Date;
+}): AgentRoute {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    hostname: row.hostname,
+    kind: row.kind as AgentRoute["kind"],
+    enabled: row.enabled,
+    policyRevision: row.policyRevision,
+    createdAt: timestampToIso(row.createdAt),
+    updatedAt: timestampToIso(row.updatedAt),
+  };
+}
+
+export function sessionBindingRowToSessionBinding(row: {
+  id: string;
+  projectId: string;
+  eveSessionId: string;
+  routeId: string;
+  deploymentId: string;
+  trigger: string;
+  variantName: string | null;
+  requestId: string;
+  remoteIp: string | null;
+  affinityFingerprint: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): SessionBinding {
+  return {
+    ...row,
+    trigger: row.trigger as SessionBinding["trigger"],
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };

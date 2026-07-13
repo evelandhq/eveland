@@ -1,5 +1,6 @@
-import { createId } from "@eveland/core/ids";
+import { createId, createRoutingKey } from "@eveland/core/ids";
 import type {
+  AgentRoute,
   Job,
   JobType,
   Project,
@@ -21,6 +22,9 @@ import type {
   SourceRevision,
   SourceFileRecord,
   SessionNode,
+  ResolvedAgentRoute,
+  RouteTarget,
+  SessionBinding,
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -74,7 +78,15 @@ export type Store = {
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
+  updateDeploymentStatus(deploymentId: string, status: DeploymentStatus): Promise<DeploymentRecord | null>;
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
+  ensureDeploymentRoutes(projectId: string, deploymentId: string, baseDomain: string): Promise<AgentRoute[]>;
+  reconcileAgentRoutes(baseDomain: string): Promise<void>;
+  findRouteByHostname(hostname: string): Promise<ResolvedAgentRoute | null>;
+  findProjectRoute(projectId: string): Promise<ResolvedAgentRoute | null>;
+  listProjectRoutes(projectId: string): Promise<ResolvedAgentRoute[]>;
+  findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
+  bindSession(input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt">): Promise<SessionBinding>;
   createSession(input: {
     projectId: string;
     deploymentId?: string | null;
@@ -117,6 +129,9 @@ type MemoryState = {
   sourceFiles: SourceFileRecord[];
   releases: ReleaseRecord[];
   deployments: DeploymentRecord[];
+  agentRoutes: AgentRoute[];
+  routeTargets: RouteTarget[];
+  sessionBindings: SessionBinding[];
 };
 
 export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
@@ -134,6 +149,9 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     sourceFiles: initialState?.sourceFiles ?? [],
     releases: initialState?.releases ?? [],
     deployments: initialState?.deployments ?? [],
+    agentRoutes: initialState?.agentRoutes ?? [],
+    routeTargets: initialState?.routeTargets ?? [],
+    sessionBindings: initialState?.sessionBindings ?? [],
   };
 
   return {
@@ -145,6 +163,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       const now = new Date().toISOString();
       const project: Project = {
         id: createId("proj"),
+        routingKey: createRoutingKey("p"),
         name: input.name,
         importKind: input.importKind,
         gitUrl: input.gitUrl ?? null,
@@ -179,6 +198,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       // session events scoped to this project's sessions, the sessions, then
       // schedules/jobs/secrets, and the projects row last.
       state.logs = state.logs.filter((log) => log.projectId !== projectId);
+      const routeIds = state.agentRoutes.filter((route) => route.projectId === projectId).map((route) => route.id);
+      state.routeTargets = state.routeTargets.filter((target) => !routeIds.includes(target.routeId));
+      state.agentRoutes = state.agentRoutes.filter((route) => route.projectId !== projectId);
+      state.sessionBindings = state.sessionBindings.filter((binding) => binding.projectId !== projectId);
       state.deployments = state.deployments.filter((deployment) => deployment.projectId !== projectId);
       state.releases = state.releases.filter((release) => release.projectId !== projectId);
       state.sourceFiles = state.sourceFiles.filter((file) => !revisionIds.includes(file.revisionId));
@@ -360,6 +383,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       };
       const deployment: DeploymentRecord = {
         id: input.deploymentId ?? createId("dep"),
+        deploymentKey: createRoutingKey("d"),
         projectId: input.projectId,
         releaseId: release.id,
         containerName: input.containerName,
@@ -394,8 +418,96 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.deployments.find((deployment) => deployment.id === deploymentId) ?? null;
     },
 
+    async updateDeploymentStatus(deploymentId, status) {
+      const deployment = state.deployments.find((candidate) => candidate.id === deploymentId);
+      if (!deployment) return null;
+      deployment.status = status;
+      deployment.updatedAt = new Date().toISOString();
+      return deployment;
+    },
+
     async getRelease(releaseId) {
       return state.releases.find((release) => release.id === releaseId) ?? null;
+    },
+
+    async ensureDeploymentRoutes(projectId, deploymentId, baseDomain) {
+      const project = state.projects.find((candidate) => candidate.id === projectId);
+      const deployment = state.deployments.find((candidate) => candidate.id === deploymentId && candidate.projectId === projectId);
+      if (!project || !deployment) throw new Error("Cannot create Agent routes for an unknown project or deployment.");
+      const domain = normalizeBaseDomain(baseDomain);
+      const stable = upsertMemoryRoute(state, {
+        projectId,
+        hostname: `${project.routingKey}.${domain}`,
+        kind: "project",
+      });
+      const preview = upsertMemoryRoute(state, {
+        projectId,
+        hostname: `${deployment.deploymentKey}--${project.routingKey}.${domain}`,
+        kind: "deployment",
+        deploymentId,
+      });
+      state.routeTargets = state.routeTargets.filter((target) => target.routeId !== stable.id && target.routeId !== preview.id);
+      state.routeTargets.push(
+        { routeId: stable.id, deploymentId, weight: 10_000, variantName: null },
+        { routeId: preview.id, deploymentId, weight: 10_000, variantName: null },
+      );
+      return [stable, preview];
+    },
+
+    async reconcileAgentRoutes(baseDomain) {
+      for (const project of state.projects) {
+        if (project.deploymentId) await this.ensureDeploymentRoutes(project.id, project.deploymentId, baseDomain);
+      }
+    },
+
+    async findRouteByHostname(hostname) {
+      const route = state.agentRoutes.find((candidate) => candidate.hostname === hostname.toLowerCase()) ?? null;
+      if (!route) return null;
+      return {
+        ...route,
+        targets: state.routeTargets
+          .filter((target) => target.routeId === route.id)
+          .flatMap((target) => {
+            const deployment = state.deployments.find((candidate) => candidate.id === target.deploymentId);
+            return deployment ? [{ ...target, hostPort: deployment.hostPort, status: deployment.status }] : [];
+          }),
+      };
+    },
+
+    async findProjectRoute(projectId) {
+      const route = state.agentRoutes.find((candidate) => candidate.projectId === projectId && candidate.kind === "project") ?? null;
+      return route ? this.findRouteByHostname(route.hostname) : null;
+    },
+
+    async listProjectRoutes(projectId) {
+      const routes = state.agentRoutes.filter((candidate) => candidate.projectId === projectId);
+      return Promise.all(routes.map((route) => this.findRouteByHostname(route.hostname))).then((resolved) => resolved.filter(Boolean) as ResolvedAgentRoute[]);
+    },
+
+    async findSessionBinding(projectId, eveSessionId) {
+      return state.sessionBindings.find((binding) => binding.projectId === projectId && binding.eveSessionId === eveSessionId) ?? null;
+    },
+
+    async bindSession(input) {
+      const now = new Date().toISOString();
+      let binding = state.sessionBindings.find(
+        (candidate) => candidate.projectId === input.projectId && candidate.eveSessionId === input.eveSessionId,
+      );
+      if (binding) Object.assign(binding, input, { updatedAt: now });
+      else {
+        binding = { id: createId("bind"), ...input, createdAt: now, updatedAt: now };
+        state.sessionBindings.push(binding);
+      }
+      const session = state.sessions.find(
+        (candidate) => candidate.projectId === input.projectId && candidate.eveSessionId === input.eveSessionId,
+      );
+      if (session) {
+        session.trigger = input.trigger;
+        session.routeId = input.routeId;
+        session.variantName = input.variantName;
+        session.deploymentId = input.deploymentId;
+      }
+      return binding;
     },
 
     async createSession(input) {
@@ -407,6 +519,8 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         eveSessionId: input.eveSessionId ?? null,
         continuationToken: input.continuationToken ?? null,
         rootNodeId: null,
+        routeId: null,
+        variantName: null,
         trigger: input.trigger,
         scheduleId: input.scheduleId ?? null,
         status: "running",
@@ -490,6 +604,15 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         if (observedSession) {
           mergeMemorySessions(state, session, observedSession);
           session = state.sessions.find((candidate) => candidate.id === sessionId)!;
+        }
+        const binding = state.sessionBindings.find(
+          (candidate) => candidate.projectId === session!.projectId && candidate.eveSessionId === input.eveSessionId,
+        );
+        if (binding) {
+          session.trigger = binding.trigger;
+          session.routeId = binding.routeId;
+          session.variantName = binding.variantName;
+          session.deploymentId = binding.deploymentId;
         }
       }
 
@@ -606,7 +729,13 @@ function ensureMemorySessionNode(
       )
     : null;
   const now = new Date().toISOString();
+  const binding = state.sessionBindings.find(
+    (candidate) => candidate.projectId === deployment.projectId && candidate.eveSessionId === envelope.eveSessionId,
+  );
   if (!parent && envelope.parentEveSessionId) {
+    const parentBinding = state.sessionBindings.find(
+      (candidate) => candidate.projectId === deployment.projectId && candidate.eveSessionId === envelope.parentEveSessionId,
+    );
     let placeholderSession = state.sessions.find(
       (candidate) => candidate.projectId === deployment.projectId && candidate.eveSessionId === envelope.parentEveSessionId,
     );
@@ -614,11 +743,13 @@ function ensureMemorySessionNode(
       placeholderSession = {
         id: createId("sess"),
         projectId: deployment.projectId,
-        deploymentId: envelope.deploymentId,
+        deploymentId: parentBinding?.deploymentId ?? envelope.deploymentId,
         eveSessionId: envelope.parentEveSessionId,
         continuationToken: null,
         rootNodeId: null,
-        trigger: "direct_http",
+        routeId: parentBinding?.routeId ?? null,
+        variantName: parentBinding?.variantName ?? null,
+        trigger: parentBinding?.trigger ?? "direct_http",
         scheduleId: null,
         status: "running",
         startedAt: envelope.eventAt,
@@ -663,7 +794,9 @@ function ensureMemorySessionNode(
       eveSessionId: envelope.eveSessionId,
       continuationToken: null,
       rootNodeId: null,
-      trigger: triggerFromChannel(envelope.channelKind),
+      routeId: binding?.routeId ?? null,
+      variantName: binding?.variantName ?? null,
+      trigger: binding?.trigger ?? triggerFromChannel(envelope.channelKind),
       scheduleId: null,
       status: "running",
       startedAt: envelope.eventAt,
@@ -717,6 +850,8 @@ function mergeMemorySessions(state: MemoryState, target: Session, source: Sessio
   target.rootNodeId ??= source.rootNodeId;
   target.deploymentId ??= source.deploymentId;
   target.eveSessionId ??= source.eveSessionId;
+  target.routeId ??= source.routeId;
+  target.variantName ??= source.variantName;
   addSessionUsage(target, source.usage);
   state.sessions = state.sessions.filter((candidate) => candidate.id !== source.id);
 }
@@ -876,6 +1011,46 @@ function addUsageToSession(session: Session, event: ModelUsageEvent): void {
       : session.usage.missingSteps > 0
         ? "missing"
         : "none";
+}
+
+function normalizeBaseDomain(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
+  if (!normalized || !/^[a-z0-9.-]+$/.test(normalized)) throw new Error(`Invalid Agent base domain: ${value}`);
+  return normalized;
+}
+
+function upsertMemoryRoute(
+  state: MemoryState,
+  input: { projectId: string; hostname: string; kind: AgentRoute["kind"]; deploymentId?: string },
+): AgentRoute {
+  const now = new Date().toISOString();
+  const hostname = input.hostname.toLowerCase();
+  const existing = state.agentRoutes.find((route) => {
+    if (route.projectId !== input.projectId || route.kind !== input.kind) return false;
+    if (input.kind === "project") return true;
+    if (input.kind === "deployment" && input.deploymentId) {
+      return state.routeTargets.some((target) => target.routeId === route.id && target.deploymentId === input.deploymentId);
+    }
+    return route.hostname === hostname;
+  });
+  if (existing) {
+    existing.hostname = hostname;
+    existing.enabled = true;
+    existing.updatedAt = now;
+    return existing;
+  }
+  const route: AgentRoute = {
+    id: createId("route"),
+    projectId: input.projectId,
+    hostname,
+    kind: input.kind,
+    enabled: true,
+    policyRevision: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+  state.agentRoutes.push(route);
+  return route;
 }
 
 function createJob(projectId: string, type: JobType, payload: Record<string, unknown>): Job {

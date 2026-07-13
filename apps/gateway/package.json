@@ -1,25 +1,19 @@
 {
-  "name": "@eveland/api",
+  "name": "@eveland/gateway",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file=../../.env src/server.ts",
     "build": "tsc -p tsconfig.json --noEmit",
-    "db:generate": "pnpm --filter @eveland/db db:generate",
-    "db:migrate": "pnpm --filter @eveland/db db:migrate",
-    "db:push": "pnpm --filter @eveland/db db:push",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@eveland/core": "workspace:*",
     "@eveland/db": "workspace:*",
-    "@eveland/session-collector": "workspace:*",
     "@hono/node-server": "^2.0.6",
-    "better-auth": "^1.6.23",
-    "hono": "^4.12.27",
-    "zod": "^4.4.3"
+    "hono": "^4.12.27"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

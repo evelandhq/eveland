@@ -48,7 +48,7 @@
 
 ## Production topology
 
-- **API, Web, Postgres** run in Docker Compose:
+- **API, Gateway, Web, Postgres** run in Docker Compose:
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. The
   prod overlay no longer starts a containerized worker (see the header comment
   in `docker-compose.prod.yml`); `--profile docker-worker` restores it for
@@ -68,6 +68,10 @@ The observer outbox lives below `/var/lib/eveland/observer`. Each deployment can
 write only its own directory; the API starts the collector in embedded mode and
 reads the shared root. Collector degradation is reported separately at
 `GET /internal/collector/health` and does not make the control-plane `/health` fail.
+Gateway listens on host port 4080 and is the only process Traefik forwards wildcard Agent
+hosts to. Agent processes remain on `127.0.0.1:41xxx`; never add those dynamic ports to
+Traefik or firewall rules. Start from `infra/traefik/agents.yml`, replace the example domain,
+and keep its `!PathPrefix('/internal')` guard.
 
 ### Startup preflight
 
@@ -104,6 +108,9 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_HOST_DATA_DIR` | `EVELAND_DATA_DIR` | Host-daemon view of the same data directory. Set this only when a containerized worker drives Docker through `/var/run/docker.sock`; native systemd workers use the same path on both sides. |
 | `EVELAND_OBSERVER_ROOT` | `$EVELAND_DATA_DIR/observer` | API collector root shared with deployment observer outboxes. |
 | `EVELAND_COLLECTOR_MODE` | `embedded` | `embedded` starts collection with the API; `disabled` is for controlled maintenance and leaves envelopes queued on disk. |
+| `EVELAND_AGENT_BASE_DOMAINS` | `agent.localhost` | Comma-separated Host suffix allowlist used by Gateway; the first value is the canonical domain materialized into routes. Production normally uses one value such as `agents.example.com`. |
+| `EVELAND_GATEWAY_INTERNAL_URL` | `http://127.0.0.1:4080` | Private API/worker control URL for Playground and route-cache invalidation. |
+| `EVELAND_GATEWAY_SERVICE_TOKEN` | *(unset)* | Required shared secret for Gateway `/internal/*`; use a long random value and configure it identically on API, worker, and Gateway. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |

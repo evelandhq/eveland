@@ -17,6 +17,7 @@ services:
     # BusyBox unzip, which lacks -Z. The apk `unzip` is Info-ZIP and shadows the BusyBox applet.
     command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && pnpm --filter @eveland/api dev"
     depends_on:
+      - gateway
       - postgres
     environment:
       CI: "true"
@@ -27,11 +28,30 @@ services:
       EVELAND_DATA_DIR: /workspace/.eveland-data
       EVELAND_OBSERVER_ROOT: /workspace/.eveland-data/observer
       EVELAND_COLLECTOR_MODE: embedded
+      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:4080
+      EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
     ports:
       - "4000:4000"
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
+
+  gateway:
+    image: node:24-alpine
+    working_dir: /workspace
+    command: sh -lc "corepack enable && pnpm install && pnpm --filter @eveland/gateway dev"
+    depends_on:
+      - postgres
+    environment:
+      CI: "true"
+      GATEWAY_PORT: 4080
+      DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
+      EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
+      EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
+    ports:
+      - "4080:4080"
+    volumes:
+      - .:/workspace
 
   web:
     image: node:24-alpine
@@ -65,6 +85,9 @@ services:
       # docker run bind mounts are resolved by the host daemon, not inside this container.
       EVELAND_HOST_DATA_DIR: ${EVELAND_HOST_DATA_DIR:-${PWD}/.eveland-data}
       EVELAND_RUNTIME: docker
+      EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
+      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:4080
+      EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock

@@ -111,6 +111,7 @@ function createStore() {
   const now = "2026-07-13T00:00:00.000Z";
   const project: Project = {
     id: "proj_1",
+    routingKey: "p-fixture",
     name: "Fixture",
     importKind: "zip",
     gitUrl: null,
@@ -127,6 +128,7 @@ function createStore() {
   const release: ReleaseRecord = { id: "rel_1", projectId: "proj_1", sourceRevisionId: "src_1", imageTag: "fixture", createdAt: now };
   const deployment: DeploymentRecord = {
     id: "dep_1",
+    deploymentKey: "d-fixture",
     projectId: "proj_1",
     releaseId: "rel_1",
     containerName: "fixture",

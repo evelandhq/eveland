@@ -10,6 +10,7 @@ describe("web api helpers", () => {
     const api = (await import("./api")) as Record<string, unknown>;
     expect(api.getCollectorHealth).toEqual(expect.any(Function));
     expect(api.getSessionNodes).toEqual(expect.any(Function));
+    expect(api.getAgentEndpoints).toEqual(expect.any(Function));
   });
 
   test("enqueues a build deploy job for a project", async () => {

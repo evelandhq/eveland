@@ -95,6 +95,7 @@ MVP 中只支持一个默认运行环境：`Production`。
 
 * 当前 Deployment 状态
 * 当前 Release / Source Revision
+* Stable Agent endpoint 与当前 Deployment preview endpoint
 * 最近 Sessions
 * 最近错误
 * 已识别的 Schedules
@@ -114,7 +115,7 @@ MVP 中只支持一个默认运行环境：`Production`。
 
 用于直接测试当前 Deployment。
 
-用户输入消息后，平台将请求转发给 Eve，并展示流式结果。
+用户输入消息后，API 通过仅内部可达、带 service credential 的 Gateway Playground path 请求 Eve，并展示流式结果。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
 
 平台记录该 Session 的来源：
 
@@ -266,17 +267,19 @@ Browser
   ↓
 Eve Runtime Web App
   ↓
-Project Gateway
+Control API
   ├─ Source import
   ├─ Build
   ├─ Secret injection
   ├─ Session provenance
   └─ Schedule trigger
   ↓
-Eve Container
+Public Agent Gateway (stable/preview Host routing)
+  ↓
+Eve Deployment (127.0.0.1 private upstream)
 ```
 
-每个 Deployment 对应一个独立运行容器。
+每个 Deployment 对应一个独立运行进程（Docker 或 systemd），并拥有不可变 preview Host。Project stable Host 是可变路由；原始动态端口不是产品 URL，也不公开暴露。
 
 容器运行 Eve 项目，平台负责：
 

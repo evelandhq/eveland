@@ -1,5 +1,6 @@
 export type Project = {
   id: string;
+  routingKey: string;
   name: string;
   importKind: "git" | "zip";
   gitUrl: string | null;
@@ -42,12 +43,19 @@ export type Session = {
   eveSessionId: string | null;
   continuationToken: string | null;
   rootNodeId: string | null;
+  routeId: string | null;
+  variantName: string | null;
   trigger: string;
   scheduleId: string | null;
   status: string;
   startedAt: string;
   completedAt: string | null;
   usage: SessionTokenUsage;
+};
+
+export type AgentEndpoints = {
+  stable: string | null;
+  previews: string[];
 };
 
 export type SessionTokenUsage = {
@@ -177,6 +185,10 @@ export async function getProjects(): Promise<Project[]> {
 export async function getProject(projectId: string): Promise<Project | null> {
   const data = await apiGet<{ project: Project | null }>(`/projects/${projectId}`, { project: null });
   return data.project;
+}
+
+export async function getAgentEndpoints(projectId: string): Promise<AgentEndpoints> {
+  return apiGet<AgentEndpoints>(`/projects/${projectId}/endpoints`, { stable: null, previews: [] });
 }
 
 export async function getSecrets(projectId: string): Promise<PublicSecret[]> {

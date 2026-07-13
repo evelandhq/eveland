@@ -1,0 +1,2 @@
+ALTER TABLE "agent_routes" ADD CONSTRAINT "agent_routes_kind_check" CHECK ("agent_routes"."kind" in ('project', 'deployment', 'alias'));--> statement-breakpoint
+ALTER TABLE "route_targets" ADD CONSTRAINT "route_targets_weight_check" CHECK ("route_targets"."weight" between 0 and 10000);
