@@ -1,0 +1,168 @@
+import { describe, expect, test } from "vitest";
+import { memoryAdapter } from "better-auth/adapters/memory";
+import { createMemoryStore } from "@eveland/db";
+import { createApp } from "./app.js";
+import { createBetterAuthRuntime } from "./auth.js";
+
+function createAuthDatabase() {
+  return {
+    user: [],
+    session: [],
+    account: [],
+    verification: [],
+    organization: [],
+    member: [],
+    invitation: [],
+  };
+}
+
+async function createAuthApp() {
+  const store = createMemoryStore();
+  const auth = createBetterAuthRuntime({
+    database: memoryAdapter(createAuthDatabase()),
+    baseURL: "http://localhost:4000",
+    webOrigin: "http://localhost:3000",
+    secret: "test-secret-with-at-least-thirty-two-characters",
+  });
+  await auth.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
+  return { app: createApp(store, { auth, webOrigin: "http://localhost:3000" }), store };
+}
+
+async function signIn(app: ReturnType<typeof createApp>, email = "admin@example.com", password = "admin-password") {
+  const response = await app.request("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+    body: JSON.stringify({ email, password }),
+  });
+  return { response, cookie: response.headers.get("set-cookie")?.split(";", 1)[0] ?? "" };
+}
+
+async function invite(app: ReturnType<typeof createApp>, cookie: string, email = "member@example.com") {
+  const response = await app.request("/invitations", {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return { response, body: await response.json() as { invitation: { id: string }; inviteUrl: string } };
+}
+
+describe("control-plane auth routes", () => {
+  test("keeps health and Better Auth public while rejecting anonymous control-plane requests", async () => {
+    const { app } = await createAuthApp();
+
+    expect((await app.request("/health")).status).toBe(200);
+    expect((await app.request("/api/auth/get-session")).status).toBe(200);
+    const response = await app.request("/projects");
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Authentication required" });
+  });
+
+  test("blocks public sign-up and direct organization writes", async () => {
+    const { app } = await createAuthApp();
+    const { cookie } = await signIn(app);
+
+    expect((await app.request("/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      body: JSON.stringify({ email: "attacker@example.com", name: "Attacker", password: "attacker-password" }),
+    })).status).toBe(404);
+    expect((await app.request("/api/auth/organization/remove-member", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
+      body: JSON.stringify({ memberIdOrEmail: "admin@example.com", organizationId: "team_local" }),
+    })).status).toBe(404);
+  });
+
+  test("signs in through Better Auth and returns the current member", async () => {
+    const { app } = await createAuthApp();
+
+    const { response, cookie } = await signIn(app);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("eveland_session=");
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+    const session = await app.request("/auth/session", { headers: { cookie } });
+    await expect(session.json()).resolves.toEqual({
+      member: expect.objectContaining({ email: "admin@example.com", role: "admin" }),
+    });
+  });
+
+  test("lets an admin invite and a new member accept without exposing credential material", async () => {
+    const { app } = await createAuthApp();
+    const { cookie: adminCookie } = await signIn(app);
+    const issued = await invite(app, adminCookie);
+
+    expect(issued.response.status).toBe(201);
+    expect(issued.body).toMatchObject({
+      invitation: { role: "member", status: "pending" },
+      inviteUrl: expect.stringMatching(/^http:\/\/localhost:3000\/accept-invite\?token=invitation_/),
+    });
+    expect(JSON.stringify(issued.body)).not.toContain("password");
+    expect(JSON.stringify(issued.body)).not.toContain("tokenHash");
+
+    const accepted = await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: issued.body.invitation.id, name: "Member", password: "member-password" }),
+    });
+    const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+
+    expect(accepted.status).toBe(200);
+    const forbidden = await invite(app, memberCookie, "other@example.com");
+    expect(forbidden.response.status).toBe(403);
+    const members = await app.request("/members", { headers: { cookie: memberCookie } });
+    await expect(members.json()).resolves.toMatchObject({
+      members: [
+        expect.objectContaining({ email: "admin@example.com", role: "admin" }),
+        expect.objectContaining({ email: "member@example.com", role: "member" }),
+      ],
+    });
+  });
+
+  test("protects the last admin and revokes a removed member's Better Auth sessions", async () => {
+    const { app } = await createAuthApp();
+    const { cookie: adminCookie } = await signIn(app);
+    const membersBefore = await (await app.request("/members", { headers: { cookie: adminCookie } })).json();
+    const adminId = membersBefore.members[0].userId as string;
+
+    expect((await app.request(`/members/${adminId}`, { method: "DELETE", headers: { cookie: adminCookie } })).status).toBe(409);
+
+    const issued = await invite(app, adminCookie);
+    const accepted = await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: issued.body.invitation.id, name: "Member", password: "member-password" }),
+    });
+    const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+    const members = await (await app.request("/members", { headers: { cookie: adminCookie } })).json();
+    const memberId = members.members.find((member: { email: string }) => member.email === "member@example.com").userId as string;
+
+    expect((await app.request(`/members/${memberId}`, {
+      method: "PATCH",
+      headers: { cookie: adminCookie, "content-type": "application/json" },
+      body: JSON.stringify({ role: "admin" }),
+    })).status).toBe(200);
+    expect((await app.request(`/members/${memberId}`, { method: "DELETE", headers: { cookie: adminCookie } })).status).toBe(204);
+    expect((await app.request("/auth/session", { headers: { cookie: memberCookie } })).status).toBe(401);
+  });
+
+  test("rotates and revokes pending invitation links", async () => {
+    const { app } = await createAuthApp();
+    const { cookie } = await signIn(app);
+    const issued = await invite(app, cookie);
+
+    const reissued = await app.request(`/invitations/${issued.body.invitation.id}/resend`, { method: "POST", headers: { cookie } });
+    expect(reissued.status).toBe(200);
+    const reissuedBody = await reissued.json() as { invitation: { id: string }; inviteUrl: string };
+    expect(reissuedBody.invitation.id).not.toBe(issued.body.invitation.id);
+    expect(reissuedBody.inviteUrl).toContain(reissuedBody.invitation.id);
+
+    expect((await app.request(`/invitations/${reissuedBody.invitation.id}`, { method: "DELETE", headers: { cookie } })).status).toBe(204);
+    expect((await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: reissuedBody.invitation.id, name: "Member", password: "member-password" }),
+    })).status).toBe(409);
+  });
+});

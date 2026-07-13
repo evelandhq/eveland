@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { StatusBadge } from '@/components/status-badge';
-import { getProject } from '@/lib/api';
+import { getProject } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
 

@@ -9,7 +9,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
 - `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
 - `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
-- `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, an embedded observer collector, and BetterAuth dependency. Persistence is supplied by `packages/db`.
+- `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private.
 - `apps/worker`: Docker runtime adapter, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
@@ -19,6 +19,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 
 ```bash
 pnpm install
+cp .env.example .env                  # set BETTER_AUTH_SECRET and EVELAND_ADMIN_PASSWORD
 docker compose up -d postgres          # start the database
 pnpm --filter @eveland/api db:migrate  # apply versioned migrations (required on first run and after schema changes)
 pnpm --filter @eveland/api dev
@@ -28,6 +29,10 @@ pnpm --filter @eveland/worker dev
 ```
 
 Open `http://localhost:3000`.
+The initial Admin email defaults to `admin@example.com`; its password comes only from
+`EVELAND_ADMIN_PASSWORD` and must contain at least 12 characters.
+`BETTER_AUTH_SECRET` is a separate random secret of at least 32 characters. `BETTER_AUTH_URL`
+must be the browser-visible API origin (for example `https://api.example.com` in production).
 
 Run the public website separately on `http://localhost:3001`:
 
@@ -65,9 +70,14 @@ two public URLs for the target environment in `.env`, then bring it up:
 # .env
 WEB_ORIGIN=https://your-web-host
 NEXT_PUBLIC_API_URL=https://your-api-host
+BETTER_AUTH_URL=https://your-api-host
+BETTER_AUTH_SECRET=<independent-long-random-auth-secret>
 EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
 EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
+EVELAND_ADMIN_EMAIL=admin@example.com
+EVELAND_ADMIN_PASSWORD=<strong-initial-password>
+EVELAND_COOKIE_DOMAIN=.example.com
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
@@ -77,6 +87,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 can reach agents published on the host loopback, and sets
 `restart: unless-stopped` so the stack returns after a host reboot. The worker deploys
 agents through the mounted Docker socket, so the target is a Linux host running Docker.
+When Web and API use sibling hosts, set `EVELAND_COOKIE_DOMAIN` to their shared parent domain
+so the HttpOnly control-plane Session cookie reaches both services. Leave it unset for localhost.
 
 ## Verification
 
@@ -88,6 +100,7 @@ pnpm typecheck
 ## Notes
 
 - API uses Postgres when `DATABASE_URL` is set; tests use the memory store.
+- The control plane is invite-only and uses Better Auth for users, credential accounts, and sessions. Team roles and seven-day invitations use its Organization plugin behind Eveland-owned endpoints, which enforce the last-admin rule and block public sign-up and direct organization mutations. Invitation links use opaque 256-bit identifiers. Public Agent traffic remains on the separate Gateway authentication boundary.
 - `packages/db/src/schema.ts` and `packages/db/drizzle/` are the Postgres model and migration targets. Use `pnpm --filter @eveland/api db:migrate` for real databases; `db:push` is only a disposable-development convenience.
 - Token accounting uses Eve's `step.completed.data.usage` values. Injected hooks write envelopes to `$EVELAND_DATA_DIR/observer`; the API's embedded collector validates and projects them exactly once. Input, output, cache-read, cache-write, and optional gateway cost are attributed to the Eve session node that consumed them. Missing provider usage stays explicitly marked instead of being estimated.
 - The Playground transport only returns the current reply and timeline. It does not collect or project usage. Observer envelopes discover direct private-port, Playground, schedule, and child sessions independently, then merge more-specific provenance by `(projectId, eveSessionId)`.

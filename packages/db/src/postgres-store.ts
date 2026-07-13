@@ -37,15 +37,22 @@ import {
   sourceFiles,
   sourceRevisions,
   routeTargets,
+  teams,
   users,
 } from "./schema.js";
-import type { CreateProjectInput, Store } from "./store.js";
-import type { DeploymentStatus, JobType, LogRecord, SessionStatus, SessionTrigger } from "@eveland/core/contracts";
+import { DEFAULT_TEAM_ID, type CreateProjectInput, type Store } from "./store.js";
+import type {
+  DeploymentStatus,
+  JobType,
+  LogRecord,
+  SessionStatus,
+  SessionTrigger,
+} from "@eveland/core/contracts";
 import { validateRouteTargets } from "@eveland/core/routing";
 
 const defaultOwner = {
   id: "user_local_admin",
-  email: "admin@localhost",
+  email: "admin@example.com",
   name: "Local Admin",
 };
 
@@ -139,12 +146,10 @@ export function createPostgresStore(database: Database): Store {
   }
 
   async function ensureDefaultOwner() {
-    await db
-      .insert(users)
-      .values(defaultOwner)
-      .onConflictDoNothing({
-        target: users.id,
-      });
+    await db.transaction(async (tx) => {
+      await tx.insert(teams).values({ id: DEFAULT_TEAM_ID, name: "Eveland", slug: "eveland" }).onConflictDoNothing({ target: teams.id });
+      await tx.insert(users).values(defaultOwner).onConflictDoNothing({ target: users.id });
+    });
   }
 
   async function createJob(projectId: string, type: JobType, payload: Record<string, unknown>) {

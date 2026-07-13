@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSessions } from "@/lib/api";
+import { getSessions } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
 import { formatTokenCount, summarizeTokenUsage } from "@/lib/usage";
 

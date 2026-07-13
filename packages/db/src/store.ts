@@ -43,6 +43,8 @@ export type CreateProjectInput = {
   sourcePath?: string | null;
 };
 
+export const DEFAULT_TEAM_ID = "team_local";
+
 export type Store = {
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<Project>;

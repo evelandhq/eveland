@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getDeploymentOverview, getProjects } from "@/lib/api"
+import { getDeploymentOverview, getProjects } from "@/lib/server-api"
 
 export const dynamic = "force-dynamic"
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getAgentEndpoints, getDeploymentOverview, getLogs, getProject, getSchedules, getSessions, getVariantMetrics } from "@/lib/api";
+import { getAgentEndpoints, getDeploymentOverview, getLogs, getProject, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
 import { StatusBadge } from "@/components/status-badge";
