@@ -1,7 +1,7 @@
 import { execa } from "execa";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
+import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 
 export type DockerBuildInput = {

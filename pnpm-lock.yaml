@@ -23,31 +23,25 @@ importers:
 
   apps/api:
     dependencies:
-      '@eveland/shared':
+      '@eveland/core':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../packages/core
+      '@eveland/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@hono/node-server':
         specifier: ^2.0.6
         version: 2.0.6(hono@4.12.27)
       better-auth:
         specifier: ^1.6.23
         version: 1.6.23(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(kysely@0.29.2)(postgres@3.4.9))(next@16.2.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)))
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(kysely@0.29.2)(postgres@3.4.9)
       hono:
         specifier: ^4.12.27
         version: 4.12.27
-      postgres:
-        specifier: ^3.4.9
-        version: 3.4.9
       zod:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      drizzle-kit:
-        specifier: ^0.31.10
-        version: 0.31.10
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
@@ -57,9 +51,6 @@ importers:
       '@base-ui/react':
         specifier: ^1.6.0
         version: 1.6.0(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@eveland/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -106,15 +97,15 @@ importers:
 
   apps/worker:
     dependencies:
-      '@eveland/api':
+      '@eveland/core':
         specifier: workspace:*
-        version: link:../api
+        version: link:../../packages/core
+      '@eveland/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@eveland/sandbox-bwrap':
         specifier: workspace:*
         version: link:../../packages/sandbox-bwrap
-      '@eveland/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       execa:
         specifier: ^9.6.1
         version: 9.6.1
@@ -122,6 +113,38 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
+
+  packages/core:
+    dependencies:
+      cron-parser:
+        specifier: ^5.6.1
+        version: 5.6.1
+      nanoid:
+        specifier: ^5.1.16
+        version: 5.1.16
+    devDependencies:
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
+
+  packages/db:
+    dependencies:
+      '@eveland/core':
+        specifier: workspace:*
+        version: link:../core
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(kysely@0.29.2)(postgres@3.4.9)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
+    devDependencies:
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
@@ -134,22 +157,6 @@ importers:
       eve:
         specifier: 0.22.1
         version: 0.22.1(ai@7.0.17(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(kysely@0.29.2)(postgres@3.4.9))(jiti@2.7.0)(rollup@4.62.2)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
-      vitest:
-        specifier: ^4.1.9
-        version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
-
-  packages/shared:
-    dependencies:
-      cron-parser:
-        specifier: ^5.6.1
-        version: 5.6.1
-      nanoid:
-        specifier: ^5.1.16
-        version: 5.1.16
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
@@ -436,11 +443,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}

@@ -1,5 +1,5 @@
-import { createDatabase } from "./db/client.js";
-import { createPostgresStore } from "./db/postgres-store.js";
+import { createDatabase } from "./client.js";
+import { createPostgresStore } from "./postgres-store.js";
 import { createMemoryStore, type Store } from "./store.js";
 
 export type StoreFactoryResult = {

@@ -1,13 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "@eveland/api/store";
-import type { Store } from "@eveland/api/store";
+import { createMemoryStore, type Store } from "@eveland/db";
 import { allocateAvailableHostPort, processNextJob } from "./process.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { encryptSecretValue } from "@eveland/shared/secrets";
+import { encryptSecretValue } from "@eveland/core/server/secrets";
 
 describe("processNextJob", () => {
   test("allocates a later host port when the preferred port is already listening", async () => {

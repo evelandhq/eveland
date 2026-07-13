@@ -5,12 +5,18 @@ import { promisify } from "node:util";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
-import { assertSafeArchivePath } from "@eveland/shared/archive";
-import { encryptSecretValue } from "@eveland/shared/secrets";
+import type { DeploymentRecord, LogRecord, Project } from "@eveland/core/contracts";
+import {
+  extractEveResponseText as extractResponseText,
+  getEveString as getString,
+  isEveRecord as isRecord,
+  parseEveJsonObject as parseJsonObject,
+  parseStepUsageEvent,
+} from "@eveland/core/eve";
+import { assertSafeArchivePath } from "@eveland/core/server/archive";
+import { encryptSecretValue } from "@eveland/core/server/secrets";
+import type { Store } from "@eveland/db";
 import { z } from "zod";
-import type { Store } from "./store.js";
-import type { DeploymentRecord, LogRecord, Project } from "./types.js";
-import { parseStepUsageEvent } from "./usage.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -557,26 +563,4 @@ async function streamEveSession(
   }
 
   return { response, events };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
-function extractResponseText(parsed: Record<string, unknown> | null, rawText: string): string {
-  return getString(parsed, "response") ?? getString(parsed, "content") ?? getString(parsed, "message") ?? rawText;
-}
-
-function getString(parsed: Record<string, unknown> | null, key: string): string | null {
-  const value = parsed?.[key];
-  return typeof value === "string" ? value : null;
 }

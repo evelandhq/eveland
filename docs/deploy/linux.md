@@ -150,8 +150,8 @@ opt-in is possible future work.
 > The risk that remains is a `runtimeKind` that is *wrong* for what actually
 > created the process — true of every deployment row that existed before this
 > column shipped. Its migration (`pnpm --filter @eveland/api db:generate` to
-> regenerate the migration SQL, already checked in as
-> `apps/api/drizzle/0003_watery_zodiak.sql`, then `db:push` to apply it against
+> regenerate the migration SQL, with the checked-in history now owned by
+> `packages/db/drizzle/`, then `db:push` to apply it against
 > the target database) backfills every existing row with `runtime_kind =
 > 'docker'`, whether or not a `docker` adapter actually made it. A host that
 > was already running `EVELAND_RUNTIME=systemd` before upgrading gets every one

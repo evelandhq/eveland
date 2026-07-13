@@ -288,6 +288,17 @@ Eve Container
 * Session 来源归因
 * 容器重启
 
+代码依赖边界固定为：
+
+```text
+apps -> packages
+packages/db -> packages/core
+packages/core -> 不依赖其他 Eveland package
+apps -X-> apps
+```
+
+`packages/core` 通过显式 subpath 分开 contracts、Eve wire protocol 与 Node-only server 工具，不提供根 barrel；Drizzle schema、migration、repository 和 memory store 统一由 `packages/db` 持有。API 与 worker 只依赖 package，不互相导入。
+
 ---
 
 ## 6. MVP 非目标
