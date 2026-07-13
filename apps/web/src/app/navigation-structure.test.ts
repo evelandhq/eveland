@@ -64,7 +64,7 @@ describe("web application shell", () => {
     const newProject = source("./projects/new/page.tsx")
 
     expect(newProject).not.toContain("<main")
-    expect(newProject).toContain("<Button")
+    expect(newProject).toContain("buttonVariants({ variant: 'ghost' })")
   })
 
   test("does not leave a blank grid cell in the project deployment summary", () => {
@@ -73,10 +73,10 @@ describe("web application shell", () => {
     expect(projectOverview).toContain("last:col-span-2")
   })
 
-  test("updates mobile sidebar state even when media-query listeners are unavailable", () => {
+  test("subscribes to mobile media-query changes", () => {
     const useMobile = source("../hooks/use-mobile.ts")
 
-    expect(useMobile).toContain('typeof mql.addEventListener === "function"')
-    expect(useMobile).toContain('typeof mql.addListener === "function"')
+    expect(useMobile).toContain('mql.addEventListener("change", onChange)')
+    expect(useMobile).toContain('mql.removeEventListener("change", onChange)')
   })
 })
