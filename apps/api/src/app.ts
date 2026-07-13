@@ -5,18 +5,17 @@ import { promisify } from "node:util";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
-import type { DeploymentRecord, LogRecord, Project } from "@eveland/core/contracts";
-import {
-  extractEveResponseText as extractResponseText,
-  getEveString as getString,
-  isEveRecord as isRecord,
-  parseEveJsonObject as parseJsonObject,
-} from "@eveland/core/eve";
+import type { LogRecord } from "@eveland/core/contracts";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
 import type { CollectorHealth } from "@eveland/session-collector/health";
 import { z } from "zod";
+import {
+  runGatewayPlayground,
+  type PlaygroundRunEvent,
+  type PlaygroundRunner,
+} from "./gateway-playground.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,41 +36,17 @@ const playgroundMessageSchema = z.object({
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
 
-export type PlaygroundRunEvent = {
-  type: string;
-  payload: unknown;
-  source?: {
-    eveSessionId: string;
-    agentId: string | null;
-    agentName: string | null;
-  };
-};
-
-export type PlaygroundRunResult = {
-  response: string;
-  eveSessionId?: string | null;
-  continuationToken?: string | null;
-  events?: PlaygroundRunEvent[];
-};
-
-export type PlaygroundRunnerInput = {
-  project: Project;
-  deployment: DeploymentRecord;
-  message: string;
-  onEvent?: (event: PlaygroundRunEvent) => Promise<void>;
-};
-
-export type PlaygroundRunner = (input: PlaygroundRunnerInput) => Promise<PlaygroundRunResult>;
-
 export type AppOptions = {
   playgroundRunner?: PlaygroundRunner;
   dataDir?: string;
   collectorHealth?: () => CollectorHealth;
+  gatewayPublicScheme?: "http" | "https";
+  gatewayPublicPort?: number | null;
 };
 
 export function createApp(store: Store, options: AppOptions = {}): Hono {
   const app = new Hono();
-  const playgroundRunner = options.playgroundRunner ?? runDeploymentPlayground;
+  const playgroundRunner = options.playgroundRunner ?? runGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 
   app.use(
@@ -121,6 +96,19 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
     return c.json({ project });
+  });
+
+  app.get("/projects/:projectId/endpoints", async (c) => {
+    const routes = await store.listProjectRoutes(c.req.param("projectId"));
+    if (routes.length === 0) return c.json({ error: "Agent endpoints not found" }, 404);
+    const scheme = options.gatewayPublicScheme ?? (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME === "https" ? "https" : "http");
+    const configuredPort = options.gatewayPublicPort ?? Number(process.env.EVELAND_GATEWAY_PUBLIC_PORT ?? (scheme === "http" ? 4080 : 0));
+    const suffix = configuredPort ? `:${configuredPort}` : "";
+    const url = (hostname: string) => `${scheme}://${hostname}${suffix}`;
+    return c.json({
+      stable: routes.find((route) => route.kind === "project") ? url(routes.find((route) => route.kind === "project")!.hostname) : null,
+      previews: routes.filter((route) => route.kind === "deployment").map((route) => url(route.hostname)).sort(),
+    });
   });
 
   app.delete("/projects/:projectId", async (c) => {
@@ -211,7 +199,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
         await persistEvent(event);
       }
       const completed = await store.completeSession(session.id, {
-        status: "completed",
+        status: result.status ?? "waiting",
         eveSessionId: result.eveSessionId ?? null,
         continuationToken: result.continuationToken ?? null,
       });
@@ -366,174 +354,4 @@ async function resolveExtractedSourceRoot(extractDir: string): Promise<string> {
   }
 
   return extractDir;
-}
-
-// An eve deployment exposes a stable HTTP API: POST /eve/v1/session starts a run
-// (returning 202 with a session id) and the assistant reply arrives over the NDJSON
-// stream at GET /eve/v1/session/:id/stream. We start the run, then read the stream
-// to completion to surface the final message in the playground.
-async function runDeploymentPlayground(input: PlaygroundRunnerInput): Promise<PlaygroundRunResult> {
-  const base = `http://127.0.0.1:${input.deployment.hostPort}`;
-
-  const startResponse = await fetch(`${base}/eve/v1/session`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message: input.message }),
-  });
-  const startText = await startResponse.text();
-
-  if (!startResponse.ok) {
-    throw new Error(`Deployment returned ${startResponse.status}: ${startText}`);
-  }
-
-  const startBody = parseJsonObject(startText);
-  const sessionId =
-    startResponse.headers.get("x-eve-session-id") ?? getString(startBody, "sessionId") ?? getString(startBody, "session_id");
-  const continuationToken = getString(startBody, "continuationToken") ?? getString(startBody, "continuation_token");
-
-  if (!sessionId) {
-    const content = extractResponseText(startBody, startText);
-    const event = { type: "model_response", payload: { content } } satisfies PlaygroundRunEvent;
-    await input.onEvent?.(event);
-    return {
-      response: content,
-      eveSessionId: null,
-      continuationToken,
-      events: input.onEvent ? [] : [event],
-    };
-  }
-
-  const streamed = await streamEveSession(base, sessionId, input.onEvent);
-  const modelResponse = { type: "model_response", payload: { content: streamed.response } } satisfies PlaygroundRunEvent;
-  await input.onEvent?.(modelResponse);
-
-  return {
-    response: streamed.response,
-    eveSessionId: sessionId,
-    continuationToken,
-    events: input.onEvent ? [] : [...streamed.events, modelResponse],
-  };
-}
-
-// A conversational eve agent parks on `session.waiting` (or ends the turn) after replying
-// rather than `session.completed`, so treat the turn boundary as terminal for the playground.
-const terminalEventTypes = new Set([
-  "turn.completed",
-  "session.waiting",
-  "session.completed",
-  "session.failed",
-  "session.errored",
-  "turn.failed",
-]);
-// Streaming deltas are noisy for the session timeline; we keep lifecycle events only.
-const deltaEventTypes = new Set(["message.appended", "reasoning.appended"]);
-
-async function streamEveSession(
-  base: string,
-  sessionId: string,
-  onEvent?: (event: PlaygroundRunEvent) => Promise<void>,
-): Promise<{ response: string; events: PlaygroundRunEvent[] }> {
-  const timeoutMs = Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  const events: PlaygroundRunEvent[] = [];
-  let completedMessage: string | null = null;
-  let latestPartial = "";
-  let failureMessage: string | null = null;
-  let agentId: string | null = null;
-  let agentName: string | null = null;
-
-  try {
-    const response = await fetch(`${base}/eve/v1/session/${encodeURIComponent(sessionId)}/stream`, {
-      headers: { accept: "application/x-ndjson" },
-      signal: controller.signal,
-    });
-
-    if (!response.ok || !response.body) {
-      throw new Error(`Session stream returned ${response.status}.`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let done = false;
-
-    try {
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        if (readerDone) {
-          break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-
-        let newlineIndex: number;
-        while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, newlineIndex).trim();
-          buffer = buffer.slice(newlineIndex + 1);
-          if (!line) {
-            continue;
-          }
-
-          const event = parseJsonObject(line);
-          if (!event) {
-            continue;
-          }
-
-          const type = typeof event.type === "string" ? event.type : "event";
-          const data = (isRecord(event.data) ? event.data : event) as Record<string, unknown>;
-
-          if (type === "session.started" && isRecord(data.runtime)) {
-            agentId = getString(data.runtime, "agentId");
-            agentName = getString(data.runtime, "agentName");
-          }
-
-          if (type === "message.appended") {
-            latestPartial = getString(data, "messageSoFar") ?? latestPartial;
-          } else if (type === "message.completed") {
-            completedMessage =
-              getString(data, "message") ??
-              getString(data, "text") ??
-              getString(data, "content") ??
-              getString(data, "messageSoFar") ??
-              completedMessage;
-          } else if (type === "turn.failed" || type === "session.failed" || type === "session.errored") {
-            failureMessage = getString(data, "message") ?? getString(data, "error") ?? failureMessage;
-          }
-
-          if (!deltaEventTypes.has(type)) {
-            const streamedEvent = {
-              type,
-              payload: data,
-              source: { eveSessionId: sessionId, agentId, agentName },
-            } satisfies PlaygroundRunEvent;
-            events.push(streamedEvent);
-            await onEvent?.(streamedEvent);
-          }
-
-          if (terminalEventTypes.has(type)) {
-            done = true;
-            break;
-          }
-        }
-      }
-    } catch (error) {
-      // A timeout abort is expected when a run is slow; surface partial output instead of failing.
-      if (!(error instanceof Error && error.name === "AbortError")) {
-        throw error;
-      }
-    } finally {
-      await reader.cancel().catch(() => {});
-    }
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const response = completedMessage ?? latestPartial;
-
-  if (!response) {
-    throw new Error(failureMessage ? `Eve session failed: ${failureMessage}` : "Eve session produced no response.");
-  }
-
-  return { response, events };
 }

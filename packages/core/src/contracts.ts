@@ -7,6 +7,7 @@ export type RuntimeKind = "docker" | "systemd";
 
 export type Project = {
   id: string;
+  routingKey: string;
   name: string;
   importKind: ProjectImportKind;
   gitUrl: string | null;
@@ -74,6 +75,7 @@ export type ReleaseRecord = {
 
 export type DeploymentRecord = {
   id: string;
+  deploymentKey: string;
   projectId: string;
   releaseId: string;
   containerName: string;
@@ -100,12 +102,58 @@ export type Session = {
   eveSessionId: string | null;
   continuationToken: string | null;
   rootNodeId: string | null;
+  routeId: string | null;
+  variantName: string | null;
   trigger: SessionTrigger;
   scheduleId: string | null;
   status: SessionStatus;
   startedAt: string;
   completedAt: string | null;
   usage: SessionTokenUsage;
+};
+
+export type AgentRouteKind = "project" | "deployment" | "alias";
+
+export type AgentRoute = {
+  id: string;
+  projectId: string;
+  hostname: string;
+  kind: AgentRouteKind;
+  enabled: boolean;
+  policyRevision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RouteTarget = {
+  routeId: string;
+  deploymentId: string;
+  weight: number;
+  variantName: string | null;
+};
+
+export type ResolvedAgentRoute = AgentRoute & {
+  targets: Array<
+    RouteTarget & {
+      hostPort: number;
+      status: DeploymentStatus;
+    }
+  >;
+};
+
+export type SessionBinding = {
+  id: string;
+  projectId: string;
+  eveSessionId: string;
+  routeId: string;
+  deploymentId: string;
+  trigger: "api" | "playground";
+  variantName: string | null;
+  requestId: string;
+  remoteIp: string | null;
+  affinityFingerprint: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type SessionNode = {

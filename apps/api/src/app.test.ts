@@ -61,6 +61,40 @@ describe("api app", () => {
     });
   });
 
+  test("returns stable and immutable preview Agent endpoints without exposing a raw port", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Endpoint Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "endpoint",
+      containerName: "endpoint",
+      internalPort: 3000,
+      hostPort: 41000,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
+
+    const response = await createApp(store).request(`/projects/${project.id}/endpoints`);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({
+      stable: `http://${project.routingKey}.agent.localhost:4080`,
+      previews: [`http://${deployment.deploymentKey}--${project.routingKey}.agent.localhost:4080`],
+    });
+    expect(JSON.stringify(body)).not.toContain("41000");
+  });
+
   test("creates a zip project from an uploaded archive and stores the extracted source path", async () => {
     const store = createMemoryStore();
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
@@ -207,7 +241,7 @@ describe("api app", () => {
         projectId: project.id,
         deploymentId: deployment.id,
         trigger: "playground",
-        status: "completed",
+        status: "waiting",
         eveSessionId: "eve_123",
       }),
       events: [
@@ -216,7 +250,7 @@ describe("api app", () => {
       ],
     });
     expect(runnerCalls).toEqual([expect.objectContaining({ message: "Hello", deployment: expect.objectContaining({ id: deployment.id }) })]);
-    await expect(store.listSessions(project.id)).resolves.toEqual([expect.objectContaining({ trigger: "playground", status: "completed" })]);
+    await expect(store.listSessions(project.id)).resolves.toEqual([expect.objectContaining({ trigger: "playground", status: "waiting" })]);
   });
 
   test("leaves token usage projection to the observer collector", async () => {
@@ -328,7 +362,16 @@ describe("api app", () => {
       hostPort: address.port,
       runtimeKind: "docker",
     });
-    const app = createApp(store);
+    const app = createApp(store, {
+      async playgroundRunner({ onEvent }) {
+        await onEvent?.({
+          type: "step.completed",
+          payload: { turnId: "turn_0", stepIndex: 0, usage: { inputTokens: 25, outputTokens: 5 } },
+        });
+        markStepSent();
+        return { response: "Counted live", eveSessionId: "eve_live_usage", events: [] };
+      },
+    });
     const responsePromise = app.request(`/projects/${project.id}/playground`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -340,15 +383,6 @@ describe("api app", () => {
       await expect(store.listSessions(project.id)).resolves.toEqual([
         expect.objectContaining({ usage: expect.objectContaining({ status: "none", inputTokens: 0, outputTokens: 0 }) }),
       ]);
-
-      streamResponse!.write(
-        `${JSON.stringify({
-          type: "message.completed",
-          data: { turnId: "turn_0", stepIndex: 0, finishReason: "stop", message: "Counted live" },
-        })}\n`,
-      );
-      streamResponse!.write(`${JSON.stringify({ type: "turn.completed", data: { turnId: "turn_0", sequence: 0 } })}\n`);
-      streamResponse!.end();
 
       expect((await responsePromise).status).toBe(201);
     } finally {
@@ -504,7 +538,9 @@ describe("api app", () => {
     });
 
     try {
-      const response = await createApp(store).request(`/projects/${project.id}/playground`, {
+      const response = await createApp(store, {
+        playgroundRunner: async () => ({ response: "Root complete", eveSessionId: "eve_root", events: [] }),
+      }).request(`/projects/${project.id}/playground`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: "Delegate this" }),
@@ -601,7 +637,9 @@ describe("api app", () => {
     });
 
     try {
-      const response = await createApp(store).request(`/projects/${project.id}/playground`, {
+      const response = await createApp(store, {
+        playgroundRunner: async () => ({ response: "Root still completed", eveSessionId: "eve_root_missing_child", events: [] }),
+      }).request(`/projects/${project.id}/playground`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: "Continue without child telemetry" }),
@@ -684,7 +722,9 @@ describe("api app", () => {
     });
 
     try {
-      const response = await createApp(store).request(`/projects/${project.id}/playground`, {
+      const response = await createApp(store, {
+        playgroundRunner: async () => ({ response: "Remote not fetched", eveSessionId: "eve_remote_parent", events: [] }),
+      }).request(`/projects/${project.id}/playground`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: "Do not fetch arbitrary hosts" }),

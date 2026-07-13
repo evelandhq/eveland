@@ -11,6 +11,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

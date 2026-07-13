@@ -14,7 +14,7 @@
 # same absolute path so database sourcePath values are valid in both places.
 #
 # Why host networking: deployed agent containers publish on the host's 127.0.0.1:PORT (loopback,
-# not public); the worker (health check) and api (playground proxy) reach them on that same
+# not public); the worker (health check) and Gateway (public proxy + internal Playground) reach them on that same
 # loopback only if they share the host's network. On host network the compose service DNS
 # (postgres/api) is gone, so services talk over localhost; postgres stays bridged but publishes
 # 5432 to the host. `ports: !override []` clears base published ports (incompatible with host net).
@@ -35,10 +35,26 @@ services:
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
       WEB_ORIGIN: "${WEB_ORIGIN:-http://localhost:3000}"
       EVELAND_DATA_DIR: /var/lib/eveland
+      EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:4080
+      EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
+      EVELAND_GATEWAY_PUBLIC_SCHEME: https
+      EVELAND_GATEWAY_PUBLIC_PORT: 0
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/eveland:/var/lib/eveland
+
+  gateway:
+    restart: unless-stopped
+    network_mode: host
+    ports: !override []
+    command: sh -lc "corepack enable && pnpm install && cd apps/gateway && NODE_ENV=production pnpm exec tsx --env-file=../../.env src/server.ts"
+    environment:
+      CI: "true"
+      DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
+      GATEWAY_PORT: 4080
+      EVELAND_AGENT_BASE_DOMAINS: "${EVELAND_AGENT_BASE_DOMAINS:?set EVELAND_AGENT_BASE_DOMAINS}"
+      EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
 
   web:
     restart: unless-stopped
@@ -65,6 +81,9 @@ services:
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
       EVELAND_RUNTIME: docker
       EVELAND_DATA_DIR: /var/lib/eveland
+      EVELAND_AGENT_BASE_DOMAINS: "${EVELAND_AGENT_BASE_DOMAINS:?set EVELAND_AGENT_BASE_DOMAINS}"
+      EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:4080
+      EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock

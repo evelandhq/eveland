@@ -10,6 +10,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
 - `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
 - `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, an embedded observer collector, and BetterAuth dependency. Persistence is supplied by `packages/db`.
+- `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private.
 - `apps/worker`: Docker runtime adapter, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
 
@@ -18,17 +19,18 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 ```bash
 pnpm install
 docker compose up -d postgres          # start the database
-pnpm --filter @eveland/api db:push     # create/update tables (required on first run and after schema changes)
+pnpm --filter @eveland/api db:migrate  # apply versioned migrations (required on first run and after schema changes)
 pnpm --filter @eveland/api dev
+pnpm --filter @eveland/gateway dev
 pnpm --filter @eveland/web dev
 pnpm --filter @eveland/worker dev
 ```
 
 Open `http://localhost:3000`.
 
-All three processes are required: the web form posts to the API, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
+All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
 
-Docker Compose runs the full stack (Postgres + API + web + worker) in **development mode**:
+Docker Compose runs the full stack (Postgres + API + Gateway + web + worker) in **development mode**:
 
 ```bash
 docker compose up
@@ -39,6 +41,9 @@ startup — the app shells out to them for git import, agent deploy, and zip-upl
 When the worker runs in Compose, `EVELAND_HOST_DATA_DIR` must be the host-absolute path
 to the workspace's `.eveland-data`; this lets deployment containers bind the same observer
 outbox that the API's embedded collector reads.
+Public development endpoints use `http://<routingKey>.agent.localhost:4080`; immutable previews use
+`http://<deploymentKey>--<routingKey>.agent.localhost:4080`. Gateway validates the complete Host,
+while deployment ports remain bound only to `127.0.0.1` and are not product URLs.
 
 Pick one mode: either everything in Compose, or only `postgres` in Compose and the rest natively. The Compose services run `pnpm install` inside Linux containers against the mounted workspace, which clobbers a macOS-built `node_modules`.
 
@@ -51,13 +56,15 @@ two public URLs for the target environment in `.env`, then bring it up:
 # .env
 WEB_ORIGIN=https://your-web-host
 NEXT_PUBLIC_API_URL=https://your-api-host
+EVELAND_AGENT_BASE_DOMAINS=agents.example.com
+EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 `docker-compose.prod.yml` runs a production build (`next build && next start`,
-`NODE_ENV=production`), uses **host networking** so the worker (health check) and API
-(playground proxy) can reach agent containers published on the host loopback, and sets
+`NODE_ENV=production`), uses **host networking** so the worker (health check) and Gateway
+can reach agents published on the host loopback, and sets
 `restart: unless-stopped` so the stack returns after a host reboot. The worker deploys
 agents through the mounted Docker socket, so the target is a Linux host running Docker.
 
@@ -71,9 +78,10 @@ pnpm typecheck
 ## Notes
 
 - API uses Postgres when `DATABASE_URL` is set; tests use the memory store.
-- `packages/db/src/schema.ts` and `packages/db/drizzle/` are the Postgres model and migration targets. `pnpm --filter @eveland/api db:push` remains as a convenience proxy to the db package.
+- `packages/db/src/schema.ts` and `packages/db/drizzle/` are the Postgres model and migration targets. Use `pnpm --filter @eveland/api db:migrate` for real databases; `db:push` is only a disposable-development convenience.
 - Token accounting uses Eve's `step.completed.data.usage` values. Injected hooks write envelopes to `$EVELAND_DATA_DIR/observer`; the API's embedded collector validates and projects them exactly once. Input, output, cache-read, cache-write, and optional gateway cost are attributed to the Eve session node that consumed them. Missing provider usage stays explicitly marked instead of being estimated.
 - The Playground transport only returns the current reply and timeline. It does not collect or project usage. Observer envelopes discover direct private-port, Playground, schedule, and child sessions independently, then merge more-specific provenance by `(projectId, eveSessionId)`.
+- Playground calls use Gateway's service-authenticated `/internal/projects/:projectId/playground` path. Traefik must expose only wildcard Agent hosts and exclude `/internal`; `infra/traefik/agents.yml` is the single-box example.
 - Eve 0.22.1 gives directory-form subagents an independent hook slot, so they are fully observed. File-form subagents have no hook slot and their parent stream exposes only control events; they are a documented coverage gap until Eve exposes a public observation surface.
 - Markdown eve schedules are executable in the MVP plan; TypeScript schedules are discovery-only until the native eve schedule runtime is integrated.
 - Deployed agents get `WORKFLOW_POSTGRES_URL` injected so an `@workflow/world-postgres` agent has a durable workflow store. Set it on the worker (compose sets it for you; for native dev export `WORKFLOW_POSTGRES_URL=postgres://eveland:eveland@host.docker.internal:5432/eveland`). It must use a container-reachable host — not `localhost` — because agent containers reach the host DB via `host.docker.internal`. A project secret of the same name overrides it.

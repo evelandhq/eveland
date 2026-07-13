@@ -8,6 +8,7 @@ describe("db mappers", () => {
 
     const project = projectRowToProject({
       id: "proj_123",
+      routingKey: "p-weather",
       ownerId: "user_local_admin",
       name: "Weather Agent",
       importKind: "git",
@@ -25,6 +26,7 @@ describe("db mappers", () => {
 
     expect(project).toEqual({
       id: "proj_123",
+      routingKey: "p-weather",
       name: "Weather Agent",
       importKind: "git",
       gitUrl: null,
@@ -50,6 +52,7 @@ describe("db mappers", () => {
 
     const deployment = deploymentRowToDeployment({
       id: "dep_123",
+      deploymentKey: "d-release",
       projectId: "proj_123",
       releaseId: "rel_123",
       containerName: "eveland-proj-dep_123",
@@ -63,6 +66,7 @@ describe("db mappers", () => {
 
     expect(deployment).toEqual({
       id: "dep_123",
+      deploymentKey: "d-release",
       projectId: "proj_123",
       releaseId: "rel_123",
       containerName: "eveland-proj-dep_123",
@@ -84,6 +88,8 @@ describe("db mappers", () => {
         eveSessionId: "eve_123",
         continuationToken: null,
         rootNodeId: "node_123",
+        routeId: null,
+        variantName: null,
         trigger: "playground",
         scheduleId: null,
         status: "completed",

@@ -1,0 +1,14 @@
+# Dynamic Traefik file-provider example. Replace agents.example.com, terminate TLS
+# here, and keep port 4080 private to the host.
+http:
+  routers:
+    eveland-agents:
+      rule: "HostRegexp(`[a-z0-9-]+.agents.example.com`) && !PathPrefix(`/internal`)"
+      entryPoints: [websecure]
+      service: eveland-gateway
+      tls: {}
+  services:
+    eveland-gateway:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:4080"

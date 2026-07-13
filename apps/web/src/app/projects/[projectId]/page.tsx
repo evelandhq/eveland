@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getLogs, getProject, getSchedules, getSessions } from "@/lib/api";
+import { getAgentEndpoints, getLogs, getProject, getSchedules, getSessions } from "@/lib/api";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { StatusBadge } from "@/components/status-badge";
 
@@ -7,7 +7,13 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectOverviewPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const [project, sessions, schedules, logs] = await Promise.all([getProject(projectId), getSessions(projectId), getSchedules(projectId), getLogs(projectId)]);
+  const [project, endpoints, sessions, schedules, logs] = await Promise.all([
+    getProject(projectId),
+    getAgentEndpoints(projectId),
+    getSessions(projectId),
+    getSchedules(projectId),
+    getLogs(projectId),
+  ]);
   const recentFailureLog = project?.status === "failed" || project?.deploymentStatus === "failed" ? findRecentFailureLog(logs) : null;
 
   return (
@@ -40,15 +46,26 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
           />
         </div>
         <dl className="grid grid-cols-2 gap-px bg-border text-sm">
-          {[
+          {(
+            [
             ["Deployment", project?.deploymentStatus ?? "unknown"],
             ["Source revision", project?.sourceRevisionId ?? "None"],
             ["Release", project?.releaseId ?? "None"],
-            ["Deployment ID", project?.deploymentId ?? "None"],
-          ].map(([label, value]) => (
+            ["Stable endpoint", endpoints.stable ?? "None"],
+            ["Preview endpoint", endpoints.previews.at(-1) ?? "None"],
+            ] satisfies Array<[string, string]>
+          ).map(([label, value]) => (
             <div key={label} className="bg-card p-4">
               <dt className="text-xs text-muted-foreground">{label}</dt>
-              <dd className="mt-2 font-medium">{value}</dd>
+              <dd className="mt-2 break-all font-medium">
+                {label.endsWith("endpoint") && value !== "None" ? (
+                  <a href={value} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
+                    {value}
+                  </a>
+                ) : (
+                  value
+                )}
+              </dd>
             </div>
           ))}
         </dl>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryStore, type Store } from "@eveland/db";
-import { allocateAvailableHostPort, processNextJob, resolveObserverOutboxDirs } from "./process.js";
+import { allocateAvailableHostPort, invalidateGatewayRouteCache, processNextJob, resolveObserverOutboxDirs } from "./process.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -9,6 +9,26 @@ import path from "node:path";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 
 describe("processNextJob", () => {
+  test("invalidates each materialized Gateway hostname when service credentials are configured", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await invalidateGatewayRouteCache(
+      { EVELAND_GATEWAY_INTERNAL_URL: "http://gateway:4080", EVELAND_GATEWAY_SERVICE_TOKEN: "secret" },
+      [{ hostname: "p-one.agent.localhost" }, { hostname: "d-one--p-one.agent.localhost" }],
+      async (url, init) => {
+        calls.push({ url: String(url), init });
+        return new Response(null, { status: 200 });
+      },
+    );
+    expect(calls).toEqual([
+      expect.objectContaining({ url: "http://gateway:4080/internal/cache/invalidate" }),
+      expect.objectContaining({ url: "http://gateway:4080/internal/cache/invalidate" }),
+    ]);
+    expect(calls.map((call) => call.init?.body)).toEqual([
+      JSON.stringify({ hostname: "p-one.agent.localhost" }),
+      JSON.stringify({ hostname: "d-one--p-one.agent.localhost" }),
+    ]);
+  });
+
   test("maps the worker-visible observer outbox to its Docker-host path", () => {
     expect(
       resolveObserverOutboxDirs(
