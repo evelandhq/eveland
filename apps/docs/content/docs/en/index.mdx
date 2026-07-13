@@ -1,0 +1,32 @@
+---
+title: Introduction
+description: A self-hosted control plane for deploying and operating standard Eve projects.
+---
+
+Eveland turns a standard [Eve](https://eve.dev) project into an observable, routable deployment on infrastructure you control. It provides one place to import source, inject secrets, build releases, run agents, route traffic, and inspect the sessions they create.
+
+## Who Eveland is for
+
+- **Agent authors** keep writing ordinary filesystem-first Eve projects. Eveland detects the agents, tools, skills, connections, sandboxes, subagents, and schedules already present in the project.
+- **Application developers** get stable and preview agent endpoints, a Playground, and session timelines that connect user input to model and tool activity.
+- **Operators** get explicit release, deployment, routing, health, logging, isolation, retention, and usage boundaries.
+
+## Start here
+
+1. Follow the [Quick Start](/docs/quick-start) to run the control plane locally.
+2. Read [Core Concepts](/docs/concepts) before your first production deploy.
+3. Use [Deploy an Eve Project](/docs/deploy) for the complete source-to-route workflow.
+4. Read [Operate Eveland](/docs/operate) before installing it on a Linux host.
+
+## What Eveland manages
+
+| Object | Purpose |
+| --- | --- |
+| Project | The durable home for one imported Eve project. |
+| Source Revision | An immutable Git commit or uploaded Zip snapshot. |
+| Release | The build output created from a source revision. |
+| Deployment | A running release with its own runtime identity and private port. |
+| Route | The stable, preview, or named hostname that selects deployments. |
+| Session | A durable Eve execution observed with deployment provenance. |
+
+Eveland is currently a **preview**. Treat the documentation and runtime contracts as evolving, and review release changes before upgrading a production host.

@@ -1,0 +1,50 @@
+---
+title: 运行 Eveland
+description: 运行本地 Docker Stack 和受支持的 Linux 生产拓扑。
+---
+
+本地开发和生产环境有意使用不同的运行时默认值。本地继续使用 Docker；生产 Linux 安装使用宿主机 Worker 与 systemd runtime。
+
+## 本地开发
+
+开发 Compose 可以运行 Postgres、API、Gateway、Web 和 Worker。只有 Worker 获得 Docker controller socket。Gateway 无法读取导入源码、解密后的 Secrets 或 Observer outbox。
+
+Agent 进程只发布到宿主机回环地址，并通过 Gateway 获得 `agent.localhost:4080` 下的开发 Host。
+
+## Linux 生产环境
+
+<RuntimeTopology />
+
+受支持的单机拓扑是：
+
+- **Web、API、Gateway 与 Postgres** 运行在 Docker Compose 中。
+- **Worker** 作为 root 管理的宿主机 systemd service 运行。
+- **Eve Deployments** 作为无特权应用用户的 transient systemd services 运行。
+- **Traefik** 只将通配 Agent Host 转发到 Gateway。
+
+API 与宿主机 Worker 必须看到同一个绝对数据目录，通常是 `/var/lib/eveland`。保存的 Source 与 Release 路径属于共享契约；挂载不一致会让导入或部署文件在一侧“消失”。
+
+## 宿主机前置条件
+
+安装 Node.js 24、pnpm、Git、systemd 与 bubblewrap。为构建和部署创建不同的用户，并创建 Eve Sandbox 所需的 `/workspace` mountpoint。
+
+Ubuntu 24.04 默认限制无特权 user namespace。如果其 bubblewrap 包没有自带 AppArmor profile，需要先为 `/usr/bin/bwrap` 添加允许 `userns` 的 profile，然后再启动 Worker。
+
+启用服务前运行独立 Preflight：
+
+```bash
+pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+```
+
+Preflight 会一次报告所有缺少的前置条件。
+
+## 公开与私有流量
+
+Gateway 是唯一暴露给通配 Agent Host 的服务。Deployment 进程监听 `127.0.0.1:41xxx`；不要把这些动态端口加入 Traefik 或公开防火墙规则。
+
+为 Gateway service token 与 affinity cookie secret 配置相互独立的长随机值。不要公开 Gateway 的 `/internal/*` 路由。
+
+## 切换运行时
+
+把解析后的 Runtime 视为主机整个配置周期内的固定选择。在 Docker 与 systemd 之间切换，或迁移 Runtime owner 未知的旧 Deployment 数据前，必须先排空并删除所有 Eveland Deployment。

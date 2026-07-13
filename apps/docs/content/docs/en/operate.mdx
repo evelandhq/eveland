@@ -1,0 +1,50 @@
+---
+title: Operate Eveland
+description: Run the local Docker stack and the supported Linux production topology.
+---
+
+Local development and production intentionally use different runtime defaults. Keep Docker for local work. Use the host Worker and systemd runtime for a production Linux installation.
+
+## Local development
+
+The development Compose file can run Postgres, API, Gateway, Web, and Worker. Only Worker receives the Docker controller socket. Gateway cannot read imported sources, decrypted secrets, or observer outboxes.
+
+Agent processes publish on host loopback and receive a development hostname under `agent.localhost:4080` through Gateway.
+
+## Linux production
+
+<RuntimeTopology />
+
+The supported single-host topology is:
+
+- **Web, API, Gateway, and Postgres** in Docker Compose.
+- **Worker** as a root-owned host systemd service.
+- **Eve deployments** as transient systemd services under an unprivileged application user.
+- **Traefik** forwarding wildcard agent hosts only to Gateway.
+
+API and the host Worker must see the same absolute data directory, normally `/var/lib/eveland`. Stored source and release paths are shared contracts; a mismatched mount makes imports or deploys disappear from one side.
+
+## Host prerequisites
+
+Install Node.js 24, pnpm, Git, systemd, and bubblewrap. Create distinct users for builds and deployments, plus the `/workspace` mountpoint required by the Eve sandbox.
+
+Ubuntu 24.04 restricts unprivileged user namespaces by default. If its bubblewrap package does not ship an AppArmor profile, add one granting `/usr/bin/bwrap` the `userns` permission before starting the Worker.
+
+Run the standalone preflight before enabling the service:
+
+```bash
+pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+```
+
+Preflight reports all missing prerequisites in one pass.
+
+## Public and private traffic
+
+Gateway is the only service exposed to wildcard Agent hosts. Deployment processes listen on `127.0.0.1:41xxx`; never add those dynamic ports to Traefik or public firewall rules.
+
+Configure independent long random values for the Gateway service token and affinity cookie secret. Do not expose Gateway’s `/internal/*` routes publicly.
+
+## Runtime changes
+
+Treat the resolved runtime as fixed for the lifetime of a provisioned host. Drain and remove every active Eveland deployment before switching between Docker and systemd or migrating older deployment rows whose runtime owner may be unknown.

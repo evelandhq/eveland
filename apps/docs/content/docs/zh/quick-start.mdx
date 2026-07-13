@@ -1,0 +1,54 @@
+---
+title: 快速开始
+description: 在本地运行 Eveland，并部署第一个 Eve 项目。
+---
+
+本指南让 Postgres 运行在 Docker 中，四个 Eveland 应用在宿主机原生运行。这是在 macOS 或 Linux 上进行开发的最快路径。
+
+## 前置条件
+
+- Node.js 24 或更高版本
+- 已启用 pnpm 的 Corepack
+- Docker 与 Compose
+- 本地 Eve 项目、Git URL 或 Zip 压缩包
+
+## 安装并启动
+
+```bash
+git clone https://github.com/evelandhq/eveland.git
+cd eveland
+pnpm install
+
+docker compose up -d postgres
+pnpm --filter @eveland/api db:migrate
+
+pnpm --filter @eveland/api dev
+pnpm --filter @eveland/gateway dev
+pnpm --filter @eveland/web dev
+pnpm --filter @eveland/worker dev
+```
+
+打开 [http://localhost:3000](http://localhost:3000)。四个应用都不可缺少：Web 提供控制台，API 保存控制面状态，Worker 执行导入、构建和部署任务，Gateway 路由 Playground 与公开 Agent 流量。
+
+> 开发时只选择一种模式：要么整个 Stack 都运行在 Compose 中，要么只有 Postgres 使用 Compose、其余应用原生运行。在同一个挂载工作区之间切换可能替换不同平台构建的 `node_modules`。
+
+## 导入项目
+
+1. 打开 **Projects**，选择 **New project**。
+2. 导入 Git 仓库或上传 Zip 文件。
+3. 等待源码校验完成。
+4. 添加 Agent 所需的环境变量与 Provider Key。
+5. 选择 **Build & Deploy**。
+
+首次成功部署会创建不可变 Release 和 Preview Deployment。打开 **Playground**，通过 Gateway 发送消息并检查产生的 Session。
+
+## 验证工作区
+
+提交更改前，运行仓库使用的相同检查：
+
+```bash
+pnpm test
+pnpm typecheck
+```
+
+继续阅读[部署 Eve 项目](/zh/docs/deploy)，了解 Preview、提升、回滚与稳定路由如何工作。

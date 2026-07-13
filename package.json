@@ -11,6 +11,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "dev": "pnpm -r --parallel dev",
+    "dev:docs": "pnpm --filter @eveland/docs dev",
     "dev:web": "pnpm --filter @eveland/web dev",
     "dev:api": "pnpm --filter @eveland/api dev",
     "dev:worker": "pnpm --filter @eveland/worker dev",

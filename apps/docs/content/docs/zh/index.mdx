@@ -1,0 +1,32 @@
+---
+title: 介绍
+description: 用于部署和运行标准 Eve 项目的自托管控制平面。
+---
+
+Eveland 将一个标准 [Eve](https://eve.dev) 项目变成运行在你自己基础设施上的、可观察和可路由的 Deployment。你可以在同一处导入源码、注入 Secrets、构建 Release、运行 Agent、路由流量并检查它们创建的 Session。
+
+## Eveland 适合谁
+
+- **Agent 编写者**继续编写普通、文件系统优先的 Eve 项目。Eveland 会识别项目已有的 agents、tools、skills、connections、sandboxes、subagents 与 schedules。
+- **应用开发者**获得稳定与预览 Agent 入口、Playground，以及将用户输入连接到模型和工具活动的 Session 时间线。
+- **运维人员**获得明确的 Release、Deployment、路由、健康检查、日志、隔离、保留策略和用量边界。
+
+## 从这里开始
+
+1. 按照[快速开始](/zh/docs/quick-start)在本地运行控制平面。
+2. 第一次生产部署前，先阅读[核心概念](/zh/docs/concepts)。
+3. 使用[部署 Eve 项目](/zh/docs/deploy)完成从源码到稳定路由的流程。
+4. 在 Linux 主机安装前阅读[运行 Eveland](/zh/docs/operate)。
+
+## Eveland 管理什么
+
+| 对象 | 用途 |
+| --- | --- |
+| Project | 一个导入 Eve 项目的持久归属。 |
+| Source Revision | 不可变的 Git commit 或上传 Zip 快照。 |
+| Release | 从 Source Revision 生成的构建产物。 |
+| Deployment | 有独立运行时身份和私有端口的运行中 Release。 |
+| Route | 指向 Deployment 的稳定、预览或命名 Host。 |
+| Session | 带 Deployment 来源信息的持久 Eve 执行过程。 |
+
+Eveland 目前处于**预览阶段**。文档和运行时契约仍会演进，升级生产主机前请检查版本变更。
