@@ -4,7 +4,7 @@ import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eve
 import { DURABLE_WORKFLOW_WORLD, isDurableWorkflowWorld } from "@eveland/core/source";
 import type { Store } from "@eveland/db";
 import net from "node:net";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { waitForHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "../runtime/select.js";
@@ -198,6 +198,8 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // then appends the per-project suffix, since ProcessStartInput carries no
       // projectId for the adapter to recompute it from.
       const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
+      const observerOutbox = resolveObserverOutboxDirs(process.env, project.id, deploymentId);
+      await mkdir(observerOutbox.workerDir, { recursive: true });
       // Tracks the process this job itself started, distinct from
       // `currentDeployment`'s old process stopped above -- only the NEW
       // process is this block's responsibility to clean up.
@@ -207,9 +209,10 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           processName,
           releaseRef: build.releaseRef,
           port: hostPort,
-          env,
+          env: { ...env, EVELAND_DEPLOYMENT_ID: deploymentId },
           commandContext,
           sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+          observerOutboxDir: runtime.name === "docker" ? observerOutbox.hostDir : observerOutbox.workerDir,
         });
         startedProcess = processName;
         await (options.waitForDeployment ?? waitForHttpHealth)({
@@ -300,6 +303,8 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       await adapter.stopProcess(deployment.containerName);
       // Same pairing build_deploy uses -- see the comment there.
       const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
+      const observerOutbox = resolveObserverOutboxDirs(process.env, project.id, deployment.id);
+      await mkdir(observerOutbox.workerDir, { recursive: true });
       // Tracks whether the restart's own startProcess (above stop notwithstanding)
       // actually came up, so a startProcess failure -- nothing running under this
       // name -- doesn't trigger a pointless (or misleading) extra stop call.
@@ -309,9 +314,10 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           processName: deployment.containerName,
           releaseRef: release.imageTag,
           port: deployment.hostPort,
-          env,
+          env: { ...env, EVELAND_DEPLOYMENT_ID: deployment.id },
           commandContext,
           sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+          observerOutboxDir: adapter.name === "docker" ? observerOutbox.hostDir : observerOutbox.workerDir,
         });
         restarted = true;
         await (options.waitForDeployment ?? waitForHttpHealth)({
@@ -521,6 +527,20 @@ export async function allocateAvailableHostPort(startPort = Number(process.env.E
   }
 
   throw new Error(`No available deployment host port in range ${startPort}-${endPort}.`);
+}
+
+export function resolveObserverOutboxDirs(
+  env: NodeJS.ProcessEnv,
+  projectId: string,
+  deploymentId: string,
+): { workerDir: string; hostDir: string } {
+  const dataDir = path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data");
+  const hostDataDir = path.resolve(env.EVELAND_HOST_DATA_DIR ?? dataDir);
+  const suffix = path.join("observer", processSafeName(projectId), processSafeName(deploymentId));
+  return {
+    workerDir: path.join(dataDir, suffix),
+    hostDir: path.join(hostDataDir, suffix),
+  };
 }
 
 async function isTcpPortAvailable(host: string, port: number): Promise<boolean> {

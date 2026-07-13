@@ -25,6 +25,8 @@ services:
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       APP_SECRET_KEY: eveland-dev-secret-key-000000000
       EVELAND_DATA_DIR: /workspace/.eveland-data
+      EVELAND_OBSERVER_ROOT: /workspace/.eveland-data/observer
+      EVELAND_COLLECTOR_MODE: embedded
     ports:
       - "4000:4000"
     volumes:
@@ -60,6 +62,8 @@ services:
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       WORKFLOW_POSTGRES_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
       EVELAND_DATA_DIR: /workspace/.eveland-data
+      # docker run bind mounts are resolved by the host daemon, not inside this container.
+      EVELAND_HOST_DATA_DIR: ${EVELAND_HOST_DATA_DIR:-${PWD}/.eveland-data}
       EVELAND_RUNTIME: docker
     volumes:
       - .:/workspace

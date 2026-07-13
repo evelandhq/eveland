@@ -4,6 +4,7 @@ dist/
 coverage/
 .turbo/
 .eveland-data/
+.eve/
 
 .env
 .env.*

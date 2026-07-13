@@ -83,6 +83,7 @@ describe("db mappers", () => {
         deploymentId: "dep_123",
         eveSessionId: "eve_123",
         continuationToken: null,
+        rootNodeId: "node_123",
         trigger: "playground",
         scheduleId: null,
         status: "completed",

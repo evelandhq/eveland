@@ -64,6 +64,10 @@ bind-mounts it at that same absolute path, matching the host worker's
 `sourcePath` is written by whichever side imports the project and read by
 whichever side later serves or deploys it — a mismatched mount would leave
 one side unable to find files the other wrote.
+The observer outbox lives below `/var/lib/eveland/observer`. Each deployment can
+write only its own directory; the API starts the collector in embedded mode and
+reads the shared root. Collector degradation is reported separately at
+`GET /internal/collector/health` and does not make the control-plane `/health` fail.
 
 ### Startup preflight
 
@@ -97,6 +101,9 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_CPU_QUOTA` | `200%` | systemd `CPUQuota` per deployment. |
 | `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
 | `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland`. |
+| `EVELAND_HOST_DATA_DIR` | `EVELAND_DATA_DIR` | Host-daemon view of the same data directory. Set this only when a containerized worker drives Docker through `/var/run/docker.sock`; native systemd workers use the same path on both sides. |
+| `EVELAND_OBSERVER_ROOT` | `$EVELAND_DATA_DIR/observer` | API collector root shared with deployment observer outboxes. |
+| `EVELAND_COLLECTOR_MODE` | `embedded` | `embedded` starts collection with the API; `disabled` is for controlled maintenance and leaves envelopes queued on disk. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
@@ -223,12 +230,13 @@ first deploy: `npx --package=@workflow/world-postgres bootstrap`.
 ## How a deployment runs
 
 - Build: source is copied to `$EVELAND_DATA_DIR/builds/<project>/<release>`, then
+  Eveland injects its reserved observer hook into the copied release (never the imported source), then
   `npm ci && npx eve build` runs as the unprivileged build user (`EVELAND_BUILD_USER`)
   inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
   PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`
   with `User=eveland-app`, `ProtectSystem=strict`,
-  `ReadWritePaths=<releaseDir>` and a second `ReadWritePaths=<sandboxCacheDir>` for the
+  `ReadWritePaths=<releaseDir>`, `ReadWritePaths=<observerOutboxDir>`, and a further `ReadWritePaths=<sandboxCacheDir>` for the
   project's `EVELAND_SANDBOX_CACHE_DIR` subdirectory, `PrivateTmp`, `NoNewPrivileges`,
   `MemoryMax`, `CPUQuota`, `Restart=on-failure`. The app binds `127.0.0.1:<hostPort>`;
   secrets arrive via a root-owned 0600 `EnvironmentFile`.

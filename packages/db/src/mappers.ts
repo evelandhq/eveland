@@ -14,6 +14,7 @@ import type {
   ScheduleRecord,
   Session,
   SessionEvent,
+  SessionNode,
   SessionStatus,
   SessionTrigger,
   SecretRecord,
@@ -146,6 +147,7 @@ export function sessionRowToSession(row: {
   deploymentId: string | null;
   eveSessionId: string | null;
   continuationToken: string | null;
+  rootNodeId: string | null;
   trigger: string;
   scheduleId: string | null;
   status: string;
@@ -165,6 +167,7 @@ export function sessionRowToSession(row: {
     deploymentId: row.deploymentId,
     eveSessionId: row.eveSessionId,
     continuationToken: row.continuationToken,
+    rootNodeId: row.rootNodeId,
     trigger: row.trigger as SessionTrigger,
     scheduleId: row.scheduleId,
     status: row.status as SessionStatus,
@@ -196,6 +199,12 @@ export function sessionEventRowToSessionEvent(row: {
   index: number;
   type: string;
   payload: unknown;
+  sessionNodeId: string | null;
+  observerEventId: string | null;
+  eventFingerprint: string | null;
+  observedDeploymentId: string | null;
+  sourceSequence: number | null;
+  eventAt: Date;
   createdAt: Date;
 }): SessionEvent {
   return {
@@ -204,7 +213,40 @@ export function sessionEventRowToSessionEvent(row: {
     index: row.index,
     type: row.type,
     payload: row.payload,
+    sessionNodeId: row.sessionNodeId,
+    observerEventId: row.observerEventId,
+    eventFingerprint: row.eventFingerprint,
+    observedDeploymentId: row.observedDeploymentId,
+    sourceSequence: row.sourceSequence,
+    eventAt: timestampToIso(row.eventAt),
     createdAt: timestampToIso(row.createdAt),
+  };
+}
+
+export function sessionNodeRowToSessionNode(row: {
+  id: string;
+  rootSessionId: string;
+  projectId: string;
+  eveSessionId: string;
+  parentNodeId: string | null;
+  parentEveSessionId: string | null;
+  startedDeploymentId: string;
+  lastObservedDeploymentId: string;
+  agentId: string | null;
+  agentName: string | null;
+  nodeId: string | null;
+  channelKind: string | null;
+  modelId: string | null;
+  eveVersion: string | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}): SessionNode {
+  return {
+    ...row,
+    status: row.status as SessionNode["status"],
+    createdAt: timestampToIso(row.createdAt),
+    updatedAt: timestampToIso(row.updatedAt),
   };
 }
 

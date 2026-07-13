@@ -12,6 +12,7 @@
   "dependencies": {
     "@eveland/core": "workspace:*",
     "@eveland/db": "workspace:*",
+    "@eveland/agent-observer": "workspace:*",
     "@eveland/sandbox-bwrap": "workspace:*",
     "execa": "^9.6.1",
     "zod": "^4.4.3"

@@ -2,12 +2,12 @@ import Link from 'next/link';
 import { PlusIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/status-badge';
-import { getProjects } from '@/lib/api';
+import { getCollectorHealth, getProjects } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ProjectsPage() {
-  const projects = await getProjects();
+  const [projects, collector] = await Promise.all([getProjects(), getCollectorHealth()]);
 
   return (
     <main className="min-h-screen bg-background">
@@ -23,6 +23,15 @@ export default async function ProjectsPage() {
       </header>
 
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-6 py-6">
+        {collector.status !== "healthy" ? (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+            <div className="font-medium">Session collector {collector.status}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {collector.backlogEvents} queued events · {collector.quarantinedEvents} quarantined
+              {collector.lastError ? ` · ${collector.lastError}` : ""}
+            </div>
+          </div>
+        ) : null}
         <div className="flex items-end justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold tracking-normal">Projects</h2>

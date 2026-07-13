@@ -29,6 +29,9 @@ importers:
       '@eveland/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@eveland/session-collector':
+        specifier: workspace:*
+        version: link:../../packages/session-collector
       '@hono/node-server':
         specifier: ^2.0.6
         version: 2.0.6(hono@4.12.27)
@@ -97,6 +100,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@eveland/agent-observer':
+        specifier: workspace:*
+        version: link:../../packages/agent-observer
       '@eveland/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -117,6 +123,19 @@ importers:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
 
+  packages/agent-observer:
+    dependencies:
+      '@eveland/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      eve:
+        specifier: 0.22.1
+        version: 0.22.1(ai@7.0.17(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(kysely@0.29.2)(postgres@3.4.9))(jiti@2.7.0)(rollup@4.62.2)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
+
   packages/core:
     dependencies:
       cron-parser:
@@ -125,6 +144,9 @@ importers:
       nanoid:
         specifier: ^5.1.16
         version: 5.1.16
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       vitest:
         specifier: ^4.1.9
@@ -157,6 +179,19 @@ importers:
       eve:
         specifier: 0.22.1
         version: 0.22.1(ai@7.0.17(zod@4.4.3))(dotenv@17.4.2)(drizzle-orm@0.45.2(kysely@0.29.2)(postgres@3.4.9))(jiti@2.7.0)(rollup@4.62.2)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))
+
+  packages/session-collector:
+    dependencies:
+      '@eveland/core':
+        specifier: workspace:*
+        version: link:../core
+      '@eveland/db':
+        specifier: workspace:*
+        version: link:../db
+    devDependencies:
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.0.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4))

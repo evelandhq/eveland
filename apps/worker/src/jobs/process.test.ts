@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryStore, type Store } from "@eveland/db";
-import { allocateAvailableHostPort, processNextJob } from "./process.js";
+import { allocateAvailableHostPort, processNextJob, resolveObserverOutboxDirs } from "./process.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -9,6 +9,19 @@ import path from "node:path";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 
 describe("processNextJob", () => {
+  test("maps the worker-visible observer outbox to its Docker-host path", () => {
+    expect(
+      resolveObserverOutboxDirs(
+        { EVELAND_DATA_DIR: "/workspace/.eveland-data", EVELAND_HOST_DATA_DIR: "/host/eveland/.eveland-data" },
+        "proj_123",
+        "dep_456",
+      ),
+    ).toEqual({
+      workerDir: "/workspace/.eveland-data/observer/proj_123/dep_456",
+      hostDir: "/host/eveland/.eveland-data/observer/proj_123/dep_456",
+    });
+  });
+
   test("allocates a later host port when the preferred port is already listening", async () => {
     const server = net.createServer();
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -164,7 +177,11 @@ describe("processNextJob", () => {
           processName: expect.stringMatching(new RegExp(`^eveland-${project.id.toLowerCase()}-dep_`)),
           releaseRef: `eveland/${project.id.toLowerCase()}:rel`,
           port: 41001,
-          env: { OPENAI_API_KEY: "sk-test-123456" },
+          env: expect.objectContaining({
+            OPENAI_API_KEY: "sk-test-123456",
+            EVELAND_DEPLOYMENT_ID: expect.stringMatching(/^dep_/),
+          }),
+          observerOutboxDir: expect.stringContaining(path.join("observer", project.id.toLowerCase())),
         }),
       },
     ]);
@@ -923,10 +940,12 @@ describe("processNextJob", () => {
           processName: deployment.containerName,
           releaseRef: "eveland/proj:rel_cur",
           port: deployment.hostPort,
-          env: {
+          env: expect.objectContaining({
             WORKFLOW_POSTGRES_URL: "postgres://platform@host.docker.internal:5432/eveland",
             OPENAI_API_KEY: "sk-test-restart",
-          },
+            EVELAND_DEPLOYMENT_ID: deployment.id,
+          }),
+          observerOutboxDir: expect.stringContaining(path.join("observer", project.id.toLowerCase(), deployment.id)),
         }),
       },
     ]);

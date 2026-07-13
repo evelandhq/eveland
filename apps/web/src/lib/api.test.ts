@@ -6,6 +6,12 @@ describe("web api helpers", () => {
     vi.unstubAllGlobals();
   });
 
+  test("exports collector health and session-tree readers", async () => {
+    const api = (await import("./api")) as Record<string, unknown>;
+    expect(api.getCollectorHealth).toEqual(expect.any(Function));
+    expect(api.getSessionNodes).toEqual(expect.any(Function));
+  });
+
   test("enqueues a build deploy job for a project", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response(JSON.stringify({ job: { id: "job_123", type: "build_deploy", status: "queued" } }), {

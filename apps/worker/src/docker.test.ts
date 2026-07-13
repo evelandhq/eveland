@@ -39,6 +39,7 @@ describe("buildDockerRunArgs", () => {
       imageTag: "eveland/proj_123:rel_456",
       internalPort: 3000,
       hostPort: 43123,
+      observerOutboxDir: "/host/eveland/observer/proj_123/dep_456",
       env: { OPENAI_API_KEY: "sk-test-123456" },
       command: "npm run start",
     });
@@ -54,6 +55,10 @@ describe("buildDockerRunArgs", () => {
       "host.docker.internal:host-gateway",
       "--publish",
       "127.0.0.1:43123:3000",
+      "--volume",
+      "/host/eveland/observer/proj_123/dep_456:/var/lib/eveland-observer",
+      "--env",
+      "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer",
       "--env",
       "OPENAI_API_KEY=sk-test-123456",
       "eveland/proj_123:rel_456",
@@ -128,7 +133,10 @@ describe("createDockerAdapter", () => {
     expect(contents).toContain("FROM node:24-alpine");
 
     expect(result.releaseRef).toBe("eveland/proj_123:rel_456");
-    expect(vi.mocked(execa).mock.calls).toEqual([["docker", ["build", "--file", dockerfilePath, "--tag", "eveland/proj_123:rel_456", "/workspace/source"], { all: true }]]);
+    expect(vi.mocked(execa).mock.calls).toEqual([
+      ["cp", ["-a", "/workspace/source/.", buildDir]],
+      ["docker", ["build", "--file", dockerfilePath, "--tag", "eveland/proj_123:rel_456", buildDir], { all: true }],
+    ]);
   });
 
   test("startProcess publishes the configured internal port and runs the eve start command", async () => {
@@ -146,6 +154,7 @@ describe("createDockerAdapter", () => {
       // ignore it: containers get a fresh filesystem per run, no host directory
       // to grant.
       sandboxCacheDir,
+      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
     });
 
     expect(result.internalPort).toBe(3000);

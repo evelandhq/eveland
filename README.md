@@ -7,7 +7,9 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/core`: dependency-free Eveland contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths. It intentionally has no root barrel so browser-safe imports cannot accidentally pull in Node-only code.
 - `packages/db`: Drizzle schema and migrations, Postgres repository, memory repository, mappers, and store factory shared by API and worker.
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
-- `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, provider-reported per-agent token usage collected from Eve session streams, and BetterAuth dependency. Persistence is supplied by `packages/db`.
+- `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
+- `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
+- `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, an embedded observer collector, and BetterAuth dependency. Persistence is supplied by `packages/db`.
 - `apps/worker`: Docker runtime adapter, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
 
@@ -34,6 +36,9 @@ docker compose up
 
 The service images are `node:24-alpine` with `git` / `docker-cli` / `unzip` installed at
 startup — the app shells out to them for git import, agent deploy, and zip-upload extraction.
+When the worker runs in Compose, `EVELAND_HOST_DATA_DIR` must be the host-absolute path
+to the workspace's `.eveland-data`; this lets deployment containers bind the same observer
+outbox that the API's embedded collector reads.
 
 Pick one mode: either everything in Compose, or only `postgres` in Compose and the rest natively. The Compose services run `pnpm install` inside Linux containers against the mounted workspace, which clobbers a macOS-built `node_modules`.
 
@@ -67,8 +72,9 @@ pnpm typecheck
 
 - API uses Postgres when `DATABASE_URL` is set; tests use the memory store.
 - `packages/db/src/schema.ts` and `packages/db/drizzle/` are the Postgres model and migration targets. `pnpm --filter @eveland/api db:push` remains as a convenience proxy to the db package.
-- Token accounting uses Eve's `step.completed.data.usage` values. Input, output, cache-read, cache-write, and optional gateway cost are recorded per model step and attributed to the Eve session and agent that consumed them. Missing provider usage stays explicitly marked as missing rather than being estimated or treated as reported zero usage.
-- The Playground collector follows local `subagent.called` child-session streams recursively. Remote child URLs are not fetched directly; they are recorded as `usage.collection_failed` until they can be resolved through a managed deployment mapping. Child telemetry failures do not fail the root agent turn.
+- Token accounting uses Eve's `step.completed.data.usage` values. Injected hooks write envelopes to `$EVELAND_DATA_DIR/observer`; the API's embedded collector validates and projects them exactly once. Input, output, cache-read, cache-write, and optional gateway cost are attributed to the Eve session node that consumed them. Missing provider usage stays explicitly marked instead of being estimated.
+- The Playground transport only returns the current reply and timeline. It does not collect or project usage. Observer envelopes discover direct private-port, Playground, schedule, and child sessions independently, then merge more-specific provenance by `(projectId, eveSessionId)`.
+- Eve 0.22.1 gives directory-form subagents an independent hook slot, so they are fully observed. File-form subagents have no hook slot and their parent stream exposes only control events; they are a documented coverage gap until Eve exposes a public observation surface.
 - Markdown eve schedules are executable in the MVP plan; TypeScript schedules are discovery-only until the native eve schedule runtime is integrated.
 - Deployed agents get `WORKFLOW_POSTGRES_URL` injected so an `@workflow/world-postgres` agent has a durable workflow store. Set it on the worker (compose sets it for you; for native dev export `WORKFLOW_POSTGRES_URL=postgres://eveland:eveland@host.docker.internal:5432/eveland`). It must use a container-reachable host — not `localhost` — because agent containers reach the host DB via `host.docker.internal`. A project secret of the same name overrides it.
 - `NODE_ENV` gates deploys: with `NODE_ENV=production` on the worker, deploying an agent without a durable workflow world fails; unset (development) only warns. A production eveland sets `NODE_ENV=production` on the worker, which is also injected into deployed agent containers.

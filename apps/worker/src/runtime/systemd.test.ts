@@ -19,6 +19,7 @@ import { verifySandbox } from "./sandbox-verify.js";
 
 vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
+  readdir: vi.fn().mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" })),
   writeFile: vi.fn().mockResolvedValue(undefined),
   rm: vi.fn().mockResolvedValue(undefined),
 }));
@@ -42,6 +43,10 @@ vi.mock("./sandbox-verify.js", () => ({
   verifySandbox: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("./observer-verify.js", () => ({
+  verifyObserverOutbox: vi.fn().mockResolvedValue(undefined),
+}));
+
 describe("buildSystemdRunArgs", () => {
   test("creates a hardened transient unit bound to the release dir", () => {
     const args = buildSystemdRunArgs({
@@ -53,6 +58,7 @@ describe("buildSystemdRunArgs", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
       command: "npx eve start --host 127.0.0.1 --port 41000",
     });
 
@@ -68,11 +74,13 @@ describe("buildSystemdRunArgs", () => {
       "--property=EnvironmentFile=/data/deployment-env/eveland-proj_123-dep_456.env",
       "--property=Environment=PORT=41000",
       "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/proj_123",
+      "--property=Environment=EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-data/observer/proj_123/dep_456",
       "--property=MemoryMax=2G",
       "--property=CPUQuota=200%",
       "--property=ProtectSystem=strict",
       "--property=ReadWritePaths=/data/builds/proj_123/rel_789",
       "--property=ReadWritePaths=/var/lib/eveland-data/sandbox/proj_123",
+      "--property=ReadWritePaths=/var/lib/eveland-data/observer/proj_123/dep_456",
       "--property=PrivateTmp=yes",
       "--property=NoNewPrivileges=yes",
       "sh",
@@ -93,6 +101,7 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/p",
+      observerOutboxDir: "/var/lib/eveland-data/observer/p/d",
       command: "npx eve start",
     });
 

@@ -1,8 +1,8 @@
 export type ProjectImportKind = "git" | "zip";
 export type ProjectStatus = "import_pending" | "imported" | "invalid" | "build_pending" | "deployed" | "failed";
 export type DeploymentStatus = "not_deployed" | "building" | "starting" | "running" | "stopped" | "failed";
-export type SessionStatus = "running" | "completed" | "failed" | "waiting_approval";
-export type SessionTrigger = "playground" | "cron" | "webhook" | "channel" | "api";
+export type SessionStatus = "running" | "waiting" | "completed" | "failed" | "waiting_approval";
+export type SessionTrigger = "playground" | "cron" | "webhook" | "channel" | "api" | "direct_http";
 export type RuntimeKind = "docker" | "systemd";
 
 export type Project = {
@@ -99,12 +99,33 @@ export type Session = {
   deploymentId: string | null;
   eveSessionId: string | null;
   continuationToken: string | null;
+  rootNodeId: string | null;
   trigger: SessionTrigger;
   scheduleId: string | null;
   status: SessionStatus;
   startedAt: string;
   completedAt: string | null;
   usage: SessionTokenUsage;
+};
+
+export type SessionNode = {
+  id: string;
+  rootSessionId: string;
+  projectId: string;
+  eveSessionId: string;
+  parentNodeId: string | null;
+  parentEveSessionId: string | null;
+  startedDeploymentId: string;
+  lastObservedDeploymentId: string;
+  agentId: string | null;
+  agentName: string | null;
+  nodeId: string | null;
+  channelKind: string | null;
+  modelId: string | null;
+  eveVersion: string | null;
+  status: SessionStatus;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type SessionTokenUsage = {
@@ -142,6 +163,12 @@ export type SessionEvent = {
   index: number;
   type: string;
   payload: unknown;
+  sessionNodeId: string | null;
+  observerEventId: string | null;
+  eventFingerprint: string | null;
+  observedDeploymentId: string | null;
+  sourceSequence: number | null;
+  eventAt: string;
   createdAt: string;
 };
 
