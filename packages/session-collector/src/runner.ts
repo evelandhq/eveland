@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile, rename, rm } from "node:fs/promises";
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import { isObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
 import { claimReadyFile, quarantineFile, recoverExpiredClaims } from "./claims.js";
 import { createCollectorHealth, type CollectorHealth } from "./health.js";
 import { parseObserverEnvelope } from "./ingest.js";
@@ -93,6 +93,13 @@ export function createCollectorRuntime(options: CollectorRuntimeOptions): Collec
           health.lastError = null;
         }
       } catch (error) {
+        if (isObserverEnvelopeRejectedError(error)) {
+          await quarantineFile(options.rootDir, claimed);
+          health.quarantinedEvents += 1;
+          health.status = "degraded";
+          health.lastError = errorMessage(error);
+          continue;
+        }
         await rename(claimed, claimed.replace(/\.processing\.[^.]+\.json$/, ".ready.json"));
         health.status = "degraded";
         health.lastError = errorMessage(error);

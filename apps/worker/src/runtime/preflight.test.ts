@@ -42,6 +42,15 @@ describe("assertWorkerPreflight", () => {
     expect(deps.commandExists).not.toHaveBeenCalled();
   });
 
+  test("rejects an invalid APP_SECRET_KEY before a docker worker starts", async () => {
+    await expect(
+      assertWorkerPreflight({
+        EVELAND_RUNTIME: "docker",
+        APP_SECRET_KEY: "1234567890123456789012345678901",
+      }),
+    ).rejects.toThrow("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
+  });
+
   test("runs the full preflight when NODE_ENV=production resolves the systemd default, even with EVELAND_RUNTIME unset", async () => {
     // The gate must follow the RESOLVED runtime, not the raw env var: a
     // production host relying on the systemd default gets the same safety net

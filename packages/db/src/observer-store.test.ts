@@ -127,7 +127,10 @@ describe("observer ingestion repository", () => {
 
   test("rejects an envelope whose deployment cannot be mapped to a project", async () => {
     const store = createStore();
-    await expect(store.ingestObserverEnvelope(envelope({ deploymentId: "attacker-project" }))).rejects.toThrow(/not managed/);
+    await expect(store.ingestObserverEnvelope(envelope({ deploymentId: "attacker-project" }))).rejects.toMatchObject({
+      code: "OBSERVER_ENVELOPE_REJECTED",
+      message: expect.stringMatching(/not managed/),
+    });
   });
 
   test("merges observer data into a pre-existing Playground session without weakening provenance", async () => {

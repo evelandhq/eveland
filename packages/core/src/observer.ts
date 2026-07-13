@@ -21,6 +21,24 @@ export const observerEnvelopeV1Schema = z.object({
 
 export type ObserverEnvelopeV1 = z.infer<typeof observerEnvelopeV1Schema>;
 
+export class ObserverEnvelopeRejectedError extends Error {
+  readonly code = "OBSERVER_ENVELOPE_REJECTED";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ObserverEnvelopeRejectedError";
+  }
+}
+
+export function isObserverEnvelopeRejectedError(error: unknown): error is ObserverEnvelopeRejectedError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "OBSERVER_ENVELOPE_REJECTED"
+  );
+}
+
 const collectedEventTypes = new Set([
   "session.started",
   "turn.started",

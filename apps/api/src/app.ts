@@ -7,7 +7,7 @@ import type { Context } from "hono";
 import { cors } from "hono/cors";
 import type { LogRecord } from "@eveland/core/contracts";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
+import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
 import type { CollectorHealth } from "@eveland/session-collector/health";
 import { z } from "zod";
@@ -61,6 +61,7 @@ function validateTargetsPayload(
 const devSecretKey = "eveland-dev-secret-key-000000000";
 
 export type AppOptions = {
+  appSecretKey?: string;
   playgroundRunner?: PlaygroundRunner;
   dataDir?: string;
   collectorHealth?: () => CollectorHealth;
@@ -71,6 +72,8 @@ export type AppOptions = {
 
 export function createApp(store: Store, options: AppOptions = {}): Hono {
   const app = new Hono();
+  const appSecretKey = options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
+  assertValidSecretKey(appSecretKey);
   const playgroundRunner = options.playgroundRunner ?? runGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 
@@ -348,7 +351,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
     if (!parsed.success) {
       return c.json({ error: "Invalid secret input", issues: parsed.error.issues }, 400);
     }
-    const encrypted = encryptSecretValue(parsed.data.value, process.env.APP_SECRET_KEY ?? devSecretKey);
+    const encrypted = encryptSecretValue(parsed.data.value, appSecretKey);
     const secret = await store.upsertSecret(c.req.param("projectId"), parsed.data.key, JSON.stringify(encrypted));
     return c.json({ secret }, 201);
   });

@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { claimRoutingKey, createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { Database } from "./client.js";
 import {
   deploymentRowToDeployment,
@@ -983,7 +983,11 @@ export function createPostgresStore(database: Database): Store {
     async ingestObserverEnvelope(envelope) {
       return db.transaction(async (tx) => {
         const [deployment] = await tx.select().from(deployments).where(eq(deployments.id, envelope.deploymentId)).limit(1);
-        if (!deployment) throw new Error(`Observer deployment ${envelope.deploymentId} is not managed by Eveland.`);
+        if (!deployment) {
+          throw new ObserverEnvelopeRejectedError(
+            `Observer deployment ${envelope.deploymentId} is not managed by Eveland.`,
+          );
+        }
         const [binding] = await tx
           .select()
           .from(sessionBindings)

@@ -36,6 +36,37 @@ describe("embedded collector outbox protocol", () => {
     expect(collector.getHealth()).toMatchObject({ status: "degraded", backlogEvents: 1, lastError: "database unavailable" });
   });
 
+  test("quarantines a permanently rejected envelope without blocking the next valid event", async () => {
+    const rootDir = await createRoot();
+    await writeEnvelope(rootDir, envelope(), "000000000001-rejected.ready.json");
+    await writeEnvelope(
+      rootDir,
+      envelope({ observerEventId: "evt_2", sourceSequence: 2 }),
+      "000000000002-valid.ready.json",
+    );
+    const ingested: ObserverEnvelopeV1[] = [];
+    const collector = createCollectorRuntime({
+      rootDir,
+      ingest: async (value) => {
+        if (value.observerEventId === "evt_1") {
+          throw Object.assign(new Error("deployment is not managed"), { code: "OBSERVER_ENVELOPE_REJECTED" });
+        }
+        ingested.push(value);
+      },
+    });
+
+    await collector.processOnce();
+
+    expect(ingested.map((value) => value.observerEventId)).toEqual(["evt_2"]);
+    expect(await readdir(path.join(rootDir, "quarantine"))).toHaveLength(1);
+    expect(collector.getHealth()).toMatchObject({
+      status: "degraded",
+      quarantinedEvents: 1,
+      backlogEvents: 0,
+      lastError: "deployment is not managed",
+    });
+  });
+
   test("quarantines an invalid envelope without blocking the next valid event", async () => {
     const rootDir = await createRoot();
     await writeReady(rootDir, "000000000001-invalid.ready.json", "not-json");

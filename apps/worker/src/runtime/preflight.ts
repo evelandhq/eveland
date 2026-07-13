@@ -1,7 +1,10 @@
 import { execa } from "execa";
+import { assertValidSecretKey } from "@eveland/core/server/secrets";
 import { access, mkdir as fsMkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { resolveBackendDistDir, resolveRuntimeKind } from "./select.js";
+
+const devSecretKey = "eveland-dev-secret-key-000000000";
 
 export type PreflightDeps = {
   env: NodeJS.ProcessEnv;
@@ -199,13 +202,16 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
 }
 
 /**
- * No-op unless the RESOLVED runtime is systemd -- the docker runtime has no
- * host prerequisites for this worker to preflight. Gating on
- * resolveRuntimeKind, not the raw EVELAND_RUNTIME, matters: a production host
- * (NODE_ENV=production, EVELAND_RUNTIME unset) defaults to the systemd adapter
- * and must get the same preflight as an explicit EVELAND_RUNTIME=systemd.
+ * The encryption key is runtime-independent and is always validated. Host
+ * prerequisite checks are otherwise a no-op unless the RESOLVED runtime is
+ * systemd -- the docker runtime has no host prerequisites for this worker to
+ * preflight. Gating on resolveRuntimeKind, not the raw EVELAND_RUNTIME,
+ * matters: a production host (NODE_ENV=production, EVELAND_RUNTIME unset)
+ * defaults to the systemd adapter and must get the same preflight as an
+ * explicit EVELAND_RUNTIME=systemd.
  */
 export async function assertWorkerPreflight(env: NodeJS.ProcessEnv, overrides: Partial<PreflightDeps> = {}): Promise<void> {
+  assertValidSecretKey(env.APP_SECRET_KEY ?? devSecretKey);
   if (resolveRuntimeKind(env) !== "systemd") {
     return;
   }

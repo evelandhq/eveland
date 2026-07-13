@@ -328,6 +328,14 @@ describe("api app", () => {
     expect(JSON.stringify(await listResponse.json())).not.toContain("sk-test-123456");
   });
 
+  test("rejects an invalid secret encryption key when the API starts", () => {
+    expect(() =>
+      createApp(createMemoryStore(), {
+        appSecretKey: "1234567890123456789012345678901",
+      }),
+    ).toThrow("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
+  });
+
   test("returns current source revision and files", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Source Agent", importKind: "zip" });

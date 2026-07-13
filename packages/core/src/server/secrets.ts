@@ -7,6 +7,10 @@ export type EncryptedSecret = {
   ciphertext: string;
 };
 
+export function assertValidSecretKey(key: string): void {
+  normalizeKey(key);
+}
+
 export function encryptSecretValue(value: string, key: string): EncryptedSecret {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", normalizeKey(key), iv);

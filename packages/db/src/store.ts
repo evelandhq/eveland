@@ -27,7 +27,7 @@ import type {
   SessionBinding,
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
 import { validateRouteTargets } from "@eveland/core/routing";
 
 export type DeploymentRetention = {
@@ -759,7 +759,11 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async ingestObserverEnvelope(envelope) {
       const deployment = state.deployments.find((candidate) => candidate.id === envelope.deploymentId);
-      if (!deployment) throw new Error(`Observer deployment ${envelope.deploymentId} is not managed by Eveland.`);
+      if (!deployment) {
+        throw new ObserverEnvelopeRejectedError(
+          `Observer deployment ${envelope.deploymentId} is not managed by Eveland.`,
+        );
+      }
 
       const discovered = ensureMemorySessionNode(state, deployment, envelope);
       const duplicateEvent = state.sessionEvents.find(
