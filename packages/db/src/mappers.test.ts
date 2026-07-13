@@ -89,6 +89,7 @@ describe("db mappers", () => {
         continuationToken: null,
         rootNodeId: "node_123",
         routeId: null,
+        experimentId: null,
         variantName: null,
         trigger: "playground",
         scheduleId: null,

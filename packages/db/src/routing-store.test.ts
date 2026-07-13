@@ -20,6 +20,15 @@ describe("routing repository", () => {
     await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
 
     expect(await store.listDeployments(project.id)).toHaveLength(2);
+    const preview = (await store.listProjectRoutes(project.id)).find(
+      (route) => route.kind === "deployment" && route.targets[0]?.deploymentId === first.id,
+    );
+    await expect(store.updateRouteTargets(preview!.id, [
+      { deploymentId: second.id, weight: 10_000, variantName: "mutated-preview" },
+    ])).rejects.toThrow(/preview.*immutable/i);
+    await expect(store.findRouteByHostname(preview!.hostname)).resolves.toMatchObject({
+      targets: [expect.objectContaining({ deploymentId: first.id, weight: 10_000 })],
+    });
     const stable = await store.findProjectRoute(project.id);
     expect(stable?.targets).toEqual([expect.objectContaining({ deploymentId: first.id, weight: 10_000 })]);
     await store.updateRouteTargets(stable!.id, [
@@ -142,6 +151,7 @@ describe("routing repository", () => {
       deploymentId: deployment.id,
       trigger: "api",
       variantName: null,
+      experimentId: null,
       requestId: "req_1",
       remoteIp: "203.0.113.10",
       affinityFingerprint: null,
@@ -184,6 +194,7 @@ describe("routing repository", () => {
       deploymentId: deployment.id,
       trigger: "playground",
       variantName: null,
+      experimentId: `${route!.id}:r1`,
       requestId: "req_playground",
       remoteIp: null,
       affinityFingerprint: null,
@@ -192,7 +203,12 @@ describe("routing repository", () => {
 
     const completed = await store.completeSession(session.id, { status: "completed", eveSessionId: "eve_playground" });
 
-    expect(completed).toMatchObject({ trigger: "playground", routeId: route!.id, deploymentId: deployment.id });
+    expect(completed).toMatchObject({
+      trigger: "playground",
+      routeId: route!.id,
+      deploymentId: deployment.id,
+      experimentId: `${route!.id}:r1`,
+    });
   });
 });
 

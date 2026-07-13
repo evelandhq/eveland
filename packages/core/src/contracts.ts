@@ -103,6 +103,7 @@ export type Session = {
   continuationToken: string | null;
   rootNodeId: string | null;
   routeId: string | null;
+  experimentId: string | null;
   variantName: string | null;
   trigger: SessionTrigger;
   scheduleId: string | null;
@@ -149,6 +150,7 @@ export type SessionBinding = {
   deploymentId: string;
   trigger: "api" | "playground";
   variantName: string | null;
+  experimentId: string | null;
   requestId: string;
   remoteIp: string | null;
   affinityFingerprint: string | null;

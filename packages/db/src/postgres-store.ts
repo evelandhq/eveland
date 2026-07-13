@@ -644,6 +644,7 @@ export function createPostgresStore(database: Database): Store {
       await db.transaction(async (tx) => {
         const [route] = await tx.select().from(agentRoutes).where(eq(agentRoutes.id, routeId)).limit(1);
         if (!route) throw new Error("Agent route not found.");
+        if (route.kind === "deployment") throw new Error("Deployment preview routes are immutable.");
         for (const target of targets) {
           const [deployment] = await tx.select().from(deployments).where(eq(deployments.id, target.deploymentId)).limit(1);
           if (!deployment || deployment.projectId !== route.projectId) throw new Error("Route target deployment does not belong to the project.");
@@ -751,6 +752,7 @@ export function createPostgresStore(database: Database): Store {
         .set({
           trigger: input.trigger,
           routeId: input.routeId,
+          experimentId: input.experimentId,
           variantName: input.variantName,
           deploymentId: input.deploymentId,
         })
@@ -897,6 +899,7 @@ export function createPostgresStore(database: Database): Store {
                 rootNodeId: current.rootNodeId ?? observed.rootNodeId,
                 deploymentId: current.deploymentId ?? observed.deploymentId,
                 routeId: current.routeId ?? observed.routeId,
+                experimentId: current.experimentId ?? observed.experimentId,
                 variantName: current.variantName ?? observed.variantName,
                 inputTokens: sql`${sessions.inputTokens} + ${observed.inputTokens}`,
                 outputTokens: sql`${sessions.outputTokens} + ${observed.outputTokens}`,
@@ -938,6 +941,7 @@ export function createPostgresStore(database: Database): Store {
               ? {
                   trigger: binding.trigger,
                   routeId: binding.routeId,
+                  experimentId: binding.experimentId,
                   variantName: binding.variantName,
                   deploymentId: binding.deploymentId,
                 }
@@ -1069,6 +1073,7 @@ export function createPostgresStore(database: Database): Store {
                   continuationToken: null,
                   rootNodeId: null,
                   routeId: parentBinding?.routeId ?? null,
+                  experimentId: parentBinding?.experimentId ?? null,
                   variantName: parentBinding?.variantName ?? null,
                   trigger: parentBinding?.trigger ?? "direct_http",
                   scheduleId: null,
@@ -1119,6 +1124,7 @@ export function createPostgresStore(database: Database): Store {
                 continuationToken: null,
                 rootNodeId: null,
                 routeId: binding?.routeId ?? null,
+                experimentId: binding?.experimentId ?? null,
                 variantName: binding?.variantName ?? null,
                 trigger: binding?.trigger ?? triggerFromObserverChannel(envelope.channelKind),
                 scheduleId: null,

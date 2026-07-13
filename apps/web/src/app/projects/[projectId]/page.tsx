@@ -114,8 +114,9 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
         <div className="border-b border-border px-4 py-3"><h2 className="text-sm font-semibold">Variant metrics</h2></div>
         <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4">
           {variantMetrics.map((metric) => (
-            <div key={metric.variantName} className="bg-card p-4 text-sm">
+            <div key={`${metric.deploymentId}:${metric.experimentId}:${metric.variantName}`} className="bg-card p-4 text-sm">
               <p className="font-medium">{metric.variantName}</p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">{metric.experimentId ?? "no experiment"} · {metric.deploymentId ?? "unassigned"}</p>
               <p className="mt-2 text-xs text-muted-foreground">{metric.success} success / {metric.failure} failed · {Math.round(metric.averageLatencyMs)}ms avg</p>
               <p className="mt-1 text-xs text-muted-foreground">{metric.tokens} tokens · ${metric.costUsd.toFixed(4)}</p>
             </div>

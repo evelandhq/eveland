@@ -44,6 +44,7 @@ export type Session = {
   continuationToken: string | null;
   rootNodeId: string | null;
   routeId: string | null;
+  experimentId: string | null;
   variantName: string | null;
   trigger: string;
   scheduleId: string | null;
@@ -84,6 +85,8 @@ export type DeploymentOverview = {
 };
 
 export type VariantMetric = {
+  deploymentId: string | null;
+  experimentId: string | null;
   variantName: string;
   sessions: number;
   success: number;

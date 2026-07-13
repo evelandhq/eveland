@@ -178,10 +178,12 @@ describe("Gateway", () => {
     await expect(workflow.text()).resolves.toBe("proxied:/.well-known/workflow/v1/flow");
   });
 
-  test("uses deterministic weighted affinity and keeps continuations pinned after route promotion", async () => {
+  test("keeps bindings pinned across 90/10 to 50/50 and weight-zero policy changes", async () => {
+    let firstSequence = 0;
     const first = await startUpstream((_request, response) => {
-      response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": "eve_weighted" });
-      response.end(JSON.stringify({ deployment: "a", sessionId: "eve_weighted" }));
+      const sessionId = `eve_a_${++firstSequence}`;
+      response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": sessionId });
+      response.end(JSON.stringify({ deployment: "a", sessionId }));
     });
     const second = await startUpstream((_request, response) => {
       response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": "eve_weighted" });
@@ -208,17 +210,49 @@ describe("Gateway", () => {
       body: "{}",
     });
     await expect(initial.json()).resolves.toMatchObject({ deployment: "b" });
+    expect(repo.bindings).toContainEqual(expect.objectContaining({
+      eveSessionId: "eve_weighted",
+      deploymentId: "dep_b",
+      experimentId: "route_project:r1",
+    }));
 
-    weighted.targets = [{ routeId: "route_project", deploymentId: "dep_a", weight: 10_000, variantName: "control", hostPort: first.port, status: "running" }];
+    weighted.policyRevision = 2;
+    weighted.targets = [
+      { routeId: "route_project", deploymentId: "dep_a", weight: 5_000, variantName: "control", hostPort: first.port, status: "running" },
+      { routeId: "route_project", deploymentId: "dep_b", weight: 5_000, variantName: "candidate", hostPort: second.port, status: "running" },
+    ];
     const continuation = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_weighted", {
       method: "POST", headers: { host: "p-alpha.agent.localhost", "x-eveland-version-key": affinity },
     });
     await expect(continuation.json()).resolves.toMatchObject({ deployment: "b" });
+
+    weighted.policyRevision = 3;
+    weighted.targets = [
+      { routeId: "route_project", deploymentId: "dep_a", weight: 10_000, variantName: "control", hostPort: first.port, status: "running" },
+      { routeId: "route_project", deploymentId: "dep_b", weight: 0, variantName: "candidate", hostPort: second.port, status: "running" },
+    ];
+    const afterZero = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "x-eveland-version-key": affinity, "content-type": "application/json" },
+      body: "{}",
+    });
+    await expect(afterZero.json()).resolves.toMatchObject({ deployment: "a" });
+    const pinnedAfterZero = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_weighted", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost" },
+    });
+    await expect(pinnedAfterZero.json()).resolves.toMatchObject({ deployment: "b" });
     expect(repo.bindings).toContainEqual(expect.objectContaining({
       deploymentId: "dep_b",
       variantName: "candidate",
+      experimentId: "route_project:r1",
       affinitySource: "version_key",
       affinityFingerprint: expect.stringMatching(/^sha256-[a-f0-9]{64}$/),
+    }));
+    expect(repo.bindings).toContainEqual(expect.objectContaining({
+      eveSessionId: "eve_a_1",
+      deploymentId: "dep_a",
+      experimentId: "route_project:r3",
     }));
   });
 

@@ -153,6 +153,7 @@ export function sessionRowToSession(row: {
   continuationToken: string | null;
   rootNodeId: string | null;
   routeId: string | null;
+  experimentId: string | null;
   variantName: string | null;
   trigger: string;
   scheduleId: string | null;
@@ -175,6 +176,7 @@ export function sessionRowToSession(row: {
     continuationToken: row.continuationToken,
     rootNodeId: row.rootNodeId,
     routeId: row.routeId,
+    experimentId: row.experimentId,
     variantName: row.variantName,
     trigger: row.trigger as SessionTrigger,
     scheduleId: row.scheduleId,
@@ -375,6 +377,7 @@ export function sessionBindingRowToSessionBinding(row: {
   deploymentId: string;
   trigger: string;
   variantName: string | null;
+  experimentId: string | null;
   requestId: string;
   remoteIp: string | null;
   affinityFingerprint: string | null;

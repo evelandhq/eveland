@@ -146,19 +146,48 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
 
   app.get("/projects/:projectId/variant-metrics", async (c) => {
     const sessions = await store.listSessions(c.req.param("projectId"));
-    const groups = new Map<string, { variantName: string; sessions: number; success: number; failure: number; latencyMs: number; tokens: number; costUsd: number }>();
+    const groups = new Map<string, {
+      deploymentId: string | null;
+      experimentId: string | null;
+      variantName: string;
+      sessions: number;
+      success: number;
+      failure: number;
+      latencyMs: number;
+      latencySamples: number;
+      tokens: number;
+      costUsd: number;
+    }>();
     for (const session of sessions) {
       const variantName = session.variantName ?? "unassigned";
-      const group = groups.get(variantName) ?? { variantName, sessions: 0, success: 0, failure: 0, latencyMs: 0, tokens: 0, costUsd: 0 };
+      const groupKey = JSON.stringify([session.deploymentId, session.experimentId, variantName]);
+      const group = groups.get(groupKey) ?? {
+        deploymentId: session.deploymentId,
+        experimentId: session.experimentId,
+        variantName,
+        sessions: 0,
+        success: 0,
+        failure: 0,
+        latencyMs: 0,
+        latencySamples: 0,
+        tokens: 0,
+        costUsd: 0,
+      };
       group.sessions += 1;
       if (session.status === "completed") group.success += 1;
       if (session.status === "failed") group.failure += 1;
-      if (session.completedAt) group.latencyMs += Math.max(0, Date.parse(session.completedAt) - Date.parse(session.startedAt));
+      if (session.completedAt) {
+        group.latencyMs += Math.max(0, Date.parse(session.completedAt) - Date.parse(session.startedAt));
+        group.latencySamples += 1;
+      }
       group.tokens += session.usage.inputTokens + session.usage.outputTokens + session.usage.cacheReadTokens + session.usage.cacheWriteTokens;
       group.costUsd += session.usage.costUsd ?? 0;
-      groups.set(variantName, group);
+      groups.set(groupKey, group);
     }
-    return c.json({ variants: [...groups.values()].map((group) => ({ ...group, averageLatencyMs: group.sessions ? group.latencyMs / group.sessions : 0 })) });
+    return c.json({ variants: [...groups.values()].map(({ latencyMs, latencySamples, ...group }) => ({
+      ...group,
+      averageLatencyMs: latencySamples ? latencyMs / latencySamples : 0,
+    })) });
   });
 
   app.post("/projects/:projectId/deployments/:deploymentId/promote", async (c) => {
@@ -171,7 +200,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
     const deployment = await store.getDeployment(c.req.param("deploymentId"));
     if (!deployment || deployment.projectId !== c.req.param("projectId")) return c.json({ error: "Deployment not found" }, 404);
     const routes = await store.listProjectRoutes(deployment.projectId);
-    if (routes.some((route) => route.targets.some((target) => target.deploymentId === deployment.id && target.weight > 0))) {
+    if (routes.some((route) => route.kind !== "deployment" && route.targets.some((target) => target.deploymentId === deployment.id && target.weight > 0))) {
       return c.json({ error: "Set this deployment route weight to zero before draining." }, 409);
     }
     const updated = await store.updateDeploymentStatus(deployment.id, "draining");
@@ -192,7 +221,9 @@ export function createApp(store: Store, options: AppOptions = {}): Hono {
     const input = routeTargetsSchema.safeParse(await c.req.json().catch(() => null));
     if (!input.success) return c.json({ error: "Invalid route targets", detail: input.error.flatten() }, 400);
     const routes = await store.listProjectRoutes(c.req.param("projectId"));
-    if (!routes.some((route) => route.id === c.req.param("routeId"))) return c.json({ error: "Route not found" }, 404);
+    const existing = routes.find((route) => route.id === c.req.param("routeId"));
+    if (!existing) return c.json({ error: "Route not found" }, 404);
+    if (existing.kind === "deployment") return c.json({ error: "Deployment preview routes are immutable" }, 409);
     const route = await store.updateRouteTargets(c.req.param("routeId"), input.data.targets);
     await invalidateGateway(options, [route.hostname]);
     return c.json({ route });

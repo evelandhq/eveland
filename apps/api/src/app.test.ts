@@ -106,6 +106,15 @@ describe("api app", () => {
     await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
     const app = createApp(store, { invalidateGatewayRoutes: async (hostnames) => { invalidated.push(hostnames); } });
     const stable = await store.findProjectRoute(project.id);
+    const preview = (await store.listProjectRoutes(project.id)).find(
+      (route) => route.kind === "deployment" && route.targets[0]?.deploymentId === first.id,
+    );
+    const mutatePreview = await app.request(`/projects/${project.id}/routes/${preview!.id}/targets`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ targets: [{ deploymentId: second.id, weight: 10_000, variantName: "mutable" }] }),
+    });
+    expect(mutatePreview.status).toBe(409);
 
     const split = await app.request(`/projects/${project.id}/routes/${stable!.id}/targets`, {
       method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ targets: [
@@ -126,6 +135,122 @@ describe("api app", () => {
     });
     expect(alias.status).toBe(201);
     expect(invalidated.flat()).toEqual(expect.arrayContaining([`${project.routingKey}.agent.localhost`, `canary--${project.routingKey}.agent.localhost`]));
+  });
+
+  test("drains a zero-weight deployment without treating its immutable preview as mutable traffic", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Drain Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/drain",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const first = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "drain-a",
+      containerName: "drain-a",
+      internalPort: 3000,
+      hostPort: 41201,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, first.id, "agent.localhost");
+    const second = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "drain-b",
+      containerName: "drain-b",
+      internalPort: 3000,
+      hostPort: 41202,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
+    const stable = await store.findProjectRoute(project.id);
+    await store.updateRouteTargets(stable!.id, [
+      { deploymentId: first.id, weight: 0, variantName: "control" },
+      { deploymentId: second.id, weight: 10_000, variantName: "candidate" },
+    ]);
+
+    const response = await createApp(store).request(`/projects/${project.id}/deployments/${first.id}/drain`, { method: "POST" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ deployment: { id: first.id, status: "draining" } });
+    await expect(store.findRouteByHostname(`${first.deploymentKey}--${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+      kind: "deployment",
+      targets: [expect.objectContaining({ deploymentId: first.id, weight: 10_000, status: "draining" })],
+    });
+  });
+
+  test("groups experiment metrics by deployment, experiment, and variant", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Metrics Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/metrics",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const control = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "control", containerName: "control",
+      internalPort: 3000, hostPort: 41301, runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, control.id, "agent.localhost");
+    const candidate = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "candidate", containerName: "candidate",
+      internalPort: 3000, hostPort: 41302, runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, candidate.id, "agent.localhost");
+    const stable = await store.findProjectRoute(project.id);
+    await store.updateRouteTargets(stable!.id, [
+      { deploymentId: control.id, weight: 5_000, variantName: "control" },
+      { deploymentId: candidate.id, weight: 5_000, variantName: "candidate" },
+    ]);
+    const experimentId = `${stable!.id}:r2`;
+
+    const controlSession = await store.createSession({ projectId: project.id, deploymentId: control.id, eveSessionId: "eve_control", trigger: "api" });
+    await store.bindSession({
+      projectId: project.id, eveSessionId: "eve_control", routeId: stable!.id, deploymentId: control.id,
+      trigger: "api", variantName: "control", experimentId, requestId: "req_control", remoteIp: null,
+      affinityFingerprint: "sha256-control", affinitySource: "version_key",
+    });
+    await store.recordModelUsage(controlSession.id, {
+      eveSessionId: "eve_control", turnId: "turn_control", stepIndex: 0, finishReason: "stop",
+      inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 1, costUsd: 0.01, usageReported: true,
+    });
+    await store.completeSession(controlSession.id, { status: "completed" });
+
+    const candidateSession = await store.createSession({ projectId: project.id, deploymentId: candidate.id, eveSessionId: "eve_candidate", trigger: "api" });
+    await store.bindSession({
+      projectId: project.id, eveSessionId: "eve_candidate", routeId: stable!.id, deploymentId: candidate.id,
+      trigger: "api", variantName: "candidate", experimentId, requestId: "req_candidate", remoteIp: null,
+      affinityFingerprint: "sha256-candidate", affinitySource: "version_key",
+    });
+    await store.recordModelUsage(candidateSession.id, {
+      eveSessionId: "eve_candidate", turnId: "turn_candidate", stepIndex: 0, finishReason: "error",
+      inputTokens: 20, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0.02, usageReported: true,
+    });
+    await store.completeSession(candidateSession.id, { status: "failed" });
+
+    const response = await createApp(store).request(`/projects/${project.id}/variant-metrics`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ variants: expect.arrayContaining([
+      expect.objectContaining({
+        deploymentId: control.id, experimentId, variantName: "control", sessions: 1,
+        success: 1, failure: 0, tokens: 18, costUsd: 0.01, averageLatencyMs: expect.any(Number),
+      }),
+      expect.objectContaining({
+        deploymentId: candidate.id, experimentId, variantName: "candidate", sessions: 1,
+        success: 0, failure: 1, tokens: 22, costUsd: 0.02, averageLatencyMs: expect.any(Number),
+      }),
+    ]) });
   });
 
   test("creates a zip project from an uploaded archive and stores the extracted source path", async () => {
