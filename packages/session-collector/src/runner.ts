@@ -17,6 +17,8 @@ export type CollectorRuntimeOptions = {
   maxBatchBytes?: number;
   maxRoundMs?: number;
   delayedAfterMs?: number;
+  maxConcurrentSessions?: number;
+  maxBacklogBytes?: number;
 };
 
 export type CollectorRuntime = {
@@ -35,6 +37,8 @@ export function createCollectorRuntime(options: CollectorRuntimeOptions): Collec
   const maxBatchBytes = options.maxBatchBytes ?? 10_485_760;
   const maxRoundMs = options.maxRoundMs ?? 5_000;
   const delayedAfterMs = options.delayedAfterMs ?? 30_000;
+  const maxConcurrentSessions = options.maxConcurrentSessions ?? 100;
+  const maxBacklogBytes = options.maxBacklogBytes ?? 1_073_741_824;
   const health = createCollectorHealth();
   let timer: NodeJS.Timeout | null = null;
   let running: Promise<void> | null = null;
@@ -46,6 +50,7 @@ export function createCollectorRuntime(options: CollectorRuntimeOptions): Collec
     const ready = await listOutboxFiles(options.rootDir, /\.ready\.json$/);
     let batchBytes = 0;
     let handled = 0;
+    const handledSessions = new Set<string>();
 
     for (const file of ready) {
       if (handled >= maxBatchEvents || batchBytes + file.size > maxBatchBytes || Date.now() - roundStartedAt > maxRoundMs) break;
@@ -73,6 +78,12 @@ export function createCollectorRuntime(options: CollectorRuntimeOptions): Collec
         continue;
       }
 
+      if (!handledSessions.has(envelope.eveSessionId) && handledSessions.size >= maxConcurrentSessions) {
+        await rename(claimed, claimed.replace(/\.processing\.[^.]+\.json$/, ".ready.json"));
+        continue;
+      }
+      handledSessions.add(envelope.eveSessionId);
+
       try {
         await options.ingest(envelope);
         await rm(claimed);
@@ -93,7 +104,15 @@ export function createCollectorRuntime(options: CollectorRuntimeOptions): Collec
     health.backlogEvents = backlog.length;
     health.backlogBytes = backlog.reduce((total, file) => total + file.size, 0);
     health.oldestEventAge = backlog.length === 0 ? 0 : Math.max(0, Date.now() - Math.min(...backlog.map((file) => file.modifiedAtMs)));
-    if (health.status !== "degraded") health.status = health.oldestEventAge > delayedAfterMs ? "delayed" : "healthy";
+    if (health.backlogBytes > maxBacklogBytes) {
+      health.status = "degraded";
+      health.lastError = `Observer backlog ${health.backlogBytes} bytes exceeds limit ${maxBacklogBytes} bytes.`;
+    } else if (health.lastError?.startsWith("Observer backlog ")) {
+      health.status = health.oldestEventAge > delayedAfterMs ? "delayed" : "healthy";
+      health.lastError = null;
+    } else if (health.status !== "degraded") {
+      health.status = health.oldestEventAge > delayedAfterMs ? "delayed" : "healthy";
+    }
   };
 
   const schedule = (): void => {

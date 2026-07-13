@@ -996,6 +996,7 @@ export function createPostgresStore(database: Database): Store {
               agentName: envelope.agent.name ?? node.agentName,
               nodeId: envelope.agent.nodeId ?? node.nodeId,
               channelKind: envelope.channelKind ?? node.channelKind,
+              resolutionStatus: "observed",
               updatedAt: new Date(),
             })
             .where(eq(sessionNodes.id, node.id))
@@ -1078,6 +1079,7 @@ export function createPostgresStore(database: Database): Store {
                 parentEveSessionId: null,
                 startedDeploymentId: envelope.deploymentId,
                 lastObservedDeploymentId: envelope.deploymentId,
+                resolutionStatus: "unresolved",
                 status: "running",
               })
               .returning();
@@ -1132,6 +1134,7 @@ export function createPostgresStore(database: Database): Store {
               agentName: envelope.agent.name,
               nodeId: envelope.agent.nodeId,
               channelKind: envelope.channelKind,
+              resolutionStatus: "observed",
               status: "running",
             })
             .returning();
@@ -1199,6 +1202,7 @@ export function createPostgresStore(database: Database): Store {
           .update(sessionNodes)
           .set({
             status: projectedStatus ?? node.status,
+            resolutionStatus: "observed",
             agentId: stringValue(runtime?.agentId) ?? node.agentId,
             agentName: stringValue(runtime?.agentName) ?? node.agentName,
             modelId: stringValue(runtime?.modelId) ?? node.modelId,
@@ -1224,7 +1228,9 @@ export function createPostgresStore(database: Database): Store {
         }
 
         if (type === "subagent.called") {
-          const childEveSessionId = stringValue(recordValue(payload)?.childSessionId);
+          const subagentPayload = recordValue(payload);
+          const childEveSessionId = stringValue(subagentPayload?.childSessionId);
+          const remoteUrl = stringValue(recordValue(subagentPayload?.remote)?.url);
           if (childEveSessionId) {
             let [child] = await tx
               .select()
@@ -1260,7 +1266,8 @@ export function createPostgresStore(database: Database): Store {
                   rootSessionId: sessionRow!.id,
                   parentNodeId: node!.id,
                   parentEveSessionId: node!.eveSessionId,
-                  agentName: stringValue(recordValue(payload)?.name) ?? child.agentName,
+                  agentName: stringValue(subagentPayload?.name) ?? child.agentName,
+                  remoteUrl: remoteUrl ?? child.remoteUrl,
                   updatedAt: new Date(),
                 })
                 .where(eq(sessionNodes.id, child.id))
@@ -1275,8 +1282,10 @@ export function createPostgresStore(database: Database): Store {
                 parentEveSessionId: node!.eveSessionId,
                 startedDeploymentId: envelope.deploymentId,
                 lastObservedDeploymentId: envelope.deploymentId,
-                agentName: stringValue(recordValue(payload)?.name),
+                agentName: stringValue(subagentPayload?.name),
                 channelKind: "subagent",
+                remoteUrl,
+                resolutionStatus: "unresolved",
                 status: "running",
               });
             }

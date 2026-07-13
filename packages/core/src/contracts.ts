@@ -171,6 +171,8 @@ export type SessionNode = {
   channelKind: string | null;
   modelId: string | null;
   eveVersion: string | null;
+  remoteUrl: string | null;
+  resolutionStatus: "observed" | "unresolved";
   status: SessionStatus;
   createdAt: string;
   updatedAt: string;

@@ -37,5 +37,12 @@ describe("Eve 0.22.1 observer hook coverage", () => {
     );
     expect(manifest.subagents.find((subagent) => subagent.subagentId === "file-child")?.manifest.hooks ?? []).toEqual([]);
     expect(manifest.subagents.find((subagent) => subagent.subagentId === "remote-child")?.manifest.hooks ?? []).toEqual([]);
+
+    const compiledManifest = JSON.parse(
+      await readFile(path.join(path.dirname(info.artifacts.discoveryManifest), "../compile/compiled-agent-manifest.json"), "utf8"),
+    ) as { remoteAgents: Array<{ name: string; url: string; path: string }> };
+    expect(compiledManifest.remoteAgents).toContainEqual(
+      expect.objectContaining({ name: "remote-child", url: "https://remote.example.com", path: "/eve/v1/session" }),
+    );
   });
 });

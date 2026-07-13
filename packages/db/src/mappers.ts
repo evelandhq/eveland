@@ -246,6 +246,8 @@ export function sessionNodeRowToSessionNode(row: {
   channelKind: string | null;
   modelId: string | null;
   eveVersion: string | null;
+  remoteUrl: string | null;
+  resolutionStatus: string;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -253,6 +255,7 @@ export function sessionNodeRowToSessionNode(row: {
   return {
     ...row,
     status: row.status as SessionNode["status"],
+    resolutionStatus: row.resolutionStatus as SessionNode["resolutionStatus"],
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };

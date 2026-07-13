@@ -204,6 +204,8 @@ export const sessionNodes = pgTable(
     channelKind: text("channel_kind"),
     modelId: text("model_id"),
     eveVersion: text("eve_version"),
+    remoteUrl: text("remote_url"),
+    resolutionStatus: text("resolution_status").notNull().default("observed"),
     status: text("status").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

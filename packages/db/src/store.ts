@@ -812,6 +812,7 @@ function ensureMemorySessionNode(
   );
   if (existing) {
     existing.lastObservedDeploymentId = envelope.deploymentId;
+    existing.resolutionStatus = "observed";
     existing.agentName = envelope.agent.name ?? existing.agentName;
     existing.nodeId = envelope.agent.nodeId ?? existing.nodeId;
     existing.channelKind = envelope.channelKind ?? existing.channelKind;
@@ -872,6 +873,8 @@ function ensureMemorySessionNode(
       channelKind: null,
       modelId: null,
       eveVersion: null,
+      remoteUrl: null,
+      resolutionStatus: "unresolved",
       status: "running",
       createdAt: now,
       updatedAt: now,
@@ -920,6 +923,8 @@ function ensureMemorySessionNode(
     channelKind: envelope.channelKind,
     modelId: null,
     eveVersion: null,
+    remoteUrl: null,
+    resolutionStatus: "observed",
     status: "running",
     createdAt: now,
     updatedAt: now,
@@ -991,8 +996,10 @@ function projectMemorySessionState(
 
 function linkMemorySubagent(state: MemoryState, parent: SessionNode, payload: unknown, type: string): void {
   if (type !== "subagent.called") return;
-  const childEveSessionId = stringValue(asRecord(payload)?.childSessionId);
+  const record = asRecord(payload);
+  const childEveSessionId = stringValue(record?.childSessionId);
   if (!childEveSessionId) return;
+  const remoteUrl = stringValue(asRecord(record?.remote)?.url);
 
   const existing = state.sessionNodes.find(
     (candidate) => candidate.projectId === parent.projectId && candidate.eveSessionId === childEveSessionId,
@@ -1002,7 +1009,8 @@ function linkMemorySubagent(state: MemoryState, parent: SessionNode, payload: un
     existing.rootSessionId = parent.rootSessionId;
     existing.parentNodeId = parent.id;
     existing.parentEveSessionId = parent.eveSessionId;
-    existing.agentName = stringValue(asRecord(payload)?.name) ?? existing.agentName;
+    existing.agentName = stringValue(record?.name) ?? existing.agentName;
+    existing.remoteUrl = remoteUrl ?? existing.remoteUrl;
     existing.updatedAt = new Date().toISOString();
     return;
   }
@@ -1018,11 +1026,13 @@ function linkMemorySubagent(state: MemoryState, parent: SessionNode, payload: un
     startedDeploymentId: parent.lastObservedDeploymentId,
     lastObservedDeploymentId: parent.lastObservedDeploymentId,
     agentId: null,
-    agentName: stringValue(asRecord(payload)?.name),
+    agentName: stringValue(record?.name),
     nodeId: null,
     channelKind: "subagent",
     modelId: null,
     eveVersion: null,
+    remoteUrl,
+    resolutionStatus: "unresolved",
     status: "running",
     createdAt: now,
     updatedAt: now,
