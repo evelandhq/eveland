@@ -11,7 +11,8 @@ Eve Runtime 是一个 self-hosted Web 应用，用于导入、配置、运行和
 ## 2. 用户路径
 
 ```text
-项目列表
+登录
+  → 项目列表
   → 新建项目
   → 导入 Git Repo 或上传 Zip
   → 校验 Eve 项目结构
@@ -26,26 +27,41 @@ Eve Runtime 是一个 self-hosted Web 应用，用于导入、配置、运行和
 ## 3. 核心对象
 
 ```text
-Project
-  ├─ Source Revision
-  │   └─ Git commit / uploaded zip snapshot
-  ├─ Release
-  │   └─ 某次构建产物
-  ├─ Deployment
-  │   └─ 当前运行中的 Release
-  ├─ Secrets
-  │   └─ 平台保存，不写回代码或 Repo
-  ├─ Sessions
-  │   └─ Eve 的实际运行历史
-  └─ Schedules
-      └─ Eve 项目中的 cron 定义
+Team
+  ├─ Members / Invitations
+  └─ Project
+      ├─ Source Revision
+      │   └─ Git commit / uploaded zip snapshot
+      ├─ Release
+      │   └─ 某次构建产物
+      ├─ Deployment
+      │   └─ 当前运行中的 Release
+      ├─ Secrets
+      │   └─ 平台保存，不写回代码或 Repo
+      ├─ Sessions
+      │   └─ Eve 的实际运行历史
+      └─ Schedules
+          └─ Eve 项目中的 cron 定义
 ```
 
 MVP 中只支持一个默认运行环境：`Production`。
+MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持多个 Team 的边界。
 
 ---
 
 ## 4. 页面结构
+
+### 登录 (/login)
+
+控制面使用邮箱和密码登录。首次启动时平台幂等创建默认 Admin：
+
+* 默认邮箱：`admin@example.com`，可由 `EVELAND_ADMIN_EMAIL` 覆盖
+* 初始密码：必须由 `EVELAND_ADMIN_PASSWORD` 提供，至少 12 个字符
+* 用户、密码账户与 Session 使用 Better Auth；团队成员与邀请使用 Organization plugin
+* 不内置生产默认密码；`BETTER_AUTH_SECRET` 必须独立配置且至少 32 个字符
+* 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
+
+除健康检查和邀请接受外，所有控制面 API 都要求有效成员 Session。公开 Agent Gateway 流量使用独立认证边界。
 
 ### 首页：Projects (/projects)
 
@@ -62,6 +78,27 @@ MVP 中只支持一个默认运行环境：`Production`。
 * 新建项目
 * 删除项目
 * 进入项目
+
+---
+
+### Members (/members)
+
+Members 位于全局导航，与 Projects、Deployments、Usage 同级。
+
+角色：
+
+* `admin`：拥有全部项目权限，并可邀请、移除成员和修改角色
+* `member`：可管理项目、Secrets 和部署，但不能管理成员
+
+页面展示活动成员与待接受邀请。Admin 可以：
+
+* 按邮箱创建七天有效、单次使用的邀请链接
+* 刷新邀请以轮换 token 并延长有效期
+* 复制邀请链接或撤销邀请
+* 将成员设为 Admin / Member
+* 移除成员；移除后立即撤销其所有登录 Session，团队项目不删除
+
+最后一个 Admin 不能被移除或降级。邀请链接使用 256-bit 不透明随机标识，接受后立即失效。
 
 ---
 

@@ -13,7 +13,7 @@ async function loadNavigationModule(): Promise<NavigationModule | null> {
 }
 
 describe("sidebar navigation", () => {
-  test("provides the global Projects, Deployments, and Usage destinations", async () => {
+  test("provides the global Projects, Deployments, Usage, and Members destinations", async () => {
     const navigation = await loadNavigationModule()
 
     expect(navigation).not.toBeNull()
@@ -21,6 +21,7 @@ describe("sidebar navigation", () => {
       { href: "/projects", label: "Projects" },
       { href: "/deployments", label: "Deployments" },
       { href: "/usage", label: "Usage" },
+      { href: "/members", label: "Members" },
     ])
   })
 

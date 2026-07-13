@@ -8,6 +8,8 @@
 # Set the two public URLs in a local .env (gitignored) for the target environment:
 #   WEB_ORIGIN=https://your-web-host          # CORS allow-origin for the API
 #   NEXT_PUBLIC_API_URL=https://your-api-host  # where the browser calls the API (baked in at build)
+#   BETTER_AUTH_URL=https://your-api-host      # browser-visible Better Auth API origin
+#   BETTER_AUTH_SECRET=<long-random-secret>    # independent auth encryption/signing secret
 # They default to localhost so `up` works with no .env for a quick bring-up.
 #
 # Deployed agent data lives under /var/lib/eveland on the host, bind-mounted into the API at the

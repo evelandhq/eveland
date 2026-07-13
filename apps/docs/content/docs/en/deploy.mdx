@@ -1,0 +1,56 @@
+---
+title: Deploy an Eve Project
+description: Import source, configure secrets, build a preview, and promote it safely.
+---
+
+Eveland deploys ordinary Eve projects. Keep agent instructions, tools, skills, channels, connections, subagents, sandboxes, and schedules in their standard Eve filesystem locations.
+
+## 1. Import source
+
+Use either:
+
+- a Git repository URL, or
+- a Zip archive containing the project.
+
+Eveland extracts a source revision, validates the project shape, and presents a read-only source view. A Git project can later use **Sync & deploy** to fetch a new revision. Zip revisions remain fixed snapshots.
+
+## 2. Configure secrets
+
+Add required provider keys and application environment variables from the **Secrets** page. Values are encrypted at rest, injected only at runtime, and never displayed again.
+
+Secrets do not belong in:
+
+- the Git repository or uploaded Zip
+- build logs
+- source browsing
+- session timelines
+
+A project secret overrides an Eveland-provided environment variable with the same name.
+
+## 3. Build and deploy
+
+**Build & Deploy** creates a prepared release tree, installs dependencies, runs `eve build`, allocates a private loopback port, starts the deployment, and waits for the Eve health endpoint.
+
+In development, the Worker uses Docker by default. In a production Linux installation, the host Worker uses systemd and an unprivileged application user.
+
+## 4. Test the preview
+
+Every successful build starts beside the current production deployment. Use the immutable preview hostname and Playground to check:
+
+- the final response and streaming behavior
+- tool and subagent events
+- runtime stdout/stderr
+- token usage and completeness
+- required connections and schedules
+
+Raw dynamic ports are private implementation details. Use the preview hostname instead.
+
+## 5. Promote or roll back
+
+Promoting changes the stable route atomically; it does not rebuild the release. Existing sessions stay bound to their original deployment while new sessions follow the updated route.
+
+Rollback is the same routing operation in reverse: select a retained healthy deployment and move the stable route back to it.
+
+## Retention rules
+
+Eveland keeps at least the newest three release artifacts. A release cannot be archived while it is selected by a mutable route or while its deployment owns an active session binding.

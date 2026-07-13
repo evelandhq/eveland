@@ -482,6 +482,7 @@ function verifyAffinityCookie(value: string, secret: string): string | null {
   } catch {
     return null;
   }
+  if (actual.toString("base64url") !== signature) return null;
   return actual.length === expected.length && timingSafeEqual(actual, expected) ? key : null;
 }
 

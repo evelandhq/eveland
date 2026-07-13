@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircleIcon, RefreshCwIcon, RocketIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { enqueueBuildDeploy, syncSource } from "@/lib/api";
+import { enqueueBuildDeploy, syncSource } from "@/lib/client-api";
 
 type PendingAction = "sync" | "deploy";
 

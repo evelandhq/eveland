@@ -30,6 +30,7 @@ function GitProjectForm() {
 
     const response = await fetch(`${apiBaseUrl}/projects`, {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name, importKind: "git", gitUrl }),
     });
@@ -90,6 +91,7 @@ function ZipProjectForm() {
 
     const response = await fetch(`${apiBaseUrl}/projects`, {
       method: "POST",
+      credentials: "include",
       body: form,
     });
 

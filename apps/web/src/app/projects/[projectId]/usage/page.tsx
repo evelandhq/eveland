@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getSessions } from "@/lib/api"
+import { getSessions } from "@/lib/server-api"
 import { formatTokenCount, formatUsd, summarizeTokenUsage } from "@/lib/usage"
 
 export const dynamic = "force-dynamic"

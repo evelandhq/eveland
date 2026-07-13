@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { archiveDeployment, drainDeployment, promoteDeployment, updateRouteTargets } from "@/lib/api";
+import { archiveDeployment, drainDeployment, promoteDeployment, updateRouteTargets } from "@/lib/client-api";
 
 export function DeploymentTrafficActions({
   projectId,

@@ -20,6 +20,7 @@ export function SecretForm({ projectId }: { projectId: string }) {
 
     const response = await fetch(`${apiBaseUrl}/projects/${projectId}/secrets`, {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ key, value }),
     });

@@ -1,16 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { enqueueBuildDeploy, getSessionUsage, syncSource } from "./api";
+import { enqueueBuildDeploy, syncSource } from "./client-api";
 
 describe("web api helpers", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-  });
-
-  test("exports collector health and session-tree readers", async () => {
-    const api = (await import("./api")) as Record<string, unknown>;
-    expect(api.getCollectorHealth).toEqual(expect.any(Function));
-    expect(api.getSessionNodes).toEqual(expect.any(Function));
-    expect(api.getAgentEndpoints).toEqual(expect.any(Function));
   });
 
   test("enqueues a build deploy job for a project", async () => {
@@ -29,6 +22,7 @@ describe("web api helpers", () => {
     });
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/build-deploy", {
       method: "POST",
+      credentials: "include",
     });
   });
 
@@ -62,6 +56,7 @@ describe("web api helpers", () => {
     });
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/sync-source", {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ deploy: true }),
     });
@@ -81,18 +76,4 @@ describe("web api helpers", () => {
     await expect(syncSource("proj_zip")).rejects.toThrow("Only git projects can sync source");
   });
 
-  test("loads per-agent usage for a session", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response(
-        JSON.stringify({ usage: [{ id: "usage_1", eveSessionId: "eve_child", agentName: "Researcher", inputTokens: 40 }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(getSessionUsage("sess_123")).resolves.toEqual([
-      expect.objectContaining({ id: "usage_1", eveSessionId: "eve_child", agentName: "Researcher", inputTokens: 40 }),
-    ]);
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/sessions/sess_123/usage", { cache: "no-store" });
-  });
 });

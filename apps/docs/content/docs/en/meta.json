@@ -1,0 +1,14 @@
+{
+  "title": "Eveland documentation",
+  "pages": [
+    "index",
+    "quick-start",
+    "---Core model---",
+    "concepts",
+    "deploy",
+    "operate",
+    "---Reference---",
+    "architecture",
+    "troubleshooting"
+  ]
+}

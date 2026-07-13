@@ -49,8 +49,11 @@ do not silently make the implementation, spec, and operational docs disagree.
 
 The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
 
-- `apps/web`: Next.js App Router control panel.
-- `apps/api`: Hono control-plane API and the current embedded collector host.
+- `apps/web`: authenticated Next.js App Router control panel.
+- `apps/docs`: bilingual public website and Fumadocs documentation, separate
+  from the authenticated control panel.
+- `apps/api`: Hono control-plane API, Better Auth/team host, and the current
+  embedded collector host.
 - `apps/gateway`: public Agent data plane and internal privileged Playground
   path.
 - `apps/worker`: import, build, deployment, restart, scheduling, health, and
@@ -84,6 +87,24 @@ an app-to-app import.
 
 Preserve these unless the product contract is deliberately changed and the
 corresponding tests and docs are updated.
+
+### Control-plane authentication
+
+- The control plane is invite-only. Better Auth owns users, credential
+  accounts, and sessions; its Organization plugin backs the single Team's
+  members, roles, and invitations behind Eveland-owned endpoints.
+- Except for explicitly public health and invitation-acceptance paths,
+  control-plane APIs require a valid Team member session. Do not weaken this
+  boundary when adding routes.
+- Preserve the `admin`/`member` role boundary, last-admin protection,
+  single-use seven-day invitation behavior, and immediate session revocation
+  when a member is removed.
+- Keep `BETTER_AUTH_SECRET`, `APP_SECRET_KEY`, and Gateway secrets independent.
+  `BETTER_AUTH_URL` is the browser-visible API origin; only set
+  `EVELAND_COOKIE_DOMAIN` when Web and API intentionally share a parent domain.
+- Public Agent traffic remains on Gateway's separate Agent-owned
+  authentication boundary. A control-plane login must not become an Agent
+  credential or a reason to relax Gateway forwarding rules.
 
 ### Gateway and routing
 
@@ -158,7 +179,11 @@ Install dependencies with:
 ```bash
 corepack enable
 pnpm install --frozen-lockfile
+cp .env.example .env
 ```
+
+Set a unique `BETTER_AUTH_SECRET` of at least 32 characters and an
+`EVELAND_ADMIN_PASSWORD` of at least 12 characters before starting the API.
 
 Choose exactly one development mode. Do not alternate a native macOS install
 and full Compose in the same working tree: Compose installs Linux dependencies
@@ -173,7 +198,9 @@ pnpm dev
 ```
 
 Use the individual `pnpm dev:api`, `dev:gateway`, `dev:web`, and `dev:worker`
-scripts in separate terminals when isolated logs are more useful.
+scripts in separate terminals when isolated logs are more useful. `pnpm dev`
+also starts the optional public docs site; use `pnpm dev:docs` alone when only
+that site is needed.
 
 Or run the complete development stack:
 
@@ -208,8 +235,10 @@ healthy. When a Compose worker controls the host Docker daemon,
 - Runtime/sandbox changes: cover runtime selection and startup preflight, then
   use the real Lima/systemd/bwrap smoke path when behavior depends on Linux.
 - Web changes: preserve App Router conventions and existing shadcn/Tailwind
-  patterns. Test data transforms and navigation contracts; run a production
-  Next build for meaningful UI/configuration changes.
+  patterns in `apps/web`. Keep the authenticated control panel distinct from
+  the bilingual Fumadocs site in `apps/docs`. Test data transforms, auth, and
+  navigation contracts; run the relevant production Next build for meaningful
+  UI/configuration changes.
 - Behavior, topology, environment, public URL, or operational-limit changes
   must update the relevant `docs/spec.md`, `README.md`, `docs/deploy/linux.md`,
   Compose/env examples, and current handoff notes in the same change.
@@ -236,6 +265,8 @@ Additional expectations:
 
 - Run `pnpm --filter @eveland/web build` for web, Next configuration, or
   browser/server-boundary changes.
+- Run `pnpm --filter @eveland/docs build` for public-site, Fumadocs, MDX,
+  search, sitemap, or localization changes.
 - Validate the merged Compose configuration after Compose/env changes.
 - Run `bash -n infra/integration/run.sh` after editing the integration harness.
 - Run `bash infra/integration/run.sh` for systemd, bwrap, build isolation,
