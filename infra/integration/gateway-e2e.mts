@@ -82,11 +82,48 @@ async function main(): Promise<void> {
     const createdBody = JSON.parse(created.body) as { sessionId?: string };
     const eveSessionId = created.headers["x-eve-session-id"]?.toString() ?? createdBody.sessionId;
     assert.ok(eveSessionId);
-    await expectBinding(store, project.id, eveSessionId, candidate.id);
-    await store.promoteDeployment(project.id, candidate.id);
+    await expectBinding(store, project.id, eveSessionId, candidate.id, `${stableBeforeSplit.id}:r2`);
+
+    await store.updateRouteTargets(stableBeforeSplit.id, [
+      { deploymentId: deployment.id, weight: 5_000, variantName: "control" },
+      { deploymentId: candidate.id, weight: 5_000, variantName: "candidate" },
+    ]);
+    await invalidateGateway(gatewayPort, localHost);
+    await expectBinding(store, project.id, eveSessionId, candidate.id, `${stableBeforeSplit.id}:r2`);
+
+    await store.updateRouteTargets(stableBeforeSplit.id, [
+      { deploymentId: deployment.id, weight: 10_000, variantName: "control" },
+      { deploymentId: candidate.id, weight: 0, variantName: "candidate" },
+    ]);
+    await invalidateGateway(gatewayPort, localHost);
+    const afterZero = await gatewayRequest(gatewayPort, {
+      host: localHost,
+      path: "/eve/v1/session",
+      method: "POST",
+      headers: { "content-type": "application/json", "x-eveland-version-key": candidateAffinity },
+      body: JSON.stringify({ message: "Verify zero-weight routing." }),
+    });
+    assert.equal(afterZero.statusCode, 202, `zero-weight replacement session failed: ${afterZero.body}`);
+    const afterZeroBody = JSON.parse(afterZero.body) as { sessionId?: string };
+    const afterZeroSessionId = afterZero.headers["x-eve-session-id"]?.toString() ?? afterZeroBody.sessionId;
+    assert.ok(afterZeroSessionId);
+    await expectBinding(store, project.id, afterZeroSessionId, deployment.id, `${stableBeforeSplit.id}:r4`);
+
+    await store.updateDeploymentStatus(candidate.id, "draining");
+    await invalidateGateway(gatewayPort, localHost);
     const streamed = await gatewayStream(gatewayPort, localHost, eveSessionId);
     assert.ok(streamed.firstChunkMs < streamed.completedMs, `first NDJSON chunk was buffered: ${JSON.stringify(streamed)}`);
-    await expectBinding(store, project.id, eveSessionId, candidate.id);
+    await expectBinding(store, project.id, eveSessionId, candidate.id, `${stableBeforeSplit.id}:r2`);
+
+    await store.updateDeploymentStatus(candidate.id, "running");
+    await store.promoteDeployment(project.id, candidate.id);
+    await invalidateGateway(gatewayPort, localHost);
+    await store.promoteDeployment(project.id, deployment.id);
+    await invalidateGateway(gatewayPort, localHost);
+    await assert.doesNotReject(async () => {
+      const rolledBack = await store.findProjectRoute(project.id);
+      assert.equal(rolledBack?.targets[0]?.deploymentId, deployment.id);
+    });
 
     const dockerPort = runtime.name === "docker" ? await execFileAsync("docker", ["port", candidate.containerName]) : null;
     if (dockerPort) assert.match(dockerPort.stdout, /-> 127\.0\.0\.1:/m, `Agent port was publicly bound: ${dockerPort.stdout}`);
@@ -104,7 +141,7 @@ async function main(): Promise<void> {
     assert.equal(production.statusCode, 401, `production Host spoofing reached Eve localDev: ${production.body}`);
 
     console.log(
-      `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10 pinned=1 promoted=1 preview=200 localDev=202 production=401 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
+      `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 promoted=1 rolledBack=1 preview=200 localDev=202 production=401 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
     );
   } finally {
     if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
@@ -113,13 +150,31 @@ async function main(): Promise<void> {
   }
 }
 
-async function expectBinding(store: ReturnType<typeof createStoreFromEnv>["store"], projectId: string, eveSessionId: string, deploymentId: string) {
+async function expectBinding(
+  store: ReturnType<typeof createStoreFromEnv>["store"],
+  projectId: string,
+  eveSessionId: string,
+  deploymentId: string,
+  experimentId: string,
+) {
   const binding = await store.findSessionBinding(projectId, eveSessionId);
   assert.equal(binding?.deploymentId, deploymentId);
+  assert.equal(binding?.experimentId, experimentId);
   assert.equal(binding?.trigger, "api");
   assert.equal(binding?.affinitySource, "version_key");
   assert.match(binding?.remoteIp ?? "", /127\.0\.0\.1|::ffff:127\.0\.0\.1/);
   assert.ok(binding?.requestId);
+}
+
+async function invalidateGateway(port: number, host: string): Promise<void> {
+  const response = await gatewayRequest(port, {
+    host: "gateway",
+    path: "/internal/cache/invalidate",
+    method: "POST",
+    headers: { authorization: "Bearer gateway-e2e-secret", "content-type": "application/json" },
+    body: JSON.stringify({ hostname: host }),
+  });
+  assert.equal(response.statusCode, 200, `Gateway invalidation failed: ${response.body}`);
 }
 
 function gatewayRequest(

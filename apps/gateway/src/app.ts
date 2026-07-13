@@ -96,6 +96,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       deploymentId: target.deploymentId,
       trigger: "playground",
       variantName: target.variantName,
+      experimentId: routeExperimentId(route),
       requestId,
       remoteIp: null,
       affinityFingerprint: null,
@@ -179,6 +180,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
           deploymentId: target.deploymentId,
           trigger: "api",
           variantName: target.variantName,
+          experimentId: routeExperimentId(route),
           requestId,
           remoteIp,
           affinityFingerprint: affinity.fingerprint,
@@ -458,6 +460,10 @@ function affinityResult(
   cookieValue: string | null,
 ) {
   return { key, source, cookieValue, fingerprint: `sha256-${createHash("sha256").update(key).digest("hex")}` };
+}
+
+function routeExperimentId(route: ResolvedAgentRoute): string | null {
+  return route.targets.length > 1 ? `${route.id}:r${route.policyRevision}` : null;
 }
 
 function signAffinityCookie(key: string, secret: string): string {

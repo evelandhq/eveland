@@ -520,6 +520,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       validateRouteTargets(targets);
       const route = state.agentRoutes.find((candidate) => candidate.id === routeId);
       if (!route) throw new Error("Agent route not found.");
+      if (route.kind === "deployment") throw new Error("Deployment preview routes are immutable.");
       for (const target of targets) {
         const deployment = state.deployments.find((candidate) => candidate.id === target.deploymentId);
         if (!deployment || deployment.projectId !== route.projectId) throw new Error("Route target deployment does not belong to the project.");
@@ -610,6 +611,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       if (session) {
         session.trigger = input.trigger;
         session.routeId = input.routeId;
+        session.experimentId = input.experimentId;
         session.variantName = input.variantName;
         session.deploymentId = input.deploymentId;
       }
@@ -626,6 +628,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         continuationToken: input.continuationToken ?? null,
         rootNodeId: null,
         routeId: null,
+        experimentId: null,
         variantName: null,
         trigger: input.trigger,
         scheduleId: input.scheduleId ?? null,
@@ -717,6 +720,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         if (binding) {
           session.trigger = binding.trigger;
           session.routeId = binding.routeId;
+          session.experimentId = binding.experimentId;
           session.variantName = binding.variantName;
           session.deploymentId = binding.deploymentId;
         }
@@ -855,6 +859,7 @@ function ensureMemorySessionNode(
         continuationToken: null,
         rootNodeId: null,
         routeId: parentBinding?.routeId ?? null,
+        experimentId: parentBinding?.experimentId ?? null,
         variantName: parentBinding?.variantName ?? null,
         trigger: parentBinding?.trigger ?? "direct_http",
         scheduleId: null,
@@ -904,6 +909,7 @@ function ensureMemorySessionNode(
       continuationToken: null,
       rootNodeId: null,
       routeId: binding?.routeId ?? null,
+      experimentId: binding?.experimentId ?? null,
       variantName: binding?.variantName ?? null,
       trigger: binding?.trigger ?? triggerFromChannel(envelope.channelKind),
       scheduleId: null,
@@ -962,6 +968,7 @@ function mergeMemorySessions(state: MemoryState, target: Session, source: Sessio
   target.deploymentId ??= source.deploymentId;
   target.eveSessionId ??= source.eveSessionId;
   target.routeId ??= source.routeId;
+  target.experimentId ??= source.experimentId;
   target.variantName ??= source.variantName;
   addSessionUsage(target, source.usage);
   state.sessions = state.sessions.filter((candidate) => candidate.id !== source.id);
