@@ -6,7 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, test, vi } from "vitest";
 import { createApp } from "./app.js";
-import { createMemoryStore } from "./store.js";
+import { createMemoryStore } from "@eveland/db";
 
 const execFileAsync = promisify(execFile);
 

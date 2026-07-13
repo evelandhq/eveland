@@ -1,16 +1,17 @@
 {
-  "name": "@eveland/shared",
+  "name": "@eveland/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
+    "./contracts": "./src/contracts.ts",
+    "./eve": "./src/eve.ts",
     "./ids": "./src/ids.ts",
-    "./runtime": "./src/runtime.ts",
-    "./secrets": "./src/secrets.ts",
-    "./source": "./src/source.ts",
     "./schedules": "./src/schedules.ts",
-    "./archive": "./src/archive.ts"
+    "./source": "./src/source.ts",
+    "./server/archive": "./src/server/archive.ts",
+    "./server/secrets": "./src/server/secrets.ts",
+    "./server/runtime-command": "./src/server/runtime-command.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
@@ -19,8 +20,7 @@
   },
   "dependencies": {
     "cron-parser": "^5.6.1",
-    "nanoid": "^5.1.16",
-    "zod": "^4.4.3"
+    "nanoid": "^5.1.16"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

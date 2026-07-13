@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
-import { createStoreFromEnv } from "./store-factory.js";
+import { createStoreFromEnv } from "@eveland/db/factory";
 
 const port = Number(process.env.PORT ?? 4000);
 const storeFactory = createStoreFromEnv();

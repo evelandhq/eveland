@@ -1,4 +1,4 @@
-import { createId } from "@eveland/shared/ids";
+import { createId } from "@eveland/core/ids";
 import type {
   Job,
   JobType,
@@ -20,8 +20,8 @@ import type {
   DeploymentStatus,
   SourceRevision,
   SourceFileRecord,
-} from "./types.js";
-import type { ModelStepUsage } from "./usage.js";
+} from "@eveland/core/contracts";
+import type { ModelStepUsage } from "@eveland/core/eve";
 
 export type CreateProjectInput = {
   name: string;

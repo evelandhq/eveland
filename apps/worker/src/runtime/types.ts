@@ -38,8 +38,8 @@ export type ProcessStartResult = {
 };
 
 export type RuntimeAdapter = {
-  // Structural match for the api's RuntimeKind (apps/api/src/types.ts) -- do not
-  // import that type here; the worker package must not depend on api.
+  // Structural match for the shared RuntimeKind contract. Keeping the adapter
+  // name narrow makes each deployment's persisted runtime owner unambiguous.
   readonly name: "docker" | "systemd";
   buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult>;
   startProcess(input: ProcessStartInput): Promise<ProcessStartResult>;

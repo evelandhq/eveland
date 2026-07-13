@@ -1,7 +1,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { getNextRunAt, inspectEveProject, type SourceFile } from "@eveland/shared";
-import type { ProjectImportKind, ScheduleRecord } from "@eveland/api/types";
+import type { ProjectImportKind, ScheduleRecord } from "@eveland/core/contracts";
+import { getNextRunAt } from "@eveland/core/schedules";
+import { inspectEveProject, type SourceFile } from "@eveland/core/source";
 
 const ignoredDirectories = new Set([".git", "node_modules", ".next", "dist", "build", "coverage", ".turbo", ".eve"]);
 const maxTextFileBytes = 256 * 1024;

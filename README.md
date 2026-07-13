@@ -4,9 +4,10 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 
 ## Current MVP Slice
 
-- `packages/shared`: tested core behavior for IDs, archive path safety, eve source inspection, schedule parsing, next-run calculation, secret encryption, and runtime command inference.
+- `packages/core`: dependency-free Eveland contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths. It intentionally has no root barrel so browser-safe imports cannot accidentally pull in Node-only code.
+- `packages/db`: Drizzle schema and migrations, Postgres repository, memory repository, mappers, and store factory shared by API and worker.
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
-- `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, provider-reported per-agent token usage collected from Eve session streams, BetterAuth dependency, Drizzle/Postgres schema, and Postgres-backed store when `DATABASE_URL` is set.
+- `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, provider-reported per-agent token usage collected from Eve session streams, and BetterAuth dependency. Persistence is supplied by `packages/db`.
 - `apps/worker`: Docker runtime adapter, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
 
@@ -65,7 +66,7 @@ pnpm typecheck
 ## Notes
 
 - API uses Postgres when `DATABASE_URL` is set; tests use the memory store.
-- `apps/api/src/db/schema.ts` and `apps/api/drizzle/` are the Postgres model and migration targets.
+- `packages/db/src/schema.ts` and `packages/db/drizzle/` are the Postgres model and migration targets. `pnpm --filter @eveland/api db:push` remains as a convenience proxy to the db package.
 - Token accounting uses Eve's `step.completed.data.usage` values. Input, output, cache-read, cache-write, and optional gateway cost are recorded per model step and attributed to the Eve session and agent that consumed them. Missing provider usage stays explicitly marked as missing rather than being estimated or treated as reported zero usage.
 - The Playground collector follows local `subagent.called` child-session streams recursively. Remote child URLs are not fetched directly; they are recorded as `usage.collection_failed` until they can be resolved through a managed deployment mapping. Child telemetry failures do not fail the root agent turn.
 - Markdown eve schedules are executable in the MVP plan; TypeScript schedules are discovery-only until the native eve schedule runtime is integrated.

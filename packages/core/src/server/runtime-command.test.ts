@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { inferEveRuntimeCommand } from "./runtime.js";
+import { inferEveRuntimeCommand } from "./runtime-command.js";
 
 describe("inferEveRuntimeCommand", () => {
   test("uses project override when present", () => {

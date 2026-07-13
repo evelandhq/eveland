@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { createId } from "@eveland/shared/ids";
+import { createId } from "@eveland/core/ids";
 import type { Database } from "./client.js";
 import {
   deploymentRowToDeployment,
@@ -30,8 +30,8 @@ import {
   sourceRevisions,
   users,
 } from "./schema.js";
-import type { CreateProjectInput, Store } from "../store.js";
-import type { JobType, LogRecord } from "../types.js";
+import type { CreateProjectInput, Store } from "./store.js";
+import type { JobType, LogRecord } from "@eveland/core/contracts";
 
 const defaultOwner = {
   id: "user_local_admin",

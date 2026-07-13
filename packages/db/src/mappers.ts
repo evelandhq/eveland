@@ -19,7 +19,7 @@ import type {
   SecretRecord,
   SourceFileRecord,
   SourceRevision,
-} from "../types.js";
+} from "@eveland/core/contracts";
 
 export type ProjectRow = {
   id: string;

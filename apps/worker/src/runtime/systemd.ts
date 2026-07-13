@@ -1,7 +1,7 @@
 import { execa } from "execa";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
+import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
