@@ -27,7 +27,7 @@ export default async function ProjectsPage() {
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
             <div className="font-medium">Session collector {collector.status}</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {collector.backlogEvents} queued events · {collector.quarantinedEvents} quarantined
+              {collector.backlogEvents} queued events · {collector.backlogBytes} bytes · oldest {collector.oldestEventAge} ms · {collector.quarantinedEvents} quarantined
               {collector.lastError ? ` · ${collector.lastError}` : ""}
             </div>
           </div>

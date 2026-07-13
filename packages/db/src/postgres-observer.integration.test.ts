@@ -53,15 +53,47 @@ describe.skipIf(!database)("Postgres observer ingestion", () => {
         event: { type: "step.completed", data: { turnId: "turn_child", stepIndex: 0, usage: { inputTokens: 7, outputTokens: 2 } } },
       }),
     );
+    await store.ingestObserverEnvelope(
+      envelope(deployment.id, {
+        observerEventId: "remote-called",
+        eventFingerprint: "remote-called-fingerprint",
+        sourceSequence: 2,
+        event: {
+          type: "subagent.called",
+          data: {
+            childSessionId: "eve_remote",
+            name: "remote-researcher",
+            remote: { url: "https://agents.example.test/eve/v1/session" },
+          },
+        },
+      }),
+    );
+    await store.ingestObserverEnvelope(
+      envelope(deployment.id, {
+        observerEventId: "approval",
+        eventFingerprint: "approval-fingerprint",
+        sourceSequence: 3,
+        event: { type: "input.requested", data: { requestId: "approval_1" } },
+      }),
+    );
     const first = await store.ingestObserverEnvelope(step);
     const replay = await store.ingestObserverEnvelope(step);
 
     expect(first.session.id).toBe(gatewaySession.id);
     expect(replay.duplicate).toBe(true);
     await expect(store.listSessions(project.id)).resolves.toEqual([
-      expect.objectContaining({ trigger: "playground", usage: expect.objectContaining({ inputTokens: 19, outputTokens: 5, reportedSteps: 2 }) }),
+      expect.objectContaining({
+        trigger: "playground",
+        status: "waiting_approval",
+        usage: expect.objectContaining({ inputTokens: 19, outputTokens: 5, reportedSteps: 2 }),
+      }),
     ]);
-    await expect(store.listSessionNodes(gatewaySession.id)).resolves.toHaveLength(2);
+    const nodes = await store.listSessionNodes(gatewaySession.id);
+    expect(nodes).toHaveLength(3);
+    expect(nodes.find((node) => node.eveSessionId === "eve_remote")).toMatchObject({
+      remoteUrl: "https://agents.example.test/eve/v1/session",
+      resolutionStatus: "unresolved",
+    });
     await expect(store.listModelUsageEvents(gatewaySession.id)).resolves.toHaveLength(2);
   }, 30_000);
 });

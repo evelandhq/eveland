@@ -40,6 +40,62 @@ describe("observer ingestion repository", () => {
     expect(session?.completedAt).toBeNull();
   });
 
+  test("projects an unresolved HITL request as waiting for approval", async () => {
+    const store = createStore();
+
+    await store.ingestObserverEnvelope(
+      envelope({ event: { type: "input.requested", data: { requestId: "approval_1", prompt: "Allow deploy?" } } }),
+    );
+    await store.ingestObserverEnvelope(
+      envelope({ observerEventId: "waiting", sourceSequence: 2, event: { type: "session.waiting", data: {} } }),
+    );
+
+    const [session] = await store.listSessions("proj_1");
+    expect(session).toMatchObject({ status: "waiting_approval", completedAt: null });
+    await expect(store.listSessionNodes(session!.id)).resolves.toEqual([
+      expect.objectContaining({ status: "waiting_approval" }),
+    ]);
+  });
+
+  test("records a remote subagent URL as unresolved until its own stream is observed", async () => {
+    const store = createStore();
+    await store.ingestObserverEnvelope(
+      envelope({
+        event: {
+          type: "subagent.called",
+          data: {
+            childSessionId: "eve_remote",
+            name: "remote-researcher",
+            remote: { url: "https://agents.example.test/eve/v1/session" },
+          },
+        },
+      }),
+    );
+
+    let [session] = await store.listSessions("proj_1");
+    let remote = (await store.listSessionNodes(session!.id)).find((node) => node.eveSessionId === "eve_remote");
+    expect(remote).toMatchObject({
+      remoteUrl: "https://agents.example.test/eve/v1/session",
+      resolutionStatus: "unresolved",
+    });
+
+    await store.ingestObserverEnvelope(
+      envelope({
+        observerEventId: "remote-started",
+        eveSessionId: "eve_remote",
+        parentEveSessionId: "eve_root",
+        event: { type: "session.started", data: {} },
+      }),
+    );
+
+    [session] = await store.listSessions("proj_1");
+    remote = (await store.listSessionNodes(session!.id)).find((node) => node.eveSessionId === "eve_remote");
+    expect(remote).toMatchObject({
+      remoteUrl: "https://agents.example.test/eve/v1/session",
+      resolutionStatus: "observed",
+    });
+  });
+
   test("links child-before-parent delivery into one root session tree", async () => {
     const store = createStore();
     await store.ingestObserverEnvelope(

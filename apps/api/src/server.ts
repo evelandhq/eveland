@@ -14,6 +14,8 @@ const collector =
         rootDir:
           process.env.EVELAND_OBSERVER_ROOT ??
           path.join(process.env.EVELAND_DATA_DIR ?? ".eveland-data", "observer"),
+        maxConcurrentSessions: Number(process.env.EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS ?? 100),
+        maxBacklogBytes: Number(process.env.EVELAND_COLLECTOR_MAX_BACKLOG_BYTES ?? 1_073_741_824),
         ingest: (envelope) => storeFactory.store.ingestObserverEnvelope(envelope).then(() => undefined),
       });
 collector?.start();
