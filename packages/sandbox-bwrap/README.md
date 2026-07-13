@@ -178,3 +178,7 @@ Reclaiming space today requires manual intervention: identify which sessions are
   constraints (`NoNewPrivileges`, `ProtectSystem=strict`). A clean-VM run prints
   both `SMOKE OK` (the systemd deploy smoke test) and `BWRAP SMOKE OK` (this
   package's contract test).
+
+## License
+
+This package is licensed under the MIT License.
