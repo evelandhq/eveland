@@ -301,7 +301,12 @@ describe("Gateway", () => {
     expect(JSON.stringify(repo.bindings)).not.toContain(cookiePair.split("=", 2)[1]);
 
     const [name, value] = cookiePair.split("=", 2);
-    const tampered = `${name}=${value!.slice(0, -1)}${value!.endsWith("A") ? "B" : "A"}`;
+    const base64UrlAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const trailingCharacterIndex = base64UrlAlphabet.indexOf(value!.at(-1)!);
+    expect(trailingCharacterIndex).toBeGreaterThanOrEqual(0);
+    expect(trailingCharacterIndex % 4).toBe(0);
+    const equivalentTrailingCharacter = base64UrlAlphabet[trailingCharacterIndex + 1]!;
+    const tampered = `${name}=${value!.slice(0, -1)}${equivalentTrailingCharacter}`;
     const rejectedTamper = await app.request("https://p-alpha.agent.localhost/eve/v1/session", {
       method: "POST",
       headers: { host: "p-alpha.agent.localhost", cookie: tampered, "content-type": "application/json" },
