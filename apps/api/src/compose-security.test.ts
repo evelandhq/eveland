@@ -1,0 +1,40 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const repositoryRoot = resolve(import.meta.dirname, "../../..");
+const developmentCompose = readFileSync(resolve(repositoryRoot, "docker-compose.yml"), "utf8");
+const productionCompose = readFileSync(resolve(repositoryRoot, "docker-compose.prod.yml"), "utf8");
+
+function serviceBlock(compose: string, service: string) {
+  const marker = `\n  ${service}:\n`;
+  const start = compose.indexOf(marker);
+
+  if (start === -1) {
+    throw new Error(`Compose service ${service} was not found`);
+  }
+
+  const contentStart = start + marker.length;
+  const nextServiceOffset = compose.slice(contentStart).search(/\n  [a-z][a-z0-9-]*:\n/);
+  return compose.slice(start, nextServiceOffset === -1 ? undefined : contentStart + nextServiceOffset);
+}
+
+describe("Compose controller security boundaries", () => {
+  it("grants the Docker controller socket only to the worker", () => {
+    expect(serviceBlock(developmentCompose, "api")).not.toContain("/var/run/docker.sock");
+    expect(serviceBlock(productionCompose, "api")).not.toContain("/var/run/docker.sock");
+    expect(serviceBlock(developmentCompose, "gateway")).not.toContain("/var/run/docker.sock");
+    expect(serviceBlock(productionCompose, "gateway")).not.toContain("/var/run/docker.sock");
+
+    expect(serviceBlock(developmentCompose, "worker")).toContain("/var/run/docker.sock");
+    expect(serviceBlock(productionCompose, "worker")).toContain("/var/run/docker.sock");
+  });
+
+  it("masks deployment source and secret data from the Gateway", () => {
+    const gateway = serviceBlock(developmentCompose, "gateway");
+
+    expect(gateway).toContain("eveland-gateway-data-mask:/workspace/.eveland-data");
+    expect(gateway).not.toContain("/var/lib/eveland");
+    expect(serviceBlock(productionCompose, "gateway")).not.toContain("/var/lib/eveland");
+  });
+});

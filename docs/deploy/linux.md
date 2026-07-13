@@ -48,7 +48,9 @@
 
 ## Production topology
 
-- **API, Gateway, Web, Postgres** run in Docker Compose:
+- **API, Gateway, Web, Postgres** run in Docker Compose. The API and Gateway have no Docker
+  socket or host-controller privilege. Gateway also has no `/var/lib/eveland` mount, and the
+  development Compose stack masks `/workspace/.eveland-data` from it:
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. The
   prod overlay no longer starts a containerized worker (see the header comment
   in `docker-compose.prod.yml`); `--profile docker-worker` restores it for
