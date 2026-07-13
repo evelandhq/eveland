@@ -5,10 +5,10 @@ import { promisify } from "node:util";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const fixtureDir = path.resolve(import.meta.dirname, "../fixtures/eve-0.22.1-hooks");
+const fixtureDir = path.resolve(import.meta.dirname, "../fixtures/eve-0.22.6-hooks");
 const eveBin = path.resolve(import.meta.dirname, "../node_modules/.bin/eve");
 
-describe("Eve 0.22.1 observer hook coverage", () => {
+describe("Eve 0.22.6 observer hook coverage", () => {
   test("directory-form subagents expose their own hook slot while file-form and remote subagents do not", async () => {
     const { stdout } = await execFileAsync(eveBin, ["info", "--json"], { cwd: fixtureDir });
     const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {

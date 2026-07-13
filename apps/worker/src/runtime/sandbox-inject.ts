@@ -60,7 +60,7 @@ async function pathKind(target: string): Promise<"file" | "directory" | null> {
  * however deeply nested.
  *
  * eve resolves subagents from `agent/subagents/<name>/` (confirmed against
- * eve 0.22.1's `discoverSubagents`, which defaults `subagentsDirectoryPath`
+ * eve 0.22.6's `discoverSubagents`, which defaults `subagentsDirectoryPath`
  * to `join(agentRoot, "subagents")`). `discoverLocalSubagentPackage` then
  * calls `discoverSandboxSource({ rootPath: subagentRoot })` *and*
  * `discoverSubagents({ agentRoot: subagentRoot })` for each directory-form

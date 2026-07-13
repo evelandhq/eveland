@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 describe("injectObserverHooks", () => {
-  test("Eve 0.22.1 root and directory-form subagents get hooks while file-form coverage is reported", async () => {
+  test("Eve 0.22.6 root and directory-form subagents get hooks while file-form coverage is reported", async () => {
     const releaseDir = await createRelease();
     await write("agent/subagents/directory-child/agent.ts", "export default {}", releaseDir);
     await write("agent/subagents/file-child.ts", "export default {}", releaseDir);
