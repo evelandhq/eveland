@@ -97,6 +97,12 @@ pnpm test
 pnpm typecheck
 ```
 
+## License
+
+Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE),
+except for [`@eveland/sandbox-bwrap`](packages/sandbox-bwrap), which remains
+licensed under the MIT License.
+
 ## Notes
 
 - API uses Postgres when `DATABASE_URL` is set; tests use the memory store.
