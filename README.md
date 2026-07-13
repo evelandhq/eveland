@@ -11,24 +11,24 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
 - `apps/api`: Hono API with the public project/secrets/schedules/sessions/logs contract, an embedded observer collector, and BetterAuth dependency. Persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private.
-- `apps/worker`: Docker runtime adapter, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
+- `apps/worker`: Docker and systemd runtime adapters, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
 
 ## Local Development
 
 ```bash
-pnpm install
+corepack enable
+pnpm install --frozen-lockfile
 docker compose up -d postgres          # start the database
 pnpm --filter @eveland/api db:migrate  # apply versioned migrations (required on first run and after schema changes)
-pnpm --filter @eveland/api dev
-pnpm --filter @eveland/gateway dev
-pnpm --filter @eveland/web dev
-pnpm --filter @eveland/worker dev
+pnpm dev                               # start API, Gateway, web, and worker
 ```
 
 Open `http://localhost:3000`.
 
 All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
+Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, and `pnpm dev:worker`
+in separate terminals when isolated logs are more useful.
 
 Docker Compose runs the full stack (Postgres + API + Gateway + web + worker) in **development mode**.
 Only the worker receives the Docker controller socket; Gateway masks `.eveland-data` so the public
@@ -49,10 +49,22 @@ while deployment ports remain bound only to `127.0.0.1` and are not product URLs
 
 Pick one mode: either everything in Compose, or only `postgres` in Compose and the rest natively. The Compose services run `pnpm install` inside Linux containers against the mounted workspace, which clobbers a macOS-built `node_modules`.
 
-## Production (single-box deploy)
+## Production (single-box Linux deploy)
 
-Deploy the whole stack in Docker on one Linux host by layering the production overlay. Set the
-two public URLs for the target environment in `.env`, then bring it up:
+The current production topology deliberately separates the control plane from
+the privileged runtime controller:
+
+- Postgres, API, Gateway, and web run through Docker Compose.
+- Worker runs directly on the host as a systemd service and starts Agent
+  deployments through the systemd runtime.
+- Traefik forwards wildcard public Agent hosts to Gateway on port 4080. Agent
+  processes remain private on `127.0.0.1:41xxx`.
+- API and the host worker share `/var/lib/eveland` at the same absolute path for
+  sources, releases, and observer outboxes.
+
+Complete the Linux host prerequisites in [`docs/deploy/linux.md`](docs/deploy/linux.md),
+then set the public origins, Agent domain, and independent Gateway secrets in a
+local `.env`:
 
 ```bash
 # .env
@@ -62,20 +74,46 @@ EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
 EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
 
+# Start only the unprivileged control-plane services.
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-`docker-compose.prod.yml` runs a production build (`next build && next start`,
-`NODE_ENV=production`), uses **host networking** so the worker (health check) and Gateway
-can reach agents published on the host loopback, and sets
-`restart: unless-stopped` so the stack returns after a host reboot. The worker deploys
-agents through the mounted Docker socket, so the target is a Linux host running Docker.
+The base development Compose file contains a development `APP_SECRET_KEY`.
+Before a real production deploy, replace it for the API through a site-specific
+Compose override with a private 32-byte value, and configure that exact value in
+the host worker. Do not use the checked-in development fallback in production.
+
+The production overlay uses host networking so Gateway can reach systemd Agent
+processes on host loopback. It runs the web production build and configures the
+Compose services with `restart: unless-stopped`; it does **not** start the
+containerized worker by default.
+
+After configuring `infra/systemd/eveland-worker.env.example` for the same
+database, data root, Agent domain, Gateway service token, and application secret
+as the control plane, install and start the host worker:
+
+```bash
+sudo install -d -m 0750 /etc/eveland
+sudo cp infra/systemd/eveland-worker.env.example /etc/eveland/eveland-worker.env
+sudo cp infra/systemd/eveland-worker.service /etc/systemd/system/
+# Edit /etc/eveland/eveland-worker.env before starting the service.
+sudo systemctl daemon-reload
+sudo systemctl enable --now eveland-worker
+```
+
+Use `infra/traefik/agents.yml` as the public wildcard routing template and keep
+its `/internal` exclusion. For a legacy installation that still uses the Docker
+runtime, the old containerized worker is available only through the explicit
+`--profile docker-worker` Compose profile; it is not the default production
+topology. See [`docs/deploy/linux.md`](docs/deploy/linux.md) for host users,
+bubblewrap/AppArmor, preflight, secrets, reverse-proxy, and smoke-test details.
 
 ## Verification
 
 ```bash
 pnpm test
 pnpm typecheck
+pnpm build
 ```
 
 ## Notes
