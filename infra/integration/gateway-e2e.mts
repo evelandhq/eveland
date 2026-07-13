@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { serve } from "../../apps/gateway/node_modules/@hono/node-server/dist/index.mjs";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
-import { affinityBucket } from "../../packages/core/src/routing.js";
+import { affinityBucketForRoute } from "../../packages/core/src/routing.js";
 import { createStoreFromEnv } from "../../packages/db/src/store-factory.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
@@ -46,6 +46,7 @@ async function main(): Promise<void> {
 
     const app = createGatewayApp(store, {
       allowedBaseDomains: ["agent.localhost", "agents.example.com"],
+      affinitySecret: "gateway-e2e-affinity-secret",
       internalServiceToken: "gateway-e2e-secret",
       routeCacheTtlMs: 60_000,
     });
@@ -66,13 +67,15 @@ async function main(): Promise<void> {
     });
     assert.equal(previewHealth.statusCode, 200, `immutable preview route failed: ${previewHealth.body}`);
 
-    const candidateAffinity = Array.from({ length: 10_000 }, (_, index) => `e2e-${index}`).find((key) => affinityBucket(key) >= 9_000);
+    const candidateAffinity = Array.from({ length: 10_000 }, (_, index) => `e2e-${index}`).find(
+      (key) => affinityBucketForRoute(stableBeforeSplit.id, stableBeforeSplit.policyRevision + 1, key) >= 9_000,
+    );
     assert.ok(candidateAffinity);
     const created = await gatewayRequest(gatewayPort, {
       host: localHost,
       path: "/eve/v1/session",
       method: "POST",
-      headers: { "content-type": "application/json", cookie: `eveland_affinity=${candidateAffinity}` },
+      headers: { "content-type": "application/json", "x-eveland-version-key": candidateAffinity },
       body: JSON.stringify({ message: "Ask the researcher to verify Gateway streaming." }),
     });
     assert.equal(created.statusCode, 202, `*.localhost should receive Eve localDev access: ${created.body}`);
@@ -114,6 +117,7 @@ async function expectBinding(store: ReturnType<typeof createStoreFromEnv>["store
   const binding = await store.findSessionBinding(projectId, eveSessionId);
   assert.equal(binding?.deploymentId, deploymentId);
   assert.equal(binding?.trigger, "api");
+  assert.equal(binding?.affinitySource, "version_key");
   assert.match(binding?.remoteIp ?? "", /127\.0\.0\.1|::ffff:127\.0\.0\.1/);
   assert.ok(binding?.requestId);
 }

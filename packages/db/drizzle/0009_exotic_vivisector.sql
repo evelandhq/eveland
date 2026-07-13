@@ -1,0 +1,1 @@
+ALTER TABLE "session_bindings" ADD COLUMN "affinity_source" text;

@@ -58,6 +58,7 @@ WEB_ORIGIN=https://your-web-host
 NEXT_PUBLIC_API_URL=https://your-api-host
 EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
+EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```

@@ -64,6 +64,13 @@
       "when": 1783920509934,
       "tag": "0008_acoustic_toad",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783921494012,
+      "tag": "0009_exotic_vivisector",
+      "breakpoints": true
     }
   ]
 }

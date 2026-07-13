@@ -146,6 +146,7 @@ export const sessionBindings = pgTable(
     requestId: text("request_id").notNull(),
     remoteIp: text("remote_ip"),
     affinityFingerprint: text("affinity_fingerprint"),
+    affinitySource: text("affinity_source"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

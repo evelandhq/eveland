@@ -24,9 +24,17 @@ export function affinityBucket(key: string): number {
   return (hash >>> 0) % 10_000;
 }
 
-export function selectWeightedTarget<T extends RouteTargetInput>(targets: T[], affinityKey: string): T | null {
+export function affinityBucketForRoute(routeId: string, policyRevision: number, affinityKey: string): number {
+  return affinityBucket(`${routeId}:${policyRevision}:${affinityKey}`);
+}
+
+export function selectWeightedTarget<T extends RouteTargetInput>(
+  targets: T[],
+  affinityKey: string,
+  route?: { id: string; policyRevision: number },
+): T | null {
   validateRouteTargets(targets);
-  const bucket = affinityBucket(affinityKey);
+  const bucket = route ? affinityBucketForRoute(route.id, route.policyRevision, affinityKey) : affinityBucket(affinityKey);
   let upper = 0;
   for (const target of targets) {
     upper += target.weight;

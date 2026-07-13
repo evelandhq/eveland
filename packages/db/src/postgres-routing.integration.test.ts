@@ -41,6 +41,7 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
       requestId: "req_gateway",
       remoteIp: "203.0.113.20",
       affinityFingerprint: null,
+      affinitySource: null,
     });
 
     await store.ingestObserverEnvelope(envelope(deployment.id, "eve_gateway_child", "eve_gateway_root", "child"));
@@ -66,6 +67,7 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
       requestId: "req_gateway_playground",
       remoteIp: null,
       affinityFingerprint: null,
+      affinitySource: null,
     });
     await expect(
       store.completeSession(playground.id, { status: "completed", eveSessionId: "eve_gateway_playground" }),
