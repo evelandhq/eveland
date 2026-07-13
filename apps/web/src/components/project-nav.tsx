@@ -1,35 +1,34 @@
-import Link from "next/link";
-import { ActivityIcon, BracesIcon, FileKeyIcon, FileTextIcon, HistoryIcon, PlayIcon, ScrollTextIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+"use client"
 
-const items = [
-  { href: "", label: "Overview", icon: ActivityIcon },
-  { href: "/playground", label: "Playground", icon: PlayIcon },
-  { href: "/sessions", label: "Sessions", icon: HistoryIcon },
-  { href: "/schedules", label: "Schedules", icon: ScrollTextIcon },
-  { href: "/source", label: "Source", icon: BracesIcon },
-  { href: "/secrets", label: "Secrets", icon: FileKeyIcon },
-  { href: "/logs", label: "Logs", icon: FileTextIcon },
-];
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar"
+import { getProjectNavigationItems, isNavigationItemActive } from "@/lib/navigation"
 
 export function ProjectNav({ projectId }: { projectId: string }) {
+  const pathname = usePathname()
+
   return (
-    <nav className="flex flex-wrap items-center gap-1 border-b border-border px-5 py-2">
-      {items.map((item) => {
+    <SidebarMenu>
+      {getProjectNavigationItems(projectId).map((item) => {
         const Icon = item.icon;
         return (
-          <Link
-            key={item.href || "overview"}
-            href={`/projects/${projectId}${item.href}`}
-            className={cn(
-              "inline-flex h-7 items-center gap-1 rounded-sm px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-            )}
-          >
-            <Icon data-icon="inline-start" />
-            {item.label}
-          </Link>
+          <SidebarMenuItem key={item.href}>
+            <SidebarMenuButton
+              isActive={isNavigationItemActive(pathname, item.href)}
+              render={<Link href={item.href} />}
+              tooltip={item.label}
+            >
+              <Icon />
+              <span>{item.label}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         );
       })}
-    </nav>
+    </SidebarMenu>
   );
 }

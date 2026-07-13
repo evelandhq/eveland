@@ -58,7 +58,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
             ["Preview endpoint", endpoints.previews.at(-1) ?? "None"],
             ] satisfies Array<[string, string]>
           ).map(([label, value]) => (
-            <div key={label} className="bg-card p-4">
+            <div key={label} className="bg-card p-4 last:col-span-2">
               <dt className="text-xs text-muted-foreground">{label}</dt>
               <dd className="mt-2 break-all font-medium">
                 {label.endsWith("endpoint") && value !== "None" ? (
