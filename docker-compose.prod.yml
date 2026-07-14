@@ -41,6 +41,7 @@ services:
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
       EVELAND_GATEWAY_PUBLIC_SCHEME: https
       EVELAND_GATEWAY_PUBLIC_PORT: 0
+      APP_SECRET_KEY: "${APP_SECRET_KEY:?set APP_SECRET_KEY}"
     volumes:
       - .:/workspace
       - /var/lib/eveland:/var/lib/eveland
