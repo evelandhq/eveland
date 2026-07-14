@@ -140,6 +140,55 @@ describe("memory store jobs", () => {
     await expect(store.listSchedules(project.id)).resolves.toEqual([expect.objectContaining({ name: "daily" })]);
   });
 
+  test("advances current source without replacing an existing deployment", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Resync Agent", importKind: "git" });
+    const initialRevision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      commitSha: "old-commit",
+      sourcePath: "/tmp/source-old",
+      summary: {},
+      envVars: [],
+      files: [{ path: "agent/instructions.md", content: "Old instructions" }],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: initialRevision.id,
+      imageTag: "eveland/resync:old",
+      containerName: "eveland-resync-old",
+      internalPort: 3000,
+      hostPort: 41002,
+      runtimeKind: "docker",
+    });
+
+    const nextRevision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      commitSha: "new-commit",
+      sourcePath: "/tmp/source-new",
+      summary: {},
+      envVars: [],
+      files: [{ path: "agent/instructions.md", content: "New instructions" }],
+      schedules: [],
+    });
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "deployed",
+      deploymentStatus: "running",
+      deploymentId: deployment.id,
+      sourceRevisionId: nextRevision.id,
+    });
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
+      id: nextRevision.id,
+      commitSha: "new-commit",
+    });
+    await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({
+      content: "New instructions",
+    });
+  });
+
   test("records the current release and deployment for a project", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Deploy Agent", importKind: "zip" });
