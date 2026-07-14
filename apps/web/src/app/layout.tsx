@@ -21,7 +21,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <TooltipProvider>
           <SidebarProvider>
             <AppSidebar />
-            <SidebarInset>{children}</SidebarInset>
+            <SidebarInset>
+              <header className="flex h-12 shrink-0 items-center gap-2 px-4 md:hidden">
+                <SidebarTrigger />
+                <Separator orientation="vertical" className="h-4" />
+                <span className="text-sm font-medium">Eveland</span>
+              </header>
+              <Separator className="md:hidden" />
+              {children}
+            </SidebarInset>
           </SidebarProvider>
         </TooltipProvider>
       </body>

@@ -72,6 +72,11 @@ describe("control-plane auth routes", () => {
       headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
       body: JSON.stringify({ memberIdOrEmail: "admin@example.com", organizationId: "team_local" }),
     })).status).toBe(404);
+    expect((await app.request("/api/auth/update-user", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
+      body: JSON.stringify({ image: "data:image/svg+xml;base64,PHN2Zy8+" }),
+    })).status).toBe(404);
   });
 
   test("signs in through Better Auth and returns the current member", async () => {
@@ -86,6 +91,62 @@ describe("control-plane auth routes", () => {
     await expect(session.json()).resolves.toEqual({
       member: expect.objectContaining({ email: "admin@example.com", role: "admin" }),
     });
+  });
+
+  test("updates the signed-in profile and revokes other sessions when changing the password", async () => {
+    const { app } = await createAuthApp();
+    const { cookie } = await signIn(app);
+    const { cookie: otherCookie } = await signIn(app);
+    const image = "data:image/png;base64,iVBORw0KGgo=";
+
+    const profile = await app.request("/profile", {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Eveland Admin", image }),
+    });
+
+    expect(profile.status).toBe(200);
+    await expect(profile.json()).resolves.toEqual({
+      member: expect.objectContaining({
+        email: "admin@example.com",
+        image,
+        name: "Eveland Admin",
+        role: "admin",
+      }),
+    });
+    await expect((await app.request("/auth/session", { headers: { cookie } })).json()).resolves.toEqual({
+      member: expect.objectContaining({ image, name: "Eveland Admin" }),
+    });
+
+    const password = await app.request("/profile/password", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ currentPassword: "admin-password", newPassword: "new-admin-password" }),
+    });
+
+    expect(password.status).toBe(204);
+    expect((await app.request("/auth/session", { headers: { cookie: otherCookie } })).status).toBe(401);
+    expect((await signIn(app)).response.status).toBe(401);
+    expect((await signIn(app, "admin@example.com", "new-admin-password")).response.status).toBe(200);
+  });
+
+  test("rejects unsupported or oversized profile images", async () => {
+    const { app } = await createAuthApp();
+    const { cookie } = await signIn(app);
+
+    const unsupported = await app.request("/profile", {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Admin", image: "data:image/svg+xml;base64,PHN2Zy8+" }),
+    });
+    const oversized = await app.request("/profile", {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Admin", image: `data:image/png;base64,${"A".repeat(700_000)}` }),
+    });
+
+    expect(unsupported.status).toBe(400);
+    expect(oversized.status).toBe(400);
   });
 
   test("lets an admin invite and a new member accept without exposing credential material", async () => {

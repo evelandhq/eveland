@@ -12,7 +12,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private.
 - `apps/worker`: Docker and systemd runtime adapters, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
-- `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4.
+- `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4. Its account menu opens profile/password settings and the System settings area owns member and invitation management.
 - `apps/docs`: Bilingual public website and documentation for `eveland.ai`, built with Next.js and Fumadocs. It keeps the marketing site separate from the authenticated control panel and publishes English and Chinese routes, search, sitemap, and `llms.txt`.
 
 ## Local Development

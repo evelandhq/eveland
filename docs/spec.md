@@ -95,9 +95,27 @@ Project 数据。平台不得删除 `EVELAND_DATA_DIR` 之外的外部源码路�
 
 ---
 
-### Members (/members)
+### Settings
 
-Members 位于全局导航，与 Projects、Deployments、Usage 同级。
+Sidebar 左下角显示当前用户头像、姓名和邮箱。整行是单一的 Account Dropdown
+trigger；菜单提供 Settings 和 Sign out。Settings 进入独立设置区域，并在区域内按
+Personal 与 System 分组导航。
+
+#### Profile (/settings/profile)
+
+个人设置支持：
+
+* 修改姓名
+* 上传、替换或移除头像；只接受 PNG、JPEG、WebP，最大 512 KB
+* 查看登录邮箱；MVP 中邮箱只读
+* 使用当前密码修改密码；新密码至少 12 个字符，成功后撤销当前 Session 之外的所有登录 Session
+
+Profile 更新复用 Better Auth 用户记录，不允许通过公开的 Better Auth `update-user`
+端点绕过 Eveland 的姓名与头像输入约束。
+
+#### Members (/settings/members)
+
+Members 位于 Settings 的 System 分组，不再出现在 Workspace 全局导航。
 
 角色：
 

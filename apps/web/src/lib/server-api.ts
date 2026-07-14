@@ -16,7 +16,7 @@ import type {
   SourceRevision,
   VariantMetric,
 } from "./api";
-import type { Invitation, Member } from "./client-api";
+import type { CurrentMember, Invitation, Member } from "./client-api";
 
 const apiBaseUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -37,7 +37,7 @@ export const getLogs = (projectId: string) => apiGet<{ logs: LogLine[] }>(`/proj
 export const getSourceRevision = (projectId: string) => apiGet<{ revision: SourceRevision | null }>(`/projects/${projectId}/source/revision`).then((data) => data.revision);
 export const getSourceFiles = (projectId: string) => apiGet<{ files: SourceFile[] }>(`/projects/${projectId}/source/files`).then((data) => data.files);
 export const getSourceFile = (projectId: string, filePath: string) => apiGet<{ file: SourceFile | null }>(`/projects/${projectId}/source/file?path=${encodeURIComponent(filePath)}`).then((data) => data.file);
-export const getCurrentMember = () => apiGet<{ member: Member }>("/auth/session").then((data) => data.member);
+export const getCurrentMember = () => apiGet<{ member: CurrentMember }>("/auth/session").then((data) => data.member);
 export const getMembers = () => apiGet<{ members: Member[] }>("/members").then((data) => data.members);
 export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invitations").then((data) => data.invitations);
 

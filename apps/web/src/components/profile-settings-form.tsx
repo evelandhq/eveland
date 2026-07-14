@@ -1,0 +1,177 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { KeyRoundIcon, SaveIcon, Trash2Icon } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
+import { Spinner } from "@/components/ui/spinner"
+import { changePassword, updateProfile, type CurrentMember } from "@/lib/client-api"
+
+const avatarTypes = new Set(["image/png", "image/jpeg", "image/webp"])
+const maxAvatarBytes = 512 * 1024
+
+export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
+  const router = useRouter()
+  const [name, setName] = useState(member.name ?? member.email)
+  const [image, setImage] = useState<string | null>(member.image)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSaved, setProfileSaved] = useState(false)
+  const [profilePending, setProfilePending] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSaved, setPasswordSaved] = useState(false)
+  const [passwordPending, setPasswordPending] = useState(false)
+  const initials = (name || member.email).slice(0, 2).toUpperCase()
+
+  function chooseAvatar(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    setProfileSaved(false)
+    setProfileError(null)
+    if (!file) return
+    if (!avatarTypes.has(file.type)) {
+      setProfileError("Choose a PNG, JPEG, or WebP image.")
+      event.currentTarget.value = ""
+      return
+    }
+    if (file.size > maxAvatarBytes) {
+      setProfileError("Avatar images must not exceed 512 KB.")
+      event.currentTarget.value = ""
+      return
+    }
+    const reader = new FileReader()
+    reader.addEventListener("load", () => setImage(typeof reader.result === "string" ? reader.result : null), { once: true })
+    reader.addEventListener("error", () => setProfileError("Could not read that image."), { once: true })
+    reader.readAsDataURL(file)
+  }
+
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setProfilePending(true)
+    setProfileSaved(false)
+    setProfileError(null)
+    try {
+      const updated = await updateProfile({ name, image })
+      setProfileSaved(true)
+      window.dispatchEvent(new CustomEvent("eveland:profile-updated", { detail: updated }))
+      router.refresh()
+    } catch (caught) {
+      setProfileError(caught instanceof Error ? caught.message : "Could not update your profile.")
+    } finally {
+      setProfilePending(false)
+    }
+  }
+
+  async function savePassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const currentPassword = String(data.get("currentPassword") ?? "")
+    const newPassword = String(data.get("newPassword") ?? "")
+    const confirmPassword = String(data.get("confirmPassword") ?? "")
+    setPasswordSaved(false)
+    setPasswordError(null)
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match.")
+      return
+    }
+    setPasswordPending(true)
+    try {
+      await changePassword(currentPassword, newPassword)
+      form.reset()
+      setPasswordSaved(true)
+    } catch (caught) {
+      setPasswordError(caught instanceof Error ? caught.message : "Could not change your password.")
+    } finally {
+      setPasswordPending(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-9">
+      <section className="flex flex-col gap-5" aria-labelledby="profile-details-heading">
+        <div className="flex flex-col gap-1">
+          <h3 id="profile-details-heading" className="font-medium">Profile details</h3>
+          <p className="text-sm text-muted-foreground">Your name and avatar are visible to other workspace members.</p>
+        </div>
+        <form onSubmit={saveProfile} className="flex flex-col gap-5">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="avatar">Avatar</FieldLabel>
+              <div className="flex flex-wrap items-center gap-4">
+                <Avatar className="size-16">
+                  {image ? <AvatarImage src={image} alt={name || member.email} /> : null}
+                  <AvatarFallback>{initials}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-1 flex-col gap-2">
+                  <Input id="avatar" type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseAvatar} />
+                  <FieldDescription>PNG, JPEG, or WebP. Maximum 512 KB.</FieldDescription>
+                </div>
+                {image ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setImage(null)}>
+                    <Trash2Icon data-icon="inline-start" />
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="name">Name</FieldLabel>
+              <Input id="name" name="name" value={name} onChange={(event) => setName(event.currentTarget.value)} maxLength={80} required />
+            </Field>
+            <Field data-disabled>
+              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <Input id="email" type="email" value={member.email} disabled />
+              <FieldDescription>Your sign-in email cannot be changed here.</FieldDescription>
+            </Field>
+          </FieldGroup>
+          {profileError ? <Alert variant="destructive"><AlertDescription>{profileError}</AlertDescription></Alert> : null}
+          {profileSaved ? <Alert><AlertDescription>Profile saved.</AlertDescription></Alert> : null}
+          <div>
+            <Button type="submit" disabled={profilePending || name.trim().length === 0}>
+              {profilePending ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
+              {profilePending ? "Saving…" : "Save profile"}
+            </Button>
+          </div>
+        </form>
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-5" aria-labelledby="password-heading">
+        <div className="flex flex-col gap-1">
+          <h3 id="password-heading" className="font-medium">Password</h3>
+          <p className="text-sm text-muted-foreground">Changing your password signs out every other active session.</p>
+        </div>
+        <form onSubmit={savePassword} className="flex flex-col gap-5">
+          <FieldGroup>
+            <Field data-invalid={Boolean(passwordError)}>
+              <FieldLabel htmlFor="current-password">Current password</FieldLabel>
+              <Input id="current-password" name="currentPassword" type="password" autoComplete="current-password" aria-invalid={Boolean(passwordError)} required />
+            </Field>
+            <Field data-invalid={Boolean(passwordError)}>
+              <FieldLabel htmlFor="new-password">New password</FieldLabel>
+              <Input id="new-password" name="newPassword" type="password" autoComplete="new-password" minLength={12} maxLength={128} aria-invalid={Boolean(passwordError)} required />
+              <FieldDescription>Use at least 12 characters.</FieldDescription>
+            </Field>
+            <Field data-invalid={Boolean(passwordError)}>
+              <FieldLabel htmlFor="confirm-password">Confirm new password</FieldLabel>
+              <Input id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} maxLength={128} aria-invalid={Boolean(passwordError)} required />
+              {passwordError ? <FieldError>{passwordError}</FieldError> : null}
+            </Field>
+          </FieldGroup>
+          {passwordSaved ? <Alert><AlertDescription>Password changed. Other sessions were signed out.</AlertDescription></Alert> : null}
+          <div>
+            <Button type="submit" disabled={passwordPending}>
+              {passwordPending ? <Spinner data-icon="inline-start" /> : <KeyRoundIcon data-icon="inline-start" />}
+              {passwordPending ? "Changing…" : "Change password"}
+            </Button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}

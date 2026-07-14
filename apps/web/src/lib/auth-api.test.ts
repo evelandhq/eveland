@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import * as authApi from "./client-api";
 import { acceptInvitation, inviteMember, signIn, signOut } from "./client-api";
 
 describe("browser auth API", () => {
@@ -41,6 +42,65 @@ describe("browser auth API", () => {
       credentials: "include",
       headers: { "content-type": "application/json" },
       body: "{}",
+    });
+  });
+
+  test("loads the current member for the persistent account menu", async () => {
+    const getCurrentMember = (authApi as typeof authApi & {
+      getCurrentMember?: () => Promise<unknown>;
+    }).getCurrentMember;
+    expect(getCurrentMember).toBeTypeOf("function");
+    if (!getCurrentMember) return;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      member: { email: "admin@example.com", image: null, name: "Admin", role: "admin" },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getCurrentMember();
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/auth/session", {
+      method: "GET",
+      credentials: "include",
+    });
+  });
+
+  test("updates the current profile through the authenticated Eveland API", async () => {
+    const updateProfile = (authApi as typeof authApi & {
+      updateProfile?: (input: { name: string; image: string | null }) => Promise<unknown>;
+    }).updateProfile;
+    expect(updateProfile).toBeTypeOf("function");
+    if (!updateProfile) return;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      member: { email: "admin@example.com", image: null, name: "Eveland Admin", role: "admin" },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateProfile({ name: "Eveland Admin", image: null });
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/profile", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Eveland Admin", image: null }),
+    });
+  });
+
+  test("changes the password through the authenticated Eveland API", async () => {
+    const changePassword = (authApi as typeof authApi & {
+      changePassword?: (currentPassword: string, newPassword: string) => Promise<void>;
+    }).changePassword;
+    expect(changePassword).toBeTypeOf("function");
+    if (!changePassword) return;
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await changePassword("admin-password", "new-admin-password");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/profile/password", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ currentPassword: "admin-password", newPassword: "new-admin-password" }),
     });
   });
 
