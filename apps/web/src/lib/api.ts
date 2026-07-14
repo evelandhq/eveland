@@ -170,11 +170,6 @@ export type ModelUsageEvent = {
   createdAt: string;
 };
 
-export type PlaygroundResult = {
-  session: Session | null;
-  events: SessionEvent[];
-};
-
 export type Job = {
   id: string;
   projectId: string;

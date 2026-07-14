@@ -114,6 +114,7 @@ export type Store = {
     eveSessionId?: string | null;
     continuationToken?: string | null;
   }): Promise<Session>;
+  getSessionByEveSessionId(projectId: string, eveSessionId: string): Promise<Session | null>;
   appendSessionEvent(sessionId: string, type: string, payload: unknown): Promise<SessionEvent>;
   recordModelUsage(
     sessionId: string,
@@ -648,6 +649,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return session;
     },
 
+    async getSessionByEveSessionId(projectId, eveSessionId) {
+      return state.sessions.find((session) => session.projectId === projectId && session.eveSessionId === eveSessionId) ?? null;
+    },
+
     async appendSessionEvent(sessionId, type, payload) {
       const event: SessionEvent = {
         id: createId("evt"),
@@ -732,7 +737,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       session.status = input.status;
       session.eveSessionId = input.eveSessionId ?? session.eveSessionId;
       session.continuationToken = input.continuationToken ?? session.continuationToken;
-      session.completedAt = input.status === "running" ? null : now;
+      session.completedAt = input.status === "completed" || input.status === "failed" ? now : null;
 
       const project = state.projects.find((candidate) => candidate.id === session.projectId);
       if (project) {

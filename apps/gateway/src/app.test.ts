@@ -452,6 +452,92 @@ describe("Gateway", () => {
     expect(repo.bindings).toContainEqual(expect.objectContaining({ eveSessionId: "eve_playground", trigger: "playground" }));
   });
 
+  test("proxies the canonical Eve Playground protocol with streaming, attachments, and pinned continuations", async () => {
+    const requests: Array<{ method: string; path: string; host: string; body: string }> = [];
+    const upstream = await startUpstream((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      request.on("end", () => {
+        requests.push({
+          method: request.method ?? "GET",
+          path: request.url ?? "",
+          host: request.headers.host ?? "",
+          body: Buffer.concat(chunks).toString("utf8"),
+        });
+        if (request.method === "POST" && request.url === "/eve/v1/session") {
+          response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": "eve_stream" });
+          response.end(JSON.stringify({ sessionId: "eve_stream", continuationToken: "continue_1" }));
+          return;
+        }
+        if (request.method === "POST" && request.url === "/eve/v1/session/eve_stream") {
+          response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": "eve_stream" });
+          response.end(JSON.stringify({ sessionId: "eve_stream", continuationToken: "continue_2" }));
+          return;
+        }
+        if (request.method === "GET" && request.url === "/eve/v1/session/eve_stream/stream?startIndex=1") {
+          response.writeHead(200, { "content-type": "application/x-ndjson" });
+          response.write(`${JSON.stringify({ type: "reasoning.appended", data: { reasoningDelta: "Checking" } })}\n`);
+          setTimeout(() => response.end(`${JSON.stringify({ type: "session.waiting", data: { wait: "next-user-message" } })}\n`), 250);
+          return;
+        }
+        response.writeHead(404).end();
+      });
+    });
+    const repo = repository([route({ hostPort: upstream.port })]);
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+    });
+    const initialBody = JSON.stringify({
+      message: [
+        { type: "text", text: "Read this" },
+        { type: "file", data: "data:text/plain;base64,aGk=", filename: "note.txt", mediaType: "text/plain" },
+      ],
+    });
+
+    const unauthorized = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: initialBody,
+    });
+    const initial = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session", {
+      method: "POST",
+      headers: { authorization: "Bearer service-secret", "content-type": "application/json" },
+      body: initialBody,
+    });
+    const continuationBody = JSON.stringify({
+      continuationToken: "continue_1",
+      inputResponses: [{ requestId: "request_1", optionId: "approve" }],
+    });
+    const continuation = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_stream", {
+      method: "POST",
+      headers: { authorization: "Bearer service-secret", "content-type": "application/json" },
+      body: continuationBody,
+    });
+    const startedAt = Date.now();
+    const stream = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_stream/stream?startIndex=1", {
+      headers: { authorization: "Bearer service-secret", accept: "application/x-ndjson" },
+    });
+    const reader = stream.body!.getReader();
+    const first = await reader.read();
+
+    expect(unauthorized.status).toBe(404);
+    expect(initial.status).toBe(202);
+    await expect(initial.json()).resolves.toMatchObject({ sessionId: "eve_stream", continuationToken: "continue_1" });
+    expect(continuation.status).toBe(202);
+    await expect(continuation.json()).resolves.toMatchObject({ continuationToken: "continue_2" });
+    expect(new TextDecoder().decode(first.value)).toContain("reasoning.appended");
+    expect(Date.now() - startedAt).toBeLessThan(200);
+    await reader.cancel();
+    expect(requests).toEqual(expect.arrayContaining([
+      { method: "POST", path: "/eve/v1/session", host: `localhost:${upstream.port}`, body: initialBody },
+      { method: "POST", path: "/eve/v1/session/eve_stream", host: `localhost:${upstream.port}`, body: continuationBody },
+      { method: "GET", path: "/eve/v1/session/eve_stream/stream?startIndex=1", host: `localhost:${upstream.port}`, body: "" },
+    ]));
+    expect(repo.bindings).toContainEqual(expect.objectContaining({ eveSessionId: "eve_stream", trigger: "playground" }));
+  });
+
   test("invalidates cached Host resolution through the service-authenticated control path", async () => {
     const first = await startUpstream((_request, response) => response.end("first"));
     const second = await startUpstream((_request, response) => response.end("second"));

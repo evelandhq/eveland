@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import * as Eve from "./eve.js";
 import { extractEveResponseText, getEveString, isEveRecord, parseEveJsonObject, parseStepUsageEvent } from "./eve.js";
 
 test("Eve wire helpers parse object payloads and preserve raw response fallback", () => {
@@ -84,5 +85,70 @@ describe("parseStepUsageEvent", () => {
   test("ignores events that cannot identify a completed model step", () => {
     expect(parseStepUsageEvent("turn.completed", { turnId: "turn_0", stepIndex: 0 })).toBeNull();
     expect(parseStepUsageEvent("step.completed", { turnId: "turn_0" })).toBeNull();
+  });
+});
+
+describe("Playground turn validation", () => {
+  test("accepts text and safe data-url attachments within the configured limits", () => {
+    const validate = (Eve as Record<string, unknown>).validatePlaygroundTurn;
+    expect(validate).toBeTypeOf("function");
+    if (typeof validate !== "function") return;
+
+    const payload = {
+      message: [
+        { type: "text", text: "Review these files" },
+        {
+          type: "file",
+          data: "data:text/plain;base64,aGVsbG8=",
+          filename: "notes.txt",
+          mediaType: "text/plain",
+        },
+        {
+          type: "file",
+          data: "data:application/octet-stream;base64,e30=",
+          filename: "config.json",
+          mediaType: "application/octet-stream",
+        },
+      ],
+    };
+
+    expect(validate(payload, { maxFiles: 4, maxFileBytes: 8, maxTotalFileBytes: 16 })).toEqual(payload);
+  });
+
+  test("rejects unsafe file types and attachment count or byte overflows", () => {
+    const validate = (Eve as Record<string, unknown>).validatePlaygroundTurn;
+    expect(validate).toBeTypeOf("function");
+    if (typeof validate !== "function") return;
+
+    const file = {
+      type: "file",
+      data: "data:text/plain;base64,aGVsbG8=",
+      filename: "notes.txt",
+      mediaType: "text/plain",
+    };
+
+    expect(() => validate({ message: [file, file] }, { maxFiles: 1, maxFileBytes: 8, maxTotalFileBytes: 16 })).toThrow(/at most 1 file/i);
+    expect(() => validate({ message: [file] }, { maxFiles: 4, maxFileBytes: 4, maxTotalFileBytes: 16 })).toThrow(/5 bytes.*4 bytes/i);
+    expect(() =>
+      validate(
+        {
+          message: [{ ...file, data: "data:application/zip;base64,UEsDBA==", filename: "source.zip", mediaType: "application/zip" }],
+        },
+        { maxFiles: 4, maxFileBytes: 8, maxTotalFileBytes: 16 },
+      ),
+    ).toThrow(/not supported/i);
+  });
+
+  test("accepts HITL-only continuations but rejects empty turns", () => {
+    const validate = (Eve as Record<string, unknown>).validatePlaygroundTurn;
+    expect(validate).toBeTypeOf("function");
+    if (typeof validate !== "function") return;
+
+    expect(
+      validate({ continuationToken: "continue_1", inputResponses: [{ requestId: "request_1", optionId: "approve" }] }),
+    ).toMatchObject({ inputResponses: [{ requestId: "request_1", optionId: "approve" }] });
+    expect(() => validate({ continuationToken: "continue_1" })).toThrow(/message or input response/i);
+    expect(() => validate({ inputResponses: [{ requestId: "request_1", text: "" }] })).toThrow(/option or text value/i);
+    expect(() => validate({ inputResponses: [{ requestId: "request_1", optionId: "" }] })).toThrow(/option or text value/i);
   });
 });

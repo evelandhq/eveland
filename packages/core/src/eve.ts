@@ -10,6 +10,91 @@ export type ModelStepUsage = {
   usageReported: boolean;
 };
 
+export const PLAYGROUND_MAX_FILES = 4;
+export const PLAYGROUND_MAX_FILE_BYTES = 5 * 1024 * 1024;
+export const PLAYGROUND_MAX_TOTAL_FILE_BYTES = 10 * 1024 * 1024;
+export const PLAYGROUND_MAX_TRANSPORT_BYTES = Math.ceil((PLAYGROUND_MAX_TOTAL_FILE_BYTES * 4) / 3) + 64 * 1024;
+export const PLAYGROUND_ATTACHMENT_ACCEPT = [
+  "image/*",
+  "application/pdf",
+  "text/*",
+  "application/json",
+  "application/javascript",
+  "application/typescript",
+  "application/xml",
+  "application/yaml",
+  ".md",
+  ".mdx",
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".json",
+  ".yaml",
+  ".yml",
+].join(",");
+
+export type PlaygroundAttachmentLimits = {
+  maxFiles: number;
+  maxFileBytes: number;
+  maxTotalFileBytes: number;
+};
+
+const defaultPlaygroundAttachmentLimits: PlaygroundAttachmentLimits = {
+  maxFiles: PLAYGROUND_MAX_FILES,
+  maxFileBytes: PLAYGROUND_MAX_FILE_BYTES,
+  maxTotalFileBytes: PLAYGROUND_MAX_TOTAL_FILE_BYTES,
+};
+
+export function validatePlaygroundTurn(
+  value: unknown,
+  limits: PlaygroundAttachmentLimits = defaultPlaygroundAttachmentLimits,
+): Record<string, unknown> {
+  if (!isEveRecord(value)) throw new Error("Playground turn must be a JSON object.");
+
+  const hasMessage = value.message !== undefined;
+  const responses = value.inputResponses;
+  const hasInputResponses = Array.isArray(responses) && responses.length > 0;
+  if (!hasMessage && !hasInputResponses) throw new Error("Playground turn requires a message or input response.");
+
+  if (value.continuationToken !== undefined && (typeof value.continuationToken !== "string" || value.continuationToken.length === 0)) {
+    throw new Error("Playground continuation token must be a non-empty string.");
+  }
+  if (responses !== undefined) validateInputResponses(responses);
+
+  if (typeof value.message === "string") {
+    if (value.message.trim().length === 0) throw new Error("Playground message must not be empty.");
+    return value;
+  }
+  if (value.message === undefined) return value;
+  if (!Array.isArray(value.message) || value.message.length === 0) {
+    throw new Error("Playground message must be text or a non-empty content array.");
+  }
+
+  let fileCount = 0;
+  let totalFileBytes = 0;
+  for (const part of value.message) {
+    if (!isEveRecord(part)) throw new Error("Playground message parts must be objects.");
+    if (part.type === "text") {
+      if (typeof part.text !== "string" || part.text.trim().length === 0) throw new Error("Playground text parts must not be empty.");
+      continue;
+    }
+    if (part.type !== "file") throw new Error(`Playground message part type ${String(part.type)} is not supported.`);
+    fileCount += 1;
+    if (fileCount > limits.maxFiles) throw new Error(`Playground accepts at most ${limits.maxFiles} file${limits.maxFiles === 1 ? "" : "s"}.`);
+    const fileBytes = validatePlaygroundFilePart(part);
+    if (fileBytes > limits.maxFileBytes) {
+      throw new Error(`Playground file is ${fileBytes} bytes; the limit is ${limits.maxFileBytes} bytes.`);
+    }
+    totalFileBytes += fileBytes;
+    if (totalFileBytes > limits.maxTotalFileBytes) {
+      throw new Error(`Playground attachments total ${totalFileBytes} bytes; the limit is ${limits.maxTotalFileBytes} bytes.`);
+    }
+  }
+
+  return value;
+}
+
 export function isEveRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -69,4 +154,51 @@ function readNonNegativeInteger(value: unknown): number | null {
 
 function readNonNegativeNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function validateInputResponses(value: unknown): void {
+  if (!Array.isArray(value) || value.length === 0) throw new Error("Playground input responses must be a non-empty array.");
+  for (const response of value) {
+    if (!isEveRecord(response) || typeof response.requestId !== "string" || response.requestId.length === 0) {
+      throw new Error("Each Playground input response requires a request ID.");
+    }
+    const hasOption = typeof response.optionId === "string" && response.optionId.trim().length > 0;
+    const hasText = typeof response.text === "string" && response.text.trim().length > 0;
+    if (!hasOption && !hasText) {
+      throw new Error("Each Playground input response requires an option or text value.");
+    }
+  }
+}
+
+function validatePlaygroundFilePart(part: Record<string, unknown>): number {
+  const filename = typeof part.filename === "string" ? part.filename : "";
+  const mediaType = typeof part.mediaType === "string" ? part.mediaType.toLowerCase() : "";
+  if (!filename || filename.includes("/") || filename.includes("\\")) throw new Error("Playground files require a safe filename.");
+  if (!isSupportedPlaygroundFile(mediaType, filename)) throw new Error(`Playground file type ${mediaType || "unknown"} is not supported.`);
+  if (typeof part.data !== "string") throw new Error("Playground files must use data URLs.");
+
+  const match = /^data:([^;,]+)(?:;[^,]*)*;base64,([A-Za-z0-9+/]*={0,2})$/.exec(part.data);
+  if (!match || match[1]?.toLowerCase() !== mediaType) throw new Error("Playground files must use matching base64 data URLs.");
+  const encoded = match[2] ?? "";
+  if (encoded.length % 4 !== 0) throw new Error("Playground file data URL is malformed.");
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  return (encoded.length / 4) * 3 - padding;
+}
+
+function isSupportedPlaygroundFile(mediaType: string, filename: string): boolean {
+  if (mediaType.startsWith("image/") || mediaType.startsWith("text/")) return true;
+  if (
+    mediaType === "application/pdf" ||
+    mediaType === "application/json" ||
+    mediaType === "application/ld+json" ||
+    mediaType === "application/javascript" ||
+    mediaType === "application/typescript" ||
+    mediaType === "application/xml" ||
+    mediaType === "application/yaml" ||
+    mediaType === "application/x-yaml"
+  ) {
+    return true;
+  }
+  if (mediaType !== "application/octet-stream") return false;
+  return /\.(?:c|cc|cpp|css|csv|go|h|hpp|html|java|js|jsx|json|md|mdx|py|rb|rs|sh|sql|toml|ts|tsx|txt|xml|ya?ml)$/i.test(filename);
 }

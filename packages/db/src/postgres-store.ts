@@ -795,6 +795,15 @@ export function createPostgresStore(database: Database): Store {
       return sessionRowToSession(row);
     },
 
+    async getSessionByEveSessionId(projectId, eveSessionId) {
+      const [row] = await db
+        .select()
+        .from(sessions)
+        .where(and(eq(sessions.projectId, projectId), eq(sessions.eveSessionId, eveSessionId)))
+        .limit(1);
+      return row ? sessionRowToSession(row) : null;
+    },
+
     async appendSessionEvent(sessionId, type, payload) {
       const existingEvents = await db.select({ index: sessionEvents.index }).from(sessionEvents).where(eq(sessionEvents.sessionId, sessionId));
       const [row] = await db
@@ -951,7 +960,7 @@ export function createPostgresStore(database: Database): Store {
                   deploymentId: binding.deploymentId,
                 }
               : {}),
-            completedAt: input.status === "running" ? null : new Date(),
+            completedAt: input.status === "completed" || input.status === "failed" ? new Date() : null,
           })
           .where(eq(sessions.id, sessionId))
           .returning();

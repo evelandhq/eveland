@@ -371,9 +371,9 @@ Node fetch 代理 request body 时不能先 `.text()` / `.json()`；保留 strea
 
 ### 4.5 Internal Playground mode
 
-现有 `/projects/:projectId/playground` 是管理员开发工具，不等同于真实终端用户调用。
+Playground 是管理员开发工具，不等同于真实终端用户调用。当前 Web 以 `/projects/:projectId/playground/eve/*` 代理 Eve canonical session protocol；API 在一个页面会话中只创建一个平台 Session，Gateway 再通过仅 private network 可达且需要 service credential 的 `/internal/projects/:projectId/playground/eve/*` 路径转发 initial、continuation 和 stream 请求。Gateway 使用 loopback Host 获得 Eve local-dev principal，并用 SessionBinding 固定后续请求的 Deployment。
 
-第一阶段允许 API 继续通过 private loopback 访问 Agent，以 Eve local-dev principal 运行，但必须把 transport/client 逻辑移出 Hono route。Gateway 稳定后，将该调用统一放到一个仅 loopback/private network 可达且需要 service credential 的 internal Gateway path。
+每次打开或刷新页面都从一个新的空白会话开始；页面内连续 turn、HITL 回答和外部授权恢复保留同一个 Eve Session。UI 实时展示 conversation、reasoning、tool state 和 input request，允许停止生成，并接受最多 4 个、单个 5 MiB、合计 10 MiB 的图片/PDF/文本/代码附件。Playground 不持久化 raw reasoning 或上传文件，Sessions/usage 的权威采集仍由 Observer/Collector 完成。
 
 后续可增加“Test with real auth”模式，允许管理员显式传入测试 Authorization，并使用 canonical public Host；不要伪造最终用户身份。
 

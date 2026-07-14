@@ -27,6 +27,56 @@ export type PlaygroundRunnerInput = {
 
 export type PlaygroundRunner = (input: PlaygroundRunnerInput) => Promise<PlaygroundRunResult>;
 
+export type PlaygroundProxyInput = {
+  projectId: string;
+  path: string;
+  method: string;
+  headers: Headers;
+  body: Uint8Array | null;
+  signal?: AbortSignal;
+};
+
+export type PlaygroundProxy = (input: PlaygroundProxyInput) => Promise<Response>;
+
+export async function proxyGatewayPlayground(
+  input: PlaygroundProxyInput,
+  options: {
+    gatewayUrl?: string;
+    serviceToken?: string;
+    fetchImplementation?: typeof fetch;
+  } = {},
+): Promise<Response> {
+  const gatewayUrl = (options.gatewayUrl ?? process.env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(/\/$/, "");
+  const serviceToken =
+    options.serviceToken ??
+    process.env.EVELAND_GATEWAY_SERVICE_TOKEN ??
+    (process.env.NODE_ENV === "production" ? undefined : "eveland-dev-gateway-token");
+  if (!serviceToken) throw new Error("EVELAND_GATEWAY_SERVICE_TOKEN is required for Playground requests.");
+
+  const headers: Record<string, string> = { authorization: `Bearer ${serviceToken}` };
+  const accept = input.headers.get("accept");
+  const contentType = input.headers.get("content-type");
+  if (accept) headers.accept = accept;
+  if (contentType) headers["content-type"] = contentType;
+
+  return (options.fetchImplementation ?? fetch)(
+    `${gatewayUrl}/internal/projects/${encodeURIComponent(input.projectId)}/playground${input.path}`,
+    {
+      method: input.method,
+      headers,
+      body: copyRequestBody(input.body),
+      signal: input.signal,
+    },
+  );
+}
+
+function copyRequestBody(body: Uint8Array | null): ArrayBuffer | undefined {
+  if (!body) return undefined;
+  const copy = new Uint8Array(body.byteLength);
+  copy.set(body);
+  return copy.buffer;
+}
+
 export async function runGatewayPlayground(
   input: PlaygroundRunnerInput,
   options: {

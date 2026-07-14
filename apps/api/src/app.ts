@@ -5,15 +5,22 @@ import { promisify } from "node:util";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
-import type { LogRecord } from "@eveland/core/contracts";
-import type { AuthPrincipal, TeamInvitation } from "@eveland/core/contracts";
+import type { AuthPrincipal, LogRecord, SessionStatus, TeamInvitation } from "@eveland/core/contracts";
+import {
+  getEveString,
+  parseEveJsonObject,
+  PLAYGROUND_MAX_TRANSPORT_BYTES,
+  validatePlaygroundTurn,
+} from "@eveland/core/eve";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
 import type { CollectorHealth } from "@eveland/session-collector/health";
 import { z } from "zod";
 import {
+  proxyGatewayPlayground,
   runGatewayPlayground,
+  type PlaygroundProxy,
   type PlaygroundRunEvent,
   type PlaygroundRunner,
 } from "./gateway-playground.js";
@@ -82,6 +89,7 @@ export type AppOptions = {
   cookieDomain?: string;
   appSecretKey?: string;
   playgroundRunner?: PlaygroundRunner;
+  playgroundProxy?: PlaygroundProxy;
   dataDir?: string;
   collectorHealth?: () => CollectorHealth;
   gatewayPublicScheme?: "http" | "https";
@@ -97,6 +105,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const appSecretKey = options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
   assertValidSecretKey(appSecretKey);
   const playgroundRunner = options.playgroundRunner ?? runGatewayPlayground;
+  const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
 
@@ -417,6 +426,81 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     return c.json({ job }, 202);
   });
 
+  app.all("/projects/:projectId/playground/eve/*", async (c) => {
+    const projectId = c.req.param("projectId");
+    const requestUrl = new URL(c.req.url);
+    const playgroundMarker = "/playground";
+    const markerIndex = requestUrl.pathname.indexOf(playgroundMarker);
+    const evePath = markerIndex >= 0 ? requestUrl.pathname.slice(markerIndex + playgroundMarker.length) : "";
+    const pathSessionId = playgroundSessionIdFromPath(evePath);
+    const isInitial = c.req.method === "POST" && evePath === "/eve/v1/session";
+    const isContinuation = c.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
+    const isStream = c.req.method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(evePath);
+    if (!isInitial && !isContinuation && !isStream) return c.json({ error: "Playground route not found" }, 404);
+
+    const project = await store.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+
+    let body: Uint8Array | null = null;
+    if (isInitial || isContinuation) {
+      try {
+        body = await readLimitedPlaygroundBody(c.req.raw, PLAYGROUND_MAX_TRANSPORT_BYTES);
+        validatePlaygroundTurn(parsePlaygroundBody(body));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid Playground request";
+        const status = message === "Playground request body is too large." ? 413 : 400;
+        return c.json({ error: message }, status);
+      }
+    }
+
+    let platformSession = pathSessionId ? await store.getSessionByEveSessionId(projectId, pathSessionId) : null;
+    if (pathSessionId && !platformSession) return c.json({ error: "Playground session not found" }, 404);
+    if (isInitial) {
+      const deployment = await store.getCurrentDeployment(projectId);
+      if (!deployment || deployment.status !== "running") return c.json({ error: "No running deployment" }, 409);
+      platformSession = await store.createSession({ projectId, deploymentId: deployment.id, trigger: "playground" });
+    }
+
+    let upstream: Response;
+    try {
+      upstream = await playgroundProxy({
+        projectId,
+        path: `${evePath}${requestUrl.search}`,
+        method: c.req.method,
+        headers: c.req.raw.headers,
+        body,
+        signal: c.req.raw.signal,
+      });
+    } catch (error) {
+      if (platformSession) await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: "Playground request failed", detail: message }, 502);
+    }
+
+    if (!upstream.ok && platformSession) {
+      await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
+    }
+
+    if ((isInitial || isContinuation) && upstream.ok && platformSession) {
+      const parsed = await parsePlaygroundResponse(upstream.clone());
+      const eveSessionId = upstream.headers.get("x-eve-session-id") ?? getEveString(parsed, "sessionId") ?? pathSessionId;
+      await store.completeSession(platformSession.id, {
+        status: "running",
+        eveSessionId,
+        continuationToken: getEveString(parsed, "continuationToken"),
+      });
+    }
+
+    const responseBody = isStream && upstream.ok && upstream.body && platformSession && pathSessionId
+      ? monitorPlaygroundStream(upstream.body, store, platformSession.id, pathSessionId)
+      : upstream.body;
+    return new Response(responseBody, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: upstream.headers,
+    });
+  });
+
   app.post("/projects/:projectId/playground", async (c) => {
     const projectId = c.req.param("projectId");
     const parsed = playgroundMessageSchema.safeParse(await c.req.json());
@@ -566,6 +650,120 @@ async function invalidateGateway(options: AppOptions, hostnames: string[]): Prom
     });
     if (!response.ok) throw new Error(`Gateway cache invalidation failed with ${response.status}.`);
   }
+}
+
+function playgroundSessionIdFromPath(pathname: string): string | null {
+  const match = /^\/eve\/v1\/session\/([^/]+)(?:\/|$)/.exec(pathname);
+  if (!match?.[1]) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+async function readLimitedPlaygroundBody(request: Request, maxBytes: number): Promise<Uint8Array> {
+  const contentLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) throw new Error("Playground request body is too large.");
+  if (!request.body) return new Uint8Array();
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      total += chunk.value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel("Playground request body is too large.").catch(() => undefined);
+        throw new Error("Playground request body is too large.");
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function parsePlaygroundBody(body: Uint8Array): unknown {
+  try {
+    return JSON.parse(new TextDecoder().decode(body)) as unknown;
+  } catch {
+    throw new Error("Playground turn must be valid JSON.");
+  }
+}
+
+async function parsePlaygroundResponse(response: Response): Promise<Record<string, unknown> | null> {
+  if (!response.headers.get("content-type")?.includes("application/json")) return null;
+  return parseEveJsonObject(await response.text());
+}
+
+function monitorPlaygroundStream(
+  body: ReadableStream<Uint8Array>,
+  store: Store,
+  platformSessionId: string,
+  eveSessionId: string,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentStatus: SessionStatus = "running";
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          const tail = buffer.trim();
+          if (tail) currentStatus = await projectPlaygroundStreamLine(tail, currentStatus, store, platformSessionId, eveSessionId);
+          controller.close();
+          return;
+        }
+        controller.enqueue(chunk.value);
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let newline: number;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (line) currentStatus = await projectPlaygroundStreamLine(line, currentStatus, store, platformSessionId, eveSessionId);
+        }
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => undefined);
+    },
+  });
+}
+
+async function projectPlaygroundStreamLine(
+  line: string,
+  currentStatus: SessionStatus,
+  store: Store,
+  platformSessionId: string,
+  eveSessionId: string,
+): Promise<SessionStatus> {
+  const event = parseEveJsonObject(line);
+  const type = getEveString(event, "type");
+  let nextStatus: SessionStatus | null = null;
+  if (type === "session.started" || type === "turn.started") nextStatus = "running";
+  else if (type === "input.requested") nextStatus = "waiting_approval";
+  else if (type === "session.waiting") nextStatus = currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
+  else if (type === "session.completed") nextStatus = "completed";
+  else if (type === "session.failed") nextStatus = "failed";
+  if (!nextStatus) return currentStatus;
+  await store.completeSession(platformSessionId, { status: nextStatus, eveSessionId }).catch(() => null);
+  return nextStatus;
 }
 
 function isMultipartRequest(c: Context): boolean {

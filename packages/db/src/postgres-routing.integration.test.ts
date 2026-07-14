@@ -72,8 +72,18 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
       affinitySource: null,
     });
     await expect(
+      store.completeSession(playground.id, { status: "waiting_approval", eveSessionId: "eve_gateway_playground" }),
+    ).resolves.toMatchObject({
+      routeId: stable!.id,
+      experimentId: `${stable!.id}:r1`,
+      trigger: "playground",
+      status: "waiting_approval",
+      completedAt: null,
+    });
+    await expect(store.getSessionByEveSessionId(project.id, "eve_gateway_playground")).resolves.toMatchObject({ id: playground.id });
+    await expect(
       store.completeSession(playground.id, { status: "completed", eveSessionId: "eve_gateway_playground" }),
-    ).resolves.toMatchObject({ routeId: stable!.id, experimentId: `${stable!.id}:r1`, trigger: "playground" });
+    ).resolves.toMatchObject({ status: "completed", completedAt: expect.any(String) });
 
     const candidate = await store.recordDeployment({
       projectId: project.id,
