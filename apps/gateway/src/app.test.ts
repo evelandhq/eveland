@@ -621,7 +621,7 @@ function repository(routes: ResolvedAgentRoute[]): GatewayRepository & { binding
   const deployments = new Map(
     routes.flatMap((route) => route.targets).map((target) => [target.deploymentId, {
       id: target.deploymentId,
-      deploymentKey: `d-${target.deploymentId}`,
+      deploymentKey: target.deploymentId.replace(/[^a-z0-9]/g, "").padEnd(8, "0").slice(0, 8),
       projectId: "proj_1",
       releaseId: `rel-${target.deploymentId}`,
       containerName: target.deploymentId,

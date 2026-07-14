@@ -1,4 +1,4 @@
-import { claimRoutingKey, createId } from "@eveland/core/ids";
+import { claimDeploymentKey, claimProjectSlug, createId } from "@eveland/core/ids";
 import type {
   AgentRoute,
   Job,
@@ -204,12 +204,12 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async createProject(input) {
       const now = new Date().toISOString();
-      const project = await claimRoutingKey("p", async (routingKey) => {
-        if (state.projects.some((candidate) => candidate.routingKey === routingKey)) return null;
+      const project = await claimProjectSlug(input.name, async (slug) => {
+        if (state.projects.some((candidate) => candidate.slug === slug)) return null;
         const claimed: Project = {
           id: createId("proj"),
-          routingKey,
-          name: input.name,
+          slug,
+          name: slug,
           importKind: input.importKind,
           gitUrl: input.gitUrl ?? null,
           status: "import_pending",
@@ -472,8 +472,14 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         imageTag: input.imageTag,
         createdAt: now,
       };
-      const deployment = await claimRoutingKey("d", async (deploymentKey) => {
-        if (state.deployments.some((candidate) => candidate.deploymentKey === deploymentKey)) return null;
+      const deployment = await claimDeploymentKey(async (deploymentKey) => {
+        if (
+          state.deployments.some(
+            (candidate) => candidate.projectId === input.projectId && candidate.deploymentKey === deploymentKey,
+          )
+        ) {
+          return null;
+        }
         const claimed: DeploymentRecord = {
           id: input.deploymentId ?? createId("dep"),
           deploymentKey,
@@ -541,12 +547,12 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       const domain = normalizeBaseDomain(baseDomain);
       const stable = upsertMemoryRoute(state, {
         projectId,
-        hostname: `${project.routingKey}.${domain}`,
+        hostname: `${project.slug}.${domain}`,
         kind: "project",
       });
       const preview = upsertMemoryRoute(state, {
         projectId,
-        hostname: `${deployment.deploymentKey}--${project.routingKey}.${domain}`,
+        hostname: `${deployment.deploymentKey}--${project.slug}.${domain}`,
         kind: "deployment",
         deploymentId,
       });
@@ -624,7 +630,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(alias)) throw new Error("Alias must be a DNS-safe label.");
       const project = state.projects.find((candidate) => candidate.id === projectId);
       if (!project) throw new Error("Project not found.");
-      const hostname = `${alias}--${project.routingKey}.${normalizeBaseDomain(baseDomain)}`;
+      const hostname = `${alias}--${project.slug}.${normalizeBaseDomain(baseDomain)}`;
       const existed = state.agentRoutes.some((candidate) => candidate.hostname === hostname);
       const route = upsertMemoryRoute(state, { projectId, hostname, kind: "alias" });
       for (const target of targets) {

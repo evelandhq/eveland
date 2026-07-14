@@ -174,6 +174,13 @@ runs it against the Lima VM as part of the integration smoke test.
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. Note `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
+Project stable routes use `<projectSlug>.<baseDomain>`. Immutable Deployment previews use
+`<eightCharacterDeploymentKey>--<projectSlug>.<baseDomain>`; the separator stays inside one
+DNS label so a single `*.agents.example.com` wildcard certificate covers both forms. Project
+slugs are globally unique and immutable. Deployment keys contain exactly eight lowercase
+letters or digits and are unique within their Project; full `proj_*` and `dep_*` IDs remain
+internal control-plane identities.
+
 Project Secret mutations are applied asynchronously because only the worker owns
 runtime-controller privilege. Saving, replacing, or deleting a Secret queues one
 targeted `restart_deployment` job for every `running` or `draining` Deployment,

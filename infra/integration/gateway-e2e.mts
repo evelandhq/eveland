@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Gateway E2E server did not bind.");
     const gatewayPort = address.port;
-    const localHost = `${project.routingKey}.agent.localhost:4080`;
+    const localHost = `${project.slug}.agent.localhost:4080`;
     const previewRoutes = (await store.listProjectRoutes(project.id)).filter((route) => route.kind === "deployment");
     assert.equal(previewRoutes.length, 2);
     const previewRoute = previewRoutes.find((route) => route.targets[0]?.deploymentId === deployment.id);

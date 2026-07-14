@@ -40,4 +40,9 @@ describe("Better Auth team schema", () => {
     expect(Object.keys(getTableColumns(invitations))).not.toContain("tokenHash");
     expect(Object.keys(getTableColumns(projects))).toContain("teamId");
   });
+
+  test("stores the semantic project slug instead of a random routing key", () => {
+    expect(Object.keys(getTableColumns(projects))).toContain("slug");
+    expect(Object.keys(getTableColumns(projects))).not.toContain("routingKey");
+  });
 });

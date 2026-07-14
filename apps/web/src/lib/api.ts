@@ -1,6 +1,6 @@
 export type Project = {
   id: string;
-  routingKey: string;
+  slug: string;
   name: string;
   importKind: "git" | "zip";
   gitUrl: string | null;

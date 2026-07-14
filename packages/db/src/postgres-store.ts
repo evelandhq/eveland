@@ -1,5 +1,5 @@
 import { and, desc, eq, or, sql } from "drizzle-orm";
-import { claimRoutingKey, createId } from "@eveland/core/ids";
+import { claimDeploymentKey, claimProjectSlug, createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { Database } from "./client.js";
@@ -78,7 +78,7 @@ export function createPostgresStore(database: Database): Store {
       if (stable) {
         [stable] = await tx
           .update(agentRoutes)
-          .set({ hostname: `${project.routingKey}.${domain}`, enabled: true, updatedAt: new Date() })
+          .set({ hostname: `${project.slug}.${domain}`, enabled: true, updatedAt: new Date() })
           .where(eq(agentRoutes.id, stable.id))
           .returning();
       } else {
@@ -87,7 +87,7 @@ export function createPostgresStore(database: Database): Store {
           .values({
             id: createId("route"),
             projectId,
-            hostname: `${project.routingKey}.${domain}`,
+            hostname: `${project.slug}.${domain}`,
             kind: "project",
             enabled: true,
             policyRevision: 1,
@@ -112,7 +112,7 @@ export function createPostgresStore(database: Database): Store {
       if (preview) {
         [preview] = await tx
           .update(agentRoutes)
-          .set({ hostname: `${deployment.deploymentKey}--${project.routingKey}.${domain}`, enabled: true, updatedAt: new Date() })
+          .set({ hostname: `${deployment.deploymentKey}--${project.slug}.${domain}`, enabled: true, updatedAt: new Date() })
           .where(eq(agentRoutes.id, preview.id))
           .returning();
       } else {
@@ -121,7 +121,7 @@ export function createPostgresStore(database: Database): Store {
           .values({
             id: createId("route"),
             projectId,
-            hostname: `${deployment.deploymentKey}--${project.routingKey}.${domain}`,
+            hostname: `${deployment.deploymentKey}--${project.slug}.${domain}`,
             kind: "deployment",
             enabled: true,
             policyRevision: 1,
@@ -179,15 +179,15 @@ export function createPostgresStore(database: Database): Store {
 
     async createProject(input: CreateProjectInput) {
       await ensureDefaultOwner();
-      const row = await claimRoutingKey("p", async (routingKey) => {
+      const row = await claimProjectSlug(input.name, async (slug) => {
         try {
           const [claimed] = await db
             .insert(projects)
             .values({
               id: createId("proj"),
-              routingKey,
+              slug,
               ownerId: defaultOwner.id,
-              name: input.name,
+              name: slug,
               importKind: input.importKind,
               gitUrl: input.gitUrl ?? null,
               status: "import_pending",
@@ -197,7 +197,7 @@ export function createPostgresStore(database: Database): Store {
           if (!claimed) throw new Error("Failed to create project.");
           return claimed;
         } catch (error) {
-          if (isUniqueConstraint(error, "projects_routing_key_unique")) return null;
+          if (isUniqueConstraint(error, "projects_slug_unique")) return null;
           throw error;
         }
       });
@@ -541,7 +541,7 @@ export function createPostgresStore(database: Database): Store {
         throw new Error("Failed to create release.");
       }
 
-      const deploymentRow = await claimRoutingKey("d", async (deploymentKey) => {
+      const deploymentRow = await claimDeploymentKey(async (deploymentKey) => {
         try {
           const [claimed] = await db
             .insert(deployments)
@@ -560,7 +560,7 @@ export function createPostgresStore(database: Database): Store {
           if (!claimed) throw new Error("Failed to create deployment.");
           return claimed;
         } catch (error) {
-          if (isUniqueConstraint(error, "deployments_deployment_key_unique")) return null;
+          if (isUniqueConstraint(error, "deployments_project_key_idx")) return null;
           throw error;
         }
       });
@@ -754,7 +754,7 @@ export function createPostgresStore(database: Database): Store {
             throw new Error("Alias target must be a running deployment in this project.");
           }
         }
-        const hostname = `${alias}--${project.routingKey}.${normalizeBaseDomain(baseDomain)}`;
+        const hostname = `${alias}--${project.slug}.${normalizeBaseDomain(baseDomain)}`;
         const [existing] = await tx.select().from(agentRoutes).where(eq(agentRoutes.hostname, hostname)).limit(1);
         const [route] = existing
           ? await tx.update(agentRoutes).set({ enabled: true, policyRevision: sql`${agentRoutes.policyRevision} + 1`, updatedAt: new Date() }).where(eq(agentRoutes.id, existing.id)).returning()
@@ -1501,6 +1501,9 @@ function stringValue(value: unknown): string | null {
 
 function isUniqueConstraint(error: unknown, constraint: string): boolean {
   if (typeof error !== "object" || error === null) return false;
-  const record = error as { code?: unknown; constraint_name?: unknown; constraint?: unknown };
-  return record.code === "23505" && (record.constraint_name === constraint || record.constraint === constraint);
+  const record = error as { code?: unknown; constraint_name?: unknown; constraint?: unknown; cause?: unknown };
+  if (record.code === "23505" && (record.constraint_name === constraint || record.constraint === constraint)) {
+    return true;
+  }
+  return isUniqueConstraint(record.cause, constraint);
 }

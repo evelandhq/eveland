@@ -119,6 +119,30 @@ describe("web application shell", () => {
     expect(newProject).toContain("buttonVariants({ variant: 'ghost' })")
   })
 
+  test("derives a URL-friendly project name after the source is entered", () => {
+    const forms = source("../components/new-project-forms.tsx")
+
+    expect(forms).toContain("inferProjectSlugFromGitUrl")
+    expect(forms.indexOf("Git repository URL")).toBeLessThan(forms.indexOf("Project name"))
+    expect(forms).toContain("PROJECT_SLUG_PATTERN")
+    expect(forms).toContain("data-invalid")
+    expect(forms).toContain("aria-invalid")
+  })
+
+  test("composes the project import forms from installed shadcn components", () => {
+    const forms = source("../components/new-project-forms.tsx")
+
+    expect(forms).toContain("<Card")
+    expect(forms).toContain("<CardHeader")
+    expect(forms).toContain("<CardContent")
+    expect(forms).toContain("<CardFooter")
+    expect(forms).toContain("<FieldGroup")
+    expect(forms).toContain("<Field")
+    expect(forms).toContain("<Input")
+    expect(forms).toContain("<Spinner")
+    expect(forms).not.toContain("<input")
+  })
+
   test("keeps links semantic when they use button styling", () => {
     const sourceRoot = fileURLToPath(new URL("../", import.meta.url))
     const violations = globSync("**/*.tsx", { cwd: sourceRoot }).filter((path) =>

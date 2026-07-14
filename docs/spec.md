@@ -155,6 +155,17 @@ Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：�
 1. Git Repo URL
 2. 上传 Zip 文件
 
+Git 导入先填写 Repo URL。Web 从 URL 最后一个 path segment 去掉 `.git` 后猜测
+Project 名称，例如 `evelandhq/sample-office-assistant` 得到
+`sample-office-assistant`；用户可以在提交前编辑。Zip 导入先选择压缩包，并以文件名
+使用相同规则猜测名称。
+
+Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一、最长 53 个字符，
+只允许小写字母、数字和 `-`，且不能以 `-` 开头或结尾。名称冲突时，API 必须在同一
+数据库唯一性边界内依次尝试 `name-1`、`name-2`，并在创建结果中返回最终名称。
+`proj_xxxxxxxxxx` 仍是控制面、数据库关系和 `/projects/:projectId` 使用的内部 ID，
+不能因为公开 slug 变得可读而替换内部主键。
+
 导入后平台执行：
 
 * 拉取或解压源码
@@ -162,9 +173,9 @@ Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：�
 * 识别项目配置、agent、tools、skills、schedules
 * 创建 Source Revision
 
-用户随后填写：
+用户随后确认或填写：
 
-* 项目名称
+* 自动猜测的项目名称
 * 必需环境变量 / API Key
 * 默认模型 Provider 配置
 
@@ -384,6 +395,19 @@ Eve Deployment (127.0.0.1 private upstream)
 ```
 
 每个 Deployment 对应一个独立运行进程（Docker 或 systemd），并拥有不可变 preview Host。Project stable Host 是可变路由；原始动态端口不是产品 URL，也不公开暴露。
+
+开发环境中的 canonical 地址为：
+
+```text
+http://<projectSlug>.agent.localhost:4080
+http://<deploymentKey>--<projectSlug>.agent.localhost:4080
+```
+
+例如 `sample-office-assistant` 的 stable 地址是
+`http://sample-office-assistant.agent.localhost:4080`。Deployment 的公开
+`deploymentKey` 是 Project 内唯一的 8 位小写字母数字 key；完整 `dep_xxxxxxxxxx`
+仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个
+`*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。
 

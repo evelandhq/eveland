@@ -2,10 +2,29 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { GitBranchIcon, UploadIcon } from "lucide-react";
+import { AlertCircleIcon, GitBranchIcon, UploadIcon } from "lucide-react";
+import {
+  inferProjectSlugFromGitUrl,
+  PROJECT_SLUG_MAX_LENGTH,
+  PROJECT_SLUG_PATTERN,
+  slugifyProjectName,
+} from "@eveland/core/ids";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.";
 
 export function NewProjectForms() {
   return (
@@ -19,12 +38,18 @@ export function NewProjectForms() {
 function GitProjectForm() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [nameEdited, setNameEdited] = useState(false);
   const [gitUrl, setGitUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const inferredName = inferProjectSlugFromGitUrl(gitUrl);
+  const repositoryInvalid = gitUrl.length > 0 && inferredName === null;
+  const nameInvalid =
+    name.length > 0 && (name.length > PROJECT_SLUG_MAX_LENGTH || !PROJECT_SLUG_PATTERN.test(name));
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (repositoryInvalid || nameInvalid || !name) return;
     setPending(true);
     setError(null);
 
@@ -47,24 +72,71 @@ function GitProjectForm() {
   }
 
   return (
-    <form className="flex flex-col gap-4 rounded-md border border-border bg-card p-5" onSubmit={submit}>
-      <div className="flex items-center gap-2">
-        <GitBranchIcon data-icon="inline-start" />
-        <h2 className="text-sm font-semibold">Git repo</h2>
-      </div>
-      <label className="flex flex-col gap-1 text-xs font-medium">
-        Project name
-        <input value={name} onChange={(event) => setName(event.target.value)} className="h-8 rounded-sm border border-input bg-background px-2 text-sm" placeholder="Weather agent" />
-      </label>
-      <label className="flex flex-col gap-1 text-xs font-medium">
-        Git URL
-        <input value={gitUrl} onChange={(event) => setGitUrl(event.target.value)} className="h-8 rounded-sm border border-input bg-background px-2 text-sm" placeholder="https://github.com/acme/weather-agent.git" />
-      </label>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Importing..." : "Import Git repo"}
-      </Button>
-      <p className="text-xs text-muted-foreground">The API queues source import immediately; worker processing can be attached to the same job row.</p>
+    <form onSubmit={submit}>
+      <Card className="h-full">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <GitBranchIcon />
+            Git repository
+          </CardTitle>
+          <CardDescription>Import a repository and queue its first source revision.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field data-invalid={repositoryInvalid || undefined}>
+              <FieldLabel htmlFor="git-url">Git repository URL</FieldLabel>
+              <Input
+                id="git-url"
+                value={gitUrl}
+                onChange={(event) => {
+                  const nextUrl = event.target.value;
+                  setGitUrl(nextUrl);
+                  if (!nameEdited) setName(inferProjectSlugFromGitUrl(nextUrl) ?? "");
+                }}
+                aria-invalid={repositoryInvalid}
+                placeholder="https://github.com/evelandhq/sample-office-assistant.git"
+                autoComplete="url"
+                required
+              />
+              <FieldDescription>HTTPS, SSH, and SCP-style Git addresses are supported.</FieldDescription>
+              {repositoryInvalid ? <FieldError>Enter a Git repository URL with a repository name.</FieldError> : null}
+            </Field>
+            <Field data-invalid={nameInvalid || undefined}>
+              <FieldLabel htmlFor="git-project-name">Project name</FieldLabel>
+              <Input
+                id="git-project-name"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameEdited(true);
+                }}
+                aria-invalid={nameInvalid}
+                maxLength={PROJECT_SLUG_MAX_LENGTH}
+                placeholder="sample-office-assistant"
+                autoComplete="off"
+                required
+              />
+              <FieldDescription>
+                Suggested from the repository name. If it is already used, Eveland appends a numeric suffix.
+              </FieldDescription>
+              {nameInvalid ? <FieldError>{invalidNameMessage}</FieldError> : null}
+            </Field>
+            {error ? (
+              <Alert variant="destructive">
+                <AlertCircleIcon />
+                <AlertTitle>Import failed</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+          </FieldGroup>
+        </CardContent>
+        <CardFooter>
+          <Button type="submit" className="w-full" disabled={pending || repositoryInvalid || nameInvalid || !name}>
+            {pending ? <Spinner data-icon="inline-start" /> : <GitBranchIcon data-icon="inline-start" />}
+            {pending ? "Importing..." : "Import Git repository"}
+          </Button>
+        </CardFooter>
+      </Card>
     </form>
   );
 }
@@ -72,16 +144,16 @@ function GitProjectForm() {
 function ZipProjectForm() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [nameEdited, setNameEdited] = useState(false);
   const [archive, setArchive] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const nameInvalid =
+    name.length > 0 && (name.length > PROJECT_SLUG_MAX_LENGTH || !PROJECT_SLUG_PATTERN.test(name));
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!archive) {
-      setError("Choose a zip archive.");
-      return;
-    }
+    if (!archive || !name || nameInvalid) return;
 
     setPending(true);
     setError(null);
@@ -107,28 +179,72 @@ function ZipProjectForm() {
   }
 
   return (
-    <form className="flex flex-col gap-4 rounded-md border border-border bg-card p-5" onSubmit={submit}>
-      <div className="flex items-center gap-2">
-        <UploadIcon data-icon="inline-start" />
-        <h2 className="text-sm font-semibold">Zip upload</h2>
-      </div>
-      <label className="flex flex-col gap-1 text-xs font-medium">
-        Project name
-        <input required value={name} onChange={(event) => setName(event.target.value)} className="h-8 rounded-sm border border-input bg-background px-2 text-sm" placeholder="Support analyst" />
-      </label>
-      <label className="flex flex-col gap-1 text-xs font-medium">
-        Source archive
-        <input
-          type="file"
-          accept=".zip,application/zip"
-          onChange={(event) => setArchive(event.target.files?.[0] ?? null)}
-          className="h-8 rounded-sm border border-input bg-background px-2 py-1 text-xs"
-        />
-      </label>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      <Button type="submit" variant="outline" disabled={pending}>
-        {pending ? "Uploading..." : "Upload Zip project"}
-      </Button>
+    <form onSubmit={submit}>
+      <Card className="h-full">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UploadIcon />
+            Zip archive
+          </CardTitle>
+          <CardDescription>Upload a source snapshot when the project is not hosted in Git.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="source-archive">Source archive</FieldLabel>
+              <Input
+                id="source-archive"
+                type="file"
+                accept=".zip,application/zip"
+                onChange={(event) => {
+                  const nextArchive = event.target.files?.[0] ?? null;
+                  setArchive(nextArchive);
+                  if (nextArchive && !nameEdited) {
+                    try {
+                      setName(slugifyProjectName(nextArchive.name.replace(/\.zip$/i, "")));
+                    } catch {
+                      setName("");
+                    }
+                  }
+                }}
+                required
+              />
+              <FieldDescription>The archive filename is used to suggest the project name.</FieldDescription>
+            </Field>
+            <Field data-invalid={nameInvalid || undefined}>
+              <FieldLabel htmlFor="zip-project-name">Project name</FieldLabel>
+              <Input
+                id="zip-project-name"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameEdited(true);
+                }}
+                aria-invalid={nameInvalid}
+                maxLength={PROJECT_SLUG_MAX_LENGTH}
+                placeholder="support-analyst"
+                autoComplete="off"
+                required
+              />
+              <FieldDescription>If it is already used, Eveland appends a numeric suffix.</FieldDescription>
+              {nameInvalid ? <FieldError>{invalidNameMessage}</FieldError> : null}
+            </Field>
+            {error ? (
+              <Alert variant="destructive">
+                <AlertCircleIcon />
+                <AlertTitle>Upload failed</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+          </FieldGroup>
+        </CardContent>
+        <CardFooter>
+          <Button type="submit" variant="outline" className="w-full" disabled={pending || !archive || !name || nameInvalid}>
+            {pending ? <Spinner data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
+            {pending ? "Uploading..." : "Upload Zip project"}
+          </Button>
+        </CardFooter>
+      </Card>
     </form>
   );
 }

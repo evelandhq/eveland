@@ -4,6 +4,16 @@ import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "./store.js";
 
 describe("routing repository", () => {
+  test("normalizes project names and atomically claims deterministic duplicate suffixes", async () => {
+    const store = createMemoryStore();
+
+    const first = await store.createProject({ name: "Sample Office Assistant", importKind: "git" });
+    const second = await store.createProject({ name: "sample-office-assistant", importKind: "git" });
+
+    expect(first).toMatchObject({ name: "sample-office-assistant", slug: "sample-office-assistant" });
+    expect(second).toMatchObject({ name: "sample-office-assistant-1", slug: "sample-office-assistant-1" });
+  });
+
   test("keeps concurrent deployments, atomically promotes and splits stable traffic, and preserves previews", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Concurrent Agent", importKind: "zip" });
@@ -47,7 +57,7 @@ describe("routing repository", () => {
       policyRevision: 3,
       targets: [expect.objectContaining({ deploymentId: second.id, weight: 10_000 })],
     });
-    await expect(store.findRouteByHostname(`${first.deploymentKey}--${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+    await expect(store.findRouteByHostname(`${first.deploymentKey}--${project.slug}.agent.localhost`)).resolves.toMatchObject({
       targets: [expect.objectContaining({ deploymentId: first.id })],
     });
   });
@@ -69,13 +79,13 @@ describe("routing repository", () => {
     const alias = await store.ensureAliasRoute(project.id, "canary", "agent.localhost", [
       { deploymentId: deployments[2]!.id, weight: 10_000, variantName: "canary" },
     ]);
-    expect(alias.hostname).toBe(`canary--${project.routingKey}.agent.localhost`);
+    expect(alias.hostname).toBe(`canary--${project.slug}.agent.localhost`);
     const policy = await store.getDeploymentRetention(project.id, 3);
     expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({ protected: false });
     expect(policy.find((entry) => entry.deployment.id === deployments[2]!.id)).toMatchObject({ protected: true, reasons: expect.arrayContaining(["route_target", "recent_artifact"]) });
   });
 
-  test("assigns DNS-safe immutable project and deployment keys and materializes stable/preview routes", async () => {
+  test("assigns a semantic project slug and short deployment key and materializes stable/preview routes", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Gateway Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
@@ -99,25 +109,25 @@ describe("routing repository", () => {
 
     await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
 
-    expect(project.routingKey).toMatch(/^p-[a-z0-9]+$/);
-    expect(deployment.deploymentKey).toMatch(/^d-[a-z0-9]+$/);
-    await expect(store.findRouteByHostname(`${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+    expect(project).toMatchObject({ name: "gateway-agent", slug: "gateway-agent" });
+    expect(deployment.deploymentKey).toMatch(/^[a-z0-9]{8}$/);
+    await expect(store.findRouteByHostname(`${project.slug}.agent.localhost`)).resolves.toMatchObject({
       kind: "project",
       targets: [expect.objectContaining({ deploymentId: deployment.id, weight: 10_000, status: "running" })],
     });
     await expect(
-      store.findRouteByHostname(`${deployment.deploymentKey}--${project.routingKey}.agent.localhost`),
+      store.findRouteByHostname(`${deployment.deploymentKey}--${project.slug}.agent.localhost`),
     ).resolves.toMatchObject({
       kind: "deployment",
       targets: [expect.objectContaining({ deploymentId: deployment.id, weight: 10_000 })],
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
     await expect(
-      store.findRouteByHostname(`${deployment.deploymentKey}--${project.routingKey}.agent.localhost`),
+      store.findRouteByHostname(`${deployment.deploymentKey}--${project.slug}.agent.localhost`),
     ).resolves.toMatchObject({ targets: [expect.objectContaining({ status: "stopped" })] });
     await store.reconcileAgentRoutes("agents.example.com");
-    await expect(store.findRouteByHostname(`${project.routingKey}.agent.localhost`)).resolves.toBeNull();
-    await expect(store.findRouteByHostname(`${project.routingKey}.agents.example.com`)).resolves.toMatchObject({ kind: "project" });
+    await expect(store.findRouteByHostname(`${project.slug}.agent.localhost`)).resolves.toBeNull();
+    await expect(store.findRouteByHostname(`${project.slug}.agents.example.com`)).resolves.toMatchObject({ kind: "project" });
   });
 
   test("binding a Gateway session upgrades observer provenance without creating a duplicate root", async () => {

@@ -31,7 +31,7 @@ export type AuthPrincipal = TeamMember & {
 
 export type Project = {
   id: string;
-  routingKey: string;
+  slug: string;
   name: string;
   importKind: ProjectImportKind;
   gitUrl: string | null;

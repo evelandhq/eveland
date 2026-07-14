@@ -118,7 +118,7 @@ export const projects = pgTable(
   "projects",
   {
     id: text("id").primaryKey(),
-    routingKey: text("routing_key").notNull().unique(),
+    slug: text("slug").notNull().unique(),
     teamId: text("team_id").notNull().default("team_local").references(() => teams.id),
     ownerId: text("owner_id").notNull().references(() => users.id),
     name: text("name").notNull(),
@@ -137,6 +137,10 @@ export const projects = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    check(
+      "projects_slug_check",
+      sql`char_length(${table.slug}) <= 53 and ${table.slug} ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'`,
+    ),
     check("projects_deletion_status_check", sql`${table.deletionStatus} is null or ${table.deletionStatus} in ('deleting', 'failed')`),
   ],
 );
@@ -199,21 +203,28 @@ export const releases = pgTable("releases", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const deployments = pgTable("deployments", {
-  id: text("id").primaryKey(),
-  deploymentKey: text("deployment_key").notNull().unique(),
-  projectId: text("project_id").notNull().references(() => projects.id),
-  releaseId: text("release_id").notNull().references(() => releases.id),
-  containerName: text("container_name").notNull(),
-  internalPort: integer("internal_port").notNull(),
-  hostPort: integer("host_port").notNull(),
-  status: text("status").notNull(),
-  // No default: every caller must state which runtime adapter created the deployment.
-  // The migration backfills existing rows with 'docker' then drops the column default.
-  runtimeKind: text("runtime_kind").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const deployments = pgTable(
+  "deployments",
+  {
+    id: text("id").primaryKey(),
+    deploymentKey: text("deployment_key").notNull(),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    releaseId: text("release_id").notNull().references(() => releases.id),
+    containerName: text("container_name").notNull(),
+    internalPort: integer("internal_port").notNull(),
+    hostPort: integer("host_port").notNull(),
+    status: text("status").notNull(),
+    // No default: every caller must state which runtime adapter created the deployment.
+    // The migration backfills existing rows with 'docker' then drops the column default.
+    runtimeKind: text("runtime_kind").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("deployments_project_key_idx").on(table.projectId, table.deploymentKey),
+    check("deployments_key_check", sql`${table.deploymentKey} ~ '^[a-z0-9]{8}$'`),
+  ],
+);
 
 export const agentRoutes = pgTable(
   "agent_routes",

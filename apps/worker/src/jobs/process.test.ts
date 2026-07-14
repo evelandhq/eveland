@@ -87,7 +87,7 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "imported", sourceRevisionId: expect.stringMatching(/^src_/) });
     await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({ content: "You are concise." });
     await expect(store.listLogs(project.id, "build")).resolves.toEqual([
-      expect.objectContaining({ line: "Source import completed for Import Agent." }),
+      expect.objectContaining({ line: "Source import completed for import-agent." }),
     ]);
     // Without a deploy flag the import must not chain a build_deploy job.
     await expect(store.claimNextJob("worker-idle")).resolves.toBeNull();
