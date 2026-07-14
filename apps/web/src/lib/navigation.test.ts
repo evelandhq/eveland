@@ -4,6 +4,10 @@ type NavigationModule = {
   getProjectIdFromPathname(pathname: string): string | null
   isNavigationItemActive(pathname: string, href: string): boolean
   globalNavigationItems: ReadonlyArray<{ href: string; label: string }>
+  settingsNavigationGroups: ReadonlyArray<{
+    label: string
+    items: ReadonlyArray<{ href: string; label: string }>
+  }>
   getProjectNavigationItems(projectId: string): ReadonlyArray<{ href: string; label: string }>
 }
 
@@ -21,6 +25,25 @@ describe("sidebar navigation", () => {
       { href: "/projects", label: "Projects" },
       { href: "/deployments", label: "Deployments" },
       { href: "/usage", label: "Usage" },
+    ])
+  })
+
+  test("groups personal and system destinations for the settings sidebar", async () => {
+    const navigation = await loadNavigationModule()
+
+    expect(navigation).not.toBeNull()
+    expect(navigation?.settingsNavigationGroups.map((group) => ({
+      label: group.label,
+      items: group.items.map(({ href, label }) => ({ href, label })),
+    }))).toEqual([
+      {
+        label: "Personal",
+        items: [{ href: "/settings/profile", label: "Profile" }],
+      },
+      {
+        label: "System",
+        items: [{ href: "/settings/members", label: "Members" }],
+      },
     ])
   })
 

@@ -12,12 +12,25 @@ import {
   PlayIcon,
   RocketIcon,
   ScrollTextIcon,
+  ShieldUserIcon,
+  UsersIcon,
 } from 'lucide-react';
 
 export const globalNavigationItems = [
   { href: '/projects', label: 'Projects', icon: LayoutGridIcon },
   { href: '/deployments', label: 'Deployments', icon: BoxIcon },
   { href: '/usage', label: 'Usage', icon: ChartNoAxesColumnIcon },
+] as const;
+
+export const settingsNavigationGroups = [
+  {
+    label: 'Personal',
+    items: [{ href: '/settings/profile', label: 'Profile', icon: ShieldUserIcon }],
+  },
+  {
+    label: 'System',
+    items: [{ href: '/settings/members', label: 'Members', icon: UsersIcon }],
+  },
 ] as const;
 
 export function getProjectNavigationItems(projectId: string) {

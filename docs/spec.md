@@ -98,7 +98,8 @@ Project 数据。平台不得删除 `EVELAND_DATA_DIR` 之外的外部源码路�
 ### Settings
 
 Sidebar 左下角显示当前用户头像、姓名和邮箱。整行是单一的 Account Dropdown
-trigger；菜单提供 Settings 和 Sign out。Settings 进入独立设置区域，并在区域内按
+trigger；菜单提供 Settings 和 Sign out。Settings 进入独立设置区域并复用主
+Sidebar 的位置与组件；进入后左上角提供返回 Workspace 的入口，Sidebar 内容按
 Personal 与 System 分组导航。
 
 #### Profile (/settings/profile)
