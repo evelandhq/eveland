@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { BadgeCheckIcon } from "lucide-react";
 import { getAgentEndpoints, getDeploymentOverview, getLogs, getProject, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
 import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
     getVariantMetrics(projectId),
   ]);
   const recentFailureLog = project?.status === "failed" || project?.deploymentStatus === "failed" ? findRecentFailureLog(logs) : null;
+  const stableRoute = deploymentOverview.routes.find((route) => route.kind === "project") ?? null;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
@@ -77,22 +80,30 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
       <div className="rounded-md border border-border bg-card lg:col-span-2">
         <div className="border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold">Deployments &amp; traffic</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Preview, promote, rollback, weighted traffic, drain, and artifact protection.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Stable marks deployments receiving production traffic; manage previews, rollbacks, splits, drain, and retention.</p>
         </div>
         <div className="divide-y divide-border">
           {deploymentOverview.deployments.map((deployment) => {
-            const stableRoute = deploymentOverview.routes.find((route) => route.kind === "project") ?? null;
+            const stableTarget = stableRoute?.targets.find((target) => target.deploymentId === deployment.id) ?? null;
             const retention = deploymentOverview.retention.find((entry) => entry.deployment.id === deployment.id);
             return (
               <div key={deployment.id} className="grid gap-3 p-4 text-sm md:grid-cols-[1fr_auto] md:items-center">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono font-medium">{deployment.deploymentKey}</span>
+                    {stableTarget ? (
+                      <Badge>
+                        <BadgeCheckIcon data-icon="inline-start" />
+                        Stable · {stableTarget.weight / 100}% traffic
+                      </Badge>
+                    ) : null}
                     <StatusBadge status={deployment.status} />
-                    {project?.deploymentId === deployment.id ? <span className="text-xs text-muted-foreground">production</span> : null}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {deployment.runtimeKind} · {retention?.protected ? `protected: ${retention.reasons.join(", ")}` : "eligible for archive"}
+                    <time dateTime={deployment.createdAt}>
+                      Deployed {new Date(deployment.createdAt).toLocaleString()}
+                    </time>
+                    {" · "}{deployment.runtimeKind} · {retention?.protected ? `protected: ${retention.reasons.join(", ")}` : "eligible for archive"}
                   </p>
                 </div>
                 <DeploymentTrafficActions

@@ -133,6 +133,7 @@ Members 位于全局导航，与 Projects、Deployments、Usage 同级。
 * 当前 Deployment 状态
 * 当前 Release / Source Revision
 * Stable Agent endpoint 与当前 Deployment preview endpoint
+* Deployment 历史、每个版本的部署时间，以及 stable endpoint 当前指向的 target 与流量权重
 * 最近 Sessions
 * 最近错误
 * 已识别的 Schedules
