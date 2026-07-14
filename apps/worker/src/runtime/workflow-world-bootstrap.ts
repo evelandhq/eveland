@@ -48,7 +48,7 @@ export async function bootstrapWorkflowWorld(
     }
     return undefined;
   }
-  const bootstrapPostgresUrl = env.WORKFLOW_POSTGRES_BOOTSTRAP_URL || workflowPostgresUrl;
+  const bootstrapPostgresUrl = resolveBootstrapPostgresUrl(env, workflowPostgresUrl);
 
   const deps = { ...defaultDeps, ...overrides };
   const bootstrapBin = deps.resolveBin();
@@ -69,6 +69,32 @@ export async function bootstrapWorkflowWorld(
   throw new Error(
     `Platform workflow-world database bootstrap failed after ${deps.maxAttempts} attempt(s): ${redactWorkflowUrl(lastOutput, bootstrapPostgresUrl)}`,
   );
+}
+
+function resolveBootstrapPostgresUrl(env: NodeJS.ProcessEnv, workflowPostgresUrl: string): string {
+  if (env.WORKFLOW_POSTGRES_BOOTSTRAP_URL) return env.WORKFLOW_POSTGRES_BOOTSTRAP_URL;
+  if (env.DATABASE_URL && isHostDatabaseAlias(workflowPostgresUrl, env.DATABASE_URL)) return env.DATABASE_URL;
+  return workflowPostgresUrl;
+}
+
+function isHostDatabaseAlias(workflowPostgresUrl: string, databaseUrl: string): boolean {
+  try {
+    const workflow = new URL(workflowPostgresUrl);
+    const controlPlane = new URL(databaseUrl);
+    const port = (url: URL) => url.port || "5432";
+
+    return (
+      workflow.hostname.toLowerCase() === "host.docker.internal" &&
+      workflow.protocol === controlPlane.protocol &&
+      workflow.username === controlPlane.username &&
+      workflow.password === controlPlane.password &&
+      port(workflow) === port(controlPlane) &&
+      workflow.pathname === controlPlane.pathname &&
+      workflow.search === controlPlane.search
+    );
+  } catch {
+    return false;
+  }
 }
 
 function redactWorkflowUrl(value: string, workflowPostgresUrl: string): string {

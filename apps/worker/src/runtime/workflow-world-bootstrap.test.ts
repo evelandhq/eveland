@@ -57,6 +57,26 @@ describe("bootstrapWorkflowWorld", () => {
     );
   });
 
+  test("uses the reachable control-plane URL when it is the same database behind host.docker.internal", async () => {
+    const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
+
+    await bootstrapWorkflowWorld(
+      {
+        DATABASE_URL: "postgres://world:secret@localhost:5432/eveland",
+        WORKFLOW_POSTGRES_URL: "postgres://world:secret@host.docker.internal:5432/eveland",
+      },
+      { run, resolveBin: () => "/bootstrap.js" },
+    );
+
+    expect(run).toHaveBeenCalledWith(
+      process.execPath,
+      ["/bootstrap.js"],
+      expect.objectContaining({
+        env: { WORKFLOW_POSTGRES_URL: "postgres://world:secret@localhost:5432/eveland" },
+      }),
+    );
+  });
+
   test("treats an empty bootstrap override as unset instead of letting the package use its default database", async () => {
     const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
 
