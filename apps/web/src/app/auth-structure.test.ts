@@ -37,7 +37,6 @@ describe("team management web surfaces", () => {
     const members = source("./settings/members/page.tsx");
     const inviteForm = source("../components/invite-member-form.tsx");
 
-    expect(settingsLayout).toContain("<SettingsNav");
     expect(profile).toContain("<ProfileSettingsForm");
     expect(profileForm).toContain("<Avatar");
     expect(profileForm).toContain("<FieldGroup");
@@ -50,6 +49,18 @@ describe("team management web surfaces", () => {
     expect(inviteForm).toContain("<FieldGroup");
     expect(inviteForm).toContain("<Field");
     expect(inviteForm).toContain("<Input");
+  });
+
+  test("reuses the application sidebar for settings navigation", () => {
+    const sidebar = source("../components/app-sidebar.tsx");
+    const settingsLayout = source("./settings/layout.tsx");
+
+    expect(sidebar).toContain('pathname.startsWith("/settings")');
+    expect(sidebar).toContain("settingsNavigationGroups.map");
+    expect(sidebar).toContain("Back to workspace");
+    expect(settingsLayout).not.toContain("SettingsNav");
+    expect(settingsLayout).not.toContain("md:grid-cols");
+    expect(existsSync(fileURLToPath(new URL("../components/settings-nav.tsx", import.meta.url)))).toBe(false);
   });
 
   test("opens settings and sign out from one semantic account menu trigger", () => {

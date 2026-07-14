@@ -31,12 +31,14 @@ import {
   getProjectIdFromPathname,
   globalNavigationItems,
   isNavigationItemActive,
+  settingsNavigationGroups,
 } from "@/lib/navigation"
 import { getCurrentMember, signOut, type CurrentMember } from "@/lib/client-api"
 
 export function AppSidebar() {
   const pathname = usePathname()
   const projectId = getProjectIdFromPathname(pathname)
+  const isSettings = pathname.startsWith("/settings")
   const [member, setMember] = useState<CurrentMember | null>(null)
 
   useEffect(() => {
@@ -66,13 +68,13 @@ export function AppSidebar() {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            {projectId ? (
+            {projectId || isSettings ? (
               <SidebarMenuButton
                 render={<Link href="/projects" />}
-                tooltip="Back to projects"
+                tooltip={projectId ? "Back to projects" : "Back to workspace"}
               >
                 <ArrowLeftIcon />
-                <span>Back to projects</span>
+                <span>{projectId ? "Back to projects" : "Back to workspace"}</span>
               </SidebarMenuButton>
             ) : (
               <SidebarMenuButton
@@ -88,7 +90,33 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {projectId ? (
+        {isSettings ? (
+          settingsNavigationGroups.map((group) => (
+            <SidebarGroup key={group.label}>
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {group.items.map((item) => {
+                    const Icon = item.icon
+
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          isActive={isNavigationItemActive(pathname, item.href)}
+                          render={<Link href={item.href} />}
+                          tooltip={item.label}
+                        >
+                          <Icon />
+                          <span>{item.label}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))
+        ) : projectId ? (
           <SidebarGroup>
             <SidebarGroupLabel>Project</SidebarGroupLabel>
             <SidebarGroupContent>
