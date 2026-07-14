@@ -170,8 +170,9 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from archive. Mutable route targets and active SessionBindings are protected independently of age. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
-| `WORKFLOW_POSTGRES_URL` | *(unset)* | Postgres URL injected into each deployment's `EnvironmentFile` so a `@workflow/world-postgres` agent has a durable workflow store. Deployments run as a host process, so use a host-reachable address, e.g. `postgres://eveland:eveland@localhost:5432/eveland`. A project secret of the same name overrides it. |
-| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. Note `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
+| `WORKFLOW_POSTGRES_URL` | *(unset)* | Platform-owned Postgres URL injected into every Eve deployment. The worker forces the Postgres world in prepared Releases and bootstraps its schema at startup. Required in production and reserved from Project Secret overrides. For systemd, use a host-reachable address such as `postgres://eveland:eveland@127.0.0.1:5432/eveland`. |
+| `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches Postgres through `localhost` or a Compose service name. It is never injected into an Agent. |
+| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
 Project stable routes use `<projectSlug>.<baseDomain>`. Immutable Deployment previews use
@@ -305,22 +306,35 @@ retry.
 
 ## Durable workflow world
 
-With `NODE_ENV=production` a deploy is rejected unless the agent has a durable
-workflow store:
+The Agent does not configure or depend on the durable world. Eveland owns the
+complete production boundary:
 
-- `agent.ts` sets `experimental.workflow.world` to `@workflow/world-postgres`,
-- `package.json` declares `@workflow/world-postgres`, and
-- `WORKFLOW_POSTGRES_URL` is set on the worker (see the table above).
+- `WORKFLOW_POSTGRES_URL` is required when `NODE_ENV=production`; the worker
+  fails at startup and a deploy also retains a defensive gate if it is absent.
+- Worker startup runs the pinned `@workflow/world-postgres` bootstrap
+  idempotently, retrying while Postgres becomes ready. Use
+  `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
+  for that same database.
+- Release preparation copies the imported source, moves any authored root
+  `agent.*` config to a reserved sibling inside the copy, and generates a thin
+  `agent.ts` wrapper that preserves the authored config while forcing
+  `experimental.workflow.world = "@workflow/world-postgres"`.
+- Docker and systemd builds install the pinned world package with `--no-save`,
+  `--package-lock=false`, and `--ignore-scripts` before `eve build`. The imported
+  source, `package.json`, and lockfile remain unchanged.
+- `WORKFLOW_POSTGRES_URL` is a reserved runtime value. A Project Secret with
+  that name remains stored and its decrypted value is still log-masked, but it
+  cannot redirect the platform world.
 
-Unset `NODE_ENV` turns the same checks into warnings. eveland only injects the
-URL — bootstrap the `workflow` schema against that database once before the
-first deploy: `npx --package=@workflow/world-postgres bootstrap`.
+When `NODE_ENV` is not production and no workflow URL is configured, Eveland
+does not inject a world and Eve keeps its local development world.
 
 ## How a deployment runs
 
 - Build: source is copied to `$EVELAND_DATA_DIR/builds/<project>/<release>`, then
-  Eveland injects its reserved observer hook into the copied release (never the imported source), then
-  `npm ci && npx eve build` runs as the unprivileged build user (`EVELAND_BUILD_USER`)
+  Eveland injects its reserved observer hook and, when configured, the platform workflow-world
+  wrapper into the copied release (never the imported source). The project install, pinned
+  no-save world install, and `npx eve build` run as the unprivileged build user (`EVELAND_BUILD_USER`)
   inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
   PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`

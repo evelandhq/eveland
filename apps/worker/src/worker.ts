@@ -4,11 +4,23 @@ import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import { processNextJob } from "./jobs/process.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
+import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
+
+// A misconfigured systemd host would otherwise only surface on the first
+// deployment attempt; fail fast here with the complete list of what's missing.
+try {
+  await assertWorkerPreflight(process.env);
+  const bootstrapLog = await bootstrapWorkflowWorld(process.env);
+  if (bootstrapLog) console.log("Platform workflow-world database schema is ready.");
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 
 console.log(`${formatBuildInfo(buildInfo)} ready. Poll interval: ${intervalMs}ms`);
 console.log(
@@ -16,15 +28,6 @@ console.log(
     scripts: {},
   })}`,
 );
-
-// A misconfigured systemd host would otherwise only surface on the first
-// deployment attempt; fail fast here with the complete list of what's missing.
-try {
-  await assertWorkerPreflight(process.env);
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-}
 
 async function tick() {
   try {

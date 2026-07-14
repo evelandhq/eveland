@@ -7,6 +7,7 @@ import { prepareReleaseTree } from "./prepare-release.js";
 import { verifyObserverOutbox } from "./observer-verify.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
+import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
 
 export type SystemdStartInput = {
   unitName: string;
@@ -85,9 +86,14 @@ export function buildSystemdStartCommand(context: RuntimeCommandContext, port: n
   return inferEveRuntimeCommand({ scripts: context.scripts });
 }
 
-export function buildReleaseBuildCommand(context: RuntimeCommandContext): string {
+export function buildReleaseBuildCommand(
+  context: RuntimeCommandContext,
+  workflowWorld?: WorkflowWorldBuildConfig,
+): string {
   const install = context.hasLockfile ? "npm ci" : "npm install";
-  return context.isEveProject ? `${install} && npx eve build` : install;
+  if (!context.isEveProject) return install;
+  const worldInstall = workflowWorld ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld)}` : "";
+  return `${install}${worldInstall} && npx eve build`;
 }
 
 export type BwrapBuildInput = {
@@ -218,7 +224,11 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const releaseDir = path.resolve(input.buildDir);
       await mkdir(npmCacheDir, { recursive: true });
-      const observerInjection = await prepareReleaseTree({ sourcePath: input.sourcePath, buildDir: releaseDir });
+      const observerInjection = await prepareReleaseTree({
+        sourcePath: input.sourcePath,
+        buildDir: releaseDir,
+        workflowWorld: input.workflowWorld,
+      });
 
       // Only eve projects ever run `npx eve start`/`npx eve build`, so only eve
       // projects have an eve sandbox to inject a module into or self-check. A
@@ -249,7 +259,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       await execa("chown", ["-R", `${config.buildUser}:`, releaseDir]);
       await execa("chown", ["-R", `${config.buildUser}:`, npmCacheDir]);
 
-      const command = buildReleaseBuildCommand(input.commandContext);
+      const command = buildReleaseBuildCommand(input.commandContext, input.workflowWorld);
       // The build env execa passes must contain nothing secret: npm/eve
       // lifecycle scripts run untrusted, from the imported project's own
       // dependency tree, and can read this process's env via
@@ -337,6 +347,9 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         releaseRef: releaseDir,
         log: [
           `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
+          observerInjection.workflowWorld
+            ? `Injected platform workflow world: ${input.workflowWorld?.packageName} (${observerInjection.workflowWorld.agentConfigPath})`
+            : undefined,
           injectionLog,
           execution.all ?? "",
         ]

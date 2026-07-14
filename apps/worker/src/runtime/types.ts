@@ -1,3 +1,5 @@
+import type { WorkflowWorldBuildConfig } from "./workflow-world.js";
+
 export type RuntimeCommandContext = {
   isEveProject: boolean;
   hasLockfile: boolean;
@@ -10,6 +12,8 @@ export type ReleaseBuildInput = {
   sourcePath: string;
   buildDir: string;
   commandContext: RuntimeCommandContext;
+  /** Platform-owned durable world injected only into the prepared Release. */
+  workflowWorld?: WorkflowWorldBuildConfig;
 };
 
 export type ReleaseBuildResult = {

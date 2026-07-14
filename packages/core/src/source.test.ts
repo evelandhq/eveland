@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { inspectEveProject, isDurableWorkflowWorld } from "./source.js";
+import { inspectEveProject } from "./source.js";
 
 describe("inspectEveProject", () => {
   test("recognizes nested eve agent layout and summarizes authored slots", () => {
@@ -40,8 +40,8 @@ describe("inspectEveProject", () => {
   });
 });
 
-describe("inspectEveProject workflow world detection", () => {
-  test("detects the configured workflow world from agent.ts", () => {
+describe("inspectEveProject platform-owned workflow world", () => {
+  test("does not inspect authored workflow configuration for a platform runtime concern", () => {
     const result = inspectEveProject([
       { path: "agent/instructions.md", content: "You are an agent." },
       {
@@ -52,39 +52,6 @@ describe("inspectEveProject workflow world detection", () => {
 })`,
       },
     ]);
-    expect(result.workflowWorld).toBe("@workflow/world-postgres");
-  });
-
-  test("reports no workflow world when agent.ts does not configure one", () => {
-    const result = inspectEveProject([
-      { path: "agent/instructions.md", content: "You are an agent." },
-      { path: "agent/agent.ts", content: `export default defineAgent({ model: process.env.DEFAULT_MODEL })` },
-    ]);
-    expect(result.workflowWorld).toBeNull();
-  });
-
-  test("ignores a world literal outside experimental.workflow", () => {
-    const result = inspectEveProject([
-      { path: "agent/instructions.md", content: "You are an agent." },
-      {
-        path: "agent/agent.ts",
-        content: `const unused = { world: "@workflow/world-postgres" };
-export default defineAgent({ model: process.env.DEFAULT_MODEL })`,
-      },
-    ]);
-    expect(result.workflowWorld).toBeNull();
-  });
-});
-
-describe("isDurableWorkflowWorld", () => {
-  test("treats @workflow/world-postgres as durable", () => {
-    expect(isDurableWorkflowWorld("@workflow/world-postgres")).toBe(true);
-  });
-
-  test("treats local, other, and unconfigured worlds as non-durable", () => {
-    expect(isDurableWorkflowWorld("@workflow/world-local")).toBe(false);
-    expect(isDurableWorkflowWorld("@workflow/world-redis")).toBe(false);
-    expect(isDurableWorkflowWorld(null)).toBe(false);
-    expect(isDurableWorkflowWorld(undefined)).toBe(false);
+    expect(result).not.toHaveProperty("workflowWorld");
   });
 });

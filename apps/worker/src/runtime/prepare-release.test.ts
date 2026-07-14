@@ -28,3 +28,100 @@ test("copies source into a prepared release and injects observers without modify
   await expect(readFile(path.join(buildDir, result.injectedFiles[0]!), "utf8")).resolves.toContain("defineHook");
   await expect(readFile(path.join(sourcePath, "agent/hooks/__eveland_observer.js"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 });
+
+test("injects the platform workflow world into the prepared release while preserving the authored agent config", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
+  roots.push(root);
+  const sourcePath = path.join(root, "source");
+  const buildDir = path.join(root, "build");
+  const authoredConfig = `import { model } from "./model.js";
+
+export default {
+  model,
+  experimental: { workflow: { world: "@workflow/world-local" } },
+};
+`;
+  await mkdir(path.join(sourcePath, "agent"), { recursive: true });
+  await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
+  await writeFile(path.join(sourcePath, "agent", "agent.ts"), authoredConfig);
+
+  const result = await prepareReleaseTree({
+    sourcePath,
+    buildDir,
+    workflowWorld: {
+      packageName: "@workflow/world-postgres",
+      packageVersion: "5.0.0-beta.25",
+    },
+  });
+
+  expect(result.workflowWorld).toEqual({
+    agentConfigPath: "agent/agent.ts",
+    authoredConfigPath: "agent/eveland-authored-agent.ts",
+  });
+  await expect(readFile(path.join(buildDir, "agent", "eveland-authored-agent.ts"), "utf8")).resolves.toBe(
+    authoredConfig,
+  );
+  await expect(readFile(path.join(buildDir, "agent", "agent.ts"), "utf8")).resolves.toMatch(
+    /world:\s*"@workflow\/world-postgres"/,
+  );
+  await expect(readFile(path.join(buildDir, "agent", "agent.ts"), "utf8")).resolves.toContain(
+    'from "./eveland-authored-agent.ts"',
+  );
+  await expect(readFile(path.join(sourcePath, "agent", "agent.ts"), "utf8")).resolves.toBe(authoredConfig);
+  await expect(readFile(path.join(sourcePath, "agent", "eveland-authored-agent.ts"), "utf8")).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});
+
+test("creates a complete root config when the agent relied on Eve defaults", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
+  roots.push(root);
+  const sourcePath = path.join(root, "source");
+  const buildDir = path.join(root, "build");
+  await mkdir(path.join(sourcePath, "agent"), { recursive: true });
+  await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
+
+  const result = await prepareReleaseTree({
+    sourcePath,
+    buildDir,
+    workflowWorld: {
+      packageName: "@workflow/world-postgres",
+      packageVersion: "5.0.0-beta.25",
+    },
+  });
+
+  expect(result.workflowWorld).toEqual({ agentConfigPath: "agent/agent.ts" });
+  const generated = await readFile(path.join(buildDir, "agent", "agent.ts"), "utf8");
+  expect(generated).toContain('model: "anthropic/claude-sonnet-5"');
+  expect(generated).toContain('world: "@workflow/world-postgres"');
+  await expect(readFile(path.join(sourcePath, "agent", "agent.ts"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("wraps every Eve-supported authored agent module extension", async () => {
+  for (const extension of ["cts", "mts", "cjs", "mjs", "ts", "js"]) {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
+    roots.push(root);
+    const sourcePath = path.join(root, "source");
+    const buildDir = path.join(root, "build");
+    await mkdir(sourcePath, { recursive: true });
+    await writeFile(path.join(sourcePath, "instructions.md"), "root");
+    await writeFile(path.join(sourcePath, `agent.${extension}`), "export default { model: 'openai/gpt-5.4' };\n");
+
+    const result = await prepareReleaseTree({
+      sourcePath,
+      buildDir,
+      workflowWorld: {
+        packageName: "@workflow/world-postgres",
+        packageVersion: "5.0.0-beta.25",
+      },
+    });
+
+    expect(result.workflowWorld).toEqual({
+      agentConfigPath: "agent.ts",
+      authoredConfigPath: `eveland-authored-agent.${extension}`,
+    });
+    await expect(readFile(path.join(buildDir, "agent.ts"), "utf8")).resolves.toContain(
+      `from "./eveland-authored-agent.${extension}"`,
+    );
+  }
+});

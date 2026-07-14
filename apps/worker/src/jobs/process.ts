@@ -1,7 +1,6 @@
 import type { Job } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
 import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eveland/core/server/secrets";
-import { DURABLE_WORKFLOW_WORLD, isDurableWorkflowWorld } from "@eveland/core/source";
 import type { Store } from "@eveland/db";
 import net from "node:net";
 import { access, mkdir, readFile, realpath, rm } from "node:fs/promises";
@@ -10,6 +9,7 @@ import { waitForHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
 import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
+import { PLATFORM_WORKFLOW_WORLD } from "../runtime/workflow-world.js";
 import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
 
@@ -139,29 +139,10 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       const isProduction = nodeEnv === "production";
       const workflowPostgresUrl = options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
 
-      const workflowWorld = typeof revision.summary.workflowWorld === "string" ? revision.summary.workflowWorld : null;
-      const packageJson = await readPackageJson(revision.sourcePath);
-      // Block the deploy in production; only warn in development.
-      const failInProductionOrWarn = async (detail: string): Promise<void> => {
-        if (isProduction) {
-          await store.appendLog({ projectId: job.projectId, type: "deploy", line: `Deploy blocked: ${detail}` });
-          throw new Error(detail);
-        }
-        await store.appendLog({ projectId: job.projectId, type: "deploy", line: `Warning: ${detail}` });
-      };
-
-      if (!isDurableWorkflowWorld(workflowWorld)) {
-        await failInProductionOrWarn(
-          `No durable workflow world configured. Set experimental.workflow.world to "${DURABLE_WORKFLOW_WORLD}" in agent.ts.`,
-        );
-      } else if (!declaresDependency(packageJson, DURABLE_WORKFLOW_WORLD)) {
-        await failInProductionOrWarn(
-          `Workflow world package "${DURABLE_WORKFLOW_WORLD}" is not in package.json. Add "${DURABLE_WORKFLOW_WORLD}" to dependencies.`,
-        );
-      } else if (!workflowPostgresUrl) {
-        await failInProductionOrWarn(
-          "No WORKFLOW_POSTGRES_URL to inject. Set WORKFLOW_POSTGRES_URL on the worker.",
-        );
+      if (isProduction && !workflowPostgresUrl) {
+        const detail = "No WORKFLOW_POSTGRES_URL is configured for the platform-owned durable workflow world.";
+        await store.appendLog({ projectId: job.projectId, type: "deploy", line: `Deploy blocked: ${detail}` });
+        throw new Error(detail);
       }
 
       const runtime = options.runtime ?? createRuntimeAdapterFromEnv();
@@ -189,6 +170,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         sourcePath: revision.sourcePath,
         buildDir,
         commandContext,
+        ...(workflowPostgresUrl && commandContext.isEveProject ? { workflowWorld: PLATFORM_WORKFLOW_WORLD } : {}),
       });
       if (build.log.trim()) {
         await store.appendLog({
@@ -553,17 +535,20 @@ async function composeDeploymentEnv(
   const isProduction = nodeEnv === "production";
   const workflowPostgresUrl = options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
   const secrets = await readRuntimeSecrets(store, projectId, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
-  // Platform-injected credentials; a project secret of the same name overrides the platform WORKFLOW_POSTGRES_URL.
+  // Project secrets are runtime input, but the workflow database is
+  // platform-owned and bootstrapped before this worker accepts jobs. Keep its
+  // URL reserved so a project cannot silently redirect the injected world to
+  // an uninitialized or tenant-controlled database.
   const injectedCredentials = {
-    ...(workflowPostgresUrl ? { WORKFLOW_POSTGRES_URL: workflowPostgresUrl } : {}),
     ...secrets,
+    ...(workflowPostgresUrl ? { WORKFLOW_POSTGRES_URL: workflowPostgresUrl } : {}),
   };
   // NODE_ENV is platform-owned and injected only in production; kept out of the mask list so build logs aren't scrubbed of the word "production".
   const env = {
     ...injectedCredentials,
     ...(isProduction ? { NODE_ENV: "production" } : {}),
   };
-  const secretValues = Object.values(injectedCredentials);
+  const secretValues = [...Object.values(secrets), ...(workflowPostgresUrl ? [workflowPostgresUrl] : [])];
   return { env, secretValues };
 }
 
@@ -608,23 +593,10 @@ function isEveProject(packageJson: PackageJson | null): boolean {
   return typeof packageJson?.dependencies?.eve === "string" || typeof packageJson?.devDependencies?.eve === "string";
 }
 
-// Any field `npm install` resolves counts: a world package declared in any of
-// these ends up installed, so the deploy gate must not reject it.
-function declaresDependency(packageJson: PackageJson | null, name: string): boolean {
-  return (
-    typeof packageJson?.dependencies?.[name] === "string" ||
-    typeof packageJson?.devDependencies?.[name] === "string" ||
-    typeof packageJson?.optionalDependencies?.[name] === "string" ||
-    typeof packageJson?.peerDependencies?.[name] === "string"
-  );
-}
-
 type PackageJson = {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
-  optionalDependencies?: Record<string, string>;
-  peerDependencies?: Record<string, string>;
 };
 
 async function readPackageJson(sourcePath: string): Promise<PackageJson | null> {

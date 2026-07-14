@@ -166,8 +166,15 @@ describe("buildSystemdStartCommand", () => {
 });
 
 describe("buildReleaseBuildCommand", () => {
-  test("uses npm ci and eve build when a lockfile and eve dependency exist", () => {
-    expect(buildReleaseBuildCommand({ isEveProject: true, hasLockfile: true, scripts: {} })).toBe("npm ci && npx eve build");
+  test("installs the platform-owned world outside the project lock before building Eve", () => {
+    expect(
+      buildReleaseBuildCommand(
+        { isEveProject: true, hasLockfile: true, scripts: {} },
+        { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.25" },
+      ),
+    ).toBe(
+      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.25 && npx eve build",
+    );
   });
 
   test("uses npm install without eve build for plain projects without a lockfile", () => {

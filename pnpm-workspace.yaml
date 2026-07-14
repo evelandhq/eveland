@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 allowBuilds:
+  cbor-extract: true
   esbuild: true
   sharp: true
   workerd: true
