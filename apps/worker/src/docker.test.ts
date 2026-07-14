@@ -131,12 +131,15 @@ describe("buildDockerRunArgs", () => {
       "--env",
       "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
       "--env",
+      "EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_456",
+      "--env",
       "OPENAI_API_KEY=sk-test-123456",
       "eveland/proj_123:rel_456",
       "sh",
       "-lc",
       "npm run start",
     ]);
+    expect(args).toContain("EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_456");
   });
 
   test("does not elevate or mount a sandbox cache for plain Node deployments", () => {
@@ -157,6 +160,25 @@ describe("buildDockerRunArgs", () => {
     expect(args).not.toContain("seccomp=unconfined");
     expect(args).not.toContain("/host/eveland/sandbox/plain:/var/lib/eveland-sandbox");
     expect(args).not.toContain("EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox");
+    expect(args.some((arg) => arg.startsWith("EVELAND_SANDBOX_TEMPLATE_REVISION="))).toBe(false);
+  });
+
+  test("does not let project env override the platform template revision", () => {
+    const args = buildDockerRunArgs({
+      containerName: "eveland-proj_123",
+      imageTag: "eveland/proj_123:rel_platform",
+      internalPort: 3000,
+      hostPort: 43125,
+      sandboxEnabled: true,
+      sandboxCacheDir: "/host/eveland/sandbox/proj_123",
+      observerOutboxDir: "/host/eveland/observer/proj_123/dep_456",
+      env: { EVELAND_SANDBOX_TEMPLATE_REVISION: "project-controlled" },
+      command: "npm run start",
+    });
+
+    expect(args.filter((arg) => arg.startsWith("EVELAND_SANDBOX_TEMPLATE_REVISION="))).toEqual([
+      "EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_platform",
+    ]);
   });
 });
 

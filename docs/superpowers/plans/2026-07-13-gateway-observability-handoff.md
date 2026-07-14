@@ -1089,6 +1089,8 @@ core/db 边界落地
 - Release 注入平台 backend 时保留 `agent/sandbox/workspace/**`，目录形式生成
   `agent/sandbox/sandbox.js`；只替换 authored `bootstrap()`/`onSession()`，不能删除
   Eve 应在新 Session 中初始化到 `/workspace/**` 的 seed files；
+- bwrap template 按不可变 Release revision 隔离，Sync & Deploy 后新 Session 使用更新的
+  seeds；session cache 仍按 durable Eve session key 复用，已有 `/workspace` 不被覆盖；
 - Docker 与 systemd build self-check 都必须在真实 bwrap 中写入并用 Node 24
   执行带类型标注的 `.ts` probe，不能用 `/eve/v1/health` 代替。
 

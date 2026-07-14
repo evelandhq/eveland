@@ -129,6 +129,42 @@ describe("create", () => {
     const second = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-2") } });
     expect(await second.session.readTextFile({ path: "state.txt" })).toBe("kept");
   });
+
+  test("a new template revision refreshes seeds for new sessions without overwriting existing sessions", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "bwrap-redeploy-seeds-"));
+    const cacheDir = path.join(root, "stable");
+    const runtimeContext = { appRoot: "/app" };
+    const first = createBwrapSandboxBackend({
+      runner: fakeRunner,
+      createOptions: { cacheDir, templateRevision: "release-1" },
+    });
+    await first.prewarm({
+      templateKey: "tpl",
+      runtimeContext,
+      seedFiles: [{ path: "knowledge.md", content: "first release" }],
+    });
+    const existing = await first.create({ templateKey: "tpl", sessionKey: "existing", runtimeContext });
+    await existing.session.writeTextFile({ path: "runtime-note.txt", content: "keep me" });
+    await existing.shutdown();
+
+    const second = createBwrapSandboxBackend({
+      runner: fakeRunner,
+      createOptions: { cacheDir, templateRevision: "release-2" },
+    });
+    const prewarm = await second.prewarm({
+      templateKey: "tpl",
+      runtimeContext,
+      seedFiles: [{ path: "knowledge.md", content: "second release" }],
+    });
+
+    expect(prewarm).toEqual({ reused: false });
+    const fresh = await second.create({ templateKey: "tpl", sessionKey: "fresh", runtimeContext });
+    expect(await fresh.session.readTextFile({ path: "knowledge.md" })).toBe("second release");
+
+    const reattached = await second.create({ templateKey: "tpl", sessionKey: "existing", runtimeContext });
+    expect(await reattached.session.readTextFile({ path: "knowledge.md" })).toBe("first release");
+    expect(await reattached.session.readTextFile({ path: "runtime-note.txt" })).toBe("keep me");
+  });
 });
 
 describe("public API", () => {

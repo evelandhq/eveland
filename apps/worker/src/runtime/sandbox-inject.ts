@@ -36,9 +36,14 @@ import { defineSandbox, defaultBackend } from "eve/sandbox";
 import { bwrap, isBwrapAvailable } from "${relativeImportPath}";
 
 const cacheDir = process.env.EVELAND_SANDBOX_CACHE_DIR;
+const templateRevision = process.env.EVELAND_SANDBOX_TEMPLATE_REVISION;
+const bwrapOptions = {
+  ...(cacheDir ? { cacheDir } : {}),
+  ...(templateRevision ? { templateRevision } : {}),
+};
 
 export default defineSandbox({
-  backend: () => (isBwrapAvailable() ? bwrap(cacheDir ? { cacheDir } : {}) : defaultBackend()),
+  backend: () => (isBwrapAvailable() ? bwrap(bwrapOptions) : defaultBackend()),
 });
 `;
 }

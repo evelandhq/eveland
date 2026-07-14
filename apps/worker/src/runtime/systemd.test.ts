@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import path from "node:path";
 import { execa } from "execa";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import {
   buildBwrapArgs,
   buildEnvFileContent,
@@ -74,6 +74,7 @@ describe("buildSystemdRunArgs", () => {
       "--property=EnvironmentFile=/data/deployment-env/eveland-proj_123-dep_456.env",
       "--property=Environment=PORT=41000",
       "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/proj_123",
+      "--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/data/builds/proj_123/rel_789",
       "--property=Environment=EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-data/observer/proj_123/dep_456",
       "--property=MemoryMax=2G",
       "--property=CPUQuota=200%",
@@ -87,6 +88,9 @@ describe("buildSystemdRunArgs", () => {
       "-lc",
       "npx eve start --host 127.0.0.1 --port 41000",
     ]);
+    expect(args).toContain(
+      "--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/data/builds/proj_123/rel_789",
+    );
   });
 });
 
@@ -108,6 +112,7 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
     expect(args).toContain("--property=ReadWritePaths=/rel");
     expect(args).toContain("--property=ReadWritePaths=/var/lib/eveland-data/sandbox/p");
     expect(args).toContain("--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/p");
+    expect(args).toContain("--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/rel");
     // The env file must still be read before PORT is forced.
     expect(args.indexOf("--property=EnvironmentFile=/env/p.env")).toBeLessThan(args.indexOf("--property=Environment=PORT=41000"));
   });
@@ -233,6 +238,32 @@ describe("createSystemdAdapter backendDistDir laziness", () => {
       }),
     ).rejects.toThrow("@eveland/sandbox-bwrap is not resolvable.");
     expect(backendDistDir).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createSystemdAdapter startProcess", () => {
+  test("does not let project env override the platform template revision", async () => {
+    vi.mocked(writeFile).mockClear();
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await adapter.startProcess({
+      processName: "eveland-proj_123-dep_456",
+      releaseRef: "/data/builds/proj_123/rel_platform",
+      port: 41000,
+      env: {
+        EVELAND_SANDBOX_TEMPLATE_REVISION: "project-controlled",
+        OPENAI_API_KEY: "test-key",
+      },
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+    });
+
+    expect(writeFile).toHaveBeenCalledWith(
+      path.join("/var/lib/eveland-data", "deployment-env", "eveland-proj_123-dep_456.env"),
+      'OPENAI_API_KEY="test-key"\n',
+      { mode: 0o600 },
+    );
   });
 });
 

@@ -9,6 +9,7 @@ describe("resolveBwrapSandboxOptions", () => {
       hidePaths: [],
       bwrapPath: "bwrap",
       cacheDir: null,
+      templateRevision: null,
     });
   });
 
@@ -44,5 +45,15 @@ describe("cacheDir option", () => {
     const a = createBwrapOptionsHash(resolveBwrapSandboxOptions({ cacheDir: "/a" }));
     const b = createBwrapOptionsHash(resolveBwrapSandboxOptions({ cacheDir: "/b" }));
     expect(a).not.toBe(b);
+  });
+});
+
+describe("templateRevision option", () => {
+  test("changes the template options hash without changing other defaults", () => {
+    const first = resolveBwrapSandboxOptions({ templateRevision: "release-1" });
+    const second = resolveBwrapSandboxOptions({ templateRevision: "release-2" });
+
+    expect(first.templateRevision).toBe("release-1");
+    expect(createBwrapOptionsHash(first)).not.toBe(createBwrapOptionsHash(second));
   });
 });

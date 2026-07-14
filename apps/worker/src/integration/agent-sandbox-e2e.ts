@@ -15,7 +15,8 @@
 // pipeline with EVELAND_RUNTIME=systemd, exactly as systemd-smoke.ts does.
 import assert from "node:assert/strict";
 import { execa } from "execa";
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -40,6 +41,8 @@ const FIXTURE_SOURCE_PATH = fileURLToPath(new URL("./fixtures/agent-sandbox-e2e"
 const TEMPLATE_KEY = "e2e-template";
 const SESSION_KEY = "e2e-durable-session";
 const MARKER_CONTENT = "eveland-e2e-marker: durable-session-workspace-survives-redeploy\n";
+const INITIAL_SEED_CONTENT = "eveland-seed-preserved";
+const UPDATED_SEED_CONTENT = "eveland-seed-updated-after-sync";
 
 // A fresh `npx eve build`/`npx eve start` inside the Lima VM (cold npm
 // install, no warm caches) is slower than the 15s default health timeout.
@@ -139,6 +142,7 @@ function buildCheckArgs(input: { releaseDir: string; user: string; cacheDir: str
     `--property=ReadWritePaths=${input.cacheDir}`,
     `--property=WorkingDirectory=${input.releaseDir}`,
     `--setenv=EVELAND_SANDBOX_CACHE_DIR=${input.cacheDir}`,
+    `--setenv=EVELAND_SANDBOX_TEMPLATE_REVISION=${input.releaseDir}`,
     `--setenv=TMPDIR=${input.cacheDir}`,
     `--setenv=E2E_CHECK_MODE=${input.mode}`,
     "node",
@@ -192,11 +196,16 @@ type HttpTurnOutcome =
  * adapter, so the turn needs no model credentials) and classifies the
  * outcome so `runLiveHttpTurn` knows whether a retry is warranted.
  */
-async function runHttpTurnOnce(input: { hostPort: number; cacheDir: string }): Promise<HttpTurnOutcome> {
+async function runHttpTurnOnce(input: {
+  hostPort: number;
+  cacheDir: string;
+  expectedSeedContent: string;
+}): Promise<HttpTurnOutcome> {
   const markerName = "http-turn-marker.txt";
   const message =
     `Use the bash tool to run the command ` +
-    `\`test "$(cat eveland-seed.txt)" = "eveland-seed-preserved" && echo http-turn-ran > ${markerName}\`.`;
+    `\`test "$(cat eveland-seed.txt)" = ${JSON.stringify(input.expectedSeedContent)} && ` +
+    `echo http-turn-ran > ${markerName}\`.`;
 
   try {
     const before = new Set(await findSessionMarkers(input.cacheDir, markerName));
@@ -308,7 +317,11 @@ async function runHttpTurnOnce(input: { hostPort: number; cacheDir: string }): P
  * turn that completes but writes no marker, or one that reports
  * turn.failed, is a real failure and is never retried.
  */
-async function runLiveHttpTurn(input: { hostPort: number; cacheDir: string }): Promise<string> {
+async function runLiveHttpTurn(input: {
+  hostPort: number;
+  cacheDir: string;
+  expectedSeedContent: string;
+}): Promise<string> {
   const attemptDetails: string[] = [];
   for (let attempt = 1; attempt <= HTTP_TURN_MAX_ATTEMPTS; attempt++) {
     const outcome = await runHttpTurnOnce(input);
@@ -322,8 +335,12 @@ async function runLiveHttpTurn(input: { hostPort: number; cacheDir: string }): P
   );
 }
 
+const sourceTempRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-agent-sandbox-source-"));
+const syncedSourcePath = path.join(sourceTempRoot, "source");
+await cp(FIXTURE_SOURCE_PATH, syncedSourcePath, { recursive: true });
+
 const store = createMemoryStore();
-const project = await store.createProject({ name: "Agent Sandbox E2E", importKind: "zip", sourcePath: FIXTURE_SOURCE_PATH });
+const project = await store.createProject({ name: "Agent Sandbox E2E", importKind: "zip", sourcePath: syncedSourcePath });
 
 // So the deployed unit can run a real turn (step C) with no model
 // credentials: EVE_MOCK_AUTHORED_MODELS=1 activates eve's deterministic mock
@@ -393,18 +410,36 @@ try {
   // --- C: required live agent turn over HTTP -- the only proof that eve's
   // deployed runtime (not just the generated module in isolation) invokes
   // the injected bwrap backend for a real turn. Throws on failure. --------
-  const liveTurnDetail = await runLiveHttpTurn({ hostPort: deployment.hostPort, cacheDir: projectCacheDir });
+  const liveTurnDetail = await runLiveHttpTurn({
+    hostPort: deployment.hostPort,
+    cacheDir: projectCacheDir,
+    expectedSeedContent: INITIAL_SEED_CONTENT,
+  });
   console.log(`Eve's deployed runtime invoked the injected bwrap backend for a live turn -- ${liveTurnDetail}`);
 
-  // --- Redeploy ----------------------------------------------------------
+  // --- Sync and deploy ---------------------------------------------------
+  // Update the imported source's authored workspace, then exercise the same
+  // two-job import_source -> build_deploy chain as the Sync & Deploy action.
+  await writeFile(
+    path.join(syncedSourcePath, "agent", "sandbox", "workspace", "eveland-seed.txt"),
+    `${UPDATED_SEED_CONTENT}\n`,
+    "utf8",
+  );
+
   // build_deploy creates a concurrent immutable preview and deliberately does
   // not replace the current production Deployment. Track the IDs that already
   // exist so the second Release is selected as the newly-created preview,
   // rather than asking getCurrentDeployment() for the still-current first one.
   const deploymentIdsBeforeRedeploy = new Set((await store.listDeployments(project.id)).map((item) => item.id));
-  await store.enqueueJob(project.id, "build_deploy");
+  await store.enqueueJob(project.id, "import_source", {
+    sourcePath: syncedSourcePath,
+    deployAfterImport: true,
+  });
   if (!(await processNextJob(store, "e2e-worker", { appSecretKey: APP_SECRET_KEY }))) {
-    throw new Error("build_deploy job did not run (redeploy).");
+    throw new Error("import_source job did not run (sync and deploy).");
+  }
+  if (!(await processNextJob(store, "e2e-worker", { appSecretKey: APP_SECRET_KEY }))) {
+    throw new Error("build_deploy job did not run (sync and deploy).");
   }
 
   const deployedTwice = await store.getProject(project.id);
@@ -423,6 +458,18 @@ try {
     await pathExists(path.join(releaseDir2, "agent", "sandbox", "sandbox.js")),
     `${releaseDir2}/agent/sandbox/sandbox.js must exist`,
   );
+  assert.equal(
+    await readFile(path.join(releaseDir2, "agent", "sandbox", "workspace", "eveland-seed.txt"), "utf8"),
+    `${UPDATED_SEED_CONTENT}\n`,
+    "the second Release must contain the synced workspace seed",
+  );
+
+  const updatedLiveTurnDetail = await runLiveHttpTurn({
+    hostPort: deployment2.hostPort,
+    cacheDir: projectCacheDir,
+    expectedSeedContent: UPDATED_SEED_CONTENT,
+  });
+  console.log(`A new Session used the synced workspace seed from release 2 -- ${updatedLiveTurnDetail}`);
 
   // --- Regression proof: the durable session workspace survives the
   // redeploy because the cache dir lives outside the release dir. ---------
@@ -447,4 +494,5 @@ try {
   const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
   const projectCacheDir = resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id);
   await rm(projectCacheDir, { recursive: true, force: true });
+  await rm(sourceTempRoot, { recursive: true, force: true });
 }

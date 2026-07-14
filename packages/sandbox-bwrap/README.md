@@ -23,7 +23,9 @@ subagent — and vendors this package's built output beside it, so agent project
 a deployment backend themselves. If a project shipped its own sandbox module, the build
 replaces that definition and reports it in the build log; authored `bootstrap()` and
 `onSession()` behavior is not used. The sibling `agent/sandbox/workspace/**` tree is preserved,
-so Eve still seeds those files into each Session's `/workspace`. The systemd runtime invokes
+so Eve still seeds those files into each Session's `/workspace`. Each Eveland Release supplies a
+distinct template revision, so new Sessions see updated seeds after Sync & Deploy while existing
+durable Session workspaces remain untouched. The systemd runtime invokes
 bwrap as its unprivileged deployment user. The local Docker runtime installs bwrap inside the Agent
 image and grants the outer container only the capabilities nested bwrap requires; the
 Agent container still receives no Docker socket. Local `eve dev` is untouched — it never runs
@@ -66,6 +68,7 @@ can reattach on the next start.
 | `hidePaths` | `[]` | Extra host paths hidden from the sandbox (each covered by an empty tmpfs). |
 | `bwrapPath` | `"bwrap"` | bwrap executable to invoke. |
 | `cacheDir` | `<appRoot>/.eve/sandbox-cache/bwrap` | Absolute directory holding templates and durable session workspaces. Pin this outside the release directory so a redeploy does not discard durable session state: since eve 0.22.0, eve keys session sandboxes per durable session, not per deployment, so an `appRoot`-derived default would silently destroy every session's `/workspace` on the next redeploy. The generated eveland module always sets this from `EVELAND_SANDBOX_CACHE_DIR` (see `docs/deploy/linux.md`). |
+| `templateRevision` | `null` | Optional immutable release identity included in the template cache key but not the session path. Change it when seed files change so new Sessions use a fresh template without overwriting durable workspaces. Eveland sets it from its internal `EVELAND_SANDBOX_TEMPLATE_REVISION`. |
 
 ## How it works
 
@@ -73,7 +76,7 @@ can reattach on the next start.
   staging directory, writes seed files, then atomically renames it into
   `<cacheDir>/templates/<hash>` (`<cacheDir>` defaults to
   `<appRoot>/.eve/sandbox-cache/bwrap` when the `cacheDir` option is not set). Idempotent
-  per template key + options hash.
+  per template key + options hash; `templateRevision` participates in that hash.
 - **create** (runtime): clones the template into `<cacheDir>/sessions/<hash>` on first
   use. The directory IS the durable session state: it persists across reconnects and
   process restarts.
@@ -88,7 +91,8 @@ can reattach on the next start.
 Session and template directories persist indefinitely under
 `<cacheDir>/{sessions,templates}` across process restarts and reconnects, enabling fast
 reattach when a session resumes. Each session key gets a directory that is reused for
-the lifetime of the session; each template is cached per (template key, options hash)
+the lifetime of the session; each template is cached per (template key, options hash), with
+an optional release revision in the options hash,
 and reused across sessions. This backend intentionally does not prune either — its
 `shutdown()` method only kills the session's live processes and leaves the workspace on
 disk, so reattach is instant and stateless from the agent's perspective. On a long-lived

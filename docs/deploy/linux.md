@@ -292,14 +292,18 @@ has a sandbox folder, with one more for every subagent directory however deeply 
 into the release directory, and vendors this build's `@eveland/sandbox-bwrap`
 to `<releaseDir>/.eveland/sandbox-bwrap/`. The generated module reads
 `EVELAND_SANDBOX_CACHE_DIR` from the environment and passes it to the backend as
-`cacheDir`. Nothing in the project's own source tree is touched to make this happen,
-and there is nothing for a project to author.
+`cacheDir`. The runtime also supplies an internal `EVELAND_SANDBOX_TEMPLATE_REVISION`
+derived from the immutable Release reference. Nothing in the project's own source tree
+is touched to make this happen, and there is nothing for a project to author.
 
 If the project shipped its own `agent/sandbox.ts` or `agent/sandbox/sandbox.ts`, the build
 removes that authored backend definition and writes the generated module in its place. Its
 `bootstrap()` and `onSession()` are not run because Eveland owns the deployment backend.
 An `agent/sandbox/workspace/**` seed tree is preserved in the prepared Release; Eve compiles
-those files and initializes them under `/workspace/**` for each new Session.
+those files and initializes them under `/workspace/**` for each new Session. Templates are
+revision-scoped, so a later Sync & Deploy creates new Sessions from the updated seed content.
+Existing durable Sessions remain keyed only by Eve's session key and keep their current
+workspace files; deployment never overwrites their runtime state.
 The build log carries a line so this is never a silent surprise:
 
 ```
@@ -395,7 +399,7 @@ the release directory itself). A Docker Deployment gets the Docker-host view of 
 same Project directory as a bind mount. Both expose the runtime-visible location as
 `EVELAND_SANDBOX_CACHE_DIR`.
 
-The sandbox cache (both session and template directories under
+The sandbox cache (both session and Release-revisioned template directories under
 `EVELAND_SANDBOX_CACHE_DIR`) grows with the number of durable sessions and unique
 templates and is **not** pruned automatically — neither by a redeploy nor by anything
 else in eveland today. Reclaiming space requires manual deletion of directories
