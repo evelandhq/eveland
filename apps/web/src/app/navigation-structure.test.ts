@@ -18,6 +18,30 @@ describe("web application shell", () => {
     expect(layout).toContain('className="md:hidden"')
   })
 
+  test("shows the Eveland version in the sidebar and full Web/API build details in About", () => {
+    const aboutUrl = new URL("./settings/about/page.tsx", import.meta.url)
+    const sidebar = source("../components/app-sidebar.tsx")
+    const serverApi = source("../lib/server-api.ts")
+
+    expect(sidebar).toContain('import { EVELAND_VERSION } from "@eveland/core/build-info"')
+    expect(sidebar).toContain("Eveland v{EVELAND_VERSION}")
+    expect(sidebar).toContain('href="/settings/about"')
+    expect(serverApi).toContain("export const getApiBuildInfo")
+    expect(existsSync(fileURLToPath(aboutUrl))).toBe(true)
+    if (!existsSync(fileURLToPath(aboutUrl))) return
+
+    const about = source("./settings/about/page.tsx")
+    expect(about).toContain('createBuildInfoFromEnv("web", process.env)')
+    expect(about).toContain("getApiBuildInfo")
+    expect(about).toContain("isSameBuild")
+    expect(about).toContain("<Card")
+    expect(about).toContain("<CardHeader")
+    expect(about).toContain("<CardContent")
+    expect(about).toContain("<Badge")
+    expect(about).toContain("<Table")
+    expect(about).toContain("<Alert")
+  })
+
   test("renders project navigation as a shadcn sidebar menu", () => {
     const projectNav = source("../components/project-nav.tsx")
 

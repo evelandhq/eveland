@@ -7,6 +7,7 @@ import {
   FileTextIcon,
   FolderIcon,
   HistoryIcon,
+  InfoIcon,
   LayoutGridIcon,
   LogsIcon,
   PlayIcon,
@@ -29,7 +30,10 @@ export const settingsNavigationGroups = [
   },
   {
     label: 'System',
-    items: [{ href: '/settings/members', label: 'Members', icon: UsersIcon }],
+    items: [
+      { href: '/settings/members', label: 'Members', icon: UsersIcon },
+      { href: '/settings/about', label: 'About', icon: InfoIcon },
+    ],
   },
 ] as const;
 

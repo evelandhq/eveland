@@ -1,13 +1,16 @@
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
+import { formatBuildInfo } from "@eveland/core/build-info";
+import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import { processNextJob } from "./jobs/process.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
+const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
 
-console.log(`Eveland worker ready. Poll interval: ${intervalMs}ms`);
+console.log(`${formatBuildInfo(buildInfo)} ready. Poll interval: ${intervalMs}ms`);
 console.log(
   `Default eve runtime command: ${inferEveRuntimeCommand({
     scripts: {},

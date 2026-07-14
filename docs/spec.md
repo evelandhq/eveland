@@ -62,6 +62,9 @@ MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持�
 * 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
 
 除健康检查和邀请接受外，所有控制面 API 都要求有效成员 Session。公开 Agent Gateway 流量使用独立认证边界。
+API 与 Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `version`、Git
+`revision`、发布 `channel` 与当前 `component`；所有组件共享 `service = eveland`，
+不得把 API、Web、Gateway 或 Worker 建模成独立产品版本。
 
 ### 首页：Projects (/projects)
 
@@ -132,6 +135,16 @@ Members 位于 Settings 的 System 分组，不再出现在 Workspace 全局导�
 * 移除成员；移除后立即撤销其所有登录 Session，团队项目不删除
 
 最后一个 Admin 不能被移除或降级。邀请链接使用 256-bit 不透明随机标识，接受后立即失效。
+
+#### About (/settings/about)
+
+About 展示当前 Eveland 产品版本、Git revision 与发布 channel。Sidebar 底部持续显示
+紧凑版本号；About 同时展示 Web build 与 API `/health` 报告的 component build identity。
+两者的 version、revision 或 channel 不一致时必须明确提示该实例尚未完成一致升级。
+Worker 没有为此增加公开 HTTP 服务，其 build identity 写入启动日志。
+
+Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：前者标识控制面
+软件本身，后者仍表示某个导入 Agent 的不可变构建产物与运行目标。
 
 ---
 

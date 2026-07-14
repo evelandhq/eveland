@@ -42,7 +42,10 @@ describe("sidebar navigation", () => {
       },
       {
         label: "System",
-        items: [{ href: "/settings/members", label: "Members" }],
+        items: [
+          { href: "/settings/members", label: "Members" },
+          { href: "/settings/about", label: "About" },
+        ],
       },
     ])
   })

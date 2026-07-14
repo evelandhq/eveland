@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
+import type { EvelandBuildInfo } from "@eveland/core/build-info";
 import type { AuthPrincipal, LogRecord, SessionStatus, TeamInvitation } from "@eveland/core/contracts";
 import {
   getEveString,
@@ -13,6 +14,7 @@ import {
   validatePlaygroundTurn,
 } from "@eveland/core/eve";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
+import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
 import type { CollectorHealth } from "@eveland/session-collector/health";
@@ -105,6 +107,7 @@ function validateTargetsPayload(
 const devSecretKey = "eveland-dev-secret-key-000000000";
 
 export type AppOptions = {
+  buildInfo?: EvelandBuildInfo;
   auth?: ReturnType<typeof createBetterAuthRuntime>;
   webOrigin?: string;
   cookieDomain?: string;
@@ -120,6 +123,7 @@ export type AppOptions = {
 
 export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variables: { principal: AuthPrincipal } }> {
   const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
+  const buildInfo = options.buildInfo ?? createBuildInfoFromEnv("api", process.env);
   if (!options.auth && process.env.NODE_ENV !== "test") {
     throw new Error("Control-plane authentication is required outside tests.");
   }
@@ -151,7 +155,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     }),
   );
 
-  app.get("/health", (c) => c.json({ ok: true, service: "eveland-api" }));
+  app.get("/health", (c) => c.json({ ok: true, ...buildInfo }));
 
   app.get("/internal/collector/health", (c) =>
     c.json(

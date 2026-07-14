@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { serve } from "@hono/node-server";
 import { afterEach, describe, expect, test } from "vitest";
+import { createBuildInfo } from "@eveland/core/build-info";
 import { createGatewayApp, type GatewayRepository, type ResolvedAgentRoute } from "./app.js";
 import { affinityBucketForRoute } from "@eveland/core/routing";
 
@@ -16,6 +17,23 @@ afterEach(async () => {
 });
 
 describe("Gateway", () => {
+  test("returns the Eveland product and Gateway build identity", async () => {
+    const buildInfo = createBuildInfo("gateway", {
+      revision: "6bb1d53f51ab",
+      channel: "stable",
+    });
+    const app = createGatewayApp(repository([]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      buildInfo,
+    });
+
+    const response = await app.request("/health");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, ...buildInfo });
+  });
+
   test("fails closed on missing affinity signing material or invalid body limits", () => {
     expect(() => createGatewayApp(repository([]), { allowedBaseDomains: ["agent.localhost"], affinitySecret: "" })).toThrow(
       /affinity secret/i,

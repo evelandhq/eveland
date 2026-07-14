@@ -92,6 +92,34 @@ hosts to. Agent processes remain on `127.0.0.1:41xxx`; never add those dynamic p
 Traefik or firewall rules. Start from `infra/traefik/agents.yml`, replace the example domain,
 and keep its `!PathPrefix('/internal')` guard.
 
+## Installing and upgrading Eveland
+
+Stable installations run an exact `vX.Y.Z` tag, not a mutable `main` checkout.
+Before starting or upgrading the stack, fetch tags, check out the selected
+release, install the frozen lockfile, and apply database migrations:
+
+```bash
+git fetch --tags origin
+git checkout v0.1.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/api db:migrate
+```
+
+Set `EVELAND_RELEASE_CHANNEL=stable` and `EVELAND_REVISION` to the output of
+`git rev-parse --short=12 HEAD` in both the Compose `.env` and
+`/etc/eveland/eveland-worker.env`. Restart API, Gateway, Web, and Worker from
+that same checkout. An instance intentionally testing `main` uses
+`EVELAND_RELEASE_CHANNEL=edge` and its exact revision instead.
+
+The authenticated Web Settings > About page compares Web and API build
+identity; API and Gateway also expose it through their existing public
+`/health` responses, and Worker prints it on startup. Do not call an upgrade
+complete while those visible components disagree. Rollback by checking out a
+previous tag is safe only when that release's database contract is compatible
+with all migrations already applied; consult the GitHub Release upgrade and
+rollback notes before changing tags. See the full
+[release policy and checklist](../releases.md).
+
 ### Startup preflight
 
 When the resolved runtime is systemd — an explicit `EVELAND_RUNTIME=systemd`,
@@ -120,6 +148,8 @@ runs it against the Lima VM as part of the integration smoke test.
 | Env var | Default | Meaning |
 | --- | --- | --- |
 | `EVELAND_RUNTIME` | `docker`; `systemd` when `NODE_ENV=production` | Set `systemd` explicitly on the deploy host. An explicit value always wins over the `NODE_ENV`-based default. |
+| `EVELAND_RELEASE_CHANNEL` | `dev` | Product release channel reported by health, logs, and Web About: `dev`, `edge`, `prerelease`, or `stable`. Production tag checkouts use `stable`; `main` test instances use `edge`. |
+| `EVELAND_REVISION` | `unknown` | Exact deployed Git revision, normally `git rev-parse --short=12 HEAD`. Configure the same value for API, Gateway, Web, and Worker. |
 | `EVELAND_APP_USER` | `eveland-app` | Unix user deployments run as. |
 | `EVELAND_BUILD_USER` | `eveland-build` | Unix user the build (`npm ci`/`npx eve build`, i.e. third-party lifecycle scripts) runs as. |
 | `EVELAND_MEMORY_MAX` | `2G` | systemd `MemoryMax` per deployment. |

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, test, vi } from "vitest";
+import { createBuildInfo } from "@eveland/core/build-info";
 import { createApp } from "./app.js";
 import { createMemoryStore } from "@eveland/db";
 
@@ -12,11 +13,15 @@ const execFileAsync = promisify(execFile);
 
 describe("api app", () => {
   test("returns health status", async () => {
-    const app = createApp(createMemoryStore());
+    const buildInfo = createBuildInfo("api", {
+      revision: "6bb1d53f51ab",
+      channel: "stable",
+    });
+    const app = createApp(createMemoryStore(), { buildInfo });
     const response = await app.request("/health");
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true, service: "eveland-api" });
+    await expect(response.json()).resolves.toEqual({ ok: true, ...buildInfo });
   });
 
   test("reports collector degradation separately from API liveness", async () => {

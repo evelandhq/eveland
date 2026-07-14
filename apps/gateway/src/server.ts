@@ -1,8 +1,11 @@
 import { serve } from "@hono/node-server";
+import { formatBuildInfo } from "@eveland/core/build-info";
+import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import { createGatewayApp } from "./app.js";
 
 const port = Number(process.env.GATEWAY_PORT ?? 4080);
+const buildInfo = createBuildInfoFromEnv("gateway", process.env);
 const allowedBaseDomains = (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost")
   .split(",")
   .map((value) => value.trim().toLowerCase())
@@ -16,6 +19,7 @@ await store.reconcileAgentRoutes(allowedBaseDomains[0] ?? "agent.localhost");
 const app = createGatewayApp(store, {
   allowedBaseDomains,
   affinitySecret,
+  buildInfo,
   affinityCookieSecure: (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME ?? "http") === "https",
   maxRequestBodyBytes: Number(process.env.EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES ?? 10_485_760),
   internalServiceToken:
@@ -24,7 +28,7 @@ const app = createGatewayApp(store, {
 });
 const server = serve({ fetch: app.fetch, port });
 
-console.log(`Eveland Gateway listening on http://0.0.0.0:${port}`);
+console.log(`${formatBuildInfo(buildInfo)} listening on http://0.0.0.0:${port}`);
 
 async function shutdown() {
   await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

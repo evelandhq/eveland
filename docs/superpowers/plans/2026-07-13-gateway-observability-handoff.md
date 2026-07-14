@@ -1135,3 +1135,23 @@ Docker image 缺少 `rg` 时，Eve 会回退到带 `--exclude-dir=.git` 的 GNU-
   后续能力，本次不放宽 sandbox 边界。
 
 本节是完成 Phase 后的增量 runtime 行为；前文已完成的 Phase checklist 仍只作为历史。
+
+---
+
+## 18. 2026-07-14 follow-up：Eveland 产品版本与发布身份
+
+Eveland 产品版本不能复用 Project `Release`/`Deployment` 语义，也不能让 API、Web、
+Gateway、Worker 看起来像四个独立发布的软件。增量契约收敛为：
+
+- 整个 Eveland 使用一个从 `0.1.0` 开始的 SemVer 产品版本；
+- build identity 固定包含 `service=eveland`、`component`、`version`、Git `revision`
+  与 `channel`，API/Gateway `/health`、组件启动日志和 Web About 使用同一契约；
+- Web sidebar 显示紧凑版本，Settings > About 比较 Web/API build；不一致时阻止测试者
+  误以为实例已完成升级；Worker 暂不增加公开 HTTP 服务；
+- `main` 是带 SHA 的 `edge` build，只有 `vX.Y.Z` tag 是 stable release；Release Please
+  维护 Release PR、CHANGELOG、tag 与 GitHub Release；
+- 当前 tag 只保证可复现源码 checkout，不宣称已存在不可变 Eveland OCI/Worker 制品；
+- `@eveland/sandbox-bwrap` 保持独立 MIT package 版本，不跟随产品版本。
+
+本节是产品运维版本，不修改前文不可变 Agent Release、preview Deployment、stable route
+与 SessionBinding 的任何语义。
