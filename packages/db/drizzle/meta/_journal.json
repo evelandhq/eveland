@@ -92,6 +92,13 @@
       "when": 1784014145824,
       "tag": "0012_fancy_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784043527743,
+      "tag": "0013_semantic_project_slugs",
+      "breakpoints": true
     }
   ]
 }

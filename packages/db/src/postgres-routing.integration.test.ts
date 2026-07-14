@@ -9,6 +9,40 @@ const database = databaseUrl ? createDatabase(databaseUrl) : null;
 afterAll(async () => database?.close());
 
 describe.skipIf(!database)("Postgres Gateway routing", () => {
+  test("atomically claims semantic project slugs and eight-character deployment keys", async () => {
+    const store = createPostgresStore(database!);
+    const requestedName = `postgres-slug-${Date.now()}`;
+    const first = await store.createProject({ name: requestedName, importKind: "zip" });
+    const second = await store.createProject({ name: requestedName, importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: first.id,
+      kind: "zip",
+      sourcePath: "/tmp/postgres-slug",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: first.id,
+      sourceRevisionId: revision.id,
+      imageTag: "postgres-slug",
+      containerName: `postgres-slug-${Date.now()}`,
+      internalPort: 3000,
+      hostPort: 41995,
+      runtimeKind: "docker",
+    });
+
+    expect(first).toMatchObject({ name: requestedName, slug: requestedName });
+    expect(second).toMatchObject({ name: `${requestedName}-1`, slug: `${requestedName}-1` });
+    expect(deployment.deploymentKey).toMatch(/^[a-z0-9]{8}$/);
+    await store.ensureDeploymentRoutes(first.id, deployment.id, "agent.localhost");
+    await expect(store.findRouteByHostname(`${deployment.deploymentKey}--${first.slug}.agent.localhost`)).resolves.toMatchObject({
+      kind: "deployment",
+      targets: [expect.objectContaining({ deploymentId: deployment.id })],
+    });
+  }, 30_000);
+
   test("materializes routes and merges a binding with child-first observer ingestion", async () => {
     const store = createPostgresStore(database!);
     const project = await store.createProject({ name: `Gateway integration ${Date.now()}`, importKind: "zip" });
@@ -48,7 +82,7 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
     await store.ingestObserverEnvelope(envelope(deployment.id, "eve_gateway_child", "eve_gateway_root", "child"));
     await store.ingestObserverEnvelope(envelope(deployment.id, "eve_gateway_root", null, "root"));
 
-    await expect(store.findRouteByHostname(`${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+    await expect(store.findRouteByHostname(`${project.slug}.agent.localhost`)).resolves.toMatchObject({
       targets: [expect.objectContaining({ deploymentId: deployment.id, status: "running" })],
     });
     await expect(store.listSessions(project.id)).resolves.toEqual([
@@ -135,7 +169,7 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
     }));
     await store.promoteDeployment(project.id, candidate.id);
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: candidate.id });
-    await expect(store.findRouteByHostname(`${deployment.deploymentKey}--${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+    await expect(store.findRouteByHostname(`${deployment.deploymentKey}--${project.slug}.agent.localhost`)).resolves.toMatchObject({
       targets: [expect.objectContaining({ deploymentId: deployment.id })],
     });
     await store.promoteDeployment(project.id, deployment.id);
@@ -143,7 +177,7 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
     await expect(store.findProjectRoute(project.id)).resolves.toMatchObject({
       targets: [expect.objectContaining({ deploymentId: deployment.id, weight: 10_000 })],
     });
-    await expect(store.findRouteByHostname(`${candidate.deploymentKey}--${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+    await expect(store.findRouteByHostname(`${candidate.deploymentKey}--${project.slug}.agent.localhost`)).resolves.toMatchObject({
       kind: "deployment",
       targets: [expect.objectContaining({ deploymentId: candidate.id, weight: 10_000 })],
     });

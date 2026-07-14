@@ -157,17 +157,17 @@ Traefik 只配置一条 wildcard route 到 Gateway，不为每个 Project/Deploy
 Gateway 默认监听一个固定开发端口（建议 `4080`）：
 
 ```text
-<routingKey>.agent.localhost:4080
-d-<deploymentKey>--<routingKey>.agent.localhost:4080
+<projectSlug>.agent.localhost:4080
+<deploymentKey>--<projectSlug>.agent.localhost:4080
 ```
 
-现有 Project ID 包含 `_`，不能直接作为 DNS-safe hostname。Project 必须新增不可变、全局唯一、只包含 `[a-z0-9-]` 的 `routingKey`，例如 `p-k7m4x2`。
+内部 Project ID 包含 `_`，不能直接作为 DNS-safe hostname。Project 使用不可变、全局唯一、最长 53 字符且只包含 `[a-z0-9-]` 的语义 `slug`。Git 导入从 Repo 名称推导 slug，冲突时在数据库唯一性边界内追加 `-1`、`-2`。Deployment 使用 Project 内唯一的 8 位小写字母数字 `deploymentKey`。
 
 开发阶段不要求运行 Traefik。Gateway 直接根据 Host 查数据库。生产环境对应：
 
 ```text
-<routingKey>.agents.example.com
-d-<deploymentKey>--<routingKey>.agents.example.com
+<projectSlug>.agents.example.com
+<deploymentKey>--<projectSlug>.agents.example.com
 ```
 
 使用单层 hostname 是为了让一个 `*.agents.example.com` wildcard certificate 覆盖稳定地址、Deployment preview 地址和命名 alias。
@@ -297,16 +297,16 @@ apps/worker (host/root under systemd)
 
 ```text
 project route
-  <routingKey>.agents.example.com
+  <projectSlug>.agents.example.com
   stable production/A-B endpoint
 
 deployment route
-  d-<deploymentKey>--<routingKey>.agents.example.com
+  <deploymentKey>--<projectSlug>.agents.example.com
   immutable preview endpoint, exactly one deployment at weight 100%
 
 named alias
-  canary--<routingKey>.agents.example.com
-  staging--<routingKey>.agents.example.com
+  canary--<projectSlug>.agents.example.com
+  staging--<projectSlug>.agents.example.com
   mutable route, one or two targets
 ```
 
@@ -710,7 +710,7 @@ Collector degraded 不应让 `/health` 失败，否则 proxy/systemd 会反复�
 
 ```text
 projects
-  + routingKey unique, immutable, DNS-safe
+  + slug unique, immutable, DNS-safe, max 53 chars
 
 agent_routes
   id
@@ -863,7 +863,7 @@ session_bindings
 #### Tasks
 
 1. 创建 `apps/gateway` Hono/Node app；
-2. Project `routingKey` migration + backfill；
+2. Project semantic `slug` migration + backfill；
 3. `agent_routes` / one-target `route_targets`；
 4. stable project host 与 immutable deployment preview host；
 5. Host validation/cache/invalidation；
@@ -876,8 +876,8 @@ session_bindings
 
 #### Required proof
 
-- `p-xxx.agent.localhost:4080` 正确路由 current project target；
-- `d-xxx--p-xxx.agent.localhost:4080` 固定路由指定 Deployment；
+- `sample-office-assistant.agent.localhost:4080` 正确路由 current project target；
+- `<8-char-key>--sample-office-assistant.agent.localhost:4080` 固定路由指定 Deployment；
 - unknown/disabled/no-running-target 的状态码符合契约；
 - `Authorization` / Cookie / canonical Host 透传；
 - production Host 不会触发 Eve localDev；
@@ -919,7 +919,8 @@ session_bindings
 
 ### Unit
 
-- DNS-safe routingKey 生成、backfill、collision retry；
+- DNS-safe Project slug 推导、backfill、数字后缀 collision retry；
+- 8 位 Project-local Deployment key 生成与 collision retry；
 - Host parser 与 base-domain validation；
 - header strip/rebuild；
 - weight validation 与 deterministic bucket；

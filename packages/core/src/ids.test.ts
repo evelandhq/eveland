@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { claimRoutingKey, createId, idAlphabet } from "./ids.js";
+import {
+  claimDeploymentKey,
+  claimProjectSlug,
+  createDeploymentKey,
+  createId,
+  idAlphabet,
+  inferProjectSlugFromGitUrl,
+  slugifyProjectName,
+} from "./ids.js";
 
 describe("createId", () => {
   test("creates prefixed 10 character IDs using the approved alphabet", () => {
@@ -10,27 +18,54 @@ describe("createId", () => {
   });
 });
 
-describe("claimRoutingKey", () => {
-  test("retries collisions and returns only the value claimed atomically", async () => {
-    const candidates = ["p-collision", "p-collision", "p-unique"];
-    const attempted: string[] = [];
-
-    const claimed = await claimRoutingKey(
-      "p",
-      async (candidate) => {
-        attempted.push(candidate);
-        return candidate === "p-unique" ? { routingKey: candidate } : null;
-      },
-      { generate: () => candidates.shift()! },
-    );
-
-    expect(attempted).toEqual(["p-collision", "p-collision", "p-unique"]);
-    expect(claimed).toEqual({ routingKey: "p-unique" });
+describe("project slugs", () => {
+  test("normalizes a repository-style name into a DNS-safe slug", () => {
+    expect(slugifyProjectName("  Sample_Office Assistant.git  ")).toBe("sample-office-assistant-git");
+    expect(slugifyProjectName("Crème brûlée agent")).toBe("creme-brulee-agent");
+    expect(() => slugifyProjectName("---")).toThrow(/project name/i);
   });
 
-  test("fails with an actionable error after the bounded retry budget", async () => {
+  test("infers the slug from HTTPS and SCP-style Git repository URLs", () => {
+    expect(inferProjectSlugFromGitUrl("https://github.com/evelandhq/sample-office-assistant.git")).toBe(
+      "sample-office-assistant",
+    );
+    expect(inferProjectSlugFromGitUrl("git@github.com:evelandhq/sample-office-assistant.git")).toBe(
+      "sample-office-assistant",
+    );
+  });
+
+  test("claims the requested slug and then deterministic numeric suffixes", async () => {
+    const attempted: string[] = [];
+
+    const claimed = await claimProjectSlug(
+      "sample-office-assistant",
+      async (candidate) => {
+        attempted.push(candidate);
+        return candidate === "sample-office-assistant-2" ? { slug: candidate } : null;
+      },
+    );
+
+    expect(attempted).toEqual([
+      "sample-office-assistant",
+      "sample-office-assistant-1",
+      "sample-office-assistant-2",
+    ]);
+    expect(claimed).toEqual({ slug: "sample-office-assistant-2" });
+  });
+});
+
+describe("deployment keys", () => {
+  test("creates an eight-character lowercase alphanumeric public key", () => {
+    expect(createDeploymentKey()).toMatch(/^[a-z0-9]{8}$/);
+  });
+
+  test("retries project-local deployment key collisions within a bounded budget", async () => {
+    const candidates = ["collision", "unique01"];
+
     await expect(
-      claimRoutingKey("d", async () => null, { generate: () => "d-collision", maxAttempts: 2 }),
-    ).rejects.toThrow(/unique deployment routing key after 2 attempts/i);
+      claimDeploymentKey(async (candidate) => (candidate === "unique01" ? candidate : null), {
+        generate: () => candidates.shift()!,
+      }),
+    ).resolves.toBe("unique01");
   });
 });

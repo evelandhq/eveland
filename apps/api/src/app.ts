@@ -16,6 +16,11 @@ import {
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
+import {
+  inferProjectSlugFromGitUrl,
+  PROJECT_SLUG_MAX_LENGTH,
+  PROJECT_SLUG_PATTERN,
+} from "@eveland/core/ids";
 import type { Store } from "@eveland/db";
 import type { CollectorHealth } from "@eveland/session-collector/health";
 import { z } from "zod";
@@ -30,11 +35,29 @@ import { createBetterAuthRuntime } from "./auth.js";
 
 const execFileAsync = promisify(execFile);
 
-const createProjectSchema = z.object({
-  name: z.string().min(1),
-  importKind: z.enum(["git", "zip"]),
-  gitUrl: z.string().url().optional().nullable(),
-});
+const projectNameSchema = z
+  .string()
+  .min(1)
+  .max(PROJECT_SLUG_MAX_LENGTH)
+  .regex(PROJECT_SLUG_PATTERN, "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.");
+
+const gitRepositoryUrlSchema = z
+  .string()
+  .min(1)
+  .refine((value) => inferProjectSlugFromGitUrl(value) !== null, "Enter a Git repository URL with a repository name.");
+
+const createProjectSchema = z.discriminatedUnion("importKind", [
+  z.object({
+    name: projectNameSchema.optional(),
+    importKind: z.literal("git"),
+    gitUrl: gitRepositoryUrlSchema,
+  }),
+  z.object({
+    name: projectNameSchema,
+    importKind: z.literal("zip"),
+    gitUrl: z.string().optional().nullable(),
+  }),
+]);
 
 const secretSchema = z.object({
   key: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
@@ -335,7 +358,14 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       return c.json({ error: "Invalid project input", issues: parsed.error.issues }, 400);
     }
 
-    const project = await store.createProject(parsed.data);
+    const name =
+      parsed.data.importKind === "git"
+        ? parsed.data.name ?? inferProjectSlugFromGitUrl(parsed.data.gitUrl)
+        : parsed.data.name;
+    if (!name) {
+      return c.json({ error: "Invalid project input" }, 400);
+    }
+    const project = await store.createProject({ ...parsed.data, name });
     return c.json({ project }, 201);
   });
 
@@ -873,8 +903,12 @@ async function createZipProjectFromUpload(c: Context, store: Store, dataDir: str
   const name = form.get("name");
   const archive = form.get("archive");
 
-  if (typeof name !== "string" || name.trim().length === 0) {
-    return c.json({ error: "Invalid project input", issues: [{ path: ["name"], message: "Project name is required" }] }, 400);
+  const parsedName = projectNameSchema.safeParse(name);
+  if (!parsedName.success) {
+    return c.json({
+      error: "Invalid project input",
+      issues: parsedName.error.issues.map((issue) => ({ ...issue, path: ["name", ...issue.path] })),
+    }, 400);
   }
 
   if (!(archive instanceof File) || archive.size === 0) {
@@ -883,7 +917,7 @@ async function createZipProjectFromUpload(c: Context, store: Store, dataDir: str
 
   const sourcePath = await extractZipUpload(archive, dataDir);
   const project = await store.createProject({
-    name: name.trim(),
+    name: parsedName.data,
     importKind: "zip",
     sourcePath,
   });

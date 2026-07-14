@@ -43,27 +43,61 @@ describe("api app", () => {
     await expect(response.json()).resolves.toMatchObject({ status: "degraded", backlogEvents: 4 });
   });
 
-  test("creates a project and returns it in the project list", async () => {
+  test("derives a Git project name from the repository URL and returns the claimed slug", async () => {
     const app = createApp(createMemoryStore());
 
     const createResponse = await app.request("/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Weather Agent", importKind: "git", gitUrl: "https://example.com/weather.git" }),
+      body: JSON.stringify({
+        importKind: "git",
+        gitUrl: "https://github.com/evelandhq/sample-office-assistant.git",
+      }),
     });
 
     expect(createResponse.status).toBe(201);
     const created = await createResponse.json();
     expect(created.project).toMatchObject({
-      name: "Weather Agent",
+      name: "sample-office-assistant",
+      slug: "sample-office-assistant",
       importKind: "git",
       status: "import_pending",
     });
 
+    const duplicateResponse = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        importKind: "git",
+        gitUrl: "https://github.com/evelandhq/sample-office-assistant.git",
+      }),
+    });
+    await expect(duplicateResponse.json()).resolves.toMatchObject({
+      project: { name: "sample-office-assistant-1", slug: "sample-office-assistant-1" },
+    });
+
     const listResponse = await app.request("/projects");
     await expect(listResponse.json()).resolves.toMatchObject({
-      projects: [expect.objectContaining({ id: created.project.id, name: "Weather Agent" })],
+      projects: expect.arrayContaining([
+        expect.objectContaining({ id: created.project.id, name: "sample-office-assistant" }),
+        expect.objectContaining({ name: "sample-office-assistant-1" }),
+      ]),
     });
+  });
+
+  test("rejects a manually edited project name that is not already URL-friendly", async () => {
+    const response = await createApp(createMemoryStore()).request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Sample_Office Assistant",
+        importKind: "git",
+        gitUrl: "https://github.com/evelandhq/sample-office-assistant.git",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "Invalid project input" });
   });
 
   test("returns stable and immutable preview Agent endpoints without exposing a raw port", async () => {
@@ -94,8 +128,8 @@ describe("api app", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toEqual({
-      stable: `http://${project.routingKey}.agent.localhost:4080`,
-      previews: [`http://${deployment.deploymentKey}--${project.routingKey}.agent.localhost:4080`],
+      stable: `http://${project.slug}.agent.localhost:4080`,
+      previews: [`http://${deployment.deploymentKey}--${project.slug}.agent.localhost:4080`],
     });
     expect(JSON.stringify(body)).not.toContain("41000");
   });
@@ -139,7 +173,7 @@ describe("api app", () => {
       ] }),
     });
     expect(alias.status).toBe(201);
-    expect(invalidated.flat()).toEqual(expect.arrayContaining([`${project.routingKey}.agent.localhost`, `canary--${project.routingKey}.agent.localhost`]));
+    expect(invalidated.flat()).toEqual(expect.arrayContaining([`${project.slug}.agent.localhost`, `canary--${project.slug}.agent.localhost`]));
   });
 
   test("drains a zero-weight deployment without treating its immutable preview as mutable traffic", async () => {
@@ -184,7 +218,7 @@ describe("api app", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ deployment: { id: first.id, status: "draining" } });
-    await expect(store.findRouteByHostname(`${first.deploymentKey}--${project.routingKey}.agent.localhost`)).resolves.toMatchObject({
+    await expect(store.findRouteByHostname(`${first.deploymentKey}--${project.slug}.agent.localhost`)).resolves.toMatchObject({
       kind: "deployment",
       targets: [expect.objectContaining({ deploymentId: first.id, weight: 10_000, status: "draining" })],
     });
@@ -264,7 +298,7 @@ describe("api app", () => {
     const archivePath = await createZipArchiveFixture();
     const archive = new File([await readFile(archivePath)], "agent.zip", { type: "application/zip" });
     const form = new FormData();
-    form.set("name", "Zip Agent");
+    form.set("name", "zip-agent");
     form.set("archive", archive);
     const app = createApp(store, { dataDir });
 
@@ -276,7 +310,7 @@ describe("api app", () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
       project: expect.objectContaining({
-        name: "Zip Agent",
+        name: "zip-agent",
         importKind: "zip",
         status: "import_pending",
       }),
@@ -293,7 +327,7 @@ describe("api app", () => {
     const archivePath = await createZipArchiveFixture({ wrappedDirectory: "helloworld" });
     const archive = new File([await readFile(archivePath)], "helloworld.zip", { type: "application/zip" });
     const form = new FormData();
-    form.set("name", "Wrapped Zip Agent");
+    form.set("name", "wrapped-zip-agent");
     form.set("archive", archive);
     const app = createApp(store, { dataDir });
 
@@ -309,12 +343,26 @@ describe("api app", () => {
     expect(sourcePath.endsWith(`${path.sep}helloworld`)).toBe(true);
   });
 
+  test("returns the URL-friendly name rule for an invalid Zip project name", async () => {
+    const archive = new File(["not inspected before validation"], "agent.zip", { type: "application/zip" });
+    const form = new FormData();
+    form.set("name", "Zip Agent");
+    form.set("archive", archive);
+
+    const response = await createApp(createMemoryStore()).request("/projects", { method: "POST", body: form });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      issues: [expect.objectContaining({ path: ["name"], message: expect.stringMatching(/lowercase letters/i) })],
+    });
+  });
+
   test("stores secrets without returning secret values", async () => {
     const app = createApp(createMemoryStore());
     const createProject = await app.request("/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Secret Agent", importKind: "zip" }),
+      body: JSON.stringify({ name: "secret-agent", importKind: "zip" }),
     });
     const { project } = await createProject.json();
 
@@ -1141,7 +1189,7 @@ describe("api app", () => {
     const createResponse = await app.request("/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Weather Agent", importKind: "git", gitUrl: "https://example.com/weather.git" }),
+      body: JSON.stringify({ name: "weather-agent", importKind: "git", gitUrl: "https://example.com/weather.git" }),
     });
     const { project } = await createResponse.json();
 

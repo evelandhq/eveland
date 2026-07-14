@@ -8,9 +8,9 @@ describe("db mappers", () => {
 
     const project = projectRowToProject({
       id: "proj_123",
-      routingKey: "p-weather",
+      slug: "weather-agent",
       ownerId: "user_local_admin",
-      name: "Weather Agent",
+      name: "weather-agent",
       importKind: "git",
       gitUrl: null,
       status: "import_pending",
@@ -28,8 +28,8 @@ describe("db mappers", () => {
 
     expect(project).toEqual({
       id: "proj_123",
-      routingKey: "p-weather",
-      name: "Weather Agent",
+      slug: "weather-agent",
+      name: "weather-agent",
       importKind: "git",
       gitUrl: null,
       status: "import_pending",
@@ -56,7 +56,7 @@ describe("db mappers", () => {
 
     const deployment = deploymentRowToDeployment({
       id: "dep_123",
-      deploymentKey: "d-release",
+      deploymentKey: "a1b2c3d4",
       projectId: "proj_123",
       releaseId: "rel_123",
       containerName: "eveland-proj-dep_123",
@@ -70,7 +70,7 @@ describe("db mappers", () => {
 
     expect(deployment).toEqual({
       id: "dep_123",
-      deploymentKey: "d-release",
+      deploymentKey: "a1b2c3d4",
       projectId: "proj_123",
       releaseId: "rel_123",
       containerName: "eveland-proj-dep_123",

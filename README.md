@@ -70,8 +70,10 @@ When the worker runs in Compose, `EVELAND_HOST_DATA_DIR` must be the host-absolu
 to the workspace's `.eveland-data`; this lets deployment containers bind the same observer
 outbox that the API's embedded collector reads and the same durable per-project sandbox
 cache that survives a Deployment restart or redeploy.
-Public development endpoints use `http://<routingKey>.agent.localhost:4080`; immutable previews use
-`http://<deploymentKey>--<routingKey>.agent.localhost:4080`. Gateway validates the complete Host,
+New Git projects derive a globally unique, DNS-safe project slug from the repository name; explicit
+names use lowercase letters, numbers, and hyphens, and collisions claim `-1`, `-2`, and so on atomically.
+Public development endpoints use `http://<projectSlug>.agent.localhost:4080`; immutable previews use
+`http://<eightCharacterDeploymentKey>--<projectSlug>.agent.localhost:4080`. Gateway validates the complete Host,
 while deployment ports remain bound only to `127.0.0.1` and are not product URLs.
 
 Local Docker Deployments receive the same injected `@eveland/sandbox-bwrap` backend as
