@@ -328,6 +328,12 @@ Agent 的具体执行过程不放在 Logs 中，而放在 Session Timeline 中�
 
 ## 5. 最小运行架构
 
+`apps/docs` 是独立于 self-hosted 控制面的公共网站。生产站点发布在
+`https://eveland.ai`，由 Cloudflare Workers 承载 Next.js/Fumadocs 应用；它不与
+API、Gateway、worker 或 Agent Deployment 共享运行权限。合入 `main` 且变更包含
+`apps/docs/**` 时，仓库 CI 自动构建并发布该公共网站。这个仓库自身的文档发布流程
+不改变 MVP 中“导入的 Eve Project 不支持 Git push 自动部署”的产品边界。
+
 ```text
 Browser
   ↓

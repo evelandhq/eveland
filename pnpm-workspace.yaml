@@ -4,5 +4,6 @@ packages:
 allowBuilds:
   esbuild: true
   sharp: true
+  workerd: true
 minimumReleaseAgeExclude:
   - eve@0.23.0

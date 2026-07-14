@@ -48,6 +48,11 @@
 
 ## Production topology
 
+The public `apps/docs` site is not part of this single-box topology. It is
+deployed independently to Cloudflare Workers at `https://eveland.ai`; see the
+public docs deployment section in the root README. The services below are the
+self-hosted control plane and Agent data plane.
+
 - **API, Gateway, Web, Postgres** run in Docker Compose. The API and Gateway have no Docker
   socket or host-controller privilege. Gateway also has no `/var/lib/eveland` mount, and the
   development Compose stack masks `/workspace/.eveland-data` from it:

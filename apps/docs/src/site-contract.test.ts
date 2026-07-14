@@ -20,6 +20,39 @@ describe("Eveland public website contract", () => {
     expect(source("../next.config.mjs")).toContain("createMDX");
   });
 
+  test("targets the eveland.ai Cloudflare Worker", () => {
+    const packageJson = source("../package.json");
+    const wrangler = source("../wrangler.jsonc");
+
+    expect(packageJson).toContain('"build:cloudflare": "opennextjs-cloudflare build"');
+    expect(packageJson).toContain('"deploy:cloudflare": "opennextjs-cloudflare deploy"');
+    expect(packageJson).toContain('"@opennextjs/cloudflare"');
+    expect(packageJson).toContain('"wrangler"');
+    expect(wrangler).toContain('"name": "eveland-docs"');
+    expect(wrangler).toContain('"main": ".open-next/worker.js"');
+    expect(wrangler).toContain('"nodejs_compat"');
+    expect(wrangler).toContain('"directory": ".open-next/assets"');
+    expect(wrangler).toContain('"pattern": "eveland.ai"');
+    expect(wrangler).toContain('"custom_domain": true');
+    expect(source("../open-next.config.ts")).toContain("defineCloudflareConfig");
+    expect(source("../public/_headers")).toContain("/_next/static/*");
+    expect(source("../next.config.mjs")).toContain("async rewrites()");
+    expect(source("../next.config.mjs")).toContain('destination: "/en/docs/:path*"');
+    expect(existsSync(path("./middleware.ts"))).toBe(false);
+    expect(existsSync(path("./proxy.ts"))).toBe(false);
+  });
+
+  test("deploys docs changes pushed to main", () => {
+    const workflow = source("../../../.github/workflows/deploy-docs.yml");
+
+    expect(workflow).toContain("branches: [main]");
+    expect(workflow).toContain("- apps/docs/**");
+    expect(workflow).toContain("pnpm --filter @eveland/docs build:cloudflare");
+    expect(workflow).toContain("cloudflare/wrangler-action@v3");
+    expect(workflow).toContain("CLOUDFLARE_API_TOKEN");
+    expect(workflow).toContain("CLOUDFLARE_ACCOUNT_ID");
+  });
+
   test("publishes English and Chinese locale routes", () => {
     expect(source("./lib/i18n.ts")).toContain("languages: ['en', 'zh']");
     expect(source("./lib/i18n.ts")).toContain("defaultLanguage: 'en'");
