@@ -5,12 +5,8 @@ This is a reference for every environment variable the **eveland platform** read
 reading site are listed so an operator can see what is optional and where a value
 takes effect.
 
-Two categories are explicitly **out of scope** and listed at the end so they are not
-confused with platform config:
-
-- **Test-only** variables, read solely by test/integration harnesses.
-- **Agent-injected** variables that belong to a deployed agent's own runtime (set as
-  project secrets and injected into the agent process), not to eveland itself.
+**Test-only** variables — read solely by test/integration harnesses — are explicitly
+**out of scope** and listed at the end so they are not confused with platform config.
 
 Unless noted, a variable is read via `process.env` at process start. "Required in
 production" means the process throws or a deploy is blocked when it is missing.
@@ -129,15 +125,3 @@ Read only by test or integration harnesses; not part of runtime configuration:
 - `E2E_CHECK_MODE` — agent-sandbox end-to-end check.
 - `SMOKE_SECRET` — bwrap / systemd smoke tests.
 - `EVE_EXAMPLE_MODEL`, `EVE_EXAMPLE_REAL_LLM` — example-agent tests.
-
-## Not platform variables (agent-injected / examples)
-
-These appear in the repo only inside example or already-deployed agents under
-`.eveland-data/uploads|builds|sources/`, or as placeholder text in the web secret form.
-They are an **agent's own** runtime configuration, injected through eveland's secret
-mechanism — not eveland platform config:
-
-`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `DEFAULT_MODEL`, `JIRI_MODEL`,
-`VOLCANO_DEEPSEEK_V3_2_MODEL_NAME`, `VOLCANO_DEEPSEEK_V4_FLASH_MODEL_NAME`,
-`DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY`, `LINEAR_API_TOKEN`,
-`SCHEDULE_POSTGRES_URL`.
