@@ -83,6 +83,10 @@ uses `no-new-privileges`; it never receives the Docker socket. These relaxed out
 seccomp settings are for the local-development Docker runtime. Production continues to use
 the unprivileged systemd+bwrap topology documented below. Existing Releases are immutable,
 so redeploy a project once after upgrading to pick up the injected local sandbox.
+When an Eve project includes `agent/sandbox/workspace/**`, release preparation preserves those
+authored seeds and generates the platform backend as `agent/sandbox/sandbox.js`, so Eve still
+materializes the files under `/workspace` for each new Session. Authored sandbox `bootstrap()`
+and `onSession()` behavior is replaced because Eveland owns the deployment backend.
 
 Pick one mode: either everything in Compose, or only `postgres` in Compose and the rest natively. The Compose services run `pnpm install` inside Linux containers against the mounted workspace, which clobbers a macOS-built `node_modules`.
 

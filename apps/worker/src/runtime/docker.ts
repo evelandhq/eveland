@@ -257,7 +257,8 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
             : undefined,
           sandboxInjection?.replaced.length
             ? `WARNING: replaced the project's authored sandbox (${sandboxInjection.replaced.join(", ")}). ` +
-              "eveland selects the sandbox backend for Docker deployments."
+              "eveland selects the sandbox backend for Docker deployments; the authored module's " +
+              "bootstrap() and onSession() are not used, while workspace seeds are preserved."
             : undefined,
           sandboxInjection
             ? "Docker sandbox self-check passed: bwrap executed TypeScript with deployment-equivalent permissions."

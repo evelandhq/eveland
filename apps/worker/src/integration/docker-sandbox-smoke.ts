@@ -27,6 +27,7 @@ let started = false;
 
 async function runTypeScriptTurn(hostPort: number): Promise<void> {
   const command =
+    'test "$(cat eveland-seed.txt)" = "eveland-seed-preserved" && ' +
     "printf 'const message: string = \"http-typescript-ok\"; console.log(message)\\n' > hello.ts && " +
     "node hello.ts > http-turn-marker.txt";
   const quote = String.fromCharCode(96);
@@ -96,7 +97,11 @@ try {
   });
 
   assert.equal(result.releaseRef, imageTag);
-  assert.match(result.log, /Injected eve sandbox modules: agent\/sandbox\.js/);
+  assert.match(result.log, /Injected eve sandbox modules: agent\/sandbox\/sandbox\.js/);
+  assert.equal(
+    await readFile(path.join(root, "release", "agent", "sandbox", "workspace", "eveland-seed.txt"), "utf8"),
+    "eveland-seed-preserved\n",
+  );
   assert.match(result.log, /Docker sandbox self-check passed/);
   const hostPort = await allocateAvailableHostPort();
   await adapter.startProcess({

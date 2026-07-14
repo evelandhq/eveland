@@ -325,7 +325,8 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
             ...(injection.replaced.length
               ? [
                   `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +
-                    "eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.",
+                    "eveland selects the sandbox backend; the authored module's bootstrap() and onSession() " +
+                    "are not used, while workspace seeds are preserved.",
                 ]
               : []),
             "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",

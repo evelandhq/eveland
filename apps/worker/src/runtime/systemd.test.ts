@@ -385,7 +385,8 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     );
     expect(result.log).toContain("bootstrap()");
     expect(result.log).toContain("onSession()");
-    expect(result.log).toContain("workspace seeds are NOT used");
+    expect(result.log).toContain("workspace seeds are preserved");
+    expect(result.log).not.toContain("workspace seeds are NOT used");
   });
 });
 

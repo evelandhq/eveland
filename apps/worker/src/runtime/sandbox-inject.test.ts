@@ -87,16 +87,37 @@ describe("injectSandboxModules", () => {
     expect(existsSync(path.join(releaseDir, "agent", "sandbox.js"))).toBe(true);
   });
 
-  test("replaces an authored sandbox directory, including its workspace seeds", async () => {
+  test("preserves an authored workspace seed directory", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
-    await writeFile(path.join(releaseDir, "agent", "sandbox", "sandbox.ts"), "export default {};\n");
+    await writeFile(path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"), "seeded\n");
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
-    expect(result.replaced).toEqual(["agent/sandbox"]);
-    expect(existsSync(path.join(releaseDir, "agent", "sandbox"))).toBe(false);
-    expect(existsSync(path.join(releaseDir, "agent", "sandbox.js"))).toBe(true);
+    expect(result.replaced).toEqual([]);
+    expect(result.generated).toEqual(["agent/sandbox/sandbox.js"]);
+    await expect(
+      readFile(path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"), "utf8"),
+    ).resolves.toBe("seeded\n");
+    await expect(readFile(path.join(releaseDir, "agent", "sandbox", "sandbox.js"), "utf8")).resolves.toContain(
+      'from "../../.eveland/sandbox-bwrap/index.js"',
+    );
+  });
+
+  test("replaces an authored folder sandbox module without removing workspace seeds", async () => {
+    const { releaseDir, backendDistDir } = await makeRelease();
+    await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
+    await writeFile(path.join(releaseDir, "agent", "sandbox", "sandbox.ts"), "export default {};\n");
+    await writeFile(path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"), "seeded\n");
+
+    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+
+    expect(result.replaced).toEqual(["agent/sandbox/sandbox.ts"]);
+    expect(result.generated).toEqual(["agent/sandbox/sandbox.js"]);
+    expect(existsSync(path.join(releaseDir, "agent", "sandbox", "sandbox.ts"))).toBe(false);
+    await expect(
+      readFile(path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"), "utf8"),
+    ).resolves.toBe("seeded\n");
   });
 
   test("generates one module per subagent, each with a correct relative import", async () => {

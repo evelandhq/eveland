@@ -269,6 +269,32 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("default sandbox backend chain");
   });
 
+  test("reports replaced authored sandbox behavior while confirming workspace seeds are preserved", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      generated: ["agent/sandbox/sandbox.js"],
+      replaced: ["agent/sandbox/sandbox.ts"],
+    });
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ all: "" } as never)
+      .mockResolvedValueOnce({ all: "docker build ok" } as never)
+      .mockResolvedValueOnce({ exitCode: 0, all: "SANDBOX VERIFY OK" } as never);
+    const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    const result = await adapter.buildRelease({
+      projectId: "Proj_123",
+      releaseId: "Rel_456",
+      sourcePath: "/workspace/source",
+      buildDir,
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+    });
+
+    expect(result.log).toContain("bootstrap()");
+    expect(result.log).toContain("onSession()");
+    expect(result.log).toContain("workspace seeds are preserved");
+  });
+
   test("startProcess publishes the configured internal port and runs the eve start command", async () => {
     vi.mocked(execa).mockClear();
     const adapter = createDockerAdapter(dockerAdapterConfig);
