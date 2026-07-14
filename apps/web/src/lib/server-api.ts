@@ -22,7 +22,8 @@ const apiBaseUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "ht
 
 export const getProjects = () => apiGet<{ projects: Project[] }>("/projects").then((data) => data.projects);
 export const getProject = (projectId: string) => apiGet<{ project: Project | null }>(`/projects/${projectId}`).then((data) => data.project);
-export const getAgentEndpoints = (projectId: string) => apiGet<AgentEndpoints>(`/projects/${projectId}/endpoints`);
+export const getAgentEndpoints = (projectId: string) =>
+  apiGetOptional<AgentEndpoints>(`/projects/${projectId}/endpoints`).then((data) => data ?? { stable: null, previews: [] });
 export const getDeploymentOverview = (projectId: string) => apiGet<DeploymentOverview>(`/projects/${projectId}/deployments`);
 export const getVariantMetrics = (projectId: string) => apiGet<{ variants: VariantMetric[] }>(`/projects/${projectId}/variant-metrics`).then((data) => data.variants);
 export const getSecrets = (projectId: string) => apiGet<{ secrets: PublicSecret[] }>(`/projects/${projectId}/secrets`).then((data) => data.secrets);
@@ -39,6 +40,23 @@ export const getSourceFile = (projectId: string, filePath: string) => apiGet<{ f
 export const getCurrentMember = () => apiGet<{ member: Member }>("/auth/session").then((data) => data.member);
 export const getMembers = () => apiGet<{ members: Member[] }>("/members").then((data) => data.members);
 export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invitations").then((data) => data.invitations);
+
+// A deployed agent has no endpoints until its first release, so /endpoints 404s for an
+// imported-but-undeployed project. Treat that as "no endpoints" instead of an error.
+async function apiGetOptional<T>(path: string): Promise<T | null> {
+  const cookieStore = await cookies();
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    cache: "no-store",
+    headers: { cookie: cookieStore.toString() },
+  });
+  if (response.status === 401) redirect("/login");
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error ?? `API request failed with ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
 
 async function apiGet<T>(path: string): Promise<T> {
   const cookieStore = await cookies();
