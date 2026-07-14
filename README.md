@@ -38,6 +38,24 @@ The public docs process is independent of that control-plane path. Use
 `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
 `pnpm dev:docs` in separate terminals when isolated logs are more useful.
 
+## Public docs deployment
+
+`apps/docs` is deployed as the `eveland-docs` Cloudflare Worker at
+`https://eveland.ai` through the OpenNext adapter. Build or preview the Worker
+runtime locally with:
+
+```bash
+pnpm --filter @eveland/docs build:cloudflare
+pnpm --filter @eveland/docs preview:cloudflare
+```
+
+The `Deploy docs` GitHub Actions workflow deploys after a push to `main` only
+when the pushed changes include `apps/docs/**`. It requires the repository
+secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`; the token should be
+scoped to Workers edits for the account and zone that own `eveland.ai`.
+`apps/docs/wrangler.jsonc` owns the Worker name and custom-domain binding, so
+the Cloudflare account must have an active `eveland.ai` zone before deployment.
+
 Docker Compose runs the full stack (Postgres + API + Gateway + web + worker) in **development mode**.
 Only the worker receives the Docker controller socket; Gateway masks `.eveland-data` so the public
 proxy cannot read imported project sources, observer outboxes, or encrypted project secrets:
