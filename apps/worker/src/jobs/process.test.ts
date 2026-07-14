@@ -1019,6 +1019,80 @@ describe("processNextJob", () => {
     ]);
   });
 
+  test("restarts the deployment targeted by the job instead of the current project deployment", async () => {
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Targeted Restart Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const current = await store.recordDeployment({
+      releaseId: "rel_target_current",
+      deploymentId: "dep_target_current",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_target_current",
+      containerName: "eveland-target-current",
+      internalPort: 3000,
+      hostPort: 41052,
+      runtimeKind: "docker",
+    });
+    const preview = await store.recordDeployment({
+      releaseId: "rel_target_preview",
+      deploymentId: "dep_target_preview",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_target_preview",
+      containerName: "eveland-target-preview",
+      internalPort: 3000,
+      hostPort: 41053,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment", { deploymentId: preview.id });
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            runtimeCalls.push({ name: "stopProcess", input: { processName } });
+          },
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeCalls).toEqual([
+      { name: "stopProcess", input: { processName: preview.containerName } },
+      {
+        name: "startProcess",
+        input: expect.objectContaining({
+          processName: preview.containerName,
+          releaseRef: "eveland/proj:rel_target_preview",
+          port: preview.hostPort,
+          env: expect.objectContaining({ EVELAND_DEPLOYMENT_ID: preview.id }),
+        }),
+      },
+    ]);
+    expect(runtimeCalls).not.toContainEqual({ name: "stopProcess", input: { processName: current.containerName } });
+  });
+
   test("resolves the runtime adapter by the deployment's recorded runtimeKind when no runtime override is injected", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     let runtimeForKindCalledWith: "docker" | "systemd" | null = null;

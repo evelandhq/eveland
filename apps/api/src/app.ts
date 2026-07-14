@@ -108,6 +108,19 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
+  const enqueueLiveDeploymentRestarts = async (projectId: string) => {
+    const deployments = (await store.listDeployments(projectId)).filter(
+      (deployment) => deployment.status === "running" || deployment.status === "draining",
+    );
+    return Promise.all(
+      deployments.map((deployment) =>
+        store.enqueueJob(projectId, "restart_deployment", {
+          deploymentId: deployment.id,
+          reason: "secret_changed",
+        }),
+      ),
+    );
+  };
 
   app.use(
     "*",
@@ -563,13 +576,17 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       return c.json({ error: "Invalid secret input", issues: parsed.error.issues }, 400);
     }
     const encrypted = encryptSecretValue(parsed.data.value, appSecretKey);
-    const secret = await store.upsertSecret(c.req.param("projectId"), parsed.data.key, JSON.stringify(encrypted));
-    return c.json({ secret }, 201);
+    const projectId = c.req.param("projectId");
+    const secret = await store.upsertSecret(projectId, parsed.data.key, JSON.stringify(encrypted));
+    const jobs = await enqueueLiveDeploymentRestarts(projectId);
+    return c.json({ secret, jobs }, 201);
   });
 
   app.delete("/projects/:projectId/secrets/:secretId", async (c) => {
-    const deleted = await store.deleteSecret(c.req.param("projectId"), c.req.param("secretId"));
-    return c.json({ deleted });
+    const projectId = c.req.param("projectId");
+    const deleted = await store.deleteSecret(projectId, c.req.param("secretId"));
+    const jobs = deleted ? await enqueueLiveDeploymentRestarts(projectId) : [];
+    return c.json({ deleted, jobs });
   });
 
   app.get("/projects/:projectId/schedules", async (c) => {

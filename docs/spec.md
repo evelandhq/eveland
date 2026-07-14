@@ -281,6 +281,14 @@ sandbox
 * 查看变量名
 * 不显示变量值
 
+新增、修改或删除 Secret 后，API 为该 Project 的每个 `running` 或
+`draining` Deployment 排入带明确 Deployment ID 的重启任务。Project Secret
+是运行时配置，不能原地修改已启动进程的环境；重启继续使用原 Release，并在
+新进程启动时重新解密和注入完整 Secret 集合。刷新范围不能只依赖过渡字段
+`projects.currentDeploymentId`，因为 stable、preview 或 A/B target 可能同时运行。
+Secrets 页面必须明确提示是否已排入重启；没有 live Deployment 时，Secret 从
+下一次 deploy 开始生效。
+
 Secret 仅在运行时注入容器，不进入：
 
 * Git Repo
