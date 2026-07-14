@@ -239,6 +239,13 @@ healthy. When a Compose worker controls the host Docker daemon,
   the bilingual Fumadocs site in `apps/docs`. Test data transforms, auth, and
   navigation contracts; run the relevant production Next build for meaningful
   UI/configuration changes.
+- Base UI composition in `apps/web` must preserve semantic HTML and produce one
+  interactive element per control. Never render a `Link` through `Button`;
+  apply `buttonVariants` directly to the `Link` instead. When a Tooltip, menu,
+  dialog, or similar primitive uses an existing button as its trigger, merge it
+  with Base UI's `render` prop instead of nesting the button as trigger content.
+  Treat `apps/web/src/components/ui` as upstream shadcn source and do not modify
+  it for these fixes; correct call sites or higher-level wrappers instead.
 - Behavior, topology, environment, public URL, or operational-limit changes
   must update the relevant `docs/spec.md`, `README.md`, `docs/deploy/linux.md`,
   Compose/env examples, and current handoff notes in the same change.

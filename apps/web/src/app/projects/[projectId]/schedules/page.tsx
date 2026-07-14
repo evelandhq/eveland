@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getSchedules } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +43,12 @@ export default async function SchedulesPage({ params }: { params: Promise<{ proj
                 <td className="px-4 py-3 text-xs text-muted-foreground">{schedule.nextRunAt ?? "Not scheduled"}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{schedule.sourcePath}</td>
                 <td className="px-4 py-3 text-right">
-                  <Button variant="outline" render={<Link href={`/projects/${projectId}/sessions?trigger=cron&schedule=${schedule.id}`} />}>
+                  <Link
+                    href={`/projects/${projectId}/sessions?trigger=cron&schedule=${schedule.id}`}
+                    className={buttonVariants({ variant: "outline" })}
+                  >
                     View history
-                  </Button>
+                  </Link>
                 </td>
               </tr>
             ))

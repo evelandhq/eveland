@@ -2,7 +2,7 @@ import Link from "next/link"
 import { ChartNoAxesColumnIcon, PlayIcon } from "lucide-react"
 import { StatusBadge } from "@/components/status-badge"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -81,10 +81,13 @@ export default async function ProjectUsagePage({ params }: { params: Promise<{ p
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button render={<Link href={`/projects/${projectId}/playground`} />}>
+              <Link
+                href={`/projects/${projectId}/playground`}
+                className={buttonVariants()}
+              >
                 <PlayIcon data-icon="inline-start" />
                 Open Playground
-              </Button>
+              </Link>
             </EmptyContent>
           </Empty>
         </div>

@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { ChartNoAxesColumnIcon, FolderIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -75,10 +75,10 @@ export default async function UsagePage() {
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button variant="outline" render={<Link href="/projects" />}>
+              <Link href="/projects" className={buttonVariants({ variant: "outline" })}>
                 <FolderIcon data-icon="inline-start" />
                 View projects
-              </Button>
+              </Link>
             </EmptyContent>
           </Empty>
         </div>

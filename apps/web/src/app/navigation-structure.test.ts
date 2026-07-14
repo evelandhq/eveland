@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, globSync, readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "vitest"
 
@@ -65,6 +66,27 @@ describe("web application shell", () => {
 
     expect(newProject).not.toContain("<main")
     expect(newProject).toContain("buttonVariants({ variant: 'ghost' })")
+  })
+
+  test("keeps links semantic when they use button styling", () => {
+    const sourceRoot = fileURLToPath(new URL("../", import.meta.url))
+    const violations = globSync("**/*.tsx", { cwd: sourceRoot }).filter((path) =>
+      /<Button\b[^>]*render=\{<Link\b/s.test(readFileSync(resolve(sourceRoot, path), "utf8")),
+    )
+
+    expect(violations).toEqual([])
+  })
+
+  test("merges tooltip behavior into the existing AI Element buttons", () => {
+    for (const path of [
+      "../components/ai-elements/message.tsx",
+      "../components/ai-elements/prompt-input.tsx",
+    ]) {
+      const component = source(path)
+
+      expect(component).toContain("<TooltipTrigger render={button} />")
+      expect(component).not.toContain("<TooltipTrigger>{button}</TooltipTrigger>")
+    }
   })
 
   test("does not leave a blank grid cell in the project deployment summary", () => {

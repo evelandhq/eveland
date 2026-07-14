@@ -2,7 +2,7 @@ import Link from "next/link"
 import { FolderIcon, RocketIcon } from "lucide-react"
 import { StatusBadge } from "@/components/status-badge"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -60,10 +60,10 @@ export default async function DeploymentsPage() {
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button variant="outline" render={<Link href="/projects" />}>
+              <Link href="/projects" className={buttonVariants({ variant: "outline" })}>
                 <FolderIcon data-icon="inline-start" />
                 View projects
-              </Button>
+              </Link>
             </EmptyContent>
           </Empty>
         </div>

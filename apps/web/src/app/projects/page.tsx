@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { AlertTriangleIcon, ArrowUpRightIcon, FolderPlusIcon, PlusIcon } from 'lucide-react';
 import { StatusBadge } from '@/components/status-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardAction,
@@ -75,10 +75,10 @@ export default async function ProjectsPage() {
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
-                <Button render={<Link href="/projects/new" />}>
+                <Link href="/projects/new" className={buttonVariants()}>
                   <PlusIcon data-icon="inline-start" />
                   New project
-                </Button>
+                </Link>
               </EmptyContent>
             </Empty>
           </div>
