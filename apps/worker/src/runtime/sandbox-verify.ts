@@ -48,9 +48,13 @@ if (!cacheRoot) {
     const runtimeContext = { appRoot };
     await backend.prewarm({ templateKey: "eveland-verify", runtimeContext, seedFiles: [] });
     const handle = await backend.create({ templateKey: "eveland-verify", sessionKey: "eveland-verify", runtimeContext });
-    const result = await handle.session.run({ command: "echo eveland-sandbox-ok" });
+    await handle.session.writeTextFile({
+      path: "eveland-verify.ts",
+      content: 'const message: string = "eveland-typescript-ok";\\nconsole.log(message);\\n',
+    });
+    const result = await handle.session.run({ command: "node eveland-verify.ts" });
     await handle.shutdown();
-    if (result.exitCode !== 0 || !result.stdout.includes("eveland-sandbox-ok")) {
+    if (result.exitCode !== 0 || !result.stdout.includes("eveland-typescript-ok")) {
       fail(\`exit=\${result.exitCode} stdout=\${result.stdout} stderr=\${result.stderr}\`);
     } else {
       console.log("SANDBOX VERIFY OK");
@@ -110,6 +114,13 @@ export type VerifySandboxInput = {
   cacheDir: string;
 };
 
+export async function writeSandboxVerifyScript(releaseDir: string): Promise<string> {
+  const scriptPath = path.join(releaseDir, SANDBOX_VERIFY_SCRIPT_PATH);
+  await mkdir(path.dirname(scriptPath), { recursive: true });
+  await writeFile(scriptPath, buildSandboxVerifyScript(), "utf8");
+  return scriptPath;
+}
+
 /**
  * Writes the verify script into the release and runs it under systemd-run,
  * as the deployment user, with the same hardening the deployed service gets.
@@ -119,9 +130,7 @@ export type VerifySandboxInput = {
  * agent turn.
  */
 export async function verifySandbox(input: VerifySandboxInput): Promise<void> {
-  const scriptPath = path.join(input.releaseDir, SANDBOX_VERIFY_SCRIPT_PATH);
-  await mkdir(path.dirname(scriptPath), { recursive: true });
-  await writeFile(scriptPath, buildSandboxVerifyScript(), "utf8");
+  await writeSandboxVerifyScript(input.releaseDir);
 
   const result = await execa("systemd-run", buildSandboxVerifyArgs(input), { all: true, reject: false });
   const output = result.all ?? "";

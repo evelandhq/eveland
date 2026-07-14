@@ -26,6 +26,20 @@ systemctl status 'eveland-*'
 journalctl -u 'eveland-*' --since -15m
 ```
 
+## 本地 Docker 中 Sandbox 工具失败
+
+升级 Eveland 后请重新部署 Project；Release 是不可变的，已有 Image 不会自动获得
+新注入的 Sandbox。Build Log 应同时出现 `Injected eve sandbox modules` 与
+`Docker sandbox self-check passed`。该 Self-check 会在真实 bwrap workspace 中写入
+带类型标注的 `.ts` 文件，并使用 Node 24 执行它。
+
+不要只安装 `just-bash` 来修复：它提供虚拟 Shell，但不能运行 Node 或 TypeScript。
+如果 Docker Self-check 报告 `Operation not permitted`，确认本地 Docker Engine 接受
+Deployment 的 `SYS_ADMIN`/`NET_ADMIN` 与 `seccomp=unconfined` 设置。Worker 运行在
+Compose 中时，还要确认 `EVELAND_HOST_DATA_DIR` 是宿主机上 `.eveland-data` 的绝对
+路径，让 durable Sandbox cache 的 bind mount 能正确解析。Agent 容器不需要、也
+不应获得 Docker socket。
+
 ## 公开 Agent Host 返回 404 或 502
 
 逐项确认：

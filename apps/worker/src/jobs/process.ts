@@ -195,12 +195,9 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         });
       }
 
-      // Same root the systemd adapter derives in ../runtime/select.ts -- both call
-      // resolveSandboxCacheRoot so the two can never drift. resolveProjectSandboxCacheDir
-      // then appends the per-project suffix, since ProcessStartInput carries no
-      // projectId for the adapter to recompute it from.
-      const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
+      const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
       const observerOutbox = resolveObserverOutboxDirs(process.env, project.id, deploymentId);
+      await mkdir(sandboxCache.workerDir, { recursive: true });
       await mkdir(observerOutbox.workerDir, { recursive: true });
       // Only the process started by this job is its cleanup responsibility.
       let startedProcess: string | null = null;
@@ -211,7 +208,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           port: hostPort,
           env: { ...env, EVELAND_DEPLOYMENT_ID: deploymentId },
           commandContext,
-          sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+          sandboxCacheDir: runtime.name === "docker" ? sandboxCache.hostDir : sandboxCache.workerDir,
           observerOutboxDir: runtime.name === "docker" ? observerOutbox.hostDir : observerOutbox.workerDir,
         });
         startedProcess = processName;
@@ -314,9 +311,10 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
 
       await adapter.stopProcess(deployment.containerName);
-      // Same pairing build_deploy uses -- see the comment there.
-      const sandboxCacheRoot = resolveSandboxCacheRoot(process.env);
+      // Same worker/Docker-host path pairing build_deploy uses.
+      const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
       const observerOutbox = resolveObserverOutboxDirs(process.env, project.id, deployment.id);
+      await mkdir(sandboxCache.workerDir, { recursive: true });
       await mkdir(observerOutbox.workerDir, { recursive: true });
       // Tracks whether the restart's own startProcess (above stop notwithstanding)
       // actually came up, so a startProcess failure -- nothing running under this
@@ -329,7 +327,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           port: deployment.hostPort,
           env: { ...env, EVELAND_DEPLOYMENT_ID: deployment.id },
           commandContext,
-          sandboxCacheDir: resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id),
+          sandboxCacheDir: adapter.name === "docker" ? sandboxCache.hostDir : sandboxCache.workerDir,
           observerOutboxDir: adapter.name === "docker" ? observerOutbox.hostDir : observerOutbox.workerDir,
         });
         restarted = true;
@@ -582,6 +580,28 @@ export function resolveObserverOutboxDirs(
   return {
     workerDir: path.join(dataDir, suffix),
     hostDir: path.join(hostDataDir, suffix),
+  };
+}
+
+/**
+ * Maps the worker-visible durable sandbox cache to the path the host Docker
+ * daemon resolves for bind mounts. A custom cache inside EVELAND_DATA_DIR is
+ * mapped by relative suffix; a cache outside that root is assumed to already
+ * be host-visible (the native-worker case).
+ */
+export function resolveSandboxCacheDirs(
+  env: NodeJS.ProcessEnv,
+  projectId: string,
+): { workerDir: string; hostDir: string } {
+  const dataDir = path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data");
+  const hostDataDir = path.resolve(env.EVELAND_HOST_DATA_DIR ?? dataDir);
+  const workerRoot = resolveSandboxCacheRoot(env);
+  const relativeRoot = path.relative(dataDir, workerRoot);
+  const outsideDataDir = relativeRoot === ".." || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot);
+  const hostRoot = outsideDataDir ? workerRoot : path.resolve(hostDataDir, relativeRoot);
+  return {
+    workerDir: resolveProjectSandboxCacheDir(workerRoot, projectId),
+    hostDir: resolveProjectSandboxCacheDir(hostRoot, projectId),
   };
 }
 

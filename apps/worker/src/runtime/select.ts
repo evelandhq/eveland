@@ -31,7 +31,10 @@ export function resolveBackendDistDir(): string {
 
 export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: NodeJS.ProcessEnv = process.env): RuntimeAdapter {
   if (kind === "docker") {
-    return createDockerAdapter({ internalPort: Number(env.EVELAND_INTERNAL_PORT ?? 3000) });
+    return createDockerAdapter({
+      internalPort: Number(env.EVELAND_INTERNAL_PORT ?? 3000),
+      backendDistDir: resolveBackendDistDir,
+    });
   }
 
   return createSystemdAdapter({

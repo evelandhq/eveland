@@ -388,14 +388,21 @@ try {
   console.log(`Eve's deployed runtime invoked the injected bwrap backend for a live turn -- ${liveTurnDetail}`);
 
   // --- Redeploy ----------------------------------------------------------
+  // build_deploy creates a concurrent immutable preview and deliberately does
+  // not replace the current production Deployment. Track the IDs that already
+  // exist so the second Release is selected as the newly-created preview,
+  // rather than asking getCurrentDeployment() for the still-current first one.
+  const deploymentIdsBeforeRedeploy = new Set((await store.listDeployments(project.id)).map((item) => item.id));
   await store.enqueueJob(project.id, "build_deploy");
   if (!(await processNextJob(store, "e2e-worker", { appSecretKey: APP_SECRET_KEY }))) {
     throw new Error("build_deploy job did not run (redeploy).");
   }
 
   const deployedTwice = await store.getProject(project.id);
-  const deployment2 = await store.getCurrentDeployment(project.id);
-  if (deployedTwice?.deploymentStatus !== "running" || !deployment2) {
+  const newDeployments = (await store.listDeployments(project.id)).filter((item) => !deploymentIdsBeforeRedeploy.has(item.id));
+  assert.equal(newDeployments.length, 1, "redeploy must create exactly one concurrent preview Deployment");
+  const deployment2 = newDeployments[0];
+  if (deployedTwice?.deploymentStatus !== "running" || deployment2?.status !== "running") {
     const logs = await store.listLogs(project.id, "runtime");
     throw new Error(`Redeploy failed: ${JSON.stringify({ deployedTwice, logs })}`);
   }

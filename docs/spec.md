@@ -336,6 +336,16 @@ Build/deploy 默认创建并发运行的 preview，不停止 production Deployme
 * Session 来源归因
 * 容器重启
 
+Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
+必须连接到可执行的隔离 Sandbox，而不能在生产式 `eve start` 下静默退化为缺少
+optional peer 的 `just-bash`。平台在 Docker 与 systemd 的 Release 副本中注入
+`@eveland/sandbox-bwrap`，并将每个 Project 的 durable Session workspace 保存在
+Release 目录之外；redeploy 或 restart 不得丢失同一 Eve Session 的 `/workspace`。
+Release 构建完成后必须用实际运行权限写入并执行一个 Node 24 TypeScript probe；
+仅 `/eve/v1/health` 成功不能证明 Sandbox 可用。Docker 本地开发容器不得获得
+Docker socket；为 nested bwrap 增加的 capability/seccomp 配置只属于本地 Docker
+runtime，Linux production 继续使用 unprivileged systemd+bwrap 边界。
+
 代码依赖边界固定为：
 
 ```text

@@ -50,10 +50,21 @@ The service images are `node:24-alpine` with `git` / `docker-cli` / `unzip` inst
 startup — the app shells out to them for git import, agent deploy, and zip-upload extraction.
 When the worker runs in Compose, `EVELAND_HOST_DATA_DIR` must be the host-absolute path
 to the workspace's `.eveland-data`; this lets deployment containers bind the same observer
-outbox that the API's embedded collector reads.
+outbox that the API's embedded collector reads and the same durable per-project sandbox
+cache that survives a Deployment restart or redeploy.
 Public development endpoints use `http://<routingKey>.agent.localhost:4080`; immutable previews use
 `http://<deploymentKey>--<routingKey>.agent.localhost:4080`. Gateway validates the complete Host,
 while deployment ports remain bound only to `127.0.0.1` and are not product URLs.
+
+Local Docker Deployments receive the same injected `@eveland/sandbox-bwrap` backend as
+systemd Deployments. Their generated image includes Bash and bubblewrap, creates the
+required `/workspace` mountpoint, and runs a build-time self-check that writes and executes
+a TypeScript file with Node 24 before the Release can succeed. The Agent container drops
+Docker's default capabilities, adds only `SYS_ADMIN` and `NET_ADMIN` for nested bwrap, and
+uses `no-new-privileges`; it never receives the Docker socket. These relaxed outer-container
+seccomp settings are for the local-development Docker runtime. Production continues to use
+the unprivileged systemd+bwrap topology documented below. Existing Releases are immutable,
+so redeploy a project once after upgrading to pick up the injected local sandbox.
 
 Pick one mode: either everything in Compose, or only `postgres` in Compose and the rest natively. The Compose services run `pnpm install` inside Linux containers against the mounted workspace, which clobbers a macOS-built `node_modules`.
 
@@ -130,6 +141,9 @@ so the HttpOnly control-plane Session cookie reaches both services. Leave it uns
 pnpm test
 pnpm typecheck
 pnpm build
+# Requires a running local Docker engine; builds a fixture, starts the Agent,
+# and proves a real HTTP turn can execute TypeScript through the bash tool.
+pnpm --filter @eveland/worker smoke:docker-sandbox
 ```
 
 ## License
@@ -150,6 +164,7 @@ licensed under the MIT License.
 - Build/deploy creates a concurrent immutable preview and never stops or reuses the current production process. Promote, rollback, and one/two-target traffic policies are atomic route updates followed by Gateway cache invalidation; existing Eve sessions remain pinned by `SessionBinding` even after their target leaves production traffic.
 - Route weights use 10,000 basis points, must total 10,000, and support at most two targets. Each multi-target policy revision becomes an experiment ID persisted with the deployment and variant binding, so the deployment page compares success/failure, latency, tokens, and cost without mixing revisions. Named aliases share the wildcard domain. Retention keeps at least the newest three release artifacts and refuses to archive mutable route targets or deployments with active session bindings.
 - Eve 0.22.6 gives directory-form subagents an independent hook slot, so they are fully observed. File-form subagents have no hook slot and their parent stream exposes only control events; they are a documented coverage gap until Eve exposes a public observation surface. Remote calls retain the reported URL as an unresolved relationship and are never followed by the collector.
+- Docker and systemd Eve Releases both receive the injected bwrap backend. The release self-check exercises file writes plus Node 24 TypeScript execution rather than trusting `/eve/v1/health`, which does not initialize Eve's sandbox.
 - Markdown eve schedules are executable in the MVP plan; TypeScript schedules are discovery-only until the native eve schedule runtime is integrated.
 - Deployed agents get `WORKFLOW_POSTGRES_URL` injected so an `@workflow/world-postgres` agent has a durable workflow store. Set it on the worker (compose sets it for you; for native dev export `WORKFLOW_POSTGRES_URL=postgres://eveland:eveland@host.docker.internal:5432/eveland`). It must use a container-reachable host — not `localhost` — because agent containers reach the host DB via `host.docker.internal`. A project secret of the same name overrides it.
 - `NODE_ENV` gates deploys: with `NODE_ENV=production` on the worker, deploying an agent without a durable workflow world fails; unset (development) only warns. A production eveland sets `NODE_ENV=production` on the worker, which is also injected into deployed agent containers.

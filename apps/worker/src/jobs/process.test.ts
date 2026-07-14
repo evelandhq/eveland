@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryStore, type Store } from "@eveland/db";
-import { allocateAvailableHostPort, invalidateGatewayRouteCache, processNextJob, resolveObserverOutboxDirs } from "./process.js";
+import {
+  allocateAvailableHostPort,
+  invalidateGatewayRouteCache,
+  processNextJob,
+  resolveObserverOutboxDirs,
+  resolveSandboxCacheDirs,
+} from "./process.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -40,6 +46,18 @@ describe("processNextJob", () => {
     ).toEqual({
       workerDir: "/workspace/.eveland-data/observer/proj_123/dep_456",
       hostDir: "/host/eveland/.eveland-data/observer/proj_123/dep_456",
+    });
+  });
+
+  test("maps the durable sandbox cache to worker-visible and Docker-host paths", () => {
+    expect(
+      resolveSandboxCacheDirs(
+        { EVELAND_DATA_DIR: "/workspace/.eveland-data", EVELAND_HOST_DATA_DIR: "/host/eveland/.eveland-data" },
+        "proj_123",
+      ),
+    ).toEqual({
+      workerDir: "/workspace/.eveland-data/sandbox/proj_123",
+      hostDir: "/host/eveland/.eveland-data/sandbox/proj_123",
     });
   });
 

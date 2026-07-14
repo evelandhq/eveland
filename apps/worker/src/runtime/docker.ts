@@ -3,6 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { prepareReleaseTree } from "./prepare-release.js";
+import { injectSandboxModules } from "./sandbox-inject.js";
+import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 
 export type DockerBuildInput = {
@@ -16,10 +18,25 @@ export type DockerRunInput = {
   imageTag: string;
   internalPort: number;
   hostPort: number;
+  sandboxEnabled: boolean;
+  sandboxCacheDir: string;
   observerOutboxDir: string;
   env: Record<string, string>;
   command: string;
 };
+
+const DOCKER_BWRAP_SECURITY_ARGS = [
+  "--cap-drop",
+  "ALL",
+  "--cap-add",
+  "SYS_ADMIN",
+  "--cap-add",
+  "NET_ADMIN",
+  "--security-opt",
+  "no-new-privileges",
+  "--security-opt",
+  "seccomp=unconfined",
+] as const;
 
 export function buildDockerRunArgs(input: DockerRunInput): string[] {
   const args = [
@@ -29,6 +46,19 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     input.containerName,
     "--restart",
     "unless-stopped",
+  ];
+
+  if (input.sandboxEnabled) {
+    args.push(
+      // bubblewrap needs to create mount/network namespaces inside the
+      // deployment container. Drop Docker's default capability set first and
+      // grant only the two capabilities bwrap needs; the Agent never receives
+      // the Docker socket.
+      ...DOCKER_BWRAP_SECURITY_ARGS,
+    );
+  }
+
+  args.push(
     // Let the container reach host services (e.g. a locally running Ollama) via host.docker.internal.
     "--add-host",
     "host.docker.internal:host-gateway",
@@ -36,9 +66,23 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     `127.0.0.1:${input.hostPort}:${input.internalPort}`,
     "--volume",
     `${input.observerOutboxDir}:/var/lib/eveland-observer`,
-    "--env",
-    "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer",
-  ];
+  );
+
+  if (input.sandboxEnabled) {
+    args.push(
+      "--volume",
+      `${input.sandboxCacheDir}:/var/lib/eveland-sandbox`,
+    );
+  }
+
+  args.push("--env", "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer");
+
+  if (input.sandboxEnabled) {
+    args.push(
+      "--env",
+      "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
+    );
+  }
 
   for (const [key, value] of Object.entries(input.env).sort(([a], [b]) => a.localeCompare(b))) {
     args.push("--env", `${key}=${value}`);
@@ -52,6 +96,41 @@ export function buildDockerBuildArgs(input: DockerBuildInput): string[] {
   return ["build", "--file", input.dockerfilePath, "--tag", input.imageTag, input.contextDir];
 }
 
+export function buildDockerSandboxVerifyArgs(imageTag: string): string[] {
+  return [
+    "run",
+    "--rm",
+    ...DOCKER_BWRAP_SECURITY_ARGS,
+    "--network",
+    "none",
+    "--tmpfs",
+    "/tmp",
+    "--env",
+    "EVELAND_SANDBOX_CACHE_DIR=/tmp",
+    imageTag,
+    "node",
+    path.posix.join("/app", SANDBOX_VERIFY_SCRIPT_PATH),
+  ];
+}
+
+export async function verifyDockerSandbox(imageTag: string): Promise<void> {
+  const result = await execa("docker", buildDockerSandboxVerifyArgs(imageTag), {
+    all: true,
+    reject: false,
+  });
+  const output = result.all ?? "";
+  if (result.exitCode !== 0 || !output.includes("SANDBOX VERIFY OK")) {
+    throw new Error(
+      "Docker sandbox self-check failed: the built Agent image could not execute the injected bwrap " +
+        "TypeScript probe under the local deployment permissions. Ensure the Docker engine supports " +
+        "SYS_ADMIN/NET_ADMIN capabilities and seccomp=unconfined. Captured output (exit=" +
+        (result.exitCode ?? "unknown") +
+        "):\n" +
+        output,
+    );
+  }
+}
+
 export async function writeGeneratedDockerfile(buildDir: string): Promise<string> {
   await mkdir(buildDir, { recursive: true });
   const dockerfilePath = path.join(buildDir, "Dockerfile");
@@ -59,8 +138,12 @@ export async function writeGeneratedDockerfile(buildDir: string): Promise<string
     dockerfilePath,
     `FROM node:24-alpine
 WORKDIR /app
-# socat bridges the container's local model port (e.g. Ollama 11434) to the host.
-RUN apk add --no-cache socat
+# bash + bubblewrap provide the injected Eve exec sandbox. socat bridges the
+# container's local model port (e.g. Ollama 11434) to the host.
+RUN apk add --no-cache bash bubblewrap socat
+# bwrap bind-mounts each durable session workspace here. The mountpoint must
+# exist before the container root is remounted read-only inside the sandbox.
+RUN mkdir -p /workspace
 COPY package*.json ./
 # Install all dependencies: eve projects need their build toolchain to compile.
 RUN if [ -f package-lock.json ]; then npm ci; elif [ -f package.json ]; then npm install; fi
@@ -139,6 +222,8 @@ export function buildDockerStartCommand(context: RuntimeCommandContext, internal
 
 export type DockerAdapterConfig = {
   internalPort: number;
+  /** Resolves the built bwrap backend only when an Eve release is built. */
+  backendDistDir: () => string;
 };
 
 export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter {
@@ -146,12 +231,40 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const imageTag = `eveland/${processSafeName(input.projectId)}:${processSafeName(input.releaseId)}`;
-      const injection = await prepareReleaseTree({ sourcePath: input.sourcePath, buildDir: input.buildDir });
+      const observerInjection = await prepareReleaseTree({ sourcePath: input.sourcePath, buildDir: input.buildDir });
+      const sandboxInjection = input.commandContext.isEveProject
+        ? await injectSandboxModules({ releaseDir: path.resolve(input.buildDir), backendDistDir: config.backendDistDir() })
+        : undefined;
+      if (sandboxInjection) {
+        await writeSandboxVerifyScript(path.resolve(input.buildDir));
+      }
       const dockerfilePath = await writeGeneratedDockerfile(input.buildDir);
       const log = await dockerBuild(input.buildDir, imageTag, dockerfilePath);
+      if (sandboxInjection) {
+        await verifyDockerSandbox(imageTag);
+      }
       return {
         releaseRef: imageTag,
-        log: `${log}${log && !log.endsWith("\n") ? "\n" : ""}Injected Eveland observer hooks: ${injection.injectedFiles.join(", ") || "none"}`,
+        log: [
+          log,
+          `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
+          sandboxInjection
+            ? `Injected eve sandbox modules: ${sandboxInjection.generated.join(", ") || "none"}`
+            : undefined,
+          sandboxInjection?.generated.length === 0
+            ? "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
+              "be injected. The deployed agent will fall back to eve's default sandbox backend chain."
+            : undefined,
+          sandboxInjection?.replaced.length
+            ? `WARNING: replaced the project's authored sandbox (${sandboxInjection.replaced.join(", ")}). ` +
+              "eveland selects the sandbox backend for Docker deployments."
+            : undefined,
+          sandboxInjection
+            ? "Docker sandbox self-check passed: bwrap executed TypeScript with deployment-equivalent permissions."
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n"),
       };
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
@@ -160,6 +273,8 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         imageTag: input.releaseRef,
         internalPort: config.internalPort,
         hostPort: input.port,
+        sandboxEnabled: input.commandContext.isEveProject,
+        sandboxCacheDir: input.sandboxCacheDir,
         observerOutboxDir: input.observerOutboxDir,
         env: input.env,
         command: buildDockerStartCommand(input.commandContext, config.internalPort),
