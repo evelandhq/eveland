@@ -419,6 +419,124 @@ describe("api app", () => {
     await expect(store.listSessions(project.id)).resolves.toEqual([expect.objectContaining({ trigger: "playground", status: "waiting" })]);
   });
 
+  test("keeps one platform Session across streamed Playground turns and HITL continuation", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Streaming Playground Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/playground:streaming",
+      containerName: "eveland-playground-streaming",
+      internalPort: 3000,
+      hostPort: 41003,
+      runtimeKind: "docker",
+    });
+    const proxyCalls: Array<{ method: string; path: string; body: string }> = [];
+    const app = createApp(store, {
+      async playgroundProxy(input) {
+        const body = input.body ? new TextDecoder().decode(input.body) : "";
+        proxyCalls.push({ method: input.method, path: input.path, body });
+        if (input.method === "POST" && input.path === "/eve/v1/session") {
+          return new Response(JSON.stringify({ sessionId: "eve_chat", continuationToken: "continue_1" }), {
+            status: 202,
+            headers: { "content-type": "application/json", "x-eve-session-id": "eve_chat" },
+          });
+        }
+        if (input.method === "GET" && input.path === "/eve/v1/session/eve_chat/stream") {
+          return new Response(
+            [
+              { type: "reasoning.appended", data: { reasoningDelta: "Checking", reasoningSoFar: "Checking" } },
+              {
+                type: "input.requested",
+                data: {
+                  requests: [
+                    {
+                      requestId: "request_1",
+                      prompt: "Run the tool?",
+                      action: { kind: "tool-call", callId: "call_1", toolName: "deploy", input: { target: "preview" } },
+                      options: [
+                        { id: "approve", label: "Approve" },
+                        { id: "reject", label: "Reject", style: "danger" },
+                      ],
+                    },
+                  ],
+                  sequence: 1,
+                  stepIndex: 0,
+                  turnId: "turn_1",
+                },
+              },
+              { type: "session.waiting", data: { wait: "next-user-message" } },
+            ].map((event) => JSON.stringify(event)).join("\n") + "\n",
+            { status: 200, headers: { "content-type": "application/x-ndjson" } },
+          );
+        }
+        if (input.method === "POST" && input.path === "/eve/v1/session/eve_chat") {
+          return new Response(JSON.stringify({ sessionId: "eve_chat", continuationToken: "continue_2" }), {
+            status: 202,
+            headers: { "content-type": "application/json", "x-eve-session-id": "eve_chat" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const attachmentData = "data:text/plain;base64,aGk=";
+    const initialBody = JSON.stringify({
+      message: [
+        { type: "text", text: "Read this" },
+        { type: "file", data: attachmentData, filename: "note.txt", mediaType: "text/plain" },
+      ],
+    });
+
+    const initial = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: initialBody,
+    });
+    const stream = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_chat/stream`, {
+      headers: { accept: "application/x-ndjson" },
+    });
+
+    expect(initial.status).toBe(202);
+    await expect(initial.json()).resolves.toMatchObject({ sessionId: "eve_chat", continuationToken: "continue_1" });
+    expect(stream.status).toBe(200);
+    await expect(stream.text()).resolves.toContain("input.requested");
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({ eveSessionId: "eve_chat", status: "waiting_approval", continuationToken: "continue_1", completedAt: null }),
+    ]);
+    const [platformSession] = await store.listSessions(project.id);
+    expect(JSON.stringify(await store.listSessionEvents(platformSession!.id))).not.toContain(attachmentData);
+
+    const continuationBody = JSON.stringify({
+      continuationToken: "continue_1",
+      inputResponses: [{ requestId: "request_1", optionId: "approve" }],
+    });
+    const continuation = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: continuationBody,
+    });
+
+    expect(continuation.status).toBe(202);
+    await expect(continuation.json()).resolves.toMatchObject({ continuationToken: "continue_2" });
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({ eveSessionId: "eve_chat", status: "running", continuationToken: "continue_2" }),
+    ]);
+    expect(proxyCalls).toEqual([
+      { method: "POST", path: "/eve/v1/session", body: initialBody },
+      { method: "GET", path: "/eve/v1/session/eve_chat/stream", body: "" },
+      { method: "POST", path: "/eve/v1/session/eve_chat", body: continuationBody },
+    ]);
+  });
+
   test("leaves token usage projection to the observer collector", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Token Agent", importKind: "zip" });

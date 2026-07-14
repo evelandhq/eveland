@@ -152,7 +152,9 @@ Members 位于全局导航，与 Projects、Deployments、Usage 同级。
 
 用于直接测试当前 Deployment。
 
-用户输入消息后，API 通过仅内部可达、带 service credential 的 Gateway Playground path 请求 Eve，并展示流式结果。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
+用户输入消息后，Web 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
+
+每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Observer/Collector 的权威观测路径。
 
 平台记录该 Session 的来源：
 
@@ -163,10 +165,14 @@ trigger = playground
 Playground 中可查看当前 Session 的：
 
 * 对话内容
+* 实时 reasoning / thinking；原始 reasoning 不由 Playground 持久化
 * tool 调用
 * tool 返回结果
 * 错误
-* 等待人工确认状态
+* HITL：确认/拒绝、选项、自由文本和外部授权提示
+* 当前 turn 的图片、PDF、文本和代码附件
+
+Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。
 
 ---
 

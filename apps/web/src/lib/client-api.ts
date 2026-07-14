@@ -1,4 +1,5 @@
-import type { Job, PlaygroundResult } from "./api";
+import type { FileUIPart, UserContent } from "ai";
+import type { Job } from "./api";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -75,12 +76,21 @@ export async function removeMember(userId: string): Promise<void> {
   await clientRequest(`/members/${userId}`, { method: "DELETE" });
 }
 
-export async function runPlaygroundMessage(projectId: string, message: string): Promise<PlaygroundResult> {
-  return clientRequest(`/projects/${projectId}/playground`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message }),
-  });
+export function createPlaygroundMessage(text: string, files: readonly FileUIPart[]): string | UserContent {
+  const trimmed = text.trim();
+  if (files.length === 0) {
+    return trimmed;
+  }
+
+  return [
+    ...(trimmed.length > 0 ? [{ type: "text" as const, text: trimmed }] : []),
+    ...files.map((file) => ({
+      type: "file" as const,
+      data: file.url,
+      filename: file.filename,
+      mediaType: file.mediaType,
+    })),
+  ];
 }
 
 export async function enqueueBuildDeploy(projectId: string): Promise<Job> {

@@ -2,6 +2,7 @@ import http from "node:http";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Readable } from "node:stream";
 import type { DeploymentRecord, ResolvedAgentRoute, SessionBinding as GatewaySessionBinding } from "@eveland/core/contracts";
+import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
 import { selectWeightedTarget } from "@eveland/core/routing";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono } from "hono";
@@ -50,6 +51,80 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   const maxRequestBodyBytes = options.maxRequestBodyBytes ?? 10_485_760;
 
   app.get("/health", (context) => context.json({ ok: true, service: "eveland-gateway" }));
+  app.all("/internal/projects/:projectId/playground/eve/*", async (context) => {
+    if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
+      return context.json({ error: "Not found" }, 404);
+    }
+
+    const requestUrl = new URL(context.req.url);
+    const playgroundPrefix = `/internal/projects/${encodeURIComponent(context.req.param("projectId"))}/playground`;
+    const evePath = requestUrl.pathname.slice(playgroundPrefix.length);
+    const pathSessionId = sessionIdFromPath(evePath);
+    const isInitial = context.req.method === "POST" && evePath === "/eve/v1/session";
+    const isContinuation = context.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
+    const isStream = context.req.method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(evePath);
+    if (!isInitial && !isContinuation && !isStream) return context.json({ error: "Not found" }, 404);
+
+    const route = await repository.findProjectRoute(context.req.param("projectId"));
+    if (!route?.enabled) return context.json({ error: "Project route not found" }, 404);
+    const binding = pathSessionId ? await repository.findSessionBinding(route.projectId, pathSessionId) : null;
+    if (pathSessionId && !binding) return context.json({ error: "Playground session not found" }, 404);
+    const target = await resolveTarget(repository, route, binding, crypto.randomUUID());
+    if (!target) return context.json({ error: "No running deployment target" }, 503);
+
+    let upstream: Response;
+    try {
+      const contentLength = Number(context.req.header("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > PLAYGROUND_MAX_TRANSPORT_BYTES) throw new RequestBodyTooLargeError();
+      const body = requestHasBody(context.req.method)
+        ? await readLimitedBody(context.req.raw.body, PLAYGROUND_MAX_TRANSPORT_BYTES, context.req.raw.signal)
+        : null;
+      const authority = `localhost:${target.hostPort}`;
+      upstream = await proxyToDeployment({
+        port: target.hostPort,
+        path: `${evePath}${requestUrl.search}`,
+        method: context.req.method,
+        headers: buildInternalPlaygroundHeaders(context.req.raw.headers, authority),
+        body,
+        signal: context.req.raw.signal,
+        timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
+      });
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) return context.json({ error: "Request body too large" }, 413);
+      if (error instanceof DownstreamAbortedError) {
+        return new Response(JSON.stringify({ error: "Client closed request" }), {
+          status: 499,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw error;
+    }
+
+    if (isInitial && upstream.ok) {
+      const eveSessionId = upstream.headers.get("x-eve-session-id") ?? (await sessionIdFromJson(upstream.clone()));
+      if (eveSessionId) {
+        await repository.bindSession({
+          projectId: route.projectId,
+          eveSessionId,
+          routeId: route.id,
+          deploymentId: target.deploymentId,
+          trigger: "playground",
+          variantName: target.variantName,
+          experimentId: routeExperimentId(route),
+          requestId: crypto.randomUUID(),
+          remoteIp: null,
+          affinityFingerprint: null,
+          affinitySource: null,
+        });
+      }
+    }
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: upstream.headers,
+    });
+  });
   app.post("/internal/projects/:projectId/playground", async (context) => {
     if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
       return context.json({ error: "Not found" }, 404);
@@ -542,6 +617,15 @@ function buildUpstreamHeaders(
   headers.set("x-forwarded-host", authority);
   headers.set("x-forwarded-proto", proto);
   headers.set("x-eveland-request-id", requestId);
+  return headers;
+}
+
+function buildInternalPlaygroundHeaders(input: Headers, authority: string): Headers {
+  const headers = new Headers({ host: authority });
+  const accept = input.get("accept");
+  const contentType = input.get("content-type");
+  if (accept) headers.set("accept", accept);
+  if (contentType) headers.set("content-type", contentType);
   return headers;
 }
 

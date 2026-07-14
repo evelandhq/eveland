@@ -79,4 +79,34 @@ describe("web application shell", () => {
     expect(useMobile).toContain('mql.addEventListener("change", onChange)')
     expect(useMobile).toContain('mql.removeEventListener("change", onChange)')
   })
+
+  test("renders Playground as a fresh AI Elements conversation instead of a debug timeline", () => {
+    const playground = source("../components/playground-panel.tsx")
+    const nextConfig = source("../../next.config.ts")
+
+    for (const path of [
+      "../components/ai-elements/attachments.tsx",
+      "../components/ai-elements/confirmation.tsx",
+      "../components/ai-elements/conversation.tsx",
+      "../components/ai-elements/message.tsx",
+      "../components/ai-elements/prompt-input.tsx",
+      "../components/ai-elements/reasoning.tsx",
+      "../components/ai-elements/tool.tsx",
+    ]) {
+      expect(existsSync(fileURLToPath(new URL(path, import.meta.url)))).toBe(true)
+    }
+    expect(playground).toContain("useEveAgent")
+    expect(playground).toContain("preserveCompletedSessions: true")
+    expect(playground).toContain("<Conversation")
+    expect(playground).toContain("<MessageResponse")
+    expect(playground).toContain("<Reasoning")
+    expect(playground).toContain("<Tool")
+    expect(playground).toContain("<Confirmation")
+    expect(playground).toContain("<PromptInput")
+    expect(playground).toContain("PromptInputActionAddAttachments")
+    expect(playground).not.toContain("TimelineEvent")
+    expect(playground).not.toContain("Current session")
+    expect(playground).not.toContain("<pre")
+    expect(nextConfig).toContain('source: "/api/eveland/:path*"')
+  })
 })
