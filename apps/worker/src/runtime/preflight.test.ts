@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { assertWorkerPreflight, collectSystemdPreflightIssues, type PreflightDeps } from "./preflight.js";
+import { SANDBOX_TOOLCHAIN_COMMANDS } from "./sandbox-toolchain.js";
 
 /**
  * Every dep passing by default so each test only needs to override the one
@@ -152,6 +153,18 @@ describe("collectSystemdPreflightIssues", () => {
     expect(issues.some((issue) => issue.includes("node"))).toBe(true);
     expect(issues.some((issue) => issue.includes("git"))).toBe(true);
     expect(issues.some((issue) => issue.includes("systemctl"))).toBe(false);
+  });
+
+  test("reports every missing platform-owned sandbox command in one preflight run", async () => {
+    const deps = makePassingDeps();
+    const missing = new Set<string>(SANDBOX_TOOLCHAIN_COMMANDS);
+    deps.commandExists = vi.fn(async (name: string) => !missing.has(name));
+
+    const issues = await collectSystemdPreflightIssues(deps);
+
+    for (const command of SANDBOX_TOOLCHAIN_COMMANDS) {
+      expect(issues.some((issue) => issue.includes(`"${command}"`)), command).toBe(true);
+    }
   });
 
   test("requires git unconditionally -- the worker shells out to git clone for source imports", async () => {

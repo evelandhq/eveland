@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { buildSandboxVerifyArgs, buildSandboxVerifyScript, SANDBOX_VERIFY_SCRIPT_PATH, verifySandbox } from "./sandbox-verify.js";
+import { SANDBOX_TOOLCHAIN_COMMANDS } from "./sandbox-toolchain.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +23,17 @@ describe("buildSandboxVerifyScript", () => {
     expect(script).toContain("handle.session.run(");
     expect(script).toContain("handle.shutdown()");
     expect(script).toContain("SANDBOX VERIFY OK");
+  });
+
+  test("checks every command in the platform toolchain and Eve's real grep paths", () => {
+    const script = buildSandboxVerifyScript();
+    for (const command of SANDBOX_TOOLCHAIN_COMMANDS) {
+      expect(script, command).toContain(command);
+    }
+    expect(script).toContain('command -v "$command"');
+    expect(script).toContain("rg -n --color=never -i -m 1 -- 'eveland-typescript-ok' .");
+    expect(script).toContain("grep -r -n --color=never --exclude-dir=.git -i -E -m 1 -- 'eveland-typescript-ok' .");
+    expect(script).toContain("missing sandbox commands:");
   });
 
   test("never calls process.exit -- stdout/stderr are pipes here (execa + systemd-run --pipe), so exit() can truncate a large diagnostic", () => {
@@ -142,10 +154,10 @@ describe("verifySandbox", () => {
     expect(vi.mocked(execa).mock.calls[0]![0]).toBe("systemd-run");
   });
 
-  test("throws an actionable error naming both host prerequisites when the check fails", async () => {
+  test("throws an actionable error naming the sandbox and toolchain host prerequisites when the check fails", async () => {
     vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, all: "bwrap: setting up uid map: Permission denied" } as never);
     const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-verify-"));
-    await expect(verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" })).rejects.toThrow(/apparmor.*|\/workspace/is);
+    await expect(verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" })).rejects.toThrow(/sandbox toolchain/is);
   });
 
   test("throws when the marker is missing even on exit 0", async () => {

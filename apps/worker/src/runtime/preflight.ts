@@ -2,6 +2,7 @@ import { execa } from "execa";
 import { assertValidSecretKey } from "@eveland/core/server/secrets";
 import { access, mkdir as fsMkdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { SANDBOX_TOOLCHAIN_COMMANDS } from "./sandbox-toolchain.js";
 import { resolveBackendDistDir, resolveRuntimeKind } from "./select.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
@@ -116,12 +117,20 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
     issues.push(`EVELAND_DATA_DIR ("${dataDir}") must be an absolute path (e.g. "/var/lib/eveland") shared by the API container and this worker.`);
   }
 
-  // 5. Required binaries. `git` is required unconditionally -- the worker
-  // shells out to `git clone` for import_source jobs (source/importer.ts).
-  // `runuser` is also unconditional: the build itself now runs under it
-  // (systemd.ts's buildRelease), not just check 9's traversal probe below --
-  // that holds even when EVELAND_BUILD_SANDBOX=none, unlike `bwrap`.
-  const requiredBinaries = ["systemd-run", "systemctl", "node", "git", "runuser", ...(deps.env.EVELAND_BUILD_SANDBOX === "none" ? [] : ["bwrap"])];
+  // 5. Required binaries. The sandbox toolchain is platform-owned on systemd:
+  // bwrap mounts the host root read-only, so a project cannot repair a missing
+  // command after deployment. `git` also serves the worker's import_source
+  // jobs. `runuser` is unconditional because builds execute under it even when
+  // EVELAND_BUILD_SANDBOX=none; only the bwrap build wrapper is optional.
+  const requiredBinaries = [
+    ...new Set([
+      "systemd-run",
+      "systemctl",
+      "runuser",
+      ...SANDBOX_TOOLCHAIN_COMMANDS,
+      ...(deps.env.EVELAND_BUILD_SANDBOX === "none" ? [] : ["bwrap"]),
+    ]),
+  ];
   for (const bin of requiredBinaries) {
     if (!(await deps.commandExists(bin))) {
       issues.push(`Required binary "${bin}" was not found on PATH. Install it before starting the worker.`);

@@ -1114,3 +1114,24 @@ core/db 边界落地
   外部源码目录必须保留；外部资源清理失败保留 Project 记录以支持幂等重试。
 
 本节是完成 Phase 后的增量产品行为；前文已完成的 Phase checklist 仍只作为历史。
+
+---
+
+## 17. 2026-07-14 follow-up：Eve sandbox command baseline
+
+对 Eve 0.23.0 的 framework tool 实现与两种实际 runtime 做完逐项核对后，确认
+Docker image 缺少 `rg` 时，Eve 会回退到带 `--exclude-dir=.git` 的 GNU-style
+`grep` 命令；Alpine BusyBox `grep` 不支持该选项，因此 `grep` tool 会在读取文件前
+直接失败。修复收敛为平台契约，而不是只补一个二进制：
+
+- Docker 与 systemd Sandbox 都提供 `bash`、Node 24/`npm`、`pnpm`、`rg`、GNU
+  `grep`/`find`、`git`、`curl`、`jq`、Python 3/`pip`、`unzip`、`zstd`；
+- Docker generated image 安装真实 Alpine packages，systemd host 由 provision
+  安装、worker startup preflight 一次列出所有缺项；
+- Release self-check 在真实 bwrap 中逐项验证命令，并执行 Eve 的 `rg` 首选路径和
+  GNU `grep --exclude-dir` 回退路径，部署成功后不再等到某次 Agent turn 才发现缺项；
+- `git` 在 baseline 中只代表本地 CLI 可用，不改变 bwrap 的 structured network
+  policy，也不为 GitHub channel 注入凭据；GitHub credential/network broker 仍是独立
+  后续能力，本次不放宽 sandbox 边界。
+
+本节是完成 Phase 后的增量 runtime 行为；前文已完成的 Phase checklist 仍只作为历史。

@@ -14,16 +14,18 @@ fi
 
 limactl shell "$VM" -- sudo bash -c "
   set -euo pipefail
+
+  # Lima provisions only when the VM is first created. Keep reused guests on
+  # the current platform-owned sandbox command baseline before pnpm or the
+  # worker preflight can fail on a tool added after that guest was created.
+  apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
+  corepack enable
+  corepack install --global pnpm@11.7.0
+
   rsync -a --delete --exclude node_modules --exclude .eveland-data --exclude .next '$REPO_DIR/' /opt/eveland/
   cd /opt/eveland
   corepack pnpm install --frozen-lockfile
   corepack pnpm --filter @eveland/sandbox-bwrap build
-
-  # Asserts the real preflight passes on a freshly-provisioned host -- the PR's
-  # completion criterion. Uses the VM's existing data dir. The VM is reused
-  # across runs and only provisions on first creation, so a VM created before
-  # git became a required binary would never pick it up without this guard.
-  command -v git >/dev/null || apt-get install -y git
 
   # Same reuse problem for the build user: a VM created before EVELAND_BUILD_USER
   # became a required preflight check would never pick it up otherwise.
