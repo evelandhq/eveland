@@ -3,6 +3,7 @@ import { BadgeCheckIcon } from "lucide-react";
 import { getAgentEndpoints, getDeploymentOverview, getLogs, getProject, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
+import { ProjectDangerZone } from "@/components/project-danger-zone";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 
@@ -155,6 +156,8 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
           </div>
         </div>
       </div>
+
+      {project ? <ProjectDangerZone project={project} /> : null}
     </div>
   );
 }

@@ -176,6 +176,8 @@ function createStore() {
     gitUrl: null,
     status: "deployed",
     deploymentStatus: "running",
+    deletionStatus: null,
+    deletionError: null,
     sourceRevisionId: "src_1",
     releaseId: "rel_1",
     deploymentId: "dep_1",

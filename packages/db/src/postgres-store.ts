@@ -40,7 +40,7 @@ import {
   teams,
   users,
 } from "./schema.js";
-import { DEFAULT_TEAM_ID, type CreateProjectInput, type Store } from "./store.js";
+import { DEFAULT_TEAM_ID, projectDeletionSourcePaths, type CreateProjectInput, type Store } from "./store.js";
 import type {
   DeploymentStatus,
   JobType,
@@ -216,6 +216,40 @@ export function createPostgresStore(database: Database): Store {
       return row ? projectRowToProject(row) : null;
     },
 
+    async requestProjectDeletion(projectId) {
+      return db.transaction(async (tx) => {
+        const [project] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1).for("update");
+        if (!project) return { outcome: "not_found" } as const;
+        if (project.deletionStatus === "deleting") return { outcome: "already_deleting" } as const;
+
+        const deletionInputs = await tx
+          .select({ payload: jobs.payload })
+          .from(jobs)
+          .where(and(eq(jobs.projectId, projectId), or(eq(jobs.status, "queued"), eq(jobs.type, "delete_project"))));
+        const sourcePaths = projectDeletionSourcePaths(deletionInputs.map((input) => input.payload));
+        await tx
+          .update(projects)
+          .set({ deletionStatus: "deleting", deletionError: null, updatedAt: new Date() })
+          .where(eq(projects.id, projectId));
+        await tx.delete(jobs).where(and(eq(jobs.projectId, projectId), eq(jobs.status, "queued")));
+        const [row] = await tx
+          .insert(jobs)
+          .values({ id: createId("job"), projectId, type: "delete_project", status: "queued", payload: { sourcePaths } })
+          .returning();
+        if (!row) throw new Error("Failed to create project deletion job.");
+        return { outcome: "queued", job: jobRowToJob(row) } as const;
+      });
+    },
+
+    async setProjectDeletionFailed(projectId, error) {
+      const [row] = await db
+        .update(projects)
+        .set({ deletionStatus: "failed", deletionError: error, updatedAt: new Date() })
+        .where(eq(projects.id, projectId))
+        .returning();
+      return row ? projectRowToProject(row) : null;
+    },
+
     async deleteProject(projectId) {
       // Wrapped in a transaction: this cascade is ~12 sequential statements, and
       // a crash partway through previously left a half-deleted project -- e.g.
@@ -311,10 +345,23 @@ export function createPostgresStore(database: Database): Store {
           eq(
             jobs.id,
             sql`(
-              select id
-              from ${jobs}
-              where status = 'queued'
-              order by created_at asc
+              select candidate.id
+              from ${jobs} candidate
+              join ${projects} project on project.id = candidate.project_id
+              where candidate.status = 'queued'
+                and (
+                  project.deletion_status is distinct from 'deleting'
+                  or (
+                    candidate.type = 'delete_project'
+                    and not exists (
+                      select 1 from ${jobs} running
+                      where running.project_id = candidate.project_id
+                        and running.id <> candidate.id
+                        and running.status = 'running'
+                    )
+                  )
+                )
+              order by candidate.created_at asc
               limit 1
               for update skip locked
             )`,
@@ -443,6 +490,11 @@ export function createPostgresStore(database: Database): Store {
 
       const [revision] = await db.select().from(sourceRevisions).where(eq(sourceRevisions.id, project.sourceRevisionId)).limit(1);
       return revision ? sourceRevisionRowToSourceRevision(revision) : null;
+    },
+
+    async listSourceRevisions(projectId) {
+      const rows = await db.select().from(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
+      return rows.map(sourceRevisionRowToSourceRevision);
     },
 
     async getSourceRevision(revisionId) {

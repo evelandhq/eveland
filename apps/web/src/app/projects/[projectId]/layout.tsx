@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { ProjectDeletionNotice } from '@/components/project-deletion-notice';
+import { ProjectDeletionPoller } from '@/components/project-deletion-poller';
 import { StatusBadge } from '@/components/status-badge';
 import { getProject } from '@/lib/server-api';
 
@@ -28,11 +30,17 @@ export default async function ProjectLayout({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <StatusBadge status={project.status} />
+          <StatusBadge status={project.deletionStatus === 'failed' ? 'delete_failed' : project.deletionStatus ?? project.status} />
           <StatusBadge status={project.deploymentStatus} />
         </div>
       </header>
-      <section className="px-5 py-5">{children}</section>
+      <section className="flex flex-col gap-4 px-5 py-5">
+        <ProjectDeletionPoller active={project.deletionStatus === 'deleting'} />
+        <ProjectDeletionNotice status={project.deletionStatus} error={project.deletionError} />
+        <fieldset disabled={project.deletionStatus === 'deleting'} className="contents">
+          {children}
+        </fieldset>
+      </section>
     </div>
   );
 }

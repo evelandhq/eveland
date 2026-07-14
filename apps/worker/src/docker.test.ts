@@ -345,6 +345,31 @@ describe("createDockerAdapter", () => {
 
     await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(/permission denied/);
   });
+
+  test("removeRelease tolerates an image that was already removed by a deletion retry", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: true,
+      exitCode: 1,
+      stderr: "Error response from daemon: No such image: eveland/proj_123:rel_456",
+      all: "",
+    } as never);
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    await expect(adapter.removeRelease!("eveland/proj_123:rel_456")).resolves.toBeUndefined();
+    expect(vi.mocked(execa).mock.calls).toEqual([
+      ["docker", ["image", "rm", "eveland/proj_123:rel_456"], { all: true, reject: false }],
+    ]);
+  });
+
+  test("removeRelease still fails when Docker is unavailable", async () => {
+    vi.mocked(execa).mockClear();
+    const stderr = "Cannot connect to the Docker daemon";
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr, all: "" } as never);
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    await expect(adapter.removeRelease!("eveland/proj_123:rel_456")).rejects.toThrow(stderr);
+  });
 });
 
 describe("isBenignDockerStopFailure", () => {

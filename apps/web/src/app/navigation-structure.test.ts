@@ -52,6 +52,31 @@ describe("web application shell", () => {
     expect(statusBadge).toContain("<Badge")
   })
 
+  test("surfaces the persisted project deletion lifecycle with a typed destructive confirmation", () => {
+    const deleteActionUrl = new URL("../components/delete-project-action.tsx", import.meta.url)
+
+    expect(existsSync(fileURLToPath(deleteActionUrl))).toBe(true)
+    const deleteAction = source("../components/delete-project-action.tsx")
+    const projects = source("./projects/page.tsx")
+    const projectLayout = source("./projects/[projectId]/layout.tsx")
+    const projectOverview = source("./projects/[projectId]/page.tsx")
+    const clientApi = source("../lib/client-api.ts")
+
+    expect(deleteAction).toContain("<AlertDialog")
+    expect(deleteAction).toContain("confirmation === projectName")
+    expect(deleteAction).toContain("<Field")
+    expect(deleteAction).toContain("<Input")
+    expect(deleteAction).toContain("<Spinner")
+    expect(deleteAction).toContain('router.replace("/projects")')
+    expect(projects).toContain("<DeleteProjectAction")
+    expect(projects).toContain("<ProjectDeletionPoller")
+    expect(projects).toContain("project.deletionStatus")
+    expect(projectLayout).toContain("<ProjectDeletionNotice")
+    expect(projectLayout).toContain("disabled={project.deletionStatus === 'deleting'}")
+    expect(projectOverview).toContain("<ProjectDangerZone")
+    expect(clientApi).toContain("export async function deleteProject")
+  })
+
   test("removes the project summary and renders highlighted source code", () => {
     const sourcePage = source("./projects/[projectId]/source/page.tsx")
 

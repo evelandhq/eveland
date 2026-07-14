@@ -1,5 +1,6 @@
 export type ProjectImportKind = "git" | "zip";
 export type ProjectStatus = "import_pending" | "imported" | "invalid" | "build_pending" | "deployed" | "failed";
+export type ProjectDeletionStatus = "deleting" | "failed";
 export type DeploymentStatus = "not_deployed" | "building" | "starting" | "running" | "draining" | "stopped" | "archived" | "failed";
 export type SessionStatus = "running" | "waiting" | "completed" | "failed" | "waiting_approval";
 export type SessionTrigger = "playground" | "cron" | "webhook" | "channel" | "api" | "direct_http";
@@ -34,6 +35,8 @@ export type Project = {
   gitUrl: string | null;
   status: ProjectStatus;
   deploymentStatus: DeploymentStatus;
+  deletionStatus: ProjectDeletionStatus | null;
+  deletionError: string | null;
   sourceRevisionId: string | null;
   releaseId: string | null;
   deploymentId: string | null;

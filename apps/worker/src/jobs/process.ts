@@ -4,7 +4,7 @@ import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eve
 import { DURABLE_WORKFLOW_WORLD, isDurableWorkflowWorld } from "@eveland/core/source";
 import type { Store } from "@eveland/db";
 import net from "node:net";
-import { access, mkdir, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { waitForHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "../runtime/select.js";
@@ -26,6 +26,7 @@ export type ProcessJobOptions = {
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
   workflowPostgresUrl?: string;
   nodeEnv?: string;
+  dataDir?: string;
 };
 
 export async function processNextJob(store: Store, workerId: string, options: ProcessJobOptions = {}): Promise<boolean> {
@@ -43,7 +44,9 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
     await store.failJob(job.id, message);
     // A failed import never touches the running container, so it must not report a
     // live deployment as failed; only deploy/restart jobs change deployment status.
-    if (job.type === "build_deploy") {
+    if (job.type === "delete_project") {
+      await store.setProjectDeletionFailed(job.projectId, message);
+    } else if (job.type === "build_deploy") {
       const production = await store.getCurrentDeployment(job.projectId);
       await store.updateProjectState(
         job.projectId,
@@ -398,12 +401,11 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         return;
       }
 
-      // Known limitation: a build_deploy in progress on another worker, between
-      // its startProcess and recordDeployment calls, has a live process this
-      // delete cannot see yet (the deployment row doesn't exist until
-      // recordDeployment runs), so that process can be orphaned by a
-      // concurrent delete. Reaping orphans is a later-PR concern.
-      const liveDeployments = (await store.listDeployments(job.projectId)).filter(
+      // The store only makes this job claimable after other running work for
+      // the project has completed, so every process created by an earlier
+      // build is represented by a Deployment before cleanup starts.
+      const deployments = await store.listDeployments(job.projectId);
+      const liveDeployments = deployments.filter(
         (deployment) => deployment.status === "running" || deployment.status === "draining",
       );
       if (liveDeployments.length > 0) {
@@ -420,6 +422,30 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           await stopAdapter.stopProcess(deployment.containerName);
         }
       }
+
+      const removedReleases = new Set<string>();
+      for (const deployment of deployments) {
+        const releaseKey = `${deployment.runtimeKind}:${deployment.releaseId}`;
+        if (removedReleases.has(releaseKey)) continue;
+        const release = await store.getRelease(deployment.releaseId);
+        const adapter =
+          options.runtime?.name === deployment.runtimeKind
+            ? options.runtime
+            : (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+        if (release && adapter.removeRelease) await adapter.removeRelease(release.imageTag);
+        removedReleases.add(releaseKey);
+      }
+
+      const sourceRevisions = await store.listSourceRevisions(job.projectId);
+      const pendingSourcePaths = Array.isArray(job.payload.sourcePaths)
+        ? job.payload.sourcePaths.filter((sourcePath): sourcePath is string => typeof sourcePath === "string")
+        : [];
+      await removeManagedProjectFiles(
+        options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+        job.projectId,
+        [...sourceRevisions.map((revision) => revision.sourcePath), ...pendingSourcePaths],
+        deployments.map((deployment) => deployment.containerName),
+      );
 
       // Must be the last statement in this case, and nothing may follow it --
       // the Postgres store enforces FK integrity, so any write referencing
@@ -441,6 +467,52 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       return;
     }
   }
+}
+
+async function removeManagedProjectFiles(
+  dataDir: string,
+  projectId: string,
+  sourcePaths: string[],
+  processNames: string[],
+): Promise<void> {
+  const root = path.resolve(dataDir);
+  const safeProjectId = processSafeName(projectId);
+  const ownedPaths = new Set([
+    path.join(root, "sources", projectId),
+    path.join(root, "builds", projectId),
+    path.join(root, "observer", safeProjectId),
+    path.join(root, "sandbox", safeProjectId),
+  ]);
+  const allowedSourceRoots = [path.join(root, "sources"), path.join(root, "uploads")];
+
+  for (const processName of processNames) {
+    ownedPaths.add(path.join(root, "deployment-env", `${processSafeName(processName)}.env`));
+  }
+
+  for (const sourcePath of sourcePaths) {
+    const candidate = path.resolve(sourcePath);
+    const allowedRoot = allowedSourceRoots.find((entry) => isStrictlyWithin(candidate, entry));
+    if (!allowedRoot) continue;
+    const relativeSegments = path.relative(allowedRoot, candidate).split(path.sep);
+    const ownedCandidate =
+      allowedRoot === allowedSourceRoots[1] && relativeSegments[0]?.startsWith("zip-")
+        ? path.join(allowedRoot, relativeSegments[0])
+        : candidate;
+    const [realCandidate, realAllowedRoot] = await Promise.all([
+      realpath(ownedCandidate).catch(() => null),
+      realpath(allowedRoot).catch(() => null),
+    ]);
+    if (realCandidate && realAllowedRoot && isStrictlyWithin(realCandidate, realAllowedRoot)) {
+      ownedPaths.add(ownedCandidate);
+    }
+  }
+
+  await Promise.all([...ownedPaths].map((ownedPath) => rm(ownedPath, { recursive: true, force: true })));
+}
+
+function isStrictlyWithin(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
 // Shared by build_deploy and restart_deployment: stops a process that this job

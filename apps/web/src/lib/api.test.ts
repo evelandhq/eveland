@@ -76,4 +76,26 @@ describe("web api helpers", () => {
     await expect(syncSource("proj_zip")).rejects.toThrow("Only git projects can sync source");
   });
 
+  test("requests asynchronous project deletion and returns its job", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ job: { id: "job_delete", type: "delete_project", status: "queued" } }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const clientApi = await import("./client-api");
+
+    expect(clientApi.deleteProject).toBeTypeOf("function");
+    await expect(clientApi.deleteProject("proj_123")).resolves.toMatchObject({
+      id: "job_delete",
+      type: "delete_project",
+      status: "queued",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123", {
+      method: "DELETE",
+      credentials: "include",
+    });
+  });
+
 });
