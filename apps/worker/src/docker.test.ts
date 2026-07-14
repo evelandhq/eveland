@@ -190,7 +190,12 @@ describe("writeGeneratedDockerfile", () => {
 
     expect(dockerfilePath).toBe(path.join(buildDir, "Dockerfile"));
     expect(contents).toContain("FROM node:24-alpine");
-    expect(contents).toContain("apk add --no-cache bash bubblewrap socat");
+    expect(contents).toContain(
+      "apk add --no-cache bash bubblewrap ca-certificates curl findutils git grep jq py3-pip python3 ripgrep socat unzip zstd",
+    );
+    expect(contents).toContain("ln -sf /usr/bin/python3 /usr/local/bin/python");
+    expect(contents).toContain("ln -sf /usr/bin/pip3 /usr/local/bin/pip");
+    expect(contents).toContain("npm install --global pnpm@11.7.0");
     expect(contents).toContain("mkdir -p /workspace");
     expect(contents).toContain("COPY package*.json ./");
     expect(contents).toContain("COPY . .");

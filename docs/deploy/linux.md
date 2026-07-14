@@ -3,7 +3,19 @@
 ## Host prerequisites
 
 - Linux with systemd (verified on Ubuntu 24.04).
-- Node.js 24 (e.g. NodeSource) and `corepack enable`.
+- Node.js 24 (e.g. NodeSource), then install the pinned package-manager shim:
+
+  ```bash
+  sudo corepack enable
+  sudo corepack install --global pnpm@11.7.0
+  ```
+- Install the host-owned sandbox toolchain. Ubuntu's base image happens to
+  include some of these commands, but they are listed explicitly because the
+  worker preflight treats the complete set as a deployment contract:
+
+  ```bash
+  sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
+  ```
 - `bubblewrap` from the distro package (`apt-get install bubblewrap`). Ubuntu's
   packaged bubblewrap ships **no** AppArmor profile, and Ubuntu sets
   `kernel.apparmor_restrict_unprivileged_userns=1` by default, which blocks an
@@ -86,8 +98,10 @@ When the resolved runtime is systemd — an explicit `EVELAND_RUNTIME=systemd`,
 or `NODE_ENV=production` with `EVELAND_RUNTIME` unset — the worker refuses to
 start until every host
 prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
-systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path, the
-`systemd-run`, `systemctl`, `node`, `git` and `runuser` binaries on `PATH`
+systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path,
+`systemd-run`, `systemctl`, and `runuser`, plus the complete platform sandbox
+toolchain (`bash`, `node`, `npm`, `pnpm`, `rg`, GNU `grep`/`find`, `git`, `curl`,
+`jq`, `python`/`python3`, `pip`/`pip3`, `unzip`, and `zstd`) on `PATH`
 unconditionally, plus `bwrap` unless `EVELAND_BUILD_SANDBOX=none`, the app user
 (`EVELAND_APP_USER`, default `eveland-app`) and the build user
 (`EVELAND_BUILD_USER`, default `eveland-build`) existing, `/workspace` existing
@@ -326,8 +340,11 @@ Injected eve sandbox modules: agent/sandbox.js
 ```
 
 The local Docker runtime uses the same generated module and vendored backend. Its
-generated Agent image installs `bash` and `bubblewrap` and creates `/workspace`. At
-start, the outer Agent container drops Docker's default capability set, adds only
+generated Agent image installs `bubblewrap` plus the same platform sandbox toolchain
+listed under "Host prerequisites" and creates `/workspace`. Alpine's BusyBox
+`grep`/`find` are deliberately replaced by GNU implementations, while `ripgrep`
+serves Eve's preferred `grep` and `glob` paths. At start, the outer Agent container
+drops Docker's default capability set, adds only
 `SYS_ADMIN` and `NET_ADMIN` for bwrap's mount/network namespaces, sets
 `no-new-privileges`, and relaxes the outer seccomp profile. It does **not** receive the
 Docker socket, source tree, or another Project's sandbox cache. The worker maps the
@@ -351,7 +368,9 @@ unchecked, the first sign of trouble would be a failed agent turn once a user's 
 actually touches the sandbox, long after the deploy was reported successful. eveland
 closes that gap with a runtime-specific self-check immediately after the build. The
 probe runs the real vendored backend — prewarm, create, write a typed `.ts` file, execute
-it with Node 24, then shutdown — rather than checking only a shell builtin. On systemd it
+it with Node 24, verify every platform-owned command, exercise an actual `rg` search and
+the GNU `grep -r --exclude-dir=.git` fallback that Eve uses, then shutdown — rather than
+checking only a shell builtin or `command -v`. On systemd it
 runs against a scratch app root under the Project cache as the unprivileged deployment
 user with `NoNewPrivileges=yes`, `ProtectSystem=strict`, and `PrivateTmp=yes`. On Docker
 it starts the newly built image with the exact capability/seccomp settings the real
@@ -369,13 +388,14 @@ Docker sandbox self-check passed: bwrap executed TypeScript with deployment-equi
 ```
 
 When the check fails — for any reason, including a script that exits 0 without printing
-its success marker — the build itself fails. A systemd failure names the same two host
-prerequisites documented above:
+its success marker — the build itself fails. A systemd failure names the sandbox and
+toolchain host prerequisites documented above:
 
 ```
-Sandbox self-check failed: the vendored bwrap backend could not run under this host's deployment hardening. This is almost always one of two missing host prerequisites:
+Sandbox self-check failed: the vendored bwrap backend could not run under this host's deployment hardening. Check these host prerequisites:
   1. /etc/apparmor.d/bwrap must exist and grant `userns`. Ubuntu's apt bubblewrap ships no AppArmor profile, and kernel.apparmor_restrict_unprivileged_userns=1 then blocks non-root bwrap with "setting up uid map: Permission denied".
   2. /workspace must already exist as an empty directory. bwrap cannot create that bind destination itself because the host root is bind-mounted read-only first.
+  3. The platform-owned sandbox toolchain must be installed on the host: bash, node, npm, pnpm, rg, grep, find, git, curl, jq, python, python3, pip, pip3, unzip, zstd. The worker preflight reports every missing command.
 Captured output (exit=<code>):
 <systemd-run output>
 ```
@@ -460,8 +480,9 @@ bash infra/integration/run.sh
 ```
 
 The script reuses a VM named `eveland-test` across runs (creating it on first
-use) and rsyncs the read-only repo mount into `/opt/eveland` before running
-`pnpm install` and the smoke test as root inside the guest. A successful run
+use), provisions the complete host-owned sandbox toolchain, and rsyncs the
+read-only repo mount into `/opt/eveland` before running `pnpm install` and the
+smoke test as root inside the guest. A successful run
 exits 0 and prints `SMOKE OK`. If it fails, inspect the unit logs from the
 host: `limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`.
 

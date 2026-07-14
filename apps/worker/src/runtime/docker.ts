@@ -4,6 +4,7 @@ import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
+import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 
@@ -137,13 +138,18 @@ export async function verifyDockerSandbox(imageTag: string): Promise<void> {
 export async function writeGeneratedDockerfile(buildDir: string): Promise<string> {
   await mkdir(buildDir, { recursive: true });
   const dockerfilePath = path.join(buildDir, "Dockerfile");
+  const sandboxPackages = SANDBOX_TOOLCHAIN_APK_PACKAGES.join(" ");
   await writeFile(
     dockerfilePath,
     `FROM node:24-alpine
 WORKDIR /app
-# bash + bubblewrap provide the injected Eve exec sandbox. socat bridges the
-# container's local model port (e.g. Ollama 11434) to the host.
-RUN apk add --no-cache bash bubblewrap socat
+# Platform-owned command baseline for Eve's built-in tools and common skills.
+# bubblewrap provides isolation; socat bridges a local model port to the host.
+RUN apk add --no-cache ${sandboxPackages}
+# Match Eve's Python command aliases and pin the workspace package manager.
+RUN ln -sf /usr/bin/python3 /usr/local/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/local/bin/pip \
+    && npm install --global pnpm@${SANDBOX_PNPM_VERSION}
 # bwrap bind-mounts each durable session workspace here. The mountpoint must
 # exist before the container root is remounted read-only inside the sandbox.
 RUN mkdir -p /workspace
