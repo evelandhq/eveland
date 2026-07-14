@@ -25,7 +25,9 @@ export type TeamInvitation = {
   createdAt: string;
 };
 
-export type AuthPrincipal = TeamMember;
+export type AuthPrincipal = TeamMember & {
+  image: string | null;
+};
 
 export type Project = {
   id: string;

@@ -9,7 +9,6 @@ import {
   HistoryIcon,
   LayoutGridIcon,
   LogsIcon,
-  UsersIcon,
   PlayIcon,
   RocketIcon,
   ScrollTextIcon,
@@ -19,7 +18,6 @@ export const globalNavigationItems = [
   { href: '/projects', label: 'Projects', icon: LayoutGridIcon },
   { href: '/deployments', label: 'Deployments', icon: BoxIcon },
   { href: '/usage', label: 'Usage', icon: ChartNoAxesColumnIcon },
-  { href: '/members', label: 'Members', icon: UsersIcon },
 ] as const;
 
 export function getProjectNavigationItems(projectId: string) {

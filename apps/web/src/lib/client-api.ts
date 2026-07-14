@@ -11,6 +11,10 @@ export type Member = {
   joinedAt: string;
 };
 
+export type CurrentMember = Member & {
+  image: string | null;
+};
+
 export type Invitation = {
   id: string;
   email: string;
@@ -21,13 +25,13 @@ export type Invitation = {
   createdAt: string;
 };
 
-export async function signIn(email: string, password: string): Promise<Member> {
+export async function signIn(email: string, password: string): Promise<CurrentMember> {
   await clientRequest("/api/auth/sign-in/email", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  return clientRequest<{ member: Member }>("/auth/session", { method: "GET" }).then((data) => data.member);
+  return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then((data) => data.member);
 }
 
 export async function signOut(): Promise<void> {
@@ -35,6 +39,27 @@ export async function signOut(): Promise<void> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",
+  });
+}
+
+export async function getCurrentMember(): Promise<CurrentMember> {
+  return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then((data) => data.member);
+}
+
+export async function updateProfile(input: { name: string; image: string | null }): Promise<CurrentMember> {
+  const data = await clientRequest<{ member: CurrentMember }>("/profile", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return data.member;
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await clientRequest("/profile/password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword }),
   });
 }
 
@@ -46,8 +71,8 @@ export async function inviteMember(email: string): Promise<{ invitation: Invitat
   });
 }
 
-export async function acceptInvitation(input: { token: string; name: string; password: string }): Promise<Member> {
-  const data = await clientRequest<{ member: Member }>("/invitations/accept", {
+export async function acceptInvitation(input: { token: string; name: string; password: string }): Promise<CurrentMember> {
+  const data = await clientRequest<{ member: CurrentMember }>("/invitations/accept", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),

@@ -57,6 +57,27 @@ const acceptInvitationSchema = z.object({
   password: z.string().min(12),
 });
 
+const profileImageSchema = z.string().superRefine((value, context) => {
+  const match = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match?.[1]) {
+    context.addIssue({ code: "custom", message: "Avatar must be a PNG, JPEG, or WebP image." });
+    return;
+  }
+  if (Buffer.from(match[1], "base64").byteLength > 512 * 1024) {
+    context.addIssue({ code: "custom", message: "Avatar must not exceed 512 KB." });
+  }
+});
+
+const profileSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  image: profileImageSchema.nullable(),
+});
+
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(12).max(128),
+});
+
 const targetsArraySchema = z.array(z.object({
     deploymentId: z.string().min(1),
     weight: z.number().int().min(0).max(10_000),
@@ -153,7 +174,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       if (
         path.startsWith("/api/auth/sign-up/") ||
         path.startsWith("/api/auth/admin/") ||
-        path.startsWith("/api/auth/organization/")
+        path.startsWith("/api/auth/organization/") ||
+        path === "/api/auth/update-user"
       ) {
         return c.notFound();
       }
@@ -180,6 +202,30 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     });
 
     app.get("/auth/session", (c) => c.json({ member: c.get("principal") }));
+
+    app.patch("/profile", async (c) => {
+      const parsed = profileSchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) return c.json({ error: "Invalid profile", issues: parsed.error.issues }, 400);
+      try {
+        const updated = await options.auth!.updateProfile(c.req.raw, parsed.data);
+        for (const cookie of getSetCookies(updated.headers)) c.header("set-cookie", cookie, { append: true });
+        return c.json({ member: updated.principal });
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
+
+    app.post("/profile/password", async (c) => {
+      const parsed = passwordChangeSchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) return c.json({ error: "Invalid password change", issues: parsed.error.issues }, 400);
+      try {
+        const headers = await options.auth!.changePassword(c.req.raw, parsed.data);
+        for (const cookie of getSetCookies(headers)) c.header("set-cookie", cookie, { append: true });
+        return c.body(null, 204);
+      } catch (error) {
+        return authErrorResponse(c, error);
+      }
+    });
 
     app.get("/members", async (c) => c.json({ members: await options.auth!.listMembers(c.req.raw) }));
 

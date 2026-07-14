@@ -159,6 +159,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       return {
         userId: session.user.id,
         email: session.user.email,
+        image: session.user.image ?? null,
         name: session.user.name,
         role: membership.role,
         joinedAt: membershipRecord.createdAt.toISOString(),
@@ -251,6 +252,28 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     return true;
   }
 
+  async function updateProfile(request: Request, input: { name: string; image: string | null }) {
+    const response = await auth.api.updateUser({
+      headers: request.headers,
+      body: input,
+      asResponse: true,
+    });
+    await assertSuccessfulAuthResponse(response);
+    const principal = await authenticate(request);
+    if (!principal) throw new Error("Authentication required");
+    return { principal, headers: response.headers };
+  }
+
+  async function changePassword(request: Request, input: { currentPassword: string; newPassword: string }) {
+    const response = await auth.api.changePassword({
+      headers: request.headers,
+      body: { ...input, revokeOtherSessions: true },
+      asResponse: true,
+    });
+    await assertSuccessfulAuthResponse(response);
+    return response.headers;
+  }
+
   async function acceptInvitation(input: { token: string; name: string; password: string }) {
     const context = await auth.$context;
     const invitation = await context.adapter.findOne<{
@@ -322,7 +345,15 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     revokeInvitation,
     updateMemberRole,
     removeMember,
+    updateProfile,
+    changePassword,
   };
+}
+
+async function assertSuccessfulAuthResponse(response: Response): Promise<void> {
+  if (response.ok) return;
+  const body = await response.json().catch(() => ({})) as { message?: string; error?: string };
+  throw new Error(body.message ?? body.error ?? `Authentication request failed with ${response.status}`);
 }
 
 function responseCookies(headers: Headers): string[] {

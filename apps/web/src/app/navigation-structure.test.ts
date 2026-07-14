@@ -14,6 +14,8 @@ describe("web application shell", () => {
     expect(layout).toContain("<SidebarProvider")
     expect(layout).toContain("<AppSidebar")
     expect(layout).toContain("<SidebarInset")
+    expect(layout).toContain("<SidebarTrigger />")
+    expect(layout).toContain('className="md:hidden"')
   })
 
   test("renders project navigation as a shadcn sidebar menu", () => {
