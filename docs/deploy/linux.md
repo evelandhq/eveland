@@ -287,20 +287,23 @@ On the supported systemd deployment host, eve agents get no Docker daemon and no
 degrades to the `just-bash` interpreter (no real binaries). eve projects do not opt into
 a real exec sandbox themselves: for every eve project (`isEveProject`; a plain Node
 project is left alone entirely), Eveland's shared release-preparation step generates a sandbox
-module — `agent/sandbox.js`, and one more for every subagent directory, however deeply
-nested — into the release directory, and vendors this build's `@eveland/sandbox-bwrap`
+module — `agent/sandbox.js` for a flat agent, or `agent/sandbox/sandbox.js` when the agent
+has a sandbox folder, with one more for every subagent directory however deeply nested —
+into the release directory, and vendors this build's `@eveland/sandbox-bwrap`
 to `<releaseDir>/.eveland/sandbox-bwrap/`. The generated module reads
 `EVELAND_SANDBOX_CACHE_DIR` from the environment and passes it to the backend as
 `cacheDir`. Nothing in the project's own source tree is touched to make this happen,
 and there is nothing for a project to author.
 
-If the project shipped its own `agent/sandbox.ts` (or an `agent/sandbox/` directory),
-the build removes it and writes the generated module in its place — its `bootstrap()`,
-`onSession()`, and any `agent/sandbox/workspace/` seed tree are discarded and never run.
+If the project shipped its own `agent/sandbox.ts` or `agent/sandbox/sandbox.ts`, the build
+removes that authored backend definition and writes the generated module in its place. Its
+`bootstrap()` and `onSession()` are not run because Eveland owns the deployment backend.
+An `agent/sandbox/workspace/**` seed tree is preserved in the prepared Release; Eve compiles
+those files and initializes them under `/workspace/**` for each new Session.
 The build log carries a line so this is never a silent surprise:
 
 ```
-WARNING: replaced the project's authored sandbox (agent/sandbox.ts). eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.
+WARNING: replaced the project's authored sandbox (agent/sandbox/sandbox.ts). eveland selects the sandbox backend; the authored module's bootstrap() and onSession() are not used, while workspace seeds are preserved.
 ```
 
 If an eve project has no `agent/` directory at all, injection generates nothing, the

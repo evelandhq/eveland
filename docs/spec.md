@@ -389,6 +389,9 @@ Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
 optional peer 的 `just-bash`。平台在 Docker 与 systemd 的 Release 副本中注入
 `@eveland/sandbox-bwrap`，并将每个 Project 的 durable Session workspace 保存在
 Release 目录之外；redeploy 或 restart 不得丢失同一 Eve Session 的 `/workspace`。
+Release 准备可以替换用户编写的 Sandbox backend、`bootstrap()` 与 `onSession()`，
+但必须保留 `agent/sandbox/workspace/**`；这些 authored seeds 继续由 Eve 编译并在
+每个新 Session 初始化到 `/workspace/**`，不能因为平台选择 backend 而从 Release 删除。
 Release 构建完成后必须用实际运行权限写入并执行一个 Node 24 TypeScript probe；
 仅 `/eve/v1/health` 成功不能证明 Sandbox 可用。Docker 本地开发容器不得获得
 Docker socket；为 nested bwrap 增加的 capability/seccomp 配置只属于本地 Docker

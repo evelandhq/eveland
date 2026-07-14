@@ -1086,6 +1086,9 @@ core/db 边界落地
   Docker runtime，production 继续使用 unprivileged systemd+bwrap；
 - sandbox cache 使用 `EVELAND_HOST_DATA_DIR` 映射并按 Project 持久化，redeploy
   不丢 durable Eve Session 的 workspace；
+- Release 注入平台 backend 时保留 `agent/sandbox/workspace/**`，目录形式生成
+  `agent/sandbox/sandbox.js`；只替换 authored `bootstrap()`/`onSession()`，不能删除
+  Eve 应在新 Session 中初始化到 `/workspace/**` 的 seed files；
 - Docker 与 systemd build self-check 都必须在真实 bwrap 中写入并用 Node 24
   执行带类型标注的 `.ts` probe，不能用 `/eve/v1/health` 代替。
 

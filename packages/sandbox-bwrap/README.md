@@ -17,12 +17,14 @@ namespaces.
 ## Usage
 
 **Deployed on eveland:** you do nothing. eveland's Docker and systemd runtimes generate
-the sandbox module into the release directory at build time — one `agent/sandbox.js` per agent root,
-recursively for every subagent — and vendors this package's built output beside it, so
-agent projects never declare a sandbox backend themselves. If a project shipped its own
-`agent/sandbox.ts` (or `agent/sandbox/`), the build removes it and replaces it with the
-generated module; the build log says so. The systemd runtime invokes bwrap as its
-unprivileged deployment user. The local Docker runtime installs bwrap inside the Agent
+the sandbox module into the release directory at build time — `agent/sandbox.js` for a flat
+agent, or `agent/sandbox/sandbox.js` when a sandbox folder exists, recursively for every
+subagent — and vendors this package's built output beside it, so agent projects never declare
+a deployment backend themselves. If a project shipped its own sandbox module, the build
+replaces that definition and reports it in the build log; authored `bootstrap()` and
+`onSession()` behavior is not used. The sibling `agent/sandbox/workspace/**` tree is preserved,
+so Eve still seeds those files into each Session's `/workspace`. The systemd runtime invokes
+bwrap as its unprivileged deployment user. The local Docker runtime installs bwrap inside the Agent
 image and grants the outer container only the capabilities nested bwrap requires; the
 Agent container still receives no Docker socket. Local `eve dev` is untouched — it never runs
 the eveland build pipeline, so it falls back to eve's default backend chain (usually
