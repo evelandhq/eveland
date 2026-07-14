@@ -4,7 +4,10 @@ const publicPaths = new Set(["/login", "/accept-invite"]);
 
 export function proxy(request: NextRequest) {
   const isPublic = publicPaths.has(request.nextUrl.pathname);
-  const hasSession = request.cookies.has("eveland_session");
+  // Better Auth prefixes the cookie with `__Secure-` when useSecureCookies is on
+  // (an https baseURL), so the deployed cookie is `__Secure-eveland_session`.
+  const hasSession =
+    request.cookies.has("eveland_session") || request.cookies.has("__Secure-eveland_session");
   if (!isPublic && !hasSession) {
     const login = new URL("/login", request.url);
     login.searchParams.set("next", request.nextUrl.pathname);
