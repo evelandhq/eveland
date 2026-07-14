@@ -2,6 +2,7 @@ import http from "node:http";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Readable } from "node:stream";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
+import { createConfigurationSnapshot, type ConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import type { DeploymentRecord, ResolvedAgentRoute, SessionBinding as GatewaySessionBinding } from "@eveland/core/contracts";
 import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
 import { selectWeightedTarget } from "@eveland/core/routing";
@@ -23,6 +24,7 @@ export type GatewayAppOptions = {
   allowedBaseDomains: string[];
   affinitySecret: string;
   buildInfo?: EvelandBuildInfo;
+  configurationSnapshot?: ConfigurationSnapshot;
   internalServiceToken?: string;
   routeCacheTtlMs?: number;
   maxRequestBodyBytes?: number;
@@ -50,11 +52,18 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   }
   const app = new Hono();
   const buildInfo = options.buildInfo ?? createBuildInfoFromEnv("gateway", process.env);
+  const configurationSnapshot = options.configurationSnapshot ?? createConfigurationSnapshot("gateway", process.env);
   const routeCache = new Map<string, { route: ResolvedAgentRoute | null; expiresAt: number }>();
   const routeCacheTtlMs = options.routeCacheTtlMs ?? 5_000;
   const maxRequestBodyBytes = options.maxRequestBodyBytes ?? 10_485_760;
 
   app.get("/health", (context) => context.json({ ok: true, ...buildInfo }));
+  app.get("/internal/diagnostics/config", (context) => {
+    if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
+      return context.json({ error: "Not found" }, 404);
+    }
+    return context.json(configurationSnapshot);
+  });
   app.all("/internal/projects/:projectId/playground/eve/*", async (context) => {
     if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
       return context.json({ error: "Not found" }, 404);

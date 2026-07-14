@@ -12,7 +12,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private.
 - `apps/worker`: Docker and systemd runtime adapters, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
-- `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4. Its account menu opens profile/password settings; System settings owns member management and an About view that compares Web/API build identity.
+- `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4. Its account menu opens profile/password settings; System settings owns member management and an About view that compares Web/API build identity and gives admins a masked, component-aware runtime configuration diagnostic.
 - `apps/docs`: Bilingual public website and documentation for `eveland.ai`, built with Next.js and Fumadocs. It keeps the marketing site separate from the authenticated control panel and publishes English and Chinese routes, search, sitemap, and `llms.txt`.
 
 ## Local Development
@@ -173,7 +173,11 @@ Gateway `GET /health` responses report `service: eveland`, their `component`,
 the product `version`, exact Git `revision`, and release `channel`. API,
 Gateway, and Worker print the same identity at startup. Web shows
 `Eveland vX.Y.Z` in the sidebar and compares its Web build with the API build in
-Settings > About.
+Settings > About. Admins also see the allowlisted effective configuration for
+Web, API, Gateway, and Worker there. Secret values are never returned, database
+and service URLs have credentials and query values removed, Gateway diagnostics
+stay behind its service-authenticated internal route, and Worker publishes only
+an already-masked snapshot under the shared `EVELAND_DATA_DIR`.
 
 Only `vX.Y.Z` tags are stable releases. `main` is the `edge` channel and must be
 identified by its commit SHA. Release Please maintains the release PR,

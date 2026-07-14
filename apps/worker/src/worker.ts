@@ -1,6 +1,8 @@
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { formatBuildInfo } from "@eveland/core/build-info";
+import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
+import { writeConfigurationSnapshotFile } from "@eveland/core/server/config-diagnostics";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import { processNextJob } from "./jobs/process.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
@@ -21,6 +23,11 @@ try {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
+
+await writeConfigurationSnapshotFile(
+  process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+  createConfigurationSnapshot("worker", process.env),
+).catch(() => console.warn("Worker configuration diagnostics are unavailable."));
 
 console.log(`${formatBuildInfo(buildInfo)} ready. Poll interval: ${intervalMs}ms`);
 console.log(

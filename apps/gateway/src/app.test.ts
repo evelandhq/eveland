@@ -2,6 +2,7 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { serve } from "@hono/node-server";
 import { afterEach, describe, expect, test } from "vitest";
 import { createBuildInfo } from "@eveland/core/build-info";
+import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createGatewayApp, type GatewayRepository, type ResolvedAgentRoute } from "./app.js";
 import { affinityBucketForRoute } from "@eveland/core/routing";
 
@@ -32,6 +33,29 @@ describe("Gateway", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true, ...buildInfo });
+  });
+
+  test("keeps the masked configuration snapshot behind the internal service boundary", async () => {
+    const configurationSnapshot = createConfigurationSnapshot("gateway", {
+      EVELAND_GATEWAY_AFFINITY_SECRET: "never-return-this-secret",
+    });
+    const app = createGatewayApp(repository([]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-token",
+      configurationSnapshot,
+    });
+
+    expect((await app.request("/internal/diagnostics/config")).status).toBe(404);
+    const response = await app.request("/internal/diagnostics/config", {
+      headers: { authorization: "Bearer service-token" },
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(JSON.parse(body)).toEqual(configurationSnapshot);
+    expect(body).not.toContain("never-return-this-secret");
+    expect(await (await app.request("/health")).text()).not.toContain("entries");
   });
 
   test("fails closed on missing affinity signing material or invalid body limits", () => {

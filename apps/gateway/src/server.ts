@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { formatBuildInfo } from "@eveland/core/build-info";
+import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import { createGatewayApp } from "./app.js";
@@ -20,6 +21,7 @@ const app = createGatewayApp(store, {
   allowedBaseDomains,
   affinitySecret,
   buildInfo,
+  configurationSnapshot: createConfigurationSnapshot("gateway", process.env),
   affinityCookieSecure: (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME ?? "http") === "https",
   maxRequestBodyBytes: Number(process.env.EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES ?? 10_485_760),
   internalServiceToken:
