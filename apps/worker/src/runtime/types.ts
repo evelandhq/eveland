@@ -24,10 +24,10 @@ export type ProcessStartInput = {
   env: Record<string, string>;
   commandContext: RuntimeCommandContext;
   /**
-   * Durable per-project eve sandbox session cache dir, granted read-write to the
-   * unit and exported as EVELAND_SANDBOX_CACHE_DIR by the systemd adapter. The
-   * docker adapter ignores it -- containers get a fresh filesystem per run and
-   * eve's sandbox falls back to an ephemeral cache when the env var is unset.
+   * Durable per-project Eve sandbox session cache dir. For systemd this is the
+   * worker/host path; for Docker it is the Docker daemon's host-visible path.
+   * The adapter grants or mounts it read-write and exports the fixed
+   * sandbox-visible EVELAND_SANDBOX_CACHE_DIR.
    */
   sandboxCacheDir: string;
   /** Deployment-scoped durable observer outbox directory visible to the runtime. */

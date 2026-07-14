@@ -26,6 +26,20 @@ systemctl status 'eveland-*'
 journalctl -u 'eveland-*' --since -15m
 ```
 
+## Sandbox tools fail in local Docker
+
+Redeploy the project after upgrading Eveland; Releases are immutable, so an existing
+image does not gain the injected sandbox. The Build Log should include both
+`Injected eve sandbox modules` and `Docker sandbox self-check passed`. That self-check
+writes a typed `.ts` file inside the real bwrap workspace and executes it with Node 24.
+
+Do not fix this by installing only `just-bash`: it provides a virtual shell but cannot
+run Node or TypeScript. If the Docker self-check reports `Operation not permitted`,
+confirm the local Docker engine accepts the deployment's `SYS_ADMIN`/`NET_ADMIN` and
+`seccomp=unconfined` settings. When Worker runs in Compose, also confirm
+`EVELAND_HOST_DATA_DIR` is the host-absolute `.eveland-data` path so the durable sandbox
+cache bind mount resolves correctly. Agent containers never need the Docker socket.
+
 ## The public agent host returns 404 or 502
 
 Verify that:

@@ -1067,3 +1067,23 @@ core/db 边界落地
 ```
 
 只有这条链路通过真实 Docker + systemd smoke 后，才进入 Gateway。这样每个阶段都有独立价值，也避免同时调试 package move、Eve hook、filesystem permissions、proxy auth 和 A/B routing。
+
+---
+
+## 15. 2026-07-14 follow-up：本地 Docker exec sandbox
+
+完成 Phase 后发现一处 runtime parity 缺口：systemd Release 会注入
+`@eveland/sandbox-bwrap`，而本地 Docker Release 只注入 observer，导致生产式
+`eve start` 落到缺少 optional peer 的 `just-bash`，内置 file/bash tools 在第一次
+调用时失败。后续实现将 sandbox injection 移到两个 runtime 都会执行的 Release
+准备路径，并保留以下边界：
+
+- Agent container 永远不挂 Docker socket；
+- local Docker image 安装 `bash`/`bubblewrap` 并预建 `/workspace`；
+- outer container 先 drop 全部默认 capability，只为 nested bwrap 增加
+  `SYS_ADMIN` 与 `NET_ADMIN`，同时设置 `no-new-privileges`；该放宽只属于本地
+  Docker runtime，production 继续使用 unprivileged systemd+bwrap；
+- sandbox cache 使用 `EVELAND_HOST_DATA_DIR` 映射并按 Project 持久化，redeploy
+  不丢 durable Eve Session 的 workspace；
+- Docker 与 systemd build self-check 都必须在真实 bwrap 中写入并用 Node 24
+  执行带类型标注的 `.ts` probe，不能用 `/eve/v1/health` 代替。

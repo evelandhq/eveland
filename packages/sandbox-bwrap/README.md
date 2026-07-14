@@ -16,12 +16,15 @@ namespaces.
 
 ## Usage
 
-**Deployed on eveland:** you do nothing. eveland's systemd runtime generates the sandbox
-module into the release directory at build time — one `agent/sandbox.js` per agent root,
+**Deployed on eveland:** you do nothing. eveland's Docker and systemd runtimes generate
+the sandbox module into the release directory at build time — one `agent/sandbox.js` per agent root,
 recursively for every subagent — and vendors this package's built output beside it, so
 agent projects never declare a sandbox backend themselves. If a project shipped its own
 `agent/sandbox.ts` (or `agent/sandbox/`), the build removes it and replaces it with the
-generated module; the build log says so. Local `eve dev` is untouched — it never runs
+generated module; the build log says so. The systemd runtime invokes bwrap as its
+unprivileged deployment user. The local Docker runtime installs bwrap inside the Agent
+image and grants the outer container only the capabilities nested bwrap requires; the
+Agent container still receives no Docker socket. Local `eve dev` is untouched — it never runs
 the eveland build pipeline, so it falls back to eve's default backend chain (usually
 `just-bash`, or Docker where available). See `docs/deploy/linux.md` for what the build
 log looks like and what happens when the sandbox does not work on the host.
@@ -119,6 +122,8 @@ Reclaiming space today requires manual intervention: identify which sessions are
   injection — not multi-tenant isolation. If untrusted tenants or code that routinely
   handles customer credentials must run here, move to VM-level isolation
   (Firecracker/microsandbox) instead of hardening this backend further.
+  Under Eveland's local Docker runtime, "host filesystem" here means the outer Agent
+  container's filesystem, not the Docker host; no host root or Docker socket is mounted.
 - Resource limits are inherited from whatever cgroup the agent runs in (on eveland's
   systemd runtime: the deployment unit's `MemoryMax`/`CPUQuota` cover sandbox
   children too). The backend sets no per-command limits itself.
@@ -142,6 +147,12 @@ Reclaiming space today requires manual intervention: identify which sessions are
   your own kernel if it matters to your threat model.
 
 ## Requirements
+
+Eveland's generated local Docker image installs `bubblewrap` and `bash`, creates
+`/workspace`, and starts the outer Agent container with its default capability set
+dropped, `SYS_ADMIN` and `NET_ADMIN` added for bwrap namespaces, `no-new-privileges`,
+and `seccomp=unconfined`. This is a local-development boundary; the supported Linux
+production topology uses the unprivileged systemd path below.
 
 - Linux with unprivileged user namespaces available to the calling process. Ubuntu's
   packaged bubblewrap (0.9.0-1ubuntu0.1 on 24.04) ships **no** AppArmor profile. Since
@@ -171,6 +182,9 @@ Reclaiming space today requires manual intervention: identify which sessions are
 
 - `pnpm --filter @eveland/sandbox-bwrap test` — unit tests, run anywhere (process
   execution is injectable; no bwrap needed).
+- `pnpm --filter @eveland/worker smoke:docker-sandbox` — local Docker end to end:
+  builds the fixture Release, runs the image self-check, starts the Agent, and drives
+  an HTTP turn whose `bash` tool writes and executes TypeScript in the durable cache.
 - `bash infra/integration/run.sh` — full contract test against real bwrap. The
   script provisions a Lima VM from `infra/lima/eveland.yaml` (installing the
   AppArmor profile and creating `/workspace`), then runs this package's contract

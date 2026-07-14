@@ -16,6 +16,9 @@ describe("buildSandboxVerifyScript", () => {
     const script = buildSandboxVerifyScript();
     expect(script).toContain('from "./sandbox-bwrap/index.js"');
     expect(script).toContain("backend.prewarm(");
+    expect(script).toContain("handle.session.writeTextFile(");
+    expect(script).toContain("const message: string");
+    expect(script).toContain("node eveland-verify.ts");
     expect(script).toContain("handle.session.run(");
     expect(script).toContain("handle.shutdown()");
     expect(script).toContain("SANDBOX VERIFY OK");
@@ -94,7 +97,10 @@ describe("buildSandboxVerifyScript, executed end-to-end against a stub backend",
         "  return {",
         "    prewarm: async () => {},",
         "    create: async () => ({",
-        "      session: { run: async () => ({ exitCode: 0, stdout: \"eveland-sandbox-ok\\n\", stderr: \"\" }) },",
+        "      session: {",
+        "        writeTextFile: async () => {},",
+        "        run: async () => ({ exitCode: 0, stdout: \"eveland-typescript-ok\\n\", stderr: \"\" }),",
+        "      },",
         "      shutdown: async () => {},",
         "    }),",
         "  };",
