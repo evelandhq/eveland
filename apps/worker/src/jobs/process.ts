@@ -275,9 +275,15 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       if (!project) {
         throw new Error(`Project ${job.projectId} not found.`);
       }
-      const deployment = await store.getCurrentDeployment(job.projectId);
+      const requestedDeploymentId = typeof job.payload.deploymentId === "string" ? job.payload.deploymentId : null;
+      const deployment = requestedDeploymentId
+        ? await store.getDeployment(requestedDeploymentId)
+        : await store.getCurrentDeployment(job.projectId);
       if (!deployment) {
-        throw new Error("No deployment to restart.");
+        throw new Error(requestedDeploymentId ? `Deployment ${requestedDeploymentId} not found.` : "No deployment to restart.");
+      }
+      if (deployment.projectId !== job.projectId) {
+        throw new Error(`Deployment ${deployment.id} does not belong to project ${job.projectId}.`);
       }
       // A deployment always points at a release and a source revision; either
       // being gone is corrupt state, not a recoverable condition -- fail loudly

@@ -792,6 +792,7 @@ session_bindings
 - `projects.currentDeploymentId` 只是过渡兼容字段，最终 production project route 才是权威；
 - build+deploy 不再默认停止旧 Deployment；新 Deployment 首先是 preview target；
 - promote/rollback/traffic split 通过 route target transaction 完成。
+- Project Secrets 是可变运行时凭据，不属于 Release 内容；Secret 新增、替换或删除后必须为每个 `running` / `draining` Deployment 排入带 `deploymentId` 的 restart，不能只刷新 `projects.currentDeploymentId`，否则 stable、preview 或 A/B target 会继续持有旧进程环境。
 
 ---
 

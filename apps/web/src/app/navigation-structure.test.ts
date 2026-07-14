@@ -95,6 +95,14 @@ describe("web application shell", () => {
     expect(projectOverview).toContain("last:col-span-2")
   })
 
+  test("explains when saving a secret queued live deployment restarts", () => {
+    const secretForm = source("../components/secret-form.tsx")
+
+    expect(secretForm).toContain("result.jobs.length > 0")
+    expect(secretForm).toContain("Restarting live deployments")
+    expect(secretForm).toContain("used by the next deployment")
+  })
+
   test("subscribes to mobile media-query changes", () => {
     const useMobile = source("../hooks/use-mobile.ts")
 

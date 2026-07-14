@@ -11,12 +11,14 @@ export function SecretForm({ projectId }: { projectId: string }) {
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
     setError(null);
+    setNotice(null);
 
     const response = await fetch(`${apiBaseUrl}/projects/${projectId}/secrets`, {
       method: "POST",
@@ -32,8 +34,14 @@ export function SecretForm({ projectId }: { projectId: string }) {
       return;
     }
 
+    const result = (await response.json()) as { jobs: unknown[] };
     setKey("");
     setValue("");
+    setNotice(
+      result.jobs.length > 0
+        ? "Secret saved. Restarting live deployments so the new value takes effect."
+        : "Secret saved. It will be used by the next deployment.",
+    );
     router.refresh();
   }
 
@@ -49,6 +57,7 @@ export function SecretForm({ projectId }: { projectId: string }) {
         <input value={value} onChange={(event) => setValue(event.target.value)} type="password" className="h-8 rounded-sm border border-input bg-background px-2 text-sm" />
       </label>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {notice ? <p className="text-xs text-muted-foreground">{notice}</p> : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Saving..." : "Save secret"}
       </Button>

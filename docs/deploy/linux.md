@@ -125,6 +125,14 @@ runs it against the Lima VM as part of the integration smoke test.
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to hard-gate deploys that lack a durable workflow world (see below); unset only warns. Also injected into each deployment so the agent runs in production mode. Note `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
+Project Secret mutations are applied asynchronously because only the worker owns
+runtime-controller privilege. Saving, replacing, or deleting a Secret queues one
+targeted `restart_deployment` job for every `running` or `draining` Deployment,
+including stable, preview, and A/B targets. Each restart reuses the immutable Release
+and rebuilds the process environment from the current encrypted Secret set. Wait for
+those jobs to complete before testing the new value; a single-target route can be
+briefly unavailable while its process restarts.
+
 Build-trust note: building a project executes that project's dependency
 lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
 sandbox as the unprivileged build user (`EVELAND_BUILD_USER`, default
