@@ -143,6 +143,20 @@ About 展示当前 Eveland 产品版本、Git revision 与发布 channel。Sideb
 两者的 version、revision 或 channel 不一致时必须明确提示该实例尚未完成一致升级。
 Worker 没有为此增加公开 HTTP 服务，其 build identity 写入启动日志。
 
+About 还向 Admin 展示 Web、API、Gateway 与 Worker 的只读 runtime configuration
+诊断，包括受支持的环境变量名称、所属组件、实际生效值、值来源、用途和缺失/警告状态。
+Member 不能读取该诊断接口。诊断使用显式 allowlist，不能枚举或原样返回进程的完整
+`process.env`；Secret 只显示是否已配置，不能提供查看、复制、长度、前后缀或其他可恢复
+原值的信息，连接 URL 必须移除 credentials、query value 与 fragment。默认值和派生值
+按组件的实际 runtime 规则计算并标明来源，未配置的必填项和不安全的开发 fallback 必须
+明确告警。
+
+Gateway configuration 只能通过现有 service-authenticated `/internal/*` 边界读取，不能
+加入公开 `/health`。Worker 仍不增加 HTTP 服务：它在 startup preflight 成功后，仅将已经
+脱敏的 snapshot 以私有权限原子写入共享 `EVELAND_DATA_DIR/diagnostics`，API 再读取该文件；
+任何 Secret 原值都不能进入该 snapshot、API 响应或 Web payload。组件不可达、snapshot
+缺失或无效时 About 显示该组件 unavailable，不能回退为读取其原始环境文件。
+
 Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：前者标识控制面
 软件本身，后者仍表示某个导入 Agent 的不可变构建产物与运行目标。
 

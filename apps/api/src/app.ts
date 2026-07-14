@@ -23,6 +23,7 @@ import {
 } from "@eveland/core/ids";
 import type { Store } from "@eveland/db";
 import type { CollectorHealth } from "@eveland/session-collector/health";
+import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
 import { z } from "zod";
 import {
   proxyGatewayPlayground,
@@ -139,6 +140,7 @@ export type AppOptions = {
   playgroundProxy?: PlaygroundProxy;
   dataDir?: string;
   collectorHealth?: () => CollectorHealth;
+  configurationDiagnostics?: () => Promise<SystemConfigurationDiagnostics>;
   gatewayPublicScheme?: "http" | "https";
   gatewayPublicPort?: number | null;
   invalidateGatewayRoutes?: (hostnames: string[]) => Promise<void>;
@@ -229,6 +231,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     });
 
     app.get("/auth/session", (c) => c.json({ member: c.get("principal") }));
+
+    app.get("/system/configuration", async (c) => {
+      if (c.get("principal").role !== "admin") return c.json({ error: "Admin access required" }, 403);
+      if (!options.configurationDiagnostics) return c.json({ error: "Configuration diagnostics unavailable" }, 503);
+      try {
+        return c.json(await options.configurationDiagnostics());
+      } catch {
+        return c.json({ error: "Configuration diagnostics unavailable" }, 503);
+      }
+    });
 
     app.patch("/profile", async (c) => {
       const parsed = profileSchema.safeParse(await c.req.json().catch(() => null));

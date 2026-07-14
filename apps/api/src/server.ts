@@ -18,6 +18,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { createBetterAuthRuntime } from "./auth.js";
 import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";
+import { collectSystemConfigurationDiagnostics } from "./config-diagnostics.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const buildInfo = createBuildInfoFromEnv("api", process.env);
@@ -66,6 +67,7 @@ serve({
     auth,
     buildInfo,
     collectorHealth: collector ? () => collector.getHealth() : undefined,
+    configurationDiagnostics: () => collectSystemConfigurationDiagnostics(process.env),
   }).fetch,
   port,
 });

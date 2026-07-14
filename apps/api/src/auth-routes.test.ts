@@ -25,7 +25,14 @@ async function createAuthApp() {
     secret: "test-secret-with-at-least-thirty-two-characters",
   });
   await auth.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
-  return { app: createApp(store, { auth, webOrigin: "http://localhost:3000" }), store };
+  return {
+    app: createApp(store, {
+      auth,
+      webOrigin: "http://localhost:3000",
+      configurationDiagnostics: async () => ({ components: [] }),
+    }),
+    store,
+  };
 }
 
 async function signIn(app: ReturnType<typeof createApp>, email = "admin@example.com", password = "admin-password") {
@@ -91,6 +98,27 @@ describe("control-plane auth routes", () => {
     await expect(session.json()).resolves.toEqual({
       member: expect.objectContaining({ email: "admin@example.com", role: "admin" }),
     });
+  });
+
+  test("allows only administrators to read system configuration diagnostics", async () => {
+    const { app } = await createAuthApp();
+    const { cookie: adminCookie } = await signIn(app);
+    const issued = await invite(app, adminCookie);
+    const accepted = await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: issued.body.invitation.id, name: "Member", password: "member-password" }),
+    });
+    const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+
+    expect((await app.request("/system/configuration")).status).toBe(401);
+    const adminResponse = await app.request("/system/configuration", { headers: { cookie: adminCookie } });
+    const memberResponse = await app.request("/system/configuration", { headers: { cookie: memberCookie } });
+
+    expect(adminResponse.status).toBe(200);
+    await expect(adminResponse.json()).resolves.toEqual({ components: [] });
+    expect(memberResponse.status).toBe(403);
+    await expect(memberResponse.json()).resolves.toEqual({ error: "Admin access required" });
   });
 
   test("updates the signed-in profile and revokes other sessions when changing the password", async () => {

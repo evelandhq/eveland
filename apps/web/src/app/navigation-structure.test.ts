@@ -40,6 +40,11 @@ describe("web application shell", () => {
     expect(about).toContain("<Badge")
     expect(about).toContain("<Table")
     expect(about).toContain("<Alert")
+    expect(about).toContain("Runtime configuration")
+    expect(about).toContain("getSystemConfigurationDiagnostics")
+    expect(about).toContain('currentMember.role === "admin"')
+    expect(about).toContain("Effective value")
+    expect(about).toContain("Secrets are never returned")
   })
 
   test("renders project navigation as a shadcn sidebar menu", () => {

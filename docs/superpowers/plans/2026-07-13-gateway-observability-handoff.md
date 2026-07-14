@@ -1181,3 +1181,26 @@ Eve 0.24.0 不再允许 self-hosted build 通过 `WORKFLOW_TARGET_WORLD` 环境�
   与 workflow-world module 都明确选择 `@workflow/world-postgres`。
 
 本节是完成 Phase 后的增量 runtime 行为；前文已完成的 Phase checklist 仍只作为历史。
+
+---
+
+## 20. 2026-07-15 follow-up：Admin runtime configuration diagnostics
+
+随着 API、Gateway、Web、Worker 和两种 runtime 的环境变量增加，About 增加只读诊断能力，
+但不能把方便排障变成新的 Secret 泄露面。增量契约收敛为：
+
+- 只有 Team Admin 可以通过 authenticated control-plane route 读取 runtime configuration；
+  Member 仍可查看 build identity，但不能读取配置诊断；
+- 共享显式 allowlist 描述变量名、组件、实际生效值、来源与用途，不遍历完整
+  `process.env`；默认值和 `NODE_ENV` 驱动的派生值必须按当前 runtime 规则显示；
+- Secret 永远只返回固定 mask，URL 删除 credentials、query value 与 fragment；不提供
+  reveal/copy，也不把原值、长度或可识别前后缀写入响应、文件或日志；
+- Gateway snapshot 只经已有 service-authenticated `/internal/*` 边界返回，公开
+  `/health` 保持原 build identity contract；
+- Worker 不新增 HTTP 服务，在 preflight 成功后将已经脱敏的 snapshot 以 `0600` 权限
+  原子写入共享 `EVELAND_DATA_DIR/diagnostics`，API 只读该 snapshot，不读取 systemd env 文件；
+- Web About 合并自身的 server-side snapshot 与 API 聚合结果，按组件展示 missing、warning
+  和 unavailable；组件不可达时不猜测或回退到其他组件的环境。
+
+本节不改变 Gateway public Agent auth/header/streaming boundary，也不扩大 API 或 Gateway 的
+host privilege；诊断数据仍属于 Admin-only control plane。

@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     "./build-info": "./src/build-info.ts",
+    "./config-diagnostics": "./src/config-diagnostics.ts",
     "./contracts": "./src/contracts.ts",
     "./eve": "./src/eve.ts",
     "./ids": "./src/ids.ts",
@@ -15,6 +16,7 @@
     "./source": "./src/source.ts",
     "./server/archive": "./src/server/archive.ts",
     "./server/build-info": "./src/server/build-info.ts",
+    "./server/config-diagnostics": "./src/server/config-diagnostics.ts",
     "./server/secrets": "./src/server/secrets.ts",
     "./server/runtime-command": "./src/server/runtime-command.ts"
   },

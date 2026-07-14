@@ -120,6 +120,17 @@ with all migrations already applied; consult the GitHub Release upgrade and
 rollback notes before changing tags. See the full
 [release policy and checklist](../releases.md).
 
+Team admins can use the same About page to inspect the allowlisted effective
+configuration for Web, API, Gateway, and Worker. Secrets appear only as a fixed
+mask, and connection URLs omit credentials, query values, and fragments. This
+diagnostic is intentionally absent from public `/health`: API reads Gateway
+through its service-authenticated `/internal/diagnostics/config` route, while
+Worker writes an already-masked `diagnostics/worker-configuration.json` under
+the shared `EVELAND_DATA_DIR` after startup preflight succeeds. The snapshot is
+written atomically with mode `0600`; API never reads `/etc/eveland/eveland-worker.env`.
+If Worker has not published a snapshot, About reports it as unavailable rather
+than guessing values; the observed timestamp identifies older snapshots.
+
 ### Startup preflight
 
 When the resolved runtime is systemd — an explicit `EVELAND_RUNTIME=systemd`,

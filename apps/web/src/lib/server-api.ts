@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
+import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
 import type {
   AgentEndpoints,
   CollectorHealth,
@@ -42,6 +43,8 @@ export const getCurrentMember = () => apiGet<{ member: CurrentMember }>("/auth/s
 export const getMembers = () => apiGet<{ members: Member[] }>("/members").then((data) => data.members);
 export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invitations").then((data) => data.invitations);
 export const getApiBuildInfo = () => apiGet<{ ok: true } & EvelandBuildInfo>("/health");
+export const getSystemConfigurationDiagnostics = () =>
+  apiGet<SystemConfigurationDiagnostics>("/system/configuration");
 
 // A deployed agent has no endpoints until its first release, so /endpoints 404s for an
 // imported-but-undeployed project. Treat that as "no endpoints" instead of an error.

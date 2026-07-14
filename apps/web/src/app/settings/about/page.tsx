@@ -1,5 +1,7 @@
-import { TriangleAlertIcon } from "lucide-react"
+import { Fragment } from "react"
+import { ShieldCheckIcon, TriangleAlertIcon } from "lucide-react"
 import { isSameBuild } from "@eveland/core/build-info"
+import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics"
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -21,20 +23,32 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
-import { getApiBuildInfo } from "@/lib/server-api"
+import { getApiBuildInfo, getCurrentMember, getSystemConfigurationDiagnostics } from "@/lib/server-api"
 
 export const dynamic = "force-dynamic"
 
 export default async function AboutSettingsPage() {
   const webBuild = createBuildInfoFromEnv("web", process.env)
-  const apiBuild = await getApiBuildInfo().catch(() => null)
+  const [apiBuild, currentMember] = await Promise.all([
+    getApiBuildInfo().catch(() => null),
+    getCurrentMember(),
+  ])
   const hasMismatch = apiBuild ? !isSameBuild(webBuild, apiBuild) : false
+  const systemConfiguration =
+    currentMember.role === "admin" ? await getSystemConfigurationDiagnostics().catch(() => null) : null
+  const configurationComponents =
+    currentMember.role === "admin"
+      ? [createConfigurationSnapshot("web", process.env), ...(systemConfiguration?.components ?? [])]
+      : []
+  const configurationIssues = configurationComponents.flatMap((component) => component.entries).filter((entry) => entry.status !== "ok")
+  const missingConfiguration = configurationIssues.filter((entry) => entry.status === "missing").length
+  const warningConfiguration = configurationIssues.length - missingConfiguration
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="flex max-w-5xl flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h2 className="text-xl font-semibold tracking-tight">About</h2>
-        <p className="text-sm text-muted-foreground">Identify the Eveland release running this workspace.</p>
+        <p className="text-sm text-muted-foreground">Identify the Eveland release and effective runtime configuration.</p>
       </header>
 
       {hasMismatch ? (
@@ -108,6 +122,103 @@ export default async function AboutSettingsPage() {
           <code className="font-mono">eveland</code>
         </CardFooter>
       </Card>
+
+      {currentMember.role !== "admin" ? (
+        <Alert>
+          <ShieldCheckIcon />
+          <AlertTitle>Administrator access required</AlertTitle>
+          <AlertDescription>Runtime configuration is available only to Team administrators.</AlertDescription>
+        </Alert>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Runtime configuration</CardTitle>
+            <CardDescription>Effective values, their source, and the purpose of each supported environment variable.</CardDescription>
+            <CardAction><Badge variant="outline">Admin only</Badge></CardAction>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <Alert>
+              <ShieldCheckIcon />
+              <AlertTitle>Sensitive values are masked</AlertTitle>
+              <AlertDescription>Secrets are never returned. Credentials and query values are removed from connection URLs.</AlertDescription>
+            </Alert>
+
+            {!systemConfiguration ? (
+              <Alert variant="destructive">
+                <TriangleAlertIcon />
+                <AlertTitle>System configuration unavailable</AlertTitle>
+                <AlertDescription>The Web configuration is shown, but API diagnostics could not be loaded.</AlertDescription>
+              </Alert>
+            ) : null}
+
+            {configurationIssues.length > 0 ? (
+              <Alert variant={missingConfiguration > 0 ? "destructive" : "default"}>
+                <TriangleAlertIcon />
+                <AlertTitle>Configuration attention required</AlertTitle>
+                <AlertDescription>
+                  {missingConfiguration} missing and {warningConfiguration} warning configuration values were found.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Variable</TableHead>
+                    <TableHead>Component</TableHead>
+                    <TableHead>Effective value</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Purpose</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {configurationComponents.map((component) => (
+                    <Fragment key={component.component}>
+                      <TableRow>
+                        <TableCell colSpan={5}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary">{component.component}</Badge>
+                            <span className="text-xs text-muted-foreground">
+                              {component.observedAt ? `Observed ${new Date(component.observedAt).toLocaleString()}` : "Unavailable"}
+                            </span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {"unavailableReason" in component ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-muted-foreground">{component.unavailableReason}</TableCell>
+                        </TableRow>
+                      ) : component.entries.map((entry) => (
+                        <TableRow key={`${component.component}-${entry.name}`}>
+                          <TableCell><code className="font-mono text-xs">{entry.name}</code></TableCell>
+                          <TableCell><Badge variant="outline">{component.component}</Badge></TableCell>
+                          <TableCell>
+                            <div className="flex min-w-44 flex-col items-start gap-1">
+                              <code className="break-all font-mono text-xs">{entry.value}</code>
+                              {entry.status !== "ok" ? (
+                                <Badge variant={entry.status === "missing" ? "destructive" : "secondary"}>{entry.status}</Badge>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{entry.source.replace("_", " ")}</Badge>
+                          </TableCell>
+                          <TableCell className="min-w-64 text-muted-foreground">{entry.purpose}</TableCell>
+                        </TableRow>
+                      ))}
+                    </Fragment>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+          <Separator />
+          <CardFooter className="text-muted-foreground">
+            Values are read-only. Restart the affected component after changing its environment.
+          </CardFooter>
+        </Card>
+      )}
     </div>
   )
 }
