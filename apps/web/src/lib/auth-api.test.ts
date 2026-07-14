@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { acceptInvitation, inviteMember, signIn } from "./client-api";
+import { acceptInvitation, inviteMember, signIn, signOut } from "./client-api";
 
 describe("browser auth API", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -25,6 +25,22 @@ describe("browser auth API", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:4000/auth/session", {
       method: "GET",
       credentials: "include",
+    });
+  });
+
+  test("signs out through Better Auth with a JSON request", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(signOut()).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/api/auth/sign-out", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: "{}",
     });
   });
 

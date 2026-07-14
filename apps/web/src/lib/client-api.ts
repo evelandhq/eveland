@@ -30,7 +30,11 @@ export async function signIn(email: string, password: string): Promise<Member> {
 }
 
 export async function signOut(): Promise<void> {
-  await clientRequest("/api/auth/sign-out", { method: "POST" });
+  await clientRequest("/api/auth/sign-out", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
 }
 
 export async function inviteMember(email: string): Promise<{ invitation: Invitation; inviteUrl: string }> {
