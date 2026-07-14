@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./build-info": "./src/build-info.ts",
     "./contracts": "./src/contracts.ts",
     "./eve": "./src/eve.ts",
     "./ids": "./src/ids.ts",
@@ -13,6 +14,7 @@
     "./schedules": "./src/schedules.ts",
     "./source": "./src/source.ts",
     "./server/archive": "./src/server/archive.ts",
+    "./server/build-info": "./src/server/build-info.ts",
     "./server/secrets": "./src/server/secrets.ts",
     "./server/runtime-command": "./src/server/runtime-command.ts"
   },

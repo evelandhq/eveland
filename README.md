@@ -12,7 +12,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private.
 - `apps/worker`: Docker and systemd runtime adapters, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
-- `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4. Its account menu opens profile/password settings and the System settings area owns member and invitation management.
+- `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4. Its account menu opens profile/password settings; System settings owns member management and an About view that compares Web/API build identity.
 - `apps/docs`: Bilingual public website and documentation for `eveland.ai`, built with Next.js and Fumadocs. It keeps the marketing site separate from the authenticated control panel and publishes English and Chinese routes, search, sitemap, and `llms.txt`.
 
 ## Local Development
@@ -124,6 +124,8 @@ EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
 EVELAND_ADMIN_EMAIL=admin@example.com
 EVELAND_ADMIN_PASSWORD=<strong-initial-password>
 EVELAND_COOKIE_DOMAIN=.example.com
+EVELAND_RELEASE_CHANNEL=stable
+EVELAND_REVISION=<git-rev-parse-short-12-output>
 
 # Start only the unprivileged control-plane services.
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
@@ -161,6 +163,27 @@ bubblewrap/AppArmor, preflight, secrets, reverse-proxy, and smoke-test details.
 
 When Web and API use sibling hosts, set `EVELAND_COOKIE_DOMAIN` to their shared parent domain
 so the HttpOnly control-plane Session cookie reaches both services. Leave it unset for localhost.
+
+## Versioning and releases
+
+Eveland is a single SemVer-versioned product beginning at `0.1.0`. API and
+Gateway `GET /health` responses report `service: eveland`, their `component`,
+the product `version`, exact Git `revision`, and release `channel`. API,
+Gateway, and Worker print the same identity at startup. Web shows
+`Eveland vX.Y.Z` in the sidebar and compares its Web build with the API build in
+Settings > About.
+
+Only `vX.Y.Z` tags are stable releases. `main` is the `edge` channel and must be
+identified by its commit SHA. Release Please maintains the release PR,
+`CHANGELOG.md`, Git tag, and GitHub Release from Conventional Commit history;
+the root product version does not force private workspace packages or the
+independently published MIT `@eveland/sandbox-bwrap` package onto the same
+version.
+
+The current production topology still runs a tagged source checkout rather
+than immutable Eveland service images. See [`docs/releases.md`](docs/releases.md)
+for the exact policy, release checklist, token requirement, channel semantics,
+and current artifact boundary.
 
 ## Verification
 

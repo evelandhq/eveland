@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { ArrowLeftIcon, ChevronsUpDownIcon, LogOutIcon, SettingsIcon, SproutIcon } from "lucide-react"
+import { ArrowLeftIcon, BadgeInfoIcon, ChevronsUpDownIcon, LogOutIcon, SettingsIcon, SproutIcon } from "lucide-react"
+import { EVELAND_VERSION } from "@eveland/core/build-info"
 import { ProjectNav } from "@/components/project-nav"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -151,6 +152,16 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              render={<Link href="/settings/about" />}
+              size="sm"
+              tooltip={`Eveland v${EVELAND_VERSION}`}
+            >
+              <BadgeInfoIcon />
+              <span>Eveland v{EVELAND_VERSION}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuButton size="lg" />}>

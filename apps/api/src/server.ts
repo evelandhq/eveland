@@ -1,5 +1,7 @@
 import { serve } from "@hono/node-server";
 import path from "node:path";
+import { formatBuildInfo } from "@eveland/core/build-info";
+import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { createCollectorRuntime } from "@eveland/session-collector";
 import { createApp } from "./app.js";
 import { createStoreFromEnv } from "@eveland/db/factory";
@@ -18,6 +20,7 @@ import { createBetterAuthRuntime } from "./auth.js";
 import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";
 
 const port = Number(process.env.PORT ?? 4000);
+const buildInfo = createBuildInfoFromEnv("api", process.env);
 const storeFactory = createStoreFromEnv();
 const betterAuthConfig = resolveBetterAuthConfig(process.env);
 const authDatabase = storeFactory.database
@@ -61,12 +64,13 @@ collector?.start();
 serve({
   fetch: createApp(storeFactory.store, {
     auth,
+    buildInfo,
     collectorHealth: collector ? () => collector.getHealth() : undefined,
   }).fetch,
   port,
 });
 
-console.log(`Eveland API listening on http://localhost:${port}`);
+console.log(`${formatBuildInfo(buildInfo)} listening on http://localhost:${port}`);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {

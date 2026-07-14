@@ -1,9 +1,11 @@
 import http from "node:http";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Readable } from "node:stream";
+import type { EvelandBuildInfo } from "@eveland/core/build-info";
 import type { DeploymentRecord, ResolvedAgentRoute, SessionBinding as GatewaySessionBinding } from "@eveland/core/contracts";
 import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
 import { selectWeightedTarget } from "@eveland/core/routing";
+import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono } from "hono";
 
@@ -20,6 +22,7 @@ export type GatewayRepository = {
 export type GatewayAppOptions = {
   allowedBaseDomains: string[];
   affinitySecret: string;
+  buildInfo?: EvelandBuildInfo;
   internalServiceToken?: string;
   routeCacheTtlMs?: number;
   maxRequestBodyBytes?: number;
@@ -46,11 +49,12 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     throw new Error("Gateway request body limit must be a non-negative safe integer.");
   }
   const app = new Hono();
+  const buildInfo = options.buildInfo ?? createBuildInfoFromEnv("gateway", process.env);
   const routeCache = new Map<string, { route: ResolvedAgentRoute | null; expiresAt: number }>();
   const routeCacheTtlMs = options.routeCacheTtlMs ?? 5_000;
   const maxRequestBodyBytes = options.maxRequestBodyBytes ?? 10_485_760;
 
-  app.get("/health", (context) => context.json({ ok: true, service: "eveland-gateway" }));
+  app.get("/health", (context) => context.json({ ok: true, ...buildInfo }));
   app.all("/internal/projects/:projectId/playground/eve/*", async (context) => {
     if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
       return context.json({ error: "Not found" }, 404);
