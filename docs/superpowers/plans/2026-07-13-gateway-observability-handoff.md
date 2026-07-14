@@ -1156,3 +1156,25 @@ Gateway、Worker 看起来像四个独立发布的软件。增量契约收敛为
 
 本节是产品运维版本，不修改前文不可变 Agent Release、preview Deployment、stable route
 与 SessionBinding 的任何语义。
+
+---
+
+## 19. 2026-07-15 follow-up：平台托管 durable workflow world
+
+Eve 0.24.0 不再允许 self-hosted build 通过 `WORKFLOW_TARGET_WORLD` 环境变量选择
+默认 world，因此仅在 build 环境设置变量无法同时兼容 0.23/0.24。平台契约收敛为：
+
+- Agent source、`agent.ts`、`package.json` 与 lockfile 不负责 durable world；
+- worker 启动时使用固定兼容版本的 `@workflow/world-postgres` 幂等 bootstrap schema，
+  production 缺少 `WORKFLOW_POSTGRES_URL` 时在接收 job 前失败；
+- prepared Release wrapper 保留 authored root config，并强制 Postgres world；无 root
+  config 时生成包含 Eve 当前默认 model 的完整配置；
+- Docker/systemd 在 project install 后用 no-save/no-lock/ignore-scripts 安装平台 world，
+  再执行 `eve build`；
+- `WORKFLOW_POSTGRES_URL` 是平台保留运行时值，Project Secret 不能覆盖；worker 与
+  deployment 需要不同网络地址时仅为 bootstrap 设置
+  `WORKFLOW_POSTGRES_BOOTSTRAP_URL`；
+- 真实 sample Agent 已分别用 Eve 0.23.0 与 0.24.0 构建，生成的 compiled manifest
+  与 workflow-world module 都明确选择 `@workflow/world-postgres`。
+
+本节是完成 Phase 后的增量 runtime 行为；前文已完成的 Phase checklist 仍只作为历史。

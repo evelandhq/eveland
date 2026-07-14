@@ -202,6 +202,20 @@ describe("writeGeneratedDockerfile", () => {
     expect(contents).toContain("npx eve build");
     expect(contents).toContain("EXPOSE 3000");
   });
+
+  test("installs the platform-owned world without changing the project package manifest or lock", async () => {
+    const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
+    const dockerfilePath = await writeGeneratedDockerfile(buildDir, {
+      packageName: "@workflow/world-postgres",
+      packageVersion: "5.0.0-beta.25",
+    });
+    const contents = await readFile(dockerfilePath, "utf8");
+
+    expect(contents).toContain(
+      "npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.25",
+    );
+    expect(contents.indexOf("npm install --no-save")).toBeLessThan(contents.indexOf("npx eve build"));
+  });
 });
 
 describe("processSafeName", () => {

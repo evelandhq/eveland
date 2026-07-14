@@ -86,14 +86,15 @@ services:
     restart: unless-stopped
     network_mode: host
     command: sh -lc "apk add --no-cache git docker-cli && corepack enable && pnpm install && cd apps/worker && NODE_ENV=production pnpm exec tsx --env-file=../../.env src/worker.ts"
-    # This overlay doesn't set WORKFLOW_POSTGRES_URL itself, so it inherits the base
-    # compose file's value pointing at host.docker.internal. That still resolves inside
+    # The host-network worker bootstraps through the published host Postgres port;
+    # deployments keep the base file's host.docker.internal URL. That resolves inside
     # deployed agent containers here: the docker adapter starts every agent container
     # with `--add-host host.docker.internal:host-gateway` (runtime/docker.ts), which is
     # independent of network_mode: host on this worker container itself.
     environment:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
+      WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland
       EVELAND_RUNTIME: docker
       EVELAND_DATA_DIR: /var/lib/eveland
       EVELAND_OBSERVER_ROOT: /var/lib/eveland/observer

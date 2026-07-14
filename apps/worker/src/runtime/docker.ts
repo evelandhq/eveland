@@ -7,6 +7,7 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
+import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
 
 export type DockerBuildInput = {
   contextDir: string;
@@ -135,10 +136,16 @@ export async function verifyDockerSandbox(imageTag: string): Promise<void> {
   }
 }
 
-export async function writeGeneratedDockerfile(buildDir: string): Promise<string> {
+export async function writeGeneratedDockerfile(
+  buildDir: string,
+  workflowWorld?: WorkflowWorldBuildConfig,
+): Promise<string> {
   await mkdir(buildDir, { recursive: true });
   const dockerfilePath = path.join(buildDir, "Dockerfile");
   const sandboxPackages = SANDBOX_TOOLCHAIN_APK_PACKAGES.join(" ");
+  const workflowWorldInstall = workflowWorld
+    ? `RUN ${buildWorkflowWorldInstallCommand(workflowWorld)}\n`
+    : "";
   await writeFile(
     dockerfilePath,
     `FROM node:24-alpine
@@ -156,7 +163,7 @@ RUN mkdir -p /workspace
 COPY package*.json ./
 # Install all dependencies: eve projects need their build toolchain to compile.
 RUN if [ -f package-lock.json ]; then npm ci; elif [ -f package.json ]; then npm install; fi
-COPY . .
+${workflowWorldInstall}COPY . .
 # Compile the eve application ahead of time so \`eve start\` can serve it.
 RUN if node -e "const p=require('./package.json');process.exit(p.dependencies&&p.dependencies.eve?0:1)"; then npx eve build; fi
 EXPOSE 3000
@@ -240,14 +247,18 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const imageTag = `eveland/${processSafeName(input.projectId)}:${processSafeName(input.releaseId)}`;
-      const observerInjection = await prepareReleaseTree({ sourcePath: input.sourcePath, buildDir: input.buildDir });
+      const observerInjection = await prepareReleaseTree({
+        sourcePath: input.sourcePath,
+        buildDir: input.buildDir,
+        workflowWorld: input.workflowWorld,
+      });
       const sandboxInjection = input.commandContext.isEveProject
         ? await injectSandboxModules({ releaseDir: path.resolve(input.buildDir), backendDistDir: config.backendDistDir() })
         : undefined;
       if (sandboxInjection) {
         await writeSandboxVerifyScript(path.resolve(input.buildDir));
       }
-      const dockerfilePath = await writeGeneratedDockerfile(input.buildDir);
+      const dockerfilePath = await writeGeneratedDockerfile(input.buildDir, input.workflowWorld);
       const log = await dockerBuild(input.buildDir, imageTag, dockerfilePath);
       if (sandboxInjection) {
         await verifyDockerSandbox(imageTag);
@@ -257,6 +268,9 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         log: [
           log,
           `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
+          observerInjection.workflowWorld
+            ? `Injected platform workflow world: ${input.workflowWorld?.packageName} (${observerInjection.workflowWorld.agentConfigPath})`
+            : undefined,
           sandboxInjection
             ? `Injected eve sandbox modules: ${sandboxInjection.generated.join(", ") || "none"}`
             : undefined,

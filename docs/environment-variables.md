@@ -20,12 +20,13 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `DATABASE_URL` | eveland's own control-plane Postgres (projects, deployments, sessions, secrets, logs, …). | — (required) | DB (`packages/db/src/client.ts`) |
 | `DATABASE_POOL_SIZE` | Max connections in the pg pool. | `10` | `packages/db/src/client.ts` |
 | `STORE_DRIVER` | Set to `memory` for the in-memory store (ephemeral/dev); anything else uses Postgres. | Postgres | `packages/db/src/store-factory.ts` |
-| `WORKFLOW_POSTGRES_URL` | Postgres **injected into durable-workflow agent containers** — the agent's own `@workflow/world-postgres` store, not eveland's DB. One of the production deploy gates. | — | worker (`apps/worker/src/jobs/process.ts`) |
+| `WORKFLOW_POSTGRES_URL` | Platform-owned workflow Postgres URL injected into deployments. The worker forces `@workflow/world-postgres` in prepared Releases and fails fast without this URL in production. Reserved: Project Secrets cannot override it. | — | worker (`apps/worker/src/jobs/process.ts`, `apps/worker/src/runtime/workflow-world-bootstrap.ts`) |
+| `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | Optional worker-reachable address for the same workflow database. Used only for startup schema bootstrap when the deployment URL is container-specific. | `WORKFLOW_POSTGRES_URL` | worker (`apps/worker/src/runtime/workflow-world-bootstrap.ts`) |
 
 > **`WORKFLOW_POSTGRES_URL` must use a container-reachable host** (e.g.
 > `host.docker.internal`), not `localhost`, because agent containers reach the host DB
-> from inside the container. A project secret of the same name overrides the
-> platform-injected value.
+> from inside the container. The optional bootstrap URL may instead use
+> `localhost` or a Compose service name because only the worker reads it.
 
 ## Encryption
 

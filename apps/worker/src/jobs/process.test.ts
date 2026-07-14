@@ -609,10 +609,10 @@ describe("processNextJob", () => {
     expect(jobFailedLine).not.toContain("systemctl stop timed out");
   });
 
-  test("injects WORKFLOW_POSTGRES_URL and NODE_ENV for a durable world in production", async () => {
+  test("injects a platform-owned Postgres world and runtime URL even when the agent does not configure either", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createMemoryStore();
-    const sourcePath = await createFixtureEveProject({ dependencies: { "@workflow/world-postgres": "5.0.0-beta.20" } });
+    const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({ name: "Durable Agent", importKind: "zip", sourcePath });
     const importJob = await store.claimNextJob("worker-a");
     await store.completeJob(importJob!.id);
@@ -620,7 +620,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath,
-      summary: { workflowWorld: "@workflow/world-postgres" },
+      summary: {},
       envVars: [],
       files: [],
       schedules: [],
@@ -634,6 +634,7 @@ describe("processNextJob", () => {
         runtime: {
           name: "docker",
           async buildRelease(input) {
+            runtimeCalls.push({ name: "buildRelease", input });
             return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
           },
           async startProcess(input) {
@@ -649,6 +650,13 @@ describe("processNextJob", () => {
       }),
     ).resolves.toBe(true);
 
+    const build = runtimeCalls.find((call) => call.name === "buildRelease");
+    expect(build?.input).toMatchObject({
+      workflowWorld: {
+        packageName: "@workflow/world-postgres",
+        packageVersion: "5.0.0-beta.25",
+      },
+    });
     const run = runtimeCalls.find((call) => call.name === "startProcess");
     expect((run?.input as { env: Record<string, string> }).env).toMatchObject({
       WORKFLOW_POSTGRES_URL: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
@@ -657,11 +665,11 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "deployed" });
   });
 
-  test("lets a project secret override the injected WORKFLOW_POSTGRES_URL", async () => {
+  test("keeps the platform workflow database URL reserved when a project defines the same secret", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createMemoryStore();
-    const sourcePath = await createFixtureEveProject({ dependencies: { "@workflow/world-postgres": "5.0.0-beta.20" } });
+    const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({ name: "Override Agent", importKind: "zip", sourcePath });
     const importJob = await store.claimNextJob("worker-a");
     await store.completeJob(importJob!.id);
@@ -669,7 +677,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath,
-      summary: { workflowWorld: "@workflow/world-postgres" },
+      summary: {},
       envVars: [],
       files: [],
       schedules: [],
@@ -705,11 +713,11 @@ describe("processNextJob", () => {
 
     const run = runtimeCalls.find((call) => call.name === "startProcess");
     expect((run?.input as { env: Record<string, string> }).env.WORKFLOW_POSTGRES_URL).toBe(
-      "postgres://custom@db:5432/app",
+      "postgres://platform@host.docker.internal:5432/eveland",
     );
   });
 
-  test("blocks the deploy in production when no durable world is configured", async () => {
+  test("blocks a production deploy when the platform durable world has no database URL", async () => {
     let buildCalled = false;
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();
@@ -751,11 +759,11 @@ describe("processNextJob", () => {
     expect(buildCalled).toBe(false);
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "failed" });
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
-      expect.objectContaining({ line: expect.stringContaining("Deploy blocked") }),
+      expect.objectContaining({ line: expect.stringContaining("WORKFLOW_POSTGRES_URL") }),
     );
   });
 
-  test("warns but still deploys in development when no durable world is configured", async () => {
+  test("keeps Eve's local world in development when the platform database URL is absent", async () => {
     let buildCalled = false;
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();
@@ -797,56 +805,12 @@ describe("processNextJob", () => {
 
     expect(buildCalled).toBe(true);
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "deployed" });
-    await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
+    await expect(store.listLogs(project.id, "deploy")).resolves.not.toContainEqual(
       expect.objectContaining({ line: expect.stringContaining("Warning") }),
     );
   });
 
-  test("blocks the deploy in production when the durable world has no platform URL", async () => {
-    let buildCalled = false;
-    const store = createMemoryStore();
-    const sourcePath = await createFixtureEveProject({ dependencies: { "@workflow/world-postgres": "5.0.0-beta.20" } });
-    const project = await store.createProject({ name: "No URL Agent", importKind: "zip", sourcePath });
-    const importJob = await store.claimNextJob("worker-a");
-    await store.completeJob(importJob!.id);
-    await store.recordSourceRevision({
-      projectId: project.id,
-      kind: "zip",
-      sourcePath,
-      summary: { workflowWorld: "@workflow/world-postgres" },
-      envVars: [],
-      files: [],
-      schedules: [],
-    });
-    await store.enqueueJob(project.id, "build_deploy");
-
-    await expect(
-      processNextJob(store, "worker-a", {
-        nodeEnv: "production",
-        workflowPostgresUrl: "",
-        runtime: {
-          name: "docker",
-          async buildRelease(input) {
-            buildCalled = true;
-            return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
-          },
-          async startProcess() {
-            return { internalPort: 3000, log: "started" };
-          },
-          async stopProcess() {},
-        },
-        allocateHostPort() {
-          return 41006;
-        },
-        async waitForDeployment() {},
-      }),
-    ).resolves.toBe(true);
-
-    expect(buildCalled).toBe(false);
-    await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed" });
-  });
-
-  test("blocks the deploy in production when the durable world package is not a dependency", async () => {
+  test("deploys in production without requiring the platform world in the agent's package.json", async () => {
     let buildCalled = false;
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();
@@ -857,7 +821,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath,
-      summary: { workflowWorld: "@workflow/world-postgres" },
+      summary: {},
       envVars: [],
       files: [],
       schedules: [],
@@ -881,55 +845,6 @@ describe("processNextJob", () => {
         },
         allocateHostPort() {
           return 41007;
-        },
-        async waitForDeployment() {},
-      }),
-    ).resolves.toBe(true);
-
-    expect(buildCalled).toBe(false);
-    await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed" });
-    await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
-      expect.objectContaining({ line: expect.stringContaining("not in package.json") }),
-    );
-  });
-
-  test("deploys in production when the durable world package is an optional dependency", async () => {
-    let buildCalled = false;
-    const store = createMemoryStore();
-    const sourcePath = await createFixtureEveProject({
-      optionalDependencies: { "@workflow/world-postgres": "5.0.0-beta.20" },
-    });
-    const project = await store.createProject({ name: "Optional Dep Agent", importKind: "zip", sourcePath });
-    const importJob = await store.claimNextJob("worker-a");
-    await store.completeJob(importJob!.id);
-    await store.recordSourceRevision({
-      projectId: project.id,
-      kind: "zip",
-      sourcePath,
-      summary: { workflowWorld: "@workflow/world-postgres" },
-      envVars: [],
-      files: [],
-      schedules: [],
-    });
-    await store.enqueueJob(project.id, "build_deploy");
-
-    await expect(
-      processNextJob(store, "worker-a", {
-        nodeEnv: "production",
-        workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5452/eveland",
-        runtime: {
-          name: "docker",
-          async buildRelease(input) {
-            buildCalled = true;
-            return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
-          },
-          async startProcess() {
-            return { internalPort: 3000, log: "started" };
-          },
-          async stopProcess() {},
-        },
-        allocateHostPort() {
-          return 41008;
         },
         async waitForDeployment() {},
       }),
@@ -1691,17 +1606,14 @@ describe("processNextJob", () => {
   });
 });
 
-async function createFixtureEveProject(
-  options: { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string> } = {},
-): Promise<string> {
+async function createFixtureEveProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-eve-"));
   await mkdir(path.join(root, "agent", "schedules"), { recursive: true });
   await writeFile(
     path.join(root, "package.json"),
     JSON.stringify({
       name: "fixture-agent",
-      dependencies: options.dependencies ?? {},
-      ...(options.optionalDependencies ? { optionalDependencies: options.optionalDependencies } : {}),
+      dependencies: { eve: "0.23.0" },
     }),
   );
   await writeFile(path.join(root, "agent", "instructions.md"), "You are concise.");

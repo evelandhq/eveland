@@ -416,10 +416,19 @@ Build/deploy 默认创建并发运行的 preview，不停止 production Deployme
 * Build 与启动
 * 健康检查
 * Secret 注入
+* durable workflow world 配置、依赖与数据库 schema
 * 日志收集
 * cron 触发
 * Session 来源归因
 * 容器重启
+
+durable workflow world 是平台 runtime contract，不是 Agent 源码 contract。只要 worker
+配置了 `WORKFLOW_POSTGRES_URL`，worker 启动时必须幂等 bootstrap 对应 Postgres schema，
+并在每个 Eve Release 副本中强制注入 `@workflow/world-postgres` 配置及平台固定的兼容
+依赖版本；不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent 已有的 root
+配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile 不得被修改。
+`WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
+缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
 
 Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
 必须连接到可执行的隔离 Sandbox，而不能在生产式 `eve start` 下静默退化为缺少

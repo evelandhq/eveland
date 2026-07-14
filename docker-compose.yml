@@ -98,6 +98,9 @@ services:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       WORKFLOW_POSTGRES_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
+      # The worker bootstraps the same database through its Compose-reachable address;
+      # deployed Agent containers keep using the host-gateway address above.
+      WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
       EVELAND_DATA_DIR: /workspace/.eveland-data
       # docker run bind mounts are resolved by the host daemon, not inside this container.
       EVELAND_HOST_DATA_DIR: ${EVELAND_HOST_DATA_DIR:-${PWD}/.eveland-data}
