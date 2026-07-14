@@ -37,6 +37,10 @@ services:
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
       WEB_ORIGIN: "${WEB_ORIGIN:-http://localhost:3000}"
       EVELAND_DATA_DIR: /var/lib/eveland
+      # Base compose hardcodes EVELAND_OBSERVER_ROOT to a /workspace path; without this
+      # override the embedded collector reads there instead of the host worker's outbox
+      # under /var/lib/eveland, so model_usage_events stays empty and token usage shows 0.
+      EVELAND_OBSERVER_ROOT: /var/lib/eveland/observer
       EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:4080
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
       EVELAND_GATEWAY_PUBLIC_SCHEME: https
@@ -86,6 +90,11 @@ services:
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
       EVELAND_RUNTIME: docker
       EVELAND_DATA_DIR: /var/lib/eveland
+      EVELAND_OBSERVER_ROOT: /var/lib/eveland/observer
+      # Agent container bind mounts resolve on the host, so the observer outbox host path
+      # must be /var/lib/eveland here (base compose defaults it to a $PWD/.eveland-data path
+      # that the API collector never reads).
+      EVELAND_HOST_DATA_DIR: /var/lib/eveland
       EVELAND_AGENT_BASE_DOMAINS: "${EVELAND_AGENT_BASE_DOMAINS:?set EVELAND_AGENT_BASE_DOMAINS}"
       EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:4080
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
