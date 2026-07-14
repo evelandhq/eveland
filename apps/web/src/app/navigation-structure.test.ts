@@ -95,6 +95,22 @@ describe("web application shell", () => {
     expect(projectOverview).toContain("last:col-span-2")
   })
 
+  test("shows deployment timestamps in the project traffic list", () => {
+    const projectOverview = source("./projects/[projectId]/page.tsx")
+
+    expect(projectOverview).toContain("<time dateTime={deployment.createdAt}>")
+    expect(projectOverview).toContain("Deployed {new Date(deployment.createdAt).toLocaleString()}")
+  })
+
+  test("marks stable route targets with their production traffic weight", () => {
+    const projectOverview = source("./projects/[projectId]/page.tsx")
+
+    expect(projectOverview).toContain("stableRoute?.targets.find((target) => target.deploymentId === deployment.id)")
+    expect(projectOverview).toContain("<BadgeCheckIcon data-icon=\"inline-start\" />")
+    expect(projectOverview).toContain("Stable · {stableTarget.weight / 100}% traffic")
+    expect(projectOverview).not.toContain("project?.deploymentId === deployment.id ? <span")
+  })
+
   test("explains when saving a secret queued live deployment restarts", () => {
     const secretForm = source("../components/secret-form.tsx")
 
