@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { claimRoutingKey, createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -474,10 +474,10 @@ export function createPostgresStore(database: Database): Store {
         .update(projects)
         .set({
           sourceRevisionId: revisionRow.id,
-          status: "imported",
+          status: sql`case when ${projects.deploymentId} is null then 'imported' else ${projects.status} end`,
           updatedAt: new Date(),
         })
-        .where(and(eq(projects.id, input.projectId), isNull(projects.deploymentId)));
+        .where(eq(projects.id, input.projectId));
 
       return sourceRevisionRowToSourceRevision(revisionRow);
     },

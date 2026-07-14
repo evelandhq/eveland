@@ -429,10 +429,13 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
           ...schedule,
         })),
       );
-      await this.updateProjectState(input.projectId, { status: "imported" });
       const project = state.projects.find((candidate) => candidate.id === input.projectId);
       if (project) {
         project.sourceRevisionId = revision.id;
+        if (!project.deploymentId) {
+          project.status = "imported";
+        }
+        project.updatedAt = now;
       }
       return revision;
     },
