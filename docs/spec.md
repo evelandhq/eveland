@@ -429,6 +429,9 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile 不得被修改。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
+当 Deployment URL 使用 `host.docker.internal` 且除 host 外与 `DATABASE_URL` 完全一致时，
+worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
+`WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。
 
 Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
 必须连接到可执行的隔离 Sandbox，而不能在生产式 `eve start` 下静默退化为缺少

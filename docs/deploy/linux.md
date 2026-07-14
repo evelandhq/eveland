@@ -171,7 +171,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from archive. Mutable route targets and active SessionBindings are protected independently of age. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Platform-owned Postgres URL injected into every Eve deployment. The worker forces the Postgres world in prepared Releases and bootstraps its schema at startup. Required in production and reserved from Project Secret overrides. For systemd, use a host-reachable address such as `postgres://eveland:eveland@127.0.0.1:5432/eveland`. |
-| `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches Postgres through `localhost` or a Compose service name. It is never injected into an Agent. |
+| `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | Matching `DATABASE_URL` when the deployment URL uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches a separate workflow database through `localhost` or a Compose service name. It is never injected into an Agent. |
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
@@ -314,7 +314,9 @@ complete production boundary:
 - Worker startup runs the pinned `@workflow/world-postgres` bootstrap
   idempotently, retrying while Postgres becomes ready. Use
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
-  for that same database.
+  for that same database. In the common single-database setup, a deployment URL
+  on `host.docker.internal` automatically reuses `DATABASE_URL` when its
+  credentials, port, database name, and options otherwise match.
 - Release preparation copies the imported source, moves any authored root
   `agent.*` config to a reserved sibling inside the copy, and generates a thin
   `agent.ts` wrapper that preserves the authored config while forcing

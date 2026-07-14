@@ -1174,6 +1174,9 @@ Eve 0.24.0 不再允许 self-hosted build 通过 `WORKFLOW_TARGET_WORLD` 环境�
 - `WORKFLOW_POSTGRES_URL` 是平台保留运行时值，Project Secret 不能覆盖；worker 与
   deployment 需要不同网络地址时仅为 bootstrap 设置
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL`；
+- 若 Deployment URL 使用 `host.docker.internal` 且数据库身份除 host 外与
+  `DATABASE_URL` 完全一致，未显式设置 bootstrap URL 时复用 worker 已可达的
+  `DATABASE_URL`，避免 native worker 因容器专用 hostname 在接收 job 前退出；
 - 真实 sample Agent 已分别用 Eve 0.23.0 与 0.24.0 构建，生成的 compiled manifest
   与 workflow-world module 都明确选择 `@workflow/world-postgres`。
 
