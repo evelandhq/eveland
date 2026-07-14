@@ -86,7 +86,9 @@ so redeploy a project once after upgrading to pick up the injected local sandbox
 When an Eve project includes `agent/sandbox/workspace/**`, release preparation preserves those
 authored seeds and generates the platform backend as `agent/sandbox/sandbox.js`, so Eve still
 materializes the files under `/workspace` for each new Session. Authored sandbox `bootstrap()`
-and `onSession()` behavior is replaced because Eveland owns the deployment backend.
+and `onSession()` behavior is replaced because Eveland owns the deployment backend. Each immutable
+Release gets its own workspace template revision: after Sync & Deploy, newly created Sessions use
+the updated seeds, while an existing durable Session keeps its current `/workspace` unchanged.
 
 Pick one mode: either everything in Compose, or only `postgres` in Compose and the rest natively. The Compose services run `pnpm install` inside Linux containers against the mounted workspace, which clobbers a macOS-built `node_modules`.
 

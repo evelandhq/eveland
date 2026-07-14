@@ -57,6 +57,7 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     `--property=EnvironmentFile=${input.envFilePath}`,
     `--property=Environment=PORT=${input.port}`,
     `--property=Environment=EVELAND_SANDBOX_CACHE_DIR=${input.sandboxCacheDir}`,
+    `--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=${input.releaseDir}`,
     `--property=Environment=EVELAND_OBSERVER_OUTBOX_DIR=${input.observerOutboxDir}`,
     `--property=MemoryMax=${input.memoryMax}`,
     `--property=CPUQuota=${input.cpuQuota}`,
@@ -349,7 +350,9 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       await execa("chown", ["-R", `${config.user}:`, input.observerOutboxDir]);
       await verifyObserverOutbox({ user: config.user, outboxDir: input.observerOutboxDir });
       const envFilePath = path.join(envDir, `${input.processName}.env`);
-      await writeFile(envFilePath, buildEnvFileContent(input.env), { mode: 0o600 });
+      const deploymentEnv = { ...input.env };
+      delete deploymentEnv.EVELAND_SANDBOX_TEMPLATE_REVISION;
+      await writeFile(envFilePath, buildEnvFileContent(deploymentEnv), { mode: 0o600 });
 
       const result = await execa(
         "systemd-run",

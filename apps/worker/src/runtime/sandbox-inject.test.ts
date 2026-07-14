@@ -25,13 +25,20 @@ describe("buildGeneratedSandboxModule", () => {
     const source = buildGeneratedSandboxModule("../.eveland/sandbox-bwrap/index.js");
     expect(source).toContain('from "eve/sandbox"');
     expect(source).toContain('from "../.eveland/sandbox-bwrap/index.js"');
-    expect(source).toContain("isBwrapAvailable() ? bwrap(cacheDir ? { cacheDir } : {}) : defaultBackend()");
+    expect(source).toContain("isBwrapAvailable() ? bwrap(bwrapOptions) : defaultBackend()");
     expect(source).toContain("process.env.EVELAND_SANDBOX_CACHE_DIR");
   });
 
   test("starts with the generated-module marker so re-runs can recognize their own output", () => {
     const source = buildGeneratedSandboxModule("../.eveland/sandbox-bwrap/index.js");
     expect(source.startsWith(GENERATED_MODULE_MARKER)).toBe(true);
+  });
+
+  test("forwards the deployment template revision to the bwrap backend", () => {
+    const source = buildGeneratedSandboxModule("../.eveland/sandbox-bwrap/index.js");
+
+    expect(source).toContain("process.env.EVELAND_SANDBOX_TEMPLATE_REVISION");
+    expect(source).toContain("templateRevision ? { templateRevision } : {}");
   });
 });
 

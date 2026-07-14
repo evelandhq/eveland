@@ -20,6 +20,12 @@ export interface BwrapSandboxCreateOptions {
    * (eve keys session sandboxes per durable session, not per deployment).
    */
   readonly cacheDir?: string;
+  /**
+   * Immutable release identity used to refresh workspace templates after a
+   * deploy. It deliberately affects templates only; durable session paths
+   * remain keyed solely by Eve's session key.
+   */
+  readonly templateRevision?: string;
 }
 
 /** Fully-defaulted options consumed by the backend implementation. */
@@ -29,6 +35,7 @@ export interface ResolvedBwrapSandboxOptions {
   readonly hidePaths: readonly string[];
   readonly bwrapPath: string;
   readonly cacheDir: string | null;
+  readonly templateRevision: string | null;
 }
 
 export function resolveBwrapSandboxOptions(options: BwrapSandboxCreateOptions = {}): ResolvedBwrapSandboxOptions {
@@ -38,6 +45,7 @@ export function resolveBwrapSandboxOptions(options: BwrapSandboxCreateOptions = 
     hidePaths: options.hidePaths ?? [],
     bwrapPath: options.bwrapPath ?? "bwrap",
     cacheDir: options.cacheDir ?? null,
+    templateRevision: options.templateRevision ?? null,
   };
 }
 
@@ -53,6 +61,7 @@ export function createBwrapOptionsHash(options: ResolvedBwrapSandboxOptions): st
     env: Object.fromEntries(Object.entries(options.env).sort(([a], [b]) => (a < b ? -1 : 1))),
     hidePaths: [...options.hidePaths],
     networkPolicy: options.networkPolicy,
+    templateRevision: options.templateRevision,
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 16);
 }

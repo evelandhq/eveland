@@ -81,10 +81,13 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     args.push(
       "--env",
       "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
+      "--env",
+      `EVELAND_SANDBOX_TEMPLATE_REVISION=${input.imageTag}`,
     );
   }
 
   for (const [key, value] of Object.entries(input.env).sort(([a], [b]) => a.localeCompare(b))) {
+    if (input.sandboxEnabled && key === "EVELAND_SANDBOX_TEMPLATE_REVISION") continue;
     args.push("--env", `${key}=${value}`);
   }
 
