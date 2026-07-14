@@ -230,11 +230,22 @@ opt-in is possible future work.
 
 `DELETE /projects/:projectId` is asynchronous: like `build-deploy`,
 `sync-source`, and `restart`, it enqueues a job — `delete_project` — and
-returns `202` immediately instead of deleting inline. The job stops the
-project's running deployment first, resolving the adapter from the
-deployment's recorded `runtimeKind` (same routing as `restart_deployment`
-above), and only removes the project record once that stop call returns —
-deleting a project no longer leaves its process running and holding its port.
+returns `202` immediately instead of deleting inline. The request atomically
+persists `deletion_status = 'deleting'`; Web keeps the Project visible as
+`Deleting…`, while mutating control-plane requests return `409` until deletion
+finishes. The worker does not claim the deletion job while another job for the
+same Project is still running.
+
+The job stops every `running` or `draining` Deployment first, resolving each
+adapter from the Deployment's recorded `runtimeKind`, then removes its runtime
+Release and the Project's platform-managed source, build, observer outbox, and
+sandbox directories. Only paths contained by `EVELAND_DATA_DIR` are eligible;
+an externally supplied source path is never recursively removed. Database
+records are deleted last. If a stop, Release removal, filesystem cleanup, or
+database operation fails, the Project remains with `deletion_status = 'failed'`
+and the error is visible for retry. Because runtime/filesystem cleanup is not a
+Postgres transaction, some resources may already have been removed before a
+retry.
 
 ## Durable workflow world
 

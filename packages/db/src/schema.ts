@@ -114,24 +114,32 @@ export const authVerifications = pgTable(
   (table) => [index("auth_verifications_identifier_idx").on(table.identifier)],
 );
 
-export const projects = pgTable("projects", {
-  id: text("id").primaryKey(),
-  routingKey: text("routing_key").notNull().unique(),
-  teamId: text("team_id").notNull().default("team_local").references(() => teams.id),
-  ownerId: text("owner_id").notNull().references(() => users.id),
-  name: text("name").notNull(),
-  importKind: text("import_kind").notNull(),
-  gitUrl: text("git_url"),
-  status: text("status").notNull(),
-  deploymentStatus: text("deployment_status").notNull(),
-  sourceRevisionId: text("source_revision_id"),
-  releaseId: text("release_id"),
-  deploymentId: text("deployment_id"),
-  latestSessionStatus: text("latest_session_status"),
-  nextScheduleAt: timestamp("next_schedule_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    routingKey: text("routing_key").notNull().unique(),
+    teamId: text("team_id").notNull().default("team_local").references(() => teams.id),
+    ownerId: text("owner_id").notNull().references(() => users.id),
+    name: text("name").notNull(),
+    importKind: text("import_kind").notNull(),
+    gitUrl: text("git_url"),
+    status: text("status").notNull(),
+    deploymentStatus: text("deployment_status").notNull(),
+    deletionStatus: text("deletion_status"),
+    deletionError: text("deletion_error"),
+    sourceRevisionId: text("source_revision_id"),
+    releaseId: text("release_id"),
+    deploymentId: text("deployment_id"),
+    latestSessionStatus: text("latest_session_status"),
+    nextScheduleAt: timestamp("next_schedule_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("projects_deletion_status_check", sql`${table.deletionStatus} is null or ${table.deletionStatus} in ('deleting', 'failed')`),
+  ],
+);
 
 export const secrets = pgTable(
   "secrets",

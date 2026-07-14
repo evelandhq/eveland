@@ -6,6 +6,8 @@ export type Project = {
   gitUrl: string | null;
   status: string;
   deploymentStatus: string;
+  deletionStatus: "deleting" | "failed" | null;
+  deletionError: string | null;
   sourceRevisionId: string | null;
   releaseId: string | null;
   deploymentId: string | null;

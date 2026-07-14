@@ -79,6 +79,20 @@ MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持�
 * 删除项目
 * 进入项目
 
+Project 删除是永久、异步操作。用户必须输入完整 Project 名称确认；API 原子地将
+Project 标记为 `deleting` 并创建唯一的 `delete_project` job。Projects 列表在 job
+完成前保留该 Project 并显示 `Deleting…`，详情页保持可读但禁用变更操作；删除中
+的 Project 拒绝新的部署、同步、Secret、Playground 等变更请求。删除失败时 Project
+记录保留，展示 `Delete failed` 和失败原因，并允许重试。
+
+删除 job 必须等待同一 Project 已运行的 job 结束，再停止所有 `running` 或
+`draining` Deployment。随后按各 Deployment 记录的 `runtimeKind` 删除 Release，
+清理平台管理的 source、build、observer outbox 与 durable sandbox workspace，最后
+级联删除 routes、SessionBindings、Sessions、usage、Schedules、Secrets、日志和
+Project 数据。平台不得删除 `EVELAND_DATA_DIR` 之外的外部源码路径。外部资源清理
+无法与 Postgres 组成同一事务；失败时部分进程或 artifact 可能已经停止或移除，
+但 Project 记录和错误状态必须保留以支持幂等重试。
+
 ---
 
 ### Members (/members)

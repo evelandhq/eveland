@@ -2,6 +2,74 @@ import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "./store.js";
 
 describe("memory store jobs", () => {
+  test("marks a project as deleting and replaces queued work with one deletion job", async () => {
+    const store = createMemoryStore();
+    const pendingSourcePath = "/data/uploads/zip-pending/source";
+    const project = await store.createProject({ name: "Delete Agent", importKind: "zip", sourcePath: pendingSourcePath });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    const requestProjectDeletion = Reflect.get(store, "requestProjectDeletion");
+
+    expect(requestProjectDeletion).toBeTypeOf("function");
+    const result = await requestProjectDeletion.call(store, project.id);
+    expect(result).toMatchObject({
+      outcome: "queued",
+      job: {
+        projectId: project.id,
+        type: "delete_project",
+        status: "queued",
+        payload: { sourcePaths: [pendingSourcePath] },
+      },
+    });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ deletionStatus: "deleting", deletionError: null });
+    await expect(store.claimNextJob("worker-a")).resolves.toMatchObject({ type: "delete_project" });
+    await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
+  });
+
+  test("rejects a duplicate deletion request without enqueueing another job", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Delete Once Agent", importKind: "zip" });
+
+    await store.requestProjectDeletion(project.id);
+    const duplicate = await store.requestProjectDeletion(project.id);
+
+    expect(duplicate).toEqual({ outcome: "already_deleting" });
+    await expect(store.claimNextJob("worker-a")).resolves.toMatchObject({ type: "delete_project" });
+    await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
+  });
+
+  test("records deletion failure details and clears them when deletion is retried", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Retry Delete Agent", importKind: "zip" });
+    await store.requestProjectDeletion(project.id);
+
+    const setProjectDeletionFailed = Reflect.get(store, "setProjectDeletionFailed");
+
+    expect(setProjectDeletionFailed).toBeTypeOf("function");
+    await setProjectDeletionFailed.call(store, project.id, "runtime unavailable");
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      deletionStatus: "failed",
+      deletionError: "runtime unavailable",
+    });
+
+    await expect(store.requestProjectDeletion(project.id)).resolves.toMatchObject({ outcome: "queued" });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ deletionStatus: "deleting", deletionError: null });
+  });
+
+  test("waits for running project work before claiming its deletion job", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Busy Delete Agent", importKind: "zip" });
+    const running = await store.claimNextJob("worker-a");
+    await store.requestProjectDeletion(project.id);
+    const otherProject = await store.createProject({ name: "Other Agent", importKind: "zip" });
+
+    const whileBusy = await store.claimNextJob("worker-b");
+
+    expect(whileBusy).toMatchObject({ projectId: otherProject.id, type: "import_source" });
+    await store.completeJob(running!.id);
+    await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({ projectId: project.id, type: "delete_project" });
+  });
+
   test("claims queued jobs once and tracks completion", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Worker Agent", importKind: "zip" });

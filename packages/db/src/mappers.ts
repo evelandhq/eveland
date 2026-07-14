@@ -7,6 +7,7 @@ import type {
   LogRecord,
   Project,
   ProjectImportKind,
+  ProjectDeletionStatus,
   ProjectStatus,
   PublicSecret,
   ReleaseRecord,
@@ -33,6 +34,8 @@ export type ProjectRow = {
   gitUrl: string | null;
   status: string;
   deploymentStatus: string;
+  deletionStatus: string | null;
+  deletionError: string | null;
   sourceRevisionId: string | null;
   releaseId: string | null;
   deploymentId: string | null;
@@ -51,6 +54,8 @@ export function projectRowToProject(row: ProjectRow): Project {
     gitUrl: row.gitUrl,
     status: row.status as ProjectStatus,
     deploymentStatus: row.deploymentStatus as DeploymentStatus,
+    deletionStatus: row.deletionStatus as ProjectDeletionStatus | null,
+    deletionError: row.deletionError,
     sourceRevisionId: row.sourceRevisionId,
     releaseId: row.releaseId,
     deploymentId: row.deploymentId,

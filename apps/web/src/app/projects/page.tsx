@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { AlertTriangleIcon, ArrowUpRightIcon, FolderPlusIcon, PlusIcon } from 'lucide-react';
+import { DeleteProjectAction } from '@/components/delete-project-action';
+import { ProjectDeletionPoller } from '@/components/project-deletion-poller';
 import { StatusBadge } from '@/components/status-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import {
   Card,
@@ -21,6 +24,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty';
 import { getCollectorHealth, getProjects } from '@/lib/server-api';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +34,7 @@ export default async function ProjectsPage() {
 
   return (
     <div className="min-h-[calc(100svh-3rem)] bg-background">
+      <ProjectDeletionPoller active={projects.some((project) => project.deletionStatus === 'deleting')} />
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
         {collector.status !== 'healthy' ? (
           <Alert>
@@ -84,19 +89,32 @@ export default async function ProjectsPage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project) => (
-              <Card key={project.id} size="sm" className="h-full">
+            {projects.map((project) => {
+              const deleting = project.deletionStatus === 'deleting';
+              return (
+              <Card key={project.id} size="sm" className="h-full" aria-busy={deleting}>
                 <CardHeader>
                   <CardTitle>
-                    <Link href={`/projects/${project.id}`} className="hover:underline">
-                      {project.name}
-                    </Link>
+                    {deleting ? (
+                      project.name
+                    ) : (
+                      <Link href={`/projects/${project.id}`} className="hover:underline">
+                        {project.name}
+                      </Link>
+                    )}
                   </CardTitle>
                   <CardDescription className="truncate">
                     {project.gitUrl ?? `${project.importKind.toUpperCase()} import`}
                   </CardDescription>
                   <CardAction>
-                    <StatusBadge status={project.deploymentStatus} />
+                    {deleting ? (
+                      <Badge variant="secondary">
+                        <Spinner />
+                        Deleting…
+                      </Badge>
+                    ) : (
+                      <StatusBadge status={project.deletionStatus === 'failed' ? 'delete_failed' : project.deploymentStatus} />
+                    )}
                   </CardAction>
                 </CardHeader>
                 <CardContent>
@@ -120,19 +138,32 @@ export default async function ProjectsPage() {
                     Updated {new Date(project.updatedAt).toLocaleString()}
                   </span>
 
-                  <Link
-                    href={`/projects/${project.id}`}
-                    aria-label={`Open ${project.name}`}
-                    className={cn(
-                      buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
-                      'text-foreground',
-                    )}
-                  >
-                    <ArrowUpRightIcon />
-                  </Link>
+                  <div className="flex items-center gap-1">
+                    {!deleting ? (
+                      <DeleteProjectAction
+                        projectId={project.id}
+                        projectName={project.name}
+                        deletionStatus={project.deletionStatus}
+                        appearance="card"
+                      />
+                    ) : null}
+                    {!deleting ? (
+                      <Link
+                        href={`/projects/${project.id}`}
+                        aria-label={`Open ${project.name}`}
+                        className={cn(
+                          buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+                          'text-foreground',
+                        )}
+                      >
+                        <ArrowUpRightIcon />
+                      </Link>
+                    ) : null}
+                  </div>
                 </CardFooter>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

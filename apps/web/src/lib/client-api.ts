@@ -98,6 +98,11 @@ export async function enqueueBuildDeploy(projectId: string): Promise<Job> {
   return data.job;
 }
 
+export async function deleteProject(projectId: string): Promise<Job> {
+  const data = await clientRequest<{ job: Job }>(`/projects/${projectId}`, { method: "DELETE" });
+  return data.job;
+}
+
 export async function promoteDeployment(projectId: string, deploymentId: string): Promise<void> {
   await clientRequest(`/projects/${projectId}/deployments/${deploymentId}/promote`, { method: "POST" });
 }

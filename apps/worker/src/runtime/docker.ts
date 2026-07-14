@@ -285,7 +285,13 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       await dockerStopAndRemove(processName);
     },
     async removeRelease(releaseRef: string): Promise<void> {
-      await execa("docker", ["image", "rm", releaseRef], { all: true });
+      const result = await execa("docker", ["image", "rm", releaseRef], { all: true, reject: false });
+      if (!result.failed || /No such image/i.test(result.stderr ?? "")) return;
+      throw new Error(
+        `docker image rm ${releaseRef} failed (exit ${result.exitCode ?? "none -- docker CLI may be missing or unreachable"}): ${
+          result.stderr || "no stderr captured"
+        }`,
+      );
     },
   };
 }

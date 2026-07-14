@@ -1088,3 +1088,24 @@ core/db 边界落地
   不丢 durable Eve Session 的 workspace；
 - Docker 与 systemd build self-check 都必须在真实 bwrap 中写入并用 Node 24
   执行带类型标注的 `.ts` probe，不能用 `/eve/v1/health` 代替。
+
+---
+
+## 16. 2026-07-14 follow-up：Project 删除生命周期
+
+原有 `delete_project` job 已能停止 live Deployment 并删除数据库记录，但 Web 没有
+入口，异步期间也没有持久化状态；同时旧实现不删除 runtime Release 或
+`EVELAND_DATA_DIR` 下的 Project 文件。后续实现收敛为以下契约：
+
+- 删除请求原子地写入 `deletion_status = 'deleting'` 并创建唯一删除 job；重复请求
+  返回 `409`，其他 Project mutation 在删除期间也返回 `409`；
+- Projects 列表和详情页展示 `Deleting…`，详情内容保持可读但所有变更控件禁用；
+  删除失败写入独立的 `failed` 状态和错误，不覆盖导入/构建状态，并允许重试；
+- 删除 job 只有在同 Project 没有其他 running job 时才可 claim，从而保证已启动的
+  build 在清理前完成 Deployment 落库，不再留下并发构建孤儿进程；
+- Worker 停止所有 live Deployment，按 `runtimeKind` 删除 Release，清理受控的
+  source/build/observer/sandbox 目录，再把数据库级联删除作为最后一步；
+- 仅删除 `EVELAND_DATA_DIR` 内且通过 containment/realpath 检查的 source 路径，
+  外部源码目录必须保留；外部资源清理失败保留 Project 记录以支持幂等重试。
+
+本节是完成 Phase 后的增量产品行为；前文已完成的 Phase checklist 仍只作为历史。

@@ -1213,7 +1213,7 @@ describe("api app", () => {
     await expect(response.json()).resolves.toEqual({ error: "Project not found" });
   });
 
-  test("enqueues a delete_project job and leaves the project in place until the worker runs it", async () => {
+  test("marks a project as deleting, enqueues one deletion job, and rejects duplicate requests", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Delete Me Agent", importKind: "zip", sourcePath: "/tmp/delete-me" });
     const app = createApp(store);
@@ -1221,12 +1221,36 @@ describe("api app", () => {
     const response = await app.request(`/projects/${project.id}`, { method: "DELETE" });
 
     expect(response.status).toBe(202);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       job: expect.objectContaining({ type: "delete_project", status: "queued", projectId: project.id }),
     });
+    expect(JSON.stringify(body)).not.toContain("/tmp/delete-me");
     // The delete only happens once the worker processes the job; the DELETE
-    // request itself must not remove the project row.
-    await expect(store.getProject(project.id)).resolves.toMatchObject({ id: project.id });
+    // request itself must keep a visible, persisted deleting state.
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      id: project.id,
+      deletionStatus: "deleting",
+      deletionError: null,
+    });
+
+    const duplicate = await app.request(`/projects/${project.id}`, { method: "DELETE" });
+    expect(duplicate.status).toBe(409);
+    await expect(duplicate.json()).resolves.toEqual({ error: "Project is being deleted" });
+  });
+
+  test("keeps reads available while rejecting project mutations during deletion", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Deleting Agent", importKind: "zip" });
+    const app = createApp(store);
+    await app.request(`/projects/${project.id}`, { method: "DELETE" });
+
+    const read = await app.request(`/projects/${project.id}`);
+    const mutate = await app.request(`/projects/${project.id}/build-deploy`, { method: "POST" });
+
+    expect(read.status).toBe(200);
+    expect(mutate.status).toBe(409);
+    await expect(mutate.json()).resolves.toEqual({ error: "Project is being deleted" });
   });
 });
 

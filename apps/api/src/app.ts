@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { Hono } from "hono";
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import type { AuthPrincipal, LogRecord, SessionStatus, TeamInvitation } from "@eveland/core/contracts";
 import {
@@ -251,6 +251,28 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     });
   }
 
+  const rejectProjectMutationsWhileDeleting: MiddlewareHandler = async (c, next) => {
+    const method = c.req.method;
+    const projectDelete = method === "DELETE" && /^\/projects\/[^/]+\/?$/.test(new URL(c.req.url).pathname);
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS" || projectDelete) {
+      await next();
+      return;
+    }
+
+    const projectId = c.req.param("projectId");
+    if (!projectId) {
+      await next();
+      return;
+    }
+    const project = await store.getProject(projectId);
+    if (project?.deletionStatus === "deleting") {
+      return c.json({ error: "Project is being deleted" }, 409);
+    }
+    await next();
+  };
+  app.use("/projects/:projectId", rejectProjectMutationsWhileDeleting);
+  app.use("/projects/:projectId/*", rejectProjectMutationsWhileDeleting);
+
   app.get("/projects", async (c) => c.json({ projects: await store.listProjects() }));
 
   app.post("/projects", async (c) => {
@@ -392,12 +414,10 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   app.delete("/projects/:projectId", async (c) => {
     const projectId = c.req.param("projectId");
-    const project = await store.getProject(projectId);
-    if (!project) {
-      return c.json({ error: "Project not found" }, 404);
-    }
-    const job = await store.enqueueJob(projectId, "delete_project");
-    return c.json({ job }, 202);
+    const request = await store.requestProjectDeletion(projectId);
+    if (request.outcome === "not_found") return c.json({ error: "Project not found" }, 404);
+    if (request.outcome === "already_deleting") return c.json({ error: "Project is being deleted" }, 409);
+    return c.json({ job: { ...request.job, payload: {} } }, 202);
   });
 
   app.post("/projects/:projectId/build-deploy", async (c) => {

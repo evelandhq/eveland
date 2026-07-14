@@ -9,6 +9,7 @@ const variantByStatus: Record<string, "default" | "secondary" | "destructive" | 
   not_deployed: "secondary",
   waiting_approval: "outline",
   failed: "destructive",
+  delete_failed: "destructive",
   invalid: "destructive",
   stopped: "outline",
 };

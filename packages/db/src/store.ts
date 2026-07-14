@@ -43,12 +43,34 @@ export type CreateProjectInput = {
   sourcePath?: string | null;
 };
 
+export type ProjectDeletionRequest =
+  | { outcome: "queued"; job: Job }
+  | { outcome: "not_found" }
+  | { outcome: "already_deleting" };
+
+export function projectDeletionSourcePaths(payloads: unknown[]): string[] {
+  const paths = new Set<string>();
+  for (const payload of payloads) {
+    if (typeof payload !== "object" || payload === null) continue;
+    const input = payload as { sourcePath?: unknown; sourcePaths?: unknown };
+    if (typeof input.sourcePath === "string") paths.add(input.sourcePath);
+    if (Array.isArray(input.sourcePaths)) {
+      for (const sourcePath of input.sourcePaths) {
+        if (typeof sourcePath === "string") paths.add(sourcePath);
+      }
+    }
+  }
+  return [...paths];
+}
+
 export const DEFAULT_TEAM_ID = "team_local";
 
 export type Store = {
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<Project>;
   getProject(projectId: string): Promise<Project | null>;
+  requestProjectDeletion(projectId: string): Promise<ProjectDeletionRequest>;
+  setProjectDeletionFailed(projectId: string, error: string): Promise<Project | null>;
   deleteProject(projectId: string): Promise<boolean>;
   listSecrets(projectId: string): Promise<PublicSecret[]>;
   upsertSecret(projectId: string, key: string, value: string): Promise<PublicSecret>;
@@ -70,6 +92,7 @@ export type Store = {
     files: Array<{ path: string; content: string }>;
     schedules: Array<Omit<ScheduleRecord, "id" | "projectId">>;
   }): Promise<SourceRevision>;
+  listSourceRevisions(projectId: string): Promise<SourceRevision[]>;
   getCurrentSourceRevision(projectId: string): Promise<SourceRevision | null>;
   getSourceRevision(revisionId: string): Promise<SourceRevision | null>;
   listSourceFiles(projectId: string): Promise<SourceFileRecord[]>;
@@ -191,6 +214,8 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
           gitUrl: input.gitUrl ?? null,
           status: "import_pending",
           deploymentStatus: "not_deployed",
+          deletionStatus: null,
+          deletionError: null,
           sourceRevisionId: null,
           releaseId: null,
           deploymentId: null,
@@ -208,6 +233,34 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async getProject(projectId) {
       return state.projects.find((project) => project.id === projectId) ?? null;
+    },
+
+    async requestProjectDeletion(projectId) {
+      const project = state.projects.find((candidate) => candidate.id === projectId);
+      if (!project) return { outcome: "not_found" };
+      if (project.deletionStatus === "deleting") return { outcome: "already_deleting" };
+
+      const sourcePaths = projectDeletionSourcePaths(
+        state.jobs
+          .filter((job) => job.projectId === projectId && (job.status === "queued" || job.type === "delete_project"))
+          .map((job) => job.payload),
+      );
+      state.jobs = state.jobs.filter((job) => job.projectId !== projectId || job.status !== "queued");
+      project.deletionStatus = "deleting";
+      project.deletionError = null;
+      project.updatedAt = new Date().toISOString();
+      const job = createJob(projectId, "delete_project", { sourcePaths });
+      state.jobs.push(job);
+      return { outcome: "queued", job };
+    },
+
+    async setProjectDeletionFailed(projectId, error) {
+      const project = state.projects.find((candidate) => candidate.id === projectId);
+      if (!project) return null;
+      project.deletionStatus = "failed";
+      project.deletionError = error;
+      project.updatedAt = new Date().toISOString();
+      return project;
     },
 
     async deleteProject(projectId) {
@@ -283,7 +336,15 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     },
 
     async claimNextJob(_workerId) {
-      const job = state.jobs.find((candidate) => candidate.status === "queued");
+      const job = state.jobs.find((candidate) => {
+        if (candidate.status !== "queued") return false;
+        const project = state.projects.find((entry) => entry.id === candidate.projectId);
+        if (project?.deletionStatus !== "deleting") return true;
+        if (candidate.type !== "delete_project") return false;
+        return !state.jobs.some(
+          (other) => other.projectId === candidate.projectId && other.id !== candidate.id && other.status === "running",
+        );
+      });
       if (!job) {
         return null;
       }
@@ -379,6 +440,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     async getCurrentSourceRevision(projectId) {
       const project = state.projects.find((candidate) => candidate.id === projectId);
       return state.sourceRevisions.find((revision) => revision.id === project?.sourceRevisionId) ?? null;
+    },
+
+    async listSourceRevisions(projectId) {
+      return state.sourceRevisions.filter((revision) => revision.projectId === projectId);
     },
 
     async getSourceRevision(revisionId) {
