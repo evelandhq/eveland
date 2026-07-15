@@ -45,6 +45,25 @@ describe.skipIf(!database)("Postgres schedule state", () => {
         hostPort: 41989,
         runtimeKind: "docker",
       });
+      const activationClaims = await Promise.all([
+        store.acquireActivationLease({
+          deploymentId: deployment.id,
+          kind: "schedule_run",
+          ownerId: "srun_postgres_one",
+          expiresAt: new Date("2026-07-15T00:10:00.000Z"),
+          now: new Date("2026-07-15T00:00:00.000Z"),
+        }),
+        store.acquireActivationLease({
+          deploymentId: deployment.id,
+          kind: "public_request",
+          ownerId: "req_postgres_one",
+          expiresAt: new Date("2026-07-15T00:10:00.000Z"),
+          now: new Date("2026-07-15T00:00:00.000Z"),
+        }),
+      ]);
+      expect(activationClaims.filter((claim) => claim.starter)).toHaveLength(1);
+      expect(new Set(activationClaims.map((claim) => claim.runtimeInstance.id)).size).toBe(1);
+      await Promise.all(activationClaims.map((claim) => store.releaseActivationLease(claim.lease.id)));
       await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-15T00:00:30.000Z"));
 
       const manualDueAt = new Date("2026-07-15T00:00:45.000Z");

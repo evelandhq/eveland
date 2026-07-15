@@ -7,6 +7,7 @@ import { createStoreFromEnv } from "@eveland/db/factory";
 import { processNextJob } from "./jobs/process.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
+import { planDueSchedules } from "./scheduler/planner.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
@@ -38,7 +39,12 @@ console.log(
 
 async function tick() {
   try {
-    await processNextJob(storeFactory.store, workerId);
+    await Promise.all([
+      planDueSchedules(storeFactory.store, {
+        limit: Number(process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25),
+      }),
+      processNextJob(storeFactory.store, workerId),
+    ]);
   } catch (error) {
     console.error(error);
   }

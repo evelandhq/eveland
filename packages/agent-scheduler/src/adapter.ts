@@ -231,18 +231,18 @@ export default defineChannel({
             receiveTasks.push(task);
             return task;
           };
-          await entry.definition.run({
+          const [runResult] = await Promise.allSettled([entry.definition.run({
             appAuth: scheduleAppAuth,
             receive: wrappedReceive,
             waitUntil(task: Promise<unknown>) { waitUntilTasks.push(task); },
-          });
+          })]);
           const settled = await Promise.allSettled([...waitUntilTasks, ...receiveTasks]);
           for (const result of settled) {
             if (result.status === "fulfilled" && isSession(result.value) && !sessionIds.includes(result.value.id)) {
               sessionIds.push(result.value.id);
             }
           }
-          const rejected = settled.find((result) => result.status === "rejected");
+          const rejected = [runResult, ...settled].find((result) => result.status === "rejected");
           if (rejected) throw new Error("A scheduled handler task failed.");
         }
 

@@ -86,6 +86,8 @@ Produce the daily report.
     expect(channel).toContain("EVELAND_SCHEDULER_RUNTIME_SECRET");
     expect(channel).toContain("EVELAND_SCHEDULER_REDEEM_URL");
     expect(channel).toContain("Promise.allSettled");
+    expect(channel).toContain("const [runResult] = await Promise.allSettled([entry.definition.run(");
+    expect(channel).toContain("const rejected = [runResult, ...settled]");
     expect(channel).not.toContain("test-secret");
     expect(channel).not.toContain("eve/dist/src/internal");
   });

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -16,6 +17,11 @@ import {
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
+import {
+  resolveSchedulerDispatchSecret,
+  resolveSchedulerRuntimeSecret,
+  verifyScheduleDispatchCredential,
+} from "@eveland/core/server/scheduler-dispatch";
 import {
   inferProjectSlugFromGitUrl,
   PROJECT_SLUG_MAX_LENGTH,
@@ -104,6 +110,23 @@ const passwordChangeSchema = z.object({
   newPassword: z.string().min(12).max(128),
 });
 
+const schedulerDispatchSchema = z.discriminatedUnion("phase", [
+  z.object({
+    phase: z.literal("claim"),
+    credential: z.string().min(1),
+    scheduleRunId: z.string().min(1),
+    scheduleKey: z.string().min(1),
+  }),
+  z.object({
+    phase: z.literal("complete"),
+    credential: z.string().min(1),
+    scheduleRunId: z.string().min(1),
+    scheduleKey: z.string().min(1),
+    sessionIds: z.array(z.string().min(1)),
+    status: z.enum(["succeeded", "failed"]),
+  }),
+]);
+
 const targetsArraySchema = z.array(z.object({
     deploymentId: z.string().min(1),
     weight: z.number().int().min(0).max(10_000),
@@ -144,6 +167,8 @@ export type AppOptions = {
   gatewayPublicScheme?: "http" | "https";
   gatewayPublicPort?: number | null;
   invalidateGatewayRoutes?: (hostnames: string[]) => Promise<void>;
+  schedulerDispatchSecret?: string;
+  schedulerRuntimeSecret?: string;
 };
 
 export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variables: { principal: AuthPrincipal } }> {
@@ -196,6 +221,52 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       },
     ),
   );
+
+  app.post("/internal/scheduler/dispatch", async (c) => {
+    const runtimeSecret = options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
+    const dispatchSecret = options.schedulerDispatchSecret ?? resolveSchedulerDispatchSecret(process.env);
+    if (!runtimeSecret || !dispatchSecret) return c.json({ error: "Scheduler dispatch is unavailable" }, 503);
+    const suppliedRuntimeSecret = c.req.header("x-eveland-runtime-secret");
+    if (!suppliedRuntimeSecret || !safeSecretEqual(runtimeSecret, suppliedRuntimeSecret)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const parsed = schedulerDispatchSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid scheduler dispatch" }, 400);
+    const credential = verifyScheduleDispatchCredential(
+      parsed.data.credential,
+      dispatchSecret,
+      new Date(),
+      { allowExpired: parsed.data.phase === "complete" },
+    );
+    if (
+      !credential ||
+      credential.scheduleRunId !== parsed.data.scheduleRunId ||
+      credential.scheduleKey !== parsed.data.scheduleKey
+    ) {
+      return c.json({ error: "Dispatch rejected" }, 401);
+    }
+    const run = await store.getScheduleRun(parsed.data.scheduleRunId);
+    const schedule = run ? await store.getProjectSchedule(run.scheduleId) : null;
+    if (
+      !run ||
+      !schedule ||
+      schedule.key !== parsed.data.scheduleKey ||
+      run.deploymentId !== credential.deploymentId
+    ) {
+      return c.json({ error: "Dispatch not found" }, 404);
+    }
+    if (parsed.data.phase === "claim") {
+      const claimed = await store.redeemScheduleRunDispatch(run.id, credential.deploymentId);
+      return claimed ? c.json({ ok: true }) : c.json({ error: "Dispatch already claimed" }, 409);
+    }
+    if (run.status !== "dispatching") return c.json({ error: "Dispatch is not active" }, 409);
+    const completed = await store.completeScheduleRun(run.id, {
+      status: parsed.data.status,
+      error: parsed.data.status === "failed" ? "Scheduled handler failed." : null,
+      eveSessionIds: parsed.data.sessionIds,
+    });
+    return completed ? c.json({ ok: true }) : c.json({ error: "Dispatch not found" }, 404);
+  });
 
   if (options.auth) {
     app.on(["GET", "POST"], "/api/auth/*", (c) => {
@@ -705,6 +776,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     return c.json({ schedules: await store.listSchedules(c.req.param("projectId")) });
   });
 
+  app.post("/projects/:projectId/schedules/:scheduleId/runs", async (c) => {
+    try {
+      const run = await store.createManualScheduleRun(c.req.param("projectId"), c.req.param("scheduleId"));
+      return c.json({ run }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, message === "Project schedule not found." ? 404 : 409);
+    }
+  });
+
   app.get("/projects/:projectId/source/revision", async (c) => {
     return c.json({ revision: await store.getCurrentSourceRevision(c.req.param("projectId")) });
   });
@@ -977,4 +1058,10 @@ async function resolveExtractedSourceRoot(extractDir: string): Promise<string> {
   }
 
   return extractDir;
+}
+
+function safeSecretEqual(expected: string, actual: string): boolean {
+  const expectedDigest = createHash("sha256").update(expected).digest();
+  const actualDigest = createHash("sha256").update(actual).digest();
+  return timingSafeEqual(expectedDigest, actualDigest);
 }

@@ -296,6 +296,45 @@ export const scheduleRuns = pgTable(
   ],
 );
 
+export const runtimeInstances = pgTable(
+  "runtime_instances",
+  {
+    id: text("id").primaryKey(),
+    deploymentId: text("deployment_id").notNull().references(() => deployments.id, { onDelete: "cascade" }),
+    generation: integer("generation").notNull(),
+    status: text("status").notNull(),
+    endpointHost: text("endpoint_host"),
+    endpointPort: integer("endpoint_port"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    stoppedAt: timestamp("stopped_at", { withTimezone: true }),
+    lastError: text("last_error"),
+  },
+  (table) => [
+    uniqueIndex("runtime_instances_deployment_generation_idx").on(table.deploymentId, table.generation),
+    index("runtime_instances_deployment_status_idx").on(table.deploymentId, table.status),
+    check("runtime_instances_status_check", sql`${table.status} in ('starting', 'ready', 'draining', 'stopped', 'failed')`),
+  ],
+);
+
+export const activationLeases = pgTable(
+  "activation_leases",
+  {
+    id: text("id").primaryKey(),
+    deploymentId: text("deployment_id").notNull().references(() => deployments.id, { onDelete: "cascade" }),
+    runtimeInstanceId: text("runtime_instance_id").references(() => runtimeInstances.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(),
+    ownerId: text("owner_id").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("activation_leases_deployment_kind_owner_idx").on(table.deploymentId, table.kind, table.ownerId),
+    index("activation_leases_active_idx").on(table.deploymentId, table.expiresAt, table.releasedAt),
+    check("activation_leases_kind_check", sql`${table.kind} in ('public_request', 'stream', 'turn', 'schedule_run')`),
+  ],
+);
+
 export const agentRoutes = pgTable(
   "agent_routes",
   {

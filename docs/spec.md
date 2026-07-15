@@ -293,7 +293,23 @@ message
 
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
-Schedules 只展示 Eve 项目中定义的 cron 配置，不单独维护执行记录。
+Eveland 是生产 Schedule 的唯一调度器。导入源码时按 `agent/schedules/`
+下的完整相对路径识别 Schedule key，并只接受 Eve 0.24 的五字段、UTC、分钟级
+cron 语义；每次 Source Revision 保留不可变 ScheduleVersion。Project 另有一个
+显式 scheduler target，未来 cron/manual run 固定到该 Deployment、Release 和
+ScheduleVersion，不通过 Gateway 或 stable route 重新选流量目标。
+
+Worker 以 Postgres 为权威状态，使用有界、可多 Worker 并发的 planner 原子创建
+ScheduleRun、排入 `trigger_schedule` job、推进 `nextRunAt` 并记录合并的 missed tick。
+手动运行复用同一条 job 路径。执行前 Worker 获取 `schedule_run` ActivationLease，
+按 Deployment 记录的 `runtimeKind` 幂等唤醒预构建 Release，再用短期单次 credential
+调用 Release 内的私有 Scheduler Channel。Channel 在执行 authored handler 前向 API
+原子兑换 credential，并在返回前持久化零个或多个 Eve Session ID；重复 job 或
+credential 不得重复执行 authored side effect。
+
+Prepared Release 会保留 Eve 的 Schedule 注册形状，但将 native cron handler 改为
+no-op，因此 warm preview、旧版本和 stable target 不会各自执行同一 cron。真正的
+Markdown/TypeScript handler 只由上述经过认证的私有 Channel 调用。
 
 每个 Schedule 展示：
 
@@ -303,6 +319,10 @@ Schedules 只展示 Eve 项目中定义的 cron 配置，不单独维护执行�
 * 是否启用
 * 下一次触发时间
 * 来源文件位置
+
+每次 cron 或 manual 执行都持久化独立 ScheduleRun；成功且没有创建 Session 也是
+合法结果。ScheduleRun 保留 Release/Deployment provenance、状态、attempt、missed
+tick、错误和关联 Sessions，供 Sessions/Schedules 历史读取。
 
 点击“查看历史”后，跳转到 Sessions，并自动筛选：
 

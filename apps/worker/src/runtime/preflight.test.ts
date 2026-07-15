@@ -25,6 +25,12 @@ function makePassingDeps(env: NodeJS.ProcessEnv = { EVELAND_RUNTIME: "systemd", 
   };
 }
 
+const productionSchedulerEnv = {
+  EVELAND_SCHEDULER_RUNTIME_SECRET: "scheduler-runtime-secret-at-least-32-bytes",
+  EVELAND_SCHEDULER_DISPATCH_SECRET: "scheduler-dispatch-secret-at-least-32-bytes",
+  EVELAND_SCHEDULER_REDEEM_URL: "http://127.0.0.1:4000/internal/scheduler/dispatch",
+};
+
 describe("assertWorkerPreflight", () => {
   test("is a no-op when EVELAND_RUNTIME is not systemd, invoking no dep", async () => {
     const deps = makePassingDeps({});
@@ -52,11 +58,33 @@ describe("assertWorkerPreflight", () => {
     ).rejects.toThrow("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
   });
 
+  test("rejects missing scheduler secrets before a production docker worker starts", async () => {
+    await expect(
+      assertWorkerPreflight({ NODE_ENV: "production", EVELAND_RUNTIME: "docker" }),
+    ).rejects.toThrow(/EVELAND_SCHEDULER_RUNTIME_SECRET/);
+  });
+
+  test("rejects a short scheduler secret before a production docker worker starts", async () => {
+    await expect(
+      assertWorkerPreflight({
+        NODE_ENV: "production",
+        EVELAND_RUNTIME: "docker",
+        EVELAND_SCHEDULER_RUNTIME_SECRET: "too-short",
+        EVELAND_SCHEDULER_DISPATCH_SECRET: "scheduler-dispatch-secret-at-least-32-bytes",
+        EVELAND_SCHEDULER_REDEEM_URL: "http://127.0.0.1:4000/internal/scheduler/dispatch",
+      }),
+    ).rejects.toThrow(/EVELAND_SCHEDULER_RUNTIME_SECRET.*at least 32 bytes/);
+  });
+
   test("runs the full preflight when NODE_ENV=production resolves the systemd default, even with EVELAND_RUNTIME unset", async () => {
     // The gate must follow the RESOLVED runtime, not the raw env var: a
     // production host relying on the systemd default gets the same safety net
     // as one that sets EVELAND_RUNTIME=systemd explicitly.
-    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_DATA_DIR: "/var/lib/eveland" };
+    const env: NodeJS.ProcessEnv = {
+      NODE_ENV: "production",
+      EVELAND_DATA_DIR: "/var/lib/eveland",
+      ...productionSchedulerEnv,
+    };
     const deps = makePassingDeps(env);
     await expect(assertWorkerPreflight(env, deps)).resolves.toBeUndefined();
     expect(deps.getuid).toHaveBeenCalled();
@@ -67,14 +95,24 @@ describe("assertWorkerPreflight", () => {
   });
 
   test("collects issues on the NODE_ENV=production default path, not just the explicit-systemd one", async () => {
-    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_DATA_DIR: "/var/lib/eveland" };
+    const env: NodeJS.ProcessEnv = {
+      NODE_ENV: "production",
+      EVELAND_DATA_DIR: "/var/lib/eveland",
+      ...productionSchedulerEnv,
+    };
     const deps = makePassingDeps(env);
     deps.platform = "darwin";
     await expect(assertWorkerPreflight(env, deps)).rejects.toThrow(/^systemd runtime preflight failed:/);
   });
 
   test("stays a no-op when NODE_ENV=production but EVELAND_RUNTIME=docker is explicit", async () => {
-    const env: NodeJS.ProcessEnv = { NODE_ENV: "production", EVELAND_RUNTIME: "docker" };
+    const env: NodeJS.ProcessEnv = {
+      NODE_ENV: "production",
+      EVELAND_RUNTIME: "docker",
+      EVELAND_SCHEDULER_RUNTIME_SECRET: "scheduler-runtime-secret-at-least-32-bytes",
+      EVELAND_SCHEDULER_DISPATCH_SECRET: "scheduler-dispatch-secret-at-least-32-bytes",
+      EVELAND_SCHEDULER_REDEEM_URL: "http://127.0.0.1:4000/internal/scheduler/dispatch",
+    };
     const deps = makePassingDeps(env);
     await expect(assertWorkerPreflight(env, deps)).resolves.toBeUndefined();
     expect(deps.getuid).not.toHaveBeenCalled();

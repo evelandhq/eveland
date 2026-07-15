@@ -221,6 +221,7 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
  */
 export async function assertWorkerPreflight(env: NodeJS.ProcessEnv, overrides: Partial<PreflightDeps> = {}): Promise<void> {
   assertValidSecretKey(env.APP_SECRET_KEY ?? devSecretKey);
+  assertSchedulerPreflight(env);
   if (resolveRuntimeKind(env) !== "systemd") {
     return;
   }
@@ -229,5 +230,29 @@ export async function assertWorkerPreflight(env: NodeJS.ProcessEnv, overrides: P
   const issues = await collectSystemdPreflightIssues(deps);
   if (issues.length > 0) {
     throw new Error(`systemd runtime preflight failed:\n${issues.map((issue) => `- ${issue}`).join("\n")}`);
+  }
+}
+
+function assertSchedulerPreflight(env: NodeJS.ProcessEnv): void {
+  if (env.NODE_ENV !== "production") return;
+  const secrets = [
+    ["EVELAND_SCHEDULER_RUNTIME_SECRET", env.EVELAND_SCHEDULER_RUNTIME_SECRET],
+    ["EVELAND_SCHEDULER_DISPATCH_SECRET", env.EVELAND_SCHEDULER_DISPATCH_SECRET],
+  ] as const;
+  for (const [name, value] of secrets) {
+    if (!value) throw new Error(`${name} is required in production.`);
+    if (Buffer.byteLength(value, "utf8") < 32) throw new Error(`${name} must be at least 32 bytes.`);
+  }
+  if (env.EVELAND_SCHEDULER_RUNTIME_SECRET === env.EVELAND_SCHEDULER_DISPATCH_SECRET) {
+    throw new Error("EVELAND_SCHEDULER_RUNTIME_SECRET and EVELAND_SCHEDULER_DISPATCH_SECRET must be independent values.");
+  }
+  if (!env.EVELAND_SCHEDULER_REDEEM_URL) {
+    throw new Error("EVELAND_SCHEDULER_REDEEM_URL is required in production.");
+  }
+  try {
+    const url = new URL(env.EVELAND_SCHEDULER_REDEEM_URL);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("unsupported protocol");
+  } catch {
+    throw new Error("EVELAND_SCHEDULER_REDEEM_URL must be an absolute HTTP(S) URL.");
   }
 }

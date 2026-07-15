@@ -372,6 +372,27 @@ describe("createDockerAdapter", () => {
     expect(runCommand).toContain("exec npx eve start --host 0.0.0.0 --port 3000");
   });
 
+  test("ensureProcess reuses a running container without starting another process", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: false, stdout: "running\n", all: "running\n" } as never);
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    const result = await adapter.ensureProcess!({
+      processName: "eveland-proj_123",
+      releaseRef: "eveland/proj_123:rel_456",
+      port: 43123,
+      env: {},
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+    });
+
+    expect(result.log).toContain("Reused ready Docker process");
+    expect(vi.mocked(execa).mock.calls).toEqual([
+      ["docker", ["inspect", "--format", "{{.State.Status}}", "eveland-proj_123"], { all: true, reject: false }],
+    ]);
+  });
+
   test("stopProcess shells out to docker rm --force with the process name", async () => {
     vi.mocked(execa).mockClear();
     const adapter = createDockerAdapter(dockerAdapterConfig);

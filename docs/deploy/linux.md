@@ -177,6 +177,11 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_GATEWAY_SERVICE_TOKEN` | *(unset)* | Required shared secret for Gateway `/internal/*`; use a long random value and configure it identically on API, worker, and Gateway. |
 | `EVELAND_GATEWAY_AFFINITY_SECRET` | *(dev fallback outside production)* | Required in production. HMAC-signs the HttpOnly affinity cookie; keep it independent from the internal service token. |
 | `EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES` | `10485760` | Maximum buffered public request body accepted before Gateway returns 413 without contacting a deployment. |
+| `EVELAND_SCHEDULER_RUNTIME_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Authenticates the injected private Scheduler Channel and its API callback; keep it independent from Gateway and Better Auth secrets. |
+| `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
+| `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
+| `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
+| `EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS` | `120000` | Maximum private Scheduler Channel dispatch duration before the Worker treats the result as failed or unknown. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from archive. Mutable route targets and active SessionBindings are protected independently of age. |

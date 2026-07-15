@@ -123,6 +123,9 @@ BETTER_AUTH_SECRET=<independent-long-random-auth-secret>
 EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
 EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
+EVELAND_SCHEDULER_RUNTIME_SECRET=<independent-long-random-runtime-secret>
+EVELAND_SCHEDULER_DISPATCH_SECRET=<independent-long-random-dispatch-secret>
+EVELAND_SCHEDULER_REDEEM_URL=http://127.0.0.1:4000/internal/scheduler/dispatch
 EVELAND_ADMIN_EMAIL=admin@example.com
 EVELAND_ADMIN_PASSWORD=<strong-initial-password>
 EVELAND_COOKIE_DOMAIN=.example.com
@@ -223,6 +226,6 @@ licensed under the MIT License.
 - Route weights use 10,000 basis points, must total 10,000, and support at most two targets. Each multi-target policy revision becomes an experiment ID persisted with the deployment and variant binding, so the deployment page compares success/failure, latency, tokens, and cost without mixing revisions. Named aliases share the wildcard domain. Retention keeps at least the newest three release artifacts and refuses to archive mutable route targets or deployments with active session bindings.
 - Eve 0.24.2 gives directory-form subagents an independent hook slot, so they are fully observed. File-form subagents have no hook slot and their parent stream exposes only control events; they are a documented coverage gap until Eve exposes a public observation surface. Remote calls retain the reported URL as an unresolved relationship and are never followed by the collector.
 - Docker and systemd Eve Releases both receive the injected bwrap backend and the same platform-owned command baseline. The release self-check exercises file writes, Node 24 TypeScript execution, every baseline command, and Eve's real `rg`/GNU-grep search paths rather than trusting `/eve/v1/health`, which does not initialize Eve's sandbox.
-- Markdown eve schedules are executable in the MVP plan; TypeScript schedules are discovery-only until the native eve schedule runtime is integrated.
+- Eveland owns production cron execution for Eve 0.24.2 Markdown and TypeScript schedules. Prepared Releases neutralize Eve's native cron handlers and expose the authored definitions only through a private authenticated Scheduler Channel; the Worker atomically plans durable ScheduleRuns, pins each run to the explicit scheduler-target Deployment, and records zero or more returned Sessions.
 - Durable workflow is platform-owned. The worker bootstraps the workflow Postgres schema at startup, wraps the root config only in the prepared Release to force `@workflow/world-postgres`, and installs the pinned compatible world package outside the project's manifest and lock. Agent source does not need to mention the world or its dependency and is never rewritten.
 - Set `WORKFLOW_POSTGRES_URL` to the address used by deployed Agents (Compose uses `host.docker.internal`). If the worker reaches the same database through another address, set `WORKFLOW_POSTGRES_BOOTSTRAP_URL` (Compose uses the `postgres` service name). When the deployment URL uses `host.docker.internal` and otherwise exactly matches `DATABASE_URL`, the worker automatically uses that already-reachable control-plane URL for bootstrap; an explicit bootstrap URL still wins. `WORKFLOW_POSTGRES_URL` is reserved and cannot be overridden by a Project Secret. A production worker fails fast without it; development without it keeps Eve's local world. `NODE_ENV=production` is also injected into deployments.
