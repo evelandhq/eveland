@@ -235,4 +235,19 @@ describe("web application shell", () => {
     expect(playground).not.toContain("<pre")
     expect(nextConfig).toContain('source: "/api/eveland/:path*"')
   })
+
+  test("renders session replay as a chat conversation with a raw event toggle", () => {
+    const page = source("./projects/[projectId]/sessions/[sessionId]/page.tsx")
+    const replay = source("../components/session-replay.tsx")
+
+    expect(page).toContain("<SessionReplay")
+    expect(page).not.toContain("<pre")
+    expect(replay).toContain("buildSessionTranscript")
+    expect(replay).toContain("<MessageResponse")
+    expect(replay).toContain("<Reasoning")
+    expect(replay).toContain("<Tool")
+    expect(replay).toContain("<ToolHeader")
+    expect(replay).toContain('setView("raw")')
+    expect(replay).toContain("<RawView")
+  })
 })
