@@ -6,12 +6,69 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, test, vi } from "vitest";
 import { createBuildInfo } from "@eveland/core/build-info";
+import { createScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 import { createApp } from "./app.js";
-import { createMemoryStore } from "@eveland/db";
+import { createMemoryStore, type Store } from "@eveland/db";
 
 const execFileAsync = promisify(execFile);
 
 describe("api app", () => {
+  test("redeems a schedule dispatch credential once and attaches completed Sessions", async () => {
+    const store = createMemoryStore();
+    const { project, schedule, deployment, run } = await createScheduleRunFixture(store);
+    await store.claimScheduleRunActivation(run.id);
+    const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
+    const runtimeSecret = "runtime-secret-at-least-32-bytes-long";
+    const credential = createScheduleDispatchCredential({
+      scheduleRunId: run.id,
+      deploymentId: deployment.id,
+      scheduleKey: schedule.key,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }, dispatchSecret);
+    const app = createApp(store, { schedulerDispatchSecret: dispatchSecret, schedulerRuntimeSecret: runtimeSecret });
+
+    const claim = () => app.request("/internal/scheduler/dispatch", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
+      body: JSON.stringify({ phase: "claim", credential, scheduleRunId: run.id, scheduleKey: schedule.key }),
+    });
+    expect((await claim()).status).toBe(200);
+    expect((await claim()).status).toBe(409);
+
+    const complete = await app.request("/internal/scheduler/dispatch", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
+      body: JSON.stringify({
+        phase: "complete",
+        credential,
+        scheduleRunId: run.id,
+        scheduleKey: schedule.key,
+        sessionIds: ["eve_schedule_api"],
+        status: "succeeded",
+      }),
+    });
+    expect(complete.status).toBe(200);
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "succeeded" });
+    await expect(store.listSessions(project.id)).resolves.toContainEqual(expect.objectContaining({
+      eveSessionId: "eve_schedule_api",
+      scheduleRunId: run.id,
+    }));
+  });
+
+  test("creates a manual ScheduleRun through the control-plane path", async () => {
+    const store = createMemoryStore();
+    const { project, schedule, deployment } = await createScheduleRunFixture(store, false);
+    const response = await createApp(store).request(`/projects/${project.id}/schedules/${schedule.id}/runs`, { method: "POST" });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({ run: {
+      scheduleId: schedule.id,
+      deploymentId: deployment.id,
+      trigger: "manual",
+      status: "queued",
+    } });
+  });
+
   test("returns health status", async () => {
     const buildInfo = createBuildInfo("api", {
       revision: "6bb1d53f51ab",
@@ -1306,6 +1363,46 @@ describe("api app", () => {
     await expect(mutate.json()).resolves.toEqual({ error: "Project is being deleted" });
   });
 });
+
+async function createScheduleRunFixture(store: Store, createRun = true) {
+  const project = await store.createProject({ name: "Scheduled Agent", importKind: "zip" });
+  const importJob = await store.claimNextJob("fixture-import");
+  await store.completeJob(importJob!.id);
+  const revision = await store.recordSourceRevision({
+    projectId: project.id,
+    kind: "zip",
+    sourcePath: "/tmp/scheduled-agent",
+    summary: {},
+    envVars: [],
+    files: [],
+    schedules: [],
+  });
+  const versions = await store.recordScheduleVersions({
+    projectId: project.id,
+    sourceRevisionId: revision.id,
+    definitions: [{
+      key: "billing/sweep",
+      kind: "handler",
+      cron: "0 3 * * *",
+      sourcePath: "agent/schedules/billing/sweep.ts",
+      definitionHash: "fixture-v1",
+    }],
+  });
+  const schedule = versions[0]?.schedule;
+  if (!schedule) throw new Error("Expected schedule fixture.");
+  const deployment = await store.recordDeployment({
+    projectId: project.id,
+    sourceRevisionId: revision.id,
+    imageTag: "fixture:scheduler",
+    containerName: "fixture-scheduler",
+    internalPort: 3000,
+    hostPort: 41993,
+    runtimeKind: "docker",
+  });
+  await store.setProjectSchedulerTarget(project.id, deployment.id);
+  const run = createRun ? await store.createManualScheduleRun(project.id, schedule.id) : null;
+  return { project, schedule, deployment, run: run! };
+}
 
 async function createZipArchiveFixture(options: { wrappedDirectory?: string } = {}): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-zip-source-"));

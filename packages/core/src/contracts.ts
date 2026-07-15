@@ -325,6 +325,39 @@ export type ScheduleRun = {
   updatedAt: string;
 };
 
+export type RuntimeInstanceStatus = "starting" | "ready" | "draining" | "stopped" | "failed";
+
+export type RuntimeInstance = {
+  id: string;
+  deploymentId: string;
+  generation: number;
+  status: RuntimeInstanceStatus;
+  endpointHost: string | null;
+  endpointPort: number | null;
+  startedAt: string | null;
+  readyAt: string | null;
+  stoppedAt: string | null;
+  lastError: string | null;
+};
+
+export type ActivationLeaseKind = "public_request" | "stream" | "turn" | "schedule_run";
+
+export type ActivationLease = {
+  id: string;
+  deploymentId: string;
+  runtimeInstanceId: string | null;
+  kind: ActivationLeaseKind;
+  ownerId: string;
+  expiresAt: string;
+  releasedAt: string | null;
+};
+
+export type ActivationLeaseClaim = {
+  lease: ActivationLease;
+  runtimeInstance: RuntimeInstance;
+  starter: boolean;
+};
+
 export type LogRecord = {
   id: string;
   projectId: string;

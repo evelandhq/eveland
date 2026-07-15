@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createMemoryStore, type Store } from "@eveland/db";
 import {
   allocateAvailableHostPort,
@@ -6,6 +6,7 @@ import {
   processNextJob,
   resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
+  type ScheduleDispatchInput,
 } from "./process.js";
 import { processSafeName, type RuntimeAdapter } from "../runtime/types.js";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -14,8 +15,107 @@ import os from "node:os";
 import path from "node:path";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { DeploymentRecord } from "@eveland/core/contracts";
+import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 
 describe("processNextJob", () => {
+  test("dispatches a ScheduleRun once to its pinned Deployment and preserves returned Sessions", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Trigger Schedule", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/trigger-schedule",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const versions = await store.recordScheduleVersions({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      definitions: [{
+        key: "billing/sweep",
+        kind: "handler",
+        cron: "0 3 * * *",
+        sourcePath: "agent/schedules/billing/sweep.ts",
+        definitionHash: "trigger-v1",
+      }],
+    });
+    const schedule = versions[0]?.schedule;
+    if (!schedule) throw new Error("Expected schedule fixture.");
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:trigger",
+      containerName: "fixture-trigger",
+      internalPort: 3000,
+      hostPort: 41994,
+      runtimeKind: "docker",
+    });
+    await store.setProjectSchedulerTarget(project.id, deployment.id);
+    const run = await store.createManualScheduleRun(project.id, schedule.id, new Date("2026-07-15T01:02:03.000Z"));
+    await store.enqueueJob(project.id, "trigger_schedule", { scheduleRunId: run.id });
+    const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
+    const runtime: RuntimeAdapter = {
+      name: "docker",
+      async buildRelease() { throw new Error("not used"); },
+      async startProcess() { return { internalPort: 3000, log: "started" }; },
+      async ensureProcess() { return { internalPort: 3000, log: "started" }; },
+      async stopProcess() {},
+    };
+
+    const dispatchSchedule = vi.fn(async (input: ScheduleDispatchInput) => {
+      expect(input).toMatchObject({
+        scheduleRunId: run.id,
+        scheduleKey: schedule.key,
+        deploymentId: deployment.id,
+        hostPort: deployment.hostPort,
+      });
+      expect(verifyScheduleDispatchCredential(input.credential, dispatchSecret)).toMatchObject({
+        scheduleRunId: run.id,
+        deploymentId: deployment.id,
+        scheduleKey: schedule.key,
+      });
+      await store.redeemScheduleRunDispatch(run.id, deployment.id);
+      await store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: ["eve_worker_schedule"] });
+      return { sessionIds: ["eve_worker_schedule"] };
+    });
+    const options = {
+      runtime,
+      waitForDeployment: async () => {},
+      schedulerDispatchSecret: dispatchSecret,
+      schedulerRuntimeSecret: "runtime-secret-at-least-32-bytes-long",
+      dispatchSchedule,
+    };
+    await expect(processNextJob(store, "schedule-worker", options)).resolves.toBe(true);
+    await expect(processNextJob(store, "schedule-worker", options)).resolves.toBe(true);
+
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "succeeded", attempt: 1 });
+    expect(dispatchSchedule).toHaveBeenCalledTimes(1);
+    await expect(store.listSessions(project.id)).resolves.toContainEqual(expect.objectContaining({
+      eveSessionId: "eve_worker_schedule",
+      scheduleRunId: run.id,
+    }));
+    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+
+    const unknownRun = await store.createManualScheduleRun(project.id, schedule.id);
+    await expect(processNextJob(store, "schedule-worker", {
+      ...options,
+      dispatchSchedule: async () => {
+        await store.redeemScheduleRunDispatch(unknownRun.id, deployment.id);
+        throw new Error("runtime connection closed after dispatch claim");
+      },
+    })).resolves.toBe(true);
+    await expect(store.getScheduleRun(unknownRun.id)).resolves.toMatchObject({
+      status: "dispatch_unknown",
+      attempt: 1,
+      error: "runtime connection closed after dispatch claim",
+    });
+    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+  });
+
   test("invalidates each materialized Gateway hostname when service credentials are configured", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     await invalidateGatewayRouteCache(

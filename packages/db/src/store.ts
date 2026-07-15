@@ -30,6 +30,11 @@ import type {
   ProjectScheduleVersion,
   ProjectSchedulerTarget,
   ScheduleRun,
+  RuntimeInstance,
+  RuntimeInstanceStatus,
+  ActivationLease,
+  ActivationLeaseClaim,
+  ActivationLeaseKind,
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -177,6 +182,21 @@ export type Store = {
     scheduleRunId: string,
     input: { status: "succeeded" | "failed" | "dispatch_unknown"; error?: string | null; eveSessionIds?: string[] },
   ): Promise<ScheduleRun | null>;
+  acquireActivationLease(input: {
+    deploymentId: string;
+    kind: ActivationLeaseKind;
+    ownerId: string;
+    expiresAt: Date;
+    now?: Date;
+  }): Promise<ActivationLeaseClaim>;
+  getRuntimeInstance(runtimeInstanceId: string): Promise<RuntimeInstance | null>;
+  updateRuntimeInstance(
+    runtimeInstanceId: string,
+    input: { status: RuntimeInstanceStatus; endpointHost?: string | null; endpointPort?: number | null; error?: string | null },
+    now?: Date,
+  ): Promise<RuntimeInstance | null>;
+  releaseActivationLease(leaseId: string, now?: Date): Promise<ActivationLease | null>;
+  hasActiveActivationLeases(deploymentId: string, now?: Date): Promise<boolean>;
   listSessions(projectId: string): Promise<Session[]>;
   listSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   listSessionNodes(sessionId: string): Promise<SessionNode[]>;
@@ -208,6 +228,8 @@ type MemoryState = {
   scheduleVersions: ScheduleVersion[];
   projectSchedulerTargets: ProjectSchedulerTarget[];
   scheduleRuns: ScheduleRun[];
+  runtimeInstances: RuntimeInstance[];
+  activationLeases: ActivationLease[];
 };
 
 export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
@@ -232,6 +254,8 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     scheduleVersions: initialState?.scheduleVersions ?? [],
     projectSchedulerTargets: initialState?.projectSchedulerTargets ?? [],
     scheduleRuns: initialState?.scheduleRuns ?? [],
+    runtimeInstances: initialState?.runtimeInstances ?? [],
+    activationLeases: initialState?.activationLeases ?? [],
   };
 
   return {
@@ -322,6 +346,11 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       state.scheduleVersions = state.scheduleVersions.filter((version) => !projectScheduleIds.includes(version.scheduleId));
       state.projectSchedulerTargets = state.projectSchedulerTargets.filter((target) => target.projectId !== projectId);
       state.projectSchedules = state.projectSchedules.filter((schedule) => schedule.projectId !== projectId);
+      const deploymentIds = state.deployments
+        .filter((deployment) => deployment.projectId === projectId)
+        .map((deployment) => deployment.id);
+      state.activationLeases = state.activationLeases.filter((lease) => !deploymentIds.includes(lease.deploymentId));
+      state.runtimeInstances = state.runtimeInstances.filter((instance) => !deploymentIds.includes(instance.deploymentId));
       state.deployments = state.deployments.filter((deployment) => deployment.projectId !== projectId);
       state.releases = state.releases.filter((release) => release.projectId !== projectId);
       state.sourceFiles = state.sourceFiles.filter((file) => !revisionIds.includes(file.revisionId));
@@ -1140,6 +1169,95 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       run.completedAt = now;
       run.updatedAt = now;
       return run;
+    },
+
+    async acquireActivationLease(input) {
+      const deployment = state.deployments.find((candidate) => candidate.id === input.deploymentId);
+      if (!deployment) throw new Error("Cannot activate an unknown Deployment.");
+      const now = input.now ?? new Date();
+      const nowIso = now.toISOString();
+      let runtimeInstance = state.runtimeInstances
+        .filter(
+          (candidate) =>
+            candidate.deploymentId === input.deploymentId &&
+            (candidate.status === "starting" || candidate.status === "ready" || candidate.status === "draining"),
+        )
+        .sort((a, b) => b.generation - a.generation)[0];
+      const starter = !runtimeInstance;
+      if (!runtimeInstance) {
+        const generation = Math.max(
+          0,
+          ...state.runtimeInstances
+            .filter((candidate) => candidate.deploymentId === input.deploymentId)
+            .map((candidate) => candidate.generation),
+        ) + 1;
+        runtimeInstance = {
+          id: createId("rti"),
+          deploymentId: input.deploymentId,
+          generation,
+          status: "starting",
+          endpointHost: null,
+          endpointPort: null,
+          startedAt: nowIso,
+          readyAt: null,
+          stoppedAt: null,
+          lastError: null,
+        };
+        state.runtimeInstances.push(runtimeInstance);
+      }
+      let lease = state.activationLeases.find(
+        (candidate) =>
+          candidate.deploymentId === input.deploymentId &&
+          candidate.kind === input.kind &&
+          candidate.ownerId === input.ownerId,
+      );
+      if (lease) {
+        lease.runtimeInstanceId = runtimeInstance.id;
+        lease.expiresAt = input.expiresAt.toISOString();
+        lease.releasedAt = null;
+      } else {
+        lease = {
+          id: createId("lease"),
+          deploymentId: input.deploymentId,
+          runtimeInstanceId: runtimeInstance.id,
+          kind: input.kind,
+          ownerId: input.ownerId,
+          expiresAt: input.expiresAt.toISOString(),
+          releasedAt: null,
+        };
+        state.activationLeases.push(lease);
+      }
+      return { lease, runtimeInstance, starter };
+    },
+
+    async getRuntimeInstance(runtimeInstanceId) {
+      return state.runtimeInstances.find((candidate) => candidate.id === runtimeInstanceId) ?? null;
+    },
+
+    async updateRuntimeInstance(runtimeInstanceId, input, now = new Date()) {
+      const instance = state.runtimeInstances.find((candidate) => candidate.id === runtimeInstanceId);
+      if (!instance) return null;
+      instance.status = input.status;
+      if (input.endpointHost !== undefined) instance.endpointHost = input.endpointHost;
+      if (input.endpointPort !== undefined) instance.endpointPort = input.endpointPort;
+      if (input.error !== undefined) instance.lastError = input.error;
+      if (input.status === "ready") instance.readyAt = now.toISOString();
+      if (input.status === "stopped" || input.status === "failed") instance.stoppedAt = now.toISOString();
+      return instance;
+    },
+
+    async releaseActivationLease(leaseId, now = new Date()) {
+      const lease = state.activationLeases.find((candidate) => candidate.id === leaseId);
+      if (!lease) return null;
+      lease.releasedAt ??= now.toISOString();
+      return lease;
+    },
+
+    async hasActiveActivationLeases(deploymentId, now = new Date()) {
+      const nowIso = now.toISOString();
+      return state.activationLeases.some(
+        (candidate) => candidate.deploymentId === deploymentId && candidate.releasedAt === null && candidate.expiresAt > nowIso,
+      );
     },
 
     async listSessions(projectId) {

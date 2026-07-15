@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import { claimDeploymentKey, claimProjectSlug, createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -23,6 +23,8 @@ import {
   scheduleVersionRowToScheduleVersion,
   projectSchedulerTargetRowToProjectSchedulerTarget,
   scheduleRunRowToScheduleRun,
+  runtimeInstanceRowToRuntimeInstance,
+  activationLeaseRowToActivationLease,
 } from "./mappers.js";
 import {
   deployments,
@@ -47,6 +49,8 @@ import {
   scheduleVersions,
   projectSchedulerTargets,
   scheduleRuns,
+  runtimeInstances,
+  activationLeases,
 } from "./schema.js";
 import { DEFAULT_TEAM_ID, projectDeletionSourcePaths, type CreateProjectInput, type Store } from "./store.js";
 import type {
@@ -1437,6 +1441,123 @@ export function createPostgresStore(database: Database): Store {
           .returning();
         return completed ? scheduleRunRowToScheduleRun(completed) : null;
       });
+    },
+
+    async acquireActivationLease(input) {
+      return db.transaction(async (tx) => {
+        const [deployment] = await tx
+          .select({ id: deployments.id })
+          .from(deployments)
+          .where(eq(deployments.id, input.deploymentId))
+          .limit(1)
+          .for("update");
+        if (!deployment) throw new Error("Cannot activate an unknown Deployment.");
+        const now = input.now ?? new Date();
+        let [runtimeInstance] = await tx
+          .select()
+          .from(runtimeInstances)
+          .where(
+            and(
+              eq(runtimeInstances.deploymentId, input.deploymentId),
+              or(
+                eq(runtimeInstances.status, "starting"),
+                eq(runtimeInstances.status, "ready"),
+                eq(runtimeInstances.status, "draining"),
+              ),
+            ),
+          )
+          .orderBy(desc(runtimeInstances.generation))
+          .limit(1)
+          .for("update");
+        const starter = !runtimeInstance;
+        if (!runtimeInstance) {
+          const [latest] = await tx
+            .select({ generation: runtimeInstances.generation })
+            .from(runtimeInstances)
+            .where(eq(runtimeInstances.deploymentId, input.deploymentId))
+            .orderBy(desc(runtimeInstances.generation))
+            .limit(1);
+          [runtimeInstance] = await tx
+            .insert(runtimeInstances)
+            .values({
+              id: createId("rti"),
+              deploymentId: input.deploymentId,
+              generation: (latest?.generation ?? 0) + 1,
+              status: "starting",
+              startedAt: now,
+            })
+            .returning();
+        }
+        if (!runtimeInstance) throw new Error("Failed to create RuntimeInstance.");
+        const [lease] = await tx
+          .insert(activationLeases)
+          .values({
+            id: createId("lease"),
+            deploymentId: input.deploymentId,
+            runtimeInstanceId: runtimeInstance.id,
+            kind: input.kind,
+            ownerId: input.ownerId,
+            expiresAt: input.expiresAt,
+          })
+          .onConflictDoUpdate({
+            target: [activationLeases.deploymentId, activationLeases.kind, activationLeases.ownerId],
+            set: { runtimeInstanceId: runtimeInstance.id, expiresAt: input.expiresAt, releasedAt: null },
+          })
+          .returning();
+        if (!lease) throw new Error("Failed to create ActivationLease.");
+        return {
+          lease: activationLeaseRowToActivationLease(lease),
+          runtimeInstance: runtimeInstanceRowToRuntimeInstance(runtimeInstance),
+          starter,
+        };
+      });
+    },
+
+    async getRuntimeInstance(runtimeInstanceId) {
+      const [row] = await db.select().from(runtimeInstances).where(eq(runtimeInstances.id, runtimeInstanceId)).limit(1);
+      return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
+    },
+
+    async updateRuntimeInstance(runtimeInstanceId, input, now = new Date()) {
+      const [row] = await db
+        .update(runtimeInstances)
+        .set({
+          status: input.status,
+          ...(input.endpointHost !== undefined ? { endpointHost: input.endpointHost } : {}),
+          ...(input.endpointPort !== undefined ? { endpointPort: input.endpointPort } : {}),
+          ...(input.error !== undefined ? { lastError: input.error } : {}),
+          ...(input.status === "ready" ? { readyAt: now } : {}),
+          ...(input.status === "stopped" || input.status === "failed" ? { stoppedAt: now } : {}),
+        })
+        .where(eq(runtimeInstances.id, runtimeInstanceId))
+        .returning();
+      return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
+    },
+
+    async releaseActivationLease(leaseId, now = new Date()) {
+      const [row] = await db
+        .update(activationLeases)
+        .set({ releasedAt: now })
+        .where(and(eq(activationLeases.id, leaseId), isNull(activationLeases.releasedAt)))
+        .returning();
+      if (row) return activationLeaseRowToActivationLease(row);
+      const [existing] = await db.select().from(activationLeases).where(eq(activationLeases.id, leaseId)).limit(1);
+      return existing ? activationLeaseRowToActivationLease(existing) : null;
+    },
+
+    async hasActiveActivationLeases(deploymentId, now = new Date()) {
+      const [row] = await db
+        .select({ id: activationLeases.id })
+        .from(activationLeases)
+        .where(
+          and(
+            eq(activationLeases.deploymentId, deploymentId),
+            isNull(activationLeases.releasedAt),
+            gt(activationLeases.expiresAt, now),
+          ),
+        )
+        .limit(1);
+      return Boolean(row);
     },
 
     async listSessions(projectId) {

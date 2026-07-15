@@ -27,6 +27,8 @@ import type {
   ScheduleVersion,
   ProjectSchedulerTarget,
   ScheduleRun,
+  RuntimeInstance,
+  ActivationLease,
 } from "@eveland/core/contracts";
 
 export type ProjectRow = {
@@ -218,6 +220,44 @@ export function scheduleRunRowToScheduleRun(row: {
     completedAt: timestampToIso(row.completedAt),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function runtimeInstanceRowToRuntimeInstance(row: {
+  id: string;
+  deploymentId: string;
+  generation: number;
+  status: string;
+  endpointHost: string | null;
+  endpointPort: number | null;
+  startedAt: Date | null;
+  readyAt: Date | null;
+  stoppedAt: Date | null;
+  lastError: string | null;
+}): RuntimeInstance {
+  return {
+    ...row,
+    status: row.status as RuntimeInstance["status"],
+    startedAt: timestampToIso(row.startedAt),
+    readyAt: timestampToIso(row.readyAt),
+    stoppedAt: timestampToIso(row.stoppedAt),
+  };
+}
+
+export function activationLeaseRowToActivationLease(row: {
+  id: string;
+  deploymentId: string;
+  runtimeInstanceId: string | null;
+  kind: string;
+  ownerId: string;
+  expiresAt: Date;
+  releasedAt: Date | null;
+}): ActivationLease {
+  return {
+    ...row,
+    kind: row.kind as ActivationLease["kind"],
+    expiresAt: row.expiresAt.toISOString(),
+    releasedAt: timestampToIso(row.releasedAt),
   };
 }
 

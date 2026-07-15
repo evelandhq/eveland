@@ -219,7 +219,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
   const envDir = path.resolve(dataDir, "deployment-env");
   const projectCacheDir = (projectId: string) => resolveProjectSandboxCacheDir(config.sandboxCacheDir, projectId);
 
-  return {
+  const adapter: RuntimeAdapter = {
     name: "systemd",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const releaseDir = path.resolve(input.buildDir);
@@ -387,6 +387,30 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       );
       return { internalPort: input.port, log: result.all ?? "" };
     },
+    async inspectProcess(processName) {
+      const unit = `${processName}.service`;
+      const result = await execa("systemctl", ["show", unit, "--property=ActiveState", "--value"], {
+        all: true,
+        reject: false,
+      });
+      if (result.failed) {
+        if (/not-found|not be found|could not be found|does not exist/i.test(result.all ?? "")) return "missing";
+        throw new Error(`systemctl show ${unit} failed: ${result.all || "no output captured"}`);
+      }
+      const status = (result.stdout ?? "").trim();
+      if (status === "active") return "ready";
+      if (status === "activating" || status === "reloading") return "starting";
+      if (status === "inactive" || status === "deactivating") return "stopped";
+      return "failed";
+    },
+    async ensureProcess(input) {
+      const status = await adapter.inspectProcess!(input.processName);
+      if (status === "ready" || status === "starting") {
+        return { internalPort: input.port, log: `Reused ${status} systemd process ${input.processName}.` };
+      }
+      if (status !== "missing") await adapter.stopProcess(input.processName);
+      return adapter.startProcess(input);
+    },
     async stopProcess(processName: string): Promise<void> {
       const unit = `${processName}.service`;
       await runSystemctl("stop", unit);
@@ -400,4 +424,5 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       await rm(path.resolve(releaseRef), { recursive: true, force: true });
     },
   };
+  return adapter;
 }

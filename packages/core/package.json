@@ -18,7 +18,8 @@
     "./server/build-info": "./src/server/build-info.ts",
     "./server/config-diagnostics": "./src/server/config-diagnostics.ts",
     "./server/secrets": "./src/server/secrets.ts",
-    "./server/runtime-command": "./src/server/runtime-command.ts"
+    "./server/runtime-command": "./src/server/runtime-command.ts",
+    "./server/scheduler-dispatch": "./src/server/scheduler-dispatch.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

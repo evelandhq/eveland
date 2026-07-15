@@ -51,6 +51,8 @@ export type RuntimeAdapter = {
   readonly name: "docker" | "systemd";
   buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult>;
   startProcess(input: ProcessStartInput): Promise<ProcessStartResult>;
+  inspectProcess?(processName: string): Promise<"missing" | "starting" | "ready" | "stopped" | "failed">;
+  ensureProcess?(input: ProcessStartInput): Promise<ProcessStartResult>;
   stopProcess(processName: string): Promise<void>;
   removeRelease?(releaseRef: string): Promise<void>;
 };

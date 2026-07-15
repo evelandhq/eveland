@@ -243,7 +243,7 @@ export type DockerAdapterConfig = {
 };
 
 export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter {
-  return {
+  const adapter: RuntimeAdapter = {
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const imageTag = `eveland/${processSafeName(input.projectId)}:${processSafeName(input.releaseId)}`;
@@ -307,6 +307,29 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       });
       return { internalPort: config.internalPort, log };
     },
+    async inspectProcess(processName) {
+      const result = await execa("docker", ["inspect", "--format", "{{.State.Status}}", processName], {
+        all: true,
+        reject: false,
+      });
+      if (result.failed) {
+        if (/No such (object|container)/i.test(result.all ?? "")) return "missing";
+        throw new Error(`docker inspect ${processName} failed: ${result.all || "no output captured"}`);
+      }
+      const status = (result.stdout ?? "").trim();
+      if (status === "running") return "ready";
+      if (status === "created" || status === "restarting" || status === "paused") return "starting";
+      if (status === "exited") return "stopped";
+      return "failed";
+    },
+    async ensureProcess(input) {
+      const status = await adapter.inspectProcess!(input.processName);
+      if (status === "ready" || status === "starting") {
+        return { internalPort: config.internalPort, log: `Reused ${status} Docker process ${input.processName}.` };
+      }
+      if (status !== "missing") await dockerStopAndRemove(input.processName);
+      return adapter.startProcess(input);
+    },
     async stopProcess(processName: string): Promise<void> {
       await dockerStopAndRemove(processName);
     },
@@ -320,4 +343,5 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       );
     },
   };
+  return adapter;
 }

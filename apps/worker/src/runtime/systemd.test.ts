@@ -280,6 +280,27 @@ describe("createSystemdAdapter startProcess", () => {
       { mode: 0o600 },
     );
   });
+
+  test("ensureProcess reuses an active unit without invoking systemd-run", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: false, stdout: "active\n", all: "active\n" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    const result = await adapter.ensureProcess!({
+      processName: "eveland-proj_123-dep_456",
+      releaseRef: "/data/builds/proj_123/rel_456",
+      port: 41000,
+      env: {},
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+    });
+
+    expect(result.log).toContain("Reused ready systemd process");
+    expect(vi.mocked(execa).mock.calls).toEqual([
+      ["systemctl", ["show", "eveland-proj_123-dep_456.service", "--property=ActiveState", "--value"], { all: true, reject: false }],
+    ]);
+  });
 });
 
 describe("createSystemdAdapter stopProcess", () => {

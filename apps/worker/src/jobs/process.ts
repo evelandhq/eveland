@@ -1,6 +1,11 @@
 import type { Job } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
 import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eveland/core/server/secrets";
+import {
+  createScheduleDispatchCredential,
+  resolveSchedulerDispatchSecret,
+  resolveSchedulerRuntimeSecret,
+} from "@eveland/core/server/scheduler-dispatch";
 import type { Store } from "@eveland/db";
 import net from "node:net";
 import { access, mkdir, readFile, realpath, rm } from "node:fs/promises";
@@ -10,6 +15,7 @@ import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "../run
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
 import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
 import { PLATFORM_WORKFLOW_WORLD } from "../runtime/workflow-world.js";
+import { ensureDeploymentActive } from "../runtime/activation-manager.js";
 import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
 
@@ -27,6 +33,19 @@ export type ProcessJobOptions = {
   workflowPostgresUrl?: string;
   nodeEnv?: string;
   dataDir?: string;
+  schedulerDispatchSecret?: string;
+  schedulerRuntimeSecret?: string;
+  schedulerRedeemUrl?: string;
+  dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
+};
+
+export type ScheduleDispatchInput = {
+  scheduleRunId: string;
+  scheduleKey: string;
+  deploymentId: string;
+  hostPort: number;
+  credential: string;
+  runtimeSecret: string;
 };
 
 export async function processNextJob(store: Store, workerId: string, options: ProcessJobOptions = {}): Promise<boolean> {
@@ -458,14 +477,138 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       return;
     }
     case "trigger_schedule": {
-      await store.appendLog({
-        projectId: job.projectId,
-        type: "runtime",
-        line: `Schedule trigger accepted: ${String(job.payload.scheduleId ?? "unknown")}`,
-      });
+      const scheduleRunId = typeof job.payload.scheduleRunId === "string" ? job.payload.scheduleRunId : null;
+      let run = scheduleRunId ? await store.getScheduleRun(scheduleRunId) : null;
+      let activationLeaseId: string | null = null;
+      try {
+        if (!scheduleRunId || !run) throw new Error("Schedule trigger is missing a valid ScheduleRun.");
+        const schedule = await store.getProjectSchedule(run.scheduleId);
+        const deployment = await store.getDeployment(run.deploymentId);
+        const release = await store.getRelease(run.releaseId);
+        if (!schedule || schedule.projectId !== job.projectId) throw new Error("ScheduleRun does not belong to this project.");
+        if (!schedule.enabled) throw new Error("Schedule is disabled.");
+        if (!deployment || deployment.projectId !== job.projectId || deployment.releaseId !== run.releaseId) {
+          throw new Error("ScheduleRun Deployment provenance is invalid.");
+        }
+        if (!release || release.id !== deployment.releaseId) throw new Error("ScheduleRun Release provenance is invalid.");
+        const versions = await store.listProjectScheduleVersions(job.projectId, release.sourceRevisionId);
+        if (!versions.some((entry) => entry.version.id === run!.scheduleVersionId && entry.schedule.id === schedule.id)) {
+          throw new Error("ScheduleRun version does not belong to its pinned Release.");
+        }
+        const claimedRun = await store.claimScheduleRunActivation(run.id);
+        if (!claimedRun) {
+          const current = await store.getScheduleRun(run.id);
+          if (current && current.status !== "queued") {
+            await store.appendLog({
+              projectId: job.projectId,
+              deploymentId: current.deploymentId,
+              type: "runtime",
+              line: `Duplicate ScheduleRun job ignored for ${current.id} in ${current.status}.`,
+            });
+            return;
+          }
+          throw new Error("ScheduleRun is not eligible for activation.");
+        }
+        run = claimedRun;
+        const dispatchSecret = options.schedulerDispatchSecret ?? resolveSchedulerDispatchSecret(process.env);
+        const runtimeSecret = options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
+        if (!dispatchSecret || !runtimeSecret) throw new Error("Scheduler dispatch credentials are not configured.");
+        const revision = await store.getSourceRevision(release.sourceRevisionId);
+        if (!revision) throw new Error("ScheduleRun Release has no SourceRevision.");
+        const runtime = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+        const { env } = await composeDeploymentEnv(store, job.projectId, options);
+        const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
+        const sandboxCache = resolveSandboxCacheDirs(process.env, job.projectId);
+        const observerOutbox = resolveObserverOutboxDirs(process.env, job.projectId, deployment.id);
+        await mkdir(sandboxCache.workerDir, { recursive: true });
+        await mkdir(observerOutbox.workerDir, { recursive: true });
+        const activation = await ensureDeploymentActive(store, {
+          deployment,
+          runtime,
+          kind: "schedule_run",
+          ownerId: run.id,
+          startInput: {
+            processName: deployment.containerName,
+            releaseRef: release.imageTag,
+            port: deployment.hostPort,
+            env: { ...env, EVELAND_DEPLOYMENT_ID: deployment.id },
+            commandContext,
+            sandboxCacheDir: runtime.name === "docker" ? sandboxCache.hostDir : sandboxCache.workerDir,
+            observerOutboxDir: runtime.name === "docker" ? observerOutbox.hostDir : observerOutbox.workerDir,
+          },
+        }, {
+          waitForHealth: options.waitForDeployment,
+          readyTimeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
+        });
+        activationLeaseId = activation.lease.id;
+        const credential = createScheduleDispatchCredential({
+          scheduleRunId: run.id,
+          deploymentId: deployment.id,
+          scheduleKey: schedule.key,
+          expiresAt: new Date(Date.now() + 120_000).toISOString(),
+        }, dispatchSecret);
+        const result = await (options.dispatchSchedule ?? dispatchScheduleToRuntime)({
+          scheduleRunId: run.id,
+          scheduleKey: schedule.key,
+          deploymentId: deployment.id,
+          hostPort: deployment.hostPort,
+          credential,
+          runtimeSecret,
+        });
+        const reported = await store.getScheduleRun(run.id);
+        if (reported?.status === "dispatching") {
+          await store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: result.sessionIds });
+        } else if (!reported || (reported.status !== "succeeded" && reported.status !== "failed")) {
+          throw new Error("Scheduler Channel returned without a durable dispatch result.");
+        }
+        await store.appendLog({
+          projectId: job.projectId,
+          deploymentId: deployment.id,
+          type: "runtime",
+          line: `ScheduleRun ${run.id} dispatched for ${schedule.key}.`,
+        });
+      } catch (error) {
+        const message = errorMessage(error);
+        if (run) {
+          const current = await store.getScheduleRun(run.id);
+          if (current && !["succeeded", "failed", "dispatch_unknown", "skipped"].includes(current.status)) {
+            await store.completeScheduleRun(run.id, {
+              status: current.status === "dispatching" ? "dispatch_unknown" : "failed",
+              error: message,
+            });
+          }
+        }
+        await store.appendLog({
+          projectId: job.projectId,
+          deploymentId: run?.deploymentId ?? null,
+          type: "runtime",
+          line: `ScheduleRun ${scheduleRunId ?? "unknown"} failed: ${message}`,
+        });
+      } finally {
+        if (activationLeaseId) await store.releaseActivationLease(activationLeaseId);
+      }
       return;
     }
   }
+}
+
+async function dispatchScheduleToRuntime(input: ScheduleDispatchInput): Promise<{ sessionIds: string[] }> {
+  const response = await fetch(`http://127.0.0.1:${input.hostPort}/eveland/scheduler/${encodeURIComponent(input.scheduleRunId)}`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${input.credential}`,
+      "content-type": "application/json",
+      "x-eveland-runtime-secret": input.runtimeSecret,
+    },
+    body: JSON.stringify({ scheduleKey: input.scheduleKey }),
+    signal: AbortSignal.timeout(Number(process.env.EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS ?? 120_000)),
+  });
+  if (!response.ok) throw new Error(`Scheduler Channel rejected dispatch with HTTP ${response.status}.`);
+  const body = await response.json().catch(() => null) as { sessionIds?: unknown } | null;
+  if (!body || !Array.isArray(body.sessionIds) || !body.sessionIds.every((value) => typeof value === "string")) {
+    throw new Error("Scheduler Channel returned an invalid dispatch result.");
+  }
+  return { sessionIds: body.sessionIds };
 }
 
 async function removeManagedProjectFiles(
@@ -551,6 +694,8 @@ async function composeDeploymentEnv(
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
   const isProduction = nodeEnv === "production";
   const workflowPostgresUrl = options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
+  const schedulerRuntimeSecret = options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
+  const schedulerRedeemUrl = options.schedulerRedeemUrl ?? process.env.EVELAND_SCHEDULER_REDEEM_URL;
   const secrets = await readRuntimeSecrets(store, projectId, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
   // Project secrets are runtime input, but the workflow database is
   // platform-owned and bootstrapped before this worker accepts jobs. Keep its
@@ -559,13 +704,19 @@ async function composeDeploymentEnv(
   const injectedCredentials = {
     ...secrets,
     ...(workflowPostgresUrl ? { WORKFLOW_POSTGRES_URL: workflowPostgresUrl } : {}),
+    ...(schedulerRuntimeSecret ? { EVELAND_SCHEDULER_RUNTIME_SECRET: schedulerRuntimeSecret } : {}),
+    ...(schedulerRedeemUrl ? { EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl } : {}),
   };
   // NODE_ENV is platform-owned and injected only in production; kept out of the mask list so build logs aren't scrubbed of the word "production".
   const env = {
     ...injectedCredentials,
     ...(isProduction ? { NODE_ENV: "production" } : {}),
   };
-  const secretValues = [...Object.values(secrets), ...(workflowPostgresUrl ? [workflowPostgresUrl] : [])];
+  const secretValues = [
+    ...Object.values(secrets),
+    ...(workflowPostgresUrl ? [workflowPostgresUrl] : []),
+    ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),
+  ];
   return { env, secretValues };
 }
 
