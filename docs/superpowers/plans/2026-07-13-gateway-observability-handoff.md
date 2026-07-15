@@ -784,10 +784,13 @@ session_bindings
 
 ### 7.3 Deployment semantics
 
-现有 `deployments` 同时表达逻辑 Deployment 和运行进程。当前不考虑 replicas，因此可以暂时继续使用一张表，但以下字段语义要明确：
+后续 scheduler/scale-to-zero phase 已将逻辑 Deployment 与运行进程拆开：
+`deployments` 保存不可变目标与 adapter ownership，`runtime_instances` 保存可停止、
+重建和递增 generation 的实际进程。以下原始约束继续成立：
 
 - release/config identity 创建后不可变；
-- hostPort/processName/status 是 runtime state，可因 restart/cold-start 更新；
+- hostPort/processName 是 Deployment 的固定私有 endpoint/process identity；运行状态、
+  ready/error/timing 属于 RuntimeInstance，可因 restart/cold-start 产生新 generation；
 - 一个 Project 可以同时有多个 running Deployment；
 - `projects.currentDeploymentId` 只是过渡兼容字段，最终 production project route 才是权威；
 - build+deploy 不再默认停止旧 Deployment；新 Deployment 首先是 preview target；

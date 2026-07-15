@@ -174,14 +174,23 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_COLLECTOR_MAX_BACKLOG_BYTES` | `1073741824` | Total queued observer bytes that trigger degraded health and an operator-visible alarm. |
 | `EVELAND_AGENT_BASE_DOMAINS` | `agent.localhost` | Comma-separated Host suffix allowlist used by Gateway; the first value is the canonical domain materialized into routes. Production normally uses one value such as `agents.example.com`. |
 | `EVELAND_GATEWAY_INTERNAL_URL` | `http://127.0.0.1:4080` | Private API/worker control URL for Playground and route-cache invalidation. |
-| `EVELAND_GATEWAY_SERVICE_TOKEN` | *(unset)* | Required shared secret for Gateway `/internal/*`; use a long random value and configure it identically on API, worker, and Gateway. |
+| `EVELAND_GATEWAY_SERVICE_TOKEN` | *(unset)* | Required shared secret for API/Gateway `/internal/*` calls, including runtime activation; use a long random value and configure it identically on API, worker, and Gateway. |
 | `EVELAND_GATEWAY_AFFINITY_SECRET` | *(dev fallback outside production)* | Required in production. HMAC-signs the HttpOnly affinity cookie; keep it independent from the internal service token. |
 | `EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES` | `10485760` | Maximum buffered public request body accepted before Gateway returns 413 without contacting a deployment. |
+| `EVELAND_API_INTERNAL_URL` | `http://127.0.0.1:4000` | Private API origin used by Gateway for service-authenticated dormant Deployment activation. Compose uses `http://api:4000`. |
+| `EVELAND_ACTIVATION_LEASE_TTL_MS` | `180000` | API lease lifetime for public requests, turns, streams, and ScheduleRuns. Keep it longer than the Gateway renewal interval. |
+| `EVELAND_COLD_START_TIMEOUT_MS` | `30000` | Maximum time Gateway waits for API/Worker to make a dormant Deployment ready before returning 503/504. |
+| `EVELAND_ACTIVATION_RENEW_INTERVAL_MS` | `60000` | Gateway renewal interval while an upstream response stream is still active. |
 | `EVELAND_SCHEDULER_RUNTIME_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Authenticates the injected private Scheduler Channel and its API callback; keep it independent from Gateway and Better Auth secrets. |
 | `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
 | `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
 | `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
 | `EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS` | `120000` | Maximum private Scheduler Channel dispatch duration before the Worker treats the result as failed or unknown. |
+| `EVELAND_ACTIVATION_IDLE_TTL_MS` | `300000` | Time after the final lease release/expiry before Worker stops a ready RuntimeInstance. The Deployment and Release remain. |
+| `EVELAND_ACTIVATION_REAPER_BATCH_SIZE` | `25` | Maximum idle RuntimeInstances claimed per Worker tick. |
+| `EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE` | `25` | Maximum interrupted `starting` RuntimeInstances re-enqueued per Worker tick. |
+| `EVELAND_ACTIVATION_START_STALE_MS` | `300000` | Age after which a running activation job can be reclaimed following a Worker crash. |
+| `EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE` | `100` | Maximum ready RuntimeInstances compared with Docker/systemd process state per Worker tick. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from archive. Mutable route targets and active SessionBindings are protected independently of age. |
@@ -363,6 +372,11 @@ does not inject a world and Eve keeps its local development world.
   secrets arrive via a root-owned 0600 `EnvironmentFile`.
 - Health: the worker polls `http://127.0.0.1:<hostPort>/eve/v1/health` until any
   HTTP response arrives.
+- Idle: a Deployment may retain its immutable Release, preview route, and
+  SessionBindings while no transient unit exists. Cron or Gateway asks API for
+  an ActivationLease; API coalesces `ensure_deployment_running`, Worker starts
+  the exact Release with the Deployment's recorded `runtimeKind`, and the final
+  lease starts the configured idle deadline. Reaping stops only the process.
 
 ## Agent exec sandbox
 
@@ -508,6 +522,32 @@ stalls every run silently.
 
 `journalctl -u eveland-<project>-<deployment>.service`
 
+### Scheduler and activation troubleshooting
+
+Start in authenticated **Settings > About**. Confirm API shows
+`EVELAND_ACTIVATION_LEASE_TTL_MS` and `EVELAND_COLD_START_TIMEOUT_MS`, Gateway
+shows `EVELAND_API_INTERNAL_URL` and `EVELAND_ACTIVATION_RENEW_INTERVAL_MS`, and
+Worker shows the idle/recovery/reconciliation values. Values are allowlisted;
+secrets remain fixed-mask and URL credentials/query values are removed.
+
+For a cron/manual failure, open the ScheduleRun detail under the Project's
+Sessions history. It records status, attempt, missed ticks, exact
+Release/Deployment/ScheduleVersion, timings, a sanitized error, aggregate
+provider usage, and zero or more linked Sessions. `failed` before dispatch has
+zero fabricated Sessions. `dispatch_unknown` means the credential was redeemed
+but the result was lost, so Eveland deliberately does not replay the authored
+side effect automatically. Use the run ID to correlate the Project Runtime log
+and `journalctl -u eveland-<project>-<deployment>.service`; never paste decrypted
+Project Secrets, scheduler credentials, affinity cookies, or raw env files into
+the UI or logs.
+
+For a cold-start failure, compare the Deployment and latest RuntimeInstance:
+`starting` should have one coalesced `ensure_deployment_running` job, `failed`
+retains `lastError`, and `stopped` is a normal dormant state. Check API/Gateway
+service-token agreement and reachability of `EVELAND_API_INTERNAL_URL`, then
+inspect the owning runtime (`systemctl status`/`journalctl` for systemd). A
+client abort releases only that request lease; other active leases must remain.
+
 ## Known limits (v1)
 
 - Deployments share one service user; per-deployment `DynamicUser` isolation is
@@ -519,20 +559,12 @@ stalls every run silently.
   sandbox and runs on eve's default sandbox chain. Under production-style `eve start`,
   the optional `just-bash` peer may be absent; even when installed it cannot run real
   Node or TypeScript binaries.
-- **Deployments do not survive a host reboot.** Every deployment runs as a
-  `systemd-run --collect` **transient** unit (see "How a deployment runs" above) —
-  transient units are held only in systemd's in-memory unit table, not as unit files on
-  disk, so they do not come back after a reboot the way an installed unit does. The
-  worker itself is unaffected: it's installed via `infra/systemd/eveland-worker.service`
-  and comes back on boot like any other enabled systemd service. But every deployment it
-  had running is simply gone from systemd's perspective post-reboot — not stopped, not
-  failed, just never re-created — while its row in the store still reads
-  `deploymentStatus: "running"`, which is now stale. Recovering after a reboot today
-  means manually restarting or redeploying every affected project (`restart_deployment`
-  re-runs `startProcess` against the existing release; `build_deploy` also works and
-  additionally rebuilds). There is no reconciliation loop that reconciles store state
-  against actual running units at worker startup and re-creates what's missing — that's
-  explicit future work (PR 5+ territory), not something this v1 does implicitly.
+- systemd Deployment processes use `systemd-run --collect` transient units and
+  therefore do not restart automatically after a host reboot. The enabled Worker
+  does restart, reconciles stale `ready` RuntimeInstances to `stopped`/`failed`,
+  and the next cron or Gateway request cold-starts the preserved exact Release.
+  The immutable Deployment, routes, history, and SessionBindings survive; only
+  the transient process is absent during the cold interval.
 
 ## Verifying the setup: Lima integration smoke test
 
@@ -555,7 +587,14 @@ smoke test as root inside the guest. A successful run
 exits 0 and prints `SMOKE OK`. If it fails, inspect the unit logs from the
 host: `limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`.
 
-The same script then runs the `@eveland/sandbox-bwrap` contract test as the
+The same script also runs a real Eve 0.24.2 schedule fixture through the
+systemd adapter. It proves a dormant scheduler target wakes for one due cron,
+executes the authored TypeScript definition once, projects two Sessions and
+provider usage, observes no duplicate from the neutralized native tick, stops
+after idle TTL, and wakes the bound Deployment for a later public continuation.
+Success prints `SCHEDULE SCALE TO ZERO E2E OK`.
+
+The script then runs the `@eveland/sandbox-bwrap` contract test as the
 unprivileged `eveland-app` user under deployed-agent systemd constraints
 (`NoNewPrivileges`, `ProtectSystem=strict`). A fully successful run prints both
 `SMOKE OK` and `BWRAP SMOKE OK`.
