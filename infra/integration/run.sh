@@ -48,6 +48,13 @@ limactl shell "$VM" -- sudo bash -c "
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/gateway-e2e.mts
 
+  # Complete scheduler/scale-to-zero proof against Eve 0.24.2 and the real
+  # systemd runtime: dormant cron wake, observer usage, native no-op, idle
+  # shutdown, and a bound public continuation wake.
+  EVELAND_RUNTIME=systemd STORE_DRIVER=memory EVELAND_BUILD_SANDBOX=bwrap \
+    EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
+    corepack pnpm exec tsx infra/integration/schedule-scale-zero-e2e.mts
+
   # Agent-exec sandbox contract test, run under the same constraints as a
   # deployed eve agent: unprivileged user, NoNewPrivileges, read-only system.
   install -d -o eveland-app -g eveland-app /var/lib/eveland-app

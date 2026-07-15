@@ -293,14 +293,19 @@ message
 
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
-Eveland 是生产 Schedule 的唯一调度器。导入源码时按 `agent/schedules/`
-下的完整相对路径识别 Schedule key，并只接受 Eve 0.24 的五字段、UTC、分钟级
-cron 语义；每次 Source Revision 保留不可变 ScheduleVersion。Project 另有一个
+Eveland 是生产 Schedule 的唯一调度器。当前 Release adapter 只支持并精确验证
+Eve 0.24.2；其他 Eve 版本必须在 build 时 fail closed 并返回明确的 adapter
+diagnostic，不能猜测或降级执行。导入源码时按 `agent/schedules/` 下的完整相对路径
+识别 Schedule key，并只接受五字段、UTC、分钟级 cron 语义；每次 Source Revision
+保留不可变 ScheduleVersion。Project 另有一个
 显式 scheduler target，未来 cron/manual run 固定到该 Deployment、Release 和
 ScheduleVersion，不通过 Gateway 或 stable route 重新选流量目标。
 
 Worker 以 Postgres 为权威状态，使用有界、可多 Worker 并发的 planner 原子创建
 ScheduleRun、排入 `trigger_schedule` job、推进 `nextRunAt` 并记录合并的 missed tick。
+若 worker 停机跨过多个分钟 tick，v1 只为最早的 due time 创建一个 run，并把其余
+已错过 tick 计入 `missedTicks`，随后把 `nextRunAt` 推进到第一个未来时刻，不做 burst
+replay。
 手动运行复用同一条 job 路径。执行前 Worker 获取 `schedule_run` ActivationLease，
 按 Deployment 记录的 `runtimeKind` 幂等唤醒预构建 Release，再用短期单次 credential
 调用 Release 内的私有 Scheduler Channel。Channel 在执行 authored handler 前向 API
@@ -310,6 +315,10 @@ credential 不得重复执行 authored side effect。
 Prepared Release 会保留 Eve 的 Schedule 注册形状，但将 native cron handler 改为
 no-op，因此 warm preview、旧版本和 stable target 不会各自执行同一 cron。真正的
 Markdown/TypeScript handler 只由上述经过认证的私有 Channel 调用。
+
+切换 scheduler target 只影响切换后创建的 cron/manual run。已经 queued、running 或
+完成的 ScheduleRun 永远保留创建时固定的 Deployment、Release 和 ScheduleVersion；
+promote、rollback 或 stable route 权重变化不得重选其 target。
 
 每个 Schedule 展示：
 
@@ -428,7 +437,10 @@ Public Agent Gateway (stable/preview Host routing)
 Eve Deployment (127.0.0.1 private upstream)
 ```
 
-每个 Deployment 对应一个独立运行进程（Docker 或 systemd），并拥有不可变 preview Host。Project stable Host 是可变路由；原始动态端口不是产品 URL，也不公开暴露。
+每个 Deployment 拥有不可变 Release、preview Host 和 runtime adapter，但不等同于一个
+永久在线进程。RuntimeInstance 记录某一代 Docker container 或 systemd unit，允许在
+Deployment 仍可寻址、可 continuation、受 retention protection 时进入 `stopped`。
+Project stable Host 是可变路由；原始动态端口不是产品 URL，也不公开暴露。
 
 开发环境中的 canonical 地址为：
 
@@ -444,6 +456,16 @@ http://<deploymentKey>--<projectSlug>.agent.localhost:4080
 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。
+
+cron、public request、turn 和 stream 在访问进程前获取有期限的 ActivationLease。同一
+dormant Deployment 的并发唤醒只允许一个 starter；API 只持久化/等待状态，不获得
+Docker 或 systemd 权限，Worker 按 Deployment 保存的 `runtimeKind` 启动 exact Release。
+Gateway 默认最多等待 30 秒冷启动，并保留 Agent 自有 auth、cookie、Host 语义、body
+limit、abort 和 NDJSON streaming。continuation 必须按 SessionBinding 唤醒原
+Deployment，不能重新执行 route weighting。最后一个 lease 释放或过期后默认 idle
+5 分钟再停进程；停机前必须事务式复查是否出现新 lease。Worker 启动后的 recovery 与
+reconciliation 会重排中断的 activation job，并把实际已消失的 transient process 状态
+纠正为 stopped/failed。
 
 容器运行 Eve 项目，平台负责：
 
