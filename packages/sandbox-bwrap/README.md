@@ -49,15 +49,13 @@ export default defineSandbox({
 
 ### eve version requirement
 
-This package requires `eve` `>=0.20.0 <0.23.0` (eve's 0.x releases use caret-incompatible
-minor bumps, so this range is written out explicitly rather than as a caret range that
-would silently exclude later 0.2x releases). eve 0.20.0 removed
-`SandboxBackendHandle.dispose()` and made `shutdown()` required in its place; this
-backend implements `shutdown()` by killing every process the session has spawned that
-has not yet exited, honoring eve's contract that "nothing may be left running
-afterwards" once the handle is shut down. The session's workspace directory is not
-touched by `shutdown()` — it is the durable state, and it stays on disk so the session
-can reattach on the next start.
+This package requires `eve` `>=0.24.0 <0.25.0` (eve's 0.x releases use
+caret-incompatible minor bumps, so the verified 0.24 range is written explicitly).
+Compatibility is exercised against exactly Eve 0.24.2. The backend implements the
+required `shutdown()` contract by killing every process the session has spawned that
+has not yet exited, honoring eve's requirement that nothing may be left running once
+the handle is shut down. The session's workspace directory is not touched by
+`shutdown()` — it is durable state and remains available when the session reattaches.
 
 ### Options
 
