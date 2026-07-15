@@ -7,4 +7,4 @@ allowBuilds:
   sharp: true
   workerd: true
 minimumReleaseAgeExclude:
-  - eve@0.23.0
+  - eve@0.24.2

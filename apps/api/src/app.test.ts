@@ -902,7 +902,7 @@ describe("api app", () => {
         response.write(
           `${JSON.stringify({
             type: "session.started",
-            data: { runtime: { agentId: "agent_root", agentName: "Root agent", eveVersion: "0.23.0", modelId: "test/root" } },
+            data: { runtime: { agentId: "agent_root", agentName: "Root agent", eveVersion: "0.24.2", modelId: "test/root" } },
           })}\n`,
         );
         response.write(
@@ -934,7 +934,7 @@ describe("api app", () => {
         response.write(
           `${JSON.stringify({
             type: "session.started",
-            data: { runtime: { agentId: "agent_researcher", agentName: "Researcher", eveVersion: "0.23.0", modelId: "test/child" } },
+            data: { runtime: { agentId: "agent_researcher", agentName: "Researcher", eveVersion: "0.24.2", modelId: "test/child" } },
           })}\n`,
         );
         response.write(
