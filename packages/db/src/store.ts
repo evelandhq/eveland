@@ -25,10 +25,16 @@ import type {
   ResolvedAgentRoute,
   RouteTarget,
   SessionBinding,
+  ProjectSchedule,
+  ScheduleVersion,
+  ProjectScheduleVersion,
+  ProjectSchedulerTarget,
+  ScheduleRun,
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
 import { validateRouteTargets } from "@eveland/core/routing";
+import { getNextRunAt } from "@eveland/core/schedules";
 
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
@@ -148,6 +154,29 @@ export type Store = {
     input: { status: SessionStatus; eveSessionId?: string | null; continuationToken?: string | null },
   ): Promise<Session | null>;
   listSchedules(projectId: string): Promise<ScheduleRecord[]>;
+  recordScheduleVersions(input: {
+    projectId: string;
+    sourceRevisionId: string;
+    definitions: Array<{
+      key: string;
+      kind: ScheduleVersion["kind"];
+      cron: string;
+      sourcePath: string;
+      definitionHash: string;
+    }>;
+  }): Promise<ProjectScheduleVersion[]>;
+  listProjectScheduleVersions(projectId: string, sourceRevisionId: string): Promise<ProjectScheduleVersion[]>;
+  getProjectSchedule(scheduleId: string): Promise<ProjectSchedule | null>;
+  setProjectSchedulerTarget(projectId: string, deploymentId: string, now?: Date): Promise<ProjectSchedulerTarget>;
+  createManualScheduleRun(projectId: string, scheduleId: string, now?: Date): Promise<ScheduleRun>;
+  claimDueScheduleRuns(input: { now: Date; limit: number }): Promise<ScheduleRun[]>;
+  getScheduleRun(scheduleRunId: string): Promise<ScheduleRun | null>;
+  claimScheduleRunActivation(scheduleRunId: string, now?: Date, staleAfterMs?: number): Promise<ScheduleRun | null>;
+  redeemScheduleRunDispatch(scheduleRunId: string, deploymentId: string): Promise<ScheduleRun | null>;
+  completeScheduleRun(
+    scheduleRunId: string,
+    input: { status: "succeeded" | "failed" | "dispatch_unknown"; error?: string | null; eveSessionIds?: string[] },
+  ): Promise<ScheduleRun | null>;
   listSessions(projectId: string): Promise<Session[]>;
   listSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   listSessionNodes(sessionId: string): Promise<SessionNode[]>;
@@ -175,6 +204,10 @@ type MemoryState = {
   agentRoutes: AgentRoute[];
   routeTargets: RouteTarget[];
   sessionBindings: SessionBinding[];
+  projectSchedules: ProjectSchedule[];
+  scheduleVersions: ScheduleVersion[];
+  projectSchedulerTargets: ProjectSchedulerTarget[];
+  scheduleRuns: ScheduleRun[];
 };
 
 export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
@@ -195,6 +228,10 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     agentRoutes: initialState?.agentRoutes ?? [],
     routeTargets: initialState?.routeTargets ?? [],
     sessionBindings: initialState?.sessionBindings ?? [],
+    projectSchedules: initialState?.projectSchedules ?? [],
+    scheduleVersions: initialState?.scheduleVersions ?? [],
+    projectSchedulerTargets: initialState?.projectSchedulerTargets ?? [],
+    scheduleRuns: initialState?.scheduleRuns ?? [],
   };
 
   return {
@@ -278,6 +315,13 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       state.routeTargets = state.routeTargets.filter((target) => !routeIds.includes(target.routeId));
       state.agentRoutes = state.agentRoutes.filter((route) => route.projectId !== projectId);
       state.sessionBindings = state.sessionBindings.filter((binding) => binding.projectId !== projectId);
+      const projectScheduleIds = state.projectSchedules
+        .filter((schedule) => schedule.projectId === projectId)
+        .map((schedule) => schedule.id);
+      state.scheduleRuns = state.scheduleRuns.filter((run) => !projectScheduleIds.includes(run.scheduleId));
+      state.scheduleVersions = state.scheduleVersions.filter((version) => !projectScheduleIds.includes(version.scheduleId));
+      state.projectSchedulerTargets = state.projectSchedulerTargets.filter((target) => target.projectId !== projectId);
+      state.projectSchedules = state.projectSchedules.filter((schedule) => schedule.projectId !== projectId);
       state.deployments = state.deployments.filter((deployment) => deployment.projectId !== projectId);
       state.releases = state.releases.filter((release) => release.projectId !== projectId);
       state.sourceFiles = state.sourceFiles.filter((file) => !revisionIds.includes(file.revisionId));
@@ -622,6 +666,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         project.deploymentStatus = deployment.status;
         project.updatedAt = new Date().toISOString();
       }
+      await this.setProjectSchedulerTarget(projectId, deploymentId);
       return updated;
     },
 
@@ -709,6 +754,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         variantName: null,
         trigger: input.trigger,
         scheduleId: input.scheduleId ?? null,
+        scheduleRunId: null,
         status: "running",
         startedAt: now,
         completedAt: null,
@@ -824,6 +870,276 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async listSchedules(projectId) {
       return state.schedules.filter((schedule) => schedule.projectId === projectId);
+    },
+
+    async recordScheduleVersions(input) {
+      const revision = state.sourceRevisions.find(
+        (candidate) => candidate.id === input.sourceRevisionId && candidate.projectId === input.projectId,
+      );
+      if (!revision) throw new Error("Cannot record schedule versions for an unknown SourceRevision.");
+
+      const seenKeys = new Set<string>();
+      const result: ProjectScheduleVersion[] = [];
+      for (const definition of input.definitions) {
+        if (seenKeys.has(definition.key)) throw new Error(`Duplicate schedule key: ${definition.key}`);
+        seenKeys.add(definition.key);
+
+        const now = new Date().toISOString();
+        let schedule = state.projectSchedules.find(
+          (candidate) => candidate.projectId === input.projectId && candidate.key === definition.key,
+        );
+        if (!schedule) {
+          schedule = {
+            id: createId("sch"),
+            projectId: input.projectId,
+            key: definition.key,
+            enabled: true,
+            nextRunAt: null,
+            createdAt: now,
+            updatedAt: now,
+          };
+          state.projectSchedules.push(schedule);
+        }
+
+        const existingVersion = state.scheduleVersions.find(
+          (candidate) => candidate.scheduleId === schedule.id && candidate.sourceRevisionId === input.sourceRevisionId,
+        );
+        if (existingVersion) {
+          if (
+            existingVersion.definitionHash !== definition.definitionHash ||
+            existingVersion.cron !== definition.cron ||
+            existingVersion.kind !== definition.kind ||
+            existingVersion.sourcePath !== definition.sourcePath
+          ) {
+            throw new Error(`ScheduleVersion ${existingVersion.id} is immutable.`);
+          }
+          result.push({ schedule, version: existingVersion });
+          continue;
+        }
+
+        const version: ScheduleVersion = {
+          id: createId("schv"),
+          scheduleId: schedule.id,
+          sourceRevisionId: input.sourceRevisionId,
+          kind: definition.kind,
+          cron: definition.cron,
+          sourcePath: definition.sourcePath,
+          definitionHash: definition.definitionHash,
+          createdAt: now,
+        };
+        state.scheduleVersions.push(version);
+        result.push({ schedule, version });
+      }
+      return result;
+    },
+
+    async listProjectScheduleVersions(projectId, sourceRevisionId) {
+      return state.scheduleVersions
+        .filter((version) => version.sourceRevisionId === sourceRevisionId)
+        .flatMap((version) => {
+          const schedule = state.projectSchedules.find(
+            (candidate) => candidate.id === version.scheduleId && candidate.projectId === projectId,
+          );
+          return schedule ? [{ schedule, version }] : [];
+        })
+        .sort((a, b) => a.schedule.key.localeCompare(b.schedule.key));
+    },
+
+    async getProjectSchedule(scheduleId) {
+      return state.projectSchedules.find((candidate) => candidate.id === scheduleId) ?? null;
+    },
+
+    async setProjectSchedulerTarget(projectId, deploymentId, now = new Date()) {
+      const deployment = state.deployments.find(
+        (candidate) => candidate.id === deploymentId && candidate.projectId === projectId,
+      );
+      if (!deployment) throw new Error("Cannot target an unknown Deployment for schedules.");
+      const release = state.releases.find((candidate) => candidate.id === deployment.releaseId);
+      if (!release) throw new Error("Cannot target a Deployment without its Release.");
+
+      const updatedAt = now.toISOString();
+      const existing = state.projectSchedulerTargets.find((candidate) => candidate.projectId === projectId);
+      const target = existing ?? { projectId, deploymentId, updatedAt };
+      target.deploymentId = deploymentId;
+      target.updatedAt = updatedAt;
+      if (!existing) state.projectSchedulerTargets.push(target);
+
+      for (const schedule of state.projectSchedules.filter((candidate) => candidate.projectId === projectId)) {
+        const version = state.scheduleVersions.find(
+          (candidate) => candidate.scheduleId === schedule.id && candidate.sourceRevisionId === release.sourceRevisionId,
+        );
+        schedule.nextRunAt = version && schedule.enabled ? getNextRunAt(version.cron, now).toISOString() : null;
+        schedule.updatedAt = updatedAt;
+      }
+      return target;
+    },
+
+    async createManualScheduleRun(projectId, scheduleId, now = new Date()) {
+      const schedule = state.projectSchedules.find(
+        (candidate) => candidate.id === scheduleId && candidate.projectId === projectId,
+      );
+      if (!schedule) throw new Error("Project schedule not found.");
+      if (!schedule.enabled) throw new Error("Project schedule is disabled.");
+      const target = state.projectSchedulerTargets.find((candidate) => candidate.projectId === projectId);
+      const deployment = state.deployments.find((candidate) => candidate.id === target?.deploymentId);
+      const release = state.releases.find((candidate) => candidate.id === deployment?.releaseId);
+      const version = state.scheduleVersions.find(
+        (candidate) => candidate.scheduleId === scheduleId && candidate.sourceRevisionId === release?.sourceRevisionId,
+      );
+      if (!target || !deployment || !release || !version) {
+        throw new Error("Project schedule has no deployable scheduler target.");
+      }
+      const nowIso = now.toISOString();
+      const run: ScheduleRun = {
+        id: createId("srun"),
+        scheduleId,
+        scheduleVersionId: version.id,
+        releaseId: release.id,
+        deploymentId: deployment.id,
+        dueAt: nowIso,
+        trigger: "manual",
+        status: "queued",
+        attempt: 0,
+        missedTicks: 0,
+        error: null,
+        startedAt: null,
+        completedAt: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      state.scheduleRuns.push(run);
+      state.jobs.push(createJob(projectId, "trigger_schedule", { scheduleRunId: run.id }));
+      return run;
+    },
+
+    async claimDueScheduleRuns(input) {
+      if (!Number.isInteger(input.limit) || input.limit < 1) throw new Error("Schedule claim limit must be positive.");
+      const nowIso = input.now.toISOString();
+      const due = state.projectSchedules
+        .filter((schedule) => schedule.enabled && schedule.nextRunAt !== null && schedule.nextRunAt <= nowIso)
+        .sort((a, b) => (a.nextRunAt ?? "").localeCompare(b.nextRunAt ?? "") || a.id.localeCompare(b.id))
+        .slice(0, input.limit);
+      const claimed: ScheduleRun[] = [];
+
+      for (const schedule of due) {
+        const target = state.projectSchedulerTargets.find((candidate) => candidate.projectId === schedule.projectId);
+        const deployment = state.deployments.find((candidate) => candidate.id === target?.deploymentId);
+        const release = state.releases.find((candidate) => candidate.id === deployment?.releaseId);
+        const version = state.scheduleVersions.find(
+          (candidate) => candidate.scheduleId === schedule.id && candidate.sourceRevisionId === release?.sourceRevisionId,
+        );
+        if (!deployment || !release || !version || !schedule.nextRunAt) continue;
+
+        const dueAt = schedule.nextRunAt;
+        const duplicate = state.scheduleRuns.find(
+          (candidate) => candidate.scheduleVersionId === version.id && candidate.dueAt === dueAt && candidate.trigger === "cron",
+        );
+        if (duplicate) continue;
+
+        let next = getNextRunAt(version.cron, new Date(dueAt));
+        let missedTicks = 0;
+        while (next <= input.now) {
+          missedTicks += 1;
+          next = getNextRunAt(version.cron, next);
+        }
+        schedule.nextRunAt = next.toISOString();
+        schedule.updatedAt = nowIso;
+
+        const run: ScheduleRun = {
+          id: createId("srun"),
+          scheduleId: schedule.id,
+          scheduleVersionId: version.id,
+          releaseId: release.id,
+          deploymentId: deployment.id,
+          dueAt,
+          trigger: "cron",
+          status: "queued",
+          attempt: 0,
+          missedTicks,
+          error: null,
+          startedAt: null,
+          completedAt: null,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+        state.scheduleRuns.push(run);
+        state.jobs.push(createJob(schedule.projectId, "trigger_schedule", { scheduleRunId: run.id }));
+        claimed.push(run);
+      }
+      return claimed;
+    },
+
+    async getScheduleRun(scheduleRunId) {
+      return state.scheduleRuns.find((candidate) => candidate.id === scheduleRunId) ?? null;
+    },
+
+    async claimScheduleRunActivation(scheduleRunId, now = new Date(), staleAfterMs = 300_000) {
+      const run = state.scheduleRuns.find((candidate) => candidate.id === scheduleRunId);
+      if (!run) return null;
+      const stale = run.status === "activating" && new Date(run.updatedAt).getTime() <= now.getTime() - staleAfterMs;
+      if (run.status !== "queued" && !stale) return null;
+      run.status = "activating";
+      run.startedAt ??= now.toISOString();
+      run.updatedAt = now.toISOString();
+      return run;
+    },
+
+    async redeemScheduleRunDispatch(scheduleRunId, deploymentId) {
+      const run = state.scheduleRuns.find((candidate) => candidate.id === scheduleRunId);
+      if (!run || run.deploymentId !== deploymentId || run.status !== "activating") return null;
+      run.status = "dispatching";
+      run.attempt += 1;
+      run.startedAt ??= new Date().toISOString();
+      run.updatedAt = new Date().toISOString();
+      return run;
+    },
+
+    async completeScheduleRun(scheduleRunId, input) {
+      const run = state.scheduleRuns.find((candidate) => candidate.id === scheduleRunId);
+      if (!run) return null;
+      const schedule = state.projectSchedules.find((candidate) => candidate.id === run.scheduleId);
+      if (!schedule) throw new Error("ScheduleRun references an unknown ProjectSchedule.");
+
+      const trigger: SessionTrigger = run.trigger === "cron" ? "cron" : "manual";
+      for (const eveSessionId of new Set(input.eveSessionIds ?? [])) {
+        let session = state.sessions.find(
+          (candidate) => candidate.projectId === schedule.projectId && candidate.eveSessionId === eveSessionId,
+        );
+        if (session) {
+          session.deploymentId = run.deploymentId;
+          session.trigger = trigger;
+          session.scheduleId = run.scheduleId;
+          session.scheduleRunId = run.id;
+          continue;
+        }
+        const now = new Date().toISOString();
+        session = {
+          id: createId("sess"),
+          projectId: schedule.projectId,
+          deploymentId: run.deploymentId,
+          eveSessionId,
+          continuationToken: null,
+          rootNodeId: null,
+          routeId: null,
+          experimentId: null,
+          variantName: null,
+          trigger,
+          scheduleId: run.scheduleId,
+          scheduleRunId: run.id,
+          status: "running",
+          startedAt: now,
+          completedAt: null,
+          usage: emptySessionTokenUsage(),
+        };
+        state.sessions.push(session);
+      }
+
+      const now = new Date().toISOString();
+      run.status = input.status;
+      run.error = input.error ?? null;
+      run.completedAt = now;
+      run.updatedAt = now;
+      return run;
     },
 
     async listSessions(projectId) {
@@ -948,6 +1264,7 @@ function ensureMemorySessionNode(
         variantName: parentBinding?.variantName ?? null,
         trigger: parentBinding?.trigger ?? "direct_http",
         scheduleId: null,
+        scheduleRunId: null,
         status: "running",
         startedAt: envelope.eventAt,
         completedAt: null,
@@ -998,6 +1315,7 @@ function ensureMemorySessionNode(
       variantName: binding?.variantName ?? null,
       trigger: binding?.trigger ?? triggerFromChannel(envelope.channelKind),
       scheduleId: null,
+      scheduleRunId: null,
       status: "running",
       startedAt: envelope.eventAt,
       completedAt: null,

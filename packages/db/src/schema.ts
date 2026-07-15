@@ -226,6 +226,76 @@ export const deployments = pgTable(
   ],
 );
 
+export const projectSchedules = pgTable(
+  "project_schedules",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("project_schedules_project_key_idx").on(table.projectId, table.key)],
+);
+
+export const scheduleVersions = pgTable(
+  "schedule_versions",
+  {
+    id: text("id").primaryKey(),
+    scheduleId: text("schedule_id").notNull().references(() => projectSchedules.id, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id").notNull().references(() => sourceRevisions.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    cron: text("cron").notNull(),
+    sourcePath: text("source_path").notNull(),
+    definitionHash: text("definition_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("schedule_versions_schedule_revision_idx").on(table.scheduleId, table.sourceRevisionId),
+    check("schedule_versions_kind_check", sql`${table.kind} in ('markdown', 'handler')`),
+  ],
+);
+
+export const projectSchedulerTargets = pgTable("project_scheduler_targets", {
+  projectId: text("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  deploymentId: text("deployment_id").notNull().references(() => deployments.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const scheduleRuns = pgTable(
+  "schedule_runs",
+  {
+    id: text("id").primaryKey(),
+    scheduleId: text("schedule_id").notNull().references(() => projectSchedules.id, { onDelete: "cascade" }),
+    scheduleVersionId: text("schedule_version_id").notNull().references(() => scheduleVersions.id),
+    releaseId: text("release_id").notNull().references(() => releases.id),
+    deploymentId: text("deployment_id").notNull().references(() => deployments.id),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    trigger: text("trigger").notNull(),
+    status: text("status").notNull(),
+    attempt: integer("attempt").notNull().default(0),
+    missedTicks: integer("missed_ticks").notNull().default(0),
+    error: text("error"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("schedule_runs_version_due_idx")
+      .on(table.scheduleVersionId, table.dueAt)
+      .where(sql`${table.trigger} = 'cron'`),
+    index("schedule_runs_schedule_status_idx").on(table.scheduleId, table.status),
+    check("schedule_runs_trigger_check", sql`${table.trigger} in ('cron', 'manual')`),
+    check(
+      "schedule_runs_status_check",
+      sql`${table.status} in ('queued', 'activating', 'dispatching', 'running', 'succeeded', 'failed', 'dispatch_unknown', 'skipped')`,
+    ),
+  ],
+);
+
 export const agentRoutes = pgTable(
   "agent_routes",
   {
@@ -291,29 +361,34 @@ export const sourceFiles = pgTable(
   (table) => [uniqueIndex("source_files_revision_path_idx").on(table.revisionId, table.path)],
 );
 
-export const sessions = pgTable("sessions", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id").notNull().references(() => projects.id),
-  deploymentId: text("deployment_id"),
-  eveSessionId: text("eve_session_id"),
-  continuationToken: text("continuation_token"),
-  rootNodeId: text("root_node_id"),
-  routeId: text("route_id").references(() => agentRoutes.id),
-  experimentId: text("experiment_id"),
-  variantName: text("variant_name"),
-  trigger: text("trigger").notNull(),
-  scheduleId: text("schedule_id"),
-  status: text("status").notNull(),
-  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
-  outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
-  cacheReadTokens: bigint("cache_read_tokens", { mode: "number" }).notNull().default(0),
-  cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull().default(0),
-  costUsd: doublePrecision("cost_usd"),
-  usageReportedSteps: integer("usage_reported_steps").notNull().default(0),
-  usageMissingSteps: integer("usage_missing_steps").notNull().default(0),
-});
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    deploymentId: text("deployment_id"),
+    eveSessionId: text("eve_session_id"),
+    continuationToken: text("continuation_token"),
+    rootNodeId: text("root_node_id"),
+    routeId: text("route_id").references(() => agentRoutes.id),
+    experimentId: text("experiment_id"),
+    variantName: text("variant_name"),
+    trigger: text("trigger").notNull(),
+    scheduleId: text("schedule_id"),
+    scheduleRunId: text("schedule_run_id").references(() => scheduleRuns.id),
+    status: text("status").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    cacheReadTokens: bigint("cache_read_tokens", { mode: "number" }).notNull().default(0),
+    cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull().default(0),
+    costUsd: doublePrecision("cost_usd"),
+    usageReportedSteps: integer("usage_reported_steps").notNull().default(0),
+    usageMissingSteps: integer("usage_missing_steps").notNull().default(0),
+  },
+  (table) => [index("sessions_schedule_run_idx").on(table.scheduleRunId)],
+);
 
 export const sessionNodes = pgTable(
   "session_nodes",

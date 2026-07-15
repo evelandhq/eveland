@@ -1,90 +1,115 @@
 import path from "node:path";
 import { CronExpressionParser } from "cron-parser";
 
+const moduleExtensions = [".cts", ".mts", ".cjs", ".mjs", ".ts", ".js"] as const;
+
 export type MarkdownSchedule = {
-  name: string;
+  key: string;
   kind: "markdown";
   cron: string;
-  timezone: string;
-  enabled: boolean;
   sourcePath: string;
   prompt: string;
   executable: true;
 };
 
-export type TypeScriptSchedule = {
-  name: string;
-  kind: "typescript";
+export type ModuleSchedule = {
+  key: string;
+  kind: "module";
   sourcePath: string;
-  executable: false;
+  executable: true;
 };
 
-export type DiscoveredSchedule = MarkdownSchedule | TypeScriptSchedule;
+export type DiscoveredSchedule = MarkdownSchedule | ModuleSchedule;
 
-export function parseMarkdownSchedule(sourcePath: string, content: string): DiscoveredSchedule {
-  const name = path.posix.basename(sourcePath).replace(/\.(md|mdx|ts|tsx)$/i, "");
+export function parseScheduleSource(sourcePath: string, content: string): DiscoveredSchedule {
+  const normalizedPath = sourcePath.replaceAll("\\", "/");
+  const key = scheduleKeyFromPath(normalizedPath);
+  const extension = path.posix.extname(normalizedPath);
 
-  if (/\.(ts|tsx)$/i.test(sourcePath)) {
-    return {
-      name,
-      kind: "typescript",
-      sourcePath,
-      executable: false,
-    };
+  if (moduleExtensions.includes(extension as (typeof moduleExtensions)[number])) {
+    return { key, kind: "module", sourcePath: normalizedPath, executable: true };
+  }
+  if (extension !== ".md") {
+    throw new Error(`Schedule ${sourcePath} uses an unsupported Eve 0.24 schedule extension.`);
   }
 
-  const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n)?([\s\S]*)$/);
   if (!frontmatter) {
     throw new Error(`Markdown schedule ${sourcePath} is missing frontmatter.`);
   }
 
-  const data = parseSimpleYaml(frontmatter[1] ?? "");
+  const data = parseStrictFrontmatter(sourcePath, frontmatter[1] ?? "");
   const cron = data.cron;
   if (!cron) {
     throw new Error(`Markdown schedule ${sourcePath} is missing cron.`);
   }
+  validateFiveFieldCron(cron);
 
   return {
-    name,
+    key,
     kind: "markdown",
     cron,
-    timezone: data.timezone ?? "UTC",
-    enabled: data.enabled == null ? true : data.enabled === "true",
-    sourcePath,
+    sourcePath: normalizedPath,
     prompt: (frontmatter[2] ?? "").trim(),
     executable: true,
   };
 }
 
-export function getNextRunAt(cron: string, timezone: string, currentDate = new Date()): Date {
-  return CronExpressionParser.parse(cron, {
-    currentDate,
-    tz: timezone,
-  })
-    .next()
-    .toDate();
+export const parseMarkdownSchedule = parseScheduleSource;
+
+export function getNextRunAt(cron: string, currentDate = new Date()): Date {
+  validateFiveFieldCron(cron);
+  return CronExpressionParser.parse(cron, { currentDate, tz: "UTC" }).next().toDate();
 }
 
-function parseSimpleYaml(input: string): Record<string, string> {
-  const result: Record<string, string> = {};
+export function validateFiveFieldCron(cron: string): void {
+  if (cron.trim().split(/\s+/).length !== 5) {
+    throw new Error(`Eve schedules require a standard cron expression with exactly five fields: ${cron}`);
+  }
+  try {
+    CronExpressionParser.parse(cron, { currentDate: new Date(0), tz: "UTC" });
+  } catch (error) {
+    throw new Error(`Invalid Eve schedule cron expression "${cron}": ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
+function scheduleKeyFromPath(sourcePath: string): string {
+  const prefix = "agent/schedules/";
+  if (!sourcePath.startsWith(prefix)) {
+    throw new Error(`Schedule ${sourcePath} must be located under agent/schedules/.`);
+  }
+  const relativePath = sourcePath.slice(prefix.length);
+  if (!relativePath || relativePath.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+    throw new Error(`Schedule ${sourcePath} has an invalid path under agent/schedules/.`);
+  }
+  const extension = path.posix.extname(relativePath);
+  return relativePath.slice(0, -extension.length);
+}
+
+function parseStrictFrontmatter(sourcePath: string, input: string): { cron?: string } {
+  const result: { cron?: string } = {};
   for (const line of input.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-
+    if (!trimmed || trimmed.startsWith("#")) continue;
     const match = trimmed.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!match) {
-      continue;
-    }
-
+    if (!match) throw new Error(`Markdown schedule ${sourcePath} has invalid frontmatter.`);
     const [, key, rawValue = ""] = match;
-    if (!key) {
-      continue;
+    if (key !== "cron") {
+      throw new Error(`Markdown schedule ${sourcePath} only supports the cron frontmatter field.`);
     }
-    result[key] = rawValue.replace(/^["']|["']$/g, "").trim();
+    if (result.cron !== undefined) {
+      throw new Error(`Markdown schedule ${sourcePath} declares cron more than once.`);
+    }
+    result.cron = unquote(rawValue.trim());
   }
-
   return result;
+}
+
+function unquote(value: string): string {
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value.at(-1);
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) return value.slice(1, -1);
+  }
+  return value;
 }

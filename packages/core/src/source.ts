@@ -1,5 +1,5 @@
 import path from "node:path";
-import { parseMarkdownSchedule, type DiscoveredSchedule } from "./schedules.js";
+import { parseScheduleSource, type DiscoveredSchedule } from "./schedules.js";
 
 export type SourceFile = {
   path: string;
@@ -80,10 +80,10 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
       summary.sandbox.push(file.path);
     }
 
-    if (isUnder(file.path, `${root}schedules/`) && /\.(md|mdx|ts|tsx)$/.test(file.path)) {
+    if (root === "agent/" && isUnder(file.path, `${root}schedules/`) && /\.(md|[cm]?[jt]s)$/.test(file.path)) {
       summary.schedules.push(file.path);
       try {
-        schedules.push(parseMarkdownSchedule(file.path, file.content));
+        schedules.push(parseScheduleSource(file.path, file.content));
       } catch {
         // Invalid schedule files are still shown in source summary; build validation reports detail later.
       }
