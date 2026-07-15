@@ -10,7 +10,7 @@
     "build:cloudflare": "opennextjs-cloudflare build",
     "preview:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy:cloudflare": "opennextjs-cloudflare deploy",
-    "typecheck": "next typegen && tsc -p tsconfig.json --noEmit",
+    "typecheck": "next typegen && fumadocs-mdx && tsc -p tsconfig.json --noEmit",
     "test": "vitest run src",
     "postinstall": "fumadocs-mdx"
   },
