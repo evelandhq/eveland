@@ -20,6 +20,15 @@ export type GatewayRepository = {
   bindSession(input: Omit<GatewaySessionBinding, "id" | "createdAt" | "updatedAt">): Promise<unknown>;
 };
 
+export type GatewayActivationClient = {
+  activate(
+    input: { deploymentId: string; kind: "public_request" | "stream" | "turn"; ownerId: string },
+    signal: AbortSignal,
+  ): Promise<{ leaseId: string; endpointPort: number }>;
+  renew(leaseId: string): Promise<void>;
+  release(leaseId: string): Promise<void>;
+};
+
 export type GatewayAppOptions = {
   allowedBaseDomains: string[];
   affinitySecret: string;
@@ -29,6 +38,8 @@ export type GatewayAppOptions = {
   routeCacheTtlMs?: number;
   maxRequestBodyBytes?: number;
   affinityCookieSecure?: boolean;
+  activationClient?: GatewayActivationClient;
+  activationRenewIntervalMs?: number;
 };
 
 const hopByHopHeaders = new Set([
@@ -82,19 +93,40 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (!route?.enabled) return context.json({ error: "Project route not found" }, 404);
     const binding = pathSessionId ? await repository.findSessionBinding(route.projectId, pathSessionId) : null;
     if (pathSessionId && !binding) return context.json({ error: "Playground session not found" }, 404);
-    const target = await resolveTarget(repository, route, binding, crypto.randomUUID());
+    const activationOwnerId = crypto.randomUUID();
+    const target = await resolveTarget(repository, route, binding, crypto.randomUUID(), Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
+    const declaredContentLength = Number(context.req.header("content-length"));
+    if (Number.isFinite(declaredContentLength) && declaredContentLength > PLAYGROUND_MAX_TRANSPORT_BYTES) {
+      return context.json({ error: "Request body too large" }, 413);
+    }
+    let activation: { leaseId: string; endpointPort: number } | null = null;
+    if (options.activationClient) {
+      try {
+        activation = await options.activationClient.activate({
+          deploymentId: target.deploymentId,
+          kind: activationKind(context.req.method, evePath),
+          ownerId: activationOwnerId,
+        }, context.req.raw.signal);
+      } catch (error) {
+        if (context.req.raw.signal.aborted || isAbortError(error)) {
+          return new Response(JSON.stringify({ error: "Client closed request" }), {
+            status: 499,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return context.json({ error: "Deployment activation failed" }, 503);
+      }
+    }
 
     let upstream: Response;
     try {
-      const contentLength = Number(context.req.header("content-length"));
-      if (Number.isFinite(contentLength) && contentLength > PLAYGROUND_MAX_TRANSPORT_BYTES) throw new RequestBodyTooLargeError();
       const body = requestHasBody(context.req.method)
         ? await readLimitedBody(context.req.raw.body, PLAYGROUND_MAX_TRANSPORT_BYTES, context.req.raw.signal)
         : null;
       const authority = `localhost:${target.hostPort}`;
       upstream = await proxyToDeployment({
-        port: target.hostPort,
+        port: activation?.endpointPort ?? target.hostPort,
         path: `${evePath}${requestUrl.search}`,
         method: context.req.method,
         headers: buildInternalPlaygroundHeaders(context.req.raw.headers, authority),
@@ -103,6 +135,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
         timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
       });
     } catch (error) {
+      if (activation && options.activationClient) await options.activationClient.release(activation.leaseId).catch(() => undefined);
       if (error instanceof RequestBodyTooLargeError) return context.json({ error: "Request body too large" }, 413);
       if (error instanceof DownstreamAbortedError) {
         return new Response(JSON.stringify({ error: "Client closed request" }), {
@@ -116,27 +149,38 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (isInitial && upstream.ok) {
       const eveSessionId = upstream.headers.get("x-eve-session-id") ?? (await sessionIdFromJson(upstream.clone()));
       if (eveSessionId) {
-        await repository.bindSession({
-          projectId: route.projectId,
-          eveSessionId,
-          routeId: route.id,
-          deploymentId: target.deploymentId,
-          trigger: "playground",
-          variantName: target.variantName,
-          experimentId: routeExperimentId(route),
-          requestId: crypto.randomUUID(),
-          remoteIp: null,
-          affinityFingerprint: null,
-          affinitySource: null,
-        });
+        try {
+          await repository.bindSession({
+            projectId: route.projectId,
+            eveSessionId,
+            routeId: route.id,
+            deploymentId: target.deploymentId,
+            trigger: "playground",
+            variantName: target.variantName,
+            experimentId: routeExperimentId(route),
+            requestId: crypto.randomUUID(),
+            remoteIp: null,
+            affinityFingerprint: null,
+            affinitySource: null,
+          });
+        } catch (error) {
+          await upstream.body?.cancel(error).catch(() => undefined);
+          if (activation && options.activationClient) {
+            await options.activationClient.release(activation.leaseId).catch(() => undefined);
+          }
+          throw error;
+        }
       }
     }
 
-    return new Response(upstream.body, {
+    const response = new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
       headers: upstream.headers,
     });
+    return activation && options.activationClient
+      ? manageActivationResponse(response, options.activationClient, activation.leaseId, options.activationRenewIntervalMs ?? 60_000)
+      : response;
   });
   app.post("/internal/projects/:projectId/playground", async (context) => {
     if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
@@ -230,17 +274,37 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     const remoteIp = remoteAddress(context);
     const affinity = affinityKey(context.req.raw.headers, options.affinitySecret);
     const binding = pathSessionId ? await repository.findSessionBinding(route.projectId, pathSessionId) : null;
-    const target = await resolveTarget(repository, route, binding, affinity.key);
+    const target = await resolveTarget(repository, route, binding, affinity.key, Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
+    const declaredContentLength = Number(context.req.header("content-length"));
+    if (Number.isFinite(declaredContentLength) && declaredContentLength > maxRequestBodyBytes) {
+      return context.json({ error: "Request body too large" }, 413);
+    }
+    let activation: { leaseId: string; endpointPort: number } | null = null;
+    if (options.activationClient) {
+      try {
+        activation = await options.activationClient.activate({
+          deploymentId: target.deploymentId,
+          kind: activationKind(context.req.method, requestUrl.pathname),
+          ownerId: requestId,
+        }, context.req.raw.signal);
+      } catch (error) {
+        if (context.req.raw.signal.aborted || isAbortError(error)) {
+          return new Response(JSON.stringify({ error: "Client closed request" }), {
+            status: 499,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return context.json({ error: "Deployment activation failed" }, 503);
+      }
+    }
     let upstream: Response;
     try {
-      const contentLength = Number(context.req.header("content-length"));
-      if (Number.isFinite(contentLength) && contentLength > maxRequestBodyBytes) throw new RequestBodyTooLargeError();
       const body = requestHasBody(context.req.method)
         ? await readLimitedBody(context.req.raw.body, maxRequestBodyBytes, context.req.raw.signal)
         : null;
       upstream = await proxyToDeployment({
-        port: target.hostPort,
+        port: activation?.endpointPort ?? target.hostPort,
         path: `${requestUrl.pathname}${requestUrl.search}`,
         method: context.req.method,
         headers: buildUpstreamHeaders(context.req.raw.headers, authority, requestUrl.protocol, requestId, remoteIp),
@@ -248,6 +312,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
         signal: context.req.raw.signal,
       });
     } catch (error) {
+      if (activation && options.activationClient) await options.activationClient.release(activation.leaseId).catch(() => undefined);
       if (error instanceof RequestBodyTooLargeError) return context.json({ error: "Request body too large" }, 413);
       if (error instanceof DownstreamAbortedError) {
         return new Response(JSON.stringify({ error: "Client closed request" }), {
@@ -261,19 +326,27 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (context.req.method === "POST" && requestUrl.pathname === "/eve/v1/session" && upstream.ok) {
       const eveSessionId = upstream.headers.get("x-eve-session-id") ?? (await sessionIdFromJson(upstream.clone()));
       if (eveSessionId) {
-        await repository.bindSession({
-          projectId: route.projectId,
-          eveSessionId,
-          routeId: route.id,
-          deploymentId: target.deploymentId,
-          trigger: "api",
-          variantName: target.variantName,
-          experimentId: routeExperimentId(route),
-          requestId,
-          remoteIp,
-          affinityFingerprint: affinity.fingerprint,
-          affinitySource: affinity.source,
-        });
+        try {
+          await repository.bindSession({
+            projectId: route.projectId,
+            eveSessionId,
+            routeId: route.id,
+            deploymentId: target.deploymentId,
+            trigger: "api",
+            variantName: target.variantName,
+            experimentId: routeExperimentId(route),
+            requestId,
+            remoteIp,
+            affinityFingerprint: affinity.fingerprint,
+            affinitySource: affinity.source,
+          });
+        } catch (error) {
+          await upstream.body?.cancel(error).catch(() => undefined);
+          if (activation && options.activationClient) {
+            await options.activationClient.release(activation.leaseId).catch(() => undefined);
+          }
+          throw error;
+        }
       }
     }
 
@@ -288,11 +361,14 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
         ),
       );
     }
-    return new Response(upstream.body, {
+    const response = new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
       headers: responseHeaders,
     });
+    return activation && options.activationClient
+      ? manageActivationResponse(response, options.activationClient, activation.leaseId, options.activationRenewIntervalMs ?? 60_000)
+      : response;
   });
 
   return app;
@@ -430,6 +506,65 @@ function proxyToDeployment(input: {
   });
 }
 
+function activationKind(method: string, pathname: string): "public_request" | "stream" | "turn" {
+  if (method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(pathname)) return "stream";
+  if (method === "POST" && /^\/eve\/v1\/session(?:\/[^/]+)?$/.test(pathname)) return "turn";
+  return "public_request";
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function manageActivationResponse(
+  response: Response,
+  client: GatewayActivationClient,
+  leaseId: string,
+  renewIntervalMs: number,
+): Response {
+  if (!response.body) {
+    void client.release(leaseId).catch(() => undefined);
+    return response;
+  }
+  const reader = response.body.getReader();
+  let finalized = false;
+  const renewTimer = setInterval(() => {
+    void client.renew(leaseId).catch(() => undefined);
+  }, renewIntervalMs);
+  renewTimer.unref?.();
+  const finalize = async () => {
+    if (finalized) return;
+    finalized = true;
+    clearInterval(renewTimer);
+    await client.release(leaseId).catch(() => undefined);
+  };
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          await finalize();
+          controller.close();
+        } else {
+          controller.enqueue(chunk.value);
+        }
+      } catch (error) {
+        await finalize();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => undefined);
+      await finalize();
+    },
+  });
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 async function readLimitedBody(
   body: ReadableStream<Uint8Array> | null,
   maxBytes: number,
@@ -489,14 +624,17 @@ async function resolveTarget(
   route: ResolvedAgentRoute,
   binding: GatewaySessionBinding | null,
   affinityKey: string,
+  allowStopped = false,
 ): Promise<ResolvedAgentRoute["targets"][number] | null> {
   if (binding) {
     const routed = route.targets.find(
-      (target) => target.deploymentId === binding.deploymentId && (target.status === "running" || target.status === "draining"),
+      (target) => target.deploymentId === binding.deploymentId &&
+        (target.status === "running" || target.status === "draining" || (allowStopped && target.status === "stopped")),
     );
     if (routed) return routed;
     const deployment = await repository.getDeployment(binding.deploymentId);
-    if (deployment && (deployment.status === "running" || deployment.status === "draining")) {
+    if (deployment &&
+      (deployment.status === "running" || deployment.status === "draining" || (allowStopped && deployment.status === "stopped"))) {
       return {
         routeId: route.id,
         deploymentId: deployment.id,
@@ -508,7 +646,7 @@ async function resolveTarget(
     }
     return null;
   }
-  const eligible = route.targets.filter((target) => target.status === "running");
+  const eligible = route.targets.filter((target) => target.status === "running" || (allowStopped && target.status === "stopped"));
   if (eligible.length === 0) return null;
   return selectWeightedTarget(eligible, affinityKey, { id: route.id, policyRevision: route.policyRevision });
 }

@@ -1,6 +1,6 @@
 import { createMemoryStore } from "@eveland/db";
 import { describe, expect, test, vi } from "vitest";
-import { ensureDeploymentActive } from "./activation-manager.js";
+import { ensureDeploymentActive, reconcileRuntimeInstances } from "./activation-manager.js";
 import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
 
 describe("ensureDeploymentActive", () => {
@@ -130,5 +130,56 @@ describe("ensureDeploymentActive", () => {
     await expect(first).rejects.toThrow("runtime start failed");
     await expect(second).rejects.toThrow("runtime start failed");
     await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+  });
+
+  test("reconciles a ready RuntimeInstance whose process disappeared", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Crashed Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/crashed-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:crashed",
+      containerName: "fixture-crashed",
+      internalPort: 3000,
+      hostPort: 41998,
+      runtimeKind: "docker",
+    });
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_crashed",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    });
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      inspectProcess: vi.fn(async () => "missing" as const),
+    } as unknown as RuntimeAdapter;
+
+    await expect(reconcileRuntimeInstances(store, {
+      limit: 10,
+      runtimeForKind: () => runtime,
+    })).resolves.toBe(1);
+
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({ status: "stopped" });
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "stopped" });
   });
 });

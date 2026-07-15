@@ -15,7 +15,7 @@ import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "../run
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
 import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
 import { PLATFORM_WORKFLOW_WORLD } from "../runtime/workflow-world.js";
-import { ensureDeploymentActive } from "../runtime/activation-manager.js";
+import { ensureDeploymentActive, startRuntimeInstance } from "../runtime/activation-manager.js";
 import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
 
@@ -476,6 +476,50 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       await store.deleteProject(job.projectId);
       return;
     }
+    case "ensure_deployment_running": {
+      const deploymentId = typeof job.payload.deploymentId === "string" ? job.payload.deploymentId : null;
+      const runtimeInstanceId = typeof job.payload.runtimeInstanceId === "string" ? job.payload.runtimeInstanceId : null;
+      if (!deploymentId || !runtimeInstanceId) throw new Error("Deployment activation job is missing its target.");
+      const deployment = await store.getDeployment(deploymentId);
+      const runtimeInstance = await store.getRuntimeInstance(runtimeInstanceId);
+      if (!deployment || deployment.projectId !== job.projectId) throw new Error("Deployment activation target is invalid.");
+      if (!runtimeInstance || runtimeInstance.deploymentId !== deployment.id) throw new Error("RuntimeInstance activation target is invalid.");
+      const release = await store.getRelease(deployment.releaseId);
+      if (!release) throw new Error("Deployment activation Release is missing.");
+      const revision = await store.getSourceRevision(release.sourceRevisionId);
+      if (!revision) throw new Error("Deployment activation SourceRevision is missing.");
+      const runtime = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+      const { env } = await composeDeploymentEnv(store, job.projectId, options);
+      const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
+      const sandboxCache = resolveSandboxCacheDirs(process.env, job.projectId);
+      const observerOutbox = resolveObserverOutboxDirs(process.env, job.projectId, deployment.id);
+      await mkdir(sandboxCache.workerDir, { recursive: true });
+      await mkdir(observerOutbox.workerDir, { recursive: true });
+      await startRuntimeInstance(store, {
+        deployment,
+        runtime,
+        startInput: {
+          processName: deployment.containerName,
+          releaseRef: release.imageTag,
+          port: deployment.hostPort,
+          env: { ...env, EVELAND_DEPLOYMENT_ID: deployment.id },
+          commandContext,
+          sandboxCacheDir: runtime.name === "docker" ? sandboxCache.hostDir : sandboxCache.workerDir,
+          observerOutboxDir: runtime.name === "docker" ? observerOutbox.hostDir : observerOutbox.workerDir,
+        },
+      }, runtimeInstance.id, {
+        waitForHealth: options.waitForDeployment,
+        readyTimeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
+      });
+      await store.updateDeploymentStatus(deployment.id, "running");
+      await store.appendLog({
+        projectId: job.projectId,
+        deploymentId: deployment.id,
+        type: "runtime",
+        line: `Deployment ${deployment.id} is ready for RuntimeInstance ${runtimeInstance.id}.`,
+      });
+      return;
+    }
     case "trigger_schedule": {
       const scheduleRunId = typeof job.payload.scheduleRunId === "string" ? job.payload.scheduleRunId : null;
       let run = scheduleRunId ? await store.getScheduleRun(scheduleRunId) : null;
@@ -541,6 +585,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           readyTimeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
         });
         activationLeaseId = activation.lease.id;
+        await store.updateDeploymentStatus(deployment.id, "running");
         const credential = createScheduleDispatchCredential({
           scheduleRunId: run.id,
           deploymentId: deployment.id,

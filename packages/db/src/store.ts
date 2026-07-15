@@ -88,6 +88,13 @@ export type Store = {
   deleteSecret(projectId: string, secretId: string): Promise<boolean>;
   listSecretRecords(projectId: string): Promise<SecretRecord[]>;
   enqueueJob(projectId: string, type: JobType, payload?: Record<string, unknown>): Promise<Job>;
+  enqueueDeploymentActivation(
+    projectId: string,
+    deploymentId: string,
+    runtimeInstanceId: string,
+    now?: Date,
+    staleAfterMs?: number,
+  ): Promise<Job>;
   claimNextJob(workerId: string): Promise<Job | null>;
   completeJob(jobId: string): Promise<void>;
   failJob(jobId: string, error: string): Promise<void>;
@@ -190,13 +197,17 @@ export type Store = {
     now?: Date;
   }): Promise<ActivationLeaseClaim>;
   getRuntimeInstance(runtimeInstanceId: string): Promise<RuntimeInstance | null>;
+  listRuntimeInstances(statuses: RuntimeInstanceStatus[], limit: number): Promise<RuntimeInstance[]>;
   updateRuntimeInstance(
     runtimeInstanceId: string,
     input: { status: RuntimeInstanceStatus; endpointHost?: string | null; endpointPort?: number | null; error?: string | null },
     now?: Date,
   ): Promise<RuntimeInstance | null>;
+  getActivationLease(leaseId: string): Promise<ActivationLease | null>;
+  renewActivationLease(leaseId: string, expiresAt: Date, now?: Date): Promise<ActivationLease | null>;
   releaseActivationLease(leaseId: string, now?: Date): Promise<ActivationLease | null>;
   hasActiveActivationLeases(deploymentId: string, now?: Date): Promise<boolean>;
+  claimIdleRuntimeInstances(input: { now: Date; idleTtlMs: number; limit: number }): Promise<RuntimeInstance[]>;
   listSessions(projectId: string): Promise<Session[]>;
   listSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   listSessionNodes(sessionId: string): Promise<SessionNode[]>;
@@ -404,6 +415,28 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async enqueueJob(projectId, type, payload = {}) {
       const job = createJob(projectId, type, payload);
+      state.jobs.push(job);
+      return job;
+    },
+
+    async enqueueDeploymentActivation(projectId, deploymentId, runtimeInstanceId, now = new Date(), staleAfterMs = 300_000) {
+      const existing = state.jobs.find(
+        (candidate) =>
+          candidate.projectId === projectId &&
+          candidate.type === "ensure_deployment_running" &&
+          candidate.payload.runtimeInstanceId === runtimeInstanceId &&
+          (candidate.status === "queued" || candidate.status === "running"),
+      );
+      if (existing) {
+        if (existing.status === "running" && Date.parse(existing.updatedAt) <= now.getTime() - staleAfterMs) {
+          existing.status = "queued";
+          existing.updatedAt = now.toISOString();
+        }
+        return existing;
+      }
+      const job = createJob(projectId, "ensure_deployment_running", { deploymentId, runtimeInstanceId });
+      job.createdAt = now.toISOString();
+      job.updatedAt = now.toISOString();
       state.jobs.push(job);
       return job;
     },
@@ -1176,13 +1209,16 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       if (!deployment) throw new Error("Cannot activate an unknown Deployment.");
       const now = input.now ?? new Date();
       const nowIso = now.toISOString();
-      let runtimeInstance = state.runtimeInstances
-        .filter(
-          (candidate) =>
-            candidate.deploymentId === input.deploymentId &&
-            (candidate.status === "starting" || candidate.status === "ready" || candidate.status === "draining"),
-        )
+      const latestRuntimeInstance = state.runtimeInstances
+        .filter((candidate) => candidate.deploymentId === input.deploymentId)
         .sort((a, b) => b.generation - a.generation)[0];
+      if (latestRuntimeInstance?.status === "draining") {
+        throw new Error("RuntimeInstance is draining; retry activation after it stops.");
+      }
+      let runtimeInstance = latestRuntimeInstance &&
+        (latestRuntimeInstance.status === "starting" || latestRuntimeInstance.status === "ready")
+        ? latestRuntimeInstance
+        : undefined;
       const starter = !runtimeInstance;
       if (!runtimeInstance) {
         const generation = Math.max(
@@ -1234,6 +1270,15 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.runtimeInstances.find((candidate) => candidate.id === runtimeInstanceId) ?? null;
     },
 
+    async listRuntimeInstances(statuses, limit) {
+      if (!Number.isInteger(limit) || limit < 1) throw new Error("RuntimeInstance list limit must be positive.");
+      const allowed = new Set(statuses);
+      return state.runtimeInstances
+        .filter((candidate) => allowed.has(candidate.status))
+        .sort((a, b) => a.deploymentId.localeCompare(b.deploymentId) || a.generation - b.generation)
+        .slice(0, limit);
+    },
+
     async updateRuntimeInstance(runtimeInstanceId, input, now = new Date()) {
       const instance = state.runtimeInstances.find((candidate) => candidate.id === runtimeInstanceId);
       if (!instance) return null;
@@ -1244,6 +1289,17 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       if (input.status === "ready") instance.readyAt = now.toISOString();
       if (input.status === "stopped" || input.status === "failed") instance.stoppedAt = now.toISOString();
       return instance;
+    },
+
+    async getActivationLease(leaseId) {
+      return state.activationLeases.find((candidate) => candidate.id === leaseId) ?? null;
+    },
+
+    async renewActivationLease(leaseId, expiresAt, now = new Date()) {
+      const lease = state.activationLeases.find((candidate) => candidate.id === leaseId);
+      if (!lease || lease.releasedAt !== null || lease.expiresAt <= now.toISOString()) return null;
+      lease.expiresAt = expiresAt.toISOString();
+      return lease;
     },
 
     async releaseActivationLease(leaseId, now = new Date()) {
@@ -1258,6 +1314,36 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.activationLeases.some(
         (candidate) => candidate.deploymentId === deploymentId && candidate.releasedAt === null && candidate.expiresAt > nowIso,
       );
+    },
+
+    async claimIdleRuntimeInstances(input) {
+      if (!Number.isInteger(input.limit) || input.limit < 1) throw new Error("Runtime idle claim limit must be positive.");
+      if (!Number.isFinite(input.idleTtlMs) || input.idleTtlMs < 0) throw new Error("Runtime idle TTL must be non-negative.");
+      const cutoff = input.now.getTime() - input.idleTtlMs;
+      const claimed: RuntimeInstance[] = [];
+      const candidates = state.runtimeInstances
+        .filter((instance) => instance.status === "draining" || instance.status === "ready")
+        .sort((a, b) => a.deploymentId.localeCompare(b.deploymentId) || a.generation - b.generation);
+      for (const instance of candidates) {
+        if (claimed.length >= input.limit) break;
+        if (instance.status === "draining") {
+          claimed.push(instance);
+          continue;
+        }
+        if (await this.hasActiveActivationLeases(instance.deploymentId, input.now)) continue;
+        const activityTimes = [instance.readyAt, instance.startedAt]
+          .concat(
+            state.activationLeases
+              .filter((lease) => lease.runtimeInstanceId === instance.id)
+              .map((lease) => lease.releasedAt ?? lease.expiresAt),
+          )
+          .filter((value): value is string => value !== null)
+          .map((value) => Date.parse(value));
+        if (Math.max(...activityTimes) > cutoff) continue;
+        instance.status = "draining";
+        claimed.push(instance);
+      }
+      return claimed;
     },
 
     async listSessions(projectId) {

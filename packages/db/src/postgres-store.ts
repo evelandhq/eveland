@@ -355,6 +355,68 @@ export function createPostgresStore(database: Database): Store {
       return createJob(projectId, type, payload);
     },
 
+    async enqueueDeploymentActivation(projectId, deploymentId, runtimeInstanceId, now = new Date(), staleAfterMs = 300_000) {
+      return db.transaction(async (tx) => {
+        const [runtimeInstance] = await tx
+          .select({ id: runtimeInstances.id, deploymentId: runtimeInstances.deploymentId })
+          .from(runtimeInstances)
+          .where(eq(runtimeInstances.id, runtimeInstanceId))
+          .limit(1)
+          .for("update");
+        if (!runtimeInstance || runtimeInstance.deploymentId !== deploymentId) {
+          throw new Error("Deployment activation RuntimeInstance is invalid.");
+        }
+        const [deployment] = await tx
+          .select({ projectId: deployments.projectId })
+          .from(deployments)
+          .where(eq(deployments.id, deploymentId))
+          .limit(1);
+        if (!deployment || deployment.projectId !== projectId) {
+          throw new Error("Deployment activation Project is invalid.");
+        }
+        const [existing] = await tx
+          .select()
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.projectId, projectId),
+              eq(jobs.type, "ensure_deployment_running"),
+              or(eq(jobs.status, "queued"), eq(jobs.status, "running")),
+              sql`${jobs.payload}->>'runtimeInstanceId' = ${runtimeInstanceId}`,
+            ),
+          )
+          .orderBy(desc(jobs.createdAt))
+          .limit(1)
+          .for("update");
+        if (existing) {
+          if (existing.status === "running" && existing.updatedAt.getTime() <= now.getTime() - staleAfterMs) {
+            const [recovered] = await tx
+              .update(jobs)
+              .set({ status: "queued", lockedAt: null, updatedAt: now })
+              .where(eq(jobs.id, existing.id))
+              .returning();
+            if (!recovered) throw new Error("Failed to recover stale Deployment activation job.");
+            return jobRowToJob(recovered);
+          }
+          return jobRowToJob(existing);
+        }
+        const [created] = await tx
+          .insert(jobs)
+          .values({
+            id: createId("job"),
+            projectId,
+            type: "ensure_deployment_running",
+            status: "queued",
+            payload: { deploymentId, runtimeInstanceId },
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+        if (!created) throw new Error("Failed to enqueue Deployment activation.");
+        return jobRowToJob(created);
+      });
+    },
+
     async claimNextJob(_workerId) {
       const [row] = await db
         .update(jobs)
@@ -1453,22 +1515,20 @@ export function createPostgresStore(database: Database): Store {
           .for("update");
         if (!deployment) throw new Error("Cannot activate an unknown Deployment.");
         const now = input.now ?? new Date();
-        let [runtimeInstance] = await tx
+        const [latestRuntimeInstance] = await tx
           .select()
           .from(runtimeInstances)
-          .where(
-            and(
-              eq(runtimeInstances.deploymentId, input.deploymentId),
-              or(
-                eq(runtimeInstances.status, "starting"),
-                eq(runtimeInstances.status, "ready"),
-                eq(runtimeInstances.status, "draining"),
-              ),
-            ),
-          )
+          .where(eq(runtimeInstances.deploymentId, input.deploymentId))
           .orderBy(desc(runtimeInstances.generation))
           .limit(1)
           .for("update");
+        if (latestRuntimeInstance?.status === "draining") {
+          throw new Error("RuntimeInstance is draining; retry activation after it stops.");
+        }
+        let runtimeInstance = latestRuntimeInstance &&
+          (latestRuntimeInstance.status === "starting" || latestRuntimeInstance.status === "ready")
+          ? latestRuntimeInstance
+          : undefined;
         const starter = !runtimeInstance;
         if (!runtimeInstance) {
           const [latest] = await tx
@@ -1518,6 +1578,18 @@ export function createPostgresStore(database: Database): Store {
       return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
     },
 
+    async listRuntimeInstances(statuses, limit) {
+      if (!Number.isInteger(limit) || limit < 1) throw new Error("RuntimeInstance list limit must be positive.");
+      if (statuses.length === 0) return [];
+      const rows = await db
+        .select()
+        .from(runtimeInstances)
+        .where(or(...statuses.map((status) => eq(runtimeInstances.status, status))))
+        .orderBy(asc(runtimeInstances.deploymentId), asc(runtimeInstances.generation))
+        .limit(limit);
+      return rows.map(runtimeInstanceRowToRuntimeInstance);
+    },
+
     async updateRuntimeInstance(runtimeInstanceId, input, now = new Date()) {
       const [row] = await db
         .update(runtimeInstances)
@@ -1532,6 +1604,26 @@ export function createPostgresStore(database: Database): Store {
         .where(eq(runtimeInstances.id, runtimeInstanceId))
         .returning();
       return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
+    },
+
+    async getActivationLease(leaseId) {
+      const [row] = await db.select().from(activationLeases).where(eq(activationLeases.id, leaseId)).limit(1);
+      return row ? activationLeaseRowToActivationLease(row) : null;
+    },
+
+    async renewActivationLease(leaseId, expiresAt, now = new Date()) {
+      const [row] = await db
+        .update(activationLeases)
+        .set({ expiresAt })
+        .where(
+          and(
+            eq(activationLeases.id, leaseId),
+            isNull(activationLeases.releasedAt),
+            gt(activationLeases.expiresAt, now),
+          ),
+        )
+        .returning();
+      return row ? activationLeaseRowToActivationLease(row) : null;
     },
 
     async releaseActivationLease(leaseId, now = new Date()) {
@@ -1558,6 +1650,75 @@ export function createPostgresStore(database: Database): Store {
         )
         .limit(1);
       return Boolean(row);
+    },
+
+    async claimIdleRuntimeInstances(input) {
+      if (!Number.isInteger(input.limit) || input.limit < 1) throw new Error("Runtime idle claim limit must be positive.");
+      if (!Number.isFinite(input.idleTtlMs) || input.idleTtlMs < 0) throw new Error("Runtime idle TTL must be non-negative.");
+      return db.transaction(async (tx) => {
+        const cutoffAt = new Date(input.now.getTime() - input.idleTtlMs);
+        const candidates = await tx
+          .select()
+          .from(runtimeInstances)
+          .where(or(
+            eq(runtimeInstances.status, "draining"),
+            and(
+              eq(runtimeInstances.status, "ready"),
+              sql`not exists (
+                select 1 from activation_leases as active_lease
+                where active_lease.deployment_id = ${runtimeInstances.deploymentId}
+                  and active_lease.released_at is null
+                  and active_lease.expires_at > ${input.now.toISOString()}::timestamptz
+              )`,
+              sql`greatest(
+                coalesce(${runtimeInstances.readyAt}, ${runtimeInstances.startedAt}, '-infinity'::timestamptz),
+                coalesce((
+                  select max(coalesce(instance_lease.released_at, instance_lease.expires_at))
+                  from activation_leases as instance_lease
+                  where instance_lease.runtime_instance_id = ${runtimeInstances.id}
+                ), '-infinity'::timestamptz)
+              ) <= ${cutoffAt.toISOString()}::timestamptz`,
+            ),
+          ))
+          .orderBy(asc(runtimeInstances.deploymentId), asc(runtimeInstances.generation))
+          .limit(input.limit)
+          .for("update", { skipLocked: true });
+        const claimed = [];
+        for (const candidate of candidates) {
+          if (candidate.status === "draining") {
+            claimed.push(runtimeInstanceRowToRuntimeInstance(candidate));
+            continue;
+          }
+          const [activeLease] = await tx
+            .select({ id: activationLeases.id })
+            .from(activationLeases)
+            .where(
+              and(
+                eq(activationLeases.deploymentId, candidate.deploymentId),
+                isNull(activationLeases.releasedAt),
+                gt(activationLeases.expiresAt, input.now),
+              ),
+            )
+            .limit(1);
+          if (activeLease) continue;
+          const leaseRows = await tx
+            .select({ expiresAt: activationLeases.expiresAt, releasedAt: activationLeases.releasedAt })
+            .from(activationLeases)
+            .where(eq(activationLeases.runtimeInstanceId, candidate.id));
+          const activityTimes = [candidate.readyAt, candidate.startedAt]
+            .concat(leaseRows.map((lease) => lease.releasedAt ?? lease.expiresAt))
+            .filter((value): value is Date => value !== null)
+            .map((value) => value.getTime());
+          if (Math.max(...activityTimes) > cutoffAt.getTime()) continue;
+          const [updated] = await tx
+            .update(runtimeInstances)
+            .set({ status: "draining" })
+            .where(and(eq(runtimeInstances.id, candidate.id), eq(runtimeInstances.status, "ready")))
+            .returning();
+          if (updated) claimed.push(runtimeInstanceRowToRuntimeInstance(updated));
+        }
+        return claimed;
+      });
     },
 
     async listSessions(projectId) {

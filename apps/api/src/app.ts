@@ -7,7 +7,14 @@ import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
-import type { AuthPrincipal, LogRecord, SessionStatus, TeamInvitation } from "@eveland/core/contracts";
+import type {
+  ActivationLeaseClaim,
+  AuthPrincipal,
+  LogRecord,
+  RuntimeInstance,
+  SessionStatus,
+  TeamInvitation,
+} from "@eveland/core/contracts";
 import {
   getEveString,
   parseEveJsonObject,
@@ -127,6 +134,12 @@ const schedulerDispatchSchema = z.discriminatedUnion("phase", [
   }),
 ]);
 
+const runtimeActivationSchema = z.object({
+  deploymentId: z.string().min(1),
+  kind: z.enum(["public_request", "stream", "turn"]),
+  ownerId: z.string().min(1).max(256),
+});
+
 const targetsArraySchema = z.array(z.object({
     deploymentId: z.string().min(1),
     weight: z.number().int().min(0).max(10_000),
@@ -169,11 +182,26 @@ export type AppOptions = {
   invalidateGatewayRoutes?: (hostnames: string[]) => Promise<void>;
   schedulerDispatchSecret?: string;
   schedulerRuntimeSecret?: string;
+  gatewayServiceToken?: string;
+  runtimeActivationLeaseTtlMs?: number;
+  runtimeActivationWaitTimeoutMs?: number;
+  runtimeActivationWaiter?: (
+    claim: ActivationLeaseClaim,
+    input: { signal: AbortSignal; timeoutMs: number },
+  ) => Promise<RuntimeInstance>;
 };
 
 export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variables: { principal: AuthPrincipal } }> {
   const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
   const buildInfo = options.buildInfo ?? createBuildInfoFromEnv("api", process.env);
+  const runtimeActivationLeaseTtlMs = positiveDuration(
+    options.runtimeActivationLeaseTtlMs ?? Number(process.env.EVELAND_ACTIVATION_LEASE_TTL_MS ?? 180_000),
+    "runtime activation lease TTL",
+  );
+  const runtimeActivationWaitTimeoutMs = positiveDuration(
+    options.runtimeActivationWaitTimeoutMs ?? Number(process.env.EVELAND_COLD_START_TIMEOUT_MS ?? 30_000),
+    "runtime activation wait timeout",
+  );
   if (!options.auth && process.env.NODE_ENV !== "test") {
     throw new Error("Control-plane authentication is required outside tests.");
   }
@@ -266,6 +294,74 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       eveSessionIds: parsed.data.sessionIds,
     });
     return completed ? c.json({ ok: true }) : c.json({ error: "Dispatch not found" }, 404);
+  });
+
+  app.post("/internal/runtime/activations", async (c) => {
+    const serviceToken = options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
+    if (!isServiceRequest(c.req.header("authorization"), serviceToken)) return c.json({ error: "Not found" }, 404);
+    const parsed = runtimeActivationSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid runtime activation" }, 400);
+    const deployment = await store.getDeployment(parsed.data.deploymentId);
+    if (!deployment || deployment.status === "archived" || deployment.status === "failed") {
+      return c.json({ error: "Deployment is not activatable" }, 409);
+    }
+    const now = new Date();
+    let claim: ActivationLeaseClaim;
+    try {
+      claim = await store.acquireActivationLease({
+        deploymentId: deployment.id,
+        kind: parsed.data.kind,
+        ownerId: parsed.data.ownerId,
+        expiresAt: new Date(now.getTime() + runtimeActivationLeaseTtlMs),
+        now,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, message.includes("draining") ? 425 : 503);
+    }
+    try {
+      if (claim.runtimeInstance.status === "starting") {
+        await store.enqueueDeploymentActivation(deployment.projectId, deployment.id, claim.runtimeInstance.id, now);
+      }
+      const runtimeInstance = await (options.runtimeActivationWaiter ?? ((candidate, input) =>
+        waitForRuntimeActivation(store, candidate, input)))(claim, {
+        signal: c.req.raw.signal,
+        timeoutMs: runtimeActivationWaitTimeoutMs,
+      });
+      if (runtimeInstance.status !== "ready" || runtimeInstance.endpointPort === null) {
+        throw new Error("Runtime activation did not publish a ready endpoint.");
+      }
+      return c.json({ lease: claim.lease, runtimeInstance });
+    } catch (error) {
+      await store.releaseActivationLease(claim.lease.id);
+      if (c.req.raw.signal.aborted) {
+        return new Response(JSON.stringify({ error: "Client closed activation request" }), {
+          status: 499,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, message.includes("timed out") ? 504 : 503);
+    }
+  });
+
+  app.post("/internal/runtime/activations/:leaseId/renew", async (c) => {
+    const serviceToken = options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
+    if (!isServiceRequest(c.req.header("authorization"), serviceToken)) return c.json({ error: "Not found" }, 404);
+    const now = new Date();
+    const lease = await store.renewActivationLease(
+      c.req.param("leaseId"),
+      new Date(now.getTime() + runtimeActivationLeaseTtlMs),
+      now,
+    );
+    return lease ? c.json({ lease }) : c.json({ error: "Activation lease is not renewable" }, 409);
+  });
+
+  app.delete("/internal/runtime/activations/:leaseId", async (c) => {
+    const serviceToken = options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
+    if (!isServiceRequest(c.req.header("authorization"), serviceToken)) return c.json({ error: "Not found" }, 404);
+    await store.releaseActivationLease(c.req.param("leaseId"));
+    return c.body(null, 204);
   });
 
   if (options.auth) {
@@ -1064,4 +1160,32 @@ function safeSecretEqual(expected: string, actual: string): boolean {
   const expectedDigest = createHash("sha256").update(expected).digest();
   const actualDigest = createHash("sha256").update(actual).digest();
   return timingSafeEqual(expectedDigest, actualDigest);
+}
+
+function isServiceRequest(authorization: string | undefined, token: string | undefined): boolean {
+  return Boolean(token && authorization && safeSecretEqual(`Bearer ${token}`, authorization));
+}
+
+function positiveDuration(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive integer.`);
+  return value;
+}
+
+async function waitForRuntimeActivation(
+  store: Store,
+  claim: ActivationLeaseClaim,
+  input: { signal: AbortSignal; timeoutMs: number },
+): Promise<RuntimeInstance> {
+  const deadline = Date.now() + input.timeoutMs;
+  while (Date.now() < deadline) {
+    if (input.signal.aborted) throw new Error("Runtime activation aborted.");
+    const current = await store.getRuntimeInstance(claim.runtimeInstance.id);
+    if (!current) throw new Error("RuntimeInstance disappeared during activation.");
+    if (current.status === "ready") return current;
+    if (current.status === "failed" || current.status === "stopped") {
+      throw new Error(current.lastError ?? `Runtime activation ended in ${current.status}.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Runtime activation timed out after ${input.timeoutMs}ms.`);
 }

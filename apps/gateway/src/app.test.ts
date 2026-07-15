@@ -1,6 +1,6 @@
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { serve } from "@hono/node-server";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createBuildInfo } from "@eveland/core/build-info";
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createGatewayApp, type GatewayRepository, type ResolvedAgentRoute } from "./app.js";
@@ -97,6 +97,143 @@ describe("Gateway", () => {
     expect((await app.request("http://p-missing.agent.localhost/", { headers: { host: "p-missing.agent.localhost" } })).status).toBe(404);
     expect((await app.request("http://p-disabled.agent.localhost/", { headers: { host: "p-disabled.agent.localhost" } })).status).toBe(404);
     expect((await app.request("http://p-stopped.agent.localhost/", { headers: { host: "p-stopped.agent.localhost" } })).status).toBe(503);
+  });
+
+  test("wakes a stopped target before proxying and releases its request lease after the response body", async () => {
+    const upstream = await startUpstream((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      request.on("end", () => response.end(`${request.headers.authorization}:${Buffer.concat(chunks).toString("utf8")}`));
+    });
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: "lease_gateway", endpointPort: upstream.port })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/channels/webhook", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", authorization: "Bearer agent-owned", "content-type": "text/plain" },
+      body: "wake-body",
+    });
+
+    expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({
+      deploymentId: "dep_1",
+      kind: "public_request",
+    }), expect.any(AbortSignal));
+    expect(activationClient.release).not.toHaveBeenCalled();
+    await expect(response.text()).resolves.toBe("Bearer agent-owned:wake-body");
+    expect(activationClient.release).toHaveBeenCalledWith("lease_gateway");
+  });
+
+  test("renews an activation lease while a response stream is active", async () => {
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.write(`${JSON.stringify({ type: "message.appended" })}\n`);
+      setTimeout(() => response.end(`${JSON.stringify({ type: "turn.completed" })}\n`), 30);
+    });
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: "lease_stream", endpointPort: upstream.port })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+      activationRenewIntervalMs: 5,
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_stream/stream", {
+      headers: { host: "p-alpha.agent.localhost", accept: "application/x-ndjson" },
+    });
+    await expect(response.text()).resolves.toContain("turn.completed");
+
+    expect(activationClient.renew).toHaveBeenCalledWith("lease_stream");
+    expect(activationClient.release).toHaveBeenCalledWith("lease_stream");
+  });
+
+  test("returns 499 when the client aborts a cold activation", async () => {
+    const controller = new AbortController();
+    let activationStarted!: () => void;
+    const started = new Promise<void>((resolve) => { activationStarted = resolve; });
+    const activationClient = {
+      activate: vi.fn((_input: unknown, signal: AbortSignal) => new Promise<never>((_resolve, reject) => {
+        activationStarted();
+        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repository([route({ deploymentStatus: "stopped" })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+    });
+
+    const pending = app.request("http://p-alpha.agent.localhost/custom", {
+      headers: { host: "p-alpha.agent.localhost" },
+      signal: controller.signal,
+    });
+    await started;
+    controller.abort();
+
+    expect((await pending).status).toBe(499);
+    expect(activationClient.release).not.toHaveBeenCalled();
+  });
+
+  test("wakes the SessionBinding deployment instead of re-running route weighting", async () => {
+    const current = await startUpstream((_request, response) => response.end("current"));
+    const bound = await startUpstream((_request, response) => response.end("bound"));
+    const routed = route({
+      targets: [
+        { routeId: "route_project", deploymentId: "dep_current", weight: 10_000, variantName: "current", hostPort: current.port, status: "running" },
+        { routeId: "route_project", deploymentId: "dep_bound", weight: 0, variantName: "previous", hostPort: bound.port, status: "stopped" },
+      ],
+    });
+    const repo = repository([routed]);
+    repo.bindings.push({
+      id: "bind_stopped",
+      projectId: routed.projectId,
+      eveSessionId: "eve_stopped_bound",
+      routeId: routed.id,
+      deploymentId: "dep_bound",
+      trigger: "api",
+      variantName: "previous",
+      experimentId: "route_project:r0",
+      requestId: "req_original",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-07-15T00:00:00.000Z",
+      updatedAt: "2026-07-15T00:00:00.000Z",
+    });
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: "lease_bound", endpointPort: bound.port })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_stopped_bound", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost" },
+    });
+
+    await expect(response.text()).resolves.toBe("bound");
+    expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({
+      deploymentId: "dep_bound",
+      kind: "turn",
+    }), expect.any(AbortSignal));
   });
 
   test("preserves Agent auth and cookies while rebuilding spoofable forwarding headers", async () => {
@@ -387,6 +524,29 @@ describe("Gateway", () => {
     expect(upstreamRequests).toBe(0);
   });
 
+  test("rejects a declared oversized body without waking a dormant deployment", async () => {
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: "unexpected", endpointPort: 41999 })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repository([route({ deploymentStatus: "stopped" })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      maxRequestBodyBytes: 4,
+      activationClient,
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/custom-channel", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "content-type": "text/plain", "content-length": "5" },
+      body: "12345",
+    });
+
+    expect(response.status).toBe(413);
+    expect(activationClient.activate).not.toHaveBeenCalled();
+  });
+
   test("cancels the upstream request promptly when the downstream signal aborts", async () => {
     let markStarted!: () => void;
     let markClosed!: () => void;
@@ -525,11 +685,17 @@ describe("Gateway", () => {
         response.writeHead(404).end();
       });
     });
-    const repo = repository([route({ hostPort: upstream.port })]);
+    const repo = repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]);
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: crypto.randomUUID(), endpointPort: upstream.port })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
     const app = createGatewayApp(repo, {
       allowedBaseDomains: ["agent.localhost"],
       affinitySecret,
       internalServiceToken: "service-secret",
+      activationClient,
     });
     const initialBody = JSON.stringify({
       message: [
@@ -578,6 +744,8 @@ describe("Gateway", () => {
       { method: "GET", path: "/eve/v1/session/eve_stream/stream?startIndex=1", host: `localhost:${upstream.port}`, body: "" },
     ]));
     expect(repo.bindings).toContainEqual(expect.objectContaining({ eveSessionId: "eve_stream", trigger: "playground" }));
+    expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({ kind: "turn" }), expect.any(AbortSignal));
+    expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({ kind: "stream" }), expect.any(AbortSignal));
   });
 
   test("invalidates cached Host resolution through the service-authenticated control path", async () => {
