@@ -131,7 +131,10 @@ describe("runtime activation persistence", () => {
       new Date("2026-07-15T04:00:01.000Z"),
     );
     expect(duplicate.id).toBe(first.id);
-    await expect(store.claimNextJob("activation-worker")).resolves.toMatchObject({ id: first.id, status: "running" });
+    await expect(store.claimNextJob("activation-worker", new Date("2026-07-15T04:00:30.000Z"))).resolves.toMatchObject({
+      id: first.id,
+      status: "running",
+    });
 
     const recovered = await store.enqueueDeploymentActivation(
       project.id,

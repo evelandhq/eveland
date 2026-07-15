@@ -10,7 +10,9 @@ import type {
   ModelUsageEvent,
   Project,
   PublicSecret,
-  Schedule,
+  ProjectScheduleSummary,
+  ScheduleRun,
+  ScheduleRunDetail,
   Session,
   SessionEvent,
   SessionNode,
@@ -29,8 +31,17 @@ export const getAgentEndpoints = (projectId: string) =>
 export const getDeploymentOverview = (projectId: string) => apiGet<DeploymentOverview>(`/projects/${projectId}/deployments`);
 export const getVariantMetrics = (projectId: string) => apiGet<{ variants: VariantMetric[] }>(`/projects/${projectId}/variant-metrics`).then((data) => data.variants);
 export const getSecrets = (projectId: string) => apiGet<{ secrets: PublicSecret[] }>(`/projects/${projectId}/secrets`).then((data) => data.secrets);
-export const getSchedules = (projectId: string) => apiGet<{ schedules: Schedule[] }>(`/projects/${projectId}/schedules`).then((data) => data.schedules);
-export const getSessions = (projectId: string) => apiGet<{ sessions: Session[] }>(`/projects/${projectId}/sessions`).then((data) => data.sessions);
+export const getSchedules = (projectId: string) =>
+  apiGet<{ schedules: ProjectScheduleSummary[] }>(`/projects/${projectId}/schedules`).then((data) => data.schedules);
+export const getScheduleRuns = (projectId: string, filters: Record<string, string | undefined> = {}) =>
+  apiGet<{ runs: ScheduleRun[]; nextCursor: string | null }>(`/projects/${projectId}/schedule-runs${queryString(filters)}`);
+export const getScheduleRun = (scheduleRunId: string) =>
+  apiGet<{ run: ScheduleRunDetail }>(`/schedule-runs/${scheduleRunId}`).then((data) => data.run);
+export const getSessions = (projectId: string, filters: Record<string, string | undefined> = {}) =>
+  apiGet<{ sessions: Session[]; nextCursor: string | null }>(`/projects/${projectId}/sessions${queryString(filters)}`).then((data) => data.sessions);
+export const getSessionsPage = (projectId: string, filters: Record<string, string | undefined> = {}) =>
+  apiGet<{ sessions: Session[]; nextCursor: string | null }>(`/projects/${projectId}/sessions${queryString(filters)}`);
+export const getSession = (sessionId: string) => apiGet<{ session: Session }>(`/sessions/${sessionId}`).then((data) => data.session);
 export const getSessionEvents = (sessionId: string) => apiGet<{ events: SessionEvent[] }>(`/sessions/${sessionId}/events`).then((data) => data.events);
 export const getSessionUsage = (sessionId: string) => apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`).then((data) => data.usage);
 export const getSessionNodes = (sessionId: string) => apiGet<{ nodes: SessionNode[] }>(`/sessions/${sessionId}/nodes`).then((data) => data.nodes);
@@ -45,6 +56,13 @@ export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invi
 export const getApiBuildInfo = () => apiGet<{ ok: true } & EvelandBuildInfo>("/health");
 export const getSystemConfigurationDiagnostics = () =>
   apiGet<SystemConfigurationDiagnostics>("/system/configuration");
+
+function queryString(filters: Record<string, string | undefined>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+  const value = query.toString();
+  return value ? `?${value}` : "";
+}
 
 // A deployed agent has no endpoints until its first release, so /endpoints 404s for an
 // imported-but-undeployed project. Treat that as "no endpoints" instead of an error.

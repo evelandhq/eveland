@@ -38,6 +38,33 @@ export type Schedule = {
   nextRunAt: string | null;
 };
 
+export type ProjectSchedule = {
+  id: string;
+  projectId: string;
+  key: string;
+  enabled: boolean;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScheduleVersion = {
+  id: string;
+  scheduleId: string;
+  sourceRevisionId: string;
+  kind: "markdown" | "handler";
+  cron: string;
+  sourcePath: string;
+  definitionHash: string;
+  createdAt: string;
+};
+
+export type ProjectScheduleSummary = {
+  schedule: ProjectSchedule;
+  version: ScheduleVersion | null;
+  targetDeploymentId: string | null;
+};
+
 export type Session = {
   id: string;
   projectId: string;
@@ -50,10 +77,39 @@ export type Session = {
   variantName: string | null;
   trigger: string;
   scheduleId: string | null;
+  scheduleRunId: string | null;
   status: string;
   startedAt: string;
   completedAt: string | null;
   usage: SessionTokenUsage;
+};
+
+export type ScheduleRun = {
+  id: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  releaseId: string;
+  deploymentId: string;
+  dueAt: string;
+  trigger: "cron" | "manual";
+  status: string;
+  attempt: number;
+  missedTicks: number;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  scheduleKey: string;
+  sessionCount: number;
+  usage: SessionTokenUsage;
+  sessions: Session[];
+};
+
+export type ScheduleRunDetail = ScheduleRun & {
+  version: ScheduleVersion;
+  release: { id: string; projectId: string; sourceRevisionId: string; imageTag: string; createdAt: string };
+  deployment: Deployment;
 };
 
 export type AgentEndpoints = {

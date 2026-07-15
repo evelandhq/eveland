@@ -136,6 +136,31 @@ describe.skipIf(!database)("Postgres schedule state", () => {
           trigger: "cron",
         }),
       );
+      await expect(store.listProjectScheduleSummaries(project.id)).resolves.toContainEqual(expect.objectContaining({
+        schedule: expect.objectContaining({ id: run.scheduleId, key: "nested/minute" }),
+        version: expect.objectContaining({ id: run.scheduleVersionId }),
+        targetDeploymentId: deployment.id,
+      }));
+      await expect(store.listScheduleRuns(project.id, {
+        scheduleId: run.scheduleId,
+        trigger: "cron",
+        status: "succeeded",
+        limit: 10,
+      })).resolves.toMatchObject({
+        items: [expect.objectContaining({ id: run.id, sessionCount: 1, sessions: [expect.any(Object)] })],
+        nextCursor: null,
+      });
+      await expect(store.listSessionsPage(project.id, { scheduleRunId: run.id, trigger: "cron", limit: 10 })).resolves.toMatchObject({
+        items: [expect.objectContaining({ scheduleRunId: run.id })],
+        nextCursor: null,
+      });
+      await expect(store.getScheduleRunDetail(run.id)).resolves.toMatchObject({
+        id: run.id,
+        scheduleKey: "nested/minute",
+        release: { id: run.releaseId },
+        deployment: { id: deployment.id },
+        sessions: [expect.objectContaining({ scheduleRunId: run.id })],
+      });
     } finally {
       await store.deleteProject(project.id);
     }

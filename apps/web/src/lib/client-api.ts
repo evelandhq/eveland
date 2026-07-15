@@ -1,5 +1,5 @@
 import type { FileUIPart, UserContent } from "ai";
-import type { Job } from "./api";
+import type { Job, ScheduleRun } from "./api";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -159,6 +159,13 @@ export async function syncSource(projectId: string, options: { deploy?: boolean 
     body: JSON.stringify({ deploy: options.deploy ?? false }),
   });
   return data.job;
+}
+
+export async function runSchedule(projectId: string, scheduleId: string): Promise<ScheduleRun> {
+  const data = await clientRequest<{ run: ScheduleRun }>(`/projects/${projectId}/schedules/${scheduleId}/runs`, {
+    method: "POST",
+  });
+  return data.run;
 }
 
 async function clientRequest<T = unknown>(path: string, init: RequestInit): Promise<T> {
