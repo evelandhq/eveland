@@ -12,12 +12,24 @@ const execFileAsync = promisify(execFile);
 const eveBin = path.resolve(import.meta.dirname, "../node_modules/.bin/eve");
 
 describe("injectSchedulerAdapter", () => {
-  test("fails closed unless the Release uses exactly Eve 0.24.2", async () => {
-    const releaseDir = await fixture({ eveVersion: "0.24.3", files: {} });
+  test("fails closed unless the Release declares an Eve dependency inside 0.24.x", async () => {
+    for (const eveVersion of ["0.25.0", "0.23.9", "~0.25.0", ">=0.24.0", "*", "latest"]) {
+      const releaseDir = await fixture({ eveVersion, files: {} });
 
-    await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
-      /supports exactly Eve 0\.24\.2.*found 0\.24\.3/,
-    );
+      await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
+        new RegExp(`supports Eve 0\\.24\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+      );
+    }
+  });
+
+  test("accepts every dependency form that stays inside 0.24.x", async () => {
+    for (const eveVersion of ["0.24.2", "0.24.3", "~0.24.2", "^0.24.0", "0.24", "0.24.x", "0.24.*"]) {
+      const releaseDir = await fixture({ eveVersion, files: {} });
+
+      const result = await injectSchedulerAdapter({ releaseDir });
+
+      expect(result.eveVersion).toBe(eveVersion);
+    }
   });
 
   test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
@@ -142,7 +154,7 @@ Produce the daily report.
     );
   });
 
-  test("builds the transformed overlay with the real Eve 0.24.2 compiler", async () => {
+  test("builds the transformed overlay with the real Eve 0.24.x compiler", async () => {
     const releaseDir = await fixture({
       eveVersion: "0.24.2",
       files: {
@@ -166,7 +178,7 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
     });
   }, 60_000);
 
-  test("executes an authenticated zero-Session handler through a real Eve 0.24.2 production server", async () => {
+  test("executes an authenticated zero-Session handler through a real Eve 0.24.x production server", async () => {
     const releaseDir = await fixture({
       eveVersion: "0.24.2",
       files: {

@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const sourceFixtureDir = path.resolve(import.meta.dirname, "../fixtures/eve-0.24.2-schedules");
+const sourceFixtureDir = path.resolve(import.meta.dirname, "../fixtures/eve-0.24-schedules");
 const eveBin = path.resolve(import.meta.dirname, "../node_modules/.bin/eve");
 const evePackageDir = path.resolve(import.meta.dirname, "../node_modules/eve");
 let fixtureDir = "";
@@ -29,7 +29,7 @@ afterEach(async () => {
   await rm(fixtureDir, { recursive: true, force: true });
 });
 
-describe("Eve 0.24.2 schedule behavior", () => {
+describe("Eve 0.24.x schedule behavior", () => {
   test("keeps Eve runtime state out of the checked-in fixture", async () => {
     await execFileAsync(eveBin, ["info", "--json"], { cwd: fixtureDir });
 
@@ -109,5 +109,5 @@ async function waitForReady(port: number): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error("Timed out waiting for the Eve 0.24.2 fixture server.");
+  throw new Error("Timed out waiting for the Eve fixture server.");
 }

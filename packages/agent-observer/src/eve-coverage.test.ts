@@ -5,14 +5,14 @@ import { promisify } from "node:util";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const fixtureDir = path.resolve(import.meta.dirname, "../fixtures/eve-0.24.2-hooks");
+const fixtureDir = path.resolve(import.meta.dirname, "../fixtures/eve-0.24-hooks");
 const eveBin = path.resolve(import.meta.dirname, "../node_modules/.bin/eve");
 
-describe("Eve 0.24.2 observer hook coverage", () => {
-  test("runs observer coverage against Eve 0.24.2", async () => {
+describe("Eve 0.24.x observer hook coverage", () => {
+  test("runs observer coverage against an Eve 0.24.x release", async () => {
     const { stdout } = await execFileAsync(eveBin, ["--version"]);
 
-    expect(stdout.trim()).toBe("0.24.2");
+    expect(stdout.trim()).toMatch(/^0\.24\.\d+$/);
   });
 
   test("directory-form subagents expose their own hook slot while file-form and remote subagents do not", async () => {

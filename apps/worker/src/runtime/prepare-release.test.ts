@@ -29,7 +29,7 @@ test("copies source into a prepared release and injects observers without modify
   await expect(readFile(path.join(sourcePath, "agent/hooks/__eveland_observer.js"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 });
 
-test("injects the Eve 0.24.2 scheduler adapter only into the disposable release", async () => {
+test("injects the Eve 0.24.x scheduler adapter only into the disposable release", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
   roots.push(root);
   const sourcePath = path.join(root, "source");

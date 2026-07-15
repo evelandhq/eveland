@@ -293,8 +293,10 @@ message
 
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
-Eveland 是生产 Schedule 的唯一调度器。当前 Release adapter 只支持并精确验证
-Eve 0.24.2；其他 Eve 版本必须在 build 时 fail closed 并返回明确的 adapter
+Eveland 是生产 Schedule 的唯一调度器。当前 Release adapter 支持整个
+Eve 0.24.x 版本线（接受精确的 0.24 patch、锚定其上的 ~/^ range，以及
+0.24 / 0.24.x / 0.24.* 整个 minor 的写法）；任何可能解析到 0.24.x 之外的
+Eve 依赖必须在 build 时 fail closed 并返回明确的 adapter
 diagnostic，不能猜测或降级执行。导入源码时按 `agent/schedules/` 下的完整相对路径
 识别 Schedule key，并只接受五字段、UTC、分钟级 cron 语义；每次 Source Revision
 保留不可变 ScheduleVersion。Project 另有一个

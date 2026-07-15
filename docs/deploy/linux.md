@@ -587,7 +587,7 @@ smoke test as root inside the guest. A successful run
 exits 0 and prints `SMOKE OK`. If it fails, inspect the unit logs from the
 host: `limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`.
 
-The same script also runs a real Eve 0.24.2 schedule fixture through the
+The same script also runs a real Eve 0.24.x schedule fixture through the
 systemd adapter. It proves a dormant scheduler target wakes for one due cron,
 executes the authored TypeScript definition once, projects two Sessions and
 provider usage, observes no duplicate from the neutralized native tick, stops

@@ -6,5 +6,7 @@ allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
+# The workspace tracks the newest Eve 0.24.x; the dependency ranges bound what
+# can install, so the release-age cooldown is waived for the whole package.
 minimumReleaseAgeExclude:
-  - eve@0.24.2
+  - eve
