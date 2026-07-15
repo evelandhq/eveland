@@ -43,24 +43,24 @@ export async function scanEveSource(input: {
     schedules: inspection.schedules.map((schedule) => {
       if (schedule.kind === "markdown") {
         return {
-          name: schedule.name,
+          name: schedule.key,
           kind: schedule.kind,
           cron: schedule.cron,
-          timezone: schedule.timezone,
-          enabled: schedule.enabled,
+          timezone: "UTC",
+          enabled: true,
           executable: true,
           sourcePath: schedule.sourcePath,
-          nextRunAt: getNextRunAt(schedule.cron, schedule.timezone).toISOString(),
+          nextRunAt: getNextRunAt(schedule.cron).toISOString(),
         };
       }
 
       return {
-        name: schedule.name,
-        kind: schedule.kind,
+        name: schedule.key,
+        kind: "typescript" as const,
         cron: null,
         timezone: null,
         enabled: true,
-        executable: false,
+        executable: true,
         sourcePath: schedule.sourcePath,
         nextRunAt: null,
       };

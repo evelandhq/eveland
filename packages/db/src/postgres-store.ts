@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
 import { claimDeploymentKey, claimProjectSlug, createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -19,6 +19,10 @@ import {
   sourceFileRowToSourceFile,
   sourceRevisionRowToSourceRevision,
   sessionBindingRowToSessionBinding,
+  projectScheduleRowToProjectSchedule,
+  scheduleVersionRowToScheduleVersion,
+  projectSchedulerTargetRowToProjectSchedulerTarget,
+  scheduleRunRowToScheduleRun,
 } from "./mappers.js";
 import {
   deployments,
@@ -39,6 +43,10 @@ import {
   routeTargets,
   teams,
   users,
+  projectSchedules,
+  scheduleVersions,
+  projectSchedulerTargets,
+  scheduleRuns,
 } from "./schema.js";
 import { DEFAULT_TEAM_ID, projectDeletionSourcePaths, type CreateProjectInput, type Store } from "./store.js";
 import type {
@@ -49,6 +57,7 @@ import type {
   SessionTrigger,
 } from "@eveland/core/contracts";
 import { validateRouteTargets } from "@eveland/core/routing";
+import { getNextRunAt } from "@eveland/core/schedules";
 
 const defaultOwner = {
   id: "user_local_admin",
@@ -269,6 +278,16 @@ export function createPostgresStore(database: Database): Store {
         await tx.delete(sessionBindings).where(eq(sessionBindings.projectId, projectId));
         for (const route of relatedRoutes) await tx.delete(routeTargets).where(eq(routeTargets.routeId, route.id));
         await tx.delete(agentRoutes).where(eq(agentRoutes.projectId, projectId));
+        const relatedProjectSchedules = await tx
+          .select({ id: projectSchedules.id })
+          .from(projectSchedules)
+          .where(eq(projectSchedules.projectId, projectId));
+        for (const schedule of relatedProjectSchedules) {
+          await tx.delete(scheduleRuns).where(eq(scheduleRuns.scheduleId, schedule.id));
+          await tx.delete(scheduleVersions).where(eq(scheduleVersions.scheduleId, schedule.id));
+        }
+        await tx.delete(projectSchedulerTargets).where(eq(projectSchedulerTargets.projectId, projectId));
+        await tx.delete(projectSchedules).where(eq(projectSchedules.projectId, projectId));
         await tx.delete(deployments).where(eq(deployments.projectId, projectId));
         await tx.delete(releases).where(eq(releases.projectId, projectId));
         const relatedRevisions = await tx.select({ id: sourceRevisions.id }).from(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
@@ -737,6 +756,25 @@ export function createPostgresStore(database: Database): Store {
         await tx.insert(routeTargets).values({ routeId: route.id, deploymentId, weight: 10_000, variantName: null });
         await tx.update(agentRoutes).set({ policyRevision: sql`${agentRoutes.policyRevision} + 1`, updatedAt: new Date() }).where(eq(agentRoutes.id, route.id));
         await tx.update(projects).set({ deploymentId, releaseId: deployment.releaseId, deploymentStatus: deployment.status, updatedAt: new Date() }).where(eq(projects.id, projectId));
+        const now = new Date();
+        await tx
+          .insert(projectSchedulerTargets)
+          .values({ projectId, deploymentId, updatedAt: now })
+          .onConflictDoUpdate({ target: projectSchedulerTargets.projectId, set: { deploymentId, updatedAt: now } });
+        const scheduleRows = await tx.select().from(projectSchedules).where(eq(projectSchedules.projectId, projectId));
+        const [release] = await tx.select().from(releases).where(eq(releases.id, deployment.releaseId)).limit(1);
+        if (!release) throw new Error("Promoted Deployment has no Release.");
+        for (const schedule of scheduleRows) {
+          const [version] = await tx
+            .select()
+            .from(scheduleVersions)
+            .where(and(eq(scheduleVersions.scheduleId, schedule.id), eq(scheduleVersions.sourceRevisionId, release.sourceRevisionId)))
+            .limit(1);
+          await tx
+            .update(projectSchedules)
+            .set({ nextRunAt: version && schedule.enabled ? getNextRunAt(version.cron, now) : null, updatedAt: now })
+            .where(eq(projectSchedules.id, schedule.id));
+        }
         return route.hostname;
       });
       return (await this.findRouteByHostname(hostname))!;
@@ -1029,6 +1067,376 @@ export function createPostgresStore(database: Database): Store {
     async listSchedules(projectId) {
       const rows = await db.select().from(schedules).where(eq(schedules.projectId, projectId)).orderBy(schedules.name);
       return rows.map(scheduleRowToSchedule);
+    },
+
+    async recordScheduleVersions(input) {
+      return db.transaction(async (tx) => {
+        const [revision] = await tx
+          .select({ id: sourceRevisions.id })
+          .from(sourceRevisions)
+          .where(and(eq(sourceRevisions.id, input.sourceRevisionId), eq(sourceRevisions.projectId, input.projectId)))
+          .limit(1);
+        if (!revision) throw new Error("Cannot record schedule versions for an unknown SourceRevision.");
+
+        const seenKeys = new Set<string>();
+        const result = [];
+        for (const definition of input.definitions) {
+          if (seenKeys.has(definition.key)) throw new Error(`Duplicate schedule key: ${definition.key}`);
+          seenKeys.add(definition.key);
+
+          let [scheduleRow] = await tx
+            .insert(projectSchedules)
+            .values({ id: createId("sch"), projectId: input.projectId, key: definition.key })
+            .onConflictDoNothing({ target: [projectSchedules.projectId, projectSchedules.key] })
+            .returning();
+          if (!scheduleRow) {
+            [scheduleRow] = await tx
+              .select()
+              .from(projectSchedules)
+              .where(and(eq(projectSchedules.projectId, input.projectId), eq(projectSchedules.key, definition.key)))
+              .limit(1);
+          }
+          if (!scheduleRow) throw new Error(`Failed to upsert ProjectSchedule ${definition.key}.`);
+
+          let [versionRow] = await tx
+            .insert(scheduleVersions)
+            .values({
+              id: createId("schv"),
+              scheduleId: scheduleRow.id,
+              sourceRevisionId: input.sourceRevisionId,
+              kind: definition.kind,
+              cron: definition.cron,
+              sourcePath: definition.sourcePath,
+              definitionHash: definition.definitionHash,
+            })
+            .onConflictDoNothing({ target: [scheduleVersions.scheduleId, scheduleVersions.sourceRevisionId] })
+            .returning();
+          if (!versionRow) {
+            [versionRow] = await tx
+              .select()
+              .from(scheduleVersions)
+              .where(
+                and(
+                  eq(scheduleVersions.scheduleId, scheduleRow.id),
+                  eq(scheduleVersions.sourceRevisionId, input.sourceRevisionId),
+                ),
+              )
+              .limit(1);
+          }
+          if (!versionRow) throw new Error(`Failed to persist ScheduleVersion ${definition.key}.`);
+          if (
+            versionRow.definitionHash !== definition.definitionHash ||
+            versionRow.cron !== definition.cron ||
+            versionRow.kind !== definition.kind ||
+            versionRow.sourcePath !== definition.sourcePath
+          ) {
+            throw new Error(`ScheduleVersion ${versionRow.id} is immutable.`);
+          }
+          result.push({
+            schedule: projectScheduleRowToProjectSchedule(scheduleRow),
+            version: scheduleVersionRowToScheduleVersion(versionRow),
+          });
+        }
+        return result;
+      });
+    },
+
+    async listProjectScheduleVersions(projectId, sourceRevisionId) {
+      const rows = await db
+        .select({ schedule: projectSchedules, version: scheduleVersions })
+        .from(projectSchedules)
+        .innerJoin(scheduleVersions, eq(scheduleVersions.scheduleId, projectSchedules.id))
+        .where(
+          and(eq(projectSchedules.projectId, projectId), eq(scheduleVersions.sourceRevisionId, sourceRevisionId)),
+        )
+        .orderBy(projectSchedules.key);
+      return rows.map((row) => ({
+        schedule: projectScheduleRowToProjectSchedule(row.schedule),
+        version: scheduleVersionRowToScheduleVersion(row.version),
+      }));
+    },
+
+    async getProjectSchedule(scheduleId) {
+      const [row] = await db.select().from(projectSchedules).where(eq(projectSchedules.id, scheduleId)).limit(1);
+      return row ? projectScheduleRowToProjectSchedule(row) : null;
+    },
+
+    async setProjectSchedulerTarget(projectId, deploymentId, now = new Date()) {
+      return db.transaction(async (tx) => {
+        const [targetDeployment] = await tx
+          .select({ deployment: deployments, release: releases })
+          .from(deployments)
+          .innerJoin(releases, eq(releases.id, deployments.releaseId))
+          .where(and(eq(deployments.id, deploymentId), eq(deployments.projectId, projectId)))
+          .limit(1);
+        if (!targetDeployment) throw new Error("Cannot target an unknown Deployment for schedules.");
+
+        const [target] = await tx
+          .insert(projectSchedulerTargets)
+          .values({ projectId, deploymentId, updatedAt: now })
+          .onConflictDoUpdate({
+            target: projectSchedulerTargets.projectId,
+            set: { deploymentId, updatedAt: now },
+          })
+          .returning();
+        if (!target) throw new Error("Failed to update the Project scheduler target.");
+
+        const scheduleRows = await tx.select().from(projectSchedules).where(eq(projectSchedules.projectId, projectId));
+        for (const scheduleRow of scheduleRows) {
+          const [version] = await tx
+            .select()
+            .from(scheduleVersions)
+            .where(
+              and(
+                eq(scheduleVersions.scheduleId, scheduleRow.id),
+                eq(scheduleVersions.sourceRevisionId, targetDeployment.release.sourceRevisionId),
+              ),
+            )
+            .limit(1);
+          await tx
+            .update(projectSchedules)
+            .set({
+              nextRunAt: version && scheduleRow.enabled ? getNextRunAt(version.cron, now) : null,
+              updatedAt: now,
+            })
+            .where(eq(projectSchedules.id, scheduleRow.id));
+        }
+        return projectSchedulerTargetRowToProjectSchedulerTarget(target);
+      });
+    },
+
+    async createManualScheduleRun(projectId, scheduleId, now = new Date()) {
+      return db.transaction(async (tx) => {
+        const [schedule] = await tx
+          .select()
+          .from(projectSchedules)
+          .where(and(eq(projectSchedules.id, scheduleId), eq(projectSchedules.projectId, projectId)))
+          .limit(1);
+        if (!schedule) throw new Error("Project schedule not found.");
+        if (!schedule.enabled) throw new Error("Project schedule is disabled.");
+        const [target] = await tx
+          .select({ deployment: deployments, release: releases })
+          .from(projectSchedulerTargets)
+          .innerJoin(deployments, eq(deployments.id, projectSchedulerTargets.deploymentId))
+          .innerJoin(releases, eq(releases.id, deployments.releaseId))
+          .where(eq(projectSchedulerTargets.projectId, projectId))
+          .limit(1);
+        if (!target) throw new Error("Project schedule has no deployable scheduler target.");
+        const [version] = await tx
+          .select()
+          .from(scheduleVersions)
+          .where(
+            and(
+              eq(scheduleVersions.scheduleId, scheduleId),
+              eq(scheduleVersions.sourceRevisionId, target.release.sourceRevisionId),
+            ),
+          )
+          .limit(1);
+        if (!version) throw new Error("Project schedule has no deployable scheduler target.");
+        const [run] = await tx
+          .insert(scheduleRuns)
+          .values({
+            id: createId("srun"),
+            scheduleId,
+            scheduleVersionId: version.id,
+            releaseId: target.release.id,
+            deploymentId: target.deployment.id,
+            dueAt: now,
+            trigger: "manual",
+            status: "queued",
+            missedTicks: 0,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+        if (!run) throw new Error("Failed to create manual ScheduleRun.");
+        await tx.insert(jobs).values({
+          id: createId("job"),
+          projectId,
+          type: "trigger_schedule",
+          status: "queued",
+          payload: { scheduleRunId: run.id },
+          attempts: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+        return scheduleRunRowToScheduleRun(run);
+      });
+    },
+
+    async claimDueScheduleRuns(input) {
+      if (!Number.isInteger(input.limit) || input.limit < 1) throw new Error("Schedule claim limit must be positive.");
+      return db.transaction(async (tx) => {
+        const due = await tx
+          .select({
+            schedule: projectSchedules,
+            version: scheduleVersions,
+            deployment: deployments,
+            release: releases,
+          })
+          .from(projectSchedules)
+          .innerJoin(projectSchedulerTargets, eq(projectSchedulerTargets.projectId, projectSchedules.projectId))
+          .innerJoin(deployments, eq(deployments.id, projectSchedulerTargets.deploymentId))
+          .innerJoin(releases, eq(releases.id, deployments.releaseId))
+          .innerJoin(
+            scheduleVersions,
+            and(
+              eq(scheduleVersions.scheduleId, projectSchedules.id),
+              eq(scheduleVersions.sourceRevisionId, releases.sourceRevisionId),
+            ),
+          )
+          .where(
+            and(
+              eq(projectSchedules.enabled, true),
+              lte(projectSchedules.nextRunAt, input.now),
+            ),
+          )
+          .orderBy(asc(projectSchedules.nextRunAt), asc(projectSchedules.id))
+          .limit(input.limit)
+          .for("update", { skipLocked: true });
+
+        const claimed = [];
+        for (const row of due) {
+          if (!row.schedule.nextRunAt) continue;
+          const dueAt = row.schedule.nextRunAt;
+          let next = getNextRunAt(row.version.cron, dueAt);
+          let missedTicks = 0;
+          while (next <= input.now) {
+            missedTicks += 1;
+            next = getNextRunAt(row.version.cron, next);
+          }
+
+          const [run] = await tx
+            .insert(scheduleRuns)
+            .values({
+              id: createId("srun"),
+              scheduleId: row.schedule.id,
+              scheduleVersionId: row.version.id,
+              releaseId: row.release.id,
+              deploymentId: row.deployment.id,
+              dueAt,
+              trigger: "cron",
+              status: "queued",
+              missedTicks,
+              createdAt: input.now,
+              updatedAt: input.now,
+            })
+            .onConflictDoNothing({
+              target: [scheduleRuns.scheduleVersionId, scheduleRuns.dueAt],
+              where: sql`${scheduleRuns.trigger} = 'cron'`,
+            })
+            .returning();
+          if (!run) continue;
+
+          await tx
+            .update(projectSchedules)
+            .set({ nextRunAt: next, updatedAt: input.now })
+            .where(eq(projectSchedules.id, row.schedule.id));
+          await tx.insert(jobs).values({
+            id: createId("job"),
+            projectId: row.schedule.projectId,
+            type: "trigger_schedule",
+            status: "queued",
+            payload: { scheduleRunId: run.id },
+            attempts: 0,
+            createdAt: input.now,
+            updatedAt: input.now,
+          });
+          claimed.push(scheduleRunRowToScheduleRun(run));
+        }
+        return claimed;
+      });
+    },
+
+    async getScheduleRun(scheduleRunId) {
+      const [row] = await db.select().from(scheduleRuns).where(eq(scheduleRuns.id, scheduleRunId)).limit(1);
+      return row ? scheduleRunRowToScheduleRun(row) : null;
+    },
+
+    async claimScheduleRunActivation(scheduleRunId, now = new Date(), staleAfterMs = 300_000) {
+      const staleBefore = new Date(now.getTime() - staleAfterMs);
+      const [claimed] = await db
+        .update(scheduleRuns)
+        .set({ status: "activating", startedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(scheduleRuns.id, scheduleRunId),
+            or(
+              eq(scheduleRuns.status, "queued"),
+              and(eq(scheduleRuns.status, "activating"), lte(scheduleRuns.updatedAt, staleBefore)),
+            ),
+          ),
+        )
+        .returning();
+      return claimed ? scheduleRunRowToScheduleRun(claimed) : null;
+    },
+
+    async redeemScheduleRunDispatch(scheduleRunId, deploymentId) {
+      const now = new Date();
+      const [row] = await db
+        .update(scheduleRuns)
+        .set({ status: "dispatching", attempt: sql`${scheduleRuns.attempt} + 1`, updatedAt: now })
+        .where(
+          and(
+            eq(scheduleRuns.id, scheduleRunId),
+            eq(scheduleRuns.deploymentId, deploymentId),
+            eq(scheduleRuns.status, "activating"),
+          ),
+        )
+        .returning();
+      return row ? scheduleRunRowToScheduleRun(row) : null;
+    },
+
+    async completeScheduleRun(scheduleRunId, input) {
+      return db.transaction(async (tx) => {
+        const [run] = await tx.select().from(scheduleRuns).where(eq(scheduleRuns.id, scheduleRunId)).limit(1).for("update");
+        if (!run) return null;
+        const [schedule] = await tx
+          .select()
+          .from(projectSchedules)
+          .where(eq(projectSchedules.id, run.scheduleId))
+          .limit(1);
+        if (!schedule) throw new Error("ScheduleRun references an unknown ProjectSchedule.");
+
+        const trigger = run.trigger === "cron" ? "cron" : "manual";
+        for (const eveSessionId of new Set(input.eveSessionIds ?? [])) {
+          const [existing] = await tx
+            .select({ id: sessions.id })
+            .from(sessions)
+            .where(and(eq(sessions.projectId, schedule.projectId), eq(sessions.eveSessionId, eveSessionId)))
+            .limit(1);
+          if (existing) {
+            await tx
+              .update(sessions)
+              .set({
+                deploymentId: run.deploymentId,
+                trigger,
+                scheduleId: run.scheduleId,
+                scheduleRunId: run.id,
+              })
+              .where(eq(sessions.id, existing.id));
+            continue;
+          }
+          await tx.insert(sessions).values({
+            id: createId("sess"),
+            projectId: schedule.projectId,
+            deploymentId: run.deploymentId,
+            eveSessionId,
+            trigger,
+            scheduleId: run.scheduleId,
+            scheduleRunId: run.id,
+            status: "running",
+          });
+        }
+
+        const now = new Date();
+        const [completed] = await tx
+          .update(scheduleRuns)
+          .set({ status: input.status, error: input.error ?? null, completedAt: now, updatedAt: now })
+          .where(eq(scheduleRuns.id, scheduleRunId))
+          .returning();
+        return completed ? scheduleRunRowToScheduleRun(completed) : null;
+      });
     },
 
     async listSessions(projectId) {

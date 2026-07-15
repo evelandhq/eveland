@@ -97,6 +97,7 @@ describe("db mappers", () => {
         variantName: null,
         trigger: "playground",
         scheduleId: null,
+        scheduleRunId: null,
         status: "completed",
         startedAt: new Date("2026-07-10T01:00:00.000Z"),
         completedAt: new Date("2026-07-10T01:01:00.000Z"),

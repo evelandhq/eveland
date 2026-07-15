@@ -23,6 +23,10 @@ import type {
   SourceRevision,
   AgentRoute,
   SessionBinding,
+  ProjectSchedule,
+  ScheduleVersion,
+  ProjectSchedulerTarget,
+  ScheduleRun,
 } from "@eveland/core/contracts";
 
 export type ProjectRow = {
@@ -150,6 +154,73 @@ export function scheduleRowToSchedule(row: {
   };
 }
 
+export function projectScheduleRowToProjectSchedule(row: {
+  id: string;
+  projectId: string;
+  key: string;
+  enabled: boolean;
+  nextRunAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ProjectSchedule {
+  return {
+    ...row,
+    nextRunAt: timestampToIso(row.nextRunAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function scheduleVersionRowToScheduleVersion(row: {
+  id: string;
+  scheduleId: string;
+  sourceRevisionId: string;
+  kind: string;
+  cron: string;
+  sourcePath: string;
+  definitionHash: string;
+  createdAt: Date;
+}): ScheduleVersion {
+  return { ...row, kind: row.kind as ScheduleVersion["kind"], createdAt: row.createdAt.toISOString() };
+}
+
+export function projectSchedulerTargetRowToProjectSchedulerTarget(row: {
+  projectId: string;
+  deploymentId: string;
+  updatedAt: Date;
+}): ProjectSchedulerTarget {
+  return { ...row, updatedAt: row.updatedAt.toISOString() };
+}
+
+export function scheduleRunRowToScheduleRun(row: {
+  id: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  releaseId: string;
+  deploymentId: string;
+  dueAt: Date;
+  trigger: string;
+  status: string;
+  attempt: number;
+  missedTicks: number;
+  error: string | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ScheduleRun {
+  return {
+    ...row,
+    dueAt: row.dueAt.toISOString(),
+    trigger: row.trigger as ScheduleRun["trigger"],
+    status: row.status as ScheduleRun["status"],
+    startedAt: timestampToIso(row.startedAt),
+    completedAt: timestampToIso(row.completedAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
 export function sessionRowToSession(row: {
   id: string;
   projectId: string;
@@ -162,6 +233,7 @@ export function sessionRowToSession(row: {
   variantName: string | null;
   trigger: string;
   scheduleId: string | null;
+  scheduleRunId: string | null;
   status: string;
   startedAt: Date;
   completedAt: Date | null;
@@ -185,6 +257,7 @@ export function sessionRowToSession(row: {
     variantName: row.variantName,
     trigger: row.trigger as SessionTrigger,
     scheduleId: row.scheduleId,
+    scheduleRunId: row.scheduleRunId,
     status: row.status as SessionStatus,
     startedAt: timestampToIso(row.startedAt),
     completedAt: timestampToIso(row.completedAt),

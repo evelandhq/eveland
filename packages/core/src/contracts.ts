@@ -3,7 +3,7 @@ export type ProjectStatus = "import_pending" | "imported" | "invalid" | "build_p
 export type ProjectDeletionStatus = "deleting" | "failed";
 export type DeploymentStatus = "not_deployed" | "building" | "starting" | "running" | "draining" | "stopped" | "archived" | "failed";
 export type SessionStatus = "running" | "waiting" | "completed" | "failed" | "waiting_approval";
-export type SessionTrigger = "playground" | "cron" | "webhook" | "channel" | "api" | "direct_http";
+export type SessionTrigger = "playground" | "cron" | "manual" | "webhook" | "channel" | "api" | "direct_http";
 export type RuntimeKind = "docker" | "systemd";
 export type TeamRole = "admin" | "member";
 
@@ -133,6 +133,7 @@ export type Session = {
   variantName: string | null;
   trigger: SessionTrigger;
   scheduleId: string | null;
+  scheduleRunId: string | null;
   status: SessionStatus;
   startedAt: string;
   completedAt: string | null;
@@ -262,6 +263,66 @@ export type ScheduleRecord = {
   executable: boolean;
   sourcePath: string;
   nextRunAt: string | null;
+};
+
+export type ProjectSchedule = {
+  id: string;
+  projectId: string;
+  key: string;
+  enabled: boolean;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScheduleVersion = {
+  id: string;
+  scheduleId: string;
+  sourceRevisionId: string;
+  kind: "markdown" | "handler";
+  cron: string;
+  sourcePath: string;
+  definitionHash: string;
+  createdAt: string;
+};
+
+export type ProjectScheduleVersion = {
+  schedule: ProjectSchedule;
+  version: ScheduleVersion;
+};
+
+export type ProjectSchedulerTarget = {
+  projectId: string;
+  deploymentId: string;
+  updatedAt: string;
+};
+
+export type ScheduleRunStatus =
+  | "queued"
+  | "activating"
+  | "dispatching"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "dispatch_unknown"
+  | "skipped";
+
+export type ScheduleRun = {
+  id: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  releaseId: string;
+  deploymentId: string;
+  dueAt: string;
+  trigger: "cron" | "manual";
+  status: ScheduleRunStatus;
+  attempt: number;
+  missedTicks: number;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type LogRecord = {
