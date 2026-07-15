@@ -68,6 +68,9 @@ serve({
     buildInfo,
     collectorHealth: collector ? () => collector.getHealth() : undefined,
     configurationDiagnostics: () => collectSystemConfigurationDiagnostics(process.env),
+    gatewayServiceToken:
+      process.env.EVELAND_GATEWAY_SERVICE_TOKEN ??
+      (process.env.NODE_ENV === "production" ? undefined : "eveland-dev-gateway-token"),
   }).fetch,
   port,
 });
