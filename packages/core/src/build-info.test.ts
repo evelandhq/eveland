@@ -39,7 +39,7 @@ describe("Eveland build information", () => {
     ).toEqual({
       service: "eveland",
       component: "api",
-      version: "0.1.0",
+      version: EVELAND_VERSION,
       revision: "6bb1d53f51ab",
       channel: "stable",
     });
@@ -60,7 +60,7 @@ describe("Eveland build information", () => {
         revision: string;
         channel: string;
       }),
-    ).toBe("Eveland 0.1.0 (gateway, stable, 6bb1d53f51ab)");
+    ).toBe(`Eveland ${EVELAND_VERSION} (gateway, stable, 6bb1d53f51ab)`);
   });
 
   test("detects components that were not deployed from the same build", async () => {
