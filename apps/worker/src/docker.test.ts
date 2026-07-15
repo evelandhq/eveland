@@ -40,8 +40,8 @@ const dockerAdapterConfig = {
   backendDistDir: () => "/opt/eveland/sandbox-bwrap",
 };
 
-test("the local worker builds the vendored sandbox backend before watching for jobs", async () => {
-  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+test("the root dev script builds the vendored sandbox backend before starting workspace dev", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../../../package.json", import.meta.url), "utf8")) as {
     scripts: Record<string, string>;
   };
   expect(manifest.scripts.dev).toMatch(/^pnpm --filter @eveland\/sandbox-bwrap build && /);
