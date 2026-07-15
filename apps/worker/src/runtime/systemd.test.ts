@@ -28,6 +28,14 @@ vi.mock("execa", () => ({
   execa: vi.fn().mockResolvedValue({ all: "", stdout: "", stderr: "" }),
 }));
 
+vi.mock("@eveland/agent-scheduler", () => ({
+  injectSchedulerAdapter: vi.fn().mockResolvedValue({
+    eveVersion: "0.24.2",
+    channelPath: "agent/channels/eveland-scheduler.ts",
+    definitions: [],
+  }),
+}));
+
 // injectSandboxModules is exercised end-to-end in sandbox-inject.test.ts against a
 // real filesystem fixture; here it's mocked so createSystemdAdapter's buildRelease
 // tests can pin call *ordering* and the cache-dir/log-prefixing wiring in isolation.

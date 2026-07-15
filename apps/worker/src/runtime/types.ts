@@ -1,4 +1,5 @@
 import type { WorkflowWorldBuildConfig } from "./workflow-world.js";
+import type { SchedulerDefinition } from "@eveland/agent-scheduler";
 
 export type RuntimeCommandContext = {
   isEveProject: boolean;
@@ -19,6 +20,7 @@ export type ReleaseBuildInput = {
 export type ReleaseBuildResult = {
   releaseRef: string;
   log: string;
+  schedulerDefinitions?: SchedulerDefinition[];
 };
 
 export type ProcessStartInput = {

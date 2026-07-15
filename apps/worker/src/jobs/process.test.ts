@@ -178,7 +178,20 @@ describe("processNextJob", () => {
           name: "docker",
           async buildRelease(input) {
             runtimeCalls.push({ name: "buildRelease", input: { sourcePath: input.sourcePath, projectId: input.projectId } });
-            return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "build ok" };
+            return {
+              releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`,
+              log: "build ok",
+              schedulerDefinitions: [
+                {
+                  key: "daily",
+                  kind: "markdown" as const,
+                  cron: "0 8 * * *",
+                  sourcePath: "agent/schedules/daily.md",
+                  definitionHash: "daily-v1",
+                  modulePath: "agent/schedules/daily.ts",
+                },
+              ],
+            };
           },
           async startProcess(input) {
             runtimeCalls.push({ name: "startProcess", input });
@@ -227,6 +240,12 @@ describe("processNextJob", () => {
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(expect.objectContaining({ line: "build ok" }));
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(expect.objectContaining({ line: "Deployment running on 127.0.0.1:41001." }));
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "docker" });
+    await expect(store.listProjectScheduleVersions(project.id, revision.id)).resolves.toEqual([
+      expect.objectContaining({
+        schedule: expect.objectContaining({ key: "daily" }),
+        version: expect.objectContaining({ kind: "markdown", cron: "0 8 * * *", definitionHash: "daily-v1" }),
+      }),
+    ]);
   });
 
   test("deploys a concurrent preview without stopping current or reusing its host port", async () => {
@@ -1613,7 +1632,7 @@ async function createFixtureEveProject(): Promise<string> {
     path.join(root, "package.json"),
     JSON.stringify({
       name: "fixture-agent",
-      dependencies: { eve: "0.23.0" },
+      dependencies: { eve: "0.24.2" },
     }),
   );
   await writeFile(path.join(root, "agent", "instructions.md"), "You are concise.");

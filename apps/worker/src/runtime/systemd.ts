@@ -228,6 +228,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         sourcePath: input.sourcePath,
         buildDir: releaseDir,
         workflowWorld: input.workflowWorld,
+        scheduler: input.commandContext.isEveProject,
       });
 
       // Only eve projects ever run `npx eve start`/`npx eve build`, so only eve
@@ -345,6 +346,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         : undefined;
       return {
         releaseRef: releaseDir,
+        schedulerDefinitions: observerInjection.scheduler?.definitions,
         log: [
           `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
           observerInjection.workflowWorld

@@ -1,17 +1,20 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { injectObserverHooks, type ObserverInjectionResult } from "@eveland/agent-observer";
+import { injectSchedulerAdapter, type SchedulerInjectionResult } from "@eveland/agent-scheduler";
 import { execa } from "execa";
 import { injectWorkflowWorld, type WorkflowWorldBuildConfig, type WorkflowWorldInjectionResult } from "./workflow-world.js";
 
 export type PreparedReleaseResult = ObserverInjectionResult & {
   workflowWorld?: WorkflowWorldInjectionResult;
+  scheduler?: SchedulerInjectionResult;
 };
 
 export async function prepareReleaseTree(input: {
   sourcePath: string;
   buildDir: string;
   workflowWorld?: WorkflowWorldBuildConfig;
+  scheduler?: boolean;
 }): Promise<PreparedReleaseResult> {
   const sourcePath = path.resolve(input.sourcePath);
   const buildDir = path.resolve(input.buildDir);
@@ -23,5 +26,6 @@ export async function prepareReleaseTree(input: {
   const workflowWorld = input.workflowWorld
     ? await injectWorkflowWorld({ releaseDir: buildDir, config: input.workflowWorld })
     : undefined;
-  return { ...observer, ...(workflowWorld ? { workflowWorld } : {}) };
+  const scheduler = input.scheduler ? await injectSchedulerAdapter({ releaseDir: buildDir }) : undefined;
+  return { ...observer, ...(workflowWorld ? { workflowWorld } : {}), ...(scheduler ? { scheduler } : {}) };
 }

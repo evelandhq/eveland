@@ -23,6 +23,14 @@ vi.mock("execa", () => ({
   execa: vi.fn(async () => ({ all: "" })),
 }));
 
+vi.mock("@eveland/agent-scheduler", () => ({
+  injectSchedulerAdapter: vi.fn().mockResolvedValue({
+    eveVersion: "0.24.2",
+    channelPath: "agent/channels/eveland-scheduler.ts",
+    definitions: [],
+  }),
+}));
+
 vi.mock("./runtime/sandbox-inject.js", () => ({
   injectSandboxModules: vi.fn(async () => ({ generated: ["agent/sandbox.js"], replaced: [] })),
 }));

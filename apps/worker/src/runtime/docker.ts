@@ -251,6 +251,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         sourcePath: input.sourcePath,
         buildDir: input.buildDir,
         workflowWorld: input.workflowWorld,
+        scheduler: input.commandContext.isEveProject,
       });
       const sandboxInjection = input.commandContext.isEveProject
         ? await injectSandboxModules({ releaseDir: path.resolve(input.buildDir), backendDistDir: config.backendDistDir() })
@@ -265,6 +266,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       }
       return {
         releaseRef: imageTag,
+        schedulerDefinitions: observerInjection.scheduler?.definitions,
         log: [
           log,
           `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,

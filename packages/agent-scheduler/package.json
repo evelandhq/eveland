@@ -1,0 +1,23 @@
+{
+  "name": "@eveland/agent-scheduler",
+  "version": "0.0.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/adapter.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@eveland/core": "workspace:*",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "eve": "0.24.2",
+    "vitest": "^4.1.9"
+  }
+}
