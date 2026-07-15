@@ -325,6 +325,30 @@ export type ScheduleRun = {
   updatedAt: string;
 };
 
+export type ProjectScheduleSummary = {
+  schedule: ProjectSchedule;
+  version: ScheduleVersion | null;
+  targetDeploymentId: string | null;
+};
+
+export type ScheduleRunListItem = ScheduleRun & {
+  scheduleKey: string;
+  sessionCount: number;
+  usage: SessionTokenUsage;
+  sessions: Session[];
+};
+
+export type ScheduleRunDetail = ScheduleRunListItem & {
+  version: ScheduleVersion;
+  release: ReleaseRecord;
+  deployment: DeploymentRecord;
+};
+
+export type CursorPage<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
 export type RuntimeInstanceStatus = "starting" | "ready" | "draining" | "stopped" | "failed";
 
 export type RuntimeInstance = {

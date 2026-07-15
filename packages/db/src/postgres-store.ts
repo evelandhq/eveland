@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { claimDeploymentKey, claimProjectSlug, createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -53,6 +53,7 @@ import {
   activationLeases,
 } from "./schema.js";
 import { DEFAULT_TEAM_ID, projectDeletionSourcePaths, type CreateProjectInput, type Store } from "./store.js";
+import { summarizeSessionUsage } from "./session-usage.js";
 import type {
   DeploymentStatus,
   JobType,
@@ -417,14 +418,14 @@ export function createPostgresStore(database: Database): Store {
       });
     },
 
-    async claimNextJob(_workerId) {
+    async claimNextJob(_workerId, now = new Date()) {
       const [row] = await db
         .update(jobs)
         .set({
           status: "running",
           attempts: sql`${jobs.attempts} + 1`,
-          lockedAt: new Date(),
-          updatedAt: new Date(),
+          lockedAt: now,
+          updatedAt: now,
         })
         .where(
           eq(
@@ -1222,6 +1223,29 @@ export function createPostgresStore(database: Database): Store {
       }));
     },
 
+    async listProjectScheduleSummaries(projectId) {
+      const rows = await db
+        .select({ schedule: projectSchedules, version: scheduleVersions, targetDeploymentId: projectSchedulerTargets.deploymentId })
+        .from(projectSchedules)
+        .leftJoin(projectSchedulerTargets, eq(projectSchedulerTargets.projectId, projectSchedules.projectId))
+        .leftJoin(deployments, eq(deployments.id, projectSchedulerTargets.deploymentId))
+        .leftJoin(releases, eq(releases.id, deployments.releaseId))
+        .leftJoin(
+          scheduleVersions,
+          and(
+            eq(scheduleVersions.scheduleId, projectSchedules.id),
+            eq(scheduleVersions.sourceRevisionId, releases.sourceRevisionId),
+          ),
+        )
+        .where(eq(projectSchedules.projectId, projectId))
+        .orderBy(projectSchedules.key);
+      return rows.map((row) => ({
+        schedule: projectScheduleRowToProjectSchedule(row.schedule),
+        version: row.version ? scheduleVersionRowToScheduleVersion(row.version) : null,
+        targetDeploymentId: row.targetDeploymentId,
+      }));
+    },
+
     async getProjectSchedule(scheduleId) {
       const [row] = await db.select().from(projectSchedules).where(eq(projectSchedules.id, scheduleId)).limit(1);
       return row ? projectScheduleRowToProjectSchedule(row) : null;
@@ -1417,6 +1441,86 @@ export function createPostgresStore(database: Database): Store {
     async getScheduleRun(scheduleRunId) {
       const [row] = await db.select().from(scheduleRuns).where(eq(scheduleRuns.id, scheduleRunId)).limit(1);
       return row ? scheduleRunRowToScheduleRun(row) : null;
+    },
+
+    async listScheduleRuns(projectId, input) {
+      const conditions = [eq(projectSchedules.projectId, projectId)];
+      if (input.scheduleId) conditions.push(eq(scheduleRuns.scheduleId, input.scheduleId));
+      if (input.trigger) conditions.push(eq(scheduleRuns.trigger, input.trigger));
+      if (input.status) conditions.push(eq(scheduleRuns.status, input.status));
+      if (input.cursor) {
+        const [cursor] = await db
+          .select({ id: scheduleRuns.id, createdAt: scheduleRuns.createdAt })
+          .from(scheduleRuns)
+          .innerJoin(projectSchedules, eq(projectSchedules.id, scheduleRuns.scheduleId))
+          .where(and(eq(scheduleRuns.id, input.cursor), eq(projectSchedules.projectId, projectId)))
+          .limit(1);
+        if (!cursor) return { items: [], nextCursor: null };
+        if (cursor) conditions.push(or(
+          lt(scheduleRuns.createdAt, cursor.createdAt),
+          and(eq(scheduleRuns.createdAt, cursor.createdAt), lt(scheduleRuns.id, cursor.id)),
+        )!);
+      }
+      const rows = await db
+        .select({ run: scheduleRuns, scheduleKey: projectSchedules.key })
+        .from(scheduleRuns)
+        .innerJoin(projectSchedules, eq(projectSchedules.id, scheduleRuns.scheduleId))
+        .where(and(...conditions))
+        .orderBy(desc(scheduleRuns.createdAt), desc(scheduleRuns.id))
+        .limit(input.limit + 1);
+      const pageRows = rows.slice(0, input.limit);
+      const linkedRows = pageRows.length > 0
+        ? await db.select().from(sessions).where(inArray(sessions.scheduleRunId, pageRows.map((row) => row.run.id)))
+        : [];
+      const linkedSessions = linkedRows.map(sessionRowToSession);
+      return {
+        items: pageRows.map((row) => {
+          const runSessions = linkedSessions.filter((session) => session.scheduleRunId === row.run.id);
+          return {
+            ...scheduleRunRowToScheduleRun(row.run),
+            scheduleKey: row.scheduleKey,
+            sessionCount: runSessions.length,
+            usage: summarizeSessionUsage(runSessions),
+            sessions: runSessions,
+          };
+        }),
+        nextCursor: rows.length > input.limit ? pageRows.at(-1)?.run.id ?? null : null,
+      };
+    },
+
+    async getScheduleRunDetail(scheduleRunId) {
+      const [row] = await db
+        .select({
+          run: scheduleRuns,
+          scheduleKey: projectSchedules.key,
+          version: scheduleVersions,
+          release: releases,
+          deployment: deployments,
+        })
+        .from(scheduleRuns)
+        .innerJoin(projectSchedules, eq(projectSchedules.id, scheduleRuns.scheduleId))
+        .innerJoin(scheduleVersions, eq(scheduleVersions.id, scheduleRuns.scheduleVersionId))
+        .innerJoin(releases, eq(releases.id, scheduleRuns.releaseId))
+        .innerJoin(deployments, eq(deployments.id, scheduleRuns.deploymentId))
+        .where(eq(scheduleRuns.id, scheduleRunId))
+        .limit(1);
+      if (!row) return null;
+      const linkedRows = await db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.scheduleRunId, scheduleRunId))
+        .orderBy(desc(sessions.startedAt), desc(sessions.id));
+      const linkedSessions = linkedRows.map(sessionRowToSession);
+      return {
+        ...scheduleRunRowToScheduleRun(row.run),
+        scheduleKey: row.scheduleKey,
+        sessionCount: linkedSessions.length,
+        usage: summarizeSessionUsage(linkedSessions),
+        sessions: linkedSessions,
+        version: scheduleVersionRowToScheduleVersion(row.version),
+        release: releaseRowToRelease(row.release),
+        deployment: deploymentRowToDeployment(row.deployment),
+      };
     },
 
     async claimScheduleRunActivation(scheduleRunId, now = new Date(), staleAfterMs = 300_000) {
@@ -1724,6 +1828,42 @@ export function createPostgresStore(database: Database): Store {
     async listSessions(projectId) {
       const rows = await db.select().from(sessions).where(eq(sessions.projectId, projectId)).orderBy(desc(sessions.startedAt));
       return rows.map(sessionRowToSession);
+    },
+
+    async getSession(sessionId) {
+      const [row] = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
+      return row ? sessionRowToSession(row) : null;
+    },
+
+    async listSessionsPage(projectId, input) {
+      const conditions = [eq(sessions.projectId, projectId)];
+      if (input.trigger) conditions.push(eq(sessions.trigger, input.trigger));
+      if (input.scheduleId) conditions.push(eq(sessions.scheduleId, input.scheduleId));
+      if (input.scheduleRunId) conditions.push(eq(sessions.scheduleRunId, input.scheduleRunId));
+      if (input.unlinkedOnly) conditions.push(isNull(sessions.scheduleRunId));
+      if (input.cursor) {
+        const [cursor] = await db
+          .select({ id: sessions.id, startedAt: sessions.startedAt })
+          .from(sessions)
+          .where(and(eq(sessions.id, input.cursor), eq(sessions.projectId, projectId)))
+          .limit(1);
+        if (!cursor) return { items: [], nextCursor: null };
+        if (cursor) conditions.push(or(
+          lt(sessions.startedAt, cursor.startedAt),
+          and(eq(sessions.startedAt, cursor.startedAt), lt(sessions.id, cursor.id)),
+        )!);
+      }
+      const rows = await db
+        .select()
+        .from(sessions)
+        .where(and(...conditions))
+        .orderBy(desc(sessions.startedAt), desc(sessions.id))
+        .limit(input.limit + 1);
+      const pageRows = rows.slice(0, input.limit);
+      return {
+        items: pageRows.map(sessionRowToSession),
+        nextCursor: rows.length > input.limit ? pageRows.at(-1)?.id ?? null : null,
+      };
     },
 
     async listSessionEvents(sessionId) {

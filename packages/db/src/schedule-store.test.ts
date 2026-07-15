@@ -274,4 +274,92 @@ describe("schedule persistence", () => {
     });
     await expect(store.listSessions(project.id)).resolves.toEqual([]);
   });
+
+  test("paginates filtered run and Session history with zero-Session runs and aggregate usage", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Schedule history", importKind: "zip" });
+    await store.completeJob((await store.claimNextJob("fixture-import"))!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/schedule-history",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const recorded = await store.recordScheduleVersions({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      definitions: [{
+        key: "billing/sweep",
+        kind: "handler",
+        cron: "0 3 * * *",
+        sourcePath: "agent/schedules/billing/sweep.ts",
+        definitionHash: "history-v1",
+      }],
+    });
+    const entry = recorded[0];
+    if (!entry) throw new Error("Expected schedule history fixture.");
+    const { schedule, version } = entry;
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:history",
+      containerName: "fixture-history",
+      internalPort: 3000,
+      hostPort: 41994,
+      runtimeKind: "docker",
+    });
+    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-15T00:00:00.000Z"));
+    const zeroSessionRun = await store.createManualScheduleRun(project.id, schedule.id, new Date("2026-07-15T01:00:00.000Z"));
+    await store.completeScheduleRun(zeroSessionRun.id, { status: "succeeded", eveSessionIds: [] });
+    const usedRun = await store.createManualScheduleRun(project.id, schedule.id, new Date("2026-07-15T02:00:00.000Z"));
+    await store.completeScheduleRun(usedRun.id, { status: "succeeded", eveSessionIds: ["eve_history_one", "eve_history_two"] });
+    const linked = await store.listSessions(project.id);
+    await store.recordModelUsage(linked[0]!.id, {
+      eveSessionId: linked[0]!.eveSessionId!, turnId: "turn_1", stepIndex: 0, inputTokens: 8, outputTokens: 5,
+      cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, finishReason: "stop", usageReported: true,
+    });
+    await store.recordModelUsage(linked[1]!.id, {
+      eveSessionId: linked[1]!.eveSessionId!, turnId: "turn_2", stepIndex: 0, inputTokens: 3, outputTokens: 2,
+      cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, finishReason: "stop", usageReported: true,
+    });
+
+    await expect(store.listProjectScheduleSummaries(project.id)).resolves.toEqual([
+      { schedule: expect.objectContaining({ id: schedule.id, key: "billing/sweep" }), version, targetDeploymentId: deployment.id },
+    ]);
+    const firstPage = await store.listScheduleRuns(project.id, { scheduleId: schedule.id, trigger: "manual", limit: 1 });
+    expect(firstPage).toMatchObject({
+      items: [expect.objectContaining({
+        id: usedRun.id,
+        scheduleKey: "billing/sweep",
+        sessionCount: 2,
+        usage: expect.objectContaining({ inputTokens: 11, outputTokens: 7 }),
+      })],
+      nextCursor: usedRun.id,
+    });
+    await expect(store.listScheduleRuns(project.id, { scheduleId: schedule.id, cursor: firstPage.nextCursor!, limit: 1 })).resolves.toMatchObject({
+      items: [expect.objectContaining({
+        id: zeroSessionRun.id,
+        sessionCount: 0,
+        usage: expect.objectContaining({ status: "none" }),
+      })],
+      nextCursor: null,
+    });
+    await expect(store.listSessionsPage(project.id, { scheduleRunId: usedRun.id, trigger: "manual", limit: 10 })).resolves.toMatchObject({
+      items: [expect.objectContaining({ scheduleRunId: usedRun.id }), expect.objectContaining({ scheduleRunId: usedRun.id })],
+      nextCursor: null,
+    });
+    await expect(store.getScheduleRunDetail(usedRun.id)).resolves.toMatchObject({
+      id: usedRun.id,
+      scheduleKey: "billing/sweep",
+      version: { id: version.id },
+      release: { id: deployment.releaseId },
+      deployment: { id: deployment.id },
+      sessionCount: 2,
+      usage: expect.objectContaining({ inputTokens: 11, outputTokens: 7 }),
+      sessions: [expect.any(Object), expect.any(Object)],
+    });
+  });
 });

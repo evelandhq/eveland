@@ -28,8 +28,12 @@ import type {
   ProjectSchedule,
   ScheduleVersion,
   ProjectScheduleVersion,
+  ProjectScheduleSummary,
   ProjectSchedulerTarget,
   ScheduleRun,
+  ScheduleRunDetail,
+  ScheduleRunListItem,
+  CursorPage,
   RuntimeInstance,
   RuntimeInstanceStatus,
   ActivationLease,
@@ -40,6 +44,7 @@ import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
 import { validateRouteTargets } from "@eveland/core/routing";
 import { getNextRunAt } from "@eveland/core/schedules";
+import { summarizeSessionUsage } from "./session-usage.js";
 
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
@@ -95,7 +100,7 @@ export type Store = {
     now?: Date,
     staleAfterMs?: number,
   ): Promise<Job>;
-  claimNextJob(workerId: string): Promise<Job | null>;
+  claimNextJob(workerId: string, now?: Date): Promise<Job | null>;
   completeJob(jobId: string): Promise<void>;
   failJob(jobId: string, error: string): Promise<void>;
   updateProjectState(projectId: string, state: { status?: ProjectStatus; deploymentStatus?: DeploymentStatus }): Promise<Project | null>;
@@ -178,11 +183,17 @@ export type Store = {
     }>;
   }): Promise<ProjectScheduleVersion[]>;
   listProjectScheduleVersions(projectId: string, sourceRevisionId: string): Promise<ProjectScheduleVersion[]>;
+  listProjectScheduleSummaries(projectId: string): Promise<ProjectScheduleSummary[]>;
   getProjectSchedule(scheduleId: string): Promise<ProjectSchedule | null>;
   setProjectSchedulerTarget(projectId: string, deploymentId: string, now?: Date): Promise<ProjectSchedulerTarget>;
   createManualScheduleRun(projectId: string, scheduleId: string, now?: Date): Promise<ScheduleRun>;
   claimDueScheduleRuns(input: { now: Date; limit: number }): Promise<ScheduleRun[]>;
   getScheduleRun(scheduleRunId: string): Promise<ScheduleRun | null>;
+  listScheduleRuns(
+    projectId: string,
+    input: { scheduleId?: string; trigger?: ScheduleRun["trigger"]; status?: ScheduleRun["status"]; cursor?: string; limit: number },
+  ): Promise<CursorPage<ScheduleRunListItem>>;
+  getScheduleRunDetail(scheduleRunId: string): Promise<ScheduleRunDetail | null>;
   claimScheduleRunActivation(scheduleRunId: string, now?: Date, staleAfterMs?: number): Promise<ScheduleRun | null>;
   redeemScheduleRunDispatch(scheduleRunId: string, deploymentId: string): Promise<ScheduleRun | null>;
   completeScheduleRun(
@@ -209,6 +220,11 @@ export type Store = {
   hasActiveActivationLeases(deploymentId: string, now?: Date): Promise<boolean>;
   claimIdleRuntimeInstances(input: { now: Date; idleTtlMs: number; limit: number }): Promise<RuntimeInstance[]>;
   listSessions(projectId: string): Promise<Session[]>;
+  getSession(sessionId: string): Promise<Session | null>;
+  listSessionsPage(
+    projectId: string,
+    input: { trigger?: SessionTrigger; scheduleId?: string; scheduleRunId?: string; unlinkedOnly?: boolean; cursor?: string; limit: number },
+  ): Promise<CursorPage<Session>>;
   listSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   listSessionNodes(sessionId: string): Promise<SessionNode[]>;
   ingestObserverEnvelope(envelope: ObserverEnvelopeV1): Promise<{ session: Session; node: SessionNode; event: SessionEvent; duplicate: boolean }>;
@@ -441,7 +457,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return job;
     },
 
-    async claimNextJob(_workerId) {
+    async claimNextJob(_workerId, now = new Date()) {
       const job = state.jobs.find((candidate) => {
         if (candidate.status !== "queued") return false;
         const project = state.projects.find((entry) => entry.id === candidate.projectId);
@@ -457,7 +473,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
       job.status = "running";
       job.attempts += 1;
-      job.updatedAt = new Date().toISOString();
+      job.updatedAt = now.toISOString();
       return job;
     },
 
@@ -1007,6 +1023,22 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         .sort((a, b) => a.schedule.key.localeCompare(b.schedule.key));
     },
 
+    async listProjectScheduleSummaries(projectId) {
+      const target = state.projectSchedulerTargets.find((candidate) => candidate.projectId === projectId);
+      const deployment = state.deployments.find((candidate) => candidate.id === target?.deploymentId);
+      const release = state.releases.find((candidate) => candidate.id === deployment?.releaseId);
+      return state.projectSchedules
+        .filter((schedule) => schedule.projectId === projectId)
+        .sort((a, b) => a.key.localeCompare(b.key))
+        .map((schedule) => ({
+          schedule,
+          version: state.scheduleVersions.find(
+            (version) => version.scheduleId === schedule.id && version.sourceRevisionId === release?.sourceRevisionId,
+          ) ?? null,
+          targetDeploymentId: target?.deploymentId ?? null,
+        }));
+    },
+
     async getProjectSchedule(scheduleId) {
       return state.projectSchedules.find((candidate) => candidate.id === scheduleId) ?? null;
     },
@@ -1133,6 +1165,59 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async getScheduleRun(scheduleRunId) {
       return state.scheduleRuns.find((candidate) => candidate.id === scheduleRunId) ?? null;
+    },
+
+    async listScheduleRuns(projectId, input) {
+      const scheduleIds = new Set(
+        state.projectSchedules.filter((schedule) => schedule.projectId === projectId).map((schedule) => schedule.id),
+      );
+      const cursor = input.cursor ? state.scheduleRuns.find((run) => run.id === input.cursor && scheduleIds.has(run.scheduleId)) : null;
+      if (input.cursor && !cursor) return { items: [], nextCursor: null };
+      const runs = state.scheduleRuns
+        .filter((run) => scheduleIds.has(run.scheduleId))
+        .filter((run) => !input.scheduleId || run.scheduleId === input.scheduleId)
+        .filter((run) => !input.trigger || run.trigger === input.trigger)
+        .filter((run) => !input.status || run.status === input.status)
+        .filter((run) => !cursor || run.createdAt < cursor.createdAt || (run.createdAt === cursor.createdAt && run.id < cursor.id))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+      const page = runs.slice(0, input.limit);
+      return {
+        items: page.map((run) => {
+          const linkedSessions = state.sessions.filter((session) => session.scheduleRunId === run.id);
+          const schedule = state.projectSchedules.find((candidate) => candidate.id === run.scheduleId)!;
+          return {
+            ...run,
+            scheduleKey: schedule.key,
+            sessionCount: linkedSessions.length,
+            usage: summarizeSessionUsage(linkedSessions),
+            sessions: linkedSessions,
+          };
+        }),
+        nextCursor: runs.length > input.limit ? page.at(-1)?.id ?? null : null,
+      };
+    },
+
+    async getScheduleRunDetail(scheduleRunId) {
+      const run = state.scheduleRuns.find((candidate) => candidate.id === scheduleRunId);
+      if (!run) return null;
+      const schedule = state.projectSchedules.find((candidate) => candidate.id === run.scheduleId);
+      const version = state.scheduleVersions.find((candidate) => candidate.id === run.scheduleVersionId);
+      const release = state.releases.find((candidate) => candidate.id === run.releaseId);
+      const deployment = state.deployments.find((candidate) => candidate.id === run.deploymentId);
+      if (!schedule || !version || !release || !deployment) return null;
+      const linkedSessions = state.sessions
+        .filter((session) => session.scheduleRunId === run.id)
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id));
+      return {
+        ...run,
+        scheduleKey: schedule.key,
+        sessionCount: linkedSessions.length,
+        usage: summarizeSessionUsage(linkedSessions),
+        sessions: linkedSessions,
+        version,
+        release,
+        deployment,
+      };
     },
 
     async claimScheduleRunActivation(scheduleRunId, now = new Date(), staleAfterMs = 300_000) {
@@ -1348,6 +1433,27 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async listSessions(projectId) {
       return state.sessions.filter((session) => session.projectId === projectId);
+    },
+
+    async getSession(sessionId) {
+      return state.sessions.find((session) => session.id === sessionId) ?? null;
+    },
+
+    async listSessionsPage(projectId, input) {
+      const cursor = input.cursor
+        ? state.sessions.find((session) => session.id === input.cursor && session.projectId === projectId)
+        : null;
+      if (input.cursor && !cursor) return { items: [], nextCursor: null };
+      const sessions = state.sessions
+        .filter((session) => session.projectId === projectId)
+        .filter((session) => !input.trigger || session.trigger === input.trigger)
+        .filter((session) => !input.scheduleId || session.scheduleId === input.scheduleId)
+        .filter((session) => !input.scheduleRunId || session.scheduleRunId === input.scheduleRunId)
+        .filter((session) => !input.unlinkedOnly || session.scheduleRunId === null)
+        .filter((session) => !cursor || session.startedAt < cursor.startedAt || (session.startedAt === cursor.startedAt && session.id < cursor.id))
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id));
+      const page = sessions.slice(0, input.limit);
+      return { items: page, nextCursor: sessions.length > input.limit ? page.at(-1)?.id ?? null : null };
     },
 
     async listSessionEvents(sessionId) {

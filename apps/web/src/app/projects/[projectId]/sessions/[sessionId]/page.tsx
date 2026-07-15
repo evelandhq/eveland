@@ -1,4 +1,4 @@
-import { getSessionEvents, getSessionNodes, getSessionUsage, getSessions } from "@/lib/server-api"
+import { getSession, getSessionEvents, getSessionNodes, getSessionUsage } from "@/lib/server-api"
 import { formatTokenCount, formatUsd, groupModelUsageByAgent } from "@/lib/usage"
 
 export default async function SessionTimelinePage({
@@ -7,14 +7,13 @@ export default async function SessionTimelinePage({
   params: Promise<{ projectId: string; sessionId: string }>
 }) {
   const { projectId, sessionId } = await params
-  const [events, sessions, usageEvents, nodes] = await Promise.all([
+  const [events, session, usageEvents, nodes] = await Promise.all([
     getSessionEvents(sessionId),
-    getSessions(projectId),
+    getSession(sessionId),
     getSessionUsage(sessionId),
     getSessionNodes(sessionId),
   ])
-  const session = sessions.find((candidate) => candidate.id === sessionId)
-  const usage = session?.usage
+  const usage = session.usage
   const agentUsage = groupModelUsageByAgent(usageEvents)
 
   return (

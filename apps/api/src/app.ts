@@ -140,6 +140,23 @@ const runtimeActivationSchema = z.object({
   ownerId: z.string().min(1).max(256),
 });
 
+const scheduleRunListQuerySchema = z.object({
+  scheduleId: z.string().min(1).optional(),
+  trigger: z.enum(["cron", "manual"]).optional(),
+  status: z.enum(["queued", "activating", "dispatching", "running", "succeeded", "failed", "dispatch_unknown", "skipped"]).optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+const sessionListQuerySchema = z.object({
+  trigger: z.enum(["playground", "api", "cron", "manual", "webhook", "channel", "direct_http"]).optional(),
+  scheduleId: z.string().min(1).optional(),
+  scheduleRunId: z.string().min(1).optional(),
+  unlinkedOnly: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 const targetsArraySchema = z.array(z.object({
     deploymentId: z.string().min(1),
     weight: z.number().int().min(0).max(10_000),
@@ -869,7 +886,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   });
 
   app.get("/projects/:projectId/schedules", async (c) => {
-    return c.json({ schedules: await store.listSchedules(c.req.param("projectId")) });
+    return c.json({ schedules: await store.listProjectScheduleSummaries(c.req.param("projectId")) });
   });
 
   app.post("/projects/:projectId/schedules/:scheduleId/runs", async (c) => {
@@ -880,6 +897,18 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       const message = error instanceof Error ? error.message : String(error);
       return c.json({ error: message }, message === "Project schedule not found." ? 404 : 409);
     }
+  });
+
+  app.get("/projects/:projectId/schedule-runs", async (c) => {
+    const parsed = scheduleRunListQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) return c.json({ error: "Invalid schedule-run filters", issues: parsed.error.issues }, 400);
+    const page = await store.listScheduleRuns(c.req.param("projectId"), parsed.data);
+    return c.json({ runs: page.items, nextCursor: page.nextCursor });
+  });
+
+  app.get("/schedule-runs/:scheduleRunId", async (c) => {
+    const run = await store.getScheduleRunDetail(c.req.param("scheduleRunId"));
+    return run ? c.json({ run }) : c.json({ error: "ScheduleRun not found" }, 404);
   });
 
   app.get("/projects/:projectId/source/revision", async (c) => {
@@ -900,11 +929,19 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   });
 
   app.get("/projects/:projectId/sessions", async (c) => {
-    return c.json({ sessions: await store.listSessions(c.req.param("projectId")) });
+    const parsed = sessionListQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) return c.json({ error: "Invalid Session filters", issues: parsed.error.issues }, 400);
+    const page = await store.listSessionsPage(c.req.param("projectId"), parsed.data);
+    return c.json({ sessions: page.items, nextCursor: page.nextCursor });
   });
 
   app.get("/sessions/:sessionId/events", async (c) => {
     return c.json({ events: await store.listSessionEvents(c.req.param("sessionId")) });
+  });
+
+  app.get("/sessions/:sessionId", async (c) => {
+    const session = await store.getSession(c.req.param("sessionId"));
+    return session ? c.json({ session }) : c.json({ error: "Session not found" }, 404);
   });
 
   app.get("/sessions/:sessionId/usage", async (c) => {

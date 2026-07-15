@@ -185,6 +185,34 @@ describe("api app", () => {
     } });
   });
 
+  test("serves filtered paginated schedule runs, details, and linked Sessions", async () => {
+    const store = createMemoryStore();
+    const { project, schedule, deployment, run } = await createScheduleRunFixture(store);
+    await store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: ["eve_api_history"] });
+    const app = createApp(store);
+
+    const schedules = await app.request(`/projects/${project.id}/schedules`);
+    await expect(schedules.json()).resolves.toMatchObject({ schedules: [{
+      schedule: { id: schedule.id, key: "billing/sweep" },
+      version: { kind: "handler", cron: "0 3 * * *" },
+      targetDeploymentId: deployment.id,
+    }] });
+    const runs = await app.request(
+      `/projects/${project.id}/schedule-runs?scheduleId=${schedule.id}&trigger=manual&status=succeeded&limit=1`,
+    );
+    expect(runs.status).toBe(200);
+    await expect(runs.json()).resolves.toMatchObject({ runs: [{ id: run.id, sessionCount: 1 }], nextCursor: null });
+    const detail = await app.request(`/schedule-runs/${run.id}`);
+    await expect(detail.json()).resolves.toMatchObject({
+      run: { id: run.id, scheduleKey: "billing/sweep", deployment: { id: deployment.id }, sessions: [{ scheduleRunId: run.id }] },
+    });
+    const sessions = await app.request(
+      `/projects/${project.id}/sessions?trigger=manual&scheduleId=${schedule.id}&scheduleRunId=${run.id}&limit=10`,
+    );
+    await expect(sessions.json()).resolves.toMatchObject({ sessions: [{ scheduleRunId: run.id }], nextCursor: null });
+    expect((await app.request(`/projects/${project.id}/schedule-runs?status=unknown`)).status).toBe(400);
+  });
+
   test("returns health status", async () => {
     const buildInfo = createBuildInfo("api", {
       revision: "6bb1d53f51ab",
