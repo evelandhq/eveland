@@ -45,6 +45,28 @@ do not silently make the implementation, spec, and operational docs disagree.
   publication is requested, carry it through the requested commit/push/PR or
   post-merge sync workflow and report the resulting branch or PR state.
 
+## Commit messages and releases
+
+Releases are automated by release-please, which parses Conventional Commits on
+`main` to build the changelog and compute the next version. Write every commit
+message and PR title in Conventional Commits format:
+
+- `feat: ...` for user-facing features (minor bump).
+- `fix: ...` for bug fixes (patch bump).
+- `feat!: ...` or a `BREAKING CHANGE:` footer for breaking changes (major
+  bump).
+- `chore: ...`, `docs: ...`, `refactor: ...`, `test: ...`, `ci: ...` for
+  everything else; these do not affect the version.
+
+Non-conventional messages are silently skipped by release-please: they never
+appear in the changelog and do not influence the version. Prefer squash-merging
+PRs with a conventional title so `main` history stays parseable.
+
+Merging a normal PR to `main` never publishes a release; it only updates the
+pending `chore(main): release X.Y.Z` PR. Merging that release PR is the
+deliberate act that tags and publishes a release, and it is a user decision —
+do not merge it on your own.
+
 ## Repository map and dependency direction
 
 The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
