@@ -7,6 +7,8 @@ import { createStoreFromEnv } from "@eveland/db/factory";
 import { processNextJob } from "./jobs/process.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
+import { reapIdleDeployments } from "./runtime/idle-reaper.js";
+import { reconcileRuntimeInstances, recoverStartingRuntimeInstances } from "./runtime/activation-manager.js";
 import { planDueSchedules } from "./scheduler/planner.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
@@ -42,6 +44,17 @@ async function tick() {
     await Promise.all([
       planDueSchedules(storeFactory.store, {
         limit: Number(process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25),
+      }),
+      reapIdleDeployments(storeFactory.store, {
+        idleTtlMs: Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 300_000),
+        limit: Number(process.env.EVELAND_ACTIVATION_REAPER_BATCH_SIZE ?? 25),
+      }),
+      recoverStartingRuntimeInstances(storeFactory.store, {
+        limit: Number(process.env.EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE ?? 25),
+        staleJobAfterMs: Number(process.env.EVELAND_ACTIVATION_START_STALE_MS ?? 300_000),
+      }),
+      reconcileRuntimeInstances(storeFactory.store, {
+        limit: Number(process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100),
       }),
       processNextJob(storeFactory.store, workerId),
     ]);

@@ -1,6 +1,7 @@
-import type { ActivationLeaseClaim, ActivationLeaseKind, DeploymentRecord } from "@eveland/core/contracts";
+import type { ActivationLeaseClaim, ActivationLeaseKind, DeploymentRecord, RuntimeInstance, RuntimeKind } from "@eveland/core/contracts";
 import type { Store } from "@eveland/db";
 import { waitForHttpHealth } from "./health.js";
+import { createRuntimeAdapterForKind } from "./select.js";
 import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
 
 export type DeploymentActivationInput = {
@@ -38,20 +39,7 @@ export async function ensureDeploymentActive(
   if (claimed.runtimeInstance.status === "ready") return claimed;
   if (claimed.starter) {
     try {
-      const start = input.runtime.ensureProcess?.bind(input.runtime) ?? input.runtime.startProcess.bind(input.runtime);
-      await start(input.startInput);
-      await (options.waitForHealth ?? waitForHttpHealth)({
-        host: "127.0.0.1",
-        port: input.deployment.hostPort,
-        timeoutMs: readyTimeoutMs,
-      });
-      const ready = await store.updateRuntimeInstance(claimed.runtimeInstance.id, {
-        status: "ready",
-        endpointHost: "127.0.0.1",
-        endpointPort: input.deployment.hostPort,
-        error: null,
-      }, now());
-      if (!ready) throw new Error("RuntimeInstance disappeared during activation.");
+      const ready = await startRuntimeInstance(store, input, claimed.runtimeInstance.id, options);
       return { ...claimed, runtimeInstance: ready };
     } catch (error) {
       await store.updateRuntimeInstance(claimed.runtimeInstance.id, {
@@ -81,6 +69,102 @@ export async function ensureDeploymentActive(
   }
 }
 
+export async function startRuntimeInstance(
+  store: Store,
+  input: Pick<DeploymentActivationInput, "deployment" | "runtime" | "startInput">,
+  runtimeInstanceId: string,
+  options: DeploymentActivationOptions = {},
+): Promise<RuntimeInstance> {
+  const now = options.now ?? (() => new Date());
+  const current = await store.getRuntimeInstance(runtimeInstanceId);
+  if (!current || current.deploymentId !== input.deployment.id) {
+    throw new Error("RuntimeInstance does not belong to the requested Deployment.");
+  }
+  if (current.status === "ready") return current;
+  if (current.status !== "starting") throw new Error(`RuntimeInstance cannot start from ${current.status}.`);
+  try {
+    const start = input.runtime.ensureProcess?.bind(input.runtime) ?? input.runtime.startProcess.bind(input.runtime);
+    await start(input.startInput);
+    await (options.waitForHealth ?? waitForHttpHealth)({
+      host: "127.0.0.1",
+      port: input.deployment.hostPort,
+      timeoutMs: options.readyTimeoutMs ?? 30_000,
+    });
+    const ready = await store.updateRuntimeInstance(runtimeInstanceId, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: input.deployment.hostPort,
+      error: null,
+    }, now());
+    if (!ready) throw new Error("RuntimeInstance disappeared during activation.");
+    return ready;
+  } catch (error) {
+    await store.updateRuntimeInstance(runtimeInstanceId, {
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    }, now());
+    throw error;
+  }
+}
+
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export async function recoverStartingRuntimeInstances(
+  store: Store,
+  input: { now?: Date; limit?: number; staleJobAfterMs?: number } = {},
+): Promise<number> {
+  const now = input.now ?? new Date();
+  const instances = await store.listRuntimeInstances(["starting"], input.limit ?? 25);
+  let recovered = 0;
+  for (const instance of instances) {
+    const deployment = await store.getDeployment(instance.deploymentId);
+    if (!deployment) {
+      await store.updateRuntimeInstance(instance.id, { status: "failed", error: "Deployment no longer exists." }, now);
+      continue;
+    }
+    await store.enqueueDeploymentActivation(
+      deployment.projectId,
+      deployment.id,
+      instance.id,
+      now,
+      input.staleJobAfterMs ?? 300_000,
+    );
+    recovered += 1;
+  }
+  return recovered;
+}
+
+export async function reconcileRuntimeInstances(
+  store: Store,
+  input: {
+    now?: Date;
+    limit?: number;
+    runtimeForKind?: (kind: RuntimeKind) => RuntimeAdapter;
+  } = {},
+): Promise<number> {
+  const now = input.now ?? new Date();
+  const instances = await store.listRuntimeInstances(["ready"], input.limit ?? 100);
+  let reconciled = 0;
+  for (const instance of instances) {
+    const deployment = await store.getDeployment(instance.deploymentId);
+    if (!deployment) {
+      await store.updateRuntimeInstance(instance.id, { status: "failed", error: "Deployment no longer exists." }, now);
+      reconciled += 1;
+      continue;
+    }
+    const runtime = (input.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+    if (!runtime.inspectProcess) continue;
+    const status = await runtime.inspectProcess(deployment.containerName);
+    if (status === "ready" || status === "starting") continue;
+    const failed = status === "failed";
+    await store.updateRuntimeInstance(instance.id, {
+      status: failed ? "failed" : "stopped",
+      error: failed ? "Runtime process inspection reported failure." : null,
+    }, now);
+    await store.updateDeploymentStatus(deployment.id, failed ? "failed" : "stopped");
+    reconciled += 1;
+  }
+  return reconciled;
 }

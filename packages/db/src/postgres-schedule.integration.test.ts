@@ -63,7 +63,40 @@ describe.skipIf(!database)("Postgres schedule state", () => {
       ]);
       expect(activationClaims.filter((claim) => claim.starter)).toHaveLength(1);
       expect(new Set(activationClaims.map((claim) => claim.runtimeInstance.id)).size).toBe(1);
-      await Promise.all(activationClaims.map((claim) => store.releaseActivationLease(claim.lease.id)));
+      const activationJobs = await Promise.all(
+        activationClaims.map((claim) =>
+          store.enqueueDeploymentActivation(project.id, deployment.id, claim.runtimeInstance.id),
+        ),
+      );
+      expect(new Set(activationJobs.map((job) => job.id)).size).toBe(1);
+      const renewed = await store.renewActivationLease(
+        activationClaims[0]!.lease.id,
+        new Date("2026-07-15T00:20:00.000Z"),
+        new Date("2026-07-15T00:05:00.000Z"),
+      );
+      expect(renewed?.expiresAt).toBe("2026-07-15T00:20:00.000Z");
+      await store.updateRuntimeInstance(activationClaims[0]!.runtimeInstance.id, {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      }, new Date("2026-07-15T00:00:30.000Z"));
+      await Promise.all(activationClaims.map((claim) =>
+        store.releaseActivationLease(claim.lease.id, new Date("2026-07-15T00:20:00.000Z")),
+      ));
+      await expect(store.claimIdleRuntimeInstances({
+        now: new Date("2026-07-15T00:20:59.999Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+      })).resolves.toEqual([]);
+      await expect(store.claimIdleRuntimeInstances({
+        now: new Date("2026-07-15T00:21:00.000Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+      })).resolves.toContainEqual(expect.objectContaining({
+        id: activationClaims[0]!.runtimeInstance.id,
+        status: "draining",
+      }));
+      await store.updateRuntimeInstance(activationClaims[0]!.runtimeInstance.id, { status: "stopped" });
       await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-15T00:00:30.000Z"));
 
       const manualDueAt = new Date("2026-07-15T00:00:45.000Z");

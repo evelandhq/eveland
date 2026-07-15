@@ -18,6 +18,62 @@ import type { DeploymentRecord } from "@eveland/core/contracts";
 import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 
 describe("processNextJob", () => {
+  test("starts an API-claimed RuntimeInstance from its prebuilt Release", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Wake Deployment", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/wake-deployment",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:wake",
+      containerName: "fixture-wake",
+      internalPort: 3000,
+      hostPort: 41992,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_wake",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: deployment.id,
+      runtimeInstanceId: claim.runtimeInstance.id,
+    });
+    const ensureProcess = vi.fn(async () => ({ internalPort: 3000, log: "started" }));
+    const runtime: RuntimeAdapter = {
+      name: "docker",
+      async buildRelease() { throw new Error("not used"); },
+      async startProcess() { return { internalPort: 3000, log: "started" }; },
+      ensureProcess,
+      async stopProcess() {},
+    };
+
+    await expect(processNextJob(store, "wake-worker", {
+      runtime,
+      waitForDeployment: async () => {},
+    })).resolves.toBe(true);
+
+    expect(ensureProcess).toHaveBeenCalledTimes(1);
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "ready",
+      endpointPort: deployment.hostPort,
+    });
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "running" });
+  });
+
   test("dispatches a ScheduleRun once to its pinned Deployment and preserves returned Sessions", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Trigger Schedule", importKind: "zip" });

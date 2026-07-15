@@ -13,6 +13,122 @@ import { createMemoryStore, type Store } from "@eveland/db";
 const execFileAsync = promisify(execFile);
 
 describe("api app", () => {
+  test("creates, renews, and releases a service-authenticated runtime activation", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Wake API Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/wake-api-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:wake-api",
+      containerName: "fixture-wake-api",
+      internalPort: 3000,
+      hostPort: 41991,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const app = createApp(store, {
+      gatewayServiceToken: "gateway-service-token",
+      runtimeActivationWaiter: async (claim) => {
+        const ready = await store.updateRuntimeInstance(claim.runtimeInstance.id, {
+          status: "ready",
+          endpointHost: "127.0.0.1",
+          endpointPort: deployment.hostPort,
+        });
+        if (!ready) throw new Error("missing runtime instance");
+        return ready;
+      },
+    });
+
+    expect((await app.request("/internal/runtime/activations", { method: "POST" })).status).toBe(404);
+    const activation = await app.request("/internal/runtime/activations", {
+      method: "POST",
+      headers: { authorization: "Bearer gateway-service-token", "content-type": "application/json" },
+      body: JSON.stringify({ deploymentId: deployment.id, kind: "public_request", ownerId: "req_api_wake" }),
+    });
+    expect(activation.status).toBe(200);
+    const body = await activation.json() as { lease: { id: string }; runtimeInstance: { status: string; endpointPort: number } };
+    expect(body.runtimeInstance).toMatchObject({ status: "ready", endpointPort: deployment.hostPort });
+    await expect(store.claimNextJob("wake-worker")).resolves.toMatchObject({
+      type: "ensure_deployment_running",
+      payload: { deploymentId: deployment.id, runtimeInstanceId: expect.any(String) },
+    });
+
+    const renew = await app.request(`/internal/runtime/activations/${body.lease.id}/renew`, {
+      method: "POST",
+      headers: { authorization: "Bearer gateway-service-token" },
+    });
+    expect(renew.status).toBe(200);
+    const release = await app.request(`/internal/runtime/activations/${body.lease.id}`, {
+      method: "DELETE",
+      headers: { authorization: "Bearer gateway-service-token" },
+    });
+    expect(release.status).toBe(204);
+    await expect(store.getActivationLease(body.lease.id)).resolves.toMatchObject({ releasedAt: expect.any(String) });
+  });
+
+  test("releases only the request lease when a cold activation is aborted", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Aborted Wake API Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/aborted-wake-api-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:aborted-wake-api",
+      containerName: "fixture-aborted-wake-api",
+      internalPort: 3000,
+      hostPort: 41992,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    let waiterStarted!: () => void;
+    const started = new Promise<void>((resolve) => { waiterStarted = resolve; });
+    let abortedLeaseId: string | null = null;
+    const app = createApp(store, {
+      gatewayServiceToken: "gateway-service-token",
+      runtimeActivationWaiter: async (claim, input) => {
+        abortedLeaseId = claim.lease.id;
+        waiterStarted();
+        return new Promise<never>((_resolve, reject) => {
+          input.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+        });
+      },
+    });
+    const controller = new AbortController();
+    const pending = app.request("/internal/runtime/activations", {
+      method: "POST",
+      headers: { authorization: "Bearer gateway-service-token", "content-type": "application/json" },
+      body: JSON.stringify({ deploymentId: deployment.id, kind: "public_request", ownerId: "req_api_aborted" }),
+      signal: controller.signal,
+    });
+    await started;
+    controller.abort();
+
+    expect((await pending).status).toBe(499);
+    expect(abortedLeaseId).not.toBeNull();
+    await expect(store.getActivationLease(abortedLeaseId!)).resolves.toMatchObject({ releasedAt: expect.any(String) });
+  });
+
   test("redeems a schedule dispatch credential once and attaches completed Sessions", async () => {
     const store = createMemoryStore();
     const { project, schedule, deployment, run } = await createScheduleRunFixture(store);
