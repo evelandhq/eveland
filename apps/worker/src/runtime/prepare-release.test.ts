@@ -29,6 +29,32 @@ test("copies source into a prepared release and injects observers without modify
   await expect(readFile(path.join(sourcePath, "agent/hooks/__eveland_observer.js"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 });
 
+test("injects the Eve 0.24.2 scheduler adapter only into the disposable release", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
+  roots.push(root);
+  const sourcePath = path.join(root, "source");
+  const buildDir = path.join(root, "build");
+  await mkdir(path.join(sourcePath, "agent", "schedules"), { recursive: true });
+  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.24.2" } }));
+  await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
+  await writeFile(
+    path.join(sourcePath, "agent", "schedules", "cleanup.ts"),
+    'export default { cron: "0 3 * * *", async run() {} };',
+  );
+
+  const result = await prepareReleaseTree({ sourcePath, buildDir, scheduler: true });
+
+  expect(result.scheduler?.definitions).toEqual([
+    expect.objectContaining({ key: "cleanup", kind: "handler", cron: "0 3 * * *" }),
+  ]);
+  await expect(readFile(path.join(buildDir, "agent/channels/eveland-scheduler.ts"), "utf8")).resolves.toContain(
+    'kindHint: "schedule"',
+  );
+  await expect(readFile(path.join(sourcePath, "agent/channels/eveland-scheduler.ts"), "utf8")).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});
+
 test("injects the platform workflow world into the prepared release while preserving the authored agent config", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
   roots.push(root);

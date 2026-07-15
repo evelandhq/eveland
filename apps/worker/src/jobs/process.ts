@@ -146,6 +146,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       }
 
       const runtime = options.runtime ?? createRuntimeAdapterFromEnv();
+      const previousDeployment = await store.getCurrentDeployment(job.projectId);
       const releaseId = createId("rel");
       const deploymentId = createId("dep");
       const processName = `eveland-${processSafeName(project.id)}-${processSafeName(deploymentId)}`;
@@ -177,6 +178,19 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           projectId: job.projectId,
           type: "build",
           line: maskKnownSecrets(build.log.trim(), secretValues),
+        });
+      }
+      if (build.schedulerDefinitions) {
+        await store.recordScheduleVersions({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          definitions: build.schedulerDefinitions.map(({ key, kind, cron, sourcePath, definitionHash }) => ({
+            key,
+            kind,
+            cron,
+            sourcePath,
+            definitionHash,
+          })),
         });
       }
 
@@ -214,6 +228,9 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           hostPort,
           runtimeKind: runtime.name,
         });
+        if (!previousDeployment && build.schedulerDefinitions?.length) {
+          await store.setProjectSchedulerTarget(project.id, deployment.id);
+        }
         const materializedRoutes = await store.ensureDeploymentRoutes(
           project.id,
           deployment.id,
