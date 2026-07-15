@@ -131,6 +131,7 @@ const schedulerDispatchSchema = z.discriminatedUnion("phase", [
     scheduleKey: z.string().min(1),
     sessionIds: z.array(z.string().min(1)),
     status: z.enum(["succeeded", "failed"]),
+    error: z.string().min(1).max(2000).optional(),
   }),
 ]);
 
@@ -307,7 +308,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     if (run.status !== "dispatching") return c.json({ error: "Dispatch is not active" }, 409);
     const completed = await store.completeScheduleRun(run.id, {
       status: parsed.data.status,
-      error: parsed.data.status === "failed" ? "Scheduled handler failed." : null,
+      error: parsed.data.status === "failed" ? (parsed.data.error ?? "Scheduled handler failed.") : null,
       eveSessionIds: parsed.data.sessionIds,
     });
     return completed ? c.json({ ok: true }) : c.json({ error: "Dispatch not found" }, 404);

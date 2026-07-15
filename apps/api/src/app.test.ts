@@ -171,6 +171,77 @@ describe("api app", () => {
     }));
   });
 
+  test("stores the handler-reported error when a dispatch completes failed", async () => {
+    const store = createMemoryStore();
+    const { schedule, deployment, run } = await createScheduleRunFixture(store);
+    await store.claimScheduleRunActivation(run.id);
+    await store.redeemScheduleRunDispatch(run.id, deployment.id);
+    const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
+    const runtimeSecret = "runtime-secret-at-least-32-bytes-long";
+    const credential = createScheduleDispatchCredential({
+      scheduleRunId: run.id,
+      deploymentId: deployment.id,
+      scheduleKey: schedule.key,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }, dispatchSecret);
+    const app = createApp(store, { schedulerDispatchSecret: dispatchSecret, schedulerRuntimeSecret: runtimeSecret });
+
+    const complete = await app.request("/internal/scheduler/dispatch", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
+      body: JSON.stringify({
+        phase: "complete",
+        credential,
+        scheduleRunId: run.id,
+        scheduleKey: schedule.key,
+        sessionIds: [],
+        status: "failed",
+        error: 'args.receive(): channel "eve" does not implement receive().',
+      }),
+    });
+
+    expect(complete.status).toBe(200);
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
+      status: "failed",
+      error: 'args.receive(): channel "eve" does not implement receive().',
+    });
+  });
+
+  test("keeps the generic error when a failed dispatch completes without one", async () => {
+    const store = createMemoryStore();
+    const { schedule, deployment, run } = await createScheduleRunFixture(store);
+    await store.claimScheduleRunActivation(run.id);
+    await store.redeemScheduleRunDispatch(run.id, deployment.id);
+    const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
+    const runtimeSecret = "runtime-secret-at-least-32-bytes-long";
+    const credential = createScheduleDispatchCredential({
+      scheduleRunId: run.id,
+      deploymentId: deployment.id,
+      scheduleKey: schedule.key,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }, dispatchSecret);
+    const app = createApp(store, { schedulerDispatchSecret: dispatchSecret, schedulerRuntimeSecret: runtimeSecret });
+
+    const complete = await app.request("/internal/scheduler/dispatch", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
+      body: JSON.stringify({
+        phase: "complete",
+        credential,
+        scheduleRunId: run.id,
+        scheduleKey: schedule.key,
+        sessionIds: [],
+        status: "failed",
+      }),
+    });
+
+    expect(complete.status).toBe(200);
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
+      status: "failed",
+      error: "Scheduled handler failed.",
+    });
+  });
+
   test("creates a manual ScheduleRun through the control-plane path", async () => {
     const store = createMemoryStore();
     const { project, schedule, deployment } = await createScheduleRunFixture(store, false);

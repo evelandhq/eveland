@@ -249,8 +249,10 @@ export default defineChannel({
               sessionIds.push(result.value.id);
             }
           }
-          const rejected = [runResult, ...settled].find((result) => result.status === "rejected");
-          if (rejected) throw new Error("A scheduled handler task failed.");
+          const rejected = [runResult, ...settled].find(
+            (result): result is PromiseRejectedResult => result.status === "rejected",
+          );
+          if (rejected) throw rejected.reason instanceof Error ? rejected.reason : new Error(String(rejected.reason));
         }
 
         const completed = await reportDispatch(redeemUrl, runtimeSecret, {
@@ -263,7 +265,9 @@ export default defineChannel({
         });
         if (!completed.ok) return new Response("Dispatch result rejected", { status: completed.status });
         return Response.json({ scheduleRunId: params.scheduleRunId, scheduleKey, sessionIds });
-      } catch {
+      } catch (error) {
+        const message = describeScheduleFailure(error);
+        console.error(\`[eveland-scheduler] Schedule \${scheduleKey} run \${params.scheduleRunId} failed: \${message}\`);
         await reportDispatch(redeemUrl, runtimeSecret, {
           phase: "complete",
           credential,
@@ -271,6 +275,7 @@ export default defineChannel({
           scheduleKey,
           sessionIds: [],
           status: "failed",
+          error: message,
         }).catch(() => undefined);
         return new Response("Schedule dispatch failed", { status: 500 });
       }
@@ -284,6 +289,13 @@ async function reportDispatch(url: string, runtimeSecret: string, body: Record<s
     headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
     body: JSON.stringify(body),
   });
+}
+
+// Keeps the authored handler's failure reason visible on the ScheduleRun; the
+// dispatch API caps the reported error at 2000 characters.
+function describeScheduleFailure(error: unknown): string {
+  const message = error instanceof Error && error.message ? error.message : String(error);
+  return message.length > 2000 ? message.slice(0, 2000) : message;
 }
 
 function isSession(value: unknown): value is { id: string } {

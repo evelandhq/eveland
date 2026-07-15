@@ -100,6 +100,7 @@ Produce the daily report.
     expect(channel).toContain("Promise.allSettled");
     expect(channel).toContain("const [runResult] = await Promise.allSettled([entry.definition.run(");
     expect(channel).toContain("const rejected = [runResult, ...settled]");
+    expect(channel).toContain("function describeScheduleFailure");
     expect(channel).not.toContain("test-secret");
     expect(channel).not.toContain("eve/dist/src/internal");
   });
@@ -183,6 +184,7 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
       eveVersion: "0.24.2",
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } };`,
+        "agent/schedules/broken.ts": `export default { cron: "* * * * *", async run() { throw new Error("fixture handler exploded"); } };`,
       },
     });
     await injectSchedulerAdapter({ releaseDir });
@@ -267,6 +269,27 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
         expect.objectContaining({ phase: "claim", credential: "dispatch-fixture", scheduleRunId: "srun_fixture" }),
         expect.objectContaining({ phase: "complete", credential: "dispatch-fixture", status: "succeeded", sessionIds: [] }),
         expect.objectContaining({ phase: "claim", credential: "dispatch-fixture", scheduleRunId: "srun_fixture" }),
+      ]);
+
+      const failing = await fetch(`http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_broken`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer dispatch-broken",
+          "content-type": "application/json",
+          "x-eveland-runtime-secret": "runtime-fixture-secret",
+        },
+        body: JSON.stringify({ scheduleKey: "broken" }),
+      });
+      expect(failing.status).toBe(500);
+      expect(reports.slice(3)).toEqual([
+        expect.objectContaining({ phase: "claim", credential: "dispatch-broken", scheduleRunId: "srun_broken" }),
+        expect.objectContaining({
+          phase: "complete",
+          credential: "dispatch-broken",
+          status: "failed",
+          sessionIds: [],
+          error: expect.stringContaining("fixture handler exploded"),
+        }),
       ]);
     } finally {
       child.kill("SIGTERM");
