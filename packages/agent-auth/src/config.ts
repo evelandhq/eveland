@@ -64,7 +64,8 @@ export function redactAgentAuthConfig(method: string, config: Record<string, unk
     };
   }
   if (method === "headers") {
-    const headers = record(config.headers, "Custom credential headers must be an object.");
+    const headers = config.headers;
+    if (typeof headers !== "object" || headers === null || Array.isArray(headers)) return { headerNames: [] };
     return { headerNames: Object.keys(headers).map((name) => name.toLowerCase()).sort() };
   }
   if (method === "oidc") {

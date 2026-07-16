@@ -193,11 +193,11 @@ export function createAgentAuthModule(input: {
         : credentialRejectedFailure(connection.method);
     },
     async status(target, interaction) {
-      const connection = await input.connectionReader.getAgentConnection(target.agentConnectionId);
-      if (!connection) return { state: "misconfigured", message: "Agent Connection not found." };
-      const registration = registrations.get(connection.method);
-      if (!registration) return { state: "misconfigured", message: `Unsupported Agent Auth Method: ${connection.method}.` };
       try {
+        const connection = await input.connectionReader.getAgentConnection(target.agentConnectionId);
+        if (!connection) return { state: "misconfigured", message: "Agent Connection not found." };
+        const registration = registrations.get(connection.method);
+        if (!registration) return { state: "misconfigured", message: `Unsupported Agent Auth Method: ${connection.method}.` };
         if (registration.inspect) return await registration.inspect({ target, connection, config: connection.config, interaction });
         const result = await registration.getCredential({ target, connection, config: connection.config, interaction });
         if (isAgentAuthFailure(result)) {

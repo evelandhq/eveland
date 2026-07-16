@@ -316,15 +316,21 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const readAgentConnectionSnapshot = async (id: string) => {
     const connection = await store.getAgentConnection(id);
     if (!connection) return null;
+    let config: unknown;
+    try {
+      config = openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
+        agentConnectionId: connection.id,
+        method: connection.method,
+        securityRevision: connection.securityRevision,
+      });
+    } catch {
+      throw new Error("The stored Agent Connection configuration could not be decrypted.");
+    }
     return {
       id: connection.id,
       target: connection.target,
       method: connection.method,
-      config: openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
-        agentConnectionId: connection.id,
-        method: connection.method,
-        securityRevision: connection.securityRevision,
-      }),
+      config,
       securityRevision: connection.securityRevision,
     };
   };
@@ -838,11 +844,18 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const project = await store.getProject(c.req.param("projectId"));
     if (!project) return c.json({ error: "Project not found" }, 404);
     const connection = await getOrCreateProjectAgentConnection(project.id);
-    const config = openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
-      agentConnectionId: connection.id,
-      method: connection.method,
-      securityRevision: connection.securityRevision,
-    });
+    // Undecryptable stored config (e.g. APP_SECRET_KEY changed) surfaces as an
+    // empty config here so the dialog still loads; status reports misconfigured.
+    let config: unknown = {};
+    try {
+      config = openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
+        agentConnectionId: connection.id,
+        method: connection.method,
+        securityRevision: connection.securityRevision,
+      });
+    } catch {
+      config = {};
+    }
     const status = await agentAuth.status({
       agentConnectionId: connection.id,
       callerPrincipalId: options.auth ? c.get("principal").userId : "test-control-plane-user",
@@ -861,13 +874,20 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
     let config: Record<string, unknown>;
     try {
-      const existingConfig = connection.method === parsed.data.method
-        ? openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
+      let existingConfig: unknown = {};
+      if (connection.method === parsed.data.method) {
+        try {
+          existingConfig = openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
             agentConnectionId: connection.id,
             method: connection.method,
             securityRevision: connection.securityRevision,
-          })
-        : {};
+          });
+        } catch {
+          // Existing config is undecryptable; start from empty so a broken
+          // connection can be overwritten (write-only secrets must be re-entered).
+          existingConfig = {};
+        }
+      }
       const configInput = mergeWriteOnlyAgentAuthConfig(
         parsed.data.method,
         parsed.data.config,

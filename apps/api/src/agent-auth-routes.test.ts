@@ -119,6 +119,51 @@ describe("Agent Auth control-plane routes", () => {
     await expect(store.getAgentConnection(connection.id)).resolves.toMatchObject({ method: "local-dev", securityRevision: 1 });
   });
 
+  test("keeps a connection with an undecryptable stored config loadable and recoverable", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "undecryptable-config", importKind: "zip" });
+    const connection = await store.createAgentConnection({
+      target: { kind: "managed-project", projectId: project.id },
+      method: "bearer",
+      configEncrypted: "corrupted-not-a-valid-sealed-envelope",
+    });
+    const app = createApp(store, { appSecretKey });
+
+    // The Connection dialog must still load (not 500) and report misconfigured.
+    const connectionResponse = await app.request(`/projects/${project.id}/playground/connection`);
+    expect(connectionResponse.status).toBe(200);
+    await expect(connectionResponse.json()).resolves.toMatchObject({
+      connection: { id: connection.id, method: "bearer" },
+      status: { state: "misconfigured" },
+    });
+
+    // Re-saving must overwrite the broken config instead of failing on the read.
+    const updated = await app.request(`/agent-connections/${connection.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedSecurityRevision: 1, method: "bearer", config: { token: "fresh-token" } }),
+    });
+    expect(updated.status).toBe(200);
+    await expect(updated.json()).resolves.toMatchObject({
+      connection: { method: "bearer", securityRevision: 2, config: { tokenConfigured: true } },
+    });
+
+    // `headers` must stay loadable too: its redacted view cannot assume the
+    // decrypted config shape that the fallback empty config no longer has.
+    const headersProject = await store.createProject({ name: "undecryptable-headers", importKind: "zip" });
+    const headersConnection = await store.createAgentConnection({
+      target: { kind: "managed-project", projectId: headersProject.id },
+      method: "headers",
+      configEncrypted: "corrupted-not-a-valid-sealed-envelope",
+    });
+    const headersResponse = await app.request(`/projects/${headersProject.id}/playground/connection`);
+    expect(headersResponse.status).toBe(200);
+    await expect(headersResponse.json()).resolves.toMatchObject({
+      connection: { id: headersConnection.id, method: "headers", config: { headerNames: [] } },
+      status: { state: "misconfigured" },
+    });
+  });
+
   test("sends a configured bearer credential through the canonical Playground transport", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "bearer-playground", importKind: "zip" });
