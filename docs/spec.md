@@ -285,6 +285,32 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 
 用户输入消息后，Web 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
 
+每个受管 Agent 都对应一个稳定的 Agent Connection，由团队成员在导入或 Playground 的
+Connection 设置中显式选择客户端 access method；Eveland 不解析 EveAgent 源码，也不从
+通用 401 challenge 猜测认证方式。`local-dev` 保留 loopback 开发身份，`none`、Basic、
+静态 Bearer、自定义 credential headers 和 OIDC 都经同一个
+Agent Auth request 管道按请求解析。除 `local-dev` 外，内部 Gateway 使用 canonical Agent
+Host；Gateway 只接受 service-authenticated API 生成的版本化 credential envelope，公网
+请求不能注入该 envelope，公开 Gateway 仍透明保留 Agent 自有 Authorization、Cookie、
+Origin 和 Host 语义。
+
+OIDC 是 Eve Route Auth 的客户端凭证获取方式，不是 Eve Connection Auth；当前 provider
+使用 Authorization Code 与 PKCE。用户第一次提交受保护消息时，若当前
+`(agentConnectionId, callerPrincipalId)` 没有
+凭证，API 在请求 Agent 之前返回 `interaction_required`。Web 暂存尚未被 Agent 接受的
+turn，完成 PKCE/state/nonce 授权和 callback 后原子取出并只重发一次；授权前不创建 Eve
+Session、不执行模型。callback 与 refresh 得到的 access token 必须先通过 Eve 的公开 OIDC
+verifier，之后才可加密落库并发送给 Agent。initial、continuation 和 stream 重连每次都
+重新解析当前凭证；到期 token 在带安全版本、rotation 和 lease fencing 的边界内刷新，
+第一次 401 最多恢复并重发一次，第二次 401 不产生第三个 Agent 请求，403 不刷新。
+
+Eveland member id 只是客户端的 Caller Principal，用于隔离 delegated credential；Agent
+Caller 由 Agent 根据 OIDC `iss/sub` 或其他线上凭证建立。系统不比较、映射或向 Agent
+发送这两个身份。Agent 会话内部工具调用产生的 `authorization.required` 仍作为 Eve
+Connection Auth 消息部分渲染，不进入上述 Route Auth 状态机。Agent auth 配置、静态
+secret、OIDC access/refresh token 和一次性授权事务均由 API 使用独立用途派生和 AAD
+绑定的 AES-256-GCM 密文保存，浏览器只读取非 secret 配置与状态。
+
 每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Observer/Collector 的权威观测路径。
 
 平台记录该 Session 的来源：

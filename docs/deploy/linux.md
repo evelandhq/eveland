@@ -204,11 +204,22 @@ runs it against the Lima VM as part of the integration smoke test.
 | `WORKER_JOB_RECOVERY_BATCH_SIZE` | `25` | Maximum stale jobs recovered per worker poll. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from archive. Mutable route targets and active SessionBindings are protected independently of age. |
-| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
+| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`, and protects API-owned Agent Auth configuration, OIDC transactions, and access/refresh tokens. It must match across every API instance and the worker value used for Project Secrets. Rotation requires explicit data re-encryption; a mismatch fails closed. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Platform-owned Postgres **base** URL for durable workflow worlds. The worker derives one database per project (`eveland_wf_<project>_<digest>`), creates and bootstraps it before any deployment process starts, and injects the derived URL — deployments never share a workflow database. The role in this URL needs `CREATEDB`. Required in production and reserved from Project Secret overrides. For systemd, use a host-reachable address such as `postgres://eveland:eveland@127.0.0.1:5432/eveland`. |
 | `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | Matching `DATABASE_URL` when the deployment URL uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches a separate workflow database through `localhost` or a Compose service name. It is never injected into an Agent. |
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
+
+For OIDC Agent Connections, register the exact redirect URI
+`${WEB_ORIGIN}/api/eveland/agent-auth/callback/oidc`
+at each IdP. `WEB_ORIGIN` must be the browser-visible HTTPS Web origin; the Web
+rewrite forwards the callback to API while preserving the Better Auth cookie
+needed to bind and consume the one-time transaction. Production rejects HTTP
+issuers. API needs outbound HTTPS and DNS access to the configured discovery,
+authorization metadata, token, and JWKS endpoints. Enforce a network egress
+policy that blocks loopback, link-local, cloud metadata, and unapproved private
+networks; application URL validation is not a substitute for that boundary and
+cannot eliminate DNS rebinding/TOCTOU windows.
 
 Project stable routes use `<projectSlug>.<baseDomain>`. Immutable Deployment previews use
 `<eightCharacterDeploymentKey>--<projectSlug>.<baseDomain>`; the separator stays inside one
