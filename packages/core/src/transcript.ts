@@ -48,7 +48,7 @@ export type TranscriptTurn = {
   items: TranscriptItem[];
   userMessage: string | null;
   assistantMessage: string | null;
-  status: "completed" | "failed" | "incomplete";
+  status: "completed" | "failed" | "cancelled" | "incomplete";
   usage: TranscriptUsage | null;
 };
 
@@ -239,6 +239,12 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
         const turn = turnFor(payload, event.eventAt);
         turn.status = "failed";
         turn.items.push({ kind: "system", label: "Turn failed", text: errorMessage(payload), eventAt: event.eventAt });
+        break;
+      }
+      case "turn.cancelled": {
+        const turn = turnFor(payload, event.eventAt);
+        turn.status = "cancelled";
+        turn.items.push({ kind: "system", label: "Turn cancelled", text: null, eventAt: event.eventAt });
         break;
       }
       case "step.failed": {

@@ -73,6 +73,16 @@ describe("buildTranscriptTurns", () => {
     expect(turnToolCalls(turns[1]!)[0]).toMatchObject({ name: "slow_tool", status: "pending", output: null });
   });
 
+  test("records eve 0.24.4 cancelled turns as cancelled, not incomplete", () => {
+    const turns = buildTranscriptTurns([
+      event("message.received", { message: "Long task", turnId: "turn_0" }),
+      event("turn.cancelled", { sequence: 3, turnId: "turn_0" }),
+    ]);
+
+    expect(turns[0]!.status).toBe("cancelled");
+    expect(turns[0]!.items.at(-1)).toMatchObject({ kind: "system", label: "Turn cancelled" });
+  });
+
   test("falls back to text parts and records failures as system items", () => {
     const turns = buildTranscriptTurns([
       event("message.received", { parts: [{ type: "text", text: "Hi " }, { type: "text", text: "there" }], turnId: "turn_0" }),

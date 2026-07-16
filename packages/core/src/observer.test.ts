@@ -32,6 +32,7 @@ describe("observer envelope V1", () => {
 
   test("filters deltas and reasoning content by default", () => {
     expect(shouldCollectObserverEvent("message.completed")).toBe(true);
+    expect(shouldCollectObserverEvent("turn.cancelled")).toBe(true);
     expect(shouldCollectObserverEvent("message.appended")).toBe(false);
     expect(shouldCollectObserverEvent("reasoning.appended", true)).toBe(false);
     expect(shouldCollectObserverEvent("reasoning.completed")).toBe(false);
