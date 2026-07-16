@@ -1,0 +1,26 @@
+{
+  "name": "@eveland/agent-auth",
+  "version": "0.0.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/module.ts",
+    "./config": "./src/config.ts",
+    "./oidc": "./src/oidc.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@eveland/core": "workspace:*",
+    "@eveland/db": "workspace:*",
+    "eve": "0.24.4",
+    "openid-client": "^6.8.4"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
+  }
+}
