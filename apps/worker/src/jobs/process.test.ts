@@ -21,13 +21,14 @@ import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler
 describe("processNextJob", () => {
   test("starts an API-claimed RuntimeInstance from its prebuilt Release", async () => {
     const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({ name: "Wake Deployment", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
     const revision = await store.recordSourceRevision({
       projectId: project.id,
       kind: "zip",
-      sourcePath: "/tmp/wake-deployment",
+      sourcePath,
       summary: {},
       envVars: [],
       files: [],
@@ -77,13 +78,14 @@ describe("processNextJob", () => {
 
   test("dispatches a ScheduleRun once to its pinned Deployment and preserves returned Sessions", async () => {
     const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({ name: "Trigger Schedule", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
     const revision = await store.recordSourceRevision({
       projectId: project.id,
       kind: "zip",
-      sourcePath: "/tmp/trigger-schedule",
+      sourcePath,
       summary: {},
       envVars: [],
       files: [],
@@ -242,6 +244,7 @@ describe("processNextJob", () => {
 
     await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "imported", sourceRevisionId: expect.stringMatching(/^src_/) });
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({ summary: { eveVersion: "0.24.2" } });
     await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({ content: "You are concise." });
     await expect(store.listLogs(project.id, "build")).resolves.toEqual([
       expect.objectContaining({ line: "Source import completed for import-agent." }),
@@ -993,6 +996,50 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "deployed" });
     await expect(store.listLogs(project.id, "deploy")).resolves.not.toContainEqual(
       expect.objectContaining({ line: expect.stringContaining("Warning") }),
+    );
+  });
+
+  test("fails a deployment before build when the project declares an unsupported Eve version", async () => {
+    let buildCalled = false;
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject("0.22.6");
+    const project = await store.createProject({ name: "Old Eve Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: { eveVersion: "0.22.6" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        nodeEnv: "development",
+        allocateHostPort: () => 41990,
+        waitForDeployment: async () => {},
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            buildCalled = true;
+            return { releaseRef: "should-not-build", log: "" };
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "" };
+          },
+          async stopProcess() {},
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(buildCalled).toBe(false);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "failed", deploymentStatus: "failed" });
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({ line: expect.stringContaining('Unsupported Eve dependency "0.22.6"') }),
     );
   });
 
@@ -1841,14 +1888,14 @@ describe("processNextJob", () => {
   });
 });
 
-async function createFixtureEveProject(): Promise<string> {
+async function createFixtureEveProject(eveVersion = "0.24.2"): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-eve-"));
   await mkdir(path.join(root, "agent", "schedules"), { recursive: true });
   await writeFile(
     path.join(root, "package.json"),
     JSON.stringify({
       name: "fixture-agent",
-      dependencies: { eve: "0.24.2" },
+      dependencies: { eve: eveVersion },
     }),
   );
   await writeFile(path.join(root, "agent", "instructions.md"), "You are concise.");

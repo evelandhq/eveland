@@ -254,6 +254,45 @@ describe("memory store jobs", () => {
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "systemd" });
   });
 
+  test("resolves Eve version from the deployment's immutable source revision", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Versioned Agent", importKind: "zip" });
+    const oldRevision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source-old",
+      summary: {},
+      envVars: [],
+      files: [{ path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.22.6" } }) }],
+      schedules: [],
+    });
+    const oldDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: oldRevision.id,
+      imageTag: "eveland/proj:old",
+      containerName: "eveland-proj-old",
+      internalPort: 3000,
+      hostPort: 41004,
+      runtimeKind: "docker",
+    });
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source-new",
+      summary: { eveVersion: "0.24.4" },
+      envVars: [],
+      files: [{ path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.4" } }) }],
+      schedules: [],
+    });
+
+    await expect(store.getDeploymentEveVersion(oldDeployment.id)).resolves.toEqual({
+      version: "0.22.6",
+      expected: "0.24.x",
+      supported: false,
+      sourceRevisionId: oldRevision.id,
+    });
+  });
+
   test("getRelease returns the release by id and null when absent", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Release Agent", importKind: "zip" });

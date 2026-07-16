@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BadgeCheckIcon } from "lucide-react";
-import { getAgentEndpoints, getDeploymentOverview, getLogs, getProject, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
+import { getAgentEndpoints, getDeploymentOverview, getEveVersion, getLogs, getProject, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
 import { ProjectDangerZone } from "@/components/project-danger-zone";
@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectOverviewPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const [project, endpoints, sessions, schedules, logs, deploymentOverview, variantMetrics] = await Promise.all([
+  const [project, endpoints, eveVersion, sessions, schedules, logs, deploymentOverview, variantMetrics] = await Promise.all([
     getProject(projectId),
     getAgentEndpoints(projectId),
+    getEveVersion(projectId),
     getSessions(projectId),
     getSchedules(projectId),
     getLogs(projectId),
@@ -56,6 +57,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
           {(
             [
             ["Deployment", project?.deploymentStatus ?? "unknown"],
+            ["Eve Agent", eveVersion.version ?? "Unknown"],
             ["Source revision", project?.sourceRevisionId ?? "None"],
             ["Release", project?.releaseId ?? "None"],
             ["Stable endpoint", endpoints.stable ?? "None"],

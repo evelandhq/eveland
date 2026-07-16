@@ -238,6 +238,24 @@ describe("web application shell", () => {
     expect(nextConfig).toContain('source: "/api/eveland/:path*"')
   })
 
+  test("shows the deployed Eve version across project, source, and Playground surfaces", () => {
+    const projectOverview = source("./projects/[projectId]/page.tsx")
+    const sourcePage = source("./projects/[projectId]/source/page.tsx")
+    const playgroundPage = source("./projects/[projectId]/playground/page.tsx")
+    const playground = source("../components/playground-panel.tsx")
+    const serverApi = source("../lib/server-api.ts")
+
+    expect(serverApi).toContain("export const getEveVersion")
+    expect(projectOverview).toContain("getEveVersion(projectId)")
+    expect(projectOverview).toContain('["Eve Agent", eveVersion.version')
+    expect(sourcePage).toContain("getEveVersion(projectId)")
+    expect(sourcePage).toContain("requires {eveVersion.expected}")
+    expect(playgroundPage).toContain("getEveVersion(projectId)")
+    expect(playgroundPage).toContain("eveVersion={eveVersion}")
+    expect(playground).toContain("Eve upgrade required")
+    expect(playground).toContain("Upgrade the project's eve dependency")
+  })
+
   test("renders session replay as a chat conversation with a raw event toggle", () => {
     const page = source("./projects/[projectId]/sessions/[sessionId]/page.tsx")
     const replay = source("../components/session-replay.tsx")

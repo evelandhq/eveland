@@ -184,8 +184,19 @@ Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一
 
 * 拉取或解压源码
 * 检查是否为合法 Eve 项目
+* 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.24.x
 * 识别项目配置、agent、tools、skills、schedules
 * 创建 Source Revision
+
+Eveland 当前只运行 Eve 0.24.x Agent。允许精确的 0.24 patch、锚定在
+0.24 patch 上的 `~`/`^` range，以及 `0.24` / `0.24.x` / `0.24.*`；缺少
+Eve 依赖或任何可能解析到 0.24.x 之外的声明都必须 fail closed，并明确提醒
+开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
+Playground，以及公开 Gateway 的 Eve session 新建、继续和 stream 请求，不能通过已有的
+旧 Source Revision、旧 Deployment 或 SessionBinding 绕过。Gateway 在选定实际 Deployment
+后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
+Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
+无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
 
 用户随后确认或填写：
 
@@ -293,7 +304,7 @@ message
 
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
-Eveland 是生产 Schedule 的唯一调度器。当前 Release adapter 支持整个
+Eveland 是生产 Schedule 的唯一调度器。与全局 Agent 版本门槛一致，当前 Release adapter 支持整个
 Eve 0.24.x 版本线（接受精确的 0.24 patch、锚定其上的 ~/^ range，以及
 0.24 / 0.24.x / 0.24.* 整个 minor 的写法）；任何可能解析到 0.24.x 之外的
 Eve 依赖必须在 build 时 fail closed 并返回明确的 adapter

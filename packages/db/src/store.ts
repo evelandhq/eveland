@@ -44,6 +44,7 @@ import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
 import { validateRouteTargets } from "@eveland/core/routing";
 import { getNextRunAt } from "@eveland/core/schedules";
+import { createEveVersionInfo, readDeclaredEveVersion, type EveVersionInfo } from "@eveland/core/source";
 import { summarizeSessionUsage } from "./session-usage.js";
 
 export type DeploymentRetention = {
@@ -134,6 +135,7 @@ export type Store = {
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   listDeployments(projectId: string): Promise<DeploymentRecord[]>;
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
+  getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
   getDeploymentByContainerName(containerName: string): Promise<DeploymentRecord | null>;
   updateDeploymentStatus(deploymentId: string, status: DeploymentStatus): Promise<DeploymentRecord | null>;
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
@@ -661,6 +663,21 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async getDeployment(deploymentId) {
       return state.deployments.find((deployment) => deployment.id === deploymentId) ?? null;
+    },
+
+    async getDeploymentEveVersion(deploymentId) {
+      const deployment = state.deployments.find((candidate) => candidate.id === deploymentId);
+      const release = state.releases.find((candidate) => candidate.id === deployment?.releaseId);
+      const revision = state.sourceRevisions.find((candidate) => candidate.id === release?.sourceRevisionId);
+      if (!revision) return null;
+      let version = typeof revision.summary.eveVersion === "string" ? revision.summary.eveVersion : null;
+      if (!version) {
+        const packageJson = state.sourceFiles.find(
+          (file) => file.revisionId === revision.id && file.path === "package.json",
+        );
+        if (packageJson) version = readDeclaredEveVersion([{ path: packageJson.path, content: packageJson.content }]);
+      }
+      return createEveVersionInfo(version, revision.id);
     },
 
     async getDeploymentByContainerName(containerName) {

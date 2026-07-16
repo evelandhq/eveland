@@ -799,7 +799,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -857,7 +857,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/dormant-legacy-playground",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -899,7 +899,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/dormant-playground",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -955,7 +955,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/routed-playground",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -1027,7 +1027,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -1138,6 +1138,103 @@ describe("api app", () => {
     ]);
   });
 
+  test("reports the deployed Eve version and rejects pinned unsupported Playground sessions", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Old Eve Playground Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/old-eve-playground-agent",
+      summary: {},
+      envVars: [],
+      files: [
+        {
+          path: "package.json",
+          content: JSON.stringify({ dependencies: { eve: "0.22.6" } }),
+        },
+      ],
+      schedules: [],
+    });
+    const oldDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/old-eve:release",
+      containerName: "eveland-old-eve",
+      internalPort: 3000,
+      hostPort: 41008,
+      runtimeKind: "docker",
+    });
+    const playgroundProxy = vi.fn(async () => Response.json({
+      error: "Unsupported Eve version",
+      detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.24.x.',
+    }, { status: 409 }));
+    const app = createApp(store, { playgroundProxy });
+
+    const version = await app.request(`/projects/${project.id}/eve-version`);
+    expect(version.status).toBe(200);
+    await expect(version.json()).resolves.toEqual({
+      eveVersion: {
+        version: "0.22.6",
+        expected: "0.24.x",
+        supported: false,
+        sourceRevisionId: revision.id,
+      },
+    });
+
+    const playground = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+    expect(playground.status).toBe(409);
+    await expect(playground.json()).resolves.toMatchObject({
+      error: "Unsupported Eve version",
+    });
+    expect(playgroundProxy).toHaveBeenCalledOnce();
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({ deploymentId: null, status: "failed" }),
+    ]);
+
+    const supportedRevision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/current-eve-playground-agent",
+      summary: { eveVersion: "0.24.4" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const supportedDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: supportedRevision.id,
+      imageTag: "eveland/current-eve:release",
+      containerName: "eveland-current-eve",
+      internalPort: 3000,
+      hostPort: 41009,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, supportedDeployment.id, "agent.localhost");
+    await store.promoteDeployment(project.id, supportedDeployment.id);
+    const pinnedOldSession = await store.createSession({
+      projectId: project.id,
+      deploymentId: oldDeployment.id,
+      trigger: "playground",
+    });
+    await store.completeSession(pinnedOldSession.id, {
+      status: "waiting",
+      eveSessionId: "eve_old_pinned",
+      continuationToken: "continue_old",
+    });
+    const pinnedContinuation = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_old_pinned`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ continuationToken: "continue_old", message: "continue" }),
+    });
+    expect(pinnedContinuation.status).toBe(409);
+    await expect(pinnedContinuation.json()).resolves.toMatchObject({ error: "Unsupported Eve version" });
+    expect(playgroundProxy).toHaveBeenCalledOnce();
+  });
+
   test("leaves token usage projection to the observer collector", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Token Agent", importKind: "zip" });
@@ -1145,7 +1242,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -1233,7 +1330,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -1283,7 +1380,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -1407,7 +1504,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -1506,7 +1603,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -1591,7 +1688,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: {},
+      summary: { eveVersion: "0.24.4" },
       envVars: [],
       files: [],
       schedules: [],

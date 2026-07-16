@@ -23,10 +23,20 @@ export type EveProjectInspection = {
   valid: boolean;
   layout: EveProjectLayout;
   projectName: string | null;
+  eveVersion: string | null;
   summary: EveProjectSummary;
   envVars: string[];
   schedules: DiscoveredSchedule[];
   errors: string[];
+};
+
+export const SUPPORTED_EVE_VERSION_RANGE = "0.24.x";
+
+export type EveVersionInfo = {
+  version: string | null;
+  expected: typeof SUPPORTED_EVE_VERSION_RANGE;
+  supported: boolean;
+  sourceRevisionId: string | null;
 };
 
 const emptySummary = (): EveProjectSummary => ({
@@ -100,15 +110,41 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
   if (layout === "unknown" || summary.instructions.length === 0) {
     errors.push("Missing root instructions.md, instructions.ts, or instructions/.");
   }
+  const eveVersion = readDeclaredEveVersion(normalized);
+  if (!isSupportedEveDependency(eveVersion)) {
+    errors.push(unsupportedEveVersionMessage(eveVersion));
+  }
 
   return {
     valid: errors.length === 0,
     layout,
     projectName: readProjectName(normalized),
+    eveVersion,
     summary,
     envVars: [...envVars].sort(),
     schedules,
     errors,
+  };
+}
+
+export function isSupportedEveDependency(specifier: string | null): boolean {
+  if (specifier === null) return false;
+  return /^[~^]?0\.24\.\d+$/.test(specifier.trim()) || /^0\.24(\.[x*])?$/.test(specifier.trim());
+}
+
+export function unsupportedEveVersionMessage(specifier: string | null): string {
+  if (specifier === null) {
+    return `Missing Eve dependency. Eveland requires Eve ${SUPPORTED_EVE_VERSION_RANGE}. Add the \"eve\" dependency before importing or deploying.`;
+  }
+  return `Unsupported Eve dependency \"${specifier}\". Eveland requires Eve ${SUPPORTED_EVE_VERSION_RANGE}. Upgrade the project's \"eve\" dependency before importing or deploying.`;
+}
+
+export function createEveVersionInfo(version: string | null, sourceRevisionId: string | null): EveVersionInfo {
+  return {
+    version,
+    expected: SUPPORTED_EVE_VERSION_RANGE,
+    supported: isSupportedEveDependency(version),
+    sourceRevisionId,
   };
 }
 
@@ -169,6 +205,22 @@ function readProjectName(files: Array<{ path: string; content: string }>): strin
   try {
     const parsed = JSON.parse(packageJson.content) as { name?: unknown };
     return typeof parsed.name === "string" && parsed.name.length > 0 ? parsed.name : null;
+  } catch {
+    return null;
+  }
+}
+
+export function readDeclaredEveVersion(files: Array<{ path: string; content: string }>): string | null {
+  const packageJson = files.find((file) => file.path === "package.json");
+  if (!packageJson) return null;
+
+  try {
+    const parsed = JSON.parse(packageJson.content) as {
+      dependencies?: Record<string, unknown>;
+      devDependencies?: Record<string, unknown>;
+    };
+    const version = parsed.dependencies?.eve ?? parsed.devDependencies?.eve;
+    return typeof version === "string" && version.trim().length > 0 ? version.trim() : null;
   } catch {
     return null;
   }
