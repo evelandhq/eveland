@@ -495,6 +495,13 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile 不得被修改。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
+
+workflow 隔离按 Project 物理分库：`WORKFLOW_POSTGRES_URL` 是 base URL，worker 在任何
+进程启动路径（deploy、restart、activation、schedule）之前为该 Project 派生并确保
+`eveland_wf_<project>_<digest>` 数据库存在且 schema 已 bootstrap，注入 Deployment 的
+是派生后的 Project URL。不同 Project 的 runtime 不得共享同一个 workflow 数据库——
+共享库意味着任何 runtime 都能认领其他 Project 的 turn，并在冷启动时把其他 Project 的
+active runs 重新入队到自己队列。base URL 的数据库角色因此需要 `CREATEDB` 权限。
 当 Deployment URL 使用 `host.docker.internal` 且除 host 外与 `DATABASE_URL` 完全一致时，
 worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
 `WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。

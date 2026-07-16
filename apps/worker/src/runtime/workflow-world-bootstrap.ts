@@ -1,6 +1,8 @@
 import { execa } from "execa";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import postgres from "postgres";
 
 type BootstrapResult = {
   exitCode?: number;
@@ -49,8 +51,10 @@ export async function bootstrapWorkflowWorld(
     return undefined;
   }
   const bootstrapPostgresUrl = resolveBootstrapPostgresUrl(env, workflowPostgresUrl);
+  return runWorkflowWorldSetup(bootstrapPostgresUrl, { ...defaultDeps, ...overrides });
+}
 
-  const deps = { ...defaultDeps, ...overrides };
+async function runWorkflowWorldSetup(bootstrapPostgresUrl: string, deps: WorkflowWorldBootstrapDeps): Promise<string> {
   const bootstrapBin = deps.resolveBin();
   let lastOutput = "bootstrap exited without output";
 
@@ -69,6 +73,79 @@ export async function bootstrapWorkflowWorld(
   throw new Error(
     `Platform workflow-world database bootstrap failed after ${deps.maxAttempts} attempt(s): ${redactWorkflowUrl(lastOutput, bootstrapPostgresUrl)}`,
   );
+}
+
+/**
+ * One durable workflow database per project, derived from the platform base
+ * URL. Sharing a single database is what let any runtime claim any project's
+ * queued turns (graphile task ids ignore namespaces) and let every world
+ * startup re-enqueue *all* projects' active runs (reenqueueActiveRuns lists
+ * runs unfiltered). Physical isolation closes both doors at once.
+ */
+export function deriveProjectWorkflowDatabaseName(projectId: string): string {
+  // Project ids use a mixed-case alphabet while Postgres database names are
+  // matched lowercase; the digest keeps case-variant ids collision-free.
+  const safe = projectId.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  const digest = createHash("sha256").update(projectId).digest("hex").slice(0, 6);
+  return `eveland_wf_${safe}_${digest}`;
+}
+
+export function deriveProjectWorkflowUrl(baseUrl: string, projectId: string): string {
+  const url = new URL(baseUrl);
+  url.pathname = `/${deriveProjectWorkflowDatabaseName(projectId)}`;
+  return url.toString();
+}
+
+export type ProjectWorkflowWorldDeps = WorkflowWorldBootstrapDeps & {
+  ensureDatabase: (adminUrl: string, databaseName: string) => Promise<void>;
+  /** Runtime URLs already ensured by this process; setup is idempotent, the cache only skips repeat work. */
+  cache: Set<string>;
+};
+
+const ensuredProjectWorlds = new Set<string>();
+
+const defaultProjectDeps: ProjectWorkflowWorldDeps = {
+  ...defaultDeps,
+  ensureDatabase: createDatabaseIfMissing,
+  cache: ensuredProjectWorlds,
+};
+
+export async function ensureProjectWorkflowWorld(
+  env: NodeJS.ProcessEnv,
+  projectId: string,
+  overrides: Partial<ProjectWorkflowWorldDeps> = {},
+): Promise<string | undefined> {
+  const workflowPostgresUrl = env.WORKFLOW_POSTGRES_URL;
+  if (!workflowPostgresUrl) return undefined;
+
+  const deps = { ...defaultProjectDeps, ...overrides };
+  const runtimeUrl = deriveProjectWorkflowUrl(workflowPostgresUrl, projectId);
+  if (deps.cache.has(runtimeUrl)) return runtimeUrl;
+
+  const bootstrapBaseUrl = resolveBootstrapPostgresUrl(env, workflowPostgresUrl);
+  await deps.ensureDatabase(bootstrapBaseUrl, deriveProjectWorkflowDatabaseName(projectId));
+  await runWorkflowWorldSetup(deriveProjectWorkflowUrl(bootstrapBaseUrl, projectId), deps);
+  deps.cache.add(runtimeUrl);
+  return runtimeUrl;
+}
+
+/**
+ * CREATE DATABASE cannot run inside a transaction and has no IF NOT EXISTS,
+ * so existence is probed first and the duplicate_database race (42P04) from a
+ * concurrent worker/job is treated as success.
+ */
+async function createDatabaseIfMissing(adminUrl: string, databaseName: string): Promise<void> {
+  const sql = postgres(adminUrl, { max: 1 });
+  try {
+    const existing = await sql`select 1 from pg_database where datname = ${databaseName}`;
+    if (existing.length > 0) return;
+    await sql.unsafe(`create database "${databaseName}"`);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? (error as { code?: string }).code : undefined;
+    if (code !== "42P04") throw error;
+  } finally {
+    await sql.end();
+  }
 }
 
 function resolveBootstrapPostgresUrl(env: NodeJS.ProcessEnv, workflowPostgresUrl: string): string {
