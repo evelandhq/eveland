@@ -15,12 +15,14 @@ export default async function Layout({
   if (!isLanguage(lang)) notFound();
 
   return (
-    <DocsLayout
-      {...baseOptions(lang)}
-      tree={source.getPageTree(lang)}
-      sidebar={{ defaultOpenLevel: 1, prefetch: false }}
-    >
-      {children}
-    </DocsLayout>
+    <div className="docs-shell">
+      <DocsLayout
+        {...baseOptions(lang)}
+        tree={source.getPageTree(lang)}
+        sidebar={{ defaultOpenLevel: 1, prefetch: false }}
+      >
+        {children}
+      </DocsLayout>
+    </div>
   );
 }

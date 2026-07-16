@@ -94,11 +94,27 @@ describe("Eveland public website contract", () => {
   test("orients developers, agent authors, and operators from the homepage", () => {
     const page = source("./app/[lang]/page.tsx");
 
-    expect(page).toContain("<SystemMap");
+    expect(page).toContain("<RuntimeStage");
     expect(page).toContain("<AudiencePaths");
     expect(page).toContain("<DeploymentFlow");
     expect(page).toContain("getStartedHref");
     expect(page).toContain("github.com/evelandhq/eveland");
+  });
+
+  test("uses the light editorial visual system across the homepage and docs", () => {
+    const page = source("./app/[lang]/page.tsx");
+    const stage = source("./components/runtime-stage.tsx");
+    const styles = source("./app/global.css");
+
+    expect(page).toContain("<RuntimeStage");
+    expect(existsSync(path("./components/runtime-stage.tsx"))).toBe(true);
+    expect(stage).toContain('className="runtime-stage"');
+    expect(stage).toContain('className="runtime-code"');
+    expect(stage).toContain('className="runtime-events"');
+    expect(styles).toContain("--accent: #ff5c35");
+    expect(styles).toContain("--fd-background: #ffffff");
+    expect(styles).toContain(".docs-shell");
+    expect(styles).not.toContain("--signal: #66e68b");
   });
 
   test("ships discovery endpoints for people, search engines, and agents", () => {

@@ -12,18 +12,20 @@ export function SiteHeader({ lang }: { lang: Language }) {
   return (
     <header className="site-header">
       <Brand lang={lang} />
-      <nav aria-label="Main navigation">
+      <nav className="header-links" aria-label="Main navigation">
         <Link href={localizedHref(lang, "/docs")}>{t.nav.docs}</Link>
         <a href={githubUrl} target="_blank" rel="noreferrer">
           {t.nav.github}<ArrowUpRight aria-hidden="true" />
         </a>
+      </nav>
+      <div className="header-actions">
         <Link className="language-link" href={localizedHref(otherLanguage)} hrefLang={otherLanguage}>
           {t.nav.language}
         </Link>
         <Link className="nav-cta" href={localizedHref(lang, "/docs/quick-start")}>
           {t.nav.getStarted}
         </Link>
-      </nav>
+      </div>
     </header>
   );
 }

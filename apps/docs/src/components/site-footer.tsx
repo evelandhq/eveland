@@ -9,15 +9,24 @@ export function SiteFooter({ lang }: { lang: Language }) {
 
   return (
     <footer className="site-footer">
-      <div>
+      <div className="footer-brand">
         <Brand lang={lang} />
         <p>{t.line}</p>
       </div>
-      <nav aria-label="Footer navigation">
-        <Link href={localizedHref(lang, "/docs")}>{t.docs}</Link>
-        <a href={githubUrl}>{t.github}</a>
-      </nav>
-      <small>© {new Date().getFullYear()} Eveland</small>
+      <div className="footer-columns">
+        <nav aria-label="Documentation">
+          <strong>{t.product}</strong>
+          <Link href={localizedHref(lang)}>{t.home}</Link>
+          <Link href={localizedHref(lang, "/docs")}>{t.docs}</Link>
+          <Link href={localizedHref(lang, "/docs/quick-start")}>{t.quickStart}</Link>
+        </nav>
+        <nav aria-label="Resources">
+          <strong>{t.resources}</strong>
+          <Link href={localizedHref(lang, "/docs/architecture")}>{t.architecture}</Link>
+          <a href={githubUrl}>{t.github}</a>
+        </nav>
+      </div>
+      <small>© {new Date().getFullYear()} Eveland · AGPL-3.0</small>
     </footer>
   );
 }
