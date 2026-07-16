@@ -9,6 +9,7 @@ import {
   type ScheduleDispatchInput,
 } from "./process.js";
 import { processSafeName, type RuntimeAdapter } from "../runtime/types.js";
+import { deriveProjectWorkflowUrl } from "../runtime/workflow-world-bootstrap.js";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -802,10 +803,15 @@ describe("processNextJob", () => {
     });
     await store.enqueueJob(project.id, "build_deploy");
 
+    const ensuredProjects: string[] = [];
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
+        ensureProjectWorkflowWorld: async (env, projectId) => {
+          ensuredProjects.push(projectId);
+          return deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId);
+        },
         runtime: {
           name: "docker",
           async buildRelease(input) {
@@ -834,9 +840,13 @@ describe("processNextJob", () => {
     });
     const run = runtimeCalls.find((call) => call.name === "startProcess");
     expect((run?.input as { env: Record<string, string> }).env).toMatchObject({
-      WORKFLOW_POSTGRES_URL: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
+      WORKFLOW_POSTGRES_URL: deriveProjectWorkflowUrl(
+        "postgres://eveland:eveland@host.docker.internal:5432/eveland",
+        project.id,
+      ),
       NODE_ENV: "production",
     });
+    expect(ensuredProjects).toEqual([project.id]);
     await expect(store.getProject(project.id)).resolves.toMatchObject({ status: "deployed" });
   });
 
@@ -868,6 +878,7 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
         workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
+        ensureProjectWorkflowWorld: async (env, projectId) => deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
         runtime: {
           name: "docker",
           async buildRelease(input) {
@@ -888,7 +899,7 @@ describe("processNextJob", () => {
 
     const run = runtimeCalls.find((call) => call.name === "startProcess");
     expect((run?.input as { env: Record<string, string> }).env.WORKFLOW_POSTGRES_URL).toBe(
-      "postgres://platform@host.docker.internal:5432/eveland",
+      deriveProjectWorkflowUrl("postgres://platform@host.docker.internal:5432/eveland", project.id),
     );
   });
 
@@ -1007,6 +1018,7 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5452/eveland",
+        ensureProjectWorkflowWorld: async (env, projectId) => deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
         runtime: {
           name: "docker",
           async buildRelease(input) {
@@ -1068,6 +1080,7 @@ describe("processNextJob", () => {
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
         workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
+        ensureProjectWorkflowWorld: async (env, projectId) => deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
         runtime: {
           name: "docker",
           async buildRelease() {
@@ -1094,7 +1107,7 @@ describe("processNextJob", () => {
           releaseRef: "eveland/proj:rel_cur",
           port: deployment.hostPort,
           env: expect.objectContaining({
-            WORKFLOW_POSTGRES_URL: "postgres://platform@host.docker.internal:5432/eveland",
+            WORKFLOW_POSTGRES_URL: deriveProjectWorkflowUrl("postgres://platform@host.docker.internal:5432/eveland", project.id),
             OPENAI_API_KEY: "sk-test-restart",
             EVELAND_DEPLOYMENT_ID: deployment.id,
           }),
@@ -1579,6 +1592,53 @@ describe("processNextJob", () => {
       `deleteProject:${project.id}`,
     ]);
     await expect(store.getProject(project.id)).resolves.toBeNull();
+  });
+
+  test("delete_project drops the project's workflow database before the project row is removed", async () => {
+    const calls: string[] = [];
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Drop World Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "delete_project");
+    const spyingStore: Store = {
+      ...store,
+      async deleteProject(projectId) {
+        calls.push(`deleteProject:${projectId}`);
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(
+      processNextJob(spyingStore, "worker-a", {
+        dropProjectWorkflowWorld: async (_env, projectId) => {
+          calls.push(`dropWorld:${projectId}`);
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(calls).toEqual([`dropWorld:${project.id}`, `deleteProject:${project.id}`]);
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+  });
+
+  test("delete_project keeps the project when dropping its workflow database fails", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Drop Fail Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "delete_project");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        dropProjectWorkflowWorld: async () => {
+          throw new Error("workflow database is unreachable");
+        },
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      deletionError: expect.stringContaining("workflow database is unreachable"),
+    });
   });
 
   test("delete_project removes runtime releases and only platform-managed project files", async () => {

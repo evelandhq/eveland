@@ -15,6 +15,7 @@ import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "../run
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
 import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
 import { PLATFORM_WORKFLOW_WORLD } from "../runtime/workflow-world.js";
+import { dropProjectWorkflowWorld, ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import { ensureDeploymentActive, startRuntimeInstance } from "../runtime/activation-manager.js";
 import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
@@ -31,6 +32,8 @@ export type ProcessJobOptions = {
   allocateHostPort?: () => number | Promise<number>;
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
   workflowPostgresUrl?: string;
+  ensureProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<string | undefined>;
+  dropProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<void>;
   nodeEnv?: string;
   dataDir?: string;
   schedulerDispatchSecret?: string;
@@ -454,6 +457,11 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         removedReleases.add(releaseKey);
       }
 
+      // The project's derived workflow database goes with the project.
+      // Dropped before deleteProject so a failed drop leaves the project row
+      // in place for a retried deletion instead of leaking an orphan database.
+      await (options.dropProjectWorkflowWorld ?? dropProjectWorkflowWorld)(process.env, job.projectId);
+
       const sourceRevisions = await store.listSourceRevisions(job.projectId);
       const pendingSourcePaths = Array.isArray(job.payload.sourcePaths)
         ? job.payload.sourcePaths.filter((sourcePath): sourcePath is string => typeof sourcePath === "string")
@@ -739,6 +747,15 @@ async function composeDeploymentEnv(
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
   const isProduction = nodeEnv === "production";
   const workflowPostgresUrl = options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
+  // Each project gets its own physical workflow database derived from the
+  // platform base URL. A single shared database let any runtime claim any
+  // project's queued turns and re-enqueue every project's active runs on
+  // startup, so the database is created and bootstrapped here, before any
+  // process starts with its URL.
+  const ensureWorld = options.ensureProjectWorkflowWorld ?? ensureProjectWorkflowWorld;
+  const projectWorkflowUrl = workflowPostgresUrl
+    ? await ensureWorld({ ...process.env, WORKFLOW_POSTGRES_URL: workflowPostgresUrl }, projectId)
+    : undefined;
   const schedulerRuntimeSecret = options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
   const schedulerRedeemUrl = options.schedulerRedeemUrl ?? process.env.EVELAND_SCHEDULER_REDEEM_URL;
   const secrets = await readRuntimeSecrets(store, projectId, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
@@ -748,7 +765,7 @@ async function composeDeploymentEnv(
   // an uninitialized or tenant-controlled database.
   const injectedCredentials = {
     ...secrets,
-    ...(workflowPostgresUrl ? { WORKFLOW_POSTGRES_URL: workflowPostgresUrl } : {}),
+    ...(projectWorkflowUrl ? { WORKFLOW_POSTGRES_URL: projectWorkflowUrl } : {}),
     ...(schedulerRuntimeSecret ? { EVELAND_SCHEDULER_RUNTIME_SECRET: schedulerRuntimeSecret } : {}),
     ...(schedulerRedeemUrl ? { EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl } : {}),
   };
@@ -760,6 +777,7 @@ async function composeDeploymentEnv(
   const secretValues = [
     ...Object.values(secrets),
     ...(workflowPostgresUrl ? [workflowPostgresUrl] : []),
+    ...(projectWorkflowUrl ? [projectWorkflowUrl] : []),
     ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),
   ];
   return { env, secretValues };
