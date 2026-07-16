@@ -1,5 +1,5 @@
 import type { ActivationLeaseClaim, ActivationLeaseKind, DeploymentRecord, RuntimeInstance, RuntimeKind } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import { RuntimeInstanceDrainingError, type Store } from "@eveland/db";
 import { waitForHttpHealth } from "./health.js";
 import { createRuntimeAdapterForKind } from "./select.js";
 import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
@@ -16,6 +16,8 @@ export type DeploymentActivationOptions = {
   leaseTtlMs?: number;
   readyTimeoutMs?: number;
   pollIntervalMs?: number;
+  drainRetryMs?: number;
+  maxDrainRetryMs?: number;
   now?: () => Date;
   waitForHealth?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
 };
@@ -28,13 +30,31 @@ export async function ensureDeploymentActive(
   const now = options.now ?? (() => new Date());
   const leaseTtlMs = options.leaseTtlMs ?? 180_000;
   const readyTimeoutMs = options.readyTimeoutMs ?? 30_000;
-  const claimed = await store.acquireActivationLease({
-    deploymentId: input.deployment.id,
-    kind: input.kind,
-    ownerId: input.ownerId,
-    expiresAt: new Date(now().getTime() + leaseTtlMs),
-    now: now(),
-  });
+  const drainDeadline = Date.now() + readyTimeoutMs;
+  let drainRetryMs = options.drainRetryMs ?? 25;
+  const maxDrainRetryMs = options.maxDrainRetryMs ?? 500;
+  let claimed: ActivationLeaseClaim;
+  for (;;) {
+    const attemptNow = now();
+    try {
+      claimed = await store.acquireActivationLease({
+        deploymentId: input.deployment.id,
+        kind: input.kind,
+        ownerId: input.ownerId,
+        expiresAt: new Date(attemptNow.getTime() + leaseTtlMs),
+        now: attemptNow,
+      });
+      break;
+    } catch (error) {
+      if (!isRuntimeInstanceDrainingError(error)) throw error;
+      const remainingMs = drainDeadline - Date.now();
+      if (remainingMs <= 0) {
+        throw new Error(`Runtime activation timed out after ${readyTimeoutMs}ms waiting for draining to finish.`);
+      }
+      await delay(Math.min(drainRetryMs, remainingMs));
+      drainRetryMs = Math.min(maxDrainRetryMs, drainRetryMs * 2);
+    }
+  }
 
   if (claimed.runtimeInstance.status === "ready") return claimed;
   if (claimed.starter) {
@@ -109,6 +129,11 @@ export async function startRuntimeInstance(
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isRuntimeInstanceDrainingError(error: unknown): boolean {
+  return error instanceof RuntimeInstanceDrainingError ||
+    (error instanceof Error && error.message === "RuntimeInstance is draining; retry activation after it stops.");
 }
 
 export async function recoverStartingRuntimeInstances(

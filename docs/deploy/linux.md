@@ -186,6 +186,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
 | `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
 | `EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS` | `120000` | Maximum private Scheduler Channel dispatch duration before the Worker treats the result as failed or unknown. |
+| `EVELAND_SCHEDULER_PREWARM_MS` | `60000` | Window before `nextRunAt` in which the scheduler target stays warm or is proactively activated. Prewarming never executes the handler early. |
 | `EVELAND_ACTIVATION_IDLE_TTL_MS` | `300000` | Time after the final lease release/expiry before Worker stops a ready RuntimeInstance. The Deployment and Release remain. |
 | `EVELAND_ACTIVATION_REAPER_BATCH_SIZE` | `25` | Maximum idle RuntimeInstances claimed per Worker tick. |
 | `EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE` | `25` | Maximum interrupted `starting` RuntimeInstances re-enqueued per Worker tick. |
@@ -554,6 +555,10 @@ retains `lastError`, and `stopped` is a normal dormant state. Check API/Gateway
 service-token agreement and reachability of `EVELAND_API_INTERNAL_URL`, then
 inspect the owning runtime (`systemctl status`/`journalctl` for systemd). A
 client abort releases only that request lease; other active leases must remain.
+For schedules, confirm Worker reports `EVELAND_SCHEDULER_PREWARM_MS`. An enabled
+schedule inside that window keeps its target out of idle reaping, while a stopped
+target receives a coalesced activation job. A short `draining` transition is
+retried before dispatch and should not appear as a terminal ScheduleRun failure.
 
 ## Known limits (v1)
 

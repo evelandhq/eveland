@@ -796,6 +796,7 @@ session_bindings
 - build+deploy 不再默认停止旧 Deployment；新 Deployment 首先是 preview target；
 - promote/rollback/traffic split 通过 route target transaction 完成。
 - Project Secrets 是可变运行时凭据，不属于 Release 内容；Secret 新增、替换或删除后必须为每个 `running` / `draining` Deployment 排入带 `deploymentId` 的 restart，不能只刷新 `projects.currentDeploymentId`，否则 stable、preview 或 A/B target 会继续持有旧进程环境。
+- Scheduler scale-to-zero 使用持久化 `nextRunAt`：进入 `EVELAND_SCHEDULER_PREWARM_MS` 窗口的 target 保持 warm，已停止的 target 提前排入 coalesced activation；non-terminal ScheduleRun 提供硬性回收保护，`draining` 在 dispatch credential 兑换前有界重试。
 
 ---
 

@@ -98,6 +98,38 @@ describe.skipIf(!database)("Postgres schedule state", () => {
       }));
       await store.updateRuntimeInstance(activationClaims[0]!.runtimeInstance.id, { status: "stopped" });
       await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-15T00:00:30.000Z"));
+      await expect(store.listUpcomingScheduleTargets({
+        after: new Date("2026-07-15T00:00:30.000Z"),
+        before: new Date("2026-07-15T00:01:00.000Z"),
+        limit: 10,
+      })).resolves.toEqual([
+        expect.objectContaining({
+          scheduleId: entry!.schedule.id,
+          projectId: project.id,
+          deploymentId: deployment.id,
+          nextRunAt: "2026-07-15T00:01:00.000Z",
+        }),
+      ]);
+      const scheduleProtectedClaim = await store.acquireActivationLease({
+        deploymentId: deployment.id,
+        kind: "public_request",
+        ownerId: "req_postgres_schedule_protection",
+        expiresAt: new Date("2026-07-15T00:00:31.000Z"),
+        now: new Date("2026-07-15T00:00:30.000Z"),
+      });
+      await store.updateRuntimeInstance(scheduleProtectedClaim.runtimeInstance.id, {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      }, new Date("2026-07-15T00:00:30.000Z"));
+      await store.releaseActivationLease(scheduleProtectedClaim.lease.id, new Date("2026-07-15T00:00:31.000Z"));
+      await expect(store.claimIdleRuntimeInstances({
+        now: new Date("2026-07-15T00:00:40.000Z"),
+        idleTtlMs: 0,
+        schedulePrewarmMs: 20_000,
+        limit: 10,
+      })).resolves.toEqual([]);
+      await store.updateRuntimeInstance(scheduleProtectedClaim.runtimeInstance.id, { status: "stopped" });
 
       const manualDueAt = new Date("2026-07-15T00:00:45.000Z");
       const manualRuns = await Promise.all([

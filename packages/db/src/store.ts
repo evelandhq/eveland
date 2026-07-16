@@ -53,6 +53,13 @@ export type DeploymentRetention = {
   reasons: Array<"route_target" | "active_session" | "recent_artifact">;
 };
 
+export class RuntimeInstanceDrainingError extends Error {
+  constructor() {
+    super("RuntimeInstance is draining; retry activation after it stops.");
+    this.name = "RuntimeInstanceDrainingError";
+  }
+}
+
 export type CreateProjectInput = {
   name: string;
   importKind: ProjectImportKind;
@@ -189,6 +196,11 @@ export type Store = {
   listProjectScheduleSummaries(projectId: string): Promise<ProjectScheduleSummary[]>;
   getProjectSchedule(scheduleId: string): Promise<ProjectSchedule | null>;
   setProjectSchedulerTarget(projectId: string, deploymentId: string, now?: Date): Promise<ProjectSchedulerTarget>;
+  listUpcomingScheduleTargets(input: {
+    after: Date;
+    before: Date;
+    limit: number;
+  }): Promise<Array<{ scheduleId: string; projectId: string; deploymentId: string; nextRunAt: string }>>;
   createManualScheduleRun(projectId: string, scheduleId: string, now?: Date): Promise<ScheduleRun>;
   claimDueScheduleRuns(input: { now: Date; limit: number }): Promise<ScheduleRun[]>;
   getScheduleRun(scheduleRunId: string): Promise<ScheduleRun | null>;
@@ -233,7 +245,12 @@ export type Store = {
   renewActivationLease(leaseId: string, expiresAt: Date, now?: Date): Promise<ActivationLease | null>;
   releaseActivationLease(leaseId: string, now?: Date): Promise<ActivationLease | null>;
   hasActiveActivationLeases(deploymentId: string, now?: Date): Promise<boolean>;
-  claimIdleRuntimeInstances(input: { now: Date; idleTtlMs: number; limit: number }): Promise<RuntimeInstance[]>;
+  claimIdleRuntimeInstances(input: {
+    now: Date;
+    idleTtlMs: number;
+    schedulePrewarmMs?: number;
+    limit: number;
+  }): Promise<RuntimeInstance[]>;
   listSessions(projectId: string): Promise<Session[]>;
   getSession(sessionId: string): Promise<Session | null>;
   listSessionsPage(
@@ -1106,6 +1123,28 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return target;
     },
 
+    async listUpcomingScheduleTargets(input) {
+      if (!Number.isInteger(input.limit) || input.limit < 1) throw new Error("Schedule prewarm limit must be positive.");
+      const after = input.after.toISOString();
+      const before = input.before.toISOString();
+      return state.projectSchedules
+        .filter((schedule) => schedule.enabled && schedule.nextRunAt !== null)
+        .filter((schedule) => schedule.nextRunAt! > after && schedule.nextRunAt! <= before)
+        .flatMap((schedule) => {
+          const target = state.projectSchedulerTargets.find((candidate) => candidate.projectId === schedule.projectId);
+          const deployment = state.deployments.find((candidate) => candidate.id === target?.deploymentId);
+          if (!target || !deployment || deployment.status === "archived" || deployment.status === "failed") return [];
+          return [{
+            scheduleId: schedule.id,
+            projectId: schedule.projectId,
+            deploymentId: target.deploymentId,
+            nextRunAt: schedule.nextRunAt!,
+          }];
+        })
+        .sort((a, b) => a.nextRunAt.localeCompare(b.nextRunAt) || a.scheduleId.localeCompare(b.scheduleId))
+        .slice(0, input.limit);
+    },
+
     async createManualScheduleRun(projectId, scheduleId, now = new Date()) {
       const schedule = state.projectSchedules.find(
         (candidate) => candidate.id === scheduleId && candidate.projectId === projectId,
@@ -1336,7 +1375,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         .filter((candidate) => candidate.deploymentId === input.deploymentId)
         .sort((a, b) => b.generation - a.generation)[0];
       if (latestRuntimeInstance?.status === "draining") {
-        throw new Error("RuntimeInstance is draining; retry activation after it stops.");
+        throw new RuntimeInstanceDrainingError();
       }
       let runtimeInstance = latestRuntimeInstance &&
         (latestRuntimeInstance.status === "starting" || latestRuntimeInstance.status === "ready")
@@ -1474,7 +1513,13 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     async claimIdleRuntimeInstances(input) {
       if (!Number.isInteger(input.limit) || input.limit < 1) throw new Error("Runtime idle claim limit must be positive.");
       if (!Number.isFinite(input.idleTtlMs) || input.idleTtlMs < 0) throw new Error("Runtime idle TTL must be non-negative.");
+      const schedulePrewarmMs = input.schedulePrewarmMs ?? 0;
+      if (!Number.isFinite(schedulePrewarmMs) || schedulePrewarmMs < 0) {
+        throw new Error("Schedule prewarm window must be non-negative.");
+      }
       const cutoff = input.now.getTime() - input.idleTtlMs;
+      const scheduleHorizon = input.now.getTime() + schedulePrewarmMs;
+      const protectedScheduleRunStatuses = new Set(["queued", "activating", "dispatching", "running"]);
       const claimed: RuntimeInstance[] = [];
       const candidates = state.runtimeInstances
         .filter((instance) => instance.status === "draining" || instance.status === "ready")
@@ -1486,6 +1531,21 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
           continue;
         }
         if (await this.hasActiveActivationLeases(instance.deploymentId, input.now)) continue;
+        if (state.scheduleRuns.some(
+          (run) => run.deploymentId === instance.deploymentId && protectedScheduleRunStatuses.has(run.status),
+        )) continue;
+        const targetProjectIds = new Set(
+          state.projectSchedulerTargets
+            .filter((target) => target.deploymentId === instance.deploymentId)
+            .map((target) => target.projectId),
+        );
+        if (schedulePrewarmMs > 0 && state.projectSchedules.some(
+          (schedule) =>
+            targetProjectIds.has(schedule.projectId) &&
+            schedule.enabled &&
+            schedule.nextRunAt !== null &&
+            Date.parse(schedule.nextRunAt) <= scheduleHorizon,
+        )) continue;
         const activityTimes = [instance.readyAt, instance.startedAt]
           .concat(
             state.activationLeases
