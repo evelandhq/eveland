@@ -8,10 +8,12 @@ import { processNextJob } from "./jobs/process.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
+import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { reconcileRuntimeInstances, recoverStartingRuntimeInstances } from "./runtime/activation-manager.js";
 import { planDueSchedules } from "./scheduler/planner.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
+const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_MS ?? 3_600_000);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
@@ -68,9 +70,25 @@ const timer = setInterval(() => {
   void tick();
 }, intervalMs);
 
+// Separate cadence from tick(): host process listing is comparatively heavy
+// and orphan cleanup is not latency-sensitive. Set the interval to 0 to
+// disable the sweep entirely.
+const reapOrphanProcesses = createOrphanProcessReaper(storeFactory.store, {
+  graceMs: Number(process.env.EVELAND_ORPHAN_GRACE_MS ?? 300_000),
+});
+const sweepOrphans = () => {
+  reapOrphanProcesses().catch((error: unknown) => console.error("Orphan process sweep failed:", error));
+};
+let orphanTimer: NodeJS.Timeout | undefined;
+if (orphanSweepIntervalMs > 0) {
+  sweepOrphans();
+  orphanTimer = setInterval(sweepOrphans, orphanSweepIntervalMs);
+}
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     clearInterval(timer);
+    if (orphanTimer) clearInterval(orphanTimer);
     void storeFactory.close().finally(() => process.exit(0));
   });
 }

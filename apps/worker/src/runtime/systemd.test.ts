@@ -227,6 +227,37 @@ const baseAdapterConfig = {
   backendDistDir: () => "/opt/sandbox-bwrap/dist",
 };
 
+describe("createSystemdAdapter listProcesses", () => {
+  test("lists running eveland units stripped of their .service suffix", async () => {
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: false,
+      stdout: [
+        "eveland-proj_alpha-dep_one.service loaded active running Eveland deployment",
+        "  eveland-proj_beta-dep_two.service loaded active running Eveland deployment",
+        "",
+      ].join("\n"),
+    } as never);
+
+    await expect(adapter.listProcesses!("eveland-")).resolves.toEqual([
+      "eveland-proj_alpha-dep_one",
+      "eveland-proj_beta-dep_two",
+    ]);
+    expect(execa).toHaveBeenLastCalledWith(
+      "systemctl",
+      ["list-units", "--type=service", "--state=active", "--plain", "--no-legend", "--no-pager", "eveland-*.service"],
+      expect.objectContaining({ reject: false }),
+    );
+  });
+
+  test("throws when systemctl cannot list units", async () => {
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, all: "systemctl: command not found" } as never);
+
+    await expect(adapter.listProcesses!("eveland-")).rejects.toThrow(/systemctl list-units/);
+  });
+});
+
 describe("createSystemdAdapter backendDistDir laziness", () => {
   test("never invokes the backendDistDir provider at construction time", () => {
     const backendDistDir = vi.fn(() => {

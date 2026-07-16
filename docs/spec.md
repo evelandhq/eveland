@@ -469,6 +469,14 @@ Deployment，不能重新执行 route weighting。最后一个 lease 释放或�
 reconciliation 会重排中断的 activation job，并把实际已消失的 transient process 状态
 纠正为 stopped/failed。
 
+Worker 还按独立周期执行 orphan sweep，把主机上实际运行的 `eveland-*-dep_*` 进程与
+控制面对账：持有活跃 lease 或 live RuntimeInstance 的进程不受影响；属于合法
+Deployment 但失管的进程（早于 RuntimeInstance 机制部署、restart 后未激活等）被收养为
+ready RuntimeInstance，从此由 idle 生命周期接管；没有 Deployment 记录、Deployment 已
+archived、或运行在非 Deployment 所属 runtimeKind 下的进程在宽限期后被停止。清扫只
+匹配完整的 Deployment 命名形态，平台自身的 Compose 容器（`eveland-postgres-1` 等）
+永远不在清扫范围内。
+
 容器运行 Eve 项目，平台负责：
 
 * Build 与启动

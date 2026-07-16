@@ -689,6 +689,16 @@ export function createPostgresStore(database: Database): Store {
       return deployment ? deploymentRowToDeployment(deployment) : null;
     },
 
+    async getDeploymentByContainerName(containerName) {
+      const [deployment] = await db
+        .select()
+        .from(deployments)
+        .where(eq(deployments.containerName, containerName))
+        .orderBy(desc(deployments.createdAt), desc(deployments.id))
+        .limit(1);
+      return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
     async updateDeploymentStatus(deploymentId, status) {
       const [deployment] = await db
         .update(deployments)
@@ -1680,6 +1690,54 @@ export function createPostgresStore(database: Database): Store {
     async getRuntimeInstance(runtimeInstanceId) {
       const [row] = await db.select().from(runtimeInstances).where(eq(runtimeInstances.id, runtimeInstanceId)).limit(1);
       return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
+    },
+
+    async listDeploymentRuntimeInstances(deploymentId) {
+      const rows = await db
+        .select()
+        .from(runtimeInstances)
+        .where(eq(runtimeInstances.deploymentId, deploymentId))
+        .orderBy(asc(runtimeInstances.generation));
+      return rows.map(runtimeInstanceRowToRuntimeInstance);
+    },
+
+    async adoptRuntimeInstance(deploymentId, endpoint, now = new Date()) {
+      return db.transaction(async (tx) => {
+        // Same deployment-level lock acquireActivationLease takes, so adoption
+        // and activation serialize on the runtime_instances generation chain
+        // instead of racing to insert the same generation.
+        const [deployment] = await tx
+          .select({ id: deployments.id })
+          .from(deployments)
+          .where(eq(deployments.id, deploymentId))
+          .limit(1)
+          .for("update");
+        if (!deployment) return null;
+        const [latest] = await tx
+          .select()
+          .from(runtimeInstances)
+          .where(eq(runtimeInstances.deploymentId, deploymentId))
+          .orderBy(desc(runtimeInstances.generation))
+          .limit(1)
+          .for("update");
+        if (latest && (latest.status === "starting" || latest.status === "ready" || latest.status === "draining")) {
+          return null;
+        }
+        const [row] = await tx
+          .insert(runtimeInstances)
+          .values({
+            id: createId("rti"),
+            deploymentId,
+            generation: (latest?.generation ?? 0) + 1,
+            status: "ready",
+            endpointHost: endpoint.endpointHost,
+            endpointPort: endpoint.endpointPort,
+            startedAt: now,
+            readyAt: now,
+          })
+          .returning();
+        return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
+      });
     },
 
     async listRuntimeInstances(statuses, limit) {

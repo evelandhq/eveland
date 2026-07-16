@@ -251,6 +251,33 @@ describe("buildDockerStartCommand", () => {
   });
 });
 
+describe("createDockerAdapter listProcesses", () => {
+  test("lists running containers whose name starts with the prefix", async () => {
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: false,
+      stdout: "eveland-proj_alpha-dep_one\neveland-proj_beta-dep_two\n",
+    } as never);
+
+    await expect(adapter.listProcesses!("eveland-")).resolves.toEqual([
+      "eveland-proj_alpha-dep_one",
+      "eveland-proj_beta-dep_two",
+    ]);
+    expect(execa).toHaveBeenLastCalledWith(
+      "docker",
+      ["ps", "--format", "{{.Names}}", "--filter", "name=^eveland-"],
+      expect.objectContaining({ reject: false }),
+    );
+  });
+
+  test("throws when the docker CLI cannot list containers", async () => {
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, all: "Cannot connect to the Docker daemon" } as never);
+
+    await expect(adapter.listProcesses!("eveland-")).rejects.toThrow(/docker ps/);
+  });
+});
+
 describe("createDockerAdapter", () => {
   test("exposes the docker adapter name", () => {
     const adapter = createDockerAdapter(dockerAdapterConfig);

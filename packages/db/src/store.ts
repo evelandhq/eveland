@@ -134,6 +134,7 @@ export type Store = {
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   listDeployments(projectId: string): Promise<DeploymentRecord[]>;
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
+  getDeploymentByContainerName(containerName: string): Promise<DeploymentRecord | null>;
   updateDeploymentStatus(deploymentId: string, status: DeploymentStatus): Promise<DeploymentRecord | null>;
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
   ensureDeploymentRoutes(projectId: string, deploymentId: string, baseDomain: string): Promise<AgentRoute[]>;
@@ -209,6 +210,18 @@ export type Store = {
   }): Promise<ActivationLeaseClaim>;
   getRuntimeInstance(runtimeInstanceId: string): Promise<RuntimeInstance | null>;
   listRuntimeInstances(statuses: RuntimeInstanceStatus[], limit: number): Promise<RuntimeInstance[]>;
+  listDeploymentRuntimeInstances(deploymentId: string): Promise<RuntimeInstance[]>;
+  /**
+   * Brings an already-running but unmanaged host process under RuntimeInstance
+   * lifecycle management (orphan sweep). Creates a ready instance only when the
+   * deployment has no starting/ready/draining instance; returns null otherwise
+   * so callers never disturb an instance the activation or idle-reap flow owns.
+   */
+  adoptRuntimeInstance(
+    deploymentId: string,
+    endpoint: { endpointHost: string; endpointPort: number },
+    now?: Date,
+  ): Promise<RuntimeInstance | null>;
   updateRuntimeInstance(
     runtimeInstanceId: string,
     input: { status: RuntimeInstanceStatus; endpointHost?: string | null; endpointPort?: number | null; error?: string | null },
@@ -648,6 +661,14 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async getDeployment(deploymentId) {
       return state.deployments.find((deployment) => deployment.id === deploymentId) ?? null;
+    },
+
+    async getDeploymentByContainerName(containerName) {
+      // Container names embed the deployment id, so at most one row matches;
+      // newest-first keeps the answer deterministic even if that ever changes.
+      return [...state.deployments]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .find((deployment) => deployment.containerName === containerName) ?? null;
     },
 
     async updateDeploymentStatus(deploymentId, status) {
@@ -1353,6 +1374,38 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
 
     async getRuntimeInstance(runtimeInstanceId) {
       return state.runtimeInstances.find((candidate) => candidate.id === runtimeInstanceId) ?? null;
+    },
+
+    async listDeploymentRuntimeInstances(deploymentId) {
+      return state.runtimeInstances
+        .filter((candidate) => candidate.deploymentId === deploymentId)
+        .sort((a, b) => a.generation - b.generation);
+    },
+
+    async adoptRuntimeInstance(deploymentId, endpoint, now = new Date()) {
+      const deployment = state.deployments.find((candidate) => candidate.id === deploymentId);
+      if (!deployment) return null;
+      const latest = state.runtimeInstances
+        .filter((candidate) => candidate.deploymentId === deploymentId)
+        .sort((a, b) => b.generation - a.generation)[0];
+      if (latest && (latest.status === "starting" || latest.status === "ready" || latest.status === "draining")) {
+        return null;
+      }
+      const nowIso = now.toISOString();
+      const instance: RuntimeInstance = {
+        id: createId("rti"),
+        deploymentId,
+        generation: (latest?.generation ?? 0) + 1,
+        status: "ready",
+        endpointHost: endpoint.endpointHost,
+        endpointPort: endpoint.endpointPort,
+        startedAt: nowIso,
+        readyAt: nowIso,
+        stoppedAt: null,
+        lastError: null,
+      };
+      state.runtimeInstances.push(instance);
+      return instance;
     },
 
     async listRuntimeInstances(statuses, limit) {
