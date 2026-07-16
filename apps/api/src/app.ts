@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
+import { encodeAgentAuthEnvelope, type AgentAuthMethodDescriptor } from "@eveland/core/agent-auth";
 import type {
   ActivationLeaseClaim,
   AuthPrincipal,
@@ -36,6 +37,7 @@ import {
   verifyScheduleDispatchCredential,
 } from "@eveland/core/server/scheduler-dispatch";
 import {
+  createId,
   inferProjectSlugFromGitUrl,
   normalizeGitHttpHost,
   PROJECT_SLUG_MAX_LENGTH,
@@ -53,6 +55,18 @@ import {
   type PlaygroundRunner,
 } from "./gateway-playground.js";
 import { createBetterAuthRuntime } from "./auth.js";
+import { createAgentAuthModule, isAgentAuthFailure, listAgentAuthMethodDescriptors } from "@eveland/agent-auth";
+import {
+  normalizeAgentAuthConfig,
+  openAgentAuthConfig,
+  redactAgentAuthConfig,
+  sealAgentAuthConfig,
+  type OidcAuthorizationCodeConfig,
+} from "@eveland/agent-auth/config";
+import {
+  createOidcAuthorizationCodeProvider,
+  type OidcProtocol,
+} from "@eveland/agent-auth/oidc";
 
 const execFileAsync = promisify(execFile);
 
@@ -67,6 +81,11 @@ const gitRepositoryUrlSchema = z
   .min(1)
   .refine((value) => inferProjectSlugFromGitUrl(value) !== null, "Enter a Git repository URL with a repository name.");
 
+const agentAuthInputSchema = z.object({
+  method: z.string().min(1),
+  config: z.unknown(),
+});
+
 const createProjectSchema = z.discriminatedUnion("importKind", [
   z.object({
     name: projectNameSchema.optional(),
@@ -74,12 +93,14 @@ const createProjectSchema = z.discriminatedUnion("importKind", [
     gitUrl: gitRepositoryUrlSchema,
     gitlabPat: z.string().min(1).max(1024).optional(),
     deployAfterImport: z.boolean().optional(),
+    agentAuth: agentAuthInputSchema.optional(),
   }),
   z.object({
     name: projectNameSchema,
     importKind: z.literal("zip"),
     gitUrl: z.string().optional().nullable(),
     deployAfterImport: z.boolean().optional(),
+    agentAuth: agentAuthInputSchema.optional(),
   }),
 ]);
 
@@ -114,6 +135,12 @@ const createGitSourcePreflightSchema = z.object({
 });
 
 const secretSchema = environmentVariableSchema;
+
+const agentConnectionUpdateSchema = z.object({
+  expectedSecurityRevision: z.number().int().positive(),
+  method: z.string().min(1),
+  config: z.unknown(),
+});
 
 const playgroundMessageSchema = z.object({
   message: z.string().min(1),
@@ -236,6 +263,15 @@ export type AppOptions = {
   appSecretKey?: string;
   playgroundRunner?: PlaygroundRunner;
   playgroundProxy?: PlaygroundProxy;
+  oidcProtocol?: OidcProtocol;
+  oidcVerifyAccessToken?: (
+    accessToken: string,
+    config: OidcAuthorizationCodeConfig,
+    expected: { issuer: string; subject: string },
+  ) => Promise<{ issuer: string; subject: string }>;
+  oidcCallbackUrl?: string;
+  allowInsecureOidcIssuer?: boolean;
+  agentAuthNow?: () => Date;
   dataDir?: string;
   collectorHealth?: () => CollectorHealth;
   configurationDiagnostics?: () => Promise<SystemConfigurationDiagnostics>;
@@ -276,8 +312,89 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   assertValidSecretKey(appSecretKey);
   const playgroundRunner = options.playgroundRunner ?? runGatewayPlayground;
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
-  const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
+  const readAgentConnectionSnapshot = async (id: string) => {
+    const connection = await store.getAgentConnection(id);
+    if (!connection) return null;
+    return {
+      id: connection.id,
+      target: connection.target,
+      method: connection.method,
+      config: openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
+        agentConnectionId: connection.id,
+        method: connection.method,
+        securityRevision: connection.securityRevision,
+      }),
+      securityRevision: connection.securityRevision,
+    };
+  };
+  const oidcProvider = createOidcAuthorizationCodeProvider({
+    store,
+    appSecretKey,
+    callbackUrl: options.oidcCallbackUrl
+      ?? `${webOrigin.replace(/\/$/, "")}/api/eveland/agent-auth/callback/oidc`,
+    ...(options.oidcProtocol ? { protocol: options.oidcProtocol } : {}),
+    ...(options.oidcVerifyAccessToken ? { verifyAccessToken: options.oidcVerifyAccessToken } : {}),
+    allowInsecureIssuer: options.allowInsecureOidcIssuer ?? process.env.NODE_ENV !== "production",
+    ...(options.agentAuthNow ? { now: options.agentAuthNow } : {}),
+  });
+  const configPreflights = new Map<string, (config: Record<string, unknown>) => Promise<void>>([
+    [oidcProvider.registration.method, async (config) => oidcProvider.preflight(config as unknown as OidcAuthorizationCodeConfig)],
+  ]);
+  const interactionProviders = new Map([[oidcProvider.registration.method, oidcProvider]]);
+  const agentAuth = createAgentAuthModule({
+    connectionReader: { getAgentConnection: readAgentConnectionSnapshot },
+    registrations: [oidcProvider.registration],
+    transport: {
+      async request(input) {
+        const headers = new Headers();
+        if (input.init.accept) headers.set("accept", input.init.accept);
+        if (input.init.contentType) headers.set("content-type", input.init.contentType);
+        const search = new URLSearchParams(input.request.searchParams).toString();
+        return playgroundProxy({
+          projectId: input.target.projectId,
+          path: `${input.request.pathname}${search ? `?${search}` : ""}`,
+          method: input.init.method ?? "GET",
+          headers,
+          body: input.init.body ?? null,
+          agentAuthEnvelope: encodeAgentAuthEnvelope({
+            version: 1,
+            authority: input.authority,
+            headers: input.credential.kind === "headers" ? input.credential.headers : [],
+          }),
+          signal: input.init.signal,
+        });
+      },
+    },
+  });
+  const createProjectAgentConnection = async (
+    projectId: string,
+    input: { method: string; config: Record<string, unknown> },
+  ) => {
+    const id = createId("acon");
+    return store.createAgentConnection({
+      id,
+      target: { kind: "managed-project", projectId },
+      method: input.method,
+      configEncrypted: sealAgentAuthConfig(input.config, appSecretKey, {
+        agentConnectionId: id,
+        method: input.method,
+        securityRevision: 1,
+      }),
+    });
+  };
+  const getOrCreateProjectAgentConnection = async (projectId: string) => {
+    const existing = await store.getProjectAgentConnection(projectId);
+    if (existing) return existing;
+    try {
+      return await createProjectAgentConnection(projectId, { method: "local-dev", config: {} });
+    } catch (error) {
+      const concurrent = await store.getProjectAgentConnection(projectId);
+      if (concurrent) return concurrent;
+      throw error;
+    }
+  };
+  const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const enqueueLiveDeploymentRestarts = async (projectId: string) => {
     const deployments = (await store.listDeployments(projectId)).filter(
       (deployment) => deployment.status === "running" || deployment.status === "draining",
@@ -672,9 +789,143 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     return preflight ? c.json({ preflight }) : c.json({ error: "Source preflight not found" }, 404);
   });
 
+  app.get("/agent-auth/methods", (c) => c.json({ methods: listAgentAuthMethodDescriptors() }));
+
+  app.get("/agent-connections/:agentConnectionId/auth/interactions/:method/start", async (c) => {
+    c.header("cache-control", "no-store");
+    const provider = interactionProviders.get(c.req.param("method"));
+    if (!provider) return c.json({ error: "Agent Auth interaction not found" }, 404);
+    const connection = await readAgentConnectionSnapshot(c.req.param("agentConnectionId"));
+    if (!connection || connection.method !== provider.registration.method) {
+      return c.json({ error: "Agent Connection not found" }, 404);
+    }
+    const returnPath = c.req.query("returnPath");
+    if (!returnPath) return c.json({ error: "Agent Auth return path is required" }, 400);
+    try {
+      const interaction = await provider.start({
+        connection,
+        callerPrincipalId: options.auth ? c.get("principal").userId : "test-control-plane-user",
+        returnPath,
+      });
+      return c.redirect(interaction.authorizationUrl, 302);
+    } catch {
+      return c.json({ error: "Agent authorization could not be started" }, 400);
+    }
+  });
+
+  app.get("/agent-auth/callback/:method", async (c) => {
+    c.header("cache-control", "no-store");
+    const provider = interactionProviders.get(c.req.param("method"));
+    if (!provider) return c.json({ error: "Agent Auth interaction not found" }, 404);
+    const state = c.req.query("state");
+    if (!state) return c.json({ error: "OIDC state is required" }, 400);
+    const callbackUrl = new URL(provider.callbackUrl);
+    callbackUrl.search = new URL(c.req.url).search;
+    try {
+      const result = await provider.callback({
+        state,
+        currentUrl: callbackUrl,
+        callerPrincipalId: options.auth ? c.get("principal").userId : "test-control-plane-user",
+        getConnection: readAgentConnectionSnapshot,
+      });
+      return c.redirect(`${webOrigin.replace(/\/$/, "")}${result.returnPath}`, 302);
+    } catch {
+      return c.json({ error: "Agent authorization could not be completed" }, 400);
+    }
+  });
+
+  app.get("/projects/:projectId/playground/connection", async (c) => {
+    const project = await store.getProject(c.req.param("projectId"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const connection = await getOrCreateProjectAgentConnection(project.id);
+    const config = openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
+      agentConnectionId: connection.id,
+      method: connection.method,
+      securityRevision: connection.securityRevision,
+    });
+    const status = await agentAuth.status({
+      agentConnectionId: connection.id,
+      callerPrincipalId: options.auth ? c.get("principal").userId : "test-control-plane-user",
+    });
+    return c.json({
+      connection: {
+        id: connection.id,
+        target: connection.target,
+        method: connection.method,
+        securityRevision: connection.securityRevision,
+        config: redactAgentAuthConfig(connection.method, config as Record<string, unknown>),
+        createdAt: connection.createdAt,
+        updatedAt: connection.updatedAt,
+      },
+      status,
+    });
+  });
+
+  app.put("/agent-connections/:agentConnectionId", async (c) => {
+    const parsed = agentConnectionUpdateSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid Agent Connection input", issues: parsed.error.issues }, 400);
+    const connection = await store.getAgentConnection(c.req.param("agentConnectionId"));
+    if (!connection) return c.json({ error: "Agent Connection not found" }, 404);
+
+    let config: Record<string, unknown>;
+    try {
+      const existingConfig = connection.method === parsed.data.method
+        ? openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
+            agentConnectionId: connection.id,
+            method: connection.method,
+            securityRevision: connection.securityRevision,
+          })
+        : {};
+      const configInput = mergeWriteOnlyAgentAuthConfig(
+        parsed.data.method,
+        parsed.data.config,
+        existingConfig,
+        listAgentAuthMethodDescriptors(),
+      );
+      config = normalizeAgentAuthConfig(parsed.data.method, configInput);
+      await configPreflights.get(parsed.data.method)?.(config);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration" }, 422);
+    }
+    const nextRevision = parsed.data.expectedSecurityRevision + 1;
+    const configEncrypted = sealAgentAuthConfig(config, appSecretKey, {
+      agentConnectionId: connection.id,
+      method: parsed.data.method,
+      securityRevision: nextRevision,
+    });
+    const updated = await store.updateAgentConnection({
+      id: connection.id,
+      expectedSecurityRevision: parsed.data.expectedSecurityRevision,
+      method: parsed.data.method,
+      configEncrypted,
+    });
+    if (!updated) return c.json({ error: "Agent Connection changed; reload and retry" }, 409);
+    return c.json({
+      connection: {
+        id: updated.id,
+        target: updated.target,
+        method: updated.method,
+        securityRevision: updated.securityRevision,
+        config: redactAgentAuthConfig(updated.method, config),
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+      },
+    });
+  });
+
   app.post("/projects", async (c) => {
     if (isMultipartRequest(c)) {
-      return createZipProjectFromUpload(c, store, dataDir);
+      return createZipProjectFromUpload(
+        c,
+        store,
+        dataDir,
+        async (input) => {
+          const config = normalizeAgentAuthConfig(input.method, input.config);
+          await configPreflights.get(input.method)?.(config);
+          return { method: input.method, config };
+        },
+        createProjectAgentConnection,
+      );
     }
 
     const input = await c.req.json().catch(() => null);
@@ -741,6 +992,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         }
       }
     }
+
+    const agentAuthInput = parsed.data.agentAuth ?? { method: "local-dev", config: {} };
+    let config: Record<string, unknown>;
+    try {
+      config = normalizeAgentAuthConfig(agentAuthInput.method, agentAuthInput.config);
+      await configPreflights.get(agentAuthInput.method)?.(config);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration" }, 422);
+    }
+
     try {
       const project = parsed.data.importKind === "git"
         ? await store.createProject({
@@ -751,8 +1012,26 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
             deployAfterImport: parsed.data.deployAfterImport,
             ...(gitCredential ? { gitCredential } : {}),
           })
-        : await store.createProject({ ...parsed.data, name, requireExactSlug: true });
-      return c.json({ project }, 201);
+        : await store.createProject({
+            name,
+            importKind: "zip",
+            gitUrl: parsed.data.gitUrl,
+            requireExactSlug: true,
+            deployAfterImport: parsed.data.deployAfterImport,
+          });
+      const connection = await createProjectAgentConnection(project.id, { method: agentAuthInput.method, config });
+      return c.json({
+        project,
+        connection: {
+          id: connection.id,
+          target: connection.target,
+          method: connection.method,
+          securityRevision: connection.securityRevision,
+          config: redactAgentAuthConfig(connection.method, config),
+          createdAt: connection.createdAt,
+          updatedAt: connection.updatedAt,
+        },
+      }, 201);
     } catch (error) {
       if (error instanceof ProjectSlugConflictError) {
         return c.json({ error: error.message }, 409);
@@ -992,24 +1271,44 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       }
     }
 
-    if (isInitial) {
-      platformSession = await store.createSession({ projectId, deploymentId: null, trigger: "playground" });
-    }
-
     let upstream: Response;
     try {
-      upstream = await playgroundProxy({
-        projectId,
-        path: `${evePath}${requestUrl.search}`,
-        method: c.req.method,
-        headers: c.req.raw.headers,
-        body,
-        signal: c.req.raw.signal,
-      });
+      const connection = await getOrCreateProjectAgentConnection(projectId);
+      const result = await agentAuth.request(
+        {
+          agentConnectionId: connection.id,
+          callerPrincipalId: options.auth ? c.get("principal").userId : "test-control-plane-user",
+        },
+        {
+          pathname: evePath,
+          searchParams: Object.fromEntries(requestUrl.searchParams),
+        },
+        {
+          method: c.req.method as "GET" | "POST",
+          body,
+          contentType: c.req.header("content-type"),
+          accept: c.req.header("accept"),
+          signal: c.req.raw.signal,
+        },
+        { returnPath: `/projects/${projectId}/playground` },
+      );
+      if (isAgentAuthFailure(result)) {
+        if (result.code === "interaction_required" || result.code === "credential_rejected") return c.json(result, 401);
+        if (result.code === "forbidden") return c.json(result, 403);
+        if (result.code === "configuration_required" || result.code === "retry_required") return c.json(result, 409);
+        if (result.code === "configuration_invalid") return c.json(result, 422);
+        if (result.code === "provider_unavailable") return c.json(result, 503);
+        return c.json(result, 502);
+      }
+      upstream = result;
     } catch (error) {
       if (platformSession) await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
       const message = error instanceof Error ? error.message : String(error);
       return c.json({ error: "Playground request failed", detail: message }, 502);
+    }
+
+    if (isInitial) {
+      platformSession = await store.createSession({ projectId, deploymentId: null, trigger: "playground" });
     }
 
     if (!upstream.ok && platformSession) {
@@ -1375,6 +1674,26 @@ function currentUserId(c: Context<{ Variables: { principal: AuthPrincipal } }>):
   return c.get("principal")?.userId ?? "user_local_admin";
 }
 
+function mergeWriteOnlyAgentAuthConfig(
+  method: string,
+  input: unknown,
+  existing: unknown,
+  descriptors: AgentAuthMethodDescriptor[],
+): unknown {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+  if (typeof existing !== "object" || existing === null || Array.isArray(existing)) return input;
+  const descriptor = descriptors.find((candidate) => candidate.method === method);
+  if (!descriptor) return input;
+  const merged = { ...(input as Record<string, unknown>) };
+  for (const field of descriptor.fields) {
+    const value = merged[field.key];
+    if (field.secret && (value === undefined || value === "") && field.key in existing) {
+      merged[field.key] = (existing as Record<string, unknown>)[field.key];
+    }
+  }
+  return merged;
+}
+
 // The sync body is optional; only `{ "deploy": true }` opts into an automatic
 // deploy of the freshly synced source, otherwise the sync just refreshes it.
 async function readSyncDeployFlag(c: Context): Promise<boolean> {
@@ -1386,11 +1705,18 @@ async function readSyncDeployFlag(c: Context): Promise<boolean> {
   }
 }
 
-async function createZipProjectFromUpload(c: Context, store: Store, dataDir: string) {
+async function createZipProjectFromUpload(
+  c: Context,
+  store: Store,
+  dataDir: string,
+  prepareAgentAuth: (input: { method: string; config: unknown }) => Promise<{ method: string; config: Record<string, unknown> }>,
+  createConnection: (projectId: string, input: { method: string; config: Record<string, unknown> }) => Promise<Awaited<ReturnType<Store["createAgentConnection"]>>>,
+) {
   const form = await c.req.formData();
   const name = form.get("name");
   const archive = form.get("archive");
   const deployAfterImport = form.get("deployAfterImport") === "true";
+  const serializedAgentAuth = form.get("agentAuth");
 
   const parsedName = projectNameSchema.safeParse(name);
   if (!parsedName.success) {
@@ -1408,16 +1734,26 @@ async function createZipProjectFromUpload(c: Context, store: Store, dataDir: str
     return c.json({ error: "Project name is already in use." }, 409);
   }
 
-  const { sourcePath, uploadDir } = await extractZipUpload(archive, dataDir);
+  let agentAuth: { method: string; config: Record<string, unknown> };
   try {
-    const project = await store.createProject({
+    const input = typeof serializedAgentAuth === "string"
+      ? agentAuthInputSchema.parse(JSON.parse(serializedAgentAuth) as unknown)
+      : { method: "local-dev", config: {} };
+    agentAuth = await prepareAgentAuth(input);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration" }, 422);
+  }
+
+  const { sourcePath, uploadDir } = await extractZipUpload(archive, dataDir);
+  let project;
+  try {
+    project = await store.createProject({
       name: parsedName.data,
       importKind: "zip",
       sourcePath,
       requireExactSlug: true,
       deployAfterImport,
     });
-    return c.json({ project }, 201);
   } catch (error) {
     await rm(uploadDir, { recursive: true, force: true });
     if (error instanceof ProjectSlugConflictError) {
@@ -1425,6 +1761,20 @@ async function createZipProjectFromUpload(c: Context, store: Store, dataDir: str
     }
     throw error;
   }
+
+  const connection = await createConnection(project.id, agentAuth);
+  return c.json({
+    project,
+    connection: {
+      id: connection.id,
+      target: connection.target,
+      method: connection.method,
+      securityRevision: connection.securityRevision,
+      config: redactAgentAuthConfig(connection.method, agentAuth.config),
+      createdAt: connection.createdAt,
+      updatedAt: connection.updatedAt,
+    },
+  }, 201);
 }
 
 async function extractZipUpload(archive: File, dataDir: string): Promise<{ sourcePath: string; uploadDir: string }> {
