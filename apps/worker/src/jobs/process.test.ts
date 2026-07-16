@@ -1594,6 +1594,53 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toBeNull();
   });
 
+  test("delete_project drops the project's workflow database before the project row is removed", async () => {
+    const calls: string[] = [];
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Drop World Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "delete_project");
+    const spyingStore: Store = {
+      ...store,
+      async deleteProject(projectId) {
+        calls.push(`deleteProject:${projectId}`);
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(
+      processNextJob(spyingStore, "worker-a", {
+        dropProjectWorkflowWorld: async (_env, projectId) => {
+          calls.push(`dropWorld:${projectId}`);
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(calls).toEqual([`dropWorld:${project.id}`, `deleteProject:${project.id}`]);
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+  });
+
+  test("delete_project keeps the project when dropping its workflow database fails", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Drop Fail Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "delete_project");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        dropProjectWorkflowWorld: async () => {
+          throw new Error("workflow database is unreachable");
+        },
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      deletionError: expect.stringContaining("workflow database is unreachable"),
+    });
+  });
+
   test("delete_project removes runtime releases and only platform-managed project files", async () => {
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-delete-data-"));
     const externalSource = await mkdtemp(path.join(os.tmpdir(), "eveland-external-source-"));

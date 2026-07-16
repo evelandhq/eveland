@@ -15,7 +15,7 @@ import { createRuntimeAdapterForKind, createRuntimeAdapterFromEnv } from "../run
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
 import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
 import { PLATFORM_WORKFLOW_WORLD } from "../runtime/workflow-world.js";
-import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
+import { dropProjectWorkflowWorld, ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import { ensureDeploymentActive, startRuntimeInstance } from "../runtime/activation-manager.js";
 import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
@@ -33,6 +33,7 @@ export type ProcessJobOptions = {
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
   workflowPostgresUrl?: string;
   ensureProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<string | undefined>;
+  dropProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<void>;
   nodeEnv?: string;
   dataDir?: string;
   schedulerDispatchSecret?: string;
@@ -455,6 +456,11 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         if (release && adapter.removeRelease) await adapter.removeRelease(release.imageTag);
         removedReleases.add(releaseKey);
       }
+
+      // The project's derived workflow database goes with the project.
+      // Dropped before deleteProject so a failed drop leaves the project row
+      // in place for a retried deletion instead of leaking an orphan database.
+      await (options.dropProjectWorkflowWorld ?? dropProjectWorkflowWorld)(process.env, job.projectId);
 
       const sourceRevisions = await store.listSourceRevisions(job.projectId);
       const pendingSourcePaths = Array.isArray(job.payload.sourcePaths)

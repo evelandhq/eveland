@@ -502,6 +502,8 @@ workflow 隔离按 Project 物理分库：`WORKFLOW_POSTGRES_URL` 是 base URL�
 是派生后的 Project URL。不同 Project 的 runtime 不得共享同一个 workflow 数据库——
 共享库意味着任何 runtime 都能认领其他 Project 的 turn，并在冷启动时把其他 Project 的
 active runs 重新入队到自己队列。base URL 的数据库角色因此需要 `CREATEDB` 权限。
+删除 Project 时必须一并删除其派生 workflow 数据库（在项目行删除之前执行，删库失败
+必须让删除可重试），派生库不得作为孤儿残留。
 当 Deployment URL 使用 `host.docker.internal` 且除 host 外与 `DATABASE_URL` 完全一致时，
 worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
 `WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。

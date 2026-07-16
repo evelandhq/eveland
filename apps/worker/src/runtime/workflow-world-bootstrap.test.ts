@@ -3,6 +3,7 @@ import {
   bootstrapWorkflowWorld,
   deriveProjectWorkflowDatabaseName,
   deriveProjectWorkflowUrl,
+  dropProjectWorkflowWorld,
   ensureProjectWorkflowWorld,
 } from "./workflow-world-bootstrap.js";
 
@@ -248,5 +249,50 @@ describe("ensureProjectWorkflowWorld", () => {
       ),
     ).rejects.toThrow(/\[redacted\]/);
     expect(run).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("dropProjectWorkflowWorld", () => {
+  test("does nothing without a platform world URL", async () => {
+    const dropDatabase = vi.fn();
+
+    await expect(
+      dropProjectWorkflowWorld({}, "proj_abc123", { dropDatabase, cache: new Set() }),
+    ).resolves.toBeUndefined();
+    expect(dropDatabase).not.toHaveBeenCalled();
+  });
+
+  test("drops the project database over the worker-reachable URL and forgets the ensure cache", async () => {
+    const ensureDatabase = vi.fn(async () => {});
+    const dropDatabase = vi.fn(async () => {});
+    const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
+    const cache = new Set<string>();
+    const env = {
+      WORKFLOW_POSTGRES_URL: "postgres://world:secret@host.docker.internal:5432/eveland",
+      DATABASE_URL: "postgres://world:secret@postgres:5432/eveland",
+    };
+
+    await ensureProjectWorkflowWorld(env, "proj_abc123", {
+      ensureDatabase,
+      run,
+      resolveBin: () => "/bootstrap.js",
+      cache,
+    });
+    await dropProjectWorkflowWorld(env, "proj_abc123", { dropDatabase, cache });
+
+    expect(dropDatabase).toHaveBeenCalledExactlyOnceWith(
+      "postgres://world:secret@postgres:5432/eveland",
+      deriveProjectWorkflowDatabaseName("proj_abc123"),
+    );
+
+    // The cache entry is gone, so a re-created project with the same id gets
+    // a fresh database instead of a stale cache hit.
+    await ensureProjectWorkflowWorld(env, "proj_abc123", {
+      ensureDatabase,
+      run,
+      resolveBin: () => "/bootstrap.js",
+      cache,
+    });
+    expect(ensureDatabase).toHaveBeenCalledTimes(2);
   });
 });

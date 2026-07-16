@@ -129,6 +129,45 @@ export async function ensureProjectWorkflowWorld(
   return runtimeUrl;
 }
 
+export type ProjectWorkflowWorldDropDeps = {
+  dropDatabase: (adminUrl: string, databaseName: string) => Promise<void>;
+  cache: Set<string>;
+};
+
+/**
+ * Deleting a project deletes its derived workflow database; without this the
+ * per-project databases would accumulate as orphans. The ensure cache entry is
+ * forgotten so a later project with the same id gets a freshly bootstrapped
+ * database instead of a stale cache hit.
+ */
+export async function dropProjectWorkflowWorld(
+  env: NodeJS.ProcessEnv,
+  projectId: string,
+  overrides: Partial<ProjectWorkflowWorldDropDeps> = {},
+): Promise<void> {
+  const workflowPostgresUrl = env.WORKFLOW_POSTGRES_URL;
+  if (!workflowPostgresUrl) return;
+  const deps: ProjectWorkflowWorldDropDeps = {
+    dropDatabase: dropDatabaseIfExists,
+    cache: ensuredProjectWorlds,
+    ...overrides,
+  };
+  const bootstrapBaseUrl = resolveBootstrapPostgresUrl(env, workflowPostgresUrl);
+  await deps.dropDatabase(bootstrapBaseUrl, deriveProjectWorkflowDatabaseName(projectId));
+  deps.cache.delete(deriveProjectWorkflowUrl(workflowPostgresUrl, projectId));
+}
+
+async function dropDatabaseIfExists(adminUrl: string, databaseName: string): Promise<void> {
+  const sql = postgres(adminUrl, { max: 1 });
+  try {
+    // WITH (FORCE) (PG13+) terminates straggler runtime connections; the
+    // project's deployments were already stopped earlier in delete_project.
+    await sql.unsafe(`drop database if exists "${databaseName}" with (force)`);
+  } finally {
+    await sql.end();
+  }
+}
+
 /**
  * CREATE DATABASE cannot run inside a transaction and has no IF NOT EXISTS,
  * so existence is probed first and the duplicate_database race (42P04) from a
