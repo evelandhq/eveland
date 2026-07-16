@@ -230,6 +230,8 @@ describe("web application shell", () => {
     expect(playground).toContain("<Confirmation")
     expect(playground).toContain("<PromptInput")
     expect(playground).toContain("PromptInputActionAddAttachments")
+    expect(playground).toContain('agent.status === "submitted"')
+    expect(playground).toContain("Starting agent and sending your message")
     expect(playground).not.toContain("TimelineEvent")
     expect(playground).not.toContain("Current session")
     expect(playground).not.toContain("<pre")

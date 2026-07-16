@@ -766,9 +766,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     let platformSession = pathSessionId ? await store.getSessionByEveSessionId(projectId, pathSessionId) : null;
     if (pathSessionId && !platformSession) return c.json({ error: "Playground session not found" }, 404);
     if (isInitial) {
-      const deployment = await store.getCurrentDeployment(projectId);
-      if (!deployment || deployment.status !== "running") return c.json({ error: "No running deployment" }, 409);
-      platformSession = await store.createSession({ projectId, deploymentId: deployment.id, trigger: "playground" });
+      platformSession = await store.createSession({ projectId, deploymentId: null, trigger: "playground" });
     }
 
     let upstream: Response;
@@ -824,7 +822,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     }
 
     const deployment = await store.getCurrentDeployment(projectId);
-    if (!deployment || deployment.status !== "running") {
+    if (!deployment || (deployment.status !== "running" && deployment.status !== "stopped")) {
       return c.json({ error: "No running deployment" }, 409);
     }
 

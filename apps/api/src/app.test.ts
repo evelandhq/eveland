@@ -850,6 +850,176 @@ describe("api app", () => {
     await expect(store.listSessions(project.id)).resolves.toEqual([expect.objectContaining({ trigger: "playground", status: "waiting" })]);
   });
 
+  test("lets the legacy Playground runner activate a dormant current Deployment", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Dormant Legacy Playground Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/dormant-legacy-playground",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/playground:legacy-dormant",
+      containerName: "eveland-playground-legacy-dormant",
+      internalPort: 3000,
+      hostPort: 41007,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const playgroundRunner = vi.fn(async () => ({
+      response: "Awake",
+      eveSessionId: "eve_legacy_dormant",
+      continuationToken: "continue_legacy_dormant",
+    }));
+    const app = createApp(store, { playgroundRunner });
+
+    const response = await app.request(`/projects/${project.id}/playground`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Wake legacy" }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(playgroundRunner).toHaveBeenCalledWith(expect.objectContaining({
+      deployment: expect.objectContaining({ id: deployment.id, status: "stopped" }),
+      message: "Wake legacy",
+    }));
+  });
+
+  test("forwards a canonical Playground session request when the current Deployment is dormant", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Dormant Playground Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/dormant-playground",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/playground:dormant",
+      containerName: "eveland-playground-dormant",
+      internalPort: 3000,
+      hostPort: 41004,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const playgroundProxy = vi.fn(async () => {
+      await store.bindSession({
+        projectId: project.id,
+        eveSessionId: "eve_dormant",
+        routeId: "route_dormant",
+        deploymentId: deployment.id,
+        trigger: "playground",
+        variantName: null,
+        experimentId: null,
+        requestId: "req_dormant",
+        remoteIp: null,
+        affinityFingerprint: null,
+        affinitySource: null,
+      });
+      return new Response(JSON.stringify({ sessionId: "eve_dormant", continuationToken: "continue_dormant" }), {
+        status: 202,
+        headers: { "content-type": "application/json", "x-eve-session-id": "eve_dormant" },
+      });
+    });
+    const app = createApp(store, { playgroundProxy });
+
+    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Wake up" }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(playgroundProxy).toHaveBeenCalledOnce();
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({ eveSessionId: "eve_dormant", deploymentId: deployment.id, status: "running" }),
+    ]);
+  });
+
+  test("attributes a canonical Playground Session to the Gateway-selected Deployment", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Routed Playground Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/routed-playground",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const projectCurrentDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/playground:current",
+      containerName: "eveland-playground-current",
+      internalPort: 3000,
+      hostPort: 41005,
+      runtimeKind: "docker",
+    });
+    const gatewaySelectedDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/playground:selected",
+      containerName: "eveland-playground-selected",
+      internalPort: 3000,
+      hostPort: 41006,
+      runtimeKind: "docker",
+    });
+    const app = createApp(store, {
+      async playgroundProxy() {
+        await store.bindSession({
+          projectId: project.id,
+          eveSessionId: "eve_routed",
+          routeId: "route_weighted",
+          deploymentId: gatewaySelectedDeployment.id,
+          trigger: "playground",
+          variantName: "selected",
+          experimentId: "route_weighted:r2",
+          requestId: "req_routed",
+          remoteIp: null,
+          affinityFingerprint: null,
+          affinitySource: null,
+        });
+        return new Response(JSON.stringify({ sessionId: "eve_routed", continuationToken: "continue_routed" }), {
+          status: 202,
+          headers: { "content-type": "application/json", "x-eve-session-id": "eve_routed" },
+        });
+      },
+    });
+
+    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Use the selected variant" }),
+    });
+
+    expect(response.status).toBe(202);
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        eveSessionId: "eve_routed",
+        deploymentId: gatewaySelectedDeployment.id,
+        routeId: "route_weighted",
+        experimentId: "route_weighted:r2",
+        variantName: "selected",
+      }),
+    ]);
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: projectCurrentDeployment.id });
+    expect(gatewaySelectedDeployment.id).not.toBe(projectCurrentDeployment.id);
+  });
+
   test("keeps one platform Session across streamed Playground turns and HITL continuation", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Streaming Playground Agent", importKind: "zip" });
