@@ -1,6 +1,7 @@
 import http from "node:http";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Readable } from "node:stream";
+import { AGENT_AUTH_ENVELOPE_HEADER, decodeAgentAuthEnvelope, type AgentAuthEnvelope } from "@eveland/core/agent-auth";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
 import { createConfigurationSnapshot, type ConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import type { DeploymentRecord, ResolvedAgentRoute, SessionBinding as GatewaySessionBinding } from "@eveland/core/contracts";
@@ -86,6 +87,16 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       return context.json({ error: "Not found" }, 404);
     }
 
+    let authEnvelope: AgentAuthEnvelope;
+    try {
+      const encodedEnvelope = context.req.header(AGENT_AUTH_ENVELOPE_HEADER);
+      authEnvelope = encodedEnvelope
+        ? decodeAgentAuthEnvelope(encodedEnvelope)
+        : { version: 1, authority: "loopback", headers: [] };
+    } catch {
+      return context.json({ error: "Invalid Agent credential envelope" }, 400);
+    }
+
     const requestUrl = new URL(context.req.url);
     const playgroundPrefix = `/internal/projects/${encodeURIComponent(context.req.param("projectId"))}/playground`;
     const evePath = requestUrl.pathname.slice(playgroundPrefix.length);
@@ -132,12 +143,12 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       const body = requestHasBody(context.req.method)
         ? await readLimitedBody(context.req.raw.body, PLAYGROUND_MAX_TRANSPORT_BYTES, context.req.raw.signal)
         : null;
-      const authority = `localhost:${target.hostPort}`;
+      const authority = authEnvelope.authority === "canonical" ? route.hostname : `localhost:${target.hostPort}`;
       upstream = await proxyToDeployment({
         port: activation?.endpointPort ?? target.hostPort,
         path: `${evePath}${requestUrl.search}`,
         method: context.req.method,
-        headers: buildInternalPlaygroundHeaders(context.req.raw.headers, authority),
+        headers: buildInternalPlaygroundHeaders(context.req.raw.headers, authority, authEnvelope.headers),
         body,
         signal: context.req.raw.signal,
         timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
@@ -835,12 +846,13 @@ function buildUpstreamHeaders(
   return headers;
 }
 
-function buildInternalPlaygroundHeaders(input: Headers, authority: string): Headers {
+function buildInternalPlaygroundHeaders(input: Headers, authority: string, credentialHeaders: Array<[string, string]> = []): Headers {
   const headers = new Headers({ host: authority });
   const accept = input.get("accept");
   const contentType = input.get("content-type");
   if (accept) headers.set("accept", accept);
   if (contentType) headers.set("content-type", contentType);
+  for (const [name, value] of credentialHeaders) headers.set(name, value);
   return headers;
 }
 

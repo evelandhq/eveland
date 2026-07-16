@@ -858,6 +858,79 @@ describe("Gateway", () => {
     expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({ kind: "stream" }), expect.any(AbortSignal));
   });
 
+  test("applies a trusted Agent credential envelope only on the internal Playground path", async () => {
+    const requests: Array<{ host: string | undefined; authorization: string | undefined }> = [];
+    const upstream = await startUpstream((request, response) => {
+      requests.push({ host: request.headers.host, authorization: request.headers.authorization });
+      response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": "eve_auth" });
+      response.end(JSON.stringify({ sessionId: "eve_auth" }));
+    });
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+    });
+    const envelope = Buffer.from(JSON.stringify({
+      version: 1,
+      authority: "canonical",
+      headers: [["authorization", "Bearer agent-credential"]],
+    })).toString("base64url");
+
+    const internal = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer service-secret",
+        "content-type": "application/json",
+        "x-eveland-agent-auth": envelope,
+      },
+      body: JSON.stringify({ message: "protected" }),
+    });
+    const publicRequest = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "content-type": "application/json",
+        "x-eveland-agent-auth": envelope,
+      },
+      body: JSON.stringify({ message: "public" }),
+    });
+
+    expect(internal.status).toBe(202);
+    expect(publicRequest.status).toBe(202);
+    expect(requests).toEqual([
+      { host: "p-alpha.agent.localhost", authorization: "Bearer agent-credential" },
+      { host: "p-alpha.agent.localhost", authorization: undefined },
+    ]);
+  });
+
+  test("rejects an invalid Agent credential envelope before acquiring an activation lease", async () => {
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: "lease_invalid_auth", endpointPort: 1 })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repository([route({ deploymentStatus: "stopped" })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+      activationClient,
+    });
+
+    const response = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer service-secret",
+        "content-type": "application/json",
+        "x-eveland-agent-auth": "not-an-envelope",
+      },
+      body: JSON.stringify({ message: "protected" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(activationClient.activate).not.toHaveBeenCalled();
+    expect(activationClient.release).not.toHaveBeenCalled();
+  });
+
   test("invalidates cached Host resolution through the service-authenticated control path", async () => {
     const first = await startUpstream((_request, response) => response.end("first"));
     const second = await startUpstream((_request, response) => response.end("second"));
