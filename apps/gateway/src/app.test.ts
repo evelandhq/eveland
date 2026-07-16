@@ -88,6 +88,76 @@ describe("Gateway", () => {
     await expect(previewResponse.json()).resolves.toEqual({ path: "/custom", host: "d-v1--p-alpha.agent.localhost:4080" });
   });
 
+  test("rejects public Eve session traffic for the selected unsupported deployment before proxy or activation", async () => {
+    let upstreamRequests = 0;
+    const upstream = await startUpstream((_request, response) => {
+      upstreamRequests += 1;
+      response.end("unexpected");
+    });
+    const routed = route({ hostPort: upstream.port });
+    const repo = repository([routed]);
+    repo.bindings.push({
+      id: "bind_old_eve",
+      projectId: routed.projectId,
+      eveSessionId: "eve_old",
+      routeId: routed.id,
+      deploymentId: "dep_1",
+      trigger: "api",
+      variantName: null,
+      experimentId: null,
+      requestId: "req_original",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-07-15T00:00:00.000Z",
+      updatedAt: "2026-07-15T00:00:00.000Z",
+    });
+    repo.getDeploymentEveVersion = vi.fn(async () => ({
+      version: "0.22.6",
+      expected: "0.24.x" as const,
+      supported: false,
+      sourceRevisionId: "src_old",
+    }));
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: "lease_unexpected", endpointPort: upstream.port })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+    });
+
+    for (const request of [
+      { method: "POST", path: "/eve/v1/session" },
+      { method: "POST", path: "/eve/v1/session/eve_old" },
+      { method: "GET", path: "/eve/v1/session/eve_old/stream" },
+    ]) {
+      const response = await app.request(`http://p-alpha.agent.localhost${request.path}`, {
+        method: request.method,
+        headers: { host: "p-alpha.agent.localhost" },
+      });
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: "Unsupported Eve version",
+        detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.24.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+        eveVersion: {
+          version: "0.22.6",
+          expected: "0.24.x",
+          supported: false,
+          sourceRevisionId: "src_old",
+        },
+      });
+    }
+
+    expect(repo.getDeploymentEveVersion).toHaveBeenCalledTimes(3);
+    expect(repo.getDeploymentEveVersion).toHaveBeenCalledWith("dep_1");
+    expect(activationClient.activate).not.toHaveBeenCalled();
+    expect(upstreamRequests).toBe(0);
+  });
+
   test("hides unknown and disabled hosts, and reports routes without a running target", async () => {
     const disabled = route({ hostname: "p-disabled.agent.localhost", enabled: false });
     const stopped = route({ hostname: "p-stopped.agent.localhost", deploymentStatus: "stopped" });
@@ -197,6 +267,7 @@ describe("Gateway", () => {
       ],
     });
     const repo = repository([routed]);
+    repo.getDeploymentEveVersion = vi.fn(repo.getDeploymentEveVersion);
     repo.bindings.push({
       id: "bind_stopped",
       projectId: routed.projectId,
@@ -234,6 +305,7 @@ describe("Gateway", () => {
       deploymentId: "dep_bound",
       kind: "turn",
     }), expect.any(AbortSignal));
+    expect(repo.getDeploymentEveVersion).toHaveBeenCalledWith("dep_bound");
   });
 
   test("preserves Agent auth and cookies while rebuilding spoofable forwarding headers", async () => {
@@ -873,6 +945,11 @@ function repository(routes: ResolvedAgentRoute[]): GatewayRepository & { binding
     },
     async getDeployment(deploymentId) {
       return deployments.get(deploymentId) ?? null;
+    },
+    async getDeploymentEveVersion(deploymentId) {
+      return deployments.has(deploymentId)
+        ? { version: "0.24.4", expected: "0.24.x", supported: true, sourceRevisionId: `src-${deploymentId}` }
+        : null;
     },
     async findSessionBinding(projectId, eveSessionId) {
       return (bindings.find((binding) => binding.projectId === projectId && binding.eveSessionId === eveSessionId) as never) ?? null;

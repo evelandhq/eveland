@@ -36,6 +36,7 @@ export async function scanEveSource(input: {
     summary: {
       layout: inspection.layout,
       projectName: inspection.projectName,
+      eveVersion: inspection.eveVersion,
       ...inspection.summary,
     },
     envVars: inspection.envVars,

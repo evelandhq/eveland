@@ -63,6 +63,7 @@ import type {
 } from "@eveland/core/contracts";
 import { validateRouteTargets } from "@eveland/core/routing";
 import { getNextRunAt } from "@eveland/core/schedules";
+import { createEveVersionInfo, readDeclaredEveVersion } from "@eveland/core/source";
 
 const defaultOwner = {
   id: "user_local_admin",
@@ -687,6 +688,33 @@ export function createPostgresStore(database: Database): Store {
     async getDeployment(deploymentId) {
       const [deployment] = await db.select().from(deployments).where(eq(deployments.id, deploymentId)).limit(1);
       return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
+    async getDeploymentEveVersion(deploymentId) {
+      const [record] = await db
+        .select({
+          sourceRevisionId: sourceRevisions.id,
+          summary: sourceRevisions.summary,
+        })
+        .from(deployments)
+        .innerJoin(releases, eq(releases.id, deployments.releaseId))
+        .innerJoin(sourceRevisions, eq(sourceRevisions.id, releases.sourceRevisionId))
+        .where(eq(deployments.id, deploymentId))
+        .limit(1);
+      if (!record) return null;
+      const summary = record.summary && typeof record.summary === "object"
+        ? record.summary as Record<string, unknown>
+        : {};
+      let version = typeof summary.eveVersion === "string" ? summary.eveVersion : null;
+      if (!version) {
+        const [packageJson] = await db
+          .select({ path: sourceFiles.path, content: sourceFiles.content })
+          .from(sourceFiles)
+          .where(and(eq(sourceFiles.revisionId, record.sourceRevisionId), eq(sourceFiles.path, "package.json")))
+          .limit(1);
+        if (packageJson) version = readDeclaredEveVersion([packageJson]);
+      }
+      return createEveVersionInfo(version, record.sourceRevisionId);
     },
 
     async getDeploymentByContainerName(containerName) {

@@ -1,5 +1,6 @@
 import type { Job } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
+import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@eveland/core/source";
 import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eveland/core/server/secrets";
 import {
   createScheduleDispatchCredential,
@@ -804,8 +805,12 @@ function parseEncryptedSecret(value: string): EncryptedSecret {
 
 async function resolveRuntimeCommandContext(sourcePath: string): Promise<RuntimeCommandContext> {
   const packageJson = await readPackageJson(sourcePath);
+  const eveVersion = declaredEveVersion(packageJson);
+  if (!isSupportedEveDependency(eveVersion)) {
+    throw new Error(unsupportedEveVersionMessage(eveVersion));
+  }
   return {
-    isEveProject: isEveProject(packageJson),
+    isEveProject: true,
     hasLockfile: await fileExists(path.join(sourcePath, "package-lock.json")),
     scripts: packageJson?.scripts ?? {},
   };
@@ -820,8 +825,9 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-function isEveProject(packageJson: PackageJson | null): boolean {
-  return typeof packageJson?.dependencies?.eve === "string" || typeof packageJson?.devDependencies?.eve === "string";
+function declaredEveVersion(packageJson: PackageJson | null): string | null {
+  const version = packageJson?.dependencies?.eve ?? packageJson?.devDependencies?.eve;
+  return typeof version === "string" && version.trim().length > 0 ? version.trim() : null;
 }
 
 type PackageJson = {

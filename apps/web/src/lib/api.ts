@@ -117,6 +117,13 @@ export type AgentEndpoints = {
   previews: string[];
 };
 
+export type EveVersionInfo = {
+  version: string | null;
+  expected: "0.24.x";
+  supported: boolean;
+  sourceRevisionId: string | null;
+};
+
 export type Deployment = {
   id: string;
   deploymentKey: string;

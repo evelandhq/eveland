@@ -6,6 +6,7 @@ import type {
   AgentEndpoints,
   CollectorHealth,
   DeploymentOverview,
+  EveVersionInfo,
   LogLine,
   ModelUsageEvent,
   Project,
@@ -28,6 +29,8 @@ export const getProjects = () => apiGet<{ projects: Project[] }>("/projects").th
 export const getProject = (projectId: string) => apiGet<{ project: Project | null }>(`/projects/${projectId}`).then((data) => data.project);
 export const getAgentEndpoints = (projectId: string) =>
   apiGetOptional<AgentEndpoints>(`/projects/${projectId}/endpoints`).then((data) => data ?? { stable: null, previews: [] });
+export const getEveVersion = (projectId: string) =>
+  apiGet<{ eveVersion: EveVersionInfo }>(`/projects/${projectId}/eve-version`).then((data) => data.eveVersion);
 export const getDeploymentOverview = (projectId: string) => apiGet<DeploymentOverview>(`/projects/${projectId}/deployments`);
 export const getVariantMetrics = (projectId: string) => apiGet<{ variants: VariantMetric[] }>(`/projects/${projectId}/variant-metrics`).then((data) => data.variants);
 export const getSecrets = (projectId: string) => apiGet<{ secrets: PublicSecret[] }>(`/projects/${projectId}/secrets`).then((data) => data.secrets);

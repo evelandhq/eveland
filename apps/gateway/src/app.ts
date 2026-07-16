@@ -7,6 +7,11 @@ import type { DeploymentRecord, ResolvedAgentRoute, SessionBinding as GatewaySes
 import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
 import { selectWeightedTarget } from "@eveland/core/routing";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
+import {
+  createEveVersionInfo,
+  unsupportedEveVersionMessage,
+  type EveVersionInfo,
+} from "@eveland/core/source";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono } from "hono";
 
@@ -16,6 +21,7 @@ export type GatewayRepository = {
   findRouteByHostname(hostname: string): Promise<ResolvedAgentRoute | null>;
   findProjectRoute(projectId: string): Promise<ResolvedAgentRoute | null>;
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
+  getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
   findSessionBinding(projectId: string, eveSessionId: string): Promise<GatewaySessionBinding | null>;
   bindSession(input: Omit<GatewaySessionBinding, "id" | "createdAt" | "updatedAt">): Promise<unknown>;
 };
@@ -96,6 +102,8 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     const activationOwnerId = crypto.randomUUID();
     const target = await resolveTarget(repository, route, binding, crypto.randomUUID(), Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
+    const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
+    if (versionFailure) return versionFailure;
     const declaredContentLength = Number(context.req.header("content-length"));
     if (Number.isFinite(declaredContentLength) && declaredContentLength > PLAYGROUND_MAX_TRANSPORT_BYTES) {
       return context.json({ error: "Request body too large" }, 413);
@@ -195,6 +203,8 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     const activationOwnerId = crypto.randomUUID();
     const target = await resolveTarget(repository, route, null, crypto.randomUUID(), Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
+    const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
+    if (versionFailure) return versionFailure;
 
     let activation: { leaseId: string; endpointPort: number } | null = null;
     if (options.activationClient) {
@@ -305,6 +315,10 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     const binding = pathSessionId ? await repository.findSessionBinding(route.projectId, pathSessionId) : null;
     const target = await resolveTarget(repository, route, binding, affinity.key, Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
+    if (isEveSessionRequest(context.req.method, requestUrl.pathname)) {
+      const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
+      if (versionFailure) return versionFailure;
+    }
     const declaredContentLength = Number(context.req.header("content-length"));
     if (Number.isFinite(declaredContentLength) && declaredContentLength > maxRequestBodyBytes) {
       return context.json({ error: "Request body too large" }, 413);
@@ -401,6 +415,27 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   });
 
   return app;
+}
+
+async function unsupportedDeploymentResponse(
+  repository: GatewayRepository,
+  deploymentId: string,
+): Promise<Response | null> {
+  const eveVersion = await repository.getDeploymentEveVersion(deploymentId) ?? createEveVersionInfo(null, null);
+  if (eveVersion.supported) return null;
+  return Response.json({
+    error: "Unsupported Eve version",
+    detail: unsupportedEveVersionMessage(eveVersion.version),
+    eveVersion,
+  }, { status: 409 });
+}
+
+function isEveSessionRequest(method: string, pathname: string): boolean {
+  return (
+    (method === "POST" && pathname === "/eve/v1/session") ||
+    (method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(pathname)) ||
+    (method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(pathname))
+  );
 }
 
 async function readPlaygroundStream(

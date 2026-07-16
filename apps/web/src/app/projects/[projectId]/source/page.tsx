@@ -15,7 +15,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
-import { getSourceFile, getSourceFiles } from '@/lib/server-api';
+import { getEveVersion, getSourceFile, getSourceFiles } from '@/lib/server-api';
 import { cn } from '@/lib/utils';
 import { getSourceLanguage, highlightSourceCode } from '@/lib/source-highlight';
 
@@ -30,7 +30,7 @@ export default async function SourcePage({
 }) {
   const { projectId } = await params;
   const { path } = await searchParams;
-  const files = await getSourceFiles(projectId);
+  const [files, eveVersion] = await Promise.all([getSourceFiles(projectId), getEveVersion(projectId)]);
   const selectedPath = path ?? files[0]?.path ?? null;
   const selectedFile = selectedPath ? await getSourceFile(projectId, selectedPath) : null;
   const highlightedSource = selectedFile
@@ -60,8 +60,9 @@ export default async function SourcePage({
             ))}
           </nav>
         </CardContent>
-        <CardFooter className="border-t text-xs text-muted-foreground">
-          {files.length} indexed {files.length === 1 ? 'file' : 'files'}
+        <CardFooter className="flex-col items-start border-t text-xs text-muted-foreground">
+          <span>{files.length} indexed {files.length === 1 ? 'file' : 'files'}</span>
+          <span>Eve {eveVersion.version ?? 'Unknown'} · requires {eveVersion.expected}</span>
         </CardFooter>
       </Card>
 

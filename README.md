@@ -76,6 +76,12 @@ Public development endpoints use `http://<projectSlug>.agent.localhost:4080`; im
 `http://<eightCharacterDeploymentKey>--<projectSlug>.agent.localhost:4080`. Gateway validates the complete Host,
 while deployment ports remain bound only to `127.0.0.1` and are not product URLs.
 
+Imported Agents must declare an `eve` dependency wholly contained in the verified `0.24.x` line. Eveland
+fails closed during import, build, restart, cold activation, Playground, and public `/eve/v1/session` traffic
+when the dependency is missing, outside that line, or cannot be proven compatible; the diagnostic tells the
+developer to upgrade instead of attempting an older Eve protocol. Project Overview, Source, and Playground show
+the detected dependency version and the required line.
+
 Local Docker Deployments receive the same injected `@eveland/sandbox-bwrap` backend as
 systemd Deployments. Their generated image includes bubblewrap plus the platform sandbox
 toolchain (`bash`, Node 24/`npm`, `pnpm` 11.7.0, `rg`, GNU `grep`/`find`, `git`, `curl`,

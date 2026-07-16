@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseScheduleSource } from "@eveland/core/schedules";
+import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@eveland/core/source";
 import ts from "typescript";
 
-const supportedEveRange = "0.24.x";
 const reservedOriginalSchedule = "__evelandOriginalSchedule";
 const reservedOriginalMarkdown = "__evelandOriginalMarkdown";
 const reservedChannelPath = "agent/channels/eveland-scheduler.ts";
@@ -30,7 +30,7 @@ export async function injectSchedulerAdapter(input: { releaseDir: string }): Pro
   const eveVersion = await readDeclaredEveVersion(releaseDir);
   if (eveVersion === null || !isSupportedEveDependency(eveVersion)) {
     throw new Error(
-      `The Eveland scheduler adapter supports Eve ${supportedEveRange}; found ${eveVersion ?? "no Eve dependency"}. Add or update the version-gated adapter before deploying this Release.`,
+      `The Eveland scheduler adapter supports Eve ${SUPPORTED_EVE_VERSION_RANGE}; found ${eveVersion ?? "no Eve dependency"}. Add or update the version-gated adapter before deploying this Release.`,
     );
   }
 
@@ -95,13 +95,6 @@ export async function injectSchedulerAdapter(input: { releaseDir: string }): Pro
   await mkdir(path.dirname(channelPath), { recursive: true });
   await writeFile(channelPath, generateSchedulerChannel(definitions));
   return { eveVersion, channelPath: reservedChannelPath, definitions };
-}
-
-function isSupportedEveDependency(specifier: string): boolean {
-  // Any dependency that can only resolve inside 0.24.x: an exact 0.24 patch,
-  // a tilde/caret range anchored on one (both stay below 0.25.0 for a 0.x
-  // minor), or the whole-minor forms 0.24, 0.24.x, and 0.24.*.
-  return /^[~^]?0\.24\.\d+$/.test(specifier.trim()) || /^0\.24(\.[x*])?$/.test(specifier.trim());
 }
 
 function transformModuleSchedule(sourcePath: string, content: string): { code: string; cron: string; kind: "markdown" | "handler" } {
@@ -332,7 +325,7 @@ function resolveDefinitionExpression(sourceFile: ts.SourceFile, expression: ts.E
     if (ts.isCallExpression(candidate)) candidate = candidate.arguments[0] ?? candidate;
   }
   if (!ts.isObjectLiteralExpression(candidate)) {
-    throw new Error(`Schedule ${sourceFile.fileName} must expose a statically analyzable Eve ${supportedEveRange} definition.`);
+    throw new Error(`Schedule ${sourceFile.fileName} must expose a statically analyzable Eve ${SUPPORTED_EVE_VERSION_RANGE} definition.`);
   }
   return candidate;
 }

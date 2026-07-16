@@ -21,6 +21,12 @@ import {
   PLAYGROUND_MAX_TRANSPORT_BYTES,
   validatePlaygroundTurn,
 } from "@eveland/core/eve";
+import {
+  createEveVersionInfo,
+  readDeclaredEveVersion,
+  unsupportedEveVersionMessage,
+  type EveVersionInfo,
+} from "@eveland/core/source";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
@@ -750,6 +756,18 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
+    let platformSession = pathSessionId ? await store.getSessionByEveSessionId(projectId, pathSessionId) : null;
+    if (pathSessionId && !platformSession) return c.json({ error: "Playground session not found" }, 404);
+    const eveVersion = platformSession?.deploymentId
+      ? await resolveProjectEveVersion(store, projectId, platformSession.deploymentId)
+      : null;
+    if (eveVersion && !eveVersion.supported) {
+      return c.json({
+        error: "Unsupported Eve version",
+        detail: unsupportedEveVersionMessage(eveVersion.version),
+        eveVersion,
+      }, 409);
+    }
 
     let body: Uint8Array | null = null;
     if (isInitial || isContinuation) {
@@ -763,8 +781,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       }
     }
 
-    let platformSession = pathSessionId ? await store.getSessionByEveSessionId(projectId, pathSessionId) : null;
-    if (pathSessionId && !platformSession) return c.json({ error: "Playground session not found" }, 404);
     if (isInitial) {
       platformSession = await store.createSession({ projectId, deploymentId: null, trigger: "playground" });
     }
@@ -820,10 +836,17 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
-
     const deployment = await store.getCurrentDeployment(projectId);
     if (!deployment || (deployment.status !== "running" && deployment.status !== "stopped")) {
       return c.json({ error: "No running deployment" }, 409);
+    }
+    const eveVersion = await resolveProjectEveVersion(store, projectId, deployment.id);
+    if (!eveVersion.supported) {
+      return c.json({
+        error: "Unsupported Eve version",
+        detail: unsupportedEveVersionMessage(eveVersion.version),
+        eveVersion,
+      }, 409);
     }
 
     const session = await store.createSession({
@@ -912,6 +935,12 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   app.get("/projects/:projectId/source/revision", async (c) => {
     return c.json({ revision: await store.getCurrentSourceRevision(c.req.param("projectId")) });
+  });
+
+  app.get("/projects/:projectId/eve-version", async (c) => {
+    const projectId = c.req.param("projectId");
+    if (!(await store.getProject(projectId))) return c.json({ error: "Project not found" }, 404);
+    return c.json({ eveVersion: await resolveProjectEveVersion(store, projectId) });
   });
 
   app.get("/projects/:projectId/source/files", async (c) => {
@@ -1047,6 +1076,25 @@ function parsePlaygroundBody(body: Uint8Array): unknown {
 async function parsePlaygroundResponse(response: Response): Promise<Record<string, unknown> | null> {
   if (!response.headers.get("content-type")?.includes("application/json")) return null;
   return parseEveJsonObject(await response.text());
+}
+
+async function resolveProjectEveVersion(store: Store, projectId: string, deploymentId?: string): Promise<EveVersionInfo> {
+  const deployment = deploymentId
+    ? await store.getDeployment(deploymentId)
+    : await store.getCurrentDeployment(projectId);
+  if (deployment) {
+    return await store.getDeploymentEveVersion(deployment.id) ?? createEveVersionInfo(null, null);
+  }
+
+  const revision = await store.getCurrentSourceRevision(projectId);
+  let version = revision ? getEveString(revision.summary, "eveVersion") : null;
+
+  if (!version && revision) {
+    const packageJson = await store.getSourceFile(projectId, "package.json");
+    if (packageJson) version = readDeclaredEveVersion([{ path: packageJson.path, content: packageJson.content }]);
+  }
+
+  return createEveVersionInfo(version, revision?.id ?? null);
 }
 
 function monitorPlaygroundStream(

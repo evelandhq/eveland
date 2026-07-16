@@ -58,6 +58,7 @@ import {
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import {
@@ -67,13 +68,15 @@ import {
   PLAYGROUND_MAX_TOTAL_FILE_BYTES,
 } from "@eveland/core/eve";
 import { createPlaygroundMessage } from "@/lib/client-api";
+import type { EveVersionInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type PlaygroundPanelProps = {
   projectId: string;
+  eveVersion: EveVersionInfo;
 };
 
-export function PlaygroundPanel({ projectId }: PlaygroundPanelProps) {
+export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps) {
   const [session] = useState(
     () =>
       new Client({
@@ -84,10 +87,20 @@ export function PlaygroundPanel({ projectId }: PlaygroundPanelProps) {
   const [composerError, setComposerError] = useState<string | null>(null);
   const agent = useEveAgent({ session });
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
-  const error = composerError ?? agent.error?.message ?? null;
+  const versionError = eveVersion.supported
+    ? null
+    : `Detected Eve ${eveVersion.version ?? "Unknown"}; Eveland requires ${eveVersion.expected}. Upgrade the project's eve dependency before deploying.`;
+  const error = versionError ?? composerError ?? agent.error?.message ?? null;
 
   return (
     <div className="flex h-[calc(100svh-8.5rem)] min-h-[36rem] flex-col overflow-hidden">
+      <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-1 pt-3 text-xs text-muted-foreground sm:px-6">
+        <span>Eve Agent</span>
+        <Badge variant={eveVersion.supported ? "secondary" : "destructive"}>
+          {eveVersion.version ?? "Unknown"}
+        </Badge>
+        <span>Requires {eveVersion.expected}</span>
+      </div>
       <Conversation className="min-h-0">
         <ConversationContent className="mx-auto w-full max-w-3xl px-1 py-6 sm:px-6">
           {agent.data.messages.length === 0 ? (
@@ -120,7 +133,7 @@ export function PlaygroundPanel({ projectId }: PlaygroundPanelProps) {
       <div className="mx-auto w-full max-w-3xl shrink-0 bg-background pt-2 sm:px-6">
         {error ? (
           <Alert className="mb-2" variant="destructive">
-            <AlertTitle>Playground request failed</AlertTitle>
+            <AlertTitle>{versionError ? "Eve upgrade required" : "Playground request failed"}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
@@ -132,13 +145,13 @@ export function PlaygroundPanel({ projectId }: PlaygroundPanelProps) {
         ) : null}
         <PromptInput
           accept={PLAYGROUND_ATTACHMENT_ACCEPT}
-          globalDrop
+          globalDrop={eveVersion.supported}
           maxFileSize={PLAYGROUND_MAX_FILE_BYTES}
           maxFiles={PLAYGROUND_MAX_FILES}
           multiple
           onError={(inputError) => setComposerError(inputError.message)}
           onSubmit={async ({ files, text }) => {
-            if (isBusy || (text.trim().length === 0 && files.length === 0)) {
+            if (!eveVersion.supported || isBusy || (text.trim().length === 0 && files.length === 0)) {
               return;
             }
 
@@ -153,20 +166,20 @@ export function PlaygroundPanel({ projectId }: PlaygroundPanelProps) {
           }}
         >
           <ComposerAttachments />
-          <PromptInputTextarea disabled={isBusy} placeholder="Ask the deployed agent..." />
+          <PromptInputTextarea disabled={isBusy || !eveVersion.supported} placeholder="Ask the deployed agent..." />
           <PromptInputFooter>
             <PromptInputTools>
               <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger disabled={isBusy} tooltip="Attach files">
+                <PromptInputActionMenuTrigger disabled={isBusy || !eveVersion.supported} tooltip="Attach files">
                   <PaperclipIcon />
                 </PromptInputActionMenuTrigger>
                 <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments disabled={isBusy} label="Upload files" />
+                  <PromptInputActionAddAttachments disabled={isBusy || !eveVersion.supported} label="Upload files" />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
               <span className="text-xs text-muted-foreground">Up to 4 files · 10 MiB total</span>
             </PromptInputTools>
-            <PromptInputSubmit onStop={agent.stop} status={agent.status} />
+            <PromptInputSubmit disabled={!eveVersion.supported} onStop={agent.stop} status={agent.status} />
           </PromptInputFooter>
         </PromptInput>
         <p className="py-2 text-center text-xs text-muted-foreground">

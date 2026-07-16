@@ -20,7 +20,10 @@ describe.skipIf(!database)("Postgres source revisions", () => {
         sourcePath: "/tmp/source-old",
         summary: {},
         envVars: [],
-        files: [{ path: "agent/instructions.md", content: "Old instructions" }],
+        files: [
+          { path: "agent/instructions.md", content: "Old instructions" },
+          { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.22.6" } }) },
+        ],
         schedules: [],
       });
       const deployment = await store.recordDeployment({
@@ -56,6 +59,12 @@ describe.skipIf(!database)("Postgres source revisions", () => {
       });
       await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({
         content: "New instructions",
+      });
+      await expect(store.getDeploymentEveVersion(deployment.id)).resolves.toEqual({
+        version: "0.22.6",
+        expected: "0.24.x",
+        supported: false,
+        sourceRevisionId: initialRevision.id,
       });
     } finally {
       await store.deleteProject(project.id);
