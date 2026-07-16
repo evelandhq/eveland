@@ -12,8 +12,8 @@ const copy = {
     nav: { docs: "Docs", github: "GitHub", getStarted: "Get started", language: "中文" },
     preview: "Preview",
     hero: {
-      eyebrow: "The runtime plane for eve",
-      title: "Your agents.\nYour infrastructure.\nOne clear runtime.",
+      eyebrow: "Self-hosted runtime for Eve",
+      title: "Run Eve agents.\nOn your infrastructure.",
       body: "Import an Eve project, create an immutable release, route production traffic, and understand every session from one self-hosted control plane.",
       primary: "Start self-hosting",
       secondary: "View on GitHub",
@@ -89,7 +89,16 @@ const copy = {
       primary: "Read the quick start",
       secondary: "Explore the architecture",
     },
-    footer: { line: "Self-hosted infrastructure for Eve agents.", docs: "Documentation", github: "Source" },
+    footer: {
+      line: "Self-hosted infrastructure for Eve agents.",
+      product: "Product",
+      resources: "Resources",
+      home: "Overview",
+      docs: "Documentation",
+      quickStart: "Quick start",
+      architecture: "Architecture",
+      github: "GitHub",
+    },
   },
   zh: {
     meta: {
@@ -99,8 +108,8 @@ const copy = {
     nav: { docs: "文档", github: "GitHub", getStarted: "开始使用", language: "English" },
     preview: "预览版",
     hero: {
-      eyebrow: "Eve 的运行控制平面",
-      title: "你的 Agents。\n你的基础设施。\n一个清晰运行时。",
+      eyebrow: "面向 Eve 的自托管运行时",
+      title: "运行 Eve Agents。\n就在你的基础设施上。",
       body: "导入 Eve 项目、生成不可变 Release、路由生产流量，并在一个自托管控制平面中理解每次 Session。",
       primary: "开始自托管",
       secondary: "在 GitHub 查看",
@@ -176,7 +185,16 @@ const copy = {
       primary: "阅读快速开始",
       secondary: "查看系统架构",
     },
-    footer: { line: "面向 Eve agents 的自托管基础设施。", docs: "文档", github: "源码" },
+    footer: {
+      line: "面向 Eve agents 的自托管基础设施。",
+      product: "产品",
+      resources: "资源",
+      home: "概览",
+      docs: "文档",
+      quickStart: "快速开始",
+      architecture: "系统架构",
+      github: "GitHub",
+    },
   },
 } as const;
 

@@ -5,7 +5,7 @@ import { AudiencePaths } from "@/components/audience-paths";
 import { DeploymentFlow } from "@/components/deployment-flow";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { SystemMap } from "@/components/system-map";
+import { RuntimeStage } from "@/components/runtime-stage";
 import { isLanguage } from "@/lib/i18n";
 import { getSiteCopy } from "@/lib/site-copy";
 import { localizedHref } from "@/lib/urls";
@@ -49,7 +49,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
               </a>
             </div>
           </div>
-          <SystemMap lang={lang} />
+          <RuntimeStage lang={lang} />
         </section>
       </div>
 
