@@ -68,6 +68,39 @@ describe("injectObserverHooks", () => {
     expect(generatedObserverModule).not.toContain("@eveland/");
   });
 
+  test("collects eve 0.24.4 turn.cancelled events while still filtering deltas", async () => {
+    const releaseDir = await createRelease();
+    const outboxDir = await mkdtemp(path.join(packageRoot, ".observer-outbox-test-"));
+    temporaryDirectories.push(outboxDir);
+    const result = await injectObserverHooks({ releaseDir });
+    const observerPath = path.join(releaseDir, result.injectedFiles[0]!);
+    const originalOutbox = process.env.EVELAND_OBSERVER_OUTBOX_DIR;
+    const originalDeployment = process.env.EVELAND_DEPLOYMENT_ID;
+    process.env.EVELAND_OBSERVER_OUTBOX_DIR = outboxDir;
+    process.env.EVELAND_DEPLOYMENT_ID = "dep_1";
+
+    try {
+      const observer = (await import(`${observerPath}?cancelled=${Date.now()}`)) as {
+        default: { events: { "*": (event: unknown, context: unknown) => Promise<void> } };
+      };
+      const context = { session: { id: "eve_1" }, agent: { name: "root" }, channel: { kind: "http" } };
+      await observer.default.events["*"]({ type: "turn.cancelled", data: { sequence: 3, turnId: "turn_1" } }, context);
+      await observer.default.events["*"]({ type: "message.appended", data: { turnId: "turn_1" } }, context);
+
+      const sessionDirectories = await readdir(path.join(outboxDir, "sessions"));
+      const files = await readdir(path.join(outboxDir, "sessions", sessionDirectories[0]!));
+      const envelopes = await Promise.all(
+        files
+          .filter((file) => file.endsWith(".ready.json"))
+          .map(async (file) => JSON.parse(await readFile(path.join(outboxDir, "sessions", sessionDirectories[0]!, file), "utf8"))),
+      );
+      expect(envelopes.map((envelope) => envelope.event.type)).toEqual(["turn.cancelled"]);
+    } finally {
+      restoreEnv("EVELAND_OBSERVER_OUTBOX_DIR", originalOutbox);
+      restoreEnv("EVELAND_DEPLOYMENT_ID", originalDeployment);
+    }
+  });
+
   test("carries subagent parent lineage from session.started into later envelopes", async () => {
     const releaseDir = await createRelease();
     const outboxDir = await mkdtemp(path.join(packageRoot, ".observer-outbox-test-"));

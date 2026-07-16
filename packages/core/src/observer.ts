@@ -58,6 +58,7 @@ const collectedEventTypes = new Set([
   "step.failed",
   "turn.completed",
   "turn.failed",
+  "turn.cancelled",
   "session.waiting",
   "session.completed",
   "session.failed",

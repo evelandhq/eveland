@@ -81,6 +81,7 @@ function TurnView({ turn }: { turn: TranscriptTurn }) {
         <span className="h-px flex-1 bg-border" />
         <time>{new Date(turn.startedAt).toLocaleString()}</time>
         {turn.status === "failed" ? <span className="font-medium text-destructive">failed</span> : null}
+        {turn.status === "cancelled" ? <span className="font-medium">cancelled</span> : null}
         <span className="h-px flex-1 bg-border" />
       </div>
       {turn.items.map((item, index) => (

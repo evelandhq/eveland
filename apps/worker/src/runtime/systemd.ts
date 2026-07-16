@@ -312,7 +312,8 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
             );
 
       // The unit's fixed service user needs to own the release dir: eve's default
-      // local workflow world writes .workflow-data/ into the working directory.
+      // local workflow world writes .eve/.workflow-data/ (pre-0.24.4:
+      // .workflow-data/) into the working directory.
       await execa("chown", ["-R", `${config.user}:`, releaseDir]);
       await execa("chown", ["-R", `${config.user}:`, cacheDir]);
 
