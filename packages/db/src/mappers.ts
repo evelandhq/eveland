@@ -33,6 +33,9 @@ import type {
   PublicGitCredential,
   SourcePreflight,
   SourcePreflightRecord,
+  AgentConnection,
+  AgentAuthCredential,
+  AgentAuthTransaction,
 } from "@eveland/core/contracts";
 
 export function sourcePreflightRowToRecord(row: {
@@ -132,6 +135,73 @@ export function projectRowToProject(row: ProjectRow): Project {
     nextScheduleAt: timestampToIso(row.nextScheduleAt),
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
+  };
+}
+
+export function agentConnectionRowToAgentConnection(row: {
+  id: string;
+  projectId: string;
+  targetKind: string;
+  method: string;
+  configEncrypted: string;
+  securityRevision: number;
+  createdAt: Date;
+  updatedAt: Date;
+}): AgentConnection {
+  if (row.targetKind !== "managed-project") throw new Error(`Unsupported Agent Connection target: ${row.targetKind}.`);
+  return {
+    id: row.id,
+    target: { kind: row.targetKind, projectId: row.projectId },
+    method: row.method,
+    configEncrypted: row.configEncrypted,
+    securityRevision: row.securityRevision,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function agentAuthCredentialRowToAgentAuthCredential(row: {
+  agentConnectionId: string;
+  securityRevision: number;
+  authMethod: string;
+  credentialScope: string;
+  scopeSubject: string;
+  credentialKey: string;
+  payloadEncrypted: string;
+  expiresAt: Date | null;
+  rotationSeq: number;
+  refreshOwner: string | null;
+  refreshLeaseId: string | null;
+  refreshLeaseUntil: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): AgentAuthCredential {
+  if (row.credentialScope !== "connection" && row.credentialScope !== "principal") {
+    throw new Error(`Unsupported Agent credential scope: ${row.credentialScope}.`);
+  }
+  return {
+    ...row,
+    credentialScope: row.credentialScope,
+    expiresAt: row.expiresAt?.toISOString() ?? null,
+    refreshLeaseUntil: row.refreshLeaseUntil?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function agentAuthTransactionRowToAgentAuthTransaction(row: {
+  agentConnectionId: string;
+  stateHash: string;
+  payloadEncrypted: string;
+  expiresAt: Date;
+  createdAt: Date;
+}): AgentAuthTransaction {
+  return {
+    agentConnectionId: row.agentConnectionId,
+    stateHash: row.stateHash,
+    payloadEncrypted: row.payloadEncrypted,
+    expiresAt: row.expiresAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 

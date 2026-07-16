@@ -191,6 +191,70 @@ export const sourcePreflights = pgTable(
   ],
 );
 
+export const agentConnections = pgTable(
+  "agent_connections",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    targetKind: text("target_kind").notNull(),
+    method: text("method").notNull(),
+    configEncrypted: text("config_encrypted").notNull(),
+    securityRevision: integer("security_revision").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("agent_connections_project_idx").on(table.projectId),
+    check("agent_connections_target_kind_check", sql`${table.targetKind} in ('managed-project')`),
+    check("agent_connections_security_revision_check", sql`${table.securityRevision} > 0`),
+  ],
+);
+
+export const agentAuthCredentials = pgTable(
+  "agent_auth_credentials",
+  {
+    agentConnectionId: text("agent_connection_id").notNull().references(() => agentConnections.id, { onDelete: "cascade" }),
+    securityRevision: integer("security_revision").notNull(),
+    authMethod: text("auth_method").notNull(),
+    credentialScope: text("credential_scope").notNull(),
+    scopeSubject: text("scope_subject").notNull(),
+    credentialKey: text("credential_key").notNull().default(""),
+    payloadEncrypted: text("payload_encrypted").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    rotationSeq: integer("rotation_seq").notNull().default(0),
+    refreshOwner: text("refresh_owner"),
+    refreshLeaseId: text("refresh_lease_id"),
+    refreshLeaseUntil: timestamp("refresh_lease_until", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("agent_auth_credentials_scope_idx").on(
+      table.agentConnectionId,
+      table.securityRevision,
+      table.authMethod,
+      table.credentialScope,
+      table.scopeSubject,
+      table.credentialKey,
+    ),
+    check("agent_auth_credentials_security_revision_check", sql`${table.securityRevision} > 0`),
+    check("agent_auth_credentials_rotation_seq_check", sql`${table.rotationSeq} >= 0`),
+    check("agent_auth_credentials_scope_check", sql`(${table.credentialScope} = 'connection' and ${table.scopeSubject} = '') or (${table.credentialScope} = 'principal' and ${table.scopeSubject} <> '')`),
+  ],
+);
+
+export const agentAuthTransactions = pgTable(
+  "agent_auth_transactions",
+  {
+    agentConnectionId: text("agent_connection_id").notNull().references(() => agentConnections.id, { onDelete: "cascade" }),
+    stateHash: text("state_hash").primaryKey(),
+    payloadEncrypted: text("payload_encrypted").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("agent_auth_transactions_expires_idx").on(table.expiresAt)],
+);
+
 export const secrets = pgTable(
   "secrets",
   {
