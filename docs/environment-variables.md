@@ -67,6 +67,8 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `EVELAND_RELEASE_RETENTION` | Deployments/releases retained per project by the archive policy. | `3` (minimum 3) | worker (`process.ts`) |
 | `WORKER_ID` | Worker instance identity, used when claiming jobs. | — | `apps/worker/src/worker.ts` |
 | `WORKER_POLL_INTERVAL_MS` | Interval between worker job-queue polls. | `5000` | `apps/worker/src/worker.ts` |
+| `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | Interval between orphan-process sweeps that reconcile running `eveland-*-dep_*` host processes with the control plane (adopt into RuntimeInstance lifecycle, or stop unknown/archived/wrong-runtime leftovers). `0` disables the sweep. | `3600000` (1 hour) | `apps/worker/src/worker.ts` |
+| `EVELAND_ORPHAN_GRACE_MS` | How long a running process may stay out-of-model before the sweep stops it; covers the window where `build_deploy` starts a process before its Deployment row exists. | `300000` | `apps/worker/src/runtime/orphan-reaper.ts` |
 | `PATH` | Passed through (allowlisted) to build and sandbox child processes. | system `PATH` | worker (`systemd.ts`) |
 
 ## systemd runtime (Linux / production only)

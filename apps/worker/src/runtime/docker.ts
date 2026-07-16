@@ -330,6 +330,19 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       if (status !== "missing") await dockerStopAndRemove(input.processName);
       return adapter.startProcess(input);
     },
+    async listProcesses(namePrefix) {
+      const result = await execa("docker", ["ps", "--format", "{{.Names}}", "--filter", `name=^${namePrefix}`], {
+        all: true,
+        reject: false,
+      });
+      if (result.failed) {
+        throw new Error(`docker ps failed: ${result.all || "no output captured"}`);
+      }
+      return (result.stdout ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((name) => name.startsWith(namePrefix));
+    },
     async stopProcess(processName: string): Promise<void> {
       await dockerStopAndRemove(processName);
     },

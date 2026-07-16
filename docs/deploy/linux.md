@@ -191,6 +191,8 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE` | `25` | Maximum interrupted `starting` RuntimeInstances re-enqueued per Worker tick. |
 | `EVELAND_ACTIVATION_START_STALE_MS` | `300000` | Age after which a running activation job can be reclaimed following a Worker crash. |
 | `EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE` | `100` | Maximum ready RuntimeInstances compared with Docker/systemd process state per Worker tick. |
+| `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | `3600000` | Interval between orphan-process sweeps (1 hour). The Worker lists running `eveland-*-dep_*` units/containers, adopts unmanaged ones into the RuntimeInstance idle lifecycle, and stops processes no Deployment legitimately owns. `0` disables the sweep. |
+| `EVELAND_ORPHAN_GRACE_MS` | `300000` | How long an out-of-model process may keep running before the sweep stops it. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from archive. Mutable route targets and active SessionBindings are protected independently of age. |

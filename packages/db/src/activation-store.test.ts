@@ -147,6 +147,84 @@ describe("runtime activation persistence", () => {
   });
 });
 
+describe("orphan process adoption persistence", () => {
+  test("finds a deployment by its container name", async () => {
+    const store = createMemoryStore();
+    const { deployment } = await deploymentFixture(store, "Adoptable Agent", 41991);
+
+    await expect(store.getDeploymentByContainerName(deployment.containerName)).resolves.toMatchObject({
+      id: deployment.id,
+    });
+    await expect(store.getDeploymentByContainerName("eveland-unknown-process")).resolves.toBeNull();
+  });
+
+  test("adopts an unmanaged deployment into a ready RuntimeInstance that activation reuses and idle claiming drains", async () => {
+    const store = createMemoryStore();
+    const { deployment } = await deploymentFixture(store, "Zombie Agent", 41992);
+    const now = new Date("2026-07-16T08:00:00.000Z");
+
+    const adopted = await store.adoptRuntimeInstance(deployment.id, {
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    }, now);
+    expect(adopted).toMatchObject({
+      deploymentId: deployment.id,
+      generation: 1,
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+      readyAt: now.toISOString(),
+    });
+    await expect(store.listDeploymentRuntimeInstances(deployment.id)).resolves.toEqual([
+      expect.objectContaining({ id: adopted!.id }),
+    ]);
+
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_adopted",
+      expiresAt: new Date("2026-07-16T08:01:00.000Z"),
+      now,
+    });
+    expect(claim.starter).toBe(false);
+    expect(claim.runtimeInstance.id).toBe(adopted!.id);
+    await store.releaseActivationLease(claim.lease.id, now);
+
+    await expect(store.claimIdleRuntimeInstances({
+      now: new Date("2026-07-16T08:05:00.000Z"),
+      idleTtlMs: 300_000,
+      limit: 10,
+    })).resolves.toEqual([expect.objectContaining({ id: adopted!.id, status: "draining" })]);
+  });
+
+  test("refuses adoption while a live or draining instance exists and re-adopts after stop", async () => {
+    const store = createMemoryStore();
+    const { deployment } = await deploymentFixture(store, "Readopt Agent", 41993);
+    const now = new Date("2026-07-16T09:00:00.000Z");
+
+    const first = await store.adoptRuntimeInstance(deployment.id, {
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    }, now);
+    await expect(store.adoptRuntimeInstance(deployment.id, {
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    }, now)).resolves.toBeNull();
+
+    await store.claimIdleRuntimeInstances({ now: new Date("2026-07-16T09:05:00.000Z"), idleTtlMs: 300_000, limit: 10 });
+    await expect(store.adoptRuntimeInstance(deployment.id, {
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    }, new Date("2026-07-16T09:05:01.000Z"))).resolves.toBeNull();
+
+    await store.updateRuntimeInstance(first!.id, { status: "stopped" }, new Date("2026-07-16T09:05:02.000Z"));
+    await expect(store.adoptRuntimeInstance(deployment.id, {
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    }, new Date("2026-07-16T09:06:00.000Z"))).resolves.toMatchObject({ generation: 2, status: "ready" });
+  });
+});
+
 async function deploymentFixture(store: ReturnType<typeof createMemoryStore>, name: string, hostPort: number) {
   const project = await store.createProject({ name, importKind: "zip" });
   const importJob = await store.claimNextJob("fixture-import");

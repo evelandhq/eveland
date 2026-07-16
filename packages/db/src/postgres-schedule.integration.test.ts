@@ -165,4 +165,72 @@ describe.skipIf(!database)("Postgres schedule state", () => {
       await store.deleteProject(project.id);
     }
   });
+
+  test("adopts an unmanaged deployment exactly once under concurrency and defers to live instances", async () => {
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({ name: `Adoption integration ${Date.now()}`, importKind: "zip" });
+
+    try {
+      const revision = await store.recordSourceRevision({
+        projectId: project.id,
+        kind: "zip",
+        sourcePath: "/tmp/postgres-adoption",
+        summary: {},
+        envVars: [],
+        files: [],
+        schedules: [],
+      });
+      const containerName = `postgres-adoption-${Date.now()}`;
+      const deployment = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: "fixture:postgres-adoption",
+        containerName,
+        internalPort: 3000,
+        hostPort: 41988,
+        runtimeKind: "docker",
+      });
+      await expect(store.getDeploymentByContainerName(containerName)).resolves.toMatchObject({ id: deployment.id });
+
+      const now = new Date("2026-07-16T10:00:00.000Z");
+      const adoptions = await Promise.all([
+        store.adoptRuntimeInstance(deployment.id, { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort }, now),
+        store.adoptRuntimeInstance(deployment.id, { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort }, now),
+      ]);
+      const adopted = adoptions.filter(Boolean);
+      expect(adopted).toHaveLength(1);
+      expect(adopted[0]).toMatchObject({ status: "ready", generation: 1, endpointPort: deployment.hostPort });
+      await expect(store.listDeploymentRuntimeInstances(deployment.id)).resolves.toHaveLength(1);
+
+      const claim = await store.acquireActivationLease({
+        deploymentId: deployment.id,
+        kind: "public_request",
+        ownerId: "req_postgres_adopted",
+        expiresAt: new Date("2026-07-16T10:01:00.000Z"),
+        now,
+      });
+      expect(claim.starter).toBe(false);
+      expect(claim.runtimeInstance.id).toBe(adopted[0]!.id);
+      await store.releaseActivationLease(claim.lease.id, now);
+
+      await expect(store.claimIdleRuntimeInstances({
+        now: new Date("2026-07-16T10:05:00.000Z"),
+        idleTtlMs: 300_000,
+        limit: 10,
+      })).resolves.toContainEqual(expect.objectContaining({ id: adopted[0]!.id, status: "draining" }));
+      await expect(store.adoptRuntimeInstance(
+        deployment.id,
+        { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
+        new Date("2026-07-16T10:05:01.000Z"),
+      )).resolves.toBeNull();
+      await store.updateRuntimeInstance(adopted[0]!.id, { status: "stopped" });
+      await expect(store.adoptRuntimeInstance(
+        deployment.id,
+        { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
+        new Date("2026-07-16T10:06:00.000Z"),
+      )).resolves.toMatchObject({ generation: 2, status: "ready" });
+    } finally {
+      await store.deleteProject(project.id);
+    }
+  });
 });

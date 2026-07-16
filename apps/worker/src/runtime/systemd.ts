@@ -412,6 +412,21 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       if (status !== "missing") await adapter.stopProcess(input.processName);
       return adapter.startProcess(input);
     },
+    async listProcesses(namePrefix) {
+      const result = await execa(
+        "systemctl",
+        ["list-units", "--type=service", "--state=active", "--plain", "--no-legend", "--no-pager", `${namePrefix}*.service`],
+        { all: true, reject: false },
+      );
+      if (result.failed) {
+        throw new Error(`systemctl list-units failed: ${result.all || "no output captured"}`);
+      }
+      return (result.stdout ?? "")
+        .split("\n")
+        .map((line) => line.trim().split(/\s+/, 1)[0] ?? "")
+        .filter((unit) => unit.startsWith(namePrefix) && unit.endsWith(".service"))
+        .map((unit) => unit.slice(0, -".service".length));
+    },
     async stopProcess(processName: string): Promise<void> {
       const unit = `${processName}.service`;
       await runSystemctl("stop", unit);

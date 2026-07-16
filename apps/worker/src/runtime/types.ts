@@ -52,6 +52,8 @@ export type RuntimeAdapter = {
   buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult>;
   startProcess(input: ProcessStartInput): Promise<ProcessStartResult>;
   inspectProcess?(processName: string): Promise<"missing" | "starting" | "ready" | "stopped" | "failed">;
+  /** Names of currently running processes this runtime owns whose name starts with the prefix. */
+  listProcesses?(namePrefix: string): Promise<string[]>;
   ensureProcess?(input: ProcessStartInput): Promise<ProcessStartResult>;
   stopProcess(processName: string): Promise<void>;
   removeRelease?(releaseRef: string): Promise<void>;
