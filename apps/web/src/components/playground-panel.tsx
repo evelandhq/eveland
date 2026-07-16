@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FileUIPart } from "ai";
 import { Client } from "eve/client";
 import { useEveAgent } from "eve/react";
@@ -69,6 +69,13 @@ import {
 } from "@eveland/core/eve";
 import { createPlaygroundMessage } from "@/lib/client-api";
 import type { EveVersionInfo } from "@/lib/api";
+import { AgentConnectionSettings } from "@/components/agent-connection-settings";
+import {
+  claimPendingPlaygroundTurn,
+  handleRouteAuthError,
+  interactionFromClientError,
+  type PendingPlaygroundMessage,
+} from "@/lib/playground-route-auth";
 import { cn } from "@/lib/utils";
 
 type PlaygroundPanelProps = {
@@ -84,22 +91,61 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
         preserveCompletedSessions: true,
       }).session(),
   );
+  const pendingRouteAuthTurn = useRef<PendingPlaygroundMessage | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
-  const agent = useEveAgent({ session });
+  const resumedPendingTurn = useRef(false);
+  const agent = useEveAgent({
+    onError: (sendError) => {
+      handleRouteAuthError({
+        error: sendError,
+        message: pendingRouteAuthTurn.current,
+        projectId,
+        redirect: (url) => window.location.assign(url),
+        storage: window.sessionStorage,
+      });
+    },
+    session,
+  });
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const versionError = eveVersion.supported
     ? null
     : `Detected Eve ${eveVersion.version ?? "Unknown"}; Eveland requires ${eveVersion.expected}. Upgrade the project's eve dependency before deploying.`;
-  const error = versionError ?? composerError ?? agent.error?.message ?? null;
+  const routeAuthRedirect = versionError ? null : interactionFromClientError(agent.error);
+  const error = routeAuthRedirect ? null : versionError ?? composerError ?? agent.error?.message ?? null;
+
+  async function sendMessageWithRouteAuth(message: PendingPlaygroundMessage) {
+    pendingRouteAuthTurn.current = message;
+    try {
+      await agent.send({ message });
+    } finally {
+      pendingRouteAuthTurn.current = null;
+    }
+  }
+
+  useEffect(() => {
+    if (resumedPendingTurn.current) return;
+    resumedPendingTurn.current = true;
+    const pendingMessage = claimPendingPlaygroundTurn(window.sessionStorage, projectId);
+    if (!pendingMessage) return;
+    void sendMessageWithRouteAuth(pendingMessage).catch((sendError) => {
+      setComposerError(toErrorMessage(sendError));
+    });
+  }, [projectId]);
 
   return (
     <div className="flex h-[calc(100svh-8.5rem)] min-h-[36rem] flex-col overflow-hidden">
-      <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-1 pt-3 text-xs text-muted-foreground sm:px-6">
-        <span>Eve Agent</span>
-        <Badge variant={eveVersion.supported ? "secondary" : "destructive"}>
-          {eveVersion.version ?? "Unknown"}
-        </Badge>
-        <span>Requires {eveVersion.expected}</span>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b px-2 py-2 sm:px-6">
+        <div className="min-w-0 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span>Eve Agent</span>
+            <Badge variant={eveVersion.supported ? "secondary" : "destructive"}>
+              {eveVersion.version ?? "Unknown"}
+            </Badge>
+            <span>Requires {eveVersion.expected}</span>
+          </div>
+          <p className="mt-1">Route Auth credentials are separate from your Eveland account.</p>
+        </div>
+        <AgentConnectionSettings projectId={projectId} />
       </div>
       <Conversation className="min-h-0">
         <ConversationContent className="mx-auto w-full max-w-3xl px-1 py-6 sm:px-6">
@@ -131,13 +177,17 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
       </Conversation>
 
       <div className="mx-auto w-full max-w-3xl shrink-0 bg-background pt-2 sm:px-6">
-        {error ? (
+        {routeAuthRedirect ? (
+          <Alert className="mb-2">
+            <AlertTitle>Redirecting for authorization</AlertTitle>
+            <AlertDescription>Taking you to your identity provider to authorize this connection…</AlertDescription>
+          </Alert>
+        ) : error ? (
           <Alert className="mb-2" variant="destructive">
             <AlertTitle>{versionError ? "Eve upgrade required" : "Playground request failed"}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
-        ) : null}
-        {!error && agent.status === "submitted" ? (
+        ) : agent.status === "submitted" ? (
           <Alert className="mb-2">
             <AlertTitle>Starting agent and sending your message</AlertTitle>
             <AlertDescription>A cold start can take up to 30 seconds.</AlertDescription>
@@ -158,7 +208,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
             setComposerError(null);
             try {
               assertAttachmentTotal(files);
-              await agent.send({ message: createPlaygroundMessage(text, files) });
+              await sendMessageWithRouteAuth(createPlaygroundMessage(text, files));
             } catch (sendError) {
               setComposerError(toErrorMessage(sendError));
               throw sendError;
