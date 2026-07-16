@@ -16,6 +16,16 @@ const reservedCredentialHeaders = new Set([
   "upgrade",
 ]);
 
+export function isReservedCredentialHeader(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return (
+    reservedCredentialHeaders.has(normalized)
+    || normalized.startsWith("proxy-")
+    || normalized.startsWith("x-forwarded-")
+    || normalized.startsWith("x-eveland-")
+  );
+}
+
 const agentCredentialHeaderSchema = z.tuple([
   z.string().min(1).max(256),
   z.string().max(16_384),
@@ -23,10 +33,7 @@ const agentCredentialHeaderSchema = z.tuple([
   const normalized = name.toLowerCase();
   if (
     !/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(name)
-    || reservedCredentialHeaders.has(normalized)
-    || normalized.startsWith("proxy-")
-    || normalized.startsWith("x-forwarded-")
-    || normalized.startsWith("x-eveland-")
+    || isReservedCredentialHeader(name)
     || /[\u0000-\u0008\u000A-\u001F\u007F]/.test(value)
   ) {
     context.addIssue({ code: "custom", message: `Agent credential header ${normalized} is not allowed.` });

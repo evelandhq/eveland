@@ -55,7 +55,7 @@ import {
   type PlaygroundRunner,
 } from "./gateway-playground.js";
 import { createBetterAuthRuntime } from "./auth.js";
-import { createAgentAuthModule, isAgentAuthFailure, listAgentAuthMethodDescriptors } from "@eveland/agent-auth";
+import { createAgentAuthModule, isAgentAuthFailure, listAgentAuthMethodDescriptors, type AgentAuthFailure } from "@eveland/agent-auth";
 import {
   normalizeAgentAuthConfig,
   openAgentAuthConfig,
@@ -848,15 +848,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       callerPrincipalId: options.auth ? c.get("principal").userId : "test-control-plane-user",
     });
     return c.json({
-      connection: {
-        id: connection.id,
-        target: connection.target,
-        method: connection.method,
-        securityRevision: connection.securityRevision,
-        config: redactAgentAuthConfig(connection.method, config as Record<string, unknown>),
-        createdAt: connection.createdAt,
-        updatedAt: connection.updatedAt,
-      },
+      connection: agentConnectionView(connection, config as Record<string, unknown>),
       status,
     });
   });
@@ -901,15 +893,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     });
     if (!updated) return c.json({ error: "Agent Connection changed; reload and retry" }, 409);
     return c.json({
-      connection: {
-        id: updated.id,
-        target: updated.target,
-        method: updated.method,
-        securityRevision: updated.securityRevision,
-        config: redactAgentAuthConfig(updated.method, config),
-        createdAt: updated.createdAt,
-        updatedAt: updated.updatedAt,
-      },
+      connection: agentConnectionView(updated, config),
     });
   });
 
@@ -1001,7 +985,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration" }, 422);
     }
-
     try {
       const project = parsed.data.importKind === "git"
         ? await store.createProject({
@@ -1022,15 +1005,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       const connection = await createProjectAgentConnection(project.id, { method: agentAuthInput.method, config });
       return c.json({
         project,
-        connection: {
-          id: connection.id,
-          target: connection.target,
-          method: connection.method,
-          securityRevision: connection.securityRevision,
-          config: redactAgentAuthConfig(connection.method, config),
-          createdAt: connection.createdAt,
-          updatedAt: connection.updatedAt,
-        },
+        connection: agentConnectionView(connection, config),
       }, 201);
     } catch (error) {
       if (error instanceof ProjectSlugConflictError) {
@@ -1293,12 +1268,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         { returnPath: `/projects/${projectId}/playground` },
       );
       if (isAgentAuthFailure(result)) {
-        if (result.code === "interaction_required" || result.code === "credential_rejected") return c.json(result, 401);
-        if (result.code === "forbidden") return c.json(result, 403);
-        if (result.code === "configuration_required" || result.code === "retry_required") return c.json(result, 409);
-        if (result.code === "configuration_invalid") return c.json(result, 422);
-        if (result.code === "provider_unavailable") return c.json(result, 503);
-        return c.json(result, 502);
+        return c.json(result, agentAuthFailureStatus[result.code]);
       }
       upstream = result;
     } catch (error) {
@@ -1765,17 +1735,37 @@ async function createZipProjectFromUpload(
   const connection = await createConnection(project.id, agentAuth);
   return c.json({
     project,
-    connection: {
-      id: connection.id,
-      target: connection.target,
-      method: connection.method,
-      securityRevision: connection.securityRevision,
-      config: redactAgentAuthConfig(connection.method, agentAuth.config),
-      createdAt: connection.createdAt,
-      updatedAt: connection.updatedAt,
-    },
+    connection: agentConnectionView(connection, agentAuth.config),
   }, 201);
 }
+
+type StoredAgentConnection = Awaited<ReturnType<Store["createAgentConnection"]>>;
+
+function agentConnectionView(
+  connection: Pick<StoredAgentConnection, "id" | "target" | "method" | "securityRevision" | "createdAt" | "updatedAt">,
+  config: Record<string, unknown>,
+) {
+  return {
+    id: connection.id,
+    target: connection.target,
+    method: connection.method,
+    securityRevision: connection.securityRevision,
+    config: redactAgentAuthConfig(connection.method, config),
+    createdAt: connection.createdAt,
+    updatedAt: connection.updatedAt,
+  };
+}
+
+const agentAuthFailureStatus = {
+  configuration_required: 409,
+  interaction_required: 401,
+  credential_rejected: 401,
+  forbidden: 403,
+  configuration_invalid: 422,
+  provider_unavailable: 503,
+  upstream_unavailable: 502,
+  retry_required: 409,
+} as const satisfies Record<AgentAuthFailure["code"], number>;
 
 async function extractZipUpload(archive: File, dataDir: string): Promise<{ sourcePath: string; uploadDir: string }> {
   const uploadsDir = path.resolve(dataDir, "uploads");

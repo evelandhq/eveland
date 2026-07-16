@@ -75,6 +75,8 @@ type OidcCredentialPayload = ActiveOidcCredentialPayload | PendingOidcCredential
 class OidcAccessTokenRejectedError extends Error {}
 class OidcReauthorizationRequiredError extends Error {}
 
+const CREDENTIAL_REFRESH_SKEW_MS = 30_000;
+
 export type OidcAuthorizationCodeProvider = {
   callbackUrl: string;
   registration: AgentAuthMethodRegistration;
@@ -111,6 +113,43 @@ export function createOidcAuthorizationCodeProvider(options: {
   const verifyAccessToken = options.verifyAccessToken ?? verifyAccessTokenWithEve;
   const refreshOwner = randomUUID();
   const refreshFlights = new Map<string, Promise<void>>();
+
+  function openCredentialPayload(
+    credential: Awaited<ReturnType<Store["getAgentAuthCredential"]>> & {},
+    key: ReturnType<typeof credentialKey>,
+  ): OidcCredentialPayload {
+    return openAgentAuthValue<OidcCredentialPayload>(
+      credential.payloadEncrypted,
+      options.appSecretKey,
+      "credential",
+      credentialAad(key),
+    );
+  }
+
+  function isCredentialExpiringSoon(
+    credential: Awaited<ReturnType<Store["getAgentAuthCredential"]>> & {},
+  ): boolean {
+    return !credential.expiresAt || new Date(credential.expiresAt).getTime() <= now().getTime() + CREDENTIAL_REFRESH_SKEW_MS;
+  }
+
+  function getOrStartRefreshFlight(
+    key: ReturnType<typeof credentialKey>,
+    connection: AgentConnectionSnapshot,
+    rawConfig: unknown,
+    callerPrincipalId: string,
+    credential: Awaited<ReturnType<Store["getAgentAuthCredential"]>> & {},
+    payload: ActiveOidcCredentialPayload,
+  ): Promise<void> {
+    const flightKey = [key.agentConnectionId, key.securityRevision, key.scopeSubject, credential.rotationSeq].join(":");
+    let flight = refreshFlights.get(flightKey);
+    if (!flight) {
+      const config = normalizeOidcAuthorizationCodeConfig(asRecord(rawConfig));
+      flight = refreshCredential(connection, config, callerPrincipalId, credential, payload)
+        .finally(() => refreshFlights.delete(flightKey));
+      refreshFlights.set(flightKey, flight);
+    }
+    return flight;
+  }
 
   async function refreshCredential(
     connection: AgentConnectionSnapshot,
@@ -213,12 +252,7 @@ export function createOidcAuthorizationCodeProvider(options: {
       if (!credential) return interactionRequired(connection.id, interaction?.returnPath);
       let payload: OidcCredentialPayload;
       try {
-        payload = openAgentAuthValue<OidcCredentialPayload>(
-          credential.payloadEncrypted,
-          options.appSecretKey,
-          "credential",
-          credentialAad(key),
-        );
+        payload = openCredentialPayload(credential, key);
       } catch {
         return {
           code: "configuration_invalid",
@@ -294,16 +328,9 @@ export function createOidcAuthorizationCodeProvider(options: {
         credential = activated;
         payload = active;
       }
-      if (!credential.expiresAt || new Date(credential.expiresAt).getTime() <= now().getTime() + 30_000) {
+      if (isCredentialExpiringSoon(credential)) {
         if (!payload.refreshToken) return interactionRequired(connection.id, interaction?.returnPath);
-        const flightKey = [key.agentConnectionId, key.securityRevision, key.scopeSubject, credential.rotationSeq].join(":");
-        let flight = refreshFlights.get(flightKey);
-        if (!flight) {
-          const config = normalizeOidcAuthorizationCodeConfig(asRecord(rawConfig));
-          flight = refreshCredential(connection, config, target.callerPrincipalId, credential, payload)
-            .finally(() => refreshFlights.delete(flightKey));
-          refreshFlights.set(flightKey, flight);
-        }
+        const flight = getOrStartRefreshFlight(key, connection, rawConfig, target.callerPrincipalId, credential, payload);
         try {
           await flight;
         } catch (error) {
@@ -326,12 +353,7 @@ export function createOidcAuthorizationCodeProvider(options: {
         credential = await options.store.getAgentAuthCredential(key);
         if (!credential) return interactionRequired(connection.id, interaction?.returnPath);
         try {
-          payload = openAgentAuthValue<OidcCredentialPayload>(
-            credential.payloadEncrypted,
-            options.appSecretKey,
-            "credential",
-            credentialAad(key),
-          );
+          payload = openCredentialPayload(credential, key);
         } catch {
           return {
             code: "configuration_invalid",
@@ -346,7 +368,7 @@ export function createOidcAuthorizationCodeProvider(options: {
             message: "The refreshed Agent credential is awaiting verification.",
           };
         }
-        if (!credential.expiresAt || new Date(credential.expiresAt).getTime() <= now().getTime() + 30_000) {
+        if (isCredentialExpiringSoon(credential)) {
           return interactionRequired(connection.id, interaction?.returnPath);
         }
       }
@@ -401,12 +423,7 @@ export function createOidcAuthorizationCodeProvider(options: {
       }
       let payload: OidcCredentialPayload;
       try {
-        payload = openAgentAuthValue<OidcCredentialPayload>(
-          credential.payloadEncrypted,
-          options.appSecretKey,
-          "credential",
-          credentialAad(key),
-        );
+        payload = openCredentialPayload(credential, key);
       } catch {
         return {
           action: "give_up",
@@ -428,14 +445,7 @@ export function createOidcAuthorizationCodeProvider(options: {
         };
       }
       if (!payload.refreshToken) return { action: "give_up", failure: interactionRequired(connection.id) };
-      const flightKey = [key.agentConnectionId, key.securityRevision, key.scopeSubject, credential.rotationSeq].join(":");
-      let flight = refreshFlights.get(flightKey);
-      if (!flight) {
-        const config = normalizeOidcAuthorizationCodeConfig(asRecord(rawConfig));
-        flight = refreshCredential(connection, config, target.callerPrincipalId, credential, payload)
-          .finally(() => refreshFlights.delete(flightKey));
-        refreshFlights.set(flightKey, flight);
-      }
+      const flight = getOrStartRefreshFlight(key, connection, rawConfig, target.callerPrincipalId, credential, payload);
       try {
         await flight;
         return { action: "retry" };
@@ -471,14 +481,9 @@ export function createOidcAuthorizationCodeProvider(options: {
         return { state: "interaction_required", ...(failure.interaction ? { interaction: failure.interaction } : {}) };
       }
       try {
-        const payload = openAgentAuthValue<OidcCredentialPayload>(
-          credential.payloadEncrypted,
-          options.appSecretKey,
-          "credential",
-          credentialAad(key),
-        );
+        const payload = openCredentialPayload(credential, key);
         if (payload.state === "pending_verification") return { state: "credential_available" };
-        if (credential.expiresAt && new Date(credential.expiresAt).getTime() > now().getTime() + 30_000) {
+        if (!isCredentialExpiringSoon(credential)) {
           return { state: "credential_available" };
         }
         if (payload.refreshToken) return { state: "credential_available" };

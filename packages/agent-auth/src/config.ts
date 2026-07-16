@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
+import { isReservedCredentialHeader } from "@eveland/core/agent-auth";
 
 export type AgentAuthConfigBinding = {
   agentConnectionId: string;
@@ -177,30 +178,9 @@ function requiredString(value: unknown, message: string): string {
   return value;
 }
 
-const forbiddenCredentialHeaders = new Set([
-  "authorization",
-  "connection",
-  "content-length",
-  "cookie",
-  "forwarded",
-  "host",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
-
 export function assertAllowedAgentCredentialHeader(name: string): void {
   const normalized = name.toLowerCase();
-  if (
-    forbiddenCredentialHeaders.has(normalized)
-    || normalized.startsWith("proxy-")
-    || normalized.startsWith("x-forwarded-")
-    || normalized.startsWith("x-eveland-")
-  ) {
+  if (isReservedCredentialHeader(name) || normalized === "authorization" || normalized === "cookie") {
     throw new Error(`Agent credential header ${normalized} is not allowed.`);
   }
 }
