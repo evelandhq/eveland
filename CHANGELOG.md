@@ -4,6 +4,28 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.3.0](https://github.com/evelandhq/eveland/compare/v0.2.0...v0.3.0) (2026-07-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* enforce Eve 0.24.x across agent traffic ([#70](https://github.com/evelandhq/eveland/issues/70))
+
+### Features
+
+* capture and render eve 0.24.4 turn.cancelled events ([#63](https://github.com/evelandhq/eveland/issues/63)) ([ca44791](https://github.com/evelandhq/eveland/commit/ca44791708355ae1a623a8bc4655ff6bb3df46f2))
+* enforce Eve 0.24.x across agent traffic ([#70](https://github.com/evelandhq/eveland/issues/70)) ([4f39a64](https://github.com/evelandhq/eveland/commit/4f39a641f65dc666dfb1549e8a53f078f44f4422))
+* isolate durable workflow worlds per project ([#67](https://github.com/evelandhq/eveland/issues/67)) ([d18f6b5](https://github.com/evelandhq/eveland/commit/d18f6b5c428d05063d497f7490948b404ba0162d))
+* refresh public docs visual design ([#69](https://github.com/evelandhq/eveland/issues/69)) ([6b5f9ec](https://github.com/evelandhq/eveland/commit/6b5f9ecd46b96a7527e382b097a0e4736abbf634))
+* sweep orphan deployment processes into the runtime lifecycle ([#66](https://github.com/evelandhq/eveland/issues/66)) ([6bf9cdf](https://github.com/evelandhq/eveland/commit/6bf9cdff59715e687cc8d666530c97c16940b0f1))
+
+
+### Bug Fixes
+
+* prewarm scheduled runtime activations ([5f1d843](https://github.com/evelandhq/eveland/commit/5f1d8431d1a4ad10e1ba44a3266e24e5606e01db))
+* wake dormant deployments from playground ([38f08b1](https://github.com/evelandhq/eveland/commit/38f08b19e904a6e26621a467652b09039c9da6e4))
+* wake dormant deployments from playground ([3d69df8](https://github.com/evelandhq/eveland/commit/3d69df8e67d6797afc5be4b3cf16b420b7d30110))
+
 ## [0.2.0](https://github.com/evelandhq/eveland/compare/v0.1.0...v0.2.0) (2026-07-15)
 
 
