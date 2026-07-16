@@ -4,6 +4,90 @@ import { ensureDeploymentActive, reconcileRuntimeInstances } from "./activation-
 import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
 
 describe("ensureDeploymentActive", () => {
+  test("waits for a draining RuntimeInstance to stop before starting its next generation", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Draining Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/draining-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:draining",
+      containerName: "fixture-draining",
+      internalPort: 3000,
+      hostPort: 41995,
+      runtimeKind: "docker",
+    });
+    const first = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_draining",
+      expiresAt: new Date("2026-07-16T03:01:00.000Z"),
+      now: new Date("2026-07-16T03:00:00.000Z"),
+    });
+    await store.updateRuntimeInstance(first.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    });
+    await store.releaseActivationLease(first.lease.id);
+    await store.updateRuntimeInstance(first.runtimeInstance.id, { status: "draining" });
+
+    const acquireActivationLease = store.acquireActivationLease.bind(store);
+    let acquisitionAttempts = 0;
+    const drainingStore = {
+      ...store,
+      async acquireActivationLease(input: Parameters<typeof store.acquireActivationLease>[0]) {
+        acquisitionAttempts += 1;
+        if (acquisitionAttempts === 1) {
+          await store.updateRuntimeInstance(first.runtimeInstance.id, { status: "stopped" });
+          throw new Error("RuntimeInstance is draining; retry activation after it stops.");
+        }
+        return acquireActivationLease(input);
+      },
+    };
+    const ensureProcess = vi.fn(async () => ({ internalPort: 3000, log: "started" }));
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      ensureProcess,
+    } as unknown as RuntimeAdapter;
+
+    const activation = await ensureDeploymentActive(drainingStore, {
+      deployment,
+      runtime,
+      kind: "schedule_run",
+      ownerId: "srun_after_drain",
+      startInput: {
+        processName: deployment.containerName,
+        releaseRef: "fixture:draining",
+        port: deployment.hostPort,
+        env: {},
+        commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
+        sandboxCacheDir: "/tmp/cache",
+        observerOutboxDir: "/tmp/outbox",
+      },
+    }, {
+      drainRetryMs: 1,
+      waitForHealth: vi.fn(),
+    });
+
+    expect(acquisitionAttempts).toBe(2);
+    expect(ensureProcess).toHaveBeenCalledTimes(1);
+    expect(activation.runtimeInstance).toMatchObject({ status: "ready", generation: 2 });
+  });
+
   test("elects one cold starter and returns one ready RuntimeInstance to concurrent leases", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Cold Agent", importKind: "zip" });

@@ -80,6 +80,7 @@ describe("configuration diagnostics", () => {
       expect.objectContaining({ name: "EVELAND_ACTIVATION_RENEW_INTERVAL_MS", value: "60000" }),
     ]));
     expect(worker.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "EVELAND_SCHEDULER_PREWARM_MS", value: "60000" }),
       expect.objectContaining({ name: "EVELAND_ACTIVATION_IDLE_TTL_MS", value: "300000" }),
       expect.objectContaining({ name: "EVELAND_ACTIVATION_REAPER_BATCH_SIZE", value: "25" }),
       expect.objectContaining({ name: "EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE", value: "25" }),

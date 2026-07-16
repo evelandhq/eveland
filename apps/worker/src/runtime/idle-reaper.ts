@@ -8,6 +8,7 @@ export async function reapIdleDeployments(
   input: {
     now?: Date;
     idleTtlMs?: number;
+    schedulePrewarmMs?: number;
     limit?: number;
     runtimeForKind?: (kind: RuntimeKind) => RuntimeAdapter;
   } = {},
@@ -16,6 +17,7 @@ export async function reapIdleDeployments(
   const instances = await store.claimIdleRuntimeInstances({
     now,
     idleTtlMs: input.idleTtlMs ?? 300_000,
+    schedulePrewarmMs: input.schedulePrewarmMs ?? 0,
     limit: input.limit ?? 25,
   });
   let stopped = 0;

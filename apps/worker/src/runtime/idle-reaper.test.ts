@@ -4,6 +4,74 @@ import { reapIdleDeployments } from "./idle-reaper.js";
 import type { RuntimeAdapter } from "./types.js";
 
 describe("reapIdleDeployments", () => {
+  test("keeps a scheduler target warm when its next run is inside the prewarm window", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Warm Scheduler Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/warm-scheduler-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordScheduleVersions({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      definitions: [{
+        key: "heartbeat",
+        kind: "handler",
+        cron: "* * * * *",
+        sourcePath: "agent/schedules/heartbeat.ts",
+        definitionHash: "heartbeat-v1",
+      }],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:warm-scheduler",
+      containerName: "fixture-warm-scheduler",
+      internalPort: 3000,
+      hostPort: 41988,
+      runtimeKind: "docker",
+    });
+    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-16T03:00:00.000Z"));
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_warm_scheduler",
+      expiresAt: new Date("2026-07-16T02:51:00.000Z"),
+      now: new Date("2026-07-16T02:50:00.000Z"),
+    });
+    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    }, new Date("2026-07-16T02:50:00.000Z"));
+    await store.releaseActivationLease(claim.lease.id, new Date("2026-07-16T02:51:00.000Z"));
+    const stopProcess = vi.fn(async () => {});
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess,
+    } as unknown as RuntimeAdapter;
+
+    await expect(reapIdleDeployments(store, {
+      now: new Date("2026-07-16T03:00:10.000Z"),
+      idleTtlMs: 0,
+      schedulePrewarmMs: 60_000,
+      limit: 10,
+      runtimeForKind: () => runtime,
+    })).resolves.toBe(0);
+
+    expect(stopProcess).not.toHaveBeenCalled();
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({ status: "ready" });
+  });
+
   test("stops a ready process only after its final lease idle deadline", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Idle Reaper Agent", importKind: "zip" });

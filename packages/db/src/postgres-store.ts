@@ -52,7 +52,13 @@ import {
   runtimeInstances,
   activationLeases,
 } from "./schema.js";
-import { DEFAULT_TEAM_ID, projectDeletionSourcePaths, type CreateProjectInput, type Store } from "./store.js";
+import {
+  DEFAULT_TEAM_ID,
+  RuntimeInstanceDrainingError,
+  projectDeletionSourcePaths,
+  type CreateProjectInput,
+  type Store,
+} from "./store.js";
 import { summarizeSessionUsage } from "./session-usage.js";
 import type {
   DeploymentStatus,
@@ -1333,6 +1339,34 @@ export function createPostgresStore(database: Database): Store {
       });
     },
 
+    async listUpcomingScheduleTargets(input) {
+      if (!Number.isInteger(input.limit) || input.limit < 1) throw new Error("Schedule prewarm limit must be positive.");
+      const rows = await db
+        .select({
+          scheduleId: projectSchedules.id,
+          projectId: projectSchedules.projectId,
+          deploymentId: projectSchedulerTargets.deploymentId,
+          nextRunAt: projectSchedules.nextRunAt,
+        })
+        .from(projectSchedules)
+        .innerJoin(projectSchedulerTargets, eq(projectSchedulerTargets.projectId, projectSchedules.projectId))
+        .innerJoin(deployments, eq(deployments.id, projectSchedulerTargets.deploymentId))
+        .where(and(
+          eq(projectSchedules.enabled, true),
+          gt(projectSchedules.nextRunAt, input.after),
+          lte(projectSchedules.nextRunAt, input.before),
+          sql`${deployments.status} not in ('archived', 'failed')`,
+        ))
+        .orderBy(asc(projectSchedules.nextRunAt), asc(projectSchedules.id))
+        .limit(input.limit);
+      return rows.flatMap((row) => row.nextRunAt ? [{
+        scheduleId: row.scheduleId,
+        projectId: row.projectId,
+        deploymentId: row.deploymentId,
+        nextRunAt: row.nextRunAt.toISOString(),
+      }] : []);
+    },
+
     async createManualScheduleRun(projectId, scheduleId, now = new Date()) {
       return db.transaction(async (tx) => {
         const [schedule] = await tx
@@ -1665,7 +1699,7 @@ export function createPostgresStore(database: Database): Store {
           .limit(1)
           .for("update");
         if (latestRuntimeInstance?.status === "draining") {
-          throw new Error("RuntimeInstance is draining; retry activation after it stops.");
+          throw new RuntimeInstanceDrainingError();
         }
         let runtimeInstance = latestRuntimeInstance &&
           (latestRuntimeInstance.status === "starting" || latestRuntimeInstance.status === "ready")
@@ -1845,8 +1879,13 @@ export function createPostgresStore(database: Database): Store {
     async claimIdleRuntimeInstances(input) {
       if (!Number.isInteger(input.limit) || input.limit < 1) throw new Error("Runtime idle claim limit must be positive.");
       if (!Number.isFinite(input.idleTtlMs) || input.idleTtlMs < 0) throw new Error("Runtime idle TTL must be non-negative.");
+      const schedulePrewarmMs = input.schedulePrewarmMs ?? 0;
+      if (!Number.isFinite(schedulePrewarmMs) || schedulePrewarmMs < 0) {
+        throw new Error("Schedule prewarm window must be non-negative.");
+      }
       return db.transaction(async (tx) => {
         const cutoffAt = new Date(input.now.getTime() - input.idleTtlMs);
+        const scheduleHorizon = new Date(input.now.getTime() + schedulePrewarmMs);
         const candidates = await tx
           .select()
           .from(runtimeInstances)
@@ -1860,6 +1899,21 @@ export function createPostgresStore(database: Database): Store {
                   and active_lease.released_at is null
                   and active_lease.expires_at > ${input.now.toISOString()}::timestamptz
               )`,
+              sql`not exists (
+                select 1 from schedule_runs as protected_run
+                where protected_run.deployment_id = ${runtimeInstances.deploymentId}
+                  and protected_run.status in ('queued', 'activating', 'dispatching', 'running')
+              )`,
+              ...(schedulePrewarmMs > 0 ? [sql`not exists (
+                  select 1
+                  from project_scheduler_targets as protected_target
+                  join project_schedules as upcoming_schedule
+                    on upcoming_schedule.project_id = protected_target.project_id
+                  where protected_target.deployment_id = ${runtimeInstances.deploymentId}
+                    and upcoming_schedule.enabled = true
+                    and upcoming_schedule.next_run_at is not null
+                    and upcoming_schedule.next_run_at <= ${scheduleHorizon.toISOString()}::timestamptz
+                )`] : []),
               sql`greatest(
                 coalesce(${runtimeInstances.readyAt}, ${runtimeInstances.startedAt}, '-infinity'::timestamptz),
                 coalesce((

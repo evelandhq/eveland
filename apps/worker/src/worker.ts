@@ -13,6 +13,7 @@ import { reconcileRuntimeInstances, recoverStartingRuntimeInstances } from "./ru
 import { planDueSchedules } from "./scheduler/planner.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
+const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
 const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_MS ?? 3_600_000);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
@@ -46,9 +47,12 @@ async function tick() {
     await Promise.all([
       planDueSchedules(storeFactory.store, {
         limit: Number(process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25),
+        prewarmMs: schedulerPrewarmMs,
+        activationLeaseTtlMs: schedulerPrewarmMs + Math.max(10_000, intervalMs * 2),
       }),
       reapIdleDeployments(storeFactory.store, {
         idleTtlMs: Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 300_000),
+        schedulePrewarmMs: schedulerPrewarmMs,
         limit: Number(process.env.EVELAND_ACTIVATION_REAPER_BATCH_SIZE ?? 25),
       }),
       recoverStartingRuntimeInstances(storeFactory.store, {

@@ -319,11 +319,19 @@ ScheduleRun、排入 `trigger_schedule` job、推进 `nextRunAt` 并记录合并
 若 worker 停机跨过多个分钟 tick，v1 只为最早的 due time 创建一个 run，并把其余
 已错过 tick 计入 `missedTicks`，随后把 `nextRunAt` 推进到第一个未来时刻，不做 burst
 replay。
+Worker 使用持久化的 `nextRunAt` 做 schedule-aware scale-to-zero：scheduler target
+进入预热窗口后，ready RuntimeInstance 不得被 idle reaper 标记为 `draining`；若它已经
+停止，planner 获取短期预热 ActivationLease 并排入幂等 activation job。预热只启动
+固定 Release，不提前创建或执行 ScheduleRun。queued、activating、dispatching 或
+running 的 ScheduleRun 对其 pinned Deployment 提供硬性回收保护。
 手动运行复用同一条 job 路径。执行前 Worker 获取 `schedule_run` ActivationLease，
 按 Deployment 记录的 `runtimeKind` 幂等唤醒预构建 Release，再用短期单次 credential
 调用 Release 内的私有 Scheduler Channel。Channel 在执行 authored handler 前向 API
 原子兑换 credential，并在返回前持久化零个或多个 Eve Session ID；重复 job 或
 credential 不得重复执行 authored side effect。
+若旧 RuntimeInstance 正在 `draining`，activation 在 credential 兑换前按健康检查预算
+有界退避，待它停止后创建下一 generation；这属于瞬态等待，不得直接把 ScheduleRun
+记为 failed。credential 一旦兑换，仍不得因响应丢失而自动重放 authored side effect。
 
 Prepared Release 会保留 Eve 的 Schedule 注册形状，但将 native cron handler 改为
 no-op，因此 warm preview、旧版本和 stable target 不会各自执行同一 cron。真正的
