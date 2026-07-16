@@ -192,61 +192,90 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     }
     const route = await repository.findProjectRoute(context.req.param("projectId"));
     if (!route?.enabled) return context.json({ error: "Project route not found" }, 404);
-    const target = await resolveTarget(repository, route, null, crypto.randomUUID());
+    const activationOwnerId = crypto.randomUUID();
+    const target = await resolveTarget(repository, route, null, crypto.randomUUID(), Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
 
-    const authority = `localhost:${target.hostPort}`;
-    const startBody = JSON.stringify({ message: input.message });
-    const startResponse = await proxyToDeployment({
-      port: target.hostPort,
-      path: "/eve/v1/session",
-      method: "POST",
-      headers: new Headers({ host: authority, "content-type": "application/json" }),
-      body: new TextEncoder().encode(startBody),
-      timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
-    });
-    const startText = await startResponse.text();
-    if (!startResponse.ok) return context.json({ error: "Deployment rejected Playground request", detail: startText }, 502);
-    const startValue = parseJsonRecord(startText);
-    const eveSessionId =
-      startResponse.headers.get("x-eve-session-id") ?? stringValue(startValue?.sessionId) ?? stringValue(startValue?.session_id);
-    const continuationToken = stringValue(startValue?.continuationToken) ?? stringValue(startValue?.continuation_token);
-    if (!eveSessionId) {
-      return context.json({
-        response: stringValue(startValue?.response) ?? stringValue(startValue?.message) ?? startText,
-        eveSessionId: null,
-        continuationToken,
-        events: [],
-      });
+    let activation: { leaseId: string; endpointPort: number } | null = null;
+    if (options.activationClient) {
+      try {
+        activation = await options.activationClient.activate({
+          deploymentId: target.deploymentId,
+          kind: "turn",
+          ownerId: activationOwnerId,
+        }, context.req.raw.signal);
+      } catch (error) {
+        if (context.req.raw.signal.aborted || isAbortError(error)) {
+          return new Response(JSON.stringify({ error: "Client closed request" }), {
+            status: 499,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return context.json({ error: "Deployment activation failed" }, 503);
+      }
     }
 
-    const requestId = crypto.randomUUID();
-    await repository.bindSession({
-      projectId: route.projectId,
-      eveSessionId,
-      routeId: route.id,
-      deploymentId: target.deploymentId,
-      trigger: "playground",
-      variantName: target.variantName,
-      experimentId: routeExperimentId(route),
-      requestId,
-      remoteIp: null,
-      affinityFingerprint: null,
-      affinitySource: null,
-    });
-    const streamResponse = await proxyToDeployment({
-      port: target.hostPort,
-      path: `/eve/v1/session/${encodeURIComponent(eveSessionId)}/stream`,
-      method: "GET",
-      headers: new Headers({ host: authority, accept: "application/x-ndjson" }),
-      body: null,
-      timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
-    });
-    if (!streamResponse.ok || !streamResponse.body) {
-      return context.json({ error: "Deployment Playground stream failed" }, 502);
+    try {
+      const authority = `localhost:${target.hostPort}`;
+      const endpointPort = activation?.endpointPort ?? target.hostPort;
+      const startBody = JSON.stringify({ message: input.message });
+      const startResponse = await proxyToDeployment({
+        port: endpointPort,
+        path: "/eve/v1/session",
+        method: "POST",
+        headers: new Headers({ host: authority, "content-type": "application/json" }),
+        body: new TextEncoder().encode(startBody),
+        signal: context.req.raw.signal,
+        timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
+      });
+      const startText = await startResponse.text();
+      if (!startResponse.ok) return context.json({ error: "Deployment rejected Playground request", detail: startText }, 502);
+      const startValue = parseJsonRecord(startText);
+      const eveSessionId =
+        startResponse.headers.get("x-eve-session-id") ?? stringValue(startValue?.sessionId) ?? stringValue(startValue?.session_id);
+      const continuationToken = stringValue(startValue?.continuationToken) ?? stringValue(startValue?.continuation_token);
+      if (!eveSessionId) {
+        return context.json({
+          response: stringValue(startValue?.response) ?? stringValue(startValue?.message) ?? startText,
+          eveSessionId: null,
+          continuationToken,
+          events: [],
+        });
+      }
+
+      const requestId = crypto.randomUUID();
+      await repository.bindSession({
+        projectId: route.projectId,
+        eveSessionId,
+        routeId: route.id,
+        deploymentId: target.deploymentId,
+        trigger: "playground",
+        variantName: target.variantName,
+        experimentId: routeExperimentId(route),
+        requestId,
+        remoteIp: null,
+        affinityFingerprint: null,
+        affinitySource: null,
+      });
+      const streamResponse = await proxyToDeployment({
+        port: endpointPort,
+        path: `/eve/v1/session/${encodeURIComponent(eveSessionId)}/stream`,
+        method: "GET",
+        headers: new Headers({ host: authority, accept: "application/x-ndjson" }),
+        body: null,
+        signal: context.req.raw.signal,
+        timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
+      });
+      if (!streamResponse.ok || !streamResponse.body) {
+        return context.json({ error: "Deployment Playground stream failed" }, 502);
+      }
+      const streamed = await readPlaygroundStream(streamResponse.body, eveSessionId);
+      return context.json({ ...streamed, eveSessionId, continuationToken });
+    } finally {
+      if (activation && options.activationClient) {
+        await options.activationClient.release(activation.leaseId).catch(() => undefined);
+      }
     }
-    const streamed = await readPlaygroundStream(streamResponse.body, eveSessionId);
-    return context.json({ ...streamed, eveSessionId, continuationToken });
   });
   app.post("/internal/cache/invalidate", async (context) => {
     if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {

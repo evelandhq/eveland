@@ -654,6 +654,44 @@ describe("Gateway", () => {
     expect(repo.bindings).toContainEqual(expect.objectContaining({ eveSessionId: "eve_playground", trigger: "playground" }));
   });
 
+  test("activates a stopped Deployment for the legacy privileged Playground path", async () => {
+    const upstream = await startUpstream((request, response) => {
+      if (request.method === "POST") {
+        response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": "eve_legacy_wake" });
+        response.end(JSON.stringify({ sessionId: "eve_legacy_wake", continuationToken: "continue_legacy_wake" }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.write(`${JSON.stringify({ type: "message.completed", data: { message: "Awake" } })}\n`);
+      response.end(`${JSON.stringify({ type: "turn.completed", data: { turnId: "turn_0" } })}\n`);
+    });
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: "lease_legacy_playground", endpointPort: upstream.port })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+      activationClient,
+    });
+
+    const response = await app.request("http://gateway/internal/projects/proj_1/playground", {
+      method: "POST",
+      headers: { authorization: "Bearer service-secret", "content-type": "application/json" },
+      body: JSON.stringify({ message: "wake" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ response: "Awake", eveSessionId: "eve_legacy_wake" });
+    expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({
+      deploymentId: "dep_1",
+      kind: "turn",
+    }), expect.any(AbortSignal));
+    expect(activationClient.release).toHaveBeenCalledWith("lease_legacy_playground");
+  });
+
   test("proxies the canonical Eve Playground protocol with streaming, attachments, and pinned continuations", async () => {
     const requests: Array<{ method: string; path: string; host: string; body: string }> = [];
     const upstream = await startUpstream((request, response) => {

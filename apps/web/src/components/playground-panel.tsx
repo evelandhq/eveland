@@ -124,6 +124,12 @@ export function PlaygroundPanel({ projectId }: PlaygroundPanelProps) {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
+        {!error && agent.status === "submitted" ? (
+          <Alert className="mb-2">
+            <AlertTitle>Starting agent and sending your message</AlertTitle>
+            <AlertDescription>A cold start can take up to 30 seconds.</AlertDescription>
+          </Alert>
+        ) : null}
         <PromptInput
           accept={PLAYGROUND_ATTACHMENT_ACCEPT}
           globalDrop
