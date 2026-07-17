@@ -16,7 +16,7 @@
     "@eveland/core": "workspace:*"
   },
   "devDependencies": {
-    "eve": "0.24.x",
+    "eve": "0.24.6",
     "vitest": "^4.1.9"
   }
 }

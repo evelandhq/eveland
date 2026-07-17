@@ -962,8 +962,9 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const pathSessionId = playgroundSessionIdFromPath(evePath);
     const isInitial = c.req.method === "POST" && evePath === "/eve/v1/session";
     const isContinuation = c.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
+    const isCancel = c.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+\/cancel$/.test(evePath);
     const isStream = c.req.method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(evePath);
-    if (!isInitial && !isContinuation && !isStream) return c.json({ error: "Playground route not found" }, 404);
+    if (!isInitial && !isContinuation && !isCancel && !isStream) return c.json({ error: "Playground route not found" }, 404);
 
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
@@ -981,10 +982,10 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     }
 
     let body: Uint8Array | null = null;
-    if (isInitial || isContinuation) {
+    if (isInitial || isContinuation || isCancel) {
       try {
         body = await readLimitedPlaygroundBody(c.req.raw, PLAYGROUND_MAX_TRANSPORT_BYTES);
-        validatePlaygroundTurn(parsePlaygroundBody(body));
+        if (!isCancel) validatePlaygroundTurn(parsePlaygroundBody(body));
       } catch (error) {
         const message = error instanceof Error ? error.message : "Invalid Playground request";
         const status = message === "Playground request body is too large." ? 413 : 400;
@@ -1007,12 +1008,14 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         signal: c.req.raw.signal,
       });
     } catch (error) {
-      if (platformSession) await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
+      if (platformSession && !isCancel) {
+        await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
+      }
       const message = error instanceof Error ? error.message : String(error);
       return c.json({ error: "Playground request failed", detail: message }, 502);
     }
 
-    if (!upstream.ok && platformSession) {
+    if (!upstream.ok && platformSession && !isCancel) {
       await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
     }
 

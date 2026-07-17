@@ -92,8 +92,9 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     const pathSessionId = sessionIdFromPath(evePath);
     const isInitial = context.req.method === "POST" && evePath === "/eve/v1/session";
     const isContinuation = context.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
+    const isCancel = context.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+\/cancel$/.test(evePath);
     const isStream = context.req.method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(evePath);
-    if (!isInitial && !isContinuation && !isStream) return context.json({ error: "Not found" }, 404);
+    if (!isInitial && !isContinuation && !isCancel && !isStream) return context.json({ error: "Not found" }, 404);
 
     const route = await repository.findProjectRoute(context.req.param("projectId"));
     if (!route?.enabled) return context.json({ error: "Project route not found" }, 404);
@@ -434,6 +435,7 @@ function isEveSessionRequest(method: string, pathname: string): boolean {
   return (
     (method === "POST" && pathname === "/eve/v1/session") ||
     (method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(pathname)) ||
+    (method === "POST" && /^\/eve\/v1\/session\/[^/]+\/cancel$/.test(pathname)) ||
     (method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(pathname))
   );
 }
@@ -572,7 +574,7 @@ function proxyToDeployment(input: {
 
 function activationKind(method: string, pathname: string): "public_request" | "stream" | "turn" {
   if (method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(pathname)) return "stream";
-  if (method === "POST" && /^\/eve\/v1\/session(?:\/[^/]+)?$/.test(pathname)) return "turn";
+  if (method === "POST" && /^\/eve\/v1\/session(?:\/[^/]+(?:\/cancel)?)?$/.test(pathname)) return "turn";
   return "public_request";
 }
 

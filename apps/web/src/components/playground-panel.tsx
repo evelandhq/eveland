@@ -67,7 +67,7 @@ import {
   PLAYGROUND_MAX_FILES,
   PLAYGROUND_MAX_TOTAL_FILE_BYTES,
 } from "@eveland/core/eve";
-import { createPlaygroundMessage } from "@/lib/client-api";
+import { cancelPlaygroundTurn, createPlaygroundMessage } from "@/lib/client-api";
 import type { EveVersionInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -179,7 +179,16 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               </PromptInputActionMenu>
               <span className="text-xs text-muted-foreground">Up to 4 files · 10 MiB total</span>
             </PromptInputTools>
-            <PromptInputSubmit disabled={!eveVersion.supported} onStop={agent.stop} status={agent.status} />
+            <PromptInputSubmit
+              disabled={!eveVersion.supported}
+              onStop={() => {
+                setComposerError(null);
+                void cancelPlaygroundTurn(session, agent.stop).catch((cancelError) => {
+                  setComposerError(toErrorMessage(cancelError));
+                });
+              }}
+              status={agent.status}
+            />
           </PromptInputFooter>
         </PromptInput>
         <p className="py-2 text-center text-xs text-muted-foreground">

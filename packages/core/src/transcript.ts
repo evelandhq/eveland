@@ -27,7 +27,7 @@ export type TranscriptToolCall = {
   isSubagent: boolean;
   input: unknown;
   output: unknown;
-  status: "completed" | "failed" | "pending";
+  status: "completed" | "failed" | "cancelled" | "pending";
   errorText: string | null;
   usage: TranscriptUsage | null;
   targetNodeId: string | null;
@@ -244,6 +244,12 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
       case "turn.cancelled": {
         const turn = turnFor(payload, event.eventAt);
         turn.status = "cancelled";
+        for (const call of turnToolCalls(turn)) {
+          if (call.status === "pending") {
+            call.status = "cancelled";
+            call.errorText = "Turn cancelled";
+          }
+        }
         turn.items.push({ kind: "system", label: "Turn cancelled", text: null, eventAt: event.eventAt });
         break;
       }

@@ -17,7 +17,7 @@
     "typescript": "^6.0.3"
   },
   "devDependencies": {
-    "eve": "0.24.x",
+    "eve": "0.24.6",
     "vitest": "^4.1.9"
   }
 }

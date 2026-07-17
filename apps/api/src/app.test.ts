@@ -1259,6 +1259,7 @@ describe("api app", () => {
       runtimeKind: "docker",
     });
     const proxyCalls: Array<{ method: string; path: string; body: string }> = [];
+    let cancelCalls = 0;
     const app = createApp(store, {
       async playgroundProxy(input) {
         const body = input.body ? new TextDecoder().decode(input.body) : "";
@@ -1303,6 +1304,11 @@ describe("api app", () => {
             headers: { "content-type": "application/json", "x-eve-session-id": "eve_chat" },
           });
         }
+        if (input.method === "POST" && input.path === "/eve/v1/session/eve_chat/cancel") {
+          cancelCalls += 1;
+          if (cancelCalls > 1) return new Response("not found", { status: 404 });
+          return Response.json({ sessionId: "eve_chat", status: "accepted" }, { status: 202 });
+        }
         return new Response("not found", { status: 404 });
       },
     });
@@ -1345,6 +1351,18 @@ describe("api app", () => {
 
     expect(continuation.status).toBe(202);
     await expect(continuation.json()).resolves.toMatchObject({ continuationToken: "continue_2" });
+    const cancelBody = JSON.stringify({ turnId: "turn_1" });
+    const cancel = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_chat/cancel`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: cancelBody,
+    });
+    expect(cancel.status).toBe(202);
+    await expect(cancel.json()).resolves.toEqual({ sessionId: "eve_chat", status: "accepted" });
+    const unsupportedCancel = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_chat/cancel`, {
+      method: "POST",
+    });
+    expect(unsupportedCancel.status).toBe(404);
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({ eveSessionId: "eve_chat", status: "running", continuationToken: "continue_2" }),
     ]);
@@ -1352,6 +1370,8 @@ describe("api app", () => {
       { method: "POST", path: "/eve/v1/session", body: initialBody },
       { method: "GET", path: "/eve/v1/session/eve_chat/stream", body: "" },
       { method: "POST", path: "/eve/v1/session/eve_chat", body: continuationBody },
+      { method: "POST", path: "/eve/v1/session/eve_chat/cancel", body: cancelBody },
+      { method: "POST", path: "/eve/v1/session/eve_chat/cancel", body: "" },
     ]);
   });
 
@@ -1449,6 +1469,11 @@ describe("api app", () => {
     });
     expect(pinnedContinuation.status).toBe(409);
     await expect(pinnedContinuation.json()).resolves.toMatchObject({ error: "Unsupported Eve version" });
+    const pinnedCancel = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_old_pinned/cancel`, {
+      method: "POST",
+    });
+    expect(pinnedCancel.status).toBe(409);
+    await expect(pinnedCancel.json()).resolves.toMatchObject({ error: "Unsupported Eve version" });
     expect(playgroundProxy).toHaveBeenCalledOnce();
   });
 
