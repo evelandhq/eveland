@@ -83,11 +83,6 @@ const gitRepositoryUrlSchema = z
   .min(1)
   .refine((value) => inferProjectSlugFromGitUrl(value) !== null, "Enter a Git repository URL with a repository name.");
 
-const agentAuthInputSchema = z.object({
-  method: z.string().min(1),
-  config: z.unknown(),
-});
-
 const createProjectSchema = z.discriminatedUnion("importKind", [
   z.object({
     name: projectNameSchema.optional(),
@@ -95,14 +90,12 @@ const createProjectSchema = z.discriminatedUnion("importKind", [
     gitUrl: gitRepositoryUrlSchema,
     gitlabPat: z.string().min(1).max(1024).optional(),
     deployAfterImport: z.boolean().optional(),
-    agentAuth: agentAuthInputSchema.optional(),
   }),
   z.object({
     name: projectNameSchema,
     importKind: z.literal("zip"),
     gitUrl: z.string().optional().nullable(),
     deployAfterImport: z.boolean().optional(),
-    agentAuth: agentAuthInputSchema.optional(),
   }),
 ]);
 
@@ -944,20 +937,13 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   app.post("/projects", async (c) => {
     if (isMultipartRequest(c)) {
-      return createZipProjectFromUpload(
-        c,
-        store,
-        dataDir,
-        async (input) => {
-          const config = normalizeConfiguredAgentAuth(input.method, input.config);
-          await configPreflights.get(input.method)?.(config);
-          return { method: input.method, config };
-        },
-        createProjectAgentConnection,
-      );
+      return createZipProjectFromUpload(c, store, dataDir);
     }
 
     const input = await c.req.json().catch(() => null);
+    if (typeof input === "object" && input !== null && "agentAuth" in input) {
+      return c.json({ error: "Configure the Agent Connection from Playground after importing the Project." }, 400);
+    }
     if (typeof input === "object" && input !== null && "preflightId" in input) {
       const parsedPreflight = createProjectFromPreflightSchema.safeParse(input);
       if (!parsedPreflight.success) {
@@ -1022,14 +1008,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       }
     }
 
-    const agentAuthInput = parsed.data.agentAuth ?? { method: "local-dev", config: {} };
-    let config: Record<string, unknown>;
-    try {
-      config = normalizeConfiguredAgentAuth(agentAuthInput.method, agentAuthInput.config);
-      await configPreflights.get(agentAuthInput.method)?.(config);
-    } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration" }, 422);
-    }
     try {
       const project = parsed.data.importKind === "git"
         ? await store.createProject({
@@ -1047,11 +1025,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
             requireExactSlug: true,
             deployAfterImport: parsed.data.deployAfterImport,
           });
-      const connection = await createProjectAgentConnection(project.id, { method: agentAuthInput.method, config });
-      return c.json({
-        project,
-        connection: agentConnectionView(connection, config),
-      }, 201);
+      return c.json({ project }, 201);
     } catch (error) {
       if (error instanceof ProjectSlugConflictError) {
         return c.json({ error: error.message }, 409);
@@ -1724,14 +1698,15 @@ async function createZipProjectFromUpload(
   c: Context,
   store: Store,
   dataDir: string,
-  prepareAgentAuth: (input: { method: string; config: unknown }) => Promise<{ method: string; config: Record<string, unknown> }>,
-  createConnection: (projectId: string, input: { method: string; config: Record<string, unknown> }) => Promise<Awaited<ReturnType<Store["createAgentConnection"]>>>,
 ) {
   const form = await c.req.formData();
   const name = form.get("name");
   const archive = form.get("archive");
   const deployAfterImport = form.get("deployAfterImport") === "true";
-  const serializedAgentAuth = form.get("agentAuth");
+
+  if (form.has("agentAuth")) {
+    return c.json({ error: "Configure the Agent Connection from Playground after importing the Project." }, 400);
+  }
 
   const parsedName = projectNameSchema.safeParse(name);
   if (!parsedName.success) {
@@ -1747,16 +1722,6 @@ async function createZipProjectFromUpload(
 
   if (!(await store.isProjectSlugAvailable(parsedName.data))) {
     return c.json({ error: "Project name is already in use." }, 409);
-  }
-
-  let agentAuth: { method: string; config: Record<string, unknown> };
-  try {
-    const input = typeof serializedAgentAuth === "string"
-      ? agentAuthInputSchema.parse(JSON.parse(serializedAgentAuth) as unknown)
-      : { method: "local-dev", config: {} };
-    agentAuth = await prepareAgentAuth(input);
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration" }, 422);
   }
 
   const { sourcePath, uploadDir } = await extractZipUpload(archive, dataDir);
@@ -1777,11 +1742,7 @@ async function createZipProjectFromUpload(
     throw error;
   }
 
-  const connection = await createConnection(project.id, agentAuth);
-  return c.json({
-    project,
-    connection: agentConnectionView(connection, agentAuth.config),
-  }, 201);
+  return c.json({ project }, 201);
 }
 
 type StoredAgentConnection = Awaited<ReturnType<Store["createAgentConnection"]>>;

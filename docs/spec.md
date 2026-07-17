@@ -288,9 +288,11 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 
 用户输入消息后，Web 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
 
-每个受管 Agent 都对应一个稳定的 Agent Connection。除平台支持的
-`jinshujuOidc(...)` 初次导入检测外，团队成员仍在导入或 Playground 的 Connection 设置中
-显式选择客户端 access method；Eveland 不从通用 401 challenge 猜测认证方式，也不尝试
+每个受管 Agent 都对应一个稳定的 Agent Connection。导入页面和 Project 创建接口不接收
+手动 Agent Connection 配置。初次导入检测到平台支持的 `jinshujuOidc(...)` 时，Worker
+自动创建或选择服务端托管的 `Jinshuju OIDC`；除此之外，团队成员统一在 Playground 的
+Connection 设置中显式选择客户端 access method。尚无 Connection 记录时，打开 Playground
+会懒创建 `local-dev`。Eveland 不从通用 401 challenge 猜测认证方式，也不尝试
 还原任意自定义 AuthFn。初次导入只在 Eve channel 源码中实际调用
 `jinshujuOidc(...)` 时自动选择 `Jinshuju OIDC`，import-only 不触发；后续 Sync 不覆盖成员
 已修改的 Connection。`local-dev` 保留 loopback 开发身份，`none`、Basic、静态 Bearer、

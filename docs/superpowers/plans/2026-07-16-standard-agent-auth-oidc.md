@@ -50,8 +50,9 @@ Eve 官方定义了两个独立系统：
 
 ### 3.1 第一阶段必须交付
 
-- 每个 Agent Connection 显式声明 auth method 与配置；新项目导入时由团队成员选择获取方式
-  （可选择 `local-dev`），不解析 Agent 源码来猜测。现有项目首次解析 connection 时兼容创建
+- 每个 Agent Connection 显式声明 auth method 与配置；新项目导入不接收成员手工配置。
+  首次导入仅对实际调用的 `jinshujuOidc(...)` 自动选择服务端托管方式，其余 method 由团队
+  成员在 Playground Connection 设置中选择。尚无记录时首次解析 connection 兼容创建
   `local-dev` 配置，保持行为。
   Eveland Playground 为当前受管 Agent 解析一个稳定的 connection。
 - server-side method 注册表、配置 schema、credential scope、provider 和交互路由描述；
@@ -161,7 +162,7 @@ method 表示“Eveland 如何获得并维护出站凭证”，不表示 Agent �
 
 OIDC 首条消息的时序固定为：
 
-1. 团队成员已在导入或 Connection 设置中为 Agent Connection 显式配置
+1. 团队成员已在 Playground Connection 设置中为 Agent Connection 显式配置
    `oidc` 及 issuer/client/audience；首条消息负责触发用户授权，不负责
    从 Agent 自动发现这些配置。
 2. Playground 暂存首条 turn 并请求创建 session；`AgentAuthModule` 发现当前
@@ -561,8 +562,8 @@ Connection Auth stream event 仍走现有渲染。避免测试 shadcn 内部实�
 
 1. descriptors/config/status/PUT 路由。
 2. redacted config 和 write-only secret 合并语义。
-3. 新项目导入和 Playground Connection 设置共用 descriptor-driven 表单与校验；导入时
-   创建 connection，设置页修改同一 connection，不复制 method 分支。
+3. Playground Connection 设置使用 descriptor-driven 表单与校验；导入不显示或接收该表单，
+   仅由初次源码检测自动写入服务端托管的 Jinshuju OIDC Connection。
 4. server/client API、状态展示和 `configuration_required` pending-turn 流程。
 
 ### Slice 4 — OIDC tracer bullet（Authorization Code + PKCE）
