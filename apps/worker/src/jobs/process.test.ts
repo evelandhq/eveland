@@ -2,8 +2,10 @@ import { describe, expect, test, vi } from "vitest";
 import { createMemoryStore, type Store } from "@eveland/db";
 import {
   allocateAvailableHostPort,
+  cleanupExpiredSourcePreflights,
   invalidateGatewayRouteCache,
   processNextJob,
+  processNextSourcePreflight,
   runWithJobHeartbeat,
   resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
@@ -20,6 +22,76 @@ import type { DeploymentRecord } from "@eveland/core/contracts";
 import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 
 describe("processNextJob", () => {
+  test("validates an Eve source before a Project exists", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const preflight = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(processNextSourcePreflight(store, "preflight-worker")).resolves.toBe(true);
+    await expect(store.getSourcePreflight(preflight.id, "user_local_admin")).resolves.toMatchObject({
+      status: "completed",
+      summary: expect.objectContaining({ eveVersion: expect.any(String) }),
+    });
+    await expect(store.listProjects()).resolves.toEqual([]);
+  });
+
+  test("reports invalid Eve source without creating a Project", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-invalid-preflight-"));
+    await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.23.0" } }));
+    const preflight = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(processNextSourcePreflight(store, "preflight-worker")).resolves.toBe(true);
+    await expect(store.getSourcePreflight(preflight.id, "user_local_admin")).resolves.toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("Eve"),
+    });
+    await expect(store.listProjects()).resolves.toEqual([]);
+    await rm(sourcePath, { recursive: true, force: true });
+  });
+
+  test("cleans expired managed preflight snapshots but preserves outside paths", async () => {
+    const store = createMemoryStore();
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-cleanup-"));
+    const managedSource = path.join(dataDir, "preflights", "pre_managed", "source");
+    const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-outside-"));
+    const outsideSource = path.join(outsideRoot, "source");
+    await Promise.all([mkdir(managedSource, { recursive: true }), mkdir(outsideSource, { recursive: true })]);
+
+    for (const sourcePath of [managedSource, outsideSource]) {
+      const preflight = await store.createSourcePreflight({
+        userId: "user_local_admin",
+        kind: "zip",
+        sourcePath,
+        expiresAt: new Date("2026-07-17T00:00:00.000Z"),
+      });
+      const claimed = await store.claimNextSourcePreflight("cleanup-worker", new Date("2026-07-16T00:00:00.000Z"));
+      await store.completeSourcePreflight(preflight.id, claimed!.attempts, { sourcePath, commitSha: null, summary: {} });
+    }
+
+    await expect(cleanupExpiredSourcePreflights(
+      store,
+      dataDir,
+      new Date("2026-07-18T00:00:00.000Z"),
+    )).resolves.toBe(1);
+    await expect(access(managedSource)).rejects.toThrow();
+    await expect(access(outsideSource)).resolves.toBeUndefined();
+    await Promise.all([
+      rm(dataDir, { recursive: true, force: true }),
+      rm(outsideRoot, { recursive: true, force: true }),
+    ]);
+  });
+
   test("heartbeats while a claimed job is still running", async () => {
     let finish!: (value: string) => void;
     let heartbeatObserved!: () => void;

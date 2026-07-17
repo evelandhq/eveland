@@ -102,6 +102,94 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
   }
 }
 
+export async function processNextSourcePreflight(
+  store: Store,
+  workerId: string,
+  options: ProcessJobOptions = {},
+): Promise<boolean> {
+  const preflight = await store.claimNextSourcePreflight(workerId);
+  if (!preflight) return false;
+  let managedAttemptDir: string | null = null;
+
+  try {
+    await runWithJobHeartbeat({
+      intervalMs: options.jobHeartbeatIntervalMs ?? Number(process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000),
+      heartbeat: () => store.heartbeatSourcePreflight(preflight.id, preflight.attempts),
+      work: async () => {
+        let sourcePath = preflight.sourcePath;
+        let commitSha = preflight.commitSha;
+        if (!sourcePath && preflight.kind === "git") {
+          if (!preflight.gitUrl) throw new Error("Git preflight missing gitUrl.");
+          managedAttemptDir = path.join(
+            options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+            "preflights",
+            preflight.id,
+            `attempt-${preflight.attempts}`,
+          );
+          sourcePath = path.join(
+            managedAttemptDir,
+            "source",
+          );
+          await importGitSource({
+            gitUrl: preflight.gitUrl,
+            targetDir: sourcePath,
+            ...(preflight.gitCredential ? {
+              credential: {
+                host: preflight.gitCredential.host,
+                token: decryptSecretValue(
+                  parseEncryptedSecret(preflight.gitCredential.encryptedToken),
+                  options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey,
+                ),
+              },
+            } : {}),
+          });
+          commitSha = await getGitCommitSha(sourcePath);
+        }
+        if (!sourcePath) throw new Error("Source preflight missing sourcePath.");
+
+        const scan = await scanEveSource({ kind: preflight.kind, sourcePath, commitSha });
+        const completed = await store.completeSourcePreflight(preflight.id, preflight.attempts, {
+          sourcePath,
+          commitSha,
+          summary: scan.summary,
+        });
+        if (!completed) throw new Error(`Source preflight ${preflight.id} lost its worker lease.`);
+      },
+    });
+    return true;
+  } catch (error) {
+    if (managedAttemptDir) await rm(managedAttemptDir, { recursive: true, force: true });
+    await store.failSourcePreflight(preflight.id, preflight.attempts, errorMessage(error));
+    return true;
+  }
+}
+
+export async function cleanupExpiredSourcePreflights(
+  store: Store,
+  dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+  now = new Date(),
+): Promise<number> {
+  const paths = await store.expireSourcePreflights(now, 25);
+  const root = path.resolve(dataDir);
+  let removed = 0;
+  for (const sourcePath of paths) {
+    const resolved = path.resolve(sourcePath);
+    if (resolved === root || !resolved.startsWith(`${root}${path.sep}`)) continue;
+    let cleanupTarget = resolved;
+    for (let cursor = resolved; cursor !== root; cursor = path.dirname(cursor)) {
+      const name = path.basename(cursor);
+      if (name.startsWith("zip-") || name.startsWith("pre_")) {
+        cleanupTarget = cursor;
+        break;
+      }
+      if (path.dirname(cursor) === cursor) break;
+    }
+    await rm(cleanupTarget, { recursive: true, force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
 async function clearTemporaryGitCredential(store: Store, job: Job): Promise<void> {
   if (job.type !== "import_source" || !("gitCredential" in job.payload)) return;
   const { gitCredential: _gitCredential, ...payload } = job.payload;

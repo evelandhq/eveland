@@ -14,6 +14,12 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
     const requestedName = `postgres-slug-${Date.now()}`;
     const first = await store.createProject({ name: requestedName, importKind: "zip" });
     const second = await store.createProject({ name: requestedName, importKind: "zip" });
+    await expect(store.isProjectSlugAvailable(requestedName)).resolves.toBe(false);
+    await expect(store.createProject({
+      name: requestedName,
+      importKind: "zip",
+      requireExactSlug: true,
+    })).rejects.toThrow("Project name is already in use.");
     const revision = await store.recordSourceRevision({
       projectId: first.id,
       kind: "zip",

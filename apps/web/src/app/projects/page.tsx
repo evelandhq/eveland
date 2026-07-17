@@ -58,7 +58,7 @@ export default async function ProjectsPage() {
           <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
             <span className="text-xs text-muted-foreground">{projects.length} total</span>
             <Link
-              href="/projects/new"
+              href="/new"
               className={cn(buttonVariants({ variant: 'link' }), 'text-foreground')}
             >
               <PlusIcon data-icon="inline-start" />
@@ -80,7 +80,7 @@ export default async function ProjectsPage() {
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
-                <Link href="/projects/new" className={buttonVariants()}>
+                <Link href="/new" className={buttonVariants()}>
                   <PlusIcon data-icon="inline-start" />
                   New project
                 </Link>

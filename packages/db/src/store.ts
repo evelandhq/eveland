@@ -1,4 +1,4 @@
-import { claimDeploymentKey, claimProjectSlug, createId } from "@eveland/core/ids";
+import { claimDeploymentKey, claimProjectSlug, createId, slugifyProjectName } from "@eveland/core/ids";
 import type {
   AgentRoute,
   Job,
@@ -41,6 +41,8 @@ import type {
   ActivationLeaseKind,
   GitCredentialRecord,
   PublicGitCredential,
+  SourcePreflight,
+  SourcePreflightRecord,
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -62,11 +64,20 @@ export class RuntimeInstanceDrainingError extends Error {
   }
 }
 
+export class ProjectSlugConflictError extends Error {
+  constructor() {
+    super("Project name is already in use.");
+    this.name = "ProjectSlugConflictError";
+  }
+}
+
 export type CreateProjectInput = {
   name: string;
   importKind: ProjectImportKind;
   gitUrl?: string | null;
   sourcePath?: string | null;
+  requireExactSlug?: boolean;
+  deployAfterImport?: boolean;
   gitCredential?: {
     userId: string;
     host: string;
@@ -74,6 +85,21 @@ export type CreateProjectInput = {
     persistAfterImport: boolean;
   };
 };
+
+export type CreateSourcePreflightInput = {
+  userId: string;
+  kind: ProjectImportKind;
+  gitUrl?: string | null;
+  sourcePath?: string | null;
+  expiresAt: Date;
+  gitCredential?: SourcePreflightRecord["gitCredential"];
+};
+
+export type CreateProjectFromSourcePreflightResult =
+  | { outcome: "created"; project: Project }
+  | { outcome: "not_found" }
+  | { outcome: "not_ready" }
+  | { outcome: "consumed" };
 
 export type ProjectDeletionRequest =
   | { outcome: "queued"; job: Job }
@@ -99,7 +125,26 @@ export const DEFAULT_TEAM_ID = "team_local";
 
 export type Store = {
   listProjects(): Promise<Project[]>;
+  isProjectSlugAvailable(slug: string): Promise<boolean>;
   createProject(input: CreateProjectInput): Promise<Project>;
+  createSourcePreflight(input: CreateSourcePreflightInput): Promise<SourcePreflight>;
+  getSourcePreflight(preflightId: string, userId: string): Promise<SourcePreflight | null>;
+  claimNextSourcePreflight(workerId: string, now?: Date): Promise<SourcePreflightRecord | null>;
+  heartbeatSourcePreflight(preflightId: string, attempt: number, now?: Date): Promise<boolean>;
+  recoverStaleSourcePreflights(now?: Date, staleAfterMs?: number, limit?: number): Promise<number>;
+  completeSourcePreflight(
+    preflightId: string,
+    attempt: number,
+    result: { sourcePath: string; commitSha: string | null; summary: Record<string, unknown> },
+  ): Promise<boolean>;
+  failSourcePreflight(preflightId: string, attempt: number, error: string): Promise<boolean>;
+  createProjectFromSourcePreflight(input: {
+    preflightId: string;
+    userId: string;
+    name: string;
+    deployAfterImport?: boolean;
+  }): Promise<CreateProjectFromSourcePreflightResult>;
+  expireSourcePreflights(now?: Date, limit?: number): Promise<string[]>;
   getProject(projectId: string): Promise<Project | null>;
   listGitCredentials(userId: string): Promise<PublicGitCredential[]>;
   getGitCredential(userId: string, host: string): Promise<GitCredentialRecord | null>;
@@ -285,6 +330,7 @@ export type StoreState = MemoryState;
 type MemoryState = {
   projects: Project[];
   gitCredentials: GitCredentialRecord[];
+  sourcePreflights: SourcePreflightRecord[];
   secrets: SecretRecord[];
   jobs: Job[];
   schedules: ScheduleRecord[];
@@ -312,6 +358,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
   const state: MemoryState = {
     projects: initialState?.projects ?? [],
     gitCredentials: initialState?.gitCredentials ?? [],
+    sourcePreflights: initialState?.sourcePreflights ?? [],
     secrets: initialState?.secrets ?? [],
     jobs: initialState?.jobs ?? [],
     schedules: initialState?.schedules ?? [],
@@ -340,8 +387,15 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return [...state.projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     },
 
+    async isProjectSlugAvailable(slug) {
+      return !state.projects.some((project) => project.slug === slug);
+    },
+
     async createProject(input) {
       const now = new Date().toISOString();
+      if (input.requireExactSlug && state.projects.some((candidate) => candidate.slug === slugifyProjectName(input.name))) {
+        throw new ProjectSlugConflictError();
+      }
       const project = await claimProjectSlug(input.name, async (slug) => {
         if (state.projects.some((candidate) => candidate.slug === slug)) return null;
         const claimed: Project = {
@@ -364,14 +418,173 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         };
         state.projects.push(claimed);
         return claimed;
+      }, input.requireExactSlug ? { maxAttempts: 1 } : undefined).catch((error: unknown) => {
+        if (input.requireExactSlug && error instanceof Error && error.message.startsWith("Failed to claim a unique project slug")) {
+          throw new ProjectSlugConflictError();
+        }
+        throw error;
       });
       state.jobs.push(createJob(project.id, "import_source", {
         importKind: input.importKind,
         gitUrl: input.gitUrl ?? null,
         sourcePath: input.sourcePath ?? null,
+        ...(input.deployAfterImport ? { deployAfterImport: true } : {}),
         ...(input.gitCredential ? { gitCredential: input.gitCredential } : {}),
       }));
       return project;
+    },
+
+    async createSourcePreflight(input) {
+      const now = new Date().toISOString();
+      const preflight: SourcePreflightRecord = {
+        id: createId("pre"),
+        userId: input.userId,
+        kind: input.kind,
+        gitUrl: input.gitUrl ?? null,
+        sourcePath: input.sourcePath ?? null,
+        commitSha: null,
+        status: "queued",
+        summary: null,
+        error: null,
+        attempts: 0,
+        lockedAt: null,
+        gitCredential: input.gitCredential ?? null,
+        expiresAt: input.expiresAt.toISOString(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.sourcePreflights.push(preflight);
+      return toPublicSourcePreflight(preflight);
+    },
+
+    async getSourcePreflight(preflightId, userId) {
+      const preflight = state.sourcePreflights.find(
+        (candidate) => candidate.id === preflightId && candidate.userId === userId,
+      );
+      return preflight ? toPublicSourcePreflight(preflight) : null;
+    },
+
+    async claimNextSourcePreflight(_workerId, now = new Date()) {
+      const preflight = state.sourcePreflights
+        .filter((candidate) => candidate.status === "queued" && Date.parse(candidate.expiresAt) > now.getTime())
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      if (!preflight) return null;
+      preflight.status = "running";
+      preflight.attempts += 1;
+      preflight.lockedAt = now.toISOString();
+      preflight.updatedAt = now.toISOString();
+      return structuredClone(preflight);
+    },
+
+    async heartbeatSourcePreflight(preflightId, attempt, now = new Date()) {
+      const preflight = state.sourcePreflights.find(
+        (candidate) => candidate.id === preflightId && candidate.status === "running" && candidate.attempts === attempt,
+      );
+      if (!preflight) return false;
+      preflight.lockedAt = now.toISOString();
+      preflight.updatedAt = now.toISOString();
+      return true;
+    },
+
+    async recoverStaleSourcePreflights(now = new Date(), staleAfterMs = 300_000, limit = 25) {
+      const cutoff = now.getTime() - staleAfterMs;
+      const stale = state.sourcePreflights
+        .filter((candidate) => candidate.status === "running" && candidate.lockedAt && Date.parse(candidate.lockedAt) <= cutoff)
+        .sort((a, b) => (a.lockedAt ?? "").localeCompare(b.lockedAt ?? ""))
+        .slice(0, limit);
+      for (const preflight of stale) {
+        preflight.status = "queued";
+        preflight.lockedAt = null;
+        preflight.updatedAt = now.toISOString();
+      }
+      return stale.length;
+    },
+
+    async completeSourcePreflight(preflightId, attempt, result) {
+      const preflight = state.sourcePreflights.find(
+        (candidate) => candidate.id === preflightId && candidate.status === "running" && candidate.attempts === attempt,
+      );
+      if (!preflight) return false;
+      preflight.status = "completed";
+      preflight.sourcePath = result.sourcePath;
+      preflight.commitSha = result.commitSha;
+      preflight.summary = result.summary;
+      preflight.error = null;
+      preflight.lockedAt = null;
+      preflight.updatedAt = new Date().toISOString();
+      return true;
+    },
+
+    async failSourcePreflight(preflightId, attempt, error) {
+      const preflight = state.sourcePreflights.find(
+        (candidate) => candidate.id === preflightId && candidate.status === "running" && candidate.attempts === attempt,
+      );
+      if (!preflight) return false;
+      preflight.status = "failed";
+      preflight.error = error;
+      preflight.lockedAt = null;
+      preflight.gitCredential = null;
+      preflight.updatedAt = new Date().toISOString();
+      return true;
+    },
+
+    async createProjectFromSourcePreflight(input) {
+      const preflight = state.sourcePreflights.find(
+        (candidate) => candidate.id === input.preflightId && candidate.userId === input.userId,
+      );
+      if (!preflight) return { outcome: "not_found" };
+      if (preflight.status === "consumed") return { outcome: "consumed" };
+      if (
+        preflight.status !== "completed"
+        || !preflight.sourcePath
+        || Date.parse(preflight.expiresAt) <= Date.now()
+      ) return { outcome: "not_ready" };
+
+      const slug = slugifyProjectName(input.name);
+      if (state.projects.some((candidate) => candidate.slug === slug)) throw new ProjectSlugConflictError();
+      const now = new Date().toISOString();
+      const project: Project = {
+        id: createId("proj"),
+        slug,
+        name: slug,
+        importKind: preflight.kind,
+        gitUrl: preflight.gitUrl,
+        status: "import_pending",
+        deploymentStatus: "not_deployed",
+        deletionStatus: null,
+        deletionError: null,
+        sourceRevisionId: null,
+        releaseId: null,
+        deploymentId: null,
+        latestSessionStatus: null,
+        nextScheduleAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.projects.push(project);
+      state.jobs.push(createJob(project.id, "import_source", {
+        importKind: preflight.kind,
+        gitUrl: preflight.gitUrl,
+        sourcePath: preflight.sourcePath,
+        ...(input.deployAfterImport ? { deployAfterImport: true } : {}),
+        ...(preflight.gitCredential ? { gitCredential: preflight.gitCredential } : {}),
+      }));
+      preflight.status = "consumed";
+      preflight.gitCredential = null;
+      preflight.updatedAt = now;
+      return { outcome: "created", project };
+    },
+
+    async expireSourcePreflights(now = new Date(), limit = 25) {
+      const expired = state.sourcePreflights
+        .filter((candidate) => candidate.status !== "running" && Date.parse(candidate.expiresAt) <= now.getTime())
+        .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))
+        .slice(0, limit);
+      const ids = new Set(expired.map((candidate) => candidate.id));
+      state.sourcePreflights = state.sourcePreflights.filter((candidate) => !ids.has(candidate.id));
+      return [...new Set(expired.flatMap((candidate) =>
+        candidate.status !== "consumed" && candidate.sourcePath ? [candidate.sourcePath] : [],
+      ))];
     },
 
     async getProject(projectId) {
@@ -2143,4 +2356,17 @@ function toPublicSecret(secret: SecretRecord): PublicSecret {
 function toPublicGitCredential(credential: GitCredentialRecord): PublicGitCredential {
   const { encryptedToken: _encryptedToken, userId: _userId, ...publicCredential } = credential;
   return publicCredential;
+}
+
+function toPublicSourcePreflight(preflight: SourcePreflightRecord): SourcePreflight {
+  const {
+    userId: _userId,
+    sourcePath: _sourcePath,
+    commitSha: _commitSha,
+    attempts: _attempts,
+    lockedAt: _lockedAt,
+    gitCredential: _gitCredential,
+    ...publicPreflight
+  } = preflight;
+  return publicPreflight;
 }

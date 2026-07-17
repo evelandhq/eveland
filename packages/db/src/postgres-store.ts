@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { claimDeploymentKey, claimProjectSlug, createId } from "@eveland/core/ids";
+import { claimDeploymentKey, claimProjectSlug, createId, slugifyProjectName } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { Database } from "./client.js";
@@ -27,6 +27,8 @@ import {
   scheduleRunRowToScheduleRun,
   runtimeInstanceRowToRuntimeInstance,
   activationLeaseRowToActivationLease,
+  sourcePreflightRowToPublic,
+  sourcePreflightRowToRecord,
 } from "./mappers.js";
 import {
   deployments,
@@ -54,9 +56,11 @@ import {
   scheduleRuns,
   runtimeInstances,
   activationLeases,
+  sourcePreflights,
 } from "./schema.js";
 import {
   DEFAULT_TEAM_ID,
+  ProjectSlugConflictError,
   RuntimeInstanceDrainingError,
   projectDeletionSourcePaths,
   type CreateProjectInput,
@@ -201,6 +205,11 @@ export function createPostgresStore(database: Database): Store {
       return rows.map(projectRowToProject);
     },
 
+    async isProjectSlugAvailable(slug) {
+      const [row] = await db.select({ id: projects.id }).from(projects).where(eq(projects.slug, slug)).limit(1);
+      return !row;
+    },
+
     async createProject(input: CreateProjectInput) {
       await ensureDefaultOwner();
       const row = await claimProjectSlug(input.name, async (slug) => {
@@ -224,16 +233,230 @@ export function createPostgresStore(database: Database): Store {
           if (isUniqueConstraint(error, "projects_slug_unique")) return null;
           throw error;
         }
+      }, input.requireExactSlug ? { maxAttempts: 1 } : undefined).catch((error: unknown) => {
+        if (input.requireExactSlug && error instanceof Error && error.message.startsWith("Failed to claim a unique project slug")) {
+          throw new ProjectSlugConflictError();
+        }
+        throw error;
       });
 
       await createJob(row.id, "import_source", {
         importKind: input.importKind,
         gitUrl: input.gitUrl ?? null,
         sourcePath: input.sourcePath ?? null,
+        ...(input.deployAfterImport ? { deployAfterImport: true } : {}),
         ...(input.gitCredential ? { gitCredential: input.gitCredential } : {}),
       });
 
       return projectRowToProject(row);
+    },
+
+    async createSourcePreflight(input) {
+      if (input.userId === defaultOwner.id) await ensureDefaultOwner();
+      const [row] = await db
+        .insert(sourcePreflights)
+        .values({
+          id: createId("pre"),
+          userId: input.userId,
+          kind: input.kind,
+          gitUrl: input.gitUrl ?? null,
+          sourcePath: input.sourcePath ?? null,
+          credentialHost: input.gitCredential?.host ?? null,
+          encryptedToken: input.gitCredential?.encryptedToken ?? null,
+          persistCredential: input.gitCredential?.persistAfterImport ?? false,
+          expiresAt: input.expiresAt,
+        })
+        .returning();
+      if (!row) throw new Error("Failed to create source preflight.");
+      return sourcePreflightRowToPublic(row);
+    },
+
+    async getSourcePreflight(preflightId, userId) {
+      const [row] = await db
+        .select()
+        .from(sourcePreflights)
+        .where(and(eq(sourcePreflights.id, preflightId), eq(sourcePreflights.userId, userId)))
+        .limit(1);
+      return row ? sourcePreflightRowToPublic(row) : null;
+    },
+
+    async claimNextSourcePreflight(_workerId, now = new Date()) {
+      const [row] = await db
+        .update(sourcePreflights)
+        .set({
+          status: "running",
+          attempts: sql`${sourcePreflights.attempts} + 1`,
+          lockedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(sourcePreflights.id, sql`(
+          select candidate.id
+          from ${sourcePreflights} candidate
+          where candidate.status = 'queued' and candidate.expires_at > ${now.toISOString()}
+          order by candidate.created_at asc
+          limit 1
+          for update skip locked
+        )`))
+        .returning();
+      return row ? sourcePreflightRowToRecord(row) : null;
+    },
+
+    async heartbeatSourcePreflight(preflightId, attempt, now = new Date()) {
+      const renewed = await db
+        .update(sourcePreflights)
+        .set({ lockedAt: now, updatedAt: now })
+        .where(and(
+          eq(sourcePreflights.id, preflightId),
+          eq(sourcePreflights.status, "running"),
+          eq(sourcePreflights.attempts, attempt),
+        ))
+        .returning({ id: sourcePreflights.id });
+      return renewed.length === 1;
+    },
+
+    async recoverStaleSourcePreflights(now = new Date(), staleAfterMs = 300_000, limit = 25) {
+      const cutoff = new Date(now.getTime() - staleAfterMs);
+      const recovered = await db
+        .update(sourcePreflights)
+        .set({ status: "queued", lockedAt: null, updatedAt: now })
+        .where(inArray(sourcePreflights.id, db
+          .select({ id: sourcePreflights.id })
+          .from(sourcePreflights)
+          .where(and(eq(sourcePreflights.status, "running"), lte(sourcePreflights.lockedAt, cutoff)))
+          .orderBy(asc(sourcePreflights.lockedAt))
+          .limit(limit)))
+        .returning({ id: sourcePreflights.id });
+      return recovered.length;
+    },
+
+    async completeSourcePreflight(preflightId, attempt, result) {
+      const completed = await db
+        .update(sourcePreflights)
+        .set({
+          status: "completed",
+          sourcePath: result.sourcePath,
+          commitSha: result.commitSha,
+          summary: result.summary,
+          error: null,
+          lockedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(sourcePreflights.id, preflightId),
+          eq(sourcePreflights.status, "running"),
+          eq(sourcePreflights.attempts, attempt),
+        ))
+        .returning({ id: sourcePreflights.id });
+      return completed.length === 1;
+    },
+
+    async failSourcePreflight(preflightId, attempt, error) {
+      const failed = await db
+        .update(sourcePreflights)
+        .set({
+          status: "failed",
+          error,
+          lockedAt: null,
+          credentialHost: null,
+          encryptedToken: null,
+          persistCredential: false,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(sourcePreflights.id, preflightId),
+          eq(sourcePreflights.status, "running"),
+          eq(sourcePreflights.attempts, attempt),
+        ))
+        .returning({ id: sourcePreflights.id });
+      return failed.length === 1;
+    },
+
+    async createProjectFromSourcePreflight(input) {
+      await ensureDefaultOwner();
+      return db.transaction(async (tx) => {
+        const [preflight] = await tx
+          .select()
+          .from(sourcePreflights)
+          .where(and(eq(sourcePreflights.id, input.preflightId), eq(sourcePreflights.userId, input.userId)))
+          .limit(1)
+          .for("update");
+        if (!preflight) return { outcome: "not_found" } as const;
+        if (preflight.status === "consumed") return { outcome: "consumed" } as const;
+        if (preflight.status !== "completed" || !preflight.sourcePath || preflight.expiresAt <= new Date()) {
+          return { outcome: "not_ready" } as const;
+        }
+
+        const slug = slugifyProjectName(input.name);
+        let projectRow: typeof projects.$inferSelect;
+        try {
+          const [created] = await tx
+            .insert(projects)
+            .values({
+              id: createId("proj"),
+              slug,
+              ownerId: defaultOwner.id,
+              name: slug,
+              importKind: preflight.kind,
+              gitUrl: preflight.gitUrl,
+              status: "import_pending",
+              deploymentStatus: "not_deployed",
+            })
+            .returning();
+          if (!created) throw new Error("Failed to create project.");
+          projectRow = created;
+        } catch (error) {
+          if (isUniqueConstraint(error, "projects_slug_unique")) throw new ProjectSlugConflictError();
+          throw error;
+        }
+
+        const gitCredential = preflight.credentialHost && preflight.encryptedToken
+          ? {
+              userId: preflight.userId,
+              host: preflight.credentialHost,
+              encryptedToken: preflight.encryptedToken,
+              persistAfterImport: preflight.persistCredential,
+            }
+          : null;
+        await tx.insert(jobs).values({
+          id: createId("job"),
+          projectId: projectRow.id,
+          type: "import_source",
+          status: "queued",
+          payload: {
+            importKind: preflight.kind,
+            gitUrl: preflight.gitUrl,
+            sourcePath: preflight.sourcePath,
+            ...(input.deployAfterImport ? { deployAfterImport: true } : {}),
+            ...(gitCredential ? { gitCredential } : {}),
+          },
+        });
+        await tx
+          .update(sourcePreflights)
+          .set({
+            status: "consumed",
+            credentialHost: null,
+            encryptedToken: null,
+            persistCredential: false,
+            updatedAt: new Date(),
+          })
+          .where(eq(sourcePreflights.id, preflight.id));
+        return { outcome: "created", project: projectRowToProject(projectRow) } as const;
+      });
+    },
+
+    async expireSourcePreflights(now = new Date(), limit = 25) {
+      const expired = await db
+        .delete(sourcePreflights)
+        .where(inArray(sourcePreflights.id, db
+          .select({ id: sourcePreflights.id })
+          .from(sourcePreflights)
+          .where(and(sql`${sourcePreflights.status} <> 'running'`, lte(sourcePreflights.expiresAt, now)))
+          .orderBy(asc(sourcePreflights.expiresAt))
+          .limit(limit)))
+        .returning({ sourcePath: sourcePreflights.sourcePath, status: sourcePreflights.status });
+      return [...new Set(expired.flatMap((row) =>
+        row.status !== "consumed" && row.sourcePath ? [row.sourcePath] : [],
+      ))];
     },
 
     async getProject(projectId) {

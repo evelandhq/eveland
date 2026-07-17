@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createServer, type ServerResponse } from "node:http";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -315,8 +315,13 @@ describe("api app", () => {
     await expect(response.json()).resolves.toMatchObject({ status: "degraded", backlogEvents: 4 });
   });
 
-  test("derives a Git project name from the repository URL and returns the claimed slug", async () => {
-    const app = createApp(createMemoryStore());
+  test("derives a Git project name, reports availability, and rejects an exact-name conflict", async () => {
+    const store = createMemoryStore();
+    const app = createApp(store);
+
+    const availableResponse = await app.request("/projects/name-availability?name=sample-office-assistant");
+    expect(availableResponse.status).toBe(200);
+    await expect(availableResponse.json()).resolves.toEqual({ available: true });
 
     const createResponse = await app.request("/projects", {
       method: "POST",
@@ -324,6 +329,7 @@ describe("api app", () => {
       body: JSON.stringify({
         importKind: "git",
         gitUrl: "https://github.com/evelandhq/sample-office-assistant.git",
+        deployAfterImport: true,
       }),
     });
 
@@ -335,6 +341,8 @@ describe("api app", () => {
       importKind: "git",
       status: "import_pending",
     });
+    const unavailableResponse = await app.request("/projects/name-availability?name=sample-office-assistant");
+    await expect(unavailableResponse.json()).resolves.toEqual({ available: false });
 
     const duplicateResponse = await app.request("/projects", {
       method: "POST",
@@ -344,17 +352,79 @@ describe("api app", () => {
         gitUrl: "https://github.com/evelandhq/sample-office-assistant.git",
       }),
     });
-    await expect(duplicateResponse.json()).resolves.toMatchObject({
-      project: { name: "sample-office-assistant-1", slug: "sample-office-assistant-1" },
+    expect(duplicateResponse.status).toBe(409);
+    await expect(duplicateResponse.json()).resolves.toEqual({
+      error: "Project name is already in use.",
+    });
+
+    await expect(store.claimNextJob("new-project-test-worker")).resolves.toMatchObject({
+      type: "import_source",
+      payload: { deployAfterImport: true },
     });
 
     const listResponse = await app.request("/projects");
     await expect(listResponse.json()).resolves.toMatchObject({
       projects: expect.arrayContaining([
         expect.objectContaining({ id: created.project.id, name: "sample-office-assistant" }),
-        expect.objectContaining({ name: "sample-office-assistant-1" }),
       ]),
     });
+  });
+
+  test("preflights source before atomically creating a Project from the validated snapshot", async () => {
+    const store = createMemoryStore();
+    const app = createApp(store, { appSecretKey: "eveland-test-secret-key-00000000" });
+
+    const queuedResponse = await app.request("/source-preflights", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "git",
+        gitUrl: "https://gitlab.example.com/team/validated-agent.git",
+        gitlabPat: "glpat-preflight-only",
+      }),
+    });
+    expect(queuedResponse.status).toBe(202);
+    const queued = await queuedResponse.json() as { preflight: { id: string; status: string } };
+    expect(queued.preflight).toMatchObject({ status: "queued", kind: "git" });
+    expect(JSON.stringify(queued)).not.toContain("glpat-preflight-only");
+    await expect(store.listProjects()).resolves.toEqual([]);
+
+    const claimed = await store.claimNextSourcePreflight("api-test-worker");
+    expect(claimed?.gitCredential?.encryptedToken).not.toContain("glpat-preflight-only");
+    await store.completeSourcePreflight(queued.preflight.id, claimed!.attempts, {
+      sourcePath: "/data/preflights/source",
+      commitSha: "abc123",
+      summary: { eveVersion: "0.24.4", layout: "single-agent" },
+    });
+
+    const statusResponse = await app.request(`/source-preflights/${queued.preflight.id}`);
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toEqual({
+      preflight: expect.objectContaining({
+        id: queued.preflight.id,
+        status: "completed",
+        summary: { eveVersion: "0.24.4", layout: "single-agent" },
+      }),
+    });
+
+    const projectResponse = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "validated-agent", preflightId: queued.preflight.id, deployAfterImport: true }),
+    });
+    expect(projectResponse.status).toBe(201);
+    const created = await projectResponse.json() as { project: { id: string; name: string } };
+    expect(created.project.name).toBe("validated-agent");
+    await expect(store.listProjectJobs(created.project.id)).resolves.toEqual([
+      expect.objectContaining({
+        type: "import_source",
+        payload: expect.objectContaining({
+          sourcePath: "/data/preflights/source",
+          deployAfterImport: true,
+          gitCredential: expect.objectContaining({ persistAfterImport: true }),
+        }),
+      }),
+    ]);
   });
 
   test("encrypts a supplied GitLab PAT for the import job without saving it before import succeeds", async () => {
@@ -671,6 +741,28 @@ describe("api app", () => {
     const sourcePath = job?.payload.sourcePath;
     expect(sourcePath).toEqual(expect.stringContaining(path.join(dataDir, "uploads")));
     await expect(readFile(path.join(String(sourcePath), "agent", "instructions.md"), "utf8")).resolves.toBe("You are a helpful test agent.");
+  });
+
+  test("queues a Zip source preflight without creating a Project", async () => {
+    const store = createMemoryStore();
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-preflight-"));
+    const archivePath = await createZipArchiveFixture({ wrappedDirectory: "validated" });
+    const archive = new File([await readFile(archivePath)], "validated.zip", { type: "application/zip" });
+    const form = new FormData();
+    form.set("archive", archive);
+
+    const response = await createApp(store, { dataDir }).request("/source-preflights", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(response.status).toBe(202);
+    await expect(store.listProjects()).resolves.toEqual([]);
+    const claimed = await store.claimNextSourcePreflight("zip-preflight-worker");
+    expect(claimed).toMatchObject({ kind: "zip", status: "running" });
+    await expect(readFile(path.join(claimed!.sourcePath!, "agent", "instructions.md"), "utf8"))
+      .resolves.toBe("You are a helpful test agent.");
+    await rm(dataDir, { recursive: true, force: true });
   });
 
   test("uses the only top-level directory in a zip archive as the source root", async () => {
@@ -1856,6 +1948,16 @@ describe("api app", () => {
         payload: {},
         lastError: "Repository fetch timed out after 120000ms.",
       })],
+    });
+
+    const deploymentResponse = await createApp(store).request(
+      `/projects/${project.id}/jobs?include=deployment`,
+    );
+    await expect(deploymentResponse.json()).resolves.toEqual({
+      jobs: [
+        expect.objectContaining({ id: buildJob!.id, type: "build_deploy", payload: {} }),
+        expect.objectContaining({ id: job!.id, type: "import_source", payload: {} }),
+      ],
     });
   });
 

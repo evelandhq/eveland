@@ -168,29 +168,39 @@ Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：�
 
 ---
 
-### 新建项目 (/projects/new)
+### 新建项目 (/new)
+
+新建项目使用没有 Workspace Sidebar 的全屏分步流程；顶部保留返回 Projects 的入口。
+旧 `/projects/new` 只用于兼容并重定向到 `/new`。
 
 支持两种导入方式：
 
 1. Git Repo URL
 2. 上传 Zip 文件
 
-Git 导入先填写 Repo URL。Web 从 URL 最后一个 path segment 去掉 `.git` 后猜测
-Project 名称，例如 `evelandhq/sample-office-assistant` 得到
-`sample-office-assistant`；用户可以在提交前编辑。Zip 导入先选择压缩包，并以文件名
-使用相同规则猜测名称。
+第一步填写 Repo URL 或选择 Zip。API 创建一个用户隔离、带过期时间的 Source Preflight，
+但此时不创建 Project。Git 由 worker 做 shallow clone，Zip 使用已安全解压的同一份快照；
+worker 随后读取真实文件树，检查 Eve 项目结构与 `package.json` 中的 Eve 版本。只有 Preflight
+成功，Web 才进入命名屏幕；失败留在来源屏幕并显示可操作的原因。
+
+Web 从 URL 最后一个 path segment
+去掉 `.git` 后猜测 Project 名称，例如 `evelandhq/sample-office-assistant` 得到
+`sample-office-assistant`；Zip 使用文件名按相同规则猜测。第二步展示来源摘要并允许用户
+编辑名称。名称格式和可用性在当前屏幕内校验；只有名称合法且可用时 `Deploy` 才可点击。
 
 私有 GitLab（包括自建实例）可在 HTTPS Repo URL 旁提供 Personal Access Token；建议只授予
 `read_repository`。平台不通过域名猜测或额外请求探测内网 GitLab。PAT 由 API 使用
-`APP_SECRET_KEY` 加密后进入 import job，worker 仅以匹配的规范化 host 作用域向 `git clone`
+`APP_SECRET_KEY` 加密后进入 Source Preflight，worker 仅以匹配的规范化 host 作用域向 `git clone`
 提供临时 HTTP 认证，不把 PAT 拼入 URL、源码 `.git/config`、日志或错误。只有 clone、Eve
-结构扫描和 Source Revision 记录全部成功后，PAT 密文才按当前用户与 host 保存；失败导入不保存。
+结构扫描和后续 Source Revision 记录全部成功后，PAT 密文才按当前用户与 host 保存；
+失败的 Preflight 或导入都不保存。
 同一用户以后从同 host 导入或同步时自动复用已保存凭据，显式提交的新 PAT 仅在该次导入成功后替换旧值。
 SSH/SCP URL 不接受 PAT，URL 中也不允许内嵌 credentials。
 
 Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一、最长 53 个字符，
-只允许小写字母、数字和 `-`，且不能以 `-` 开头或结尾。名称冲突时，API 必须在同一
-数据库唯一性边界内依次尝试 `name-1`、`name-2`，并在创建结果中返回最终名称。
+只允许小写字母、数字和 `-`，且不能以 `-` 开头或结尾。Web 通过只读可用性接口提供
+即时反馈；创建接口仍必须在数据库唯一性边界内精确占用用户确认的名称。并发冲突返回
+`409` 并停留在命名屏幕，不允许静默改成 `name-1`、`name-2`。
 `proj_xxxxxxxxxx` 仍是控制面、数据库关系和 `/projects/:projectId` 使用的内部 ID，
 不能因为公开 slug 变得可读而替换内部主键。
 
@@ -222,13 +232,15 @@ Playground，以及公开 Gateway 的 Eve session 新建、继续和 stream 请�
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
 无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
 
-用户随后确认或填写：
-
-* 自动猜测的项目名称
-* 必需环境变量 / API Key
-* 默认模型 Provider 配置
-
-完成后点击 `Build & Deploy`。
+用户随后确认自动猜测的项目名称并点击 `Deploy`。Project 与初始 import job 在同一数据库
+事务内消费已完成的 Preflight；命名冲突不得消费快照，成功后不得再次消费。同一 `sourcePath`
+直接记录为 Source Revision，不允许第二次 clone 或重新上传。未消费的 queued/completed/failed
+Preflight 默认一小时过期，由 worker 只在 `EVELAND_DATA_DIR` containment 内清理；running
+Preflight 不得被过期清理，consumed 记录到期可删除但其 Project source 仍由 Project 生命周期管理。
+source import job 重新扫描同一快照以建立不可变 Source Revision，并在成功后排入 `build_deploy`；
+失败导入不得继续部署。页面轮询 Project、导入/部署
+job 和持久化日志，自动跟随最新日志；部署进行中始终提供前往 Project 详情的入口。部署
+完成后展示可复制的 stable Agent endpoint 和 Project 详情链接。页面离开不取消后台 job。
 
 ---
 
