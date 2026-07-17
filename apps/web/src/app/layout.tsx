@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
-import { AppSidebar } from '@/components/app-sidebar';
-import { Separator } from '@/components/ui/separator';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { AppShell } from '@/components/app-shell';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import './globals.css';
 import { Inter } from 'next/font/google';
@@ -19,18 +17,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={cn('font-sans', inter.variable)}>
       <body>
         <TooltipProvider>
-          <SidebarProvider>
-            <AppSidebar />
-            <SidebarInset>
-              <header className="flex h-12 shrink-0 items-center gap-2 px-4 md:hidden">
-                <SidebarTrigger />
-                <Separator orientation="vertical" className="h-4" />
-                <span className="text-sm font-medium">Eveland</span>
-              </header>
-              <Separator className="md:hidden" />
-              {children}
-            </SidebarInset>
-          </SidebarProvider>
+          <AppShell>{children}</AppShell>
         </TooltipProvider>
       </body>
     </html>

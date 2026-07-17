@@ -198,6 +198,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_GIT_CLONE_TIMEOUT_MS` | `120000` | Maximum non-interactive Git clone duration before an import fails and its partial source directory is removed. Increase this only when the worker's network requires a longer bounded transfer window. |
 | `EVELAND_GIT_CLONE_MAX_ATTEMPTS` | `3` | Maximum attempts for transient Git network failures; authentication and repository-not-found failures are not retried. |
 | `EVELAND_GIT_CLONE_RETRY_DELAY_MS` | `1000` | Initial exponential backoff delay between Git attempts. |
+| `EVELAND_SOURCE_PREFLIGHT_TTL_MS` | `3600000` | Lifetime of an unconsumed source check. The worker removes expired managed snapshots; running checks are never expired mid-scan. |
 | `WORKER_JOB_HEARTBEAT_INTERVAL_MS` | `30000` | How often a running job renews its lease. |
 | `WORKER_JOB_STALE_MS` | `120000` | Time without a heartbeat before a running job is re-queued after worker failure. Keep this above the heartbeat interval. |
 | `WORKER_JOB_RECOVERY_BATCH_SIZE` | `25` | Maximum stale jobs recovered per worker poll. |

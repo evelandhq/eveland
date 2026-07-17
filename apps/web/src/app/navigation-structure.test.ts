@@ -8,14 +8,19 @@ function source(relativePath: string): string {
 }
 
 describe("web application shell", () => {
-  test("uses the shadcn sidebar shell in the root layout", () => {
+  test("uses an app shell that can remove workspace chrome for focused routes", () => {
     const layout = source("./layout.tsx")
+    const appShellUrl = new URL("../components/app-shell.tsx", import.meta.url)
+    expect(existsSync(fileURLToPath(appShellUrl))).toBe(true)
+    if (!existsSync(fileURLToPath(appShellUrl))) return
+    const appShell = source("../components/app-shell.tsx")
 
-    expect(layout).toContain("<SidebarProvider")
-    expect(layout).toContain("<AppSidebar")
-    expect(layout).toContain("<SidebarInset")
-    expect(layout).toContain("<SidebarTrigger />")
-    expect(layout).toContain('className="md:hidden"')
+    expect(layout).toContain("<AppShell")
+    expect(appShell).toContain('pathname === "/new"')
+    expect(appShell).toContain("<SidebarProvider")
+    expect(appShell).toContain("<AppSidebar")
+    expect(appShell).toContain("<SidebarInset")
+    expect(appShell).toContain("<SidebarTrigger />")
   })
 
   test("shows the Eveland version in the sidebar and full Web/API build details in About", () => {
@@ -117,34 +122,44 @@ describe("web application shell", () => {
     expect(sourcePage).toContain("<Card")
   })
 
-  test("keeps the new-project screen inside the sidebar main region", () => {
-    const newProject = source("./projects/new/page.tsx")
+  test("gives new-project creation a focused full-screen route", () => {
+    const newProjectUrl = new URL("./new/page.tsx", import.meta.url)
+    expect(existsSync(fileURLToPath(newProjectUrl))).toBe(true)
+    if (!existsSync(fileURLToPath(newProjectUrl))) return
+    const newProject = source("./new/page.tsx")
+    const projects = source("./projects/page.tsx")
 
-    expect(newProject).not.toContain("<main")
+    expect(newProject).toContain("<main")
     expect(newProject).toContain("buttonVariants({ variant: 'ghost' })")
+    expect(newProject).toContain("<NewProjectFlow")
+    expect(projects).toContain('href="/new"')
   })
 
-  test("derives a URL-friendly project name after the source is entered", () => {
-    const forms = source("../components/new-project-forms.tsx")
+  test("stages source selection, exact-name confirmation, deployment logs, and completion links", () => {
+    const flowUrl = new URL("../components/new-project-flow.tsx", import.meta.url)
+    expect(existsSync(fileURLToPath(flowUrl))).toBe(true)
+    if (!existsSync(fileURLToPath(flowUrl))) return
+    const forms = source("../components/new-project-flow.tsx")
 
     expect(forms).toContain("inferProjectSlugFromGitUrl")
     expect(forms.indexOf("Git repository URL")).toBeLessThan(forms.indexOf("Project name"))
     expect(forms).toContain("PROJECT_SLUG_PATTERN")
     expect(forms).toContain("data-invalid")
     expect(forms).toContain("aria-invalid")
-  })
-
-  test("composes the project import forms from installed shadcn components", () => {
-    const forms = source("../components/new-project-forms.tsx")
-
-    expect(forms).toContain("<Card")
-    expect(forms).toContain("<CardHeader")
-    expect(forms).toContain("<CardContent")
-    expect(forms).toContain("<CardFooter")
     expect(forms).toContain("<FieldGroup")
     expect(forms).toContain("<Field")
     expect(forms).toContain("<Input")
     expect(forms).toContain("<Spinner")
+    expect(forms).toContain("name-availability")
+    expect(forms).toContain("/source-preflights")
+    expect(forms).toContain("Checking Eve compatibility")
+    expect(forms).toContain("preflightId")
+    expect(forms).toContain("deployAfterImport")
+    expect(forms).toContain("getNewProjectProgress")
+    expect(forms).toContain("navigator.clipboard.writeText")
+    expect(forms).toContain("Deployment logs")
+    expect(forms).toContain("View project")
+    expect(forms).toContain("Could not reach the Eveland API.")
     expect(forms).not.toContain("<input")
   })
 

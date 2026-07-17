@@ -1,6 +1,40 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "./store.js";
 
+describe("memory store project creation", () => {
+  test("reserves an exact slug and carries the initial auto-deploy intent into the import job", async () => {
+    const store = createMemoryStore();
+
+    const project = await store.createProject({
+      name: "first-deploy",
+      importKind: "git",
+      gitUrl: "https://github.com/evelandhq/first-deploy.git",
+      requireExactSlug: true,
+      deployAfterImport: true,
+    });
+
+    await expect(store.claimNextJob("worker-a")).resolves.toMatchObject({
+      projectId: project.id,
+      type: "import_source",
+      payload: { deployAfterImport: true },
+    });
+    await expect(store.createProject({
+      name: "first-deploy",
+      importKind: "git",
+      gitUrl: "https://github.com/evelandhq/first-deploy.git",
+      requireExactSlug: true,
+    })).rejects.toThrow("Project name is already in use.");
+  });
+
+  test("checks exact project slug availability", async () => {
+    const store = createMemoryStore();
+
+    await expect(store.isProjectSlugAvailable("available-agent")).resolves.toBe(true);
+    await store.createProject({ name: "available-agent", importKind: "zip" });
+    await expect(store.isProjectSlugAvailable("available-agent")).resolves.toBe(false);
+  });
+});
+
 describe("memory store Git credentials", () => {
   test("keeps one encrypted credential per user and normalized host", async () => {
     const store = createMemoryStore();

@@ -98,6 +98,7 @@ describe("configuration diagnostics", () => {
     expect(api.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "EVELAND_ACTIVATION_LEASE_TTL_MS", value: "180000" }),
       expect.objectContaining({ name: "EVELAND_COLD_START_TIMEOUT_MS", value: "30000" }),
+      expect.objectContaining({ name: "EVELAND_SOURCE_PREFLIGHT_TTL_MS", value: "3600000" }),
     ]));
     expect(gateway.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "EVELAND_API_INTERNAL_URL" }),

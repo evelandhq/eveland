@@ -172,6 +172,7 @@ const definitions: ConfigurationDefinition[] = [
   urlEntry("EVELAND_API_INTERNAL_URL", ["gateway"], "Private API origin used for service-authenticated runtime activation.", "http://127.0.0.1:4000"),
   entry("EVELAND_ACTIVATION_LEASE_TTL_MS", ["api"], "Lifetime of request, stream, turn, and ScheduleRun activation leases.", "180000"),
   entry("EVELAND_COLD_START_TIMEOUT_MS", ["api"], "Maximum time Gateway may wait for a dormant Deployment to become ready.", "30000"),
+  entry("EVELAND_SOURCE_PREFLIGHT_TTL_MS", ["api"], "Lifetime of an unconsumed validated source snapshot.", "3600000"),
   entry("EVELAND_ACTIVATION_RENEW_INTERVAL_MS", ["gateway"], "Interval for renewing a lease while an upstream response stream remains active.", "60000"),
   {
     name: "EVELAND_SCHEDULER_RUNTIME_SECRET",

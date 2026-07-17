@@ -4,7 +4,7 @@ import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { writeConfigurationSnapshotFile } from "@eveland/core/server/config-diagnostics";
 import { createStoreFromEnv } from "@eveland/db/factory";
-import { processNextJob } from "./jobs/process.js";
+import { cleanupExpiredSourcePreflights, processNextJob, processNextSourcePreflight } from "./jobs/process.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
@@ -67,6 +67,13 @@ async function tick() {
         Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
         Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
       ),
+      storeFactory.store.recoverStaleSourcePreflights(
+        new Date(),
+        Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
+        Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
+      ),
+      cleanupExpiredSourcePreflights(storeFactory.store),
+      processNextSourcePreflight(storeFactory.store, workerId),
       processNextJob(storeFactory.store, workerId),
     ]);
   } catch (error) {

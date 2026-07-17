@@ -31,7 +31,68 @@ import type {
   ActivationLease,
   GitCredentialRecord,
   PublicGitCredential,
+  SourcePreflight,
+  SourcePreflightRecord,
 } from "@eveland/core/contracts";
+
+export function sourcePreflightRowToRecord(row: {
+  id: string;
+  userId: string;
+  kind: string;
+  gitUrl: string | null;
+  sourcePath: string | null;
+  commitSha: string | null;
+  status: string;
+  summary: unknown;
+  error: string | null;
+  attempts: number;
+  lockedAt: Date | null;
+  credentialHost: string | null;
+  encryptedToken: string | null;
+  persistCredential: boolean;
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}): SourcePreflightRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    kind: row.kind as SourcePreflightRecord["kind"],
+    gitUrl: row.gitUrl,
+    sourcePath: row.sourcePath,
+    commitSha: row.commitSha,
+    status: row.status as SourcePreflightRecord["status"],
+    summary: isRecord(row.summary) ? row.summary : null,
+    error: row.error,
+    attempts: row.attempts,
+    lockedAt: timestampToIso(row.lockedAt),
+    gitCredential: row.credentialHost && row.encryptedToken
+      ? {
+          userId: row.userId,
+          host: row.credentialHost,
+          encryptedToken: row.encryptedToken,
+          persistAfterImport: row.persistCredential,
+        }
+      : null,
+    expiresAt: row.expiresAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function sourcePreflightRowToPublic(row: Parameters<typeof sourcePreflightRowToRecord>[0]): SourcePreflight {
+  const record = sourcePreflightRowToRecord(row);
+  const {
+    userId: _userId,
+    sourcePath: _sourcePath,
+    commitSha: _commitSha,
+    attempts: _attempts,
+    lockedAt: _lockedAt,
+    gitCredential: _gitCredential,
+    ...publicPreflight
+  } = record;
+  return publicPreflight;
+}
 
 export type ProjectRow = {
   id: string;

@@ -1226,3 +1226,39 @@ SSRF 与网络权限边界，因此 source import credential 收敛为显式、h
   和更新时间并允许删除，永不 reveal/copy；
 - 该能力只服务 Eveland source import，不改变前文 GitHub Channel credential/network broker
   的独立边界，也不向 Agent sandbox 或 Gateway 注入 GitLab 凭据。
+
+---
+
+## 22. 2026-07-17 follow-up：首次创建与部署闭环
+
+新建 Project 不再把“创建记录”和“第一次部署”拆成两个需要用户发现的操作。增量契约为：
+
+- `/new` 是没有 Workspace Sidebar 的全屏三阶段流程；旧 `/projects/new` 兼容重定向；
+- Git URL/Zip 先在 Web 解析出候选名称，第二屏即时校验格式与全实例可用性；
+- Project 创建必须在数据库唯一约束内精确占用已确认 slug，并发冲突返回 `409`，不静默追加
+  数字后缀；
+- 初始 import job 显式携带 `deployAfterImport`，只有 Source Revision 验证成功才排入
+  `build_deploy`；
+- 创建页轮询脱敏后的 import/build job、Project 状态、持久化日志和 endpoint；用户可在后台
+  继续运行时进入详情，完成后可复制 stable Agent URL；
+- 页面离开不取消 job，失败日志与 Project 状态保留供详情页排障。
+
+本节只收敛控制面创建体验，不改变 worker fencing、Release/Deployment 不可变性、Gateway
+route 或公开 Agent auth/streaming 边界。
+
+---
+
+## 23. 2026-07-17 follow-up：Project 前置 Source Preflight
+
+首次创建在命名之前增加独立的 Source Preflight，不以 Draft Project 模拟临时生命周期：
+
+- `source_preflights` 是用户隔离的短期队列；Git 使用 shallow clone，Zip 使用安全解压后的
+  快照，worker 在没有 Project 的情况下扫描真实文件树、Eve layout 与 0.24.x 依赖；
+- Preflight 使用 heartbeat、stale recovery 与 attempt fencing；公开 API 永不返回 sourcePath、
+  commit、worker lease 或加密 Git credential；
+- Project 与 initial import job 通过数据库事务精确占用 slug 并消费 completed Preflight；冲突
+  回滚且保留快照，成功后同一 Preflight 不能再次创建 Project；
+- import job 直接复用已验证的 sourcePath，不再次 clone/上传，并在写入 Source Revision 前重新
+  扫描同一快照以守住持久化边界；
+- 未消费 Preflight 默认一小时过期。Worker 不清理 running 项，只在共享 data root containment
+  内删除 expired snapshot；consumed source 继续服从 Project 删除生命周期。

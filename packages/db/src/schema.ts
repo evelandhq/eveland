@@ -161,6 +161,36 @@ export const gitCredentials = pgTable(
   ],
 );
 
+export const sourcePreflights = pgTable(
+  "source_preflights",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    gitUrl: text("git_url"),
+    sourcePath: text("source_path"),
+    commitSha: text("commit_sha"),
+    status: text("status").notNull().default("queued"),
+    summary: jsonb("summary"),
+    error: text("error"),
+    attempts: integer("attempts").notNull().default(0),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    credentialHost: text("credential_host"),
+    encryptedToken: text("encrypted_token"),
+    persistCredential: boolean("persist_credential").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("source_preflights_kind_check", sql`${table.kind} in ('git', 'zip')`),
+    check("source_preflights_status_check", sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'consumed')`),
+    index("source_preflights_user_idx").on(table.userId),
+    index("source_preflights_queue_idx").on(table.status, table.createdAt),
+    index("source_preflights_expiry_idx").on(table.expiresAt),
+  ],
+);
+
 export const secrets = pgTable(
   "secrets",
   {

@@ -70,6 +70,34 @@ export type GitCredentialRecord = {
 
 export type PublicGitCredential = Omit<GitCredentialRecord, "encryptedToken" | "userId">;
 
+export type SourcePreflightStatus = "queued" | "running" | "completed" | "failed" | "consumed";
+
+export type SourcePreflight = {
+  id: string;
+  kind: ProjectImportKind;
+  gitUrl: string | null;
+  status: SourcePreflightStatus;
+  summary: Record<string, unknown> | null;
+  error: string | null;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SourcePreflightRecord = SourcePreflight & {
+  userId: string;
+  sourcePath: string | null;
+  commitSha: string | null;
+  attempts: number;
+  lockedAt: string | null;
+  gitCredential: {
+    userId: string;
+    host: string;
+    encryptedToken: string;
+    persistAfterImport: boolean;
+  } | null;
+};
+
 export type JobType = "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "ensure_deployment_running" | "archive_deployment" | "delete_project";
 export type JobStatus = "queued" | "running" | "completed" | "failed";
 

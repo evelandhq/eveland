@@ -23,7 +23,10 @@ describe("team management web surfaces", () => {
   });
 
   test("offers GitLab PAT import and personal host credential management", () => {
-    const newProjectForm = source("../components/new-project-forms.tsx");
+    const newProjectFormUrl = new URL("../components/new-project-flow.tsx", import.meta.url);
+    expect(existsSync(fileURLToPath(newProjectFormUrl))).toBe(true);
+    if (!existsSync(fileURLToPath(newProjectFormUrl))) return;
+    const newProjectForm = source("../components/new-project-flow.tsx");
     const credentialsPageUrl = new URL("./settings/git-credentials/page.tsx", import.meta.url);
     const credentialsFormUrl = new URL("../components/git-credentials-settings.tsx", import.meta.url);
 
@@ -104,7 +107,10 @@ describe("team management web surfaces", () => {
   });
 
   test("includes credentials in direct browser project and secret mutations", () => {
-    expect(source("../components/new-project-forms.tsx").match(/credentials: "include"/g)).toHaveLength(2);
+    const newProjectFormUrl = new URL("../components/new-project-flow.tsx", import.meta.url);
+    expect(existsSync(fileURLToPath(newProjectFormUrl))).toBe(true);
+    if (!existsSync(fileURLToPath(newProjectFormUrl))) return;
+    expect(source("../components/new-project-flow.tsx")).toContain('credentials: "include"');
     expect(source("../components/secret-form.tsx")).toContain('credentials: "include"');
   });
 });

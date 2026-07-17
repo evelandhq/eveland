@@ -34,12 +34,16 @@ The initial Admin email defaults to `admin@example.com`; its password comes only
 must be the browser-visible API origin (for example `https://api.example.com` in production).
 
 All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
+
+New projects start at `/new`, a focused full-screen flow for GitHub/GitLab URLs or Zip uploads. Before a Project exists, a user-scoped Source Preflight shallow-clones or safely extracts the source and has the worker verify the real Eve layout and supported Eve version. The validated snapshot is then atomically consumed with the exact public project name and reused for the first deployment without another clone or upload. Unused snapshots expire after one hour by default. The screen streams persisted progress logs, permits leaving for Project detail, and exposes the stable Agent URL when complete.
 The public docs process is independent of that control-plane path. Use
 `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
 `pnpm dev:docs` in separate terminals when isolated logs are more useful.
 
 Git imports run non-interactively and time out after 120 seconds by default. Set
 `EVELAND_GIT_CLONE_TIMEOUT_MS` on the worker to tune that limit for slow networks.
+Set `EVELAND_SOURCE_PREFLIGHT_TTL_MS` on the API to change the default one-hour lifetime
+of an unconsumed source check; the worker removes expired managed snapshots.
 Transient network failures retry up to three times with exponential backoff. Running jobs
 renew a generic lease; stale jobs are re-queued after a worker crash, and attempt fencing
 prevents a late worker from overwriting the recovered job's terminal status.
