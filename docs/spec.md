@@ -646,6 +646,6 @@ MVP 不做：
 
 ## 技术栈
 
-- 前端： Next.js, typescript, Tailwind /Shadcn (shadcn@latest init --preset b59jJCh5F2 --base base --template next)
+- 前端： Next.js, typescript, Tailwind /Shadcn (shadcn@latest init --preset bJxy4cpE --base base --template next)，使用系统默认字体并在 `body` 启用 `antialiased`
 - 后端： Honojs, BetterAuth, DrizzleORM, postgresql
 - 使用 nanoid('1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ') 生成ID
