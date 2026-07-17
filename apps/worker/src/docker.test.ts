@@ -205,7 +205,10 @@ describe("writeGeneratedDockerfile", () => {
     expect(contents).toContain("ln -sf /usr/bin/pip3 /usr/local/bin/pip");
     expect(contents).toContain("npm install --global pnpm@11.7.0");
     expect(contents).toContain("mkdir -p /workspace");
-    expect(contents).toContain("COPY package*.json ./");
+    expect(contents).toContain("COPY package*.json pnpm-lock.yaml* ./");
+    expect(contents).toContain(
+      "if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile --config.minimum-release-age=0",
+    );
     expect(contents).toContain("COPY . .");
     expect(contents).toContain("npx eve build");
     expect(contents).toContain("EXPOSE 3000");

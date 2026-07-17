@@ -174,6 +174,36 @@ describe("buildSystemdStartCommand", () => {
 });
 
 describe("buildReleaseBuildCommand", () => {
+  test("uses the frozen pnpm lockfile selected from the imported project", () => {
+    expect(
+      buildReleaseBuildCommand({
+        isEveProject: true,
+        hasLockfile: true,
+        packageManager: "pnpm",
+        scripts: {},
+      }),
+    ).toBe("pnpm install --frozen-lockfile --config.minimum-release-age=0 && npx eve build");
+  });
+
+  test("installs the platform-owned world through pnpm without leaving manifest or lockfile changes", () => {
+    const command = buildReleaseBuildCommand(
+      {
+        isEveProject: true,
+        hasLockfile: true,
+        packageManager: "pnpm",
+        scripts: {},
+      },
+      { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.25" },
+    );
+
+    expect(command).toContain("pnpm install --frozen-lockfile --config.minimum-release-age=0");
+    expect(command).toContain(
+      "pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 @workflow/world-postgres@5.0.0-beta.25",
+    );
+    expect(command).toContain("trap");
+    expect(command).not.toMatch(/(^|&& )npm install/);
+  });
+
   test("installs the platform-owned world outside the project lock before building Eve", () => {
     expect(
       buildReleaseBuildCommand(

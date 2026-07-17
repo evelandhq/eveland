@@ -4,6 +4,7 @@ import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
+import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { verifyObserverOutbox } from "./observer-verify.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
@@ -90,9 +91,13 @@ export function buildReleaseBuildCommand(
   context: RuntimeCommandContext,
   workflowWorld?: WorkflowWorldBuildConfig,
 ): string {
-  const install = context.hasLockfile ? "npm ci" : "npm install";
+  const install = context.packageManager === "pnpm"
+    ? PNPM_FROZEN_INSTALL_COMMAND
+    : context.hasLockfile ? "npm ci" : "npm install";
   if (!context.isEveProject) return install;
-  const worldInstall = workflowWorld ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld)}` : "";
+  const worldInstall = workflowWorld
+    ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld, context.packageManager ?? "npm")}`
+    : "";
   return `${install}${worldInstall} && npx eve build`;
 }
 

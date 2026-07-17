@@ -1,5 +1,6 @@
 import { access, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { PNPM_RELEASE_AGE_CONFIG } from "./package-manager.js";
 
 export const PLATFORM_WORKFLOW_WORLD = {
   packageName: "@workflow/world-postgres",
@@ -16,7 +17,17 @@ export type WorkflowWorldInjectionResult = {
 const agentConfigPattern = /^agent\.(?:cts|mts|cjs|mjs|ts|js)$/;
 const defaultEveAgentModel = "anthropic/claude-sonnet-5";
 
-export function buildWorkflowWorldInstallCommand(config: WorkflowWorldBuildConfig): string {
+export function buildWorkflowWorldInstallCommand(
+  config: WorkflowWorldBuildConfig,
+  packageManager: "npm" | "pnpm",
+): string {
+  if (packageManager === "pnpm") {
+    const packageSpec = `${config.packageName}@${config.packageVersion}`;
+    return "manifest_backup=\"$(mktemp)\"" +
+      " && cp package.json \"$manifest_backup\"" +
+      " && trap 'cp \"$manifest_backup\" package.json; rm -f \"$manifest_backup\"' EXIT" +
+      ` && pnpm add --lockfile=false --ignore-scripts ${PNPM_RELEASE_AGE_CONFIG} ${packageSpec}`;
+  }
   return `npm install --no-save --package-lock=false --ignore-scripts ${config.packageName}@${config.packageVersion}`;
 }
 

@@ -235,7 +235,7 @@ and can revoke a compromised token in GitLab plus remove its host entry in Setti
 imports continue to use the worker host's existing SSH configuration and do not consume PATs.
 
 Build-trust note: building a project executes that project's dependency
-lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
+lifecycle scripts (`pnpm install`/`npm ci`/`npm install`, e.g. `postinstall`) inside the build
 sandbox as the unprivileged build user (`EVELAND_BUILD_USER`, default
 `eveland-build`), not as root. Imported projects — and their full dependency
 trees — are trusted only up to that sandbox's boundary (see
@@ -370,9 +370,14 @@ complete production boundary:
   `agent.*` config to a reserved sibling inside the copy, and generates a thin
   `agent.ts` wrapper that preserves the authored config while forcing
   `experimental.workflow.world = "@workflow/world-postgres"`.
-- Docker and systemd builds install the pinned world package with `--no-save`,
-  `--package-lock=false`, and `--ignore-scripts` before `eve build`. The imported
-  source, `package.json`, and lockfile remain unchanged.
+- Docker and systemd builds select pnpm frozen install for `pnpm-lock.yaml`, npm
+  `ci` for `package-lock.json`, and npm `install` only when no lock exists. A
+  committed pnpm lock remains frozen and integrity-checked, while the platform's
+  own package minimum-release-age policy is disabled for that already-locked graph.
+- Builds install the pinned world package through the selected package manager
+  before `eve build`; npm uses `--no-save --package-lock=false --ignore-scripts`,
+  while pnpm temporarily adds it with lockfile writes disabled and restores the
+  manifest on shell exit. The imported source, `package.json`, and lockfile remain unchanged.
 - `WORKFLOW_POSTGRES_URL` is a reserved runtime value. A Project Secret with
   that name remains stored and its decrypted value is still log-masked, but it
   cannot redirect the platform world.
@@ -385,7 +390,7 @@ does not inject a world and Eve keeps its local development world.
 - Build: source is copied to `$EVELAND_DATA_DIR/builds/<project>/<release>`, then
   Eveland injects its reserved observer hook and, when configured, the platform workflow-world
   wrapper into the copied release (never the imported source). The project install, pinned
-  no-save world install, and `npx eve build` run as the unprivileged build user (`EVELAND_BUILD_USER`)
+  package-manager-aware world install, and `npx eve build` run as the unprivileged build user (`EVELAND_BUILD_USER`)
   inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
   PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`

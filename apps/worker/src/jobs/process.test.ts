@@ -570,6 +570,47 @@ describe("processNextJob", () => {
     ]);
   });
 
+  test("selects pnpm when the imported source has a pnpm lockfile", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    await writeFile(path.join(sourcePath, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    const project = await store.createProject({ name: "Pnpm Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    let selectedPackageManager: unknown;
+    await expect(processNextJob(store, "worker-a", {
+      workflowPostgresUrl: "",
+      runtime: {
+        name: "docker",
+        async buildRelease(input) {
+          selectedPackageManager = input.commandContext.packageManager;
+          return { releaseRef: "eveland/pnpm:rel", log: "build ok" };
+        },
+        async startProcess() {
+          return { internalPort: 3000, log: "started" };
+        },
+        async stopProcess() {},
+      },
+      allocateHostPort() {
+        return 41071;
+      },
+      async waitForDeployment() {},
+    })).resolves.toBe(true);
+
+    expect(selectedPackageManager).toBe("pnpm");
+  });
+
   test("deploys a concurrent preview without stopping current or reusing its host port", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createMemoryStore();

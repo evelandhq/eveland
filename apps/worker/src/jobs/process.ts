@@ -1010,9 +1010,13 @@ async function resolveRuntimeCommandContext(sourcePath: string): Promise<Runtime
   if (!isSupportedEveDependency(eveVersion)) {
     throw new Error(unsupportedEveVersionMessage(eveVersion));
   }
+  const hasPnpmLockfile = await fileExists(path.join(sourcePath, "pnpm-lock.yaml"));
+  const hasNpmLockfile = await fileExists(path.join(sourcePath, "package-lock.json"));
   return {
     isEveProject: true,
-    hasLockfile: await fileExists(path.join(sourcePath, "package-lock.json")),
+    ...(hasPnpmLockfile
+      ? { hasLockfile: true as const, packageManager: "pnpm" as const }
+      : { hasLockfile: hasNpmLockfile, packageManager: "npm" as const }),
     scripts: packageJson?.scripts ?? {},
   };
 }

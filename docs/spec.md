@@ -218,6 +218,12 @@ Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一
 * 识别项目配置、agent、tools、skills、schedules
 * 创建 Source Revision
 
+Release 构建必须尊重导入项目提交的包管理器锁文件：存在 `pnpm-lock.yaml` 时使用平台固定的
+pnpm 版本执行 frozen install，存在 `package-lock.json` 时使用 `npm ci`，没有锁文件时才回退
+到 `npm install`。pnpm frozen install 仍校验 lockfile 与 package integrity，但不得因为平台
+自身的 package minimum-release-age 策略拒绝项目已经提交的锁定版本。Docker 与 systemd
+runtime 必须使用相同选择，不能改用 npm 重新解析 pnpm 项目并绕过其 lockfile。
+
 Git 拉取由 worker 以非交互方式执行，默认最多等待 120 秒；可通过
 `EVELAND_GIT_CLONE_TIMEOUT_MS` 调整。超时或 Git 失败必须终止拉取、清理未完成的
 job source 目录、将 job 和 Project 标记为失败，并保存经过限长和凭据脱敏的错误。
