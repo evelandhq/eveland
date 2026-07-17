@@ -3,6 +3,40 @@ import {
   type AgentAuthEnvelope,
   type AgentAuthMethodDescriptor,
 } from "@eveland/core/agent-auth";
+import type { AgentConnection } from "@eveland/core/contracts";
+
+// Eve 0.24.6's Client `vercelOidc` variant sends this Deployment Protection
+// header alongside Authorization. It is declared in Eve's client/types module
+// but is not re-exported from the public `eve/client` entry point.
+const VERCEL_TRUSTED_OIDC_IDP_TOKEN_HEADER = "x-vercel-trusted-oidc-idp-token";
+
+export type AgentAuthFailure = {
+  code: "interaction_required" | "configuration_invalid" | "provider_unavailable" | "credential_rejected" | "retry_required";
+  method: string;
+  message: string;
+  interaction?: { type: "redirect"; url: string };
+};
+
+export type AgentAuthConnectionSnapshot = AgentConnection & { config: unknown };
+
+export type AgentCredentialContext = {
+  connection: AgentAuthConnectionSnapshot;
+  callerPrincipalId: string;
+  returnPath?: string;
+};
+
+export type AgentCredentialResolution =
+  | { envelope: AgentAuthEnvelope; version?: unknown }
+  | { failure: AgentAuthFailure };
+
+export type UnauthorizedRecoveryResult =
+  | { action: "retry" }
+  | { action: "give_up"; failure: AgentAuthFailure };
+
+export type AgentAuthInteractionHandler = {
+  start(context: AgentCredentialContext & { returnPath: string }): Promise<{ authorizationUrl: string }>;
+  callback(context: { search: string; callerPrincipalId: string }): Promise<{ returnPath: string }>;
+};
 
 export type AgentAuthProviderRegistration = {
   method: string;
@@ -11,7 +45,13 @@ export type AgentAuthProviderRegistration = {
   authority: "loopback" | "canonical";
   normalizeConfig(input: unknown, existing?: unknown): unknown;
   redactConfig(config: unknown): Record<string, unknown>;
-  getCredential(context: { config: unknown; callerPrincipalId: string }): Promise<AgentAuthEnvelope>;
+  preflight?(context: AgentCredentialContext): Promise<void>;
+  getCredential(context: AgentCredentialContext): Promise<AgentCredentialResolution>;
+  recoverUnauthorized?(context: AgentCredentialContext & {
+    rejectedVersion: unknown;
+    attempt: 0 | 1;
+  }): Promise<UnauthorizedRecoveryResult>;
+  interaction?: AgentAuthInteractionHandler;
 };
 
 export type OidcAuthorizationCodeConfig = {
@@ -42,13 +82,14 @@ export function createAgentAuthRegistry(extensions: AgentAuthProviderRegistratio
       return providers.get(method) ?? null;
     },
     listDescriptors() {
-      return [...providers.values()].map(({ descriptor }) => ({
-        ...descriptor,
-        fields: descriptor.fields.map((field) => ({
-          ...field,
-          ...(field.options ? { options: field.options.map((option) => ({ ...option })) } : {}),
-        })),
-      }));
+      return [...providers.values()].sort((left, right) => providerOrder(left.method) - providerOrder(right.method))
+        .map(({ descriptor }) => ({
+          ...descriptor,
+          fields: descriptor.fields.map((field) => ({
+            ...field,
+            ...(field.options ? { options: field.options.map((option) => ({ ...option })) } : {}),
+          })),
+        }));
     },
   };
 }
@@ -100,11 +141,11 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
         passwordConfigured: typeof value?.password === "string" && value.password.length > 0,
       };
     },
-    async getCredential({ config }) {
+    async getCredential({ connection: { config } }) {
       const value = record(config, "Invalid HTTP Basic configuration.");
       const username = requiredString(value.username, "Basic username is required.");
       const password = requiredString(value.password, "Basic password is required.");
-      return envelope("canonical", [["authorization", `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`]]);
+      return { envelope: envelope("canonical", [["authorization", `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`]]) };
     },
   },
   {
@@ -128,14 +169,86 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
       const value = optionalRecord(config);
       return { tokenConfigured: typeof value?.token === "string" && value.token.length > 0 };
     },
-    async getCredential({ config }) {
+    async getCredential({ connection: { config } }) {
       const value = record(config, "Invalid Bearer configuration.");
       const token = requiredString(value.token, "Bearer token is required.").trim();
       if (!token) throw new Error("Bearer token is required.");
-      return envelope("canonical", [["authorization", `Bearer ${token}`]]);
+      return { envelope: envelope("canonical", [["authorization", `Bearer ${token}`]]) };
     },
   },
   {
+    method: "vercel-oidc",
+    descriptor: {
+      method: "vercel-oidc",
+      label: "Vercel OIDC",
+      description: "Send a Vercel-issued OIDC token using Eve 0.24.6's trusted deployment and Agent headers.",
+      credentialScope: "connection",
+      interactive: false,
+      fields: [{ key: "token", label: "Vercel OIDC token", input: "password", required: true, secret: true, valueType: "string" }],
+    },
+    credentialScope: "connection",
+    authority: "canonical",
+    normalizeConfig(input, existing) {
+      const next = record(input, "Vercel OIDC configuration must be an object.");
+      const previous = optionalRecord(existing);
+      return { token: requiredString(next.token ?? previous?.token, "Vercel OIDC token is required.") };
+    },
+    redactConfig(config) {
+      const value = optionalRecord(config);
+      return { tokenConfigured: typeof value?.token === "string" && value.token.length > 0 };
+    },
+    async getCredential({ connection: { config } }) {
+      const value = record(config, "Invalid Vercel OIDC configuration.");
+      const token = requiredString(value.token, "Vercel OIDC token is required.").trim();
+      if (!token) throw new Error("Vercel OIDC token is required.");
+      return { envelope: envelope("canonical", [
+        ["authorization", `Bearer ${token}`],
+        [VERCEL_TRUSTED_OIDC_IDP_TOKEN_HEADER, token],
+      ]) };
+    },
+  },
+  {
+    method: "headers",
+    descriptor: {
+      method: "headers",
+      label: "Custom headers",
+      description: "Send configured credential headers for a custom Eve route AuthFn.",
+      credentialScope: "connection",
+      interactive: false,
+      fields: [{ key: "headers", label: "Headers (JSON)", input: "textarea", required: true, secret: true, valueType: "json-record" }],
+    },
+    credentialScope: "connection",
+    authority: "canonical",
+    normalizeConfig(input, existing) {
+      const next = record(input, "Custom header configuration must be an object.");
+      const previous = optionalRecord(existing);
+      const configured = record(next.headers ?? previous?.headers, "Custom credential headers must be an object.");
+      const parsed = parseAgentCredentialHeaders(Object.entries(configured).map(([name, value]) => [
+        name,
+        requiredString(value, `Header ${name} must be a string.`),
+      ]));
+      return {
+        headers: Object.fromEntries(parsed
+          .map(([name, value]) => [name.toLowerCase(), value] as const)
+          .sort(([left], [right]) => left.localeCompare(right))),
+      };
+    },
+    redactConfig(config) {
+      const headers = optionalRecord(optionalRecord(config)?.headers);
+      return { headerNames: Object.keys(headers ?? {}).map((name) => name.toLowerCase()).sort() };
+    },
+    async getCredential({ connection: { config } }) {
+      const configured = record(record(config, "Invalid custom header configuration.").headers, "Custom credential headers must be an object.");
+      return { envelope: envelope("canonical", Object.entries(configured).map(([name, value]) => [
+        name,
+        requiredString(value, `Header ${name} must be a string.`),
+      ])) };
+    },
+  },
+];
+
+export function createOidcProviderDefinition(): Omit<AgentAuthProviderRegistration, "getCredential"> {
+  return {
     method: "oidc",
     descriptor: {
       method: "oidc",
@@ -186,49 +299,8 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
         accessTokenVerification: value?.accessTokenVerification,
       };
     },
-    async getCredential() {
-      throw new Error("OIDC authorization is required before resolving a credential.");
-    },
-  },
-  {
-    method: "headers",
-    descriptor: {
-      method: "headers",
-      label: "Custom headers",
-      description: "Send configured credential headers for a custom Eve route AuthFn.",
-      credentialScope: "connection",
-      interactive: false,
-      fields: [{ key: "headers", label: "Headers (JSON)", input: "textarea", required: true, secret: true, valueType: "json-record" }],
-    },
-    credentialScope: "connection",
-    authority: "canonical",
-    normalizeConfig(input, existing) {
-      const next = record(input, "Custom header configuration must be an object.");
-      const previous = optionalRecord(existing);
-      const configured = record(next.headers ?? previous?.headers, "Custom credential headers must be an object.");
-      const parsed = parseAgentCredentialHeaders(Object.entries(configured).map(([name, value]) => [
-        name,
-        requiredString(value, `Header ${name} must be a string.`),
-      ]));
-      return {
-        headers: Object.fromEntries(parsed
-          .map(([name, value]) => [name.toLowerCase(), value] as const)
-          .sort(([left], [right]) => left.localeCompare(right))),
-      };
-    },
-    redactConfig(config) {
-      const headers = optionalRecord(optionalRecord(config)?.headers);
-      return { headerNames: Object.keys(headers ?? {}).map((name) => name.toLowerCase()).sort() };
-    },
-    async getCredential({ config }) {
-      const configured = record(record(config, "Invalid custom header configuration.").headers, "Custom credential headers must be an object.");
-      return envelope("canonical", Object.entries(configured).map(([name, value]) => [
-        name,
-        requiredString(value, `Header ${name} must be a string.`),
-      ]));
-    },
-  },
-];
+  };
+}
 
 const reservedOidcAuthorizationParameters = new Set([
   "client_id",
@@ -349,7 +421,7 @@ function noCredentialProvider(
     },
     redactConfig: () => ({}),
     async getCredential() {
-      return envelope(authority, []);
+      return { envelope: envelope(authority, []) };
     },
   };
 }
@@ -366,6 +438,12 @@ function validateProvider(
   if (provider.descriptor.credentialScope !== provider.credentialScope) {
     throw new Error(`Agent Auth descriptor credential scope must match provider ${provider.method}.`);
   }
+}
+
+function providerOrder(method: string): number {
+  const order = ["local-dev", "none", "basic", "bearer", "vercel-oidc", "oidc", "headers"];
+  const index = order.indexOf(method);
+  return index === -1 ? order.length : index;
 }
 
 function envelope(authority: "loopback" | "canonical", input: unknown): AgentAuthEnvelope {

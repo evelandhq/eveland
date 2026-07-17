@@ -1,15 +1,21 @@
 import { describe, expect, test } from "vitest";
-import { createAgentAuthRegistry, agentAuthConfigsEqual, type AgentAuthProviderRegistration } from "./registry.js";
+import {
+  createAgentAuthRegistry,
+  createOidcProviderDefinition,
+  agentAuthConfigsEqual,
+  type AgentAuthProviderRegistration,
+} from "./registry.js";
 
 describe("Agent Auth provider registry", () => {
   test("keeps provider keys, descriptors, and credential scopes consistent", () => {
-    const registry = createAgentAuthRegistry();
+    const registry = registryWithOidc();
 
     expect(registry.listDescriptors().map((descriptor) => descriptor.method)).toEqual([
       "local-dev",
       "none",
       "basic",
       "bearer",
+      "vercel-oidc",
       "oidc",
       "headers",
     ]);
@@ -39,18 +45,19 @@ describe("Agent Auth provider registry", () => {
     ["none", "canonical"],
     ["basic", "canonical"],
     ["bearer", "canonical"],
+    ["vercel-oidc", "canonical"],
     ["oidc", "canonical"],
     ["headers", "canonical"],
   ] as const)("resolves %s through %s authority", async (method, authority) => {
-    const provider = createAgentAuthRegistry().get(method);
+    const provider = registryWithOidc().get(method);
     expect(provider?.authority).toBe(authority);
     const config = provider?.normalizeConfig(configFor(method));
     if (provider?.descriptor.interactive) return;
-    await expect(provider?.getCredential({ config, callerPrincipalId: "member_1" })).resolves.toMatchObject({ authority });
+    await expect(provider?.getCredential(context(method, config))).resolves.toMatchObject({ envelope: { authority } });
   });
 
   test("materializes Basic, Bearer, and custom header credentials", async () => {
-    const registry = createAgentAuthRegistry();
+    const registry = registryWithOidc();
     await expect(resolve(registry, "basic", { username: "alice", password: "sëcret" })).resolves.toMatchObject({
       headers: [["authorization", "Basic YWxpY2U6c8OrY3JldA=="]],
     });
@@ -62,21 +69,35 @@ describe("Agent Auth provider registry", () => {
     });
   });
 
+  test("mirrors Eve 0.24.6 Vercel OIDC client headers", async () => {
+    const registry = registryWithOidc();
+
+    await expect(resolve(registry, "vercel-oidc", { token: "vercel-oidc-token" })).resolves.toEqual({
+      version: 1,
+      authority: "canonical",
+      headers: [
+        ["authorization", "Bearer vercel-oidc-token"],
+        ["x-vercel-trusted-oidc-idp-token", "vercel-oidc-token"],
+      ],
+    });
+  });
+
   test("rejects dangerous custom headers and redacts every configured secret", () => {
-    const registry = createAgentAuthRegistry();
+    const registry = registryWithOidc();
     expect(() => registry.get("headers")?.normalizeConfig({ headers: { Host: "attacker.example" } })).toThrow(/credential header/i);
     expect(registry.get("basic")?.redactConfig({ username: "alice", password: "secret" })).toEqual({
       username: "alice",
       passwordConfigured: true,
     });
     expect(registry.get("bearer")?.redactConfig({ token: "secret" })).toEqual({ tokenConfigured: true });
+    expect(registry.get("vercel-oidc")?.redactConfig({ token: "secret" })).toEqual({ tokenConfigured: true });
     expect(registry.get("headers")?.redactConfig({ headers: { "x-api-key": "secret" } })).toEqual({
       headerNames: ["x-api-key"],
     });
   });
 
   test("preserves omitted secrets on update and compares normalized config semantically", () => {
-    const provider = createAgentAuthRegistry().get("basic");
+    const provider = registryWithOidc().get("basic");
     const existing = provider?.normalizeConfig({ username: "alice", password: "secret" });
     const unchanged = provider?.normalizeConfig({ username: "alice" }, existing);
 
@@ -86,7 +107,7 @@ describe("Agent Auth provider registry", () => {
   });
 
   test("normalizes generic OIDC protocol settings without provider-specific defaults", () => {
-    const provider = createAgentAuthRegistry().get("oidc");
+    const provider = registryWithOidc().get("oidc");
 
     expect(provider?.descriptor).toMatchObject({
       method: "oidc",
@@ -129,7 +150,7 @@ describe("Agent Auth provider registry", () => {
   });
 
   test("rejects unsafe or contradictory generic OIDC settings", () => {
-    const provider = createAgentAuthRegistry().get("oidc");
+    const provider = registryWithOidc().get("oidc");
     const base = {
       issuer: "https://idp.example",
       clientId: "eveland-playground",
@@ -166,13 +187,14 @@ function registration(method: string): AgentAuthProviderRegistration {
     authority: "canonical",
     normalizeConfig: (input) => input,
     redactConfig: () => ({}),
-    getCredential: async () => ({ version: 1, authority: "canonical", headers: [] }),
+    getCredential: async () => ({ envelope: { version: 1, authority: "canonical", headers: [] } }),
   };
 }
 
 function configFor(method: string): unknown {
   if (method === "basic") return { username: "alice", password: "secret" };
   if (method === "bearer") return { token: "secret" };
+  if (method === "vercel-oidc") return { token: "vercel-oidc-token" };
   if (method === "headers") return { headers: { "x-api-key": "secret" } };
   if (method === "oidc") return {
     issuer: "https://idp.example",
@@ -189,5 +211,38 @@ async function resolve(registry: ReturnType<typeof createAgentAuthRegistry>, met
   const provider = registry.get(method);
   if (!provider) throw new Error(`Missing provider ${method}.`);
   const config = provider.normalizeConfig(input);
-  return provider.getCredential({ config, callerPrincipalId: "member_1" });
+  const resolved = await provider.getCredential(context(method, config));
+  if ("failure" in resolved) throw new Error(resolved.failure.message);
+  return resolved.envelope;
+}
+
+function registryWithOidc() {
+  return createAgentAuthRegistry([{
+    ...createOidcProviderDefinition(),
+    async getCredential() {
+      return {
+        failure: {
+          code: "interaction_required" as const,
+          method: "oidc",
+          message: "Authorize this connection.",
+        },
+      };
+    },
+  }]);
+}
+
+function context(method: string, config: unknown) {
+  return {
+    connection: {
+      id: "acon_test",
+      target: { kind: "managed-project" as const, projectId: "proj_test" },
+      method,
+      securityRevision: 1,
+      configEncrypted: "sealed",
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      config,
+    },
+    callerPrincipalId: "member_1",
+  };
 }

@@ -292,6 +292,7 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 * `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
 * `basic`：发送加密保存的 HTTP Basic username/password；
 * `bearer`：发送加密保存的外部签发 Bearer token；
+* `vercel-oidc`：镜像 Eve 0.24.6 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
 * `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
@@ -299,6 +300,11 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 名称、源码 import、401 或 `WWW-Authenticate` 猜测 credential acquisition。Eveland member id
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
 verifier 建立的 Caller 做隐式映射。
+
+`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.24.6
+`ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
+`x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
+Connection 只保存加密 token/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
 
 通用 `oidc` 方法只使用协议级配置：HTTPS issuer、client id、scope、可选 audience 及其
 `resource`/`audience` 参数模式、显式 token endpoint client authentication、附加 authorization

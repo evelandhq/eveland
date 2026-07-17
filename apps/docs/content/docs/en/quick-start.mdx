@@ -44,7 +44,7 @@ The first successful deploy creates an immutable release and a preview deploymen
 
 ## Configure protected Agents
 
-Open **Playground → Connection** and explicitly choose how Eveland calls the Agent's Eve route. Local development, no credential, HTTP Basic, Bearer, custom headers, and generic OIDC Authorization Code are available; Eveland does not infer this choice from Agent source or an authentication challenge.
+Open **Playground → Connection** and explicitly choose how Eveland calls the Agent's Eve route. Local development, no credential, HTTP Basic, Bearer, Vercel OIDC, custom headers, and generic OIDC Authorization Code are available; Eveland does not infer this choice from Agent source or an authentication challenge. Vercel OIDC mirrors Eve 0.24.6 by sending the configured short-lived token as both Bearer authorization and the trusted deployment header.
 
 For OIDC:
 

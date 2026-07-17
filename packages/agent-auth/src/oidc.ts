@@ -5,7 +5,13 @@ import type { Store } from "@eveland/db";
 import { verifyOidc } from "eve/channels/auth";
 import * as oidc from "openid-client";
 import { sealAgentAuthCredential, openAgentAuthCredential, type AgentAuthCredentialBinding } from "./sealed-credential.js";
-import type { OidcAuthorizationCodeConfig } from "./registry.js";
+import {
+  createOidcProviderDefinition,
+  type AgentAuthConnectionSnapshot,
+  type AgentAuthFailure,
+  type AgentAuthProviderRegistration,
+  type OidcAuthorizationCodeConfig,
+} from "./registry.js";
 
 export type OidcConnectionSnapshot = AgentConnection & { config: OidcAuthorizationCodeConfig };
 
@@ -56,13 +62,6 @@ export type OidcProtocol = {
   ): Promise<{ subject: string }>;
 };
 
-export type AgentAuthFailure = {
-  code: "interaction_required" | "configuration_invalid" | "provider_unavailable" | "credential_rejected" | "retry_required";
-  method: "oidc";
-  message: string;
-  interaction?: { type: "redirect"; url: string };
-};
-
 export type OidcCredentialResolution =
   | {
       envelope: { version: 1; authority: "canonical"; headers: [["authorization", string]] };
@@ -95,7 +94,7 @@ type CredentialPayload = ActiveCredential | PendingCredential;
 export class OidcAccessTokenRejectedError extends Error {}
 export class OidcReauthorizationRequiredError extends Error {}
 
-export function createOidcAuthorizationCodeProvider(options: {
+export type OidcAuthorizationCodeProviderOptions = {
   store: Store;
   appSecretKey: string;
   callbackUrl: string;
@@ -111,7 +110,9 @@ export function createOidcAuthorizationCodeProvider(options: {
   refreshLeaseMs?: number;
   refreshWaitMs?: number;
   allowInsecureIssuer?: boolean;
-}) {
+};
+
+export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCodeProviderOptions) {
   const now = options.now ?? (() => new Date());
   const protocol = options.protocol ?? createOpenIdClientProtocol({ allowInsecureIssuer: options.allowInsecureIssuer });
   const owner = `oidc-${randomUUID()}`;
@@ -458,6 +459,75 @@ export function createOidcAuthorizationCodeProvider(options: {
   return provider;
 }
 
+export function createOidcAgentAuthProvider(
+  options: OidcAuthorizationCodeProviderOptions & {
+    getConnection(id: string): Promise<AgentAuthConnectionSnapshot | null>;
+  },
+): AgentAuthProviderRegistration {
+  const runtime = createOidcAuthorizationCodeProvider(options);
+  const connection = (snapshot: AgentAuthConnectionSnapshot): OidcConnectionSnapshot => {
+    if (snapshot.method !== "oidc") throw new Error("OIDC Agent Connection is not available.");
+    return snapshot as OidcConnectionSnapshot;
+  };
+  return {
+    ...createOidcProviderDefinition(),
+    async preflight(context) {
+      await runtime.preflight(connection(context.connection));
+    },
+    async getCredential(context) {
+      return runtime.getCredential({
+        connection: connection(context.connection),
+        callerPrincipalId: context.callerPrincipalId,
+        ...(context.returnPath ? { returnPath: context.returnPath } : {}),
+      });
+    },
+    async recoverUnauthorized(context) {
+      if (!isOidcCredentialVersion(context.rejectedVersion)) {
+        return {
+          action: "give_up",
+          failure: {
+            code: "retry_required",
+            method: "oidc",
+            message: "The Agent credential version is invalid; retry the request.",
+          },
+        };
+      }
+      return runtime.recoverUnauthorized({
+        connection: connection(context.connection),
+        callerPrincipalId: context.callerPrincipalId,
+        rejectedVersion: context.rejectedVersion,
+        attempt: context.attempt,
+        ...(context.returnPath ? { returnPath: context.returnPath } : {}),
+      });
+    },
+    interaction: {
+      async start(context) {
+        const result = await runtime.start({
+          connection: connection(context.connection),
+          callerPrincipalId: context.callerPrincipalId,
+          returnPath: context.returnPath,
+        });
+        return { authorizationUrl: result.authorizationUrl };
+      },
+      async callback(context) {
+        const callbackUrl = new URL(runtime.callbackUrl);
+        callbackUrl.search = context.search;
+        const state = callbackUrl.searchParams.get("state");
+        if (!state) throw new Error("OIDC state is required.");
+        return runtime.callback({
+          state,
+          currentUrl: callbackUrl,
+          callerPrincipalId: context.callerPrincipalId,
+          getConnection: async (connectionId) => {
+            const snapshot = await options.getConnection(connectionId);
+            return snapshot ? connection(snapshot) : null;
+          },
+        });
+      },
+    },
+  };
+}
+
 export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean } = {}): OidcProtocol {
   const cache = new Map<string, Promise<oidc.Configuration>>();
   const getConfiguration = (config: OidcAuthorizationCodeConfig, clientSecret?: string) => {
@@ -557,6 +627,13 @@ export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: bool
 
 function isExpiringSoon(credential: AgentAuthCredential, now: Date): boolean {
   return credential.expiresAt !== null && new Date(credential.expiresAt).getTime() <= now.getTime() + 30_000;
+}
+
+function isOidcCredentialVersion(value: unknown): value is { securityRevision: number; rotationSeq: number } {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { securityRevision?: unknown }).securityRevision === "number"
+    && typeof (value as { rotationSeq?: unknown }).rotationSeq === "number";
 }
 
 function hashState(state: string): string {

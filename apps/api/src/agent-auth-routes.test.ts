@@ -1,5 +1,6 @@
 import { decodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
 import type { OidcProtocol } from "@eveland/agent-auth/oidc";
+import type { AgentAuthProviderRegistration } from "@eveland/agent-auth";
 import { createMemoryStore } from "@eveland/db";
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
@@ -22,6 +23,7 @@ describe("Agent Auth control-plane routes", () => {
         expect.objectContaining({ method: "none", credentialScope: "connection" }),
         expect.objectContaining({ method: "basic", credentialScope: "connection" }),
         expect.objectContaining({ method: "bearer", credentialScope: "connection" }),
+        expect.objectContaining({ method: "vercel-oidc", credentialScope: "connection" }),
         expect.objectContaining({ method: "oidc", credentialScope: "principal", interactive: true }),
         expect.objectContaining({ method: "headers", credentialScope: "connection" }),
       ],
@@ -288,6 +290,84 @@ describe("Agent Auth control-plane routes", () => {
     expect(refreshCalls).toBe(2);
     expect(upstreamCalls).toBe(5);
   });
+
+  test("delegates 401 recovery to an opaque registered provider", async () => {
+    const store = createMemoryStore();
+    const project = await deployedProject(store, "opaque-recovery");
+    let generation = 1;
+    let recoveryCalls = 0;
+    let upstreamCalls = 0;
+    const provider: AgentAuthProviderRegistration = {
+      ...opaqueProvider("future-rotating"),
+      async getCredential() {
+        return {
+          envelope: {
+            version: 1 as const,
+            authority: "canonical" as const,
+            headers: [["authorization", `Bearer generation-${generation}`] as [string, string]],
+          },
+          version: { generation },
+        };
+      },
+      async recoverUnauthorized() {
+        recoveryCalls += 1;
+        generation += 1;
+        return { action: "retry" as const };
+      },
+    };
+    const app = createApp(store, {
+      appSecretKey,
+      agentAuthProviders: [provider],
+      playgroundProxy: async (input) => {
+        upstreamCalls += 1;
+        const credential = decodeAgentAuthEnvelope(input.agentAuthEnvelope ?? "").headers[0]?.[1];
+        if (credential === "Bearer generation-1") return Response.json({ error: "expired" }, { status: 401 });
+        return Response.json(
+          { sessionId: "eve_opaque", continuationToken: "continue_opaque" },
+          { status: 202, headers: { "x-eve-session-id": "eve_opaque" } },
+        );
+      },
+    });
+    await configureConnection(app, project.id, "future-rotating");
+
+    const response = await sendInitialTurn(app, project.id);
+
+    expect(response.status).toBe(202);
+    expect(recoveryCalls).toBe(1);
+    expect(upstreamCalls).toBe(2);
+  });
+
+  test("dispatches interaction routes through an opaque registered provider", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "opaque-interaction", importKind: "zip" });
+    const provider: AgentAuthProviderRegistration = {
+      ...opaqueProvider("future-interactive", true),
+      interaction: {
+        async start(input: { returnPath: string }) {
+          return { authorizationUrl: `https://identity.example/authorize?return=${encodeURIComponent(input.returnPath)}` };
+        },
+        async callback() {
+          return { returnPath: `/projects/${project.id}/playground` };
+        },
+      },
+    };
+    const app = createApp(store, { appSecretKey, agentAuthProviders: [provider] });
+    const connectionId = await configureConnection(app, project.id, "future-interactive");
+
+    const start = await app.request(
+      `/agent-connections/${connectionId}/auth/interactions/future-interactive/start?returnPath=${encodeURIComponent(`/projects/${project.id}/playground`)}`,
+    );
+    const callback = await app.request("/agent-auth/callback/future-interactive", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ search: "?code=opaque-code&state=opaque-state" }),
+    });
+
+    expect(start.status).toBe(302);
+    expect(start.headers.get("location")).toContain("https://identity.example/authorize");
+    expect(callback.status).toBe(200);
+    await expect(callback.json()).resolves.toEqual({ returnPath: `/projects/${project.id}/playground` });
+  });
 });
 
 function oidcConfig() {
@@ -374,4 +454,40 @@ async function authorizeOidc(app: ReturnType<typeof createApp>, projectId: strin
     body: JSON.stringify({ search: `?code=code&state=${encodeURIComponent(state)}` }),
   });
   expect(callback.status).toBe(200);
+}
+
+function opaqueProvider(method: string, interactive = false) {
+  return {
+    method,
+    descriptor: {
+      method,
+      label: method,
+      description: "Test provider whose method is opaque to the API.",
+      credentialScope: "principal" as const,
+      interactive,
+      fields: [],
+    },
+    credentialScope: "principal" as const,
+    authority: "canonical" as const,
+    normalizeConfig() { return {}; },
+    redactConfig() { return {}; },
+    async getCredential() {
+      return {
+        envelope: { version: 1 as const, authority: "canonical" as const, headers: [] },
+        version: null,
+      };
+    },
+  };
+}
+
+async function configureConnection(app: ReturnType<typeof createApp>, projectId: string, method: string): Promise<string> {
+  const initial = await app.request(`/projects/${projectId}/playground/connection`);
+  const connectionId = ((await initial.json()) as { connection: { id: string } }).connection.id;
+  const configured = await app.request(`/agent-connections/${connectionId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ expectedSecurityRevision: 1, method, config: {} }),
+  });
+  expect(configured.status).toBe(200);
+  return connectionId;
 }

@@ -1,7 +1,7 @@
 # Agent Auth 重写与 Provider 边界实施交接
 
 **日期：** 2026-07-17
-**状态：** PR A 已在 Eve 0.24.6 的 `main` 上实施；PR B 通用 OIDC 已在 `codex/generic-oidc-authorization-code` 完成并验证、待合并；PR C 待后续独立切片
+**状态：** PR A 已在 Eve 0.24.6 的 `main` 上实施；PR B 已发布为 draft PR #87 并完成 registry/Vercel/真实 IdP 补充验证；PR C 已发布为 draft PR #88
 **替代对象：** PR #72 `feat: agent auth OIDC route auth` 只保留为原型和研究资料，不作为合并候选
 
 ## 1. 结论
@@ -346,8 +346,11 @@ memory/Postgres store 与新 migration、API/Web Connection 设置，以及 Gate
 rolling upgrade 期间，service-authenticated internal Playground 请求缺少 envelope 时暂时保持旧的
 loopback 行为；当前 API 始终发送显式 envelope。这个兼容 fallback 应在部署完成并有独立迁移窗口后删除。
 
-PR B 通用 OIDC 和 PR C 平台级变量/Secret Profile 仍保持独立纵向切片，不得为了“完成同一个 PR”
-把 provider-specific 代码或 runtime Secret 注入混入 PR A。
+PR B 通用 OIDC 和 PR C 平台级变量/Secret Profile 保持独立纵向切片，不得为了“完成同一个 PR”
+把 provider-specific 代码或 runtime Secret 注入混入 PR A。PR B 的 API interaction、preflight、
+credential resolution 与 401 recovery 已全部通过 opaque registry registration 调度，主流程不按
+method 分支；独立 `vercel-oidc` registration 镜像 Eve 0.24.6 Client 的 Bearer + trusted deployment
+header。
 
 ## 11. 分阶段 PR
 
@@ -370,11 +373,12 @@ PR B 通用 OIDC 和 PR C 平台级变量/Secret Profile 仍保持独立纵向�
 
 ### PR B：通用 OIDC Authorization Code
 
-实施状态：`codex/generic-oidc-authorization-code` 已完成 generic registration、Web-owned callback、
+实施状态：draft PR #87 已完成 generic registration、Web-owned callback、
 pending first turn、加密 transaction/principal credential、JWT/UserInfo verification、refresh rotation、
 process singleflight、Postgres lease/rotation fencing、单次 401 recovery、cleanup 和双语文档；使用 Eve
-0.24.6 与 `openid-client` 6.8.4。真实 Postgres two-store concurrency 与进程内 mock IdP protocol
-matrix 已通过，待 PR 合并后把本段状态更新为 `main`。
+0.24.6 与 `openid-client` 6.8.4。真实 Postgres two-store concurrency、进程内 mock IdP protocol
+matrix 与 Keycloak 26.3.3 浏览器 Authorization Code/PKCE/UserInfo UAT 已通过；另含独立 Vercel OIDC
+caller，不包含 Jinshuju provider knowledge。
 
 范围：
 
