@@ -22,6 +22,7 @@ import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
+const runtimeDiagnosticMaxCharacters = 32_000;
 
 export type ProcessJobOptions = {
   runtime?: RuntimeAdapter;
@@ -420,7 +421,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           // The systemd adapter's stopProcess already removes the decrypted
           // EnvironmentFile and the unit's exit frees the port -- stopping the
           // process we just started IS the full cleanup, nothing further.
-          await stopStartedProcessOnFailure(store, job.projectId, runtime, startedProcess, "deploy");
+          await stopStartedProcessOnFailure(store, job.projectId, runtime, startedProcess, "deploy", secretValues);
         }
         throw error;
       }
@@ -479,7 +480,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // build_deploy); otherwise resolve strictly by the deployment's recorded
       // kind -- the worker's current default runtime is irrelevant here.
       const adapter = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
-      const { env } = await composeDeploymentEnv(store, project.id, options);
+      const { env, secretValues } = await composeDeploymentEnv(store, project.id, options);
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
 
       await adapter.stopProcess(deployment.containerName);
@@ -512,7 +513,14 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         if (restarted) {
           // A restart that cannot come up healthy must not leave a
           // crash-looping unit behind while the project reads failed.
-          await stopStartedProcessOnFailure(store, job.projectId, adapter, deployment.containerName, "restart");
+          await stopStartedProcessOnFailure(
+            store,
+            job.projectId,
+            adapter,
+            deployment.containerName,
+            "restart",
+            secretValues,
+          );
         }
         throw error;
       }
@@ -862,7 +870,32 @@ async function stopStartedProcessOnFailure(
   adapter: RuntimeAdapter,
   processName: string,
   phase: "deploy" | "restart",
+  secretValues: string[],
 ): Promise<void> {
+  if (adapter.getProcessDiagnostics) {
+    try {
+      const diagnostics = await adapter.getProcessDiagnostics(processName);
+      const raw = [
+        `Runtime startup diagnostics (${adapter.name}) before cleanup:`,
+        `State: ${diagnostics.state.trim() || "unavailable"}`,
+        `Recent logs:\n${diagnostics.logs.trim() || "(none captured)"}`,
+      ].join("\n");
+      await store.appendLog({
+        projectId,
+        type: "runtime",
+        line: limitRuntimeDiagnostic(maskKnownSecrets(raw, secretValues)),
+      });
+    } catch (diagnosticError) {
+      await store.appendLog({
+        projectId,
+        type: "runtime",
+        line: maskKnownSecrets(
+          `Runtime startup diagnostics (${adapter.name}) unavailable before cleanup: ${errorMessage(diagnosticError)}`,
+          secretValues,
+        ),
+      });
+    }
+  }
   try {
     await adapter.stopProcess(processName);
   } catch (cleanupError) {
@@ -872,6 +905,14 @@ async function stopStartedProcessOnFailure(
       line: `Cleanup after failed ${phase} also failed: ${errorMessage(cleanupError)}`,
     });
   }
+}
+
+function limitRuntimeDiagnostic(input: string): string {
+  if (input.length <= runtimeDiagnosticMaxCharacters) return input;
+  const marker = "\n… runtime diagnostics truncated …\n";
+  const prefixLength = 2_000;
+  const suffixLength = runtimeDiagnosticMaxCharacters - prefixLength - marker.length;
+  return `${input.slice(0, prefixLength)}${marker}${input.slice(-suffixLength)}`;
 }
 
 function errorMessage(error: unknown): string {

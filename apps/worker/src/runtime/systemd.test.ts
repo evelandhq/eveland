@@ -332,6 +332,42 @@ describe("createSystemdAdapter startProcess", () => {
       ["systemctl", ["show", "eveland-proj_123-dep_456.service", "--property=ActiveState", "--value"], { all: true, reject: false }],
     ]);
   });
+
+  test("collects unit state and recent journal output before cleanup", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "ActiveState=activating\nSubState=auto-restart\nNRestarts=3\nExecMainStatus=1\nResult=exit-code\n",
+        all: "ActiveState=activating\nSubState=auto-restart\nNRestarts=3\nExecMainStatus=1\nResult=exit-code\n",
+      } as never)
+      .mockResolvedValueOnce({ failed: false, all: "Eve startup failed\nstack trace" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig) as ReturnType<typeof createSystemdAdapter> & {
+      getProcessDiagnostics(processName: string): Promise<{ state: string; logs: string }>;
+    };
+
+    await expect(adapter.getProcessDiagnostics("eveland-proj_123-dep_456")).resolves.toEqual({
+      state: "ActiveState=activating\nSubState=auto-restart\nNRestarts=3\nExecMainStatus=1\nResult=exit-code",
+      logs: "Eve startup failed\nstack trace",
+    });
+    expect(vi.mocked(execa).mock.calls).toEqual([
+      [
+        "systemctl",
+        [
+          "show",
+          "eveland-proj_123-dep_456.service",
+          "--property=ActiveState,SubState,NRestarts,ExecMainCode,ExecMainStatus,Result",
+          "--no-pager",
+        ],
+        { all: true, reject: false },
+      ],
+      [
+        "journalctl",
+        ["--unit", "eveland-proj_123-dep_456.service", "--lines", "200", "--no-pager", "--output=short-iso"],
+        { all: true, reject: false },
+      ],
+    ]);
+  });
 });
 
 describe("createSystemdAdapter stopProcess", () => {

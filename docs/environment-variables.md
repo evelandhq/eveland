@@ -66,7 +66,7 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `EVELAND_GIT_CLONE_TIMEOUT_MS` | Maximum duration of a non-interactive Git source clone before the worker fails the import and removes its partial source directory. | `120000` | worker (`source/importer.ts`) |
 | `EVELAND_GIT_CLONE_MAX_ATTEMPTS` | Maximum attempts for transient DNS, connection, TLS, timeout, and HTTP 5xx clone failures. | `3` | worker (`source/importer.ts`) |
 | `EVELAND_GIT_CLONE_RETRY_DELAY_MS` | Initial Git retry delay; each subsequent retry doubles it. | `1000` | worker (`source/importer.ts`) |
-| `EVELAND_HEALTH_TIMEOUT_MS` | Timeout waiting for a freshly started deployment to pass its health check. | `15000` | worker (`process.ts`) |
+| `EVELAND_HEALTH_TIMEOUT_MS` | Timeout waiting for a freshly started deployment to pass its health check. On failure the worker captures masked, bounded runtime state and recent logs before cleanup. | `15000` | worker (`process.ts`) |
 | `EVELAND_RELEASE_RETENTION` | Deployments/releases retained per project by the archive policy. | `3` (minimum 3) | worker (`process.ts`) |
 | `WORKER_ID` | Worker instance identity, used when claiming jobs. | — | `apps/worker/src/worker.ts` |
 | `WORKER_POLL_INTERVAL_MS` | Interval between worker job-queue polls. | `5000` | `apps/worker/src/worker.ts` |

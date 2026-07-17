@@ -552,6 +552,12 @@ archived、或运行在非 Deployment 所属 runtimeKind 下的进程在宽限�
 * Session 来源归因
 * 容器重启
 
+新启动或重启的进程在 HTTP 健康检查失败时，worker 必须先采集 runtime diagnostics 再清理
+进程。Docker 记录容器 state、exit code、OOM/restart count 与最近 200 行 `docker logs`；
+systemd 记录 unit state、result/restart count 与最近 200 行 journal。诊断进入 Project runtime
+logs 前必须使用完整 Project Secret 集合脱敏并限制为 32,000 字符。诊断采集或后续清理失败
+只能追加独立错误，不能覆盖原始健康检查错误；响应和持久化日志不得泄露 Secret 明文。
+
 durable workflow world 是平台 runtime contract，不是 Agent 源码 contract。只要 worker
 配置了 `WORKFLOW_POSTGRES_URL`，worker 启动时必须幂等 bootstrap 对应 Postgres schema，
 并在每个 Eve Release 副本中强制注入 `@workflow/world-postgres` 配置及平台固定的兼容

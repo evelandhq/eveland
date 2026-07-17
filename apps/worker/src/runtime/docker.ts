@@ -322,6 +322,21 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       if (status === "exited") return "stopped";
       return "failed";
     },
+    async getProcessDiagnostics(processName) {
+      const [state, logs] = await Promise.all([
+        execa("docker", [
+          "inspect",
+          "--format",
+          "status={{.State.Status}} restarting={{.State.Restarting}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} restartCount={{.RestartCount}} error={{json .State.Error}}",
+          processName,
+        ], { all: true, reject: false }),
+        execa("docker", ["logs", "--tail", "200", processName], { all: true, reject: false }),
+      ]);
+      return {
+        state: diagnosticCommandOutput(state, "docker inspect"),
+        logs: diagnosticCommandOutput(logs, "docker logs"),
+      };
+    },
     async ensureProcess(input) {
       const status = await adapter.inspectProcess!(input.processName);
       if (status === "ready" || status === "starting") {
@@ -357,4 +372,13 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     },
   };
   return adapter;
+}
+
+function diagnosticCommandOutput(
+  result: { failed?: boolean; all?: string; stdout?: string; stderr?: string },
+  command: string,
+): string {
+  const output = (result.all || result.stdout || result.stderr || "").trim();
+  if (result.failed) return output ? `${command} unavailable: ${output}` : `${command} unavailable`;
+  return output;
 }
