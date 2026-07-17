@@ -44,6 +44,32 @@ describe("team management web surfaces", () => {
     expect(credentialsForm).toContain("deleteGitCredential");
   });
 
+  test("provides admin Secret Profile management and project binding controls", () => {
+    const profilePageUrl = new URL("./settings/secret-profiles/page.tsx", import.meta.url);
+    const profileSettingsUrl = new URL("../components/platform-secret-profile-settings.tsx", import.meta.url);
+    const bindingSettingsUrl = new URL("../components/platform-secret-bindings.tsx", import.meta.url);
+
+    expect(existsSync(fileURLToPath(profilePageUrl))).toBe(true);
+    expect(existsSync(fileURLToPath(profileSettingsUrl))).toBe(true);
+    expect(existsSync(fileURLToPath(bindingSettingsUrl))).toBe(true);
+    if (
+      !existsSync(fileURLToPath(profilePageUrl)) ||
+      !existsSync(fileURLToPath(profileSettingsUrl)) ||
+      !existsSync(fileURLToPath(bindingSettingsUrl))
+    ) return;
+
+    expect(source("./settings/secret-profiles/page.tsx")).toContain("getPlatformSecretProfiles");
+    const profileSettings = source("../components/platform-secret-profile-settings.tsx");
+    expect(profileSettings).toContain("<Card");
+    expect(profileSettings).toContain("<FieldGroup");
+    expect(profileSettings).toContain("<Table");
+    expect(profileSettings).toContain("savePlatformSecretProfile");
+    const bindingSettings = source("../components/platform-secret-bindings.tsx");
+    expect(bindingSettings).toContain("<Select");
+    expect(bindingSettings).toContain("bindPlatformSecretProfile");
+    expect(source("./projects/[projectId]/secrets/page.tsx")).toContain("<PlatformSecretBindings");
+  });
+
   test("composes the settings pages from profile forms and the existing member controls", () => {
     const requiredPaths = [
       "./settings/layout.tsx",

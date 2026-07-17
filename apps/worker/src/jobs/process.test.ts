@@ -1182,6 +1182,93 @@ describe("processNextJob", () => {
     );
   });
 
+  test("injects project and deployment Secret Profiles with platform precedence", async () => {
+    const secretKey = "eveland-test-secret-key-00000000";
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Profile Runtime Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.upsertSecret(
+      project.id,
+      "SHARED_TOKEN",
+      JSON.stringify(encryptSecretValue("project-secret-value", secretKey)),
+    );
+    const projectProfile = await store.savePlatformSecretProfile({
+      name: "Project runtime profile",
+      entries: [{
+        key: "SHARED_TOKEN",
+        kind: "secret",
+        encryptedValue: JSON.stringify(encryptSecretValue("profile-project-secret", secretKey)),
+      }],
+    });
+    await store.bindPlatformSecretProfile({
+      profileId: projectProfile.id,
+      projectId: project.id,
+      deploymentId: null,
+      consumer: "agent-runtime",
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    const runtime: RuntimeAdapter = {
+      name: "docker",
+      async buildRelease(input) {
+        runtimeCalls.push({ name: "buildRelease", input });
+        return { releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`, log: "profile-project-secret" };
+      },
+      async startProcess(input) {
+        runtimeCalls.push({ name: "startProcess", input });
+        return { internalPort: 3000, log: "started" };
+      },
+      async stopProcess() {},
+    };
+    const options = {
+      appSecretKey: secretKey,
+      runtime,
+      allocateHostPort: () => 41004,
+      async waitForDeployment() {},
+    };
+
+    await expect(processNextJob(store, "worker-a", options)).resolves.toBe(true);
+    const deployment = await store.getCurrentDeployment(project.id);
+    expect(deployment).not.toBeNull();
+    expect((runtimeCalls.find((call) => call.name === "startProcess")?.input as { env: Record<string, string> }).env)
+      .toMatchObject({ SHARED_TOKEN: "profile-project-secret" });
+    expect((await store.listLogs(project.id, "build")).map((log) => log.line).join("\n"))
+      .not.toContain("profile-project-secret");
+
+    const deploymentProfile = await store.savePlatformSecretProfile({
+      name: "Deployment runtime profile",
+      entries: [{
+        key: "SHARED_TOKEN",
+        kind: "secret",
+        encryptedValue: JSON.stringify(encryptSecretValue("profile-deployment-secret", secretKey)),
+      }],
+    });
+    await store.bindPlatformSecretProfile({
+      profileId: deploymentProfile.id,
+      projectId: project.id,
+      deploymentId: deployment!.id,
+      consumer: "agent-runtime",
+    });
+    await store.enqueueJob(project.id, "restart_deployment", { deploymentId: deployment!.id });
+
+    await expect(processNextJob(store, "worker-a", options)).resolves.toBe(true);
+    const starts = runtimeCalls.filter((call) => call.name === "startProcess");
+    expect((starts[1]?.input as { env: Record<string, string> }).env)
+      .toMatchObject({ SHARED_TOKEN: "profile-deployment-secret" });
+  });
+
   test("blocks a production deploy when the platform durable world has no database URL", async () => {
     let buildCalled = false;
     const store = createMemoryStore();

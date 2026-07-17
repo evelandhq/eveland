@@ -202,9 +202,9 @@ runtime diagnostics, logs, Source Revisions, Releases, observer events, or brows
 For generic OIDC, register `${WEB_ORIGIN}/agent-auth/oidc/callback` as an exact redirect URI. The callback page is
 owned by Web and completes through the authenticated API; API encrypts one-time ten-minute transactions and
 principal-scoped access/refresh tokens with `APP_SECRET_KEY`. A confidential client's Connection stores only a
-Project Secret key reference, so create that Secret before saving a `client_secret_basic` or `client_secret_post`
-Connection. Rotating the Project Secret does not change the Connection revision automatically; re-save the
-Connection after rotation so in-flight transactions and old credentials are invalidated.
+Project Secret or explicitly bound `agent-connection` Platform Secret reference, so create or bind that Secret
+before saving a `client_secret_basic` or `client_secret_post` Connection. API resolves the current referenced value
+again for preflight, callback, verification, and refresh; rotating the Secret does not copy it into Connection config.
 
 Production network policy must allow API egress only to approved OIDC discovery, authorization metadata, JWKS,
 token, and UserInfo HTTPS endpoints. Application URL policy rejects userinfo/fragments, non-HTTPS endpoints,
@@ -212,10 +212,10 @@ localhost, literal private addresses, and redirects; the network layer must addi
 resolved private/link-local destinations. Never expose OIDC tokens, authorization codes, state, client secrets, or
 PKCE verifiers through reverse-proxy access logs or runtime diagnostics.
 
-The explicit Vercel OIDC Connection method mirrors Eve 0.24.6 by sending the configured token in both
-`Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short lived; rotate the
-encrypted Connection value before expiry. Eveland does not infer this method from a Vercel deployment, Agent source,
-or a 401 response.
+The explicit Vercel OIDC Connection method mirrors Eve 0.24.6 by resolving its configured Secret reference and
+sending the token in both `Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short
+lived; rotate the referenced Secret before expiry. Eveland does not infer this method from a Vercel deployment,
+Agent source, or a 401 response.
 | `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
 | `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
 | `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
@@ -258,6 +258,26 @@ including stable, preview, and A/B targets. Each restart reuses the immutable Re
 and rebuilds the process environment from the current encrypted Secret set. Wait for
 those jobs to complete before testing the new value; a single-target route can be
 briefly unavailable while its process restarts.
+
+Platform Secret Profiles are stored in Postgres as AES-256-GCM ciphertext using the
+same `APP_SECRET_KEY`; they do not add another host environment variable or Compose
+secret. Only admins can manage Profiles and bindings. An `agent-runtime` binding may
+target a whole Project or one Deployment, while `agent-connection` is Project-scoped.
+At process start the worker resolves Project Secret < Project Profile < Deployment
+Profile < Eveland-reserved precedence, writes the final values only to the Docker
+process environment or the systemd adapter's root-owned `0600` `EnvironmentFile`, and
+adds every decrypted Profile value to runtime/build diagnostic masking. Values never
+enter a Release, build layer, observer event, API response, Web payload, or worker
+configuration snapshot.
+
+Changing a Profile revision or binding queues deduplicated `restart_deployment` jobs
+only for affected `running`/`draining` targets. Removing a binding/Profile also queues
+restart so an old process cannot retain deleted values. With no live target, the next
+deploy, restart, cold activation, or schedule activation reads the latest revision.
+Agent Connection references do not restart an Agent: API resolves the current Project
+Secret or bound Profile entry for every request and fails closed if it is missing or
+cannot be decrypted. Existing API/worker `APP_SECRET_KEY` values must continue to match;
+worker preflight and Compose topology otherwise require no new setting.
 
 GitLab PAT imports use the same `APP_SECRET_KEY` on API and worker. The database stores only
 AES-256-GCM ciphertext keyed by user and normalized HTTP host. During `git clone`, the worker

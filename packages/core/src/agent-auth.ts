@@ -5,6 +5,11 @@ export const AGENT_AUTH_ENVELOPE_HEADER = "x-eveland-agent-auth";
 export type AgentAuthAuthority = "loopback" | "canonical";
 export type AgentCredentialHeader = readonly [name: string, value: string];
 
+export type AgentAuthSecretReference = {
+  kind: "project-secret" | "platform-secret";
+  key: string;
+};
+
 export type AgentAuthEnvelope = {
   version: 1;
   authority: AgentAuthAuthority;
@@ -20,6 +25,7 @@ export type AgentAuthMethodFieldDescriptor = {
   valueType: "string" | "string-list" | "json-record";
   options?: Array<{ value: string; label: string }>;
   defaultValue?: string;
+  secretReferenceKey?: string;
 };
 
 export type AgentAuthMethodDescriptor = {

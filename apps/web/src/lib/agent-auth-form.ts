@@ -1,11 +1,17 @@
-import type { AgentAuthMethodDescriptor } from "@eveland/core/agent-auth";
+import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 
 export function serializeAgentAuthConfig(
   descriptor: AgentAuthMethodDescriptor,
   values: Record<string, string>,
+  secretReferences: Record<string, AgentAuthSecretReference | null> = {},
 ): Record<string, unknown> {
   const config: Record<string, unknown> = {};
   for (const field of descriptor.fields) {
+    if (field.secretReferenceKey) {
+      const reference = secretReferences[field.secretReferenceKey];
+      if (reference) config[field.secretReferenceKey] = reference;
+      if (reference || !(values[field.key] ?? "").trim()) continue;
+    }
     const value = (values[field.key] ?? field.defaultValue ?? "").trim();
     if (!value && field.secret) continue;
     if (!value && field.required) throw new Error(`${field.label} is required.`);

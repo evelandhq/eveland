@@ -45,4 +45,21 @@ describe("Agent Auth form", () => {
     expect(() => serializeAgentAuthConfig(descriptor, { name: "", token: "" })).toThrow(/Name is required/);
     expect(() => serializeAgentAuthConfig(descriptor, { name: "Agent", headers: "[]" })).toThrow(/JSON object/);
   });
+
+  test("serializes a selected secret reference instead of a copied value", () => {
+    const referencedDescriptor: AgentAuthMethodDescriptor = {
+      ...descriptor,
+      fields: descriptor.fields.map((field) => field.key === "token"
+        ? { ...field, secretReferenceKey: "tokenRef" }
+        : field),
+    };
+
+    expect(serializeAgentAuthConfig(referencedDescriptor, { name: "Agent", token: "" }, {
+      tokenRef: { kind: "platform-secret", key: "ACCESS_TOKEN" },
+    })).toEqual({
+      name: "Agent",
+      tokenRef: { kind: "platform-secret", key: "ACCESS_TOKEN" },
+      mode: "safe",
+    });
+  });
 });

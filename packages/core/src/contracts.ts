@@ -59,6 +59,45 @@ export type SecretRecord = {
 
 export type PublicSecret = Omit<SecretRecord, "encryptedValue">;
 
+export type PlatformSecretProfileEntryKind = "variable" | "secret";
+
+export type PlatformSecretProfileEntry = {
+  key: string;
+  kind: PlatformSecretProfileEntryKind;
+  configured: true;
+};
+
+export type PlatformSecretProfile = {
+  id: string;
+  name: string;
+  revision: number;
+  entries: PlatformSecretProfileEntry[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PlatformSecretProfileRecord = Omit<PlatformSecretProfile, "entries"> & {
+  entries: Array<{
+    key: string;
+    kind: PlatformSecretProfileEntryKind;
+    encryptedValue: string;
+  }>;
+};
+
+export type PlatformSecretConsumer = "agent-runtime" | "agent-connection";
+
+export type PlatformSecretProfileBinding = {
+  id: string;
+  profileId: string;
+  profileName: string;
+  profileRevision: number;
+  projectId: string;
+  deploymentId: string | null;
+  consumer: PlatformSecretConsumer;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type GitCredentialRecord = {
   id: string;
   userId: string;

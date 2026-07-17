@@ -25,7 +25,7 @@ Secrets do not belong in:
 - source browsing
 - session timelines
 
-A project secret overrides an Eveland-provided environment variable with the same name.
+Administrators can also create encrypted, revisioned **Secret profiles** in System settings and bind them to a Project or one Deployment. Runtime precedence is Project Secret, Project Profile, Deployment Profile, then Eveland-reserved values. Effective runtime changes queue targeted restarts; profile values remain outside source and releases.
 
 ## 3. Build and deploy
 

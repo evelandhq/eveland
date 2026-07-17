@@ -1,7 +1,12 @@
-import type { Job } from "@eveland/core/contracts";
+import type { Job, PlatformSecretProfileRecord } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
 import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@eveland/core/source";
-import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eveland/core/server/secrets";
+import {
+  decryptSecretValue,
+  maskKnownSecrets,
+  mergeRuntimeEnvironment,
+  type EncryptedSecret,
+} from "@eveland/core/server/secrets";
 import {
   createScheduleDispatchCredential,
   resolveSchedulerDispatchSecret,
@@ -320,7 +325,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // from the production target: old and new versions must be able to run
       // concurrently until an explicit promote/drain decision is made.
       const hostPort = await (options.allocateHostPort ?? allocateAvailableHostPort)();
-      const { env, secretValues } = await composeDeploymentEnv(store, project.id, options);
+      const { env, secretValues } = await composeDeploymentEnv(store, project.id, deploymentId, options);
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
 
       await store.updateProjectState(job.projectId, { status: "build_pending", deploymentStatus: "building" });
@@ -480,7 +485,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       // build_deploy); otherwise resolve strictly by the deployment's recorded
       // kind -- the worker's current default runtime is irrelevant here.
       const adapter = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
-      const { env, secretValues } = await composeDeploymentEnv(store, project.id, options);
+      const { env, secretValues } = await composeDeploymentEnv(store, project.id, deployment.id, options);
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
 
       await adapter.stopProcess(deployment.containerName);
@@ -647,7 +652,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       const revision = await store.getSourceRevision(release.sourceRevisionId);
       if (!revision) throw new Error("Deployment activation SourceRevision is missing.");
       const runtime = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
-      const { env } = await composeDeploymentEnv(store, job.projectId, options);
+      const { env } = await composeDeploymentEnv(store, job.projectId, deployment.id, options);
       const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
       const sandboxCache = resolveSandboxCacheDirs(process.env, job.projectId);
       const observerOutbox = resolveObserverOutboxDirs(process.env, job.projectId, deployment.id);
@@ -718,7 +723,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         const revision = await store.getSourceRevision(release.sourceRevisionId);
         if (!revision) throw new Error("ScheduleRun Release has no SourceRevision.");
         const runtime = options.runtime ?? (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
-        const { env } = await composeDeploymentEnv(store, job.projectId, options);
+        const { env } = await composeDeploymentEnv(store, job.projectId, deployment.id, options);
         const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
         const sandboxCache = resolveSandboxCacheDirs(process.env, job.projectId);
         const observerOutbox = resolveObserverOutboxDirs(process.env, job.projectId, deployment.id);
@@ -925,6 +930,7 @@ function errorMessage(error: unknown): string {
 async function composeDeploymentEnv(
   store: Store,
   projectId: string,
+  deploymentId: string,
   options: ProcessJobOptions,
 ): Promise<{ env: Record<string, string>; secretValues: string[] }> {
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
@@ -941,29 +947,45 @@ async function composeDeploymentEnv(
     : undefined;
   const schedulerRuntimeSecret = options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
   const schedulerRedeemUrl = options.schedulerRedeemUrl ?? process.env.EVELAND_SCHEDULER_REDEEM_URL;
-  const secrets = await readRuntimeSecrets(store, projectId, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
+  const appSecretKey = options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
+  const secrets = await readRuntimeSecrets(store, projectId, appSecretKey);
+  const profileRecords = await store.resolvePlatformSecretProfileRecords({
+    projectId,
+    deploymentId,
+    consumer: "agent-runtime",
+  });
+  const projectProfile = readPlatformSecretProfileValues(profileRecords.project, appSecretKey);
+  const deploymentProfile = readPlatformSecretProfileValues(profileRecords.deployment, appSecretKey);
   // Project secrets are runtime input, but the workflow database is
   // platform-owned and bootstrapped before this worker accepts jobs. Keep its
   // URL reserved so a project cannot silently redirect the injected world to
   // an uninitialized or tenant-controlled database.
-  const injectedCredentials = {
-    ...secrets,
+  const reserved = {
     ...(projectWorkflowUrl ? { WORKFLOW_POSTGRES_URL: projectWorkflowUrl } : {}),
     ...(schedulerRuntimeSecret ? { EVELAND_SCHEDULER_RUNTIME_SECRET: schedulerRuntimeSecret } : {}),
     ...(schedulerRedeemUrl ? { EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl } : {}),
-  };
-  // NODE_ENV is platform-owned and injected only in production; kept out of the mask list so build logs aren't scrubbed of the word "production".
-  const env = {
-    ...injectedCredentials,
     ...(isProduction ? { NODE_ENV: "production" } : {}),
   };
+  const env = mergeRuntimeEnvironment({ projectSecrets: secrets, projectProfile, deploymentProfile, reserved });
   const secretValues = [
     ...Object.values(secrets),
+    ...Object.values(projectProfile),
+    ...Object.values(deploymentProfile),
     ...(workflowPostgresUrl ? [workflowPostgresUrl] : []),
     ...(projectWorkflowUrl ? [projectWorkflowUrl] : []),
     ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),
   ];
   return { env, secretValues };
+}
+
+function readPlatformSecretProfileValues(
+  profile: PlatformSecretProfileRecord | null,
+  appSecretKey: string,
+): Record<string, string> {
+  return Object.fromEntries((profile?.entries ?? []).map((entry) => [
+    entry.key,
+    decryptSecretValue(parseEncryptedSecret(entry.encryptedValue), appSecretKey),
+  ]));
 }
 
 async function readRuntimeSecrets(store: Store, projectId: string, appSecretKey: string): Promise<Record<string, string>> {

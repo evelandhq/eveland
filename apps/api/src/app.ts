@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
-import { encodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
+import { encodeAgentAuthEnvelope, type AgentAuthSecretReference } from "@eveland/core/agent-auth";
 import {
   agentAuthConfigsEqual,
   createAgentAuthRegistry,
@@ -43,7 +43,12 @@ import {
 } from "@eveland/core/source";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import { assertValidSecretKey, decryptSecretValue, encryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
+import {
+  assertValidSecretKey,
+  decryptSecretValue,
+  encryptSecretValue,
+  type EncryptedSecret,
+} from "@eveland/core/server/secrets";
 import {
   resolveSchedulerDispatchSecret,
   resolveSchedulerRuntimeSecret,
@@ -129,6 +134,36 @@ const createGitSourcePreflightSchema = z.object({
 });
 
 const secretSchema = environmentVariableSchema;
+
+const platformSecretProfileEntrySchema = z.object({
+  key: z.string().regex(/^[A-Z][A-Z0-9_]*$/, "Use uppercase letters, numbers, and underscores, starting with a letter."),
+  kind: z.enum(["variable", "secret"]),
+  value: z.string().min(1).max(65_536).optional(),
+});
+
+const platformSecretProfileSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  entries: z.array(platformSecretProfileEntrySchema).min(1).max(50),
+}).superRefine((input, context) => {
+  const keys = new Set<string>();
+  input.entries.forEach((entry, index) => {
+    if (keys.has(entry.key)) {
+      context.addIssue({
+        code: "custom",
+        path: ["entries", index, "key"],
+        message: "Platform Secret Profile keys must be unique.",
+      });
+    }
+    keys.add(entry.key);
+  });
+});
+
+const platformSecretBindingSchema = z.object({
+  profileId: z.string().regex(/^sp_[0-9A-Za-z]+$/),
+  deploymentId: z.string().regex(/^dep_[0-9A-Za-z]+$/).nullable().default(null),
+});
+
+const platformSecretConsumerSchema = z.enum(["agent-runtime", "agent-connection"]);
 
 const playgroundMessageSchema = z.object({
   message: z.string().min(1),
@@ -329,16 +364,36 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       method: connection.method,
       securityRevision: connection.securityRevision,
     });
+  const resolveAgentAuthSecret = async (
+    projectId: string,
+    reference: AgentAuthSecretReference,
+  ): Promise<string> => {
+    let encryptedValue: string | undefined;
+    if (reference.kind === "project-secret") {
+      encryptedValue = (await store.listSecretRecords(projectId))
+        .find((secret) => secret.key === reference.key)?.encryptedValue;
+    } else {
+      const profiles = await store.resolvePlatformSecretProfileRecords({
+        projectId,
+        deploymentId: null,
+        consumer: "agent-connection",
+      });
+      encryptedValue = profiles.project?.entries.find((entry) => entry.key === reference.key)?.encryptedValue;
+    }
+    if (!encryptedValue) throw new Error("The configured Agent Auth secret reference is unavailable.");
+    try {
+      return decryptSecretValue(JSON.parse(encryptedValue) as EncryptedSecret, appSecretKey);
+    } catch {
+      throw new Error("The configured Agent Auth secret reference cannot be decrypted.");
+    }
+  };
   const oidcRegistration = createOidcAgentAuthProvider({
     store,
     appSecretKey,
     callbackUrl: options.oidcCallbackUrl ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
     resolveClientSecret: async (config, connection) => {
       if (!config.clientSecretRef) return undefined;
-      const secret = (await store.listSecretRecords(connection.target.projectId))
-        .find((candidate) => candidate.key === config.clientSecretRef?.key);
-      if (!secret) throw new Error(`Project Secret ${config.clientSecretRef.key} is not configured.`);
-      return decryptSecretValue(JSON.parse(secret.encryptedValue) as EncryptedSecret, appSecretKey);
+      return resolveAgentAuthSecret(connection.target.projectId, config.clientSecretRef);
     },
     ...(options.oidcProtocol ? { protocol: options.oidcProtocol } : {}),
     ...(options.oidcVerifyAccessToken ? { verifyAccessToken: options.oidcVerifyAccessToken } : {}),
@@ -357,6 +412,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     connection: { ...connection, config: readConnectionConfig(connection) },
     callerPrincipalId,
     ...(returnPath ? { returnPath } : {}),
+    resolveSecret: (reference) => resolveAgentAuthSecret(connection.target.projectId, reference),
   });
   const publicConnection = async (
     connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>,
@@ -428,6 +484,27 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         }),
       ),
     );
+  };
+  const enqueuePlatformSecretRestarts = async (
+    bindings: Awaited<ReturnType<Store["listPlatformSecretProfileBindings"]>>,
+    reason: "platform_secret_binding_changed" | "platform_secret_profile_changed",
+  ) => {
+    const targets = new Map<string, { projectId: string; deploymentId: string }>();
+    for (const binding of bindings) {
+      if (binding.consumer !== "agent-runtime") continue;
+      const live = (await store.listDeployments(binding.projectId)).filter(
+        (deployment) => deployment.status === "running" || deployment.status === "draining",
+      );
+      for (const deployment of live) {
+        if (binding.deploymentId && binding.deploymentId !== deployment.id) continue;
+        targets.set(`${binding.projectId}:${deployment.id}`, { projectId: binding.projectId, deploymentId: deployment.id });
+      }
+    }
+    return Promise.all([...targets.values()].map((target) => store.enqueueJob(
+      target.projectId,
+      "restart_deployment",
+      { deploymentId: target.deploymentId, reason },
+    )));
   };
 
   app.use(
@@ -748,6 +825,34 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     }
   });
 
+  app.get("/projects/:projectId/agent-auth/secret-references", async (c) => {
+    const projectId = c.req.param("projectId");
+    const project = await store.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const [projectSecrets, profiles] = await Promise.all([
+      store.listSecrets(projectId),
+      store.resolvePlatformSecretProfileRecords({
+        projectId,
+        deploymentId: null,
+        consumer: "agent-connection",
+      }),
+    ]);
+    const references = [
+      ...(profiles.project?.entries ?? []).map((entry) => ({
+        kind: "platform-secret" as const,
+        key: entry.key,
+        label: `${profiles.project!.name} · ${entry.key}`,
+        revision: profiles.project!.revision,
+      })),
+      ...projectSecrets.map((secret) => ({
+        kind: "project-secret" as const,
+        key: secret.key,
+        label: `Project Secret · ${secret.key}`,
+      })),
+    ].sort((left, right) => left.label.localeCompare(right.label));
+    return c.json({ references });
+  });
+
   app.get("/projects/:projectId/playground/connection", async (c) => {
     const project = await store.getProject(c.req.param("projectId"));
     if (!project) return c.json({ error: "Project not found" }, 404);
@@ -790,6 +895,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
             config: normalized,
           },
           callerPrincipalId: currentUserId(c),
+          resolveSecret: (reference) => resolveAgentAuthSecret(connection.target.projectId, reference),
         });
       } catch (error) {
         return c.json({
@@ -1417,6 +1523,122 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const deleted = await store.deleteSecret(projectId, c.req.param("secretId"));
     const jobs = deleted ? await enqueueLiveDeploymentRestarts(projectId) : [];
     return c.json({ deleted, jobs });
+  });
+
+  app.get("/platform/secret-profiles", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin") return c.json({ error: "Admin access required" }, 403);
+    return c.json({ profiles: await store.listPlatformSecretProfiles() });
+  });
+
+  app.post("/platform/secret-profiles", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin") return c.json({ error: "Admin access required" }, 403);
+    const parsed = platformSecretProfileSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid Platform Secret Profile", issues: parsed.error.issues }, 400);
+    if (parsed.data.entries.some((entry) => entry.value === undefined)) {
+      return c.json({ error: "Every new Platform Secret Profile entry requires a value." }, 400);
+    }
+    const profile = await store.savePlatformSecretProfile({
+      name: parsed.data.name,
+      entries: parsed.data.entries.map((entry) => ({
+        key: entry.key,
+        kind: entry.kind,
+        encryptedValue: JSON.stringify(encryptSecretValue(entry.value!, appSecretKey)),
+      })),
+    });
+    return c.json({ profile }, 201);
+  });
+
+  app.put("/platform/secret-profiles/:profileId", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin") return c.json({ error: "Admin access required" }, 403);
+    const parsed = platformSecretProfileSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid Platform Secret Profile", issues: parsed.error.issues }, 400);
+    const existing = await store.getPlatformSecretProfileRecord(c.req.param("profileId"));
+    if (!existing) return c.json({ error: "Platform Secret Profile not found" }, 404);
+    const previousRevision = existing.revision;
+    const entries = parsed.data.entries.map((entry) => {
+      const previous = existing.entries.find((candidate) => candidate.key === entry.key && candidate.kind === entry.kind);
+      if (entry.value === undefined && !previous) return null;
+      return {
+        key: entry.key,
+        kind: entry.kind,
+        encryptedValue: entry.value === undefined
+          ? previous!.encryptedValue
+          : JSON.stringify(encryptSecretValue(entry.value, appSecretKey)),
+      };
+    });
+    if (entries.some((entry) => entry === null)) {
+      return c.json({ error: "A value is required for every new or changed Platform Secret Profile entry." }, 400);
+    }
+    const profile = await store.savePlatformSecretProfile({
+      id: existing.id,
+      name: parsed.data.name,
+      entries: entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
+    });
+    const jobs = profile.revision === previousRevision
+      ? []
+      : await enqueuePlatformSecretRestarts(
+          await store.listPlatformSecretProfileBindings(profile.id),
+          "platform_secret_profile_changed",
+        );
+    return c.json({ profile, jobs });
+  });
+
+  app.delete("/platform/secret-profiles/:profileId", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin") return c.json({ error: "Admin access required" }, 403);
+    const profileId = c.req.param("profileId");
+    const bindings = await store.listPlatformSecretProfileBindings(profileId);
+    const deleted = await store.deletePlatformSecretProfile(profileId);
+    const jobs = deleted
+      ? await enqueuePlatformSecretRestarts(bindings, "platform_secret_profile_changed")
+      : [];
+    return c.json({ deleted, jobs });
+  });
+
+  app.get("/projects/:projectId/platform-secret-bindings", async (c) => {
+    const project = await store.getProject(c.req.param("projectId"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    return c.json({ bindings: await store.listProjectPlatformSecretBindings(project.id) });
+  });
+
+  app.put("/projects/:projectId/platform-secret-bindings/:consumer", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin") return c.json({ error: "Admin access required" }, 403);
+    const consumer = platformSecretConsumerSchema.safeParse(c.req.param("consumer"));
+    const parsed = platformSecretBindingSchema.safeParse(await c.req.json().catch(() => null));
+    if (!consumer.success || !parsed.success) {
+      return c.json({ error: "Invalid Platform Secret Profile binding" }, 400);
+    }
+    const projectId = c.req.param("projectId");
+    const previous = (await store.listProjectPlatformSecretBindings(projectId)).find((binding) =>
+      binding.consumer === consumer.data && binding.deploymentId === parsed.data.deploymentId,
+    );
+    try {
+      const binding = await store.bindPlatformSecretProfile({
+        profileId: parsed.data.profileId,
+        projectId,
+        deploymentId: parsed.data.deploymentId,
+        consumer: consumer.data,
+      });
+      const changed = !previous || previous.profileId !== binding.profileId;
+      const jobs = changed
+        ? await enqueuePlatformSecretRestarts([binding], "platform_secret_binding_changed")
+        : [];
+      return c.json({ binding, jobs });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, message.includes("not found") ? 404 : 409);
+    }
+  });
+
+  app.delete("/projects/:projectId/platform-secret-bindings/:bindingId", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin") return c.json({ error: "Admin access required" }, 403);
+    const binding = await store.deletePlatformSecretProfileBinding(
+      c.req.param("projectId"),
+      c.req.param("bindingId"),
+    );
+    const jobs = binding
+      ? await enqueuePlatformSecretRestarts([binding], "platform_secret_binding_changed")
+      : [];
+    return c.json({ deleted: binding !== null, jobs });
   });
 
   app.get("/projects/:projectId/schedules", async (c) => {

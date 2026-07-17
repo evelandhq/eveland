@@ -1,6 +1,10 @@
 "use client";
 
-import type { AgentAuthMethodDescriptor } from "@eveland/core/agent-auth";
+import type {
+  AgentAuthMethodDescriptor,
+  AgentAuthSecretReference,
+} from "@eveland/core/agent-auth";
+import type { AgentAuthSecretReferenceOption } from "@/lib/client-api";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,14 +21,20 @@ export function AgentAuthFields({
   methods,
   method,
   values,
+  secretReferences,
+  referenceValues,
   onMethodChange,
   onValuesChange,
+  onReferenceValuesChange,
 }: {
   methods: AgentAuthMethodDescriptor[];
   method: string;
   values: Record<string, string>;
+  secretReferences: AgentAuthSecretReferenceOption[];
+  referenceValues: Record<string, AgentAuthSecretReference | null>;
   onMethodChange(method: string): void;
   onValuesChange(values: Record<string, string>): void;
+  onReferenceValuesChange(values: Record<string, AgentAuthSecretReference | null>): void;
 }) {
   const descriptor = methods.find((candidate) => candidate.method === method);
   return (
@@ -55,6 +65,50 @@ export function AgentAuthFields({
         const required = field.required && !field.secret;
         const value = values[field.key] ?? "";
         const onChange = (nextValue: string) => onValuesChange({ ...values, [field.key]: nextValue });
+        if (field.secretReferenceKey) {
+          const referenceKey = field.secretReferenceKey;
+          const items = [
+            { label: "Keep the configured reference", value: null },
+            ...secretReferences.map((reference) => ({
+              label: reference.revision ? `${reference.label} · r${reference.revision}` : reference.label,
+              value: `${reference.kind}:${reference.key}`,
+            })),
+          ];
+          const selected = referenceValues[referenceKey];
+          const selectedValue = selected ? `${selected.kind}:${selected.key}` : null;
+          return (
+            <Field key={field.key}>
+              <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
+              <Select
+                items={items}
+                value={selectedValue}
+                onValueChange={(nextValue) => {
+                  const reference = secretReferences.find((candidate) =>
+                    `${candidate.kind}:${candidate.key}` === nextValue,
+                  );
+                  onReferenceValuesChange({
+                    ...referenceValues,
+                    [referenceKey]: reference ? { kind: reference.kind, key: reference.key } : null,
+                  });
+                }}
+              >
+                <SelectTrigger id={id} className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {items.map((item) => (
+                      <SelectItem key={item.value ?? "configured"} value={item.value}>{item.label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                {secretReferences.length > 0
+                  ? "Select a current Project Secret or bound Platform Secret. Leave unchanged to preserve the existing reference."
+                  : "Add a Project Secret or bind an agent-connection Secret Profile before configuring this method."}
+              </FieldDescription>
+            </Field>
+          );
+        }
         return (
           <Field key={field.key}>
             <FieldLabel htmlFor={id}>{field.label}</FieldLabel>

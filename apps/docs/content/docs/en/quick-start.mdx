@@ -40,6 +40,8 @@ Open [http://localhost:3000](http://localhost:3000). All four applications are r
 4. Add the environment variables and provider keys required by the agent.
 5. Choose **Build & Deploy**.
 
+For operator-owned values shared across projects or pinned to one deployment, an administrator can create a revisioned **Secret profile** under **Settings → Secret profiles**, then bind it from the Project **Secrets** page. Runtime profile changes queue targeted restarts; Agent Connection references resolve the current value per request. Values are never returned to the browser.
+
 The first successful deploy creates an immutable release and a preview deployment. Open **Playground** for a fresh continuous conversation through Gateway. It streams messages, live thinking, tool calls and results, supports approval, choice, text, and external-authorization prompts, and accepts up to four image, PDF, text, or code files. Reloading the page starts a new conversation; the generated platform Session remains available under **Sessions**.
 
 ## Configure protected Agents
@@ -49,7 +51,7 @@ Open **Playground → Connection** and explicitly choose how Eveland calls the A
 For OIDC:
 
 1. Register `<your Web origin>/agent-auth/oidc/callback` as the client's exact redirect URI.
-2. For a confidential client, create a Project Secret containing the client secret, then enter that Secret's key in the Connection. Public clients choose `none` and do not need a Secret.
+2. For a confidential client, create a Project Secret containing the client secret or bind an `agent-connection` Platform Secret Profile, then select that reference in the Connection. Public clients choose `none` and do not need a Secret.
 3. Configure issuer, client id, scopes, optional audience and parameter mode, token endpoint authentication, optional authorization parameters, and either Eve JWT or UserInfo verification.
 4. Save the Connection, then choose **Authorize with identity provider** or send the first Playground message.
 

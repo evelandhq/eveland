@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Settings2Icon } from "lucide-react";
-import type { AgentAuthMethodDescriptor } from "@eveland/core/agent-auth";
+import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 import { AgentAuthFields } from "@/components/agent-auth-fields";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,10 +20,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { agentAuthValuesFromConfig, serializeAgentAuthConfig } from "@/lib/agent-auth-form";
 import {
   getAgentAuthMethods,
+  getAgentAuthSecretReferences,
   getProjectAgentConnection,
   updateAgentConnection,
   type AgentAuthStatus,
   type AgentConnectionView,
+  type AgentAuthSecretReferenceOption,
 } from "@/lib/client-api";
 
 export function AgentConnectionSettings({ projectId }: { projectId: string }) {
@@ -33,6 +35,8 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
   const [status, setStatus] = useState<AgentAuthStatus | null>(null);
   const [method, setMethod] = useState("local-dev");
   const [values, setValues] = useState<Record<string, string>>({});
+  const [secretReferences, setSecretReferences] = useState<AgentAuthSecretReferenceOption[]>([]);
+  const [referenceValues, setReferenceValues] = useState<Record<string, AgentAuthSecretReference | null>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,9 +45,10 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const [nextMethods, result] = await Promise.all([
+      const [nextMethods, result, nextReferences] = await Promise.all([
         getAgentAuthMethods(),
         getProjectAgentConnection(projectId),
+        getAgentAuthSecretReferences(projectId),
       ]);
       const descriptor = nextMethods.find((candidate) => candidate.method === result.connection.method);
       setMethods(nextMethods);
@@ -51,6 +56,8 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
       setStatus(result.status);
       setMethod(result.connection.method);
       setValues(descriptor ? agentAuthValuesFromConfig(descriptor, result.connection.config) : {});
+      setSecretReferences(nextReferences);
+      setReferenceValues({});
     } catch (caught) {
       setError(toMessage(caught));
     } finally {
@@ -69,7 +76,7 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
       const result = await updateAgentConnection(connection.id, {
         expectedSecurityRevision: connection.securityRevision,
         method,
-        config: serializeAgentAuthConfig(descriptor, values),
+        config: serializeAgentAuthConfig(descriptor, values, referenceValues),
       });
       setConnection(result.connection);
       setStatus(result.status);
@@ -130,12 +137,16 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
               methods={methods}
               method={method}
               values={values}
+              secretReferences={secretReferences}
+              referenceValues={referenceValues}
               onMethodChange={(nextMethod) => {
                 setMethod(nextMethod);
                 const nextDescriptor = methods.find((candidate) => candidate.method === nextMethod);
                 setValues(nextDescriptor ? agentAuthValuesFromConfig(nextDescriptor, {}) : {});
+                setReferenceValues({});
               }}
               onValuesChange={setValues}
+              onReferenceValuesChange={setReferenceValues}
             />
             <DialogFooter>
               <Button type="submit" disabled={saving}>

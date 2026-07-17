@@ -1,7 +1,12 @@
 import type { FileUIPart, UserContent } from "ai";
 import type { Job, ScheduleRun } from "./api";
-import type { PublicGitCredential } from "@eveland/core/contracts";
-import type { AgentAuthMethodDescriptor } from "@eveland/core/agent-auth";
+import type {
+  PlatformSecretConsumer,
+  PlatformSecretProfile,
+  PlatformSecretProfileBinding,
+  PublicGitCredential,
+} from "@eveland/core/contracts";
+import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -43,6 +48,11 @@ export type AgentAuthStatus =
   | { state: "interaction_required"; interaction?: { type: "redirect"; url: string } }
   | { state: "misconfigured"; message: string };
 
+export type AgentAuthSecretReferenceOption = AgentAuthSecretReference & {
+  label: string;
+  revision?: number;
+};
+
 export async function getAgentAuthMethods(): Promise<AgentAuthMethodDescriptor[]> {
   return clientRequest<{ methods: AgentAuthMethodDescriptor[] }>("/agent-auth/methods", { method: "GET" })
     .then((data) => data.methods);
@@ -53,6 +63,13 @@ export async function getProjectAgentConnection(projectId: string): Promise<{
   status: AgentAuthStatus;
 }> {
   return clientRequest(`/projects/${projectId}/playground/connection`, { method: "GET" });
+}
+
+export async function getAgentAuthSecretReferences(projectId: string): Promise<AgentAuthSecretReferenceOption[]> {
+  return clientRequest<{ references: AgentAuthSecretReferenceOption[] }>(
+    `/projects/${projectId}/agent-auth/secret-references`,
+    { method: "GET" },
+  ).then((data) => data.references);
 }
 
 export async function updateAgentConnection(
@@ -119,6 +136,44 @@ export async function getGitCredentials(): Promise<PublicGitCredential[]> {
 
 export async function deleteGitCredential(credentialId: string): Promise<void> {
   await clientRequest(`/git-credentials/${credentialId}`, { method: "DELETE" });
+}
+
+export async function savePlatformSecretProfile(
+  input: {
+    id?: string;
+    name: string;
+    entries: Array<{ key: string; kind: "variable" | "secret"; value?: string }>;
+  },
+): Promise<{ profile: PlatformSecretProfile; jobs: Job[] }> {
+  return clientRequest(input.id ? `/platform/secret-profiles/${input.id}` : "/platform/secret-profiles", {
+    method: input.id ? "PUT" : "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: input.name, entries: input.entries }),
+  });
+}
+
+export async function deletePlatformSecretProfile(profileId: string): Promise<{ deleted: boolean; jobs: Job[] }> {
+  return clientRequest(`/platform/secret-profiles/${profileId}`, { method: "DELETE" });
+}
+
+export async function bindPlatformSecretProfile(input: {
+  projectId: string;
+  profileId: string;
+  deploymentId: string | null;
+  consumer: PlatformSecretConsumer;
+}): Promise<{ binding: PlatformSecretProfileBinding; jobs: Job[] }> {
+  return clientRequest(`/projects/${input.projectId}/platform-secret-bindings/${input.consumer}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ profileId: input.profileId, deploymentId: input.deploymentId }),
+  });
+}
+
+export async function unbindPlatformSecretProfile(
+  projectId: string,
+  bindingId: string,
+): Promise<{ deleted: boolean; jobs: Job[] }> {
+  return clientRequest(`/projects/${projectId}/platform-secret-bindings/${bindingId}`, { method: "DELETE" });
 }
 
 export async function inviteMember(email: string): Promise<{ invitation: Invitation; inviteUrl: string }> {

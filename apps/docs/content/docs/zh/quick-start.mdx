@@ -40,6 +40,8 @@ pnpm --filter @eveland/worker dev
 4. 添加 Agent 所需的环境变量与 Provider Key。
 5. 选择 **Build & Deploy**。
 
+如果某些值由运维方持有、需要跨 Project 复用或只绑定到单个 Deployment，管理员可以在 **Settings → Secret profiles** 创建带 revision 的加密 Profile，再到 Project 的 **Secrets** 页面显式绑定。Runtime Profile 变更会排定向重启；Agent Connection reference 会在每次请求时解析当前值。浏览器永远不会收到 Value。
+
 首次成功部署会创建不可变 Release 和 Preview Deployment。打开 **Playground**，通过 Gateway 开始一段全新的连续对话。界面会流式展示消息、实时 thinking、tool 调用和结果，支持确认、选项、文本及外部授权提示，并可上传最多 4 个图片、PDF、文本或代码文件。刷新页面会开始新对话；产生的平台 Session 仍可在 **Sessions** 中查看。
 
 ## 配置受保护的 Agent
@@ -49,7 +51,7 @@ pnpm --filter @eveland/worker dev
 配置 OIDC：
 
 1. 在 IdP 中把 `<Web origin>/agent-auth/oidc/callback` 注册为精确 redirect URI。
-2. confidential client 先创建保存 client secret 的 Project Secret，再在 Connection 中填写该 Secret 的 key；public client 选择 `none`，不需要 Secret。
+2. confidential client 先创建保存 client secret 的 Project Secret，或绑定 `agent-connection` Platform Secret Profile，再在 Connection 中选择该引用；public client 选择 `none`，不需要 Secret。
 3. 配置 issuer、client id、scopes、可选 audience 与参数模式、token endpoint authentication、可选 authorization parameters，以及 Eve JWT 或 UserInfo verification。
 4. 保存 Connection，然后点击 **Authorize with identity provider**，或直接发送第一条 Playground 消息。
 

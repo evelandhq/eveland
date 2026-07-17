@@ -271,6 +271,42 @@ export const secrets = pgTable(
   (table) => [uniqueIndex("secrets_project_key_idx").on(table.projectId, table.key)],
 );
 
+export const platformSecretProfiles = pgTable(
+  "platform_secret_profiles",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull().unique(),
+    revision: integer("revision").notNull().default(1),
+    entries: jsonb("entries").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check("platform_secret_profiles_revision_check", sql`${table.revision} > 0`)],
+);
+
+export const platformSecretProfileBindings = pgTable(
+  "platform_secret_profile_bindings",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id").notNull().references(() => platformSecretProfiles.id, { onDelete: "cascade" }),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    deploymentId: text("deployment_id").references(() => deployments.id, { onDelete: "cascade" }),
+    targetKey: text("target_key").notNull(),
+    consumer: text("consumer").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("platform_secret_profile_bindings_target_consumer_idx").on(table.projectId, table.targetKey, table.consumer),
+    check("platform_secret_profile_bindings_consumer_check", sql`${table.consumer} in ('agent-runtime', 'agent-connection')`),
+    check("platform_secret_profile_bindings_target_check", sql`coalesce(${table.deploymentId}, '') = ${table.targetKey}`),
+    check(
+      "platform_secret_profile_bindings_connection_scope_check",
+      sql`${table.consumer} <> 'agent-connection' or ${table.deploymentId} is null`,
+    ),
+  ],
+);
+
 export const jobs = pgTable("jobs", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id),
