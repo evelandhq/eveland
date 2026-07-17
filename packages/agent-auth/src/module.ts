@@ -1,5 +1,5 @@
 import type { AgentAuthMethodDescriptor } from "@eveland/core/agent-auth";
-import { assertAllowedAgentCredentialHeader } from "./config.js";
+import { assertAllowedAgentCredentialHeader, JINSHUJU_OIDC_METHOD } from "./config.js";
 
 export type AgentAuthTarget = {
   agentConnectionId: string;
@@ -318,6 +318,14 @@ const builtinMethodDescriptors: AgentAuthMethodDescriptor[] = [
       { key: "scopes", label: "Scopes", input: "text", required: true, secret: false, valueType: "string-list" },
       { key: "audience", label: "Audience (blank if the provider has no audience binding)", input: "text", required: false, secret: false, valueType: "string" },
     ],
+  },
+  {
+    method: JINSHUJU_OIDC_METHOD,
+    label: "Jinshuju OIDC",
+    description: "Authorize each Playground caller with the server-managed Jinshuju OAuth application.",
+    credentialScope: "principal",
+    interactive: true,
+    fields: [],
   },
   {
     method: "headers",

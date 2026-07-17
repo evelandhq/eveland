@@ -7,9 +7,11 @@ export type SourceFile = {
 };
 
 export type EveProjectLayout = "nested" | "flat" | "unknown";
+export type DetectedAgentAuthMethod = "jinshuju-oidc";
 
 export type EveProjectSummary = {
   agents: string[];
+  agentAuthMethods: DetectedAgentAuthMethod[];
   instructions: string[];
   tools: string[];
   skills: string[];
@@ -41,6 +43,7 @@ export type EveVersionInfo = {
 
 const emptySummary = (): EveProjectSummary => ({
   agents: [],
+  agentAuthMethods: [],
   instructions: [],
   tools: [],
   skills: [],
@@ -68,6 +71,14 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
 
     if (file.path === `${root}agent.ts`) {
       summary.agents.push(file.path);
+    }
+
+    if (
+      isUnder(file.path, `${root}channels/`)
+      && /\.[cm]?[jt]sx?$/.test(file.path)
+      && usesJinshujuOidcInEveChannel(file.content)
+    ) {
+      summary.agentAuthMethods.push("jinshuju-oidc");
     }
 
     if (isInstructionPath(file.path, root)) {
@@ -227,9 +238,147 @@ export function readDeclaredEveVersion(files: Array<{ path: string; content: str
 }
 
 function dedupeSummary(summary: EveProjectSummary): void {
-  for (const key of Object.keys(summary) as Array<keyof EveProjectSummary>) {
-    summary[key] = [...new Set(summary[key])].sort();
+  for (const values of Object.values(summary)) {
+    const deduped = [...new Set(values)].sort();
+    values.splice(0, values.length, ...deduped);
   }
+}
+
+function usesJinshujuOidcInEveChannel(content: string): boolean {
+  const source = content
+    .replace(/(["'`])(?:\\[\s\S]|(?!\1)[^\\])*\1/g, (value) =>
+      /^["'`]auth["'`]$/.test(value) ? ` auth ` : " ".repeat(value.length))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, (value) => " ".repeat(value.length));
+  const verifierNames = collectIdentifierAliases(source, "jinshujuOidc");
+  const channelNames = new Set([
+    ...collectIdentifierAliases(source, "eveChannel"),
+    ...collectIdentifierAliases(source, "EveChannel"),
+  ]);
+
+  for (const channelName of channelNames) {
+    const calls = new RegExp(`\\b${escapeRegExp(channelName)}\\s*\\(`, "g");
+    for (const match of source.matchAll(calls)) {
+      const openParen = source.indexOf("(", match.index);
+      const call = readBalanced(source, openParen, "(", ")");
+      if (!call) continue;
+      const objectStart = call.value.indexOf("{", 1);
+      if (objectStart < 0 || call.value.slice(1, objectStart).trim() !== "") continue;
+      const object = readBalanced(call.value, objectStart, "{", "}");
+      if (object && channelObjectUsesVerifier(object.value, source, verifierNames)) return true;
+    }
+  }
+  return false;
+}
+
+function channelObjectUsesVerifier(
+  objectSource: string,
+  fullSource: string,
+  verifierNames: Set<string>,
+): boolean {
+  for (const property of splitTopLevel(objectSource.slice(1, -1), ",")) {
+    const colon = findTopLevelDelimiter(property, ":");
+    if (colon >= 0 && property.slice(0, colon).trim() === "auth") {
+      return expressionUsesVerifier(property.slice(colon + 1), fullSource, verifierNames, new Set());
+    }
+    if (property.trim() === "auth") {
+      return bindingUsesVerifier("auth", fullSource, verifierNames, new Set());
+    }
+  }
+  return false;
+}
+
+function expressionUsesVerifier(
+  expression: string,
+  fullSource: string,
+  verifierNames: Set<string>,
+  visitedBindings: Set<string>,
+): boolean {
+  for (const name of verifierNames) {
+    if (new RegExp(`\\b${escapeRegExp(name)}\\s*\\(`).test(expression)) return true;
+  }
+  if (/\b[A-Za-z_$][\w$]*\.jinshujuOidc\s*\(/.test(expression)) return true;
+  const reference = /^\s*([A-Za-z_$][\w$]*)\b/.exec(expression)?.[1];
+  return reference ? bindingUsesVerifier(reference, fullSource, verifierNames, visitedBindings) : false;
+}
+
+function bindingUsesVerifier(
+  name: string,
+  source: string,
+  verifierNames: Set<string>,
+  visited: Set<string>,
+): boolean {
+  if (visited.has(name)) return false;
+  visited.add(name);
+  const declaration = new RegExp(`\\b(?:const|let|var)\\s+${escapeRegExp(name)}\\s*=`, "g").exec(source);
+  if (!declaration) return false;
+  const expressionStart = declaration.index + declaration[0].length;
+  const expression = readExpression(source, expressionStart);
+  return expressionUsesVerifier(expression, source, verifierNames, visited);
+}
+
+function collectIdentifierAliases(source: string, exportedName: string): Set<string> {
+  const names = new Set([exportedName]);
+  const aliases = new RegExp(`\\b${escapeRegExp(exportedName)}\\s+as\\s+([A-Za-z_$][\\w$]*)`, "g");
+  for (const match of source.matchAll(aliases)) {
+    if (match[1]) names.add(match[1]);
+  }
+  return names;
+}
+
+function readBalanced(source: string, start: number, open: string, close: string): { value: string; end: number } | null {
+  if (source[start] !== open) return null;
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === open) depth += 1;
+    if (source[index] === close) depth -= 1;
+    if (depth === 0) return { value: source.slice(start, index + 1), end: index + 1 };
+  }
+  return null;
+}
+
+function readExpression(source: string, start: number): string {
+  let hasContent = false;
+  for (const { character, depth, index } of walkBracketDepth(source, start)) {
+    if (depth === 0 && hasContent && (character === ";" || character === "\n")) {
+      return source.slice(start, index);
+    }
+    if (!/\s/.test(character)) hasContent = true;
+  }
+  return source.slice(start);
+}
+
+function splitTopLevel(source: string, delimiter: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  for (const { character, depth, index } of walkBracketDepth(source)) {
+    if (depth === 0 && character === delimiter) {
+      parts.push(source.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(source.slice(start));
+  return parts;
+}
+
+function findTopLevelDelimiter(source: string, delimiter: string): number {
+  for (const { character, depth, index } of walkBracketDepth(source)) {
+    if (depth === 0 && character === delimiter) return index;
+  }
+  return -1;
+}
+
+function* walkBracketDepth(source: string, start = 0): Generator<{ character: string; depth: number; index: number }> {
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index]!;
+    if (character === "(" || character === "[" || character === "{") depth += 1;
+    if (character === ")" || character === "]" || character === "}") depth -= 1;
+    yield { character, depth, index };
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeSourcePath(input: string): string {

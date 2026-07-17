@@ -29,6 +29,10 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
       EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}
       EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"
+      JINSHUJU_OIDC_ISSUER: "${JINSHUJU_OIDC_ISSUER:-}"
+      JINSHUJU_OIDC_CLIENT_ID: "${JINSHUJU_OIDC_CLIENT_ID:-}"
+      JINSHUJU_OIDC_CLIENT_SECRET: "${JINSHUJU_OIDC_CLIENT_SECRET:-}"
+      JINSHUJU_OIDC_SCOPES: "${JINSHUJU_OIDC_SCOPES:-}"
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
       EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
       EVELAND_COOKIE_DOMAIN: ${EVELAND_COOKIE_DOMAIN:-}
@@ -108,6 +112,10 @@ services:
       # The worker bootstraps the same database through its Compose-reachable address;
       # deployed Agent containers keep using the host-gateway address above.
       WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
+      JINSHUJU_OIDC_ISSUER: "${JINSHUJU_OIDC_ISSUER:-}"
+      JINSHUJU_OIDC_CLIENT_ID: "${JINSHUJU_OIDC_CLIENT_ID:-}"
+      JINSHUJU_OIDC_CLIENT_SECRET: "${JINSHUJU_OIDC_CLIENT_SECRET:-}"
+      JINSHUJU_OIDC_SCOPES: "${JINSHUJU_OIDC_SCOPES:-}"
       EVELAND_DATA_DIR: /workspace/.eveland-data
       # docker run bind mounts are resolved by the host daemon, not inside this container.
       EVELAND_HOST_DATA_DIR: ${EVELAND_HOST_DATA_DIR:-${PWD}/.eveland-data}

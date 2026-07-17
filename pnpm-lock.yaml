@@ -222,6 +222,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@eveland/agent-auth':
+        specifier: workspace:*
+        version: link:../../packages/agent-auth
       '@eveland/agent-observer':
         specifier: workspace:*
         version: link:../../packages/agent-observer

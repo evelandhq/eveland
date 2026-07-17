@@ -57,9 +57,11 @@ import {
 import { createBetterAuthRuntime } from "./auth.js";
 import { createAgentAuthModule, isAgentAuthFailure, listAgentAuthMethodDescriptors, type AgentAuthFailure } from "@eveland/agent-auth";
 import {
+  JINSHUJU_OIDC_METHOD,
   normalizeAgentAuthConfig,
   openAgentAuthConfig,
   redactAgentAuthConfig,
+  resolveJinshujuOidcConfig,
   sealAgentAuthConfig,
   type OidcAuthorizationCodeConfig,
 } from "@eveland/agent-auth/config";
@@ -273,6 +275,7 @@ export type AppOptions = {
     config: OidcAuthorizationCodeConfig,
     expected: { issuer: string; subject: string },
   ) => Promise<{ issuer: string; subject: string }>;
+  jinshujuOidcConfig?: OidcAuthorizationCodeConfig;
   oidcCallbackUrl?: string;
   allowInsecureOidcIssuer?: boolean;
   agentAuthNow?: () => Date;
@@ -317,6 +320,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const playgroundRunner = options.playgroundRunner ?? runGatewayPlayground;
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
+  const getJinshujuOidcConfig = () =>
+    options.jinshujuOidcConfig ?? resolveJinshujuOidcConfig(process.env);
   const readAgentConnectionSnapshot = async (id: string) => {
     const connection = await store.getAgentConnection(id);
     if (!connection) return null;
@@ -338,23 +343,37 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       securityRevision: connection.securityRevision,
     };
   };
-  const oidcProvider = createOidcAuthorizationCodeProvider({
+  const oidcCallbackUrl = options.oidcCallbackUrl
+    ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`;
+  const oidcProviderOptions = {
     store,
     appSecretKey,
-    callbackUrl: options.oidcCallbackUrl
-      ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
+    callbackUrl: oidcCallbackUrl,
     ...(options.oidcProtocol ? { protocol: options.oidcProtocol } : {}),
     ...(options.oidcVerifyAccessToken ? { verifyAccessToken: options.oidcVerifyAccessToken } : {}),
     allowInsecureIssuer: options.allowInsecureOidcIssuer ?? process.env.NODE_ENV !== "production",
     ...(options.agentAuthNow ? { now: options.agentAuthNow } : {}),
+  };
+  const oidcProvider = createOidcAuthorizationCodeProvider(oidcProviderOptions);
+  const jinshujuOidcProvider = createOidcAuthorizationCodeProvider({
+    ...oidcProviderOptions,
+    method: JINSHUJU_OIDC_METHOD,
   });
   const configPreflights = new Map<string, (config: Record<string, unknown>) => Promise<void>>([
     [oidcProvider.registration.method, async (config) => oidcProvider.preflight(config as unknown as OidcAuthorizationCodeConfig)],
+    [JINSHUJU_OIDC_METHOD, async (config) => jinshujuOidcProvider.preflight(config as unknown as OidcAuthorizationCodeConfig)],
   ]);
-  const interactionProviders = new Map([[oidcProvider.registration.method, oidcProvider]]);
+  const normalizeConfiguredAgentAuth = (method: string, config: unknown): Record<string, unknown> =>
+    method === JINSHUJU_OIDC_METHOD
+      ? { ...getJinshujuOidcConfig() }
+      : normalizeAgentAuthConfig(method, config);
+  const interactionProviders = new Map([
+    [oidcProvider.registration.method, oidcProvider],
+    [jinshujuOidcProvider.registration.method, jinshujuOidcProvider],
+  ]);
   const agentAuth = createAgentAuthModule({
     connectionReader: { getAgentConnection: readAgentConnectionSnapshot },
-    registrations: [oidcProvider.registration],
+    registrations: [oidcProvider.registration, jinshujuOidcProvider.registration],
     transport: {
       async request(input) {
         const headers = new Headers();
@@ -382,27 +401,27 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     input: { method: string; config: Record<string, unknown> },
   ) => {
     const id = createId("acon");
-    return store.createAgentConnection({
-      id,
-      target: { kind: "managed-project", projectId },
-      method: input.method,
-      configEncrypted: sealAgentAuthConfig(input.config, appSecretKey, {
-        agentConnectionId: id,
-        method: input.method,
-        securityRevision: 1,
-      }),
-    });
-  };
-  const getOrCreateProjectAgentConnection = async (projectId: string) => {
-    const existing = await store.getProjectAgentConnection(projectId);
-    if (existing) return existing;
     try {
-      return await createProjectAgentConnection(projectId, { method: "local-dev", config: {} });
+      return await store.createAgentConnection({
+        id,
+        target: { kind: "managed-project", projectId },
+        method: input.method,
+        configEncrypted: sealAgentAuthConfig(input.config, appSecretKey, {
+          agentConnectionId: id,
+          method: input.method,
+          securityRevision: 1,
+        }),
+      });
     } catch (error) {
       const concurrent = await store.getProjectAgentConnection(projectId);
       if (concurrent) return concurrent;
       throw error;
     }
+  };
+  const getOrCreateProjectAgentConnection = async (projectId: string) => {
+    const existing = await store.getProjectAgentConnection(projectId);
+    if (existing) return existing;
+    return createProjectAgentConnection(projectId, { method: "local-dev", config: {} });
   };
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const enqueueLiveDeploymentRestarts = async (projectId: string) => {
@@ -900,7 +919,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         existingConfig,
         listAgentAuthMethodDescriptors(),
       );
-      config = normalizeAgentAuthConfig(parsed.data.method, configInput);
+      config = normalizeConfiguredAgentAuth(parsed.data.method, configInput);
       await configPreflights.get(parsed.data.method)?.(config);
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration" }, 422);
@@ -930,7 +949,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         store,
         dataDir,
         async (input) => {
-          const config = normalizeAgentAuthConfig(input.method, input.config);
+          const config = normalizeConfiguredAgentAuth(input.method, input.config);
           await configPreflights.get(input.method)?.(config);
           return { method: input.method, config };
         },
@@ -1006,7 +1025,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const agentAuthInput = parsed.data.agentAuth ?? { method: "local-dev", config: {} };
     let config: Record<string, unknown>;
     try {
-      config = normalizeAgentAuthConfig(agentAuthInput.method, agentAuthInput.config);
+      config = normalizeConfiguredAgentAuth(agentAuthInput.method, agentAuthInput.config);
       await configPreflights.get(agentAuthInput.method)?.(config);
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration" }, 422);

@@ -18,6 +18,23 @@ describe("configuration diagnostics", () => {
     expect(JSON.stringify(snapshot)).not.toContain("do-not-leak-this-secret-value");
   });
 
+  test("reports Jinshuju OIDC environment without exposing the client secret", () => {
+    const snapshot = createConfigurationSnapshot("api", {
+      JINSHUJU_OIDC_ISSUER: "https://account.example",
+      JINSHUJU_OIDC_CLIENT_ID: "eveland-client",
+      JINSHUJU_OIDC_CLIENT_SECRET: "jinshuju-secret-value",
+      JINSHUJU_OIDC_SCOPES: "openid profile forms",
+    });
+
+    expect(snapshot.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "JINSHUJU_OIDC_ISSUER", value: "https://account.example/" }),
+      expect.objectContaining({ name: "JINSHUJU_OIDC_CLIENT_ID", value: "eveland-client" }),
+      expect.objectContaining({ name: "JINSHUJU_OIDC_CLIENT_SECRET", value: "••••••••", sensitivity: "secret" }),
+      expect.objectContaining({ name: "JINSHUJU_OIDC_SCOPES", value: "openid profile forms" }),
+    ]));
+    expect(JSON.stringify(snapshot)).not.toContain("jinshuju-secret-value");
+  });
+
   test("redacts credentials and query values from configured URLs", () => {
     const snapshot = createConfigurationSnapshot("worker", {
       DATABASE_URL: "postgres://operator:database-password@db.internal:5432/eveland?sslmode=require&token=query-secret#fragment-secret",

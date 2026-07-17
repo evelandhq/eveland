@@ -216,6 +216,9 @@ Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一
 * 检查是否为合法 Eve 项目
 * 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.24.x
 * 识别项目配置、agent、tools、skills、schedules
+* 扫描 Eve channel 中实际调用的受支持 Route Auth verifier；初次导入检测到
+  `jinshujuOidc(...)` 时，把 Project 的 Agent Connection 自动设为服务端托管的
+  `Jinshuju OIDC`
 * 创建 Source Revision
 
 Release 构建必须尊重导入项目提交的包管理器锁文件：存在 `pnpm-lock.yaml` 时使用平台固定的
@@ -285,17 +288,28 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 
 用户输入消息后，Web 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
 
-每个受管 Agent 都对应一个稳定的 Agent Connection，由团队成员在导入或 Playground 的
-Connection 设置中显式选择客户端 access method；Eveland 不解析 EveAgent 源码，也不从
-通用 401 challenge 猜测认证方式。`local-dev` 保留 loopback 开发身份，`none`、Basic、
-静态 Bearer、自定义 credential headers 和 OIDC 都经同一个
+每个受管 Agent 都对应一个稳定的 Agent Connection。除平台支持的
+`jinshujuOidc(...)` 初次导入检测外，团队成员仍在导入或 Playground 的 Connection 设置中
+显式选择客户端 access method；Eveland 不从通用 401 challenge 猜测认证方式，也不尝试
+还原任意自定义 AuthFn。初次导入只在 Eve channel 源码中实际调用
+`jinshujuOidc(...)` 时自动选择 `Jinshuju OIDC`，import-only 不触发；后续 Sync 不覆盖成员
+已修改的 Connection。`local-dev` 保留 loopback 开发身份，`none`、Basic、静态 Bearer、
+自定义 credential headers、通用 OIDC 和 Jinshuju OIDC 都经同一个
 Agent Auth request 管道按请求解析。除 `local-dev` 外，内部 Gateway 使用 canonical Agent
 Host；Gateway 只接受 service-authenticated API 生成的版本化 credential envelope，公网
 请求不能注入该 envelope，公开 Gateway 仍透明保留 Agent 自有 Authorization、Cookie、
 Origin 和 Host 语义。
 
 OIDC 是 Eve Route Auth 的客户端凭证获取方式，不是 Eve Connection Auth；当前 provider
-使用 Authorization Code 与 PKCE。用户第一次提交受保护消息时，若当前
+使用 Authorization Code 与 PKCE。通用 `OIDC` 的 issuer/client/scopes 由 Connection
+配置；创建或保存 `Jinshuju OIDC` 时，API 或 Worker 从 `JINSHUJU_OIDC_ISSUER`、
+`JINSHUJU_OIDC_CLIENT_ID`、`JINSHUJU_OIDC_CLIENT_SECRET` 和
+`JINSHUJU_OIDC_SCOPES` 读取统一的服务端 OAuth 应用配置，并像其他 method 一样加密写入
+Agent Connection 的数据库记录；运行时统一解密数据库配置，不再为 Jinshuju 单独读取环境。
+环境变量变化不会隐式修改已有 Connection，需重新保存后生效。token endpoint
+authentication 不属于 Connection 配置；有 client secret 时统一使用标准的
+`client_secret_basic`，否则使用 public-client `none`。
+用户第一次提交受保护消息时，若当前
 `(agentConnectionId, callerPrincipalId)` 没有
 凭证，API 在请求 Agent 之前返回 `interaction_required`。Web 暂存尚未被 Agent 接受的
 turn，完成 PKCE/state/nonce 授权和 callback 后原子取出并只重发一次；授权前不创建 Eve

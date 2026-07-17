@@ -222,6 +222,26 @@ policy that blocks loopback, link-local, cloud metadata, and unapproved private
 networks; application URL validation is not a substitute for that boundary and
 cannot eliminate DNS rebinding/TOCTOU windows.
 
+When imported Eve channel source actually calls `jinshujuOidc(...)`, source
+validation during the initial import automatically selects the `Jinshuju OIDC`
+Agent Connection. Configure its shared OAuth application on both API and Worker:
+
+```bash
+JINSHUJU_OIDC_ISSUER=https://account.example.com
+JINSHUJU_OIDC_CLIENT_ID=<oauth-client-id>
+JINSHUJU_OIDC_CLIENT_SECRET=<oauth-client-secret>
+JINSHUJU_OIDC_SCOPES="openid profile"
+```
+
+The process that creates or saves the Connection encrypts this standard OIDC
+configuration into its normal database record. Runtime reads then use the same
+database decryption path as every other method; changing the environment does
+not update an existing Connection until a member saves it again. No
+token-endpoint authentication selector is exposed: a configured client secret
+uses standard `client_secret_basic`, otherwise the client is public. Settings >
+About shows issuer, client ID, and scopes, but only a fixed mask for the client
+secret. Register the same callback URI above for this OAuth application.
+
 Project stable routes use `<projectSlug>.<baseDomain>`. Immutable Deployment previews use
 `<eightCharacterDeploymentKey>--<projectSlug>.<baseDomain>`; the separator stays inside one
 DNS label so a single `*.agents.example.com` wildcard certificate covers both forms. Project

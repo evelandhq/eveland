@@ -12,6 +12,7 @@
     "smoke:docker-sandbox": "tsx src/integration/docker-sandbox-smoke.ts"
   },
   "dependencies": {
+    "@eveland/agent-auth": "workspace:*",
     "@eveland/agent-observer": "workspace:*",
     "@eveland/agent-scheduler": "workspace:*",
     "@eveland/core": "workspace:*",

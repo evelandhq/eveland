@@ -20,6 +20,19 @@ import path from "node:path";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { DeploymentRecord } from "@eveland/core/contracts";
 import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
+import {
+  openAgentAuthConfig,
+  sealAgentAuthConfig,
+  type OidcAuthorizationCodeConfig,
+} from "@eveland/agent-auth/config";
+
+const jinshujuOidcConfig: OidcAuthorizationCodeConfig = {
+  issuer: "https://account.example",
+  clientId: "worker-managed-client",
+  clientSecret: "worker-managed-secret",
+  scopes: ["openid", "profile"],
+  promptConsent: true,
+};
 
 describe("processNextJob", () => {
   test("validates an Eve source before a Project exists", async () => {
@@ -413,6 +426,130 @@ describe("processNextJob", () => {
     await processNextJob(store, "worker-a");
 
     expect(completeJob).toHaveBeenCalledWith(expect.any(String), 1);
+  });
+
+  test("selects Jinshuju OIDC when the initial import uses jinshujuOidc in an Eve channel", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    await mkdir(path.join(sourcePath, "agent", "channels"), { recursive: true });
+    await writeFile(
+      path.join(sourcePath, "agent", "channels", "eve.ts"),
+      `import { jinshujuOidc } from "../../lib/jinshuju-oidc";\nexport default eveChannel({ auth: [jinshujuOidc({ issuer: "https://account.example" })] });`,
+    );
+    const project = await store.createProject({ name: "Jinshuju Agent", importKind: "zip", sourcePath });
+    await store.createAgentConnection({
+      target: { kind: "managed-project", projectId: project.id },
+      method: "none",
+      configEncrypted: "initial-connection-config",
+    });
+
+    await expect(processNextJob(store, "worker-a", {
+      appSecretKey: "0123456789abcdef0123456789abcdef",
+      jinshujuOidcConfig,
+    })).resolves.toBe(true);
+
+    const importedConnection = await store.getProjectAgentConnection(project.id);
+    expect(importedConnection).toMatchObject({
+      method: "jinshuju-oidc",
+      securityRevision: 2,
+    });
+    expect(openAgentAuthConfig(
+      importedConnection!.configEncrypted,
+      "0123456789abcdef0123456789abcdef",
+      {
+        agentConnectionId: importedConnection!.id,
+        method: importedConnection!.method,
+        securityRevision: importedConnection!.securityRevision,
+      },
+    )).toMatchObject({
+      issuer: "https://account.example",
+      clientId: "worker-managed-client",
+      clientSecret: "worker-managed-secret",
+    });
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
+      summary: { agentAuthMethods: ["jinshuju-oidc"] },
+    });
+
+    const detectedConnection = await store.getProjectAgentConnection(project.id);
+    await store.updateAgentConnection({
+      id: detectedConnection!.id,
+      expectedSecurityRevision: detectedConnection!.securityRevision,
+      method: "none",
+      configEncrypted: "member-selected-config",
+    });
+    await store.enqueueJob(project.id, "import_source", { importKind: "zip", sourcePath });
+    await expect(processNextJob(store, "worker-a", {
+      appSecretKey: "0123456789abcdef0123456789abcdef",
+      jinshujuOidcConfig,
+    })).resolves.toBe(true);
+    await expect(store.getProjectAgentConnection(project.id)).resolves.toMatchObject({
+      method: "none",
+      securityRevision: 3,
+    });
+  });
+
+  test("keeps an already detected Jinshuju OIDC connection stable when an initial import is retried", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    await mkdir(path.join(sourcePath, "agent", "channels"), { recursive: true });
+    await writeFile(
+      path.join(sourcePath, "agent", "channels", "eve.ts"),
+      `export default eveChannel({ auth: [jinshujuOidc()] });`,
+    );
+    const project = await store.createProject({ name: "Retried Jinshuju Agent", importKind: "zip", sourcePath });
+    const connectionId = "acon_previous_detection";
+    await store.createAgentConnection({
+      id: connectionId,
+      target: { kind: "managed-project", projectId: project.id },
+      method: "jinshuju-oidc",
+      configEncrypted: sealAgentAuthConfig(jinshujuOidcConfig, "0123456789abcdef0123456789abcdef", {
+        agentConnectionId: connectionId,
+        method: "jinshuju-oidc",
+        securityRevision: 1,
+      }),
+    });
+
+    await expect(processNextJob(store, "worker-a", {
+      appSecretKey: "0123456789abcdef0123456789abcdef",
+      jinshujuOidcConfig,
+    })).resolves.toBe(true);
+
+    await expect(store.getProjectAgentConnection(project.id)).resolves.toMatchObject({
+      method: "jinshuju-oidc",
+      securityRevision: 1,
+    });
+  });
+
+  test("repairs an empty Jinshuju OIDC config left by an interrupted initial import", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    await mkdir(path.join(sourcePath, "agent", "channels"), { recursive: true });
+    await writeFile(path.join(sourcePath, "agent", "channels", "eve.ts"), `export default eveChannel({ auth: [jinshujuOidc()] });`);
+    const project = await store.createProject({ name: "Repair Jinshuju Agent", importKind: "zip", sourcePath });
+    const connectionId = "acon_empty_detection";
+    await store.createAgentConnection({
+      id: connectionId,
+      target: { kind: "managed-project", projectId: project.id },
+      method: "jinshuju-oidc",
+      configEncrypted: sealAgentAuthConfig({}, "0123456789abcdef0123456789abcdef", {
+        agentConnectionId: connectionId,
+        method: "jinshuju-oidc",
+        securityRevision: 1,
+      }),
+    });
+
+    await expect(processNextJob(store, "worker-a", {
+      appSecretKey: "0123456789abcdef0123456789abcdef",
+      jinshujuOidcConfig,
+    })).resolves.toBe(true);
+
+    const repaired = await store.getProjectAgentConnection(project.id);
+    expect(repaired).toMatchObject({ method: "jinshuju-oidc", securityRevision: 2 });
+    expect(openAgentAuthConfig(repaired!.configEncrypted, "0123456789abcdef0123456789abcdef", {
+      agentConnectionId: repaired!.id,
+      method: repaired!.method,
+      securityRevision: repaired!.securityRevision,
+    })).toMatchObject({ clientId: "worker-managed-client", clientSecret: "worker-managed-secret" });
   });
 
   test("chains a build_deploy job after a deploy-flagged import", async () => {

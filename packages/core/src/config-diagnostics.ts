@@ -126,6 +126,27 @@ const definitions: ConfigurationDefinition[] = [
     purpose: "Initial password used to bootstrap the default administrator.",
     required: true,
   },
+  urlEntry(
+    "JINSHUJU_OIDC_ISSUER",
+    ["api", "worker"],
+    "Issuer for the server-managed Jinshuju OIDC Agent Connection.",
+  ),
+  entry(
+    "JINSHUJU_OIDC_CLIENT_ID",
+    ["api", "worker"],
+    "OAuth client ID for the server-managed Jinshuju OIDC Agent Connection.",
+  ),
+  {
+    name: "JINSHUJU_OIDC_CLIENT_SECRET",
+    components: ["api", "worker"],
+    sensitivity: "secret",
+    purpose: "OAuth client secret for the server-managed Jinshuju OIDC Agent Connection.",
+  },
+  entry(
+    "JINSHUJU_OIDC_SCOPES",
+    ["api", "worker"],
+    "Space-separated OAuth scopes requested by the server-managed Jinshuju OIDC Agent Connection.",
+  ),
   { ...entry("EVELAND_COOKIE_DOMAIN", ["api"], "Optional shared parent domain for the control-plane session cookie."), emptyUsesFallback: true },
   entry("EVELAND_DATA_DIR", ["api", "worker"], "Root for managed sources, releases, observer data, and runtime state.", ".eveland-data"),
   {

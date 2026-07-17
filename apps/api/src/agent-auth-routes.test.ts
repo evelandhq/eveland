@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "@eveland/db";
 import { decodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
+import { openAgentAuthConfig, sealAgentAuthConfig } from "@eveland/agent-auth/config";
 import { createApp } from "./app.js";
 
 const appSecretKey = "0123456789abcdef0123456789abcdef";
@@ -15,12 +16,18 @@ describe("Agent Auth control-plane routes", () => {
     const connectionResponse = await app.request(`/projects/${project.id}/playground/connection`);
 
     expect(methodsResponse.status).toBe(200);
-    await expect(methodsResponse.json()).resolves.toMatchObject({
+    const methodsBody = await methodsResponse.json() as {
+      methods: Array<{ method: string; fields: Array<{ key: string }> }>;
+    };
+    expect(methodsBody).toMatchObject({
       methods: expect.arrayContaining([
         expect.objectContaining({ method: "local-dev", credentialScope: "connection", interactive: false }),
         expect.objectContaining({ method: "bearer", credentialScope: "connection", interactive: false }),
+        expect.objectContaining({ method: "jinshuju-oidc", credentialScope: "principal", interactive: true, fields: [] }),
       ]),
     });
+    expect(methodsBody.methods.find((method) => method.method === "oidc")?.fields)
+      .not.toContainEqual(expect.objectContaining({ key: "tokenEndpointAuthMethod" }));
     expect(connectionResponse.status).toBe(200);
     await expect(connectionResponse.json()).resolves.toMatchObject({
       connection: {
@@ -56,6 +63,172 @@ describe("Agent Auth control-plane routes", () => {
       id: body.connection.id,
       method: "none",
       securityRevision: 1,
+    });
+  });
+
+  test("uses server-managed Jinshuju OAuth configuration with the shared OIDC callback", async () => {
+    const store = createMemoryStore();
+    const observedConfigs: Array<Record<string, unknown>> = [];
+    const serverManagedConfig = {
+      issuer: "https://account.example",
+      clientId: "server-managed-client",
+      clientSecret: "server-managed-secret",
+      scopes: ["openid", "profile"],
+      promptConsent: true,
+    };
+    const app = createApp(store, {
+      appSecretKey,
+      webOrigin: "https://eveland.example",
+      jinshujuOidcConfig: serverManagedConfig,
+      oidcProtocol: {
+        async preflight(config) {
+          observedConfigs.push(config);
+        },
+        async buildAuthorizationUrl(config, transaction) {
+          observedConfigs.push(config);
+          return new URL(`https://account.example/authorize?state=${encodeURIComponent(transaction.state)}`);
+        },
+        async exchangeAuthorizationCode(config) {
+          observedConfigs.push(config);
+          return {
+            accessToken: "jinshuju-access-token",
+            expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+            issuer: "https://account.example",
+            subject: "jinshuju-user",
+          };
+        },
+        async refresh() {
+          throw new Error("refresh should not run");
+        },
+        async fetchUserInfo() {
+          throw new Error("fetchUserInfo should not run");
+        },
+      },
+      oidcVerifyAccessToken: async () => ({ issuer: "https://account.example", subject: "jinshuju-user" }),
+      agentAuthNow: () => new Date("2029-01-01T00:00:00.000Z"),
+      playgroundProxy: async (input) => {
+        const envelope = input.agentAuthEnvelope ? decodeAgentAuthEnvelope(input.agentAuthEnvelope) : null;
+        if (JSON.stringify(envelope?.headers) !== JSON.stringify([["authorization", "Bearer jinshuju-access-token"]])) {
+          return Response.json({ error: "Authorization is required for this route." }, { status: 401 });
+        }
+        return Response.json({ sessionId: "eve_jinshuju" }, { status: 202, headers: { "x-eve-session-id": "eve_jinshuju" } });
+      },
+    });
+    const created = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "jinshuju-managed-agent",
+        importKind: "git",
+        gitUrl: "https://example.com/jinshuju-managed-agent.git",
+        agentAuth: { method: "jinshuju-oidc", config: { clientSecret: "browser-must-not-control-this" } },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const createdBody = await created.json() as {
+      project: { id: string };
+      connection: { method: string; config: Record<string, unknown> };
+    };
+    expect(createdBody.connection).toMatchObject({ method: "jinshuju-oidc", config: {} });
+    const storedConnection = await store.getProjectAgentConnection(createdBody.project.id);
+    expect(openAgentAuthConfig(storedConnection!.configEncrypted, appSecretKey, {
+      agentConnectionId: storedConnection!.id,
+      method: storedConnection!.method,
+      securityRevision: storedConnection!.securityRevision,
+    })).toMatchObject({
+      clientId: "server-managed-client",
+      clientSecret: "server-managed-secret",
+    });
+    serverManagedConfig.clientId = "changed-after-persistence";
+
+    const revision = await store.recordSourceRevision({
+      projectId: createdBody.project.id,
+      kind: "git",
+      sourcePath: "/tmp/jinshuju-managed-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordDeployment({
+      projectId: createdBody.project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "jinshuju-managed-agent",
+      containerName: "jinshuju-managed-agent",
+      internalPort: 3000,
+      hostPort: 41994,
+      runtimeKind: "docker",
+    });
+
+    const first = await app.request(`/projects/${createdBody.project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+    expect(first.status).toBe(401);
+    const failure = await first.json() as { method: string; interaction: { url: string } };
+    expect(failure.method).toBe("jinshuju-oidc");
+    expect(failure.interaction.url).toContain("/auth/interactions/jinshuju-oidc/start");
+
+    const interactionUrl = new URL(failure.interaction.url, "https://eveland.example");
+    const start = await app.request(`${interactionUrl.pathname.replace(/^\/api\/eveland/, "")}${interactionUrl.search}`);
+    expect(start.status).toBe(302);
+    const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+    const callback = await app.request("/agent-auth/oidc/callback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ search: `?code=authorization-code&state=${encodeURIComponent(state)}` }),
+    });
+    expect(callback.status).toBe(200);
+
+    const resumed = await app.request(`/projects/${createdBody.project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+    expect(resumed.status).toBe(202);
+    expect(observedConfigs).not.toHaveLength(0);
+    expect(observedConfigs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ clientId: "server-managed-client", clientSecret: "server-managed-secret" }),
+    ]));
+    expect(observedConfigs).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ clientId: "changed-after-persistence" }),
+    ]));
+  });
+
+  test("returns a Jinshuju connection created concurrently by the import worker", async () => {
+    const store = createMemoryStore();
+    const createProject = store.createProject;
+    store.createProject = async (input) => {
+      const project = await createProject(input);
+      const id = "acon_worker_detected";
+      await store.createAgentConnection({
+        id,
+        target: { kind: "managed-project", projectId: project.id },
+        method: "jinshuju-oidc",
+        configEncrypted: sealAgentAuthConfig({}, appSecretKey, {
+          agentConnectionId: id,
+          method: "jinshuju-oidc",
+          securityRevision: 1,
+        }),
+      });
+      return project;
+    };
+    const app = createApp(store, { appSecretKey });
+
+    const response = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "concurrent-agent-connection",
+        importKind: "git",
+        gitUrl: "https://example.com/concurrent-agent-connection.git",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      connection: { id: "acon_worker_detected", method: "jinshuju-oidc", config: {} },
     });
   });
 

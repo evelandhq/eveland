@@ -1,6 +1,14 @@
 import type { Job } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
 import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@eveland/core/source";
+import {
+  JINSHUJU_OIDC_METHOD,
+  normalizeOidcAuthorizationCodeConfig,
+  openAgentAuthConfig,
+  resolveJinshujuOidcConfig,
+  sealAgentAuthConfig,
+  type OidcAuthorizationCodeConfig,
+} from "@eveland/agent-auth/config";
 import { decryptSecretValue, maskKnownSecrets, type EncryptedSecret } from "@eveland/core/server/secrets";
 import {
   createScheduleDispatchCredential,
@@ -31,6 +39,7 @@ export type ProcessJobOptions = {
   // worker's current runtime.
   runtimeForKind?: (kind: "docker" | "systemd") => RuntimeAdapter;
   appSecretKey?: string;
+  jinshujuOidcConfig?: OidcAuthorizationCodeConfig;
   allocateHostPort?: () => number | Promise<number>;
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
   workflowPostgresUrl?: string;
@@ -264,6 +273,20 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         sourcePath,
         commitSha,
       });
+      if (project.sourceRevisionId === null && scan.summary.agentAuthMethods.includes(JINSHUJU_OIDC_METHOD)) {
+        await selectImportedAgentAuthMethod(
+          store,
+          project.id,
+          JINSHUJU_OIDC_METHOD,
+          options.jinshujuOidcConfig ?? resolveJinshujuOidcConfig(process.env),
+          options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey,
+        );
+        await store.appendLog({
+          projectId: project.id,
+          type: "build",
+          line: "Detected jinshujuOidc in an Eve channel; selected the server-managed Jinshuju OIDC Agent Connection.",
+        });
+      }
       await store.recordSourceRevision({
         projectId: job.projectId,
         ...scan,
@@ -793,6 +816,67 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       return;
     }
   }
+}
+
+async function selectImportedAgentAuthMethod(
+  store: Store,
+  projectId: string,
+  method: "jinshuju-oidc",
+  config: OidcAuthorizationCodeConfig,
+  appSecretKey: string,
+): Promise<void> {
+  let connection = await store.getProjectAgentConnection(projectId);
+  if (!connection) {
+    const id = createId("acon");
+    try {
+      await store.createAgentConnection({
+        id,
+        target: { kind: "managed-project", projectId },
+        method,
+        configEncrypted: sealAgentAuthConfig(config, appSecretKey, {
+          agentConnectionId: id,
+          method,
+          securityRevision: 1,
+        }),
+      });
+      return;
+    } catch (error) {
+      connection = await store.getProjectAgentConnection(projectId);
+      if (!connection) throw error;
+    }
+  }
+  if (connection.method === method) {
+    try {
+      const stored = openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
+        agentConnectionId: connection.id,
+        method: connection.method,
+        securityRevision: connection.securityRevision,
+      });
+      if (
+        typeof stored === "object"
+        && stored !== null
+        && !Array.isArray(stored)
+        && JSON.stringify(normalizeOidcAuthorizationCodeConfig(stored as Record<string, unknown>)) === JSON.stringify(config)
+      ) {
+        return;
+      }
+    } catch {
+      // Initial import repairs missing, stale, or undecryptable managed config below.
+    }
+  }
+
+  const nextSecurityRevision = connection.securityRevision + 1;
+  const updated = await store.updateAgentConnection({
+    id: connection.id,
+    expectedSecurityRevision: connection.securityRevision,
+    method,
+    configEncrypted: sealAgentAuthConfig(config, appSecretKey, {
+      agentConnectionId: connection.id,
+      method,
+      securityRevision: nextSecurityRevision,
+    }),
+  });
+  if (!updated) throw new Error("Agent Connection changed while applying imported Route Auth detection.");
 }
 
 async function dispatchScheduleToRuntime(input: ScheduleDispatchInput): Promise<{ sessionIds: string[] }> {

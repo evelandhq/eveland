@@ -2,11 +2,22 @@ import { describe, expect, test, vi } from "vitest";
 import { createMemoryStore } from "@eveland/db";
 import { ResponseBodyError } from "openid-client";
 import { sealAgentAuthConfig } from "./config.js";
-import { createOidcAuthorizationCodeProvider } from "./oidc.js";
+import { createOidcAuthorizationCodeProvider, selectOidcTokenEndpointAuthMethod } from "./oidc.js";
 
 const appSecretKey = "0123456789abcdef0123456789abcdef";
 
 describe("OIDC Agent Auth provider", () => {
+  test("preserves explicit public-client authentication for a legacy Connection with a secret", () => {
+    expect(selectOidcTokenEndpointAuthMethod({
+      issuer: "https://idp.example",
+      clientId: "legacy-client",
+      clientSecret: "legacy-unused-secret",
+      scopes: ["openid"],
+      promptConsent: true,
+      legacyTokenEndpointAuthMethod: "none",
+    })).toBe("none");
+  });
+
   test("accepts an Agent access-token subject that differs from the caller and ID-token subject", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "oidc-agent", importKind: "zip" });
@@ -14,7 +25,6 @@ describe("OIDC Agent Auth provider", () => {
     const config = {
       issuer: "https://idp.example",
       clientId: "eveland-playground",
-      tokenEndpointAuthMethod: "none" as const,
       audience: "https://agent.example",
       scopes: ["openid", "offline_access"],
     };
@@ -128,7 +138,6 @@ describe("OIDC Agent Auth provider", () => {
     const config = {
       issuer: "https://idp.example",
       clientId: "eveland-playground",
-      tokenEndpointAuthMethod: "none" as const,
       audience: "https://agent.example",
       audienceMode: "resource" as const,
       scopes: ["openid", "offline_access"],
@@ -234,7 +243,6 @@ describe("OIDC Agent Auth provider", () => {
     const config = {
       issuer: "https://idp.example",
       clientId: "eveland-playground",
-      tokenEndpointAuthMethod: "none" as const,
       audience: "https://agent.example",
       scopes: ["openid"],
     };
@@ -308,7 +316,6 @@ describe("OIDC Agent Auth provider", () => {
     const config = {
       issuer: "https://idp.example",
       clientId: "eveland-playground",
-      tokenEndpointAuthMethod: "none" as const,
       audience: "https://agent.example",
       scopes: ["openid", "offline_access"],
     };
@@ -383,7 +390,6 @@ describe("OIDC Agent Auth provider", () => {
     const config = {
       issuer: "https://idp.example",
       clientId: "eveland-playground",
-      tokenEndpointAuthMethod: "none" as const,
       audience: "https://agent.example",
       scopes: ["openid"],
     };
@@ -467,7 +473,6 @@ describe("OIDC Agent Auth provider", () => {
     const config = {
       issuer: "https://account.example",
       clientId: "eveland-playground",
-      tokenEndpointAuthMethod: "none" as const,
       scopes: ["openid", "profile"],
     };
     const connection = await store.createAgentConnection({
@@ -546,7 +551,6 @@ describe("OIDC Agent Auth provider", () => {
     const config = {
       issuer: "https://account.example",
       clientId: "eveland-playground",
-      tokenEndpointAuthMethod: "none" as const,
       scopes: ["openid"],
     };
     const connection = await store.createAgentConnection({
@@ -616,7 +620,6 @@ describe("OIDC Agent Auth provider", () => {
     const config = {
       issuer: "https://account.example",
       clientId: "eveland-playground",
-      tokenEndpointAuthMethod: "none" as const,
       scopes: ["openid"],
     };
     const connection = await store.createAgentConnection({

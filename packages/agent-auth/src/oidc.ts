@@ -4,6 +4,7 @@ import * as oidc from "openid-client";
 import type { Store } from "@eveland/db";
 import {
   normalizeOidcAuthorizationCodeConfig,
+  normalizeStoredOidcAuthorizationCodeConfig,
   type OidcAuthorizationCodeConfig,
 } from "./config.js";
 import type {
@@ -59,7 +60,7 @@ type OidcTransactionPayload = OidcAuthorizationTransaction & {
   agentConnectionId: string;
   securityRevision: number;
   callerPrincipalId: string;
-  authMethod: "oidc";
+  authMethod: string;
   returnPath: string;
 };
 
@@ -113,6 +114,7 @@ export function createOidcAuthorizationCodeProvider(options: {
   store: Store;
   appSecretKey: string;
   callbackUrl: string;
+  method?: string;
   protocol?: OidcProtocol;
   verifyAccessToken?: (
     accessToken: string,
@@ -122,6 +124,7 @@ export function createOidcAuthorizationCodeProvider(options: {
   allowInsecureIssuer?: boolean;
   now?: () => Date;
 }): OidcAuthorizationCodeProvider {
+  const method = options.method ?? "oidc";
   const protocol = options.protocol ?? createOpenIdClientProtocol({ allowInsecureIssuer: options.allowInsecureIssuer });
   const now = options.now ?? (() => new Date());
   const callbackUrl = new URL(options.callbackUrl).toString();
@@ -135,6 +138,8 @@ export function createOidcAuthorizationCodeProvider(options: {
         : verifyAccessTokenWithEve(accessToken, config, expected));
   const refreshOwner = randomUUID();
   const refreshFlights = new Map<string, Promise<void>>();
+  const requireInteraction = (agentConnectionId: string, returnPath?: string) =>
+    interactionRequired(method, agentConnectionId, returnPath);
 
   function openCredentialPayload(
     credential: Awaited<ReturnType<Store["getAgentAuthCredential"]>> & {},
@@ -165,7 +170,7 @@ export function createOidcAuthorizationCodeProvider(options: {
     const flightKey = [key.agentConnectionId, key.securityRevision, key.scopeSubject, credential.rotationSeq].join(":");
     let flight = refreshFlights.get(flightKey);
     if (!flight) {
-      const config = normalizeOidcAuthorizationCodeConfig(asRecord(rawConfig));
+      const config = normalizeStoredOidcAuthorizationCodeConfig(asRecord(rawConfig));
       flight = refreshCredential(connection, config, callerPrincipalId, credential, payload)
         .finally(() => refreshFlights.delete(flightKey));
       refreshFlights.set(flightKey, flight);
@@ -265,13 +270,13 @@ export function createOidcAuthorizationCodeProvider(options: {
   }
 
   const registration: AgentAuthMethodRegistration = {
-    method: "oidc",
+    method,
     credentialScope: "principal",
     authority: "canonical",
     async getCredential({ target, connection, config: rawConfig, interaction }) {
       const key = credentialKey(connection, target.callerPrincipalId);
       let credential = await options.store.getAgentAuthCredential(key);
-      if (!credential) return interactionRequired(connection.id, interaction?.returnPath);
+      if (!credential) return requireInteraction(connection.id, interaction?.returnPath);
       let payload: OidcCredentialPayload;
       try {
         payload = openCredentialPayload(credential, key);
@@ -283,7 +288,7 @@ export function createOidcAuthorizationCodeProvider(options: {
         };
       }
       if (payload.state === "pending_verification") {
-        const config = normalizeOidcAuthorizationCodeConfig(asRecord(rawConfig));
+        const config = normalizeStoredOidcAuthorizationCodeConfig(asRecord(rawConfig));
         let verified: { issuer: string; subject: string };
         try {
           verified = await verifyAccessToken(payload.candidateAccessToken, config, {
@@ -292,7 +297,7 @@ export function createOidcAuthorizationCodeProvider(options: {
           });
         } catch (error) {
           if (error instanceof OidcReauthorizationRequiredError) {
-            return interactionRequired(connection.id, interaction?.returnPath);
+            return requireInteraction(connection.id, interaction?.returnPath);
           }
           if (error instanceof OidcAccessTokenRejectedError) {
             await options.store.deleteAgentAuthCredential(key, credential.rotationSeq);
@@ -351,13 +356,13 @@ export function createOidcAuthorizationCodeProvider(options: {
         payload = active;
       }
       if (isCredentialExpiringSoon(credential)) {
-        if (!payload.refreshToken) return interactionRequired(connection.id, interaction?.returnPath);
+        if (!payload.refreshToken) return requireInteraction(connection.id, interaction?.returnPath);
         const flight = getOrStartRefreshFlight(key, connection, rawConfig, target.callerPrincipalId, credential, payload);
         try {
           await flight;
         } catch (error) {
           if (error instanceof OidcReauthorizationRequiredError) {
-            return interactionRequired(connection.id, interaction?.returnPath);
+            return requireInteraction(connection.id, interaction?.returnPath);
           }
           if (error instanceof OidcAccessTokenRejectedError) {
             return {
@@ -373,7 +378,7 @@ export function createOidcAuthorizationCodeProvider(options: {
           };
         }
         credential = await options.store.getAgentAuthCredential(key);
-        if (!credential) return interactionRequired(connection.id, interaction?.returnPath);
+        if (!credential) return requireInteraction(connection.id, interaction?.returnPath);
         try {
           payload = openCredentialPayload(credential, key);
         } catch {
@@ -391,7 +396,7 @@ export function createOidcAuthorizationCodeProvider(options: {
           };
         }
         if (isCredentialExpiringSoon(credential)) {
-          return interactionRequired(connection.id, interaction?.returnPath);
+          return requireInteraction(connection.id, interaction?.returnPath);
         }
       }
       return {
@@ -403,7 +408,7 @@ export function createOidcAuthorizationCodeProvider(options: {
       const key = credentialKey(connection, target.callerPrincipalId);
       const credential = await options.store.getAgentAuthCredential(key);
       if (!credential) {
-        return { action: "give_up", failure: interactionRequired(connection.id) };
+        return { action: "give_up", failure: requireInteraction(connection.id) };
       }
       if (rejectedVersion.securityRevision !== connection.securityRevision || rejectedVersion.rotationSeq === null) {
         return {
@@ -430,7 +435,7 @@ export function createOidcAuthorizationCodeProvider(options: {
             };
           }
         }
-        return { action: "give_up", failure: interactionRequired(connection.id) };
+        return { action: "give_up", failure: requireInteraction(connection.id) };
       }
       if (credential.rotationSeq > rejectedVersion.rotationSeq) return { action: "retry" };
       if (credential.rotationSeq !== rejectedVersion.rotationSeq) {
@@ -466,14 +471,14 @@ export function createOidcAuthorizationCodeProvider(options: {
           },
         };
       }
-      if (!payload.refreshToken) return { action: "give_up", failure: interactionRequired(connection.id) };
+      if (!payload.refreshToken) return { action: "give_up", failure: requireInteraction(connection.id) };
       const flight = getOrStartRefreshFlight(key, connection, rawConfig, target.callerPrincipalId, credential, payload);
       try {
         await flight;
         return { action: "retry" };
       } catch (error) {
         if (error instanceof OidcReauthorizationRequiredError) {
-          return { action: "give_up", failure: interactionRequired(connection.id) };
+          return { action: "give_up", failure: requireInteraction(connection.id) };
         }
         if (error instanceof OidcAccessTokenRejectedError) {
           return {
@@ -499,7 +504,7 @@ export function createOidcAuthorizationCodeProvider(options: {
       const key = credentialKey(connection, target.callerPrincipalId);
       const credential = await options.store.getAgentAuthCredential(key);
       if (!credential) {
-        const failure = interactionRequired(connection.id, interaction?.returnPath);
+        const failure = requireInteraction(connection.id, interaction?.returnPath);
         return { state: "interaction_required", ...(failure.interaction ? { interaction: failure.interaction } : {}) };
       }
       try {
@@ -509,7 +514,7 @@ export function createOidcAuthorizationCodeProvider(options: {
           return { state: "credential_available" };
         }
         if (payload.refreshToken) return { state: "credential_available" };
-        const failure = interactionRequired(connection.id, interaction?.returnPath);
+        const failure = requireInteraction(connection.id, interaction?.returnPath);
         return { state: "interaction_required", ...(failure.interaction ? { interaction: failure.interaction } : {}) };
       } catch {
         return { state: "misconfigured", message: "The stored Agent credential could not be decrypted." };
@@ -525,7 +530,7 @@ export function createOidcAuthorizationCodeProvider(options: {
       await protocol.preflight(config);
     },
     async start(input) {
-      const config = normalizeOidcAuthorizationCodeConfig(asRecord(input.connection.config));
+      const config = normalizeStoredOidcAuthorizationCodeConfig(asRecord(input.connection.config));
       assertReturnPath(input.returnPath, input.connection.target.projectId);
       await this.preflight(config);
       const state = oidc.randomState();
@@ -537,7 +542,7 @@ export function createOidcAuthorizationCodeProvider(options: {
         agentConnectionId: input.connection.id,
         securityRevision: input.connection.securityRevision,
         callerPrincipalId: input.callerPrincipalId,
-        authMethod: "oidc",
+        authMethod: input.connection.method,
         returnPath: input.returnPath,
       };
       const stateHash = hashState(state);
@@ -570,7 +575,7 @@ export function createOidcAuthorizationCodeProvider(options: {
       ) {
         throw new Error("Agent Connection changed while OIDC authorization was in progress.");
       }
-      const config = normalizeOidcAuthorizationCodeConfig(asRecord(connection.config));
+      const config = normalizeStoredOidcAuthorizationCodeConfig(asRecord(connection.config));
       const token = await protocol.exchangeAuthorizationCode(config, {
         state: transaction.state,
         codeVerifier: transaction.codeVerifier,
@@ -640,15 +645,15 @@ function credentialAad(key: ReturnType<typeof credentialKey>): readonly unknown[
   ];
 }
 
-function interactionRequired(agentConnectionId: string, returnPath?: string) {
+function interactionRequired(method: string, agentConnectionId: string, returnPath?: string) {
   return {
     code: "interaction_required" as const,
-    method: "oidc",
+    method,
     message: "Authorize this Agent Connection before sending a message.",
     ...(returnPath ? {
       interaction: {
         type: "redirect" as const,
-        url: `/api/eveland/agent-connections/${encodeURIComponent(agentConnectionId)}/auth/interactions/oidc/start?returnPath=${encodeURIComponent(returnPath)}`,
+        url: `/api/eveland/agent-connections/${encodeURIComponent(agentConnectionId)}/auth/interactions/${encodeURIComponent(method)}/start?returnPath=${encodeURIComponent(returnPath)}`,
       },
     } : {}),
   };
@@ -709,17 +714,18 @@ function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }):
     const key = JSON.stringify(config);
     let pending = cache.get(key);
     if (!pending) {
-      const clientAuth = config.tokenEndpointAuthMethod === "client_secret_basic"
-        ? oidc.ClientSecretBasic(config.clientSecret)
-        : config.tokenEndpointAuthMethod === "client_secret_post"
-          ? oidc.ClientSecretPost(config.clientSecret)
+      const tokenEndpointAuthMethod = selectOidcTokenEndpointAuthMethod(config);
+      const clientAuth = tokenEndpointAuthMethod === "client_secret_post"
+        ? oidc.ClientSecretPost(config.clientSecret)
+        : tokenEndpointAuthMethod === "client_secret_basic"
+          ? oidc.ClientSecretBasic(config.clientSecret)
           : oidc.None();
       pending = oidc.discovery(
         new URL(config.issuer),
         config.clientId,
         {
           ...(config.clientSecret ? { client_secret: config.clientSecret } : {}),
-          token_endpoint_auth_method: config.tokenEndpointAuthMethod,
+          token_endpoint_auth_method: tokenEndpointAuthMethod,
         },
         clientAuth,
         {
@@ -810,6 +816,14 @@ function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }):
       }
     },
   };
+}
+
+/** @internal Compatibility boundary for persisted OIDC Connection configuration. */
+export function selectOidcTokenEndpointAuthMethod(
+  config: OidcAuthorizationCodeConfig,
+): "client_secret_basic" | "client_secret_post" | "none" {
+  return config.legacyTokenEndpointAuthMethod
+    ?? (config.clientSecret ? "client_secret_basic" : "none");
 }
 
 function classifyUserInfoRejection(error: unknown): string | null {

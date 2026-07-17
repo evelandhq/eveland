@@ -11,7 +11,6 @@ export type OidcAuthorizationCodeConfig = {
   issuer: string;
   clientId: string;
   clientSecret?: string;
-  tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
   /**
    * Identifier of the target Agent, minted into the access token's `aud`.
    * Absent means the identity provider does no audience binding (opaque
@@ -22,7 +21,19 @@ export type OidcAuthorizationCodeConfig = {
   audienceMode?: "resource" | "audience" | "both";
   scopes: string[];
   promptConsent: boolean;
+  /** @internal Read compatibility for Connections saved before client auth became derived. */
+  legacyTokenEndpointAuthMethod?: "client_secret_post" | "none";
 };
+
+export const JINSHUJU_OIDC_METHOD = "jinshuju-oidc";
+
+type JinshujuOidcEnvironment = Partial<Record<
+  | "JINSHUJU_OIDC_ISSUER"
+  | "JINSHUJU_OIDC_CLIENT_ID"
+  | "JINSHUJU_OIDC_CLIENT_SECRET"
+  | "JINSHUJU_OIDC_SCOPES",
+  string | undefined
+>>;
 
 export function sealAgentAuthConfig(config: unknown, appSecretKey: string, binding: AgentAuthConfigBinding): string {
   return sealAgentAuthValue(config, appSecretKey, "config", configAad(binding));
@@ -38,7 +49,7 @@ function configAad(binding: AgentAuthConfigBinding): readonly unknown[] {
 
 export function normalizeAgentAuthConfig(method: string, value: unknown): Record<string, unknown> {
   const config = record(value, "Agent Auth config must be an object.");
-  if (method === "local-dev" || method === "none") return {};
+  if (method === "local-dev" || method === "none" || method === JINSHUJU_OIDC_METHOD) return {};
   if (method === "bearer") return { token: requiredString(config.token, "Bearer token is required.") };
   if (method === "basic") {
     const username = requiredString(config.username, "Basic username is required.");
@@ -61,7 +72,7 @@ export function normalizeAgentAuthConfig(method: string, value: unknown): Record
 }
 
 export function redactAgentAuthConfig(method: string, config: Record<string, unknown>): Record<string, unknown> {
-  if (method === "local-dev" || method === "none") return {};
+  if (method === "local-dev" || method === "none" || method === JINSHUJU_OIDC_METHOD) return {};
   if (method === "bearer") return { tokenConfigured: typeof config.token === "string" && config.token.length > 0 };
   if (method === "basic") {
     return {
@@ -80,7 +91,6 @@ export function redactAgentAuthConfig(method: string, config: Record<string, unk
       issuer: oidc.issuer,
       clientId: oidc.clientId,
       clientSecretConfigured: typeof oidc.clientSecret === "string" && oidc.clientSecret.length > 0,
-      tokenEndpointAuthMethod: oidc.tokenEndpointAuthMethod,
       ...(oidc.audience === undefined ? {} : { audience: oidc.audience, audienceMode: oidc.audienceMode }),
       scopes: oidc.scopes,
       promptConsent: oidc.promptConsent,
@@ -92,12 +102,7 @@ export function redactAgentAuthConfig(method: string, config: Record<string, unk
 export function normalizeOidcAuthorizationCodeConfig(config: Record<string, unknown>): OidcAuthorizationCodeConfig {
   const issuer = requiredString(config.issuer, "OIDC issuer is required.").replace(/\/$/, "");
   const clientId = requiredString(config.clientId, "OIDC client ID is required.");
-  const tokenEndpointAuthMethod = config.tokenEndpointAuthMethod ?? (config.clientSecret ? "client_secret_basic" : "none");
-  if (tokenEndpointAuthMethod !== "client_secret_basic" && tokenEndpointAuthMethod !== "client_secret_post" && tokenEndpointAuthMethod !== "none") {
-    throw new Error("Unsupported OIDC token endpoint authentication method.");
-  }
   const clientSecret = config.clientSecret === undefined ? undefined : requiredString(config.clientSecret, "OIDC client secret must not be empty.");
-  if (tokenEndpointAuthMethod !== "none" && !clientSecret) throw new Error("OIDC client secret is required for the selected token endpoint authentication method.");
   let audienceConfig: Pick<OidcAuthorizationCodeConfig, "audience" | "audienceMode"> = {};
   if (config.audience !== undefined) {
     const audience = requiredString(config.audience, "OIDC audience must be a non-empty string.");
@@ -119,11 +124,34 @@ export function normalizeOidcAuthorizationCodeConfig(config: Record<string, unkn
     issuer,
     clientId,
     ...(clientSecret ? { clientSecret } : {}),
-    tokenEndpointAuthMethod,
     ...audienceConfig,
     scopes,
     promptConsent: config.promptConsent === undefined ? true : config.promptConsent === true,
   };
+}
+
+export function normalizeStoredOidcAuthorizationCodeConfig(config: Record<string, unknown>): OidcAuthorizationCodeConfig {
+  const normalized = normalizeOidcAuthorizationCodeConfig(config);
+  const legacyMethod = config.tokenEndpointAuthMethod;
+  if (legacyMethod !== "client_secret_post" && legacyMethod !== "none") return normalized;
+  if (legacyMethod === "client_secret_post" && !normalized.clientSecret) {
+    throw new Error("OIDC client secret is required for legacy client_secret_post authentication.");
+  }
+  return { ...normalized, legacyTokenEndpointAuthMethod: legacyMethod };
+}
+
+export function resolveJinshujuOidcConfig(env: JinshujuOidcEnvironment): OidcAuthorizationCodeConfig {
+  const scopes = requiredString(
+    env.JINSHUJU_OIDC_SCOPES,
+    "JINSHUJU_OIDC_SCOPES is required.",
+  ).trim().split(/\s+/);
+  const clientSecret = env.JINSHUJU_OIDC_CLIENT_SECRET;
+  return normalizeOidcAuthorizationCodeConfig({
+    issuer: requiredString(env.JINSHUJU_OIDC_ISSUER, "JINSHUJU_OIDC_ISSUER is required."),
+    clientId: requiredString(env.JINSHUJU_OIDC_CLIENT_ID, "JINSHUJU_OIDC_CLIENT_ID is required."),
+    ...(clientSecret ? { clientSecret } : {}),
+    scopes,
+  });
 }
 
 function record(value: unknown, message: string): Record<string, unknown> {

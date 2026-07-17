@@ -40,6 +40,102 @@ describe("inspectEveProject", () => {
     expect(result.errors).toContain("Missing root instructions.md, instructions.ts, or instructions/.");
   });
 
+  test("detects a Jinshuju OIDC verifier used by an Eve channel", () => {
+    const result = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.4" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `
+import { eveChannel } from "eve/channels/eve";
+import { localDev } from "eve/channels/auth";
+import { jinshujuOidc } from "../../lib/jinshuju-oidc";
+
+export default eveChannel({
+  auth: [jinshujuOidc({ issuer: "https://account.example" }), localDev()],
+});
+`,
+      },
+    ]);
+
+    expect(result.summary.agentAuthMethods).toEqual(["jinshuju-oidc"]);
+
+    const importOnly = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.4" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `import { jinshujuOidc } from "../../lib/jinshuju-oidc";`,
+      },
+    ]);
+    expect(importOnly.summary.agentAuthMethods).toEqual([]);
+
+    const referencedAuth = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.4" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `
+const auth = [localDev(), jinshujuOidc()];
+export default eveChannel({ auth });
+`,
+      },
+    ]);
+    expect(referencedAuth.summary.agentAuthMethods).toEqual(["jinshuju-oidc"]);
+
+    const formattedReferencedAuth = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.4" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `
+const routeAuth =
+  [localDev(), jinshujuOidc()];
+export default eveChannel({ "auth": routeAuth });
+`,
+      },
+    ]);
+    expect(formattedReferencedAuth.summary.agentAuthMethods).toEqual(["jinshuju-oidc"]);
+
+    const aliasedVerifier = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.4" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `
+import { eveChannel as defineChannel } from "eve/channels/eve";
+import { jinshujuOidc as companyOidc } from "@jinshuju/eve-oidc";
+export default defineChannel({ auth: [localDev(["nested"]), companyOidc()] });
+`,
+      },
+    ]);
+    expect(aliasedVerifier.summary.agentAuthMethods).toEqual(["jinshuju-oidc"]);
+
+    const commentsAndStrings = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.4" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `
+// jinshujuOidc() is intentionally not configured here.
+const example = "jinshujuOidc()";
+export default eveChannel({ auth: [localDev()] });
+`,
+      },
+    ]);
+    expect(commentsAndStrings.summary.agentAuthMethods).toEqual([]);
+
+    const unusedVerifier = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.4" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `const unused = jinshujuOidc();\nexport default eveChannel({ auth: [localDev()] });`,
+      },
+    ]);
+    expect(unusedVerifier.summary.agentAuthMethods).toEqual([]);
+  });
+
   test("fails closed with an upgrade diagnostic outside the supported Eve line", () => {
     const result = inspectEveProject([
       { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.22.6" } }) },
