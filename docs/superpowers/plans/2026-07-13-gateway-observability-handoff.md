@@ -1262,3 +1262,16 @@ route 或公开 Agent auth/streaming 边界。
   扫描同一快照以守住持久化边界；
 - 未消费 Preflight 默认一小时过期。Worker 不清理 running 项，只在共享 data root containment
   内删除 expired snapshot；consumed source 继续服从 Project 删除生命周期。
+
+---
+
+## 24. 2026-07-17 follow-up：首次部署 Environment Variables
+
+命名屏幕在 `Deploy` 前增加可选的 Environment Variables 折叠区，支持多组 Key/Value、密码态
+显隐、删除和重复/格式/缺值的就地校验。完全空白行不阻止部署，部分填写的行必须修正或删除。
+
+API 不通过 Project 创建后的第二个 Secrets 请求补写初始配置。明文 Value 先用 `APP_SECRET_KEY`
+加密，再由 Store 在同一原子边界内创建 Project、插入初始 Secrets、排入 initial import job 并
+消费 completed Preflight；Postgres 使用单个 transaction，memory store 保持相同行为。这样 worker
+能 claim import/deploy job 时，常见的 `OPENAI_API_KEY` 等首次运行依赖已经存在。任何失败整体回滚，
+明文 Value 不进入响应、job payload 或日志。

@@ -187,6 +187,12 @@ Web 从 URL 最后一个 path segment
 去掉 `.git` 后猜测 Project 名称，例如 `evelandhq/sample-office-assistant` 得到
 `sample-office-assistant`；Zip 使用文件名按相同规则猜测。第二步展示来源摘要并允许用户
 编辑名称。名称格式和可用性在当前屏幕内校验；只有名称合法且可用时 `Deploy` 才可点击。
+命名屏幕同时提供可选的 Environment Variables 折叠区，可添加最多 50 组不重复的 Key/Value；
+Key 遵循大写字母、数字和下划线格式，Value 默认以密码输入显示并可临时显隐。完全空白的可选行
+不影响部署，部分填写、格式错误或重复 Key 必须在当前屏幕修正后才能 Deploy。API 使用
+`APP_SECRET_KEY` 加密 Value，并在同一数据库事务中创建 Project、保存初始 Secrets、排入 initial
+import job 和消费 Preflight，确保 worker 看见首次导入/部署任务时所需的 LLM Key 已经可用；任何
+一步失败都整体回滚，响应和日志不得返回明文 Value。
 
 私有 GitLab（包括自建实例）可在 HTTPS Repo URL 旁提供 Personal Access Token；建议只授予
 `read_repository`。平台不通过域名猜测或额外请求探测内网 GitLab。PAT 由 API 使用
@@ -438,6 +444,9 @@ sandbox
 * 删除 Secret
 * 查看变量名
 * 不显示变量值
+
+新建项目的命名屏幕也可在首次 Deploy 前写入同一组 Project Secrets；这些初始 Secrets 必须与
+Project 和 initial import job 原子提交，不能先排队部署再通过后续请求补写。
 
 新增、修改或删除 Secret 后，API 为该 Project 的每个 `running` 或
 `draining` Deployment 排入带明确 Deployment ID 的重启任务。Project Secret

@@ -29,6 +29,7 @@ describe.skipIf(!database)("Postgres source preflights", () => {
       userId: "user_local_admin",
       name: `preflight-${suffix}`,
       deployAfterImport: true,
+      secrets: [{ key: "OPENAI_API_KEY", encryptedValue: "postgres-encrypted-key" }],
     });
     expect(created.outcome).toBe("created");
     if (created.outcome !== "created") throw new Error("Expected Project creation.");
@@ -47,6 +48,9 @@ describe.skipIf(!database)("Postgres source preflights", () => {
             deployAfterImport: true,
           }),
         }),
+      ]);
+      await expect(store.listSecretRecords(created.project.id)).resolves.toEqual([
+        expect.objectContaining({ key: "OPENAI_API_KEY", encryptedValue: "postgres-encrypted-key" }),
       ]);
     } finally {
       await store.deleteProject(created.project.id);

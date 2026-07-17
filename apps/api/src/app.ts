@@ -83,10 +83,28 @@ const createProjectSchema = z.discriminatedUnion("importKind", [
   }),
 ]);
 
+const environmentVariableSchema = z.object({
+  key: z.string().regex(/^[A-Z][A-Z0-9_]*$/, "Use uppercase letters, numbers, and underscores, starting with a letter."),
+  value: z.string().min(1).max(65_536),
+});
+
 const createProjectFromPreflightSchema = z.object({
   name: projectNameSchema,
   preflightId: z.string().regex(/^pre_[0-9A-Za-z]+$/),
   deployAfterImport: z.boolean().optional(),
+  environmentVariables: z.array(environmentVariableSchema).max(50).default([]),
+}).superRefine((input, context) => {
+  const keys = new Set<string>();
+  input.environmentVariables.forEach((variable, index) => {
+    if (keys.has(variable.key)) {
+      context.addIssue({
+        code: "custom",
+        path: ["environmentVariables", index, "key"],
+        message: "Environment variable keys must be unique.",
+      });
+    }
+    keys.add(variable.key);
+  });
 });
 
 const createGitSourcePreflightSchema = z.object({
@@ -95,10 +113,7 @@ const createGitSourcePreflightSchema = z.object({
   gitlabPat: z.string().min(1).max(1024).optional(),
 });
 
-const secretSchema = z.object({
-  key: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-  value: z.string().min(1),
-});
+const secretSchema = environmentVariableSchema;
 
 const playgroundMessageSchema = z.object({
   message: z.string().min(1),
@@ -669,9 +684,14 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         return c.json({ error: "Invalid project input", issues: parsedPreflight.error.issues }, 400);
       }
       try {
+        const { environmentVariables, ...projectInput } = parsedPreflight.data;
         const result = await store.createProjectFromSourcePreflight({
-          ...parsedPreflight.data,
+          ...projectInput,
           userId: currentUserId(c),
+          secrets: environmentVariables.map((variable) => ({
+            key: variable.key,
+            encryptedValue: JSON.stringify(encryptSecretValue(variable.value, appSecretKey)),
+          })),
         });
         if (result.outcome === "not_found") return c.json({ error: "Source preflight not found" }, 404);
         if (result.outcome === "not_ready") return c.json({ error: "Source preflight is not ready" }, 409);
