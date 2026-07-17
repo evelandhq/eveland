@@ -238,7 +238,7 @@ Eveland 当前只运行 Eve 0.24.x Agent。允许精确的 0.24 patch、锚定�
 0.24 patch 上的 `~`/`^` range，以及 `0.24` / `0.24.x` / `0.24.*`；缺少
 Eve 依赖或任何可能解析到 0.24.x 之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
-Playground，以及公开 Gateway 的 Eve session 新建、继续和 stream 请求，不能通过已有的
+Playground，以及公开 Gateway 的 Eve session 新建、继续、取消和 stream 请求，不能通过已有的
 旧 Source Revision、旧 Deployment 或 SessionBinding 绕过。Gateway 在选定实际 Deployment
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
@@ -303,7 +303,7 @@ Playground 中可查看当前 Session 的：
 * HITL：确认/拒绝、选项、自由文本和外部授权提示
 * 当前 turn 的图片、PDF、文本和代码附件
 
-Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。
+Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。对支持 canonical cancel route 的 Eve Release，停止必须请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。仍受支持但尚未实现 cancel route 的旧 0.24 patch 返回 404 时，Web 可兼容回退为仅停止本地 stream，且该能力探测失败不得把平台 Session 误标为 failed。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
 
 ---
 
@@ -527,7 +527,7 @@ http://<deploymentKey>--<projectSlug>.agent.localhost:4080
 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个
 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
-Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。
+Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation、cancel 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。
 
 cron、public request、turn 和 stream 在访问进程前获取有期限的 ActivationLease。同一
 dormant Deployment 的并发唤醒只允许一个 starter；API 只持久化/等待状态，不获得

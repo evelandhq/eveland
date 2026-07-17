@@ -83,6 +83,18 @@ async function main(): Promise<void> {
     const eveSessionId = created.headers["x-eve-session-id"]?.toString() ?? createdBody.sessionId;
     assert.ok(eveSessionId);
     await expectBinding(store, project.id, eveSessionId, candidate.id, `${stableBeforeSplit.id}:r2`);
+    const cancellable = await gatewayRequest(gatewayPort, {
+      host: localHost,
+      path: "/eve/v1/session",
+      method: "POST",
+      headers: { "content-type": "application/json", "x-eveland-version-key": candidateAffinity },
+      body: JSON.stringify({ message: "Start a second turn for cancellation routing." }),
+    });
+    assert.equal(cancellable.statusCode, 202, `cancellable session failed: ${cancellable.body}`);
+    const cancellableBody = JSON.parse(cancellable.body) as { sessionId?: string };
+    const cancellableSessionId = cancellable.headers["x-eve-session-id"]?.toString() ?? cancellableBody.sessionId;
+    assert.ok(cancellableSessionId);
+    await expectBinding(store, project.id, cancellableSessionId, candidate.id, `${stableBeforeSplit.id}:r2`);
 
     await store.updateRouteTargets(stableBeforeSplit.id, [
       { deploymentId: deployment.id, weight: 5_000, variantName: "control" },
@@ -108,6 +120,19 @@ async function main(): Promise<void> {
     const afterZeroSessionId = afterZero.headers["x-eve-session-id"]?.toString() ?? afterZeroBody.sessionId;
     assert.ok(afterZeroSessionId);
     await expectBinding(store, project.id, afterZeroSessionId, deployment.id, `${stableBeforeSplit.id}:r4`);
+
+    const cancelled = await gatewayRequest(gatewayPort, {
+      host: localHost,
+      path: `/eve/v1/session/${encodeURIComponent(cancellableSessionId)}/cancel`,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(cancelled.statusCode, 202, `bound cancel failed: ${cancelled.body}`);
+    const cancelledBody = JSON.parse(cancelled.body) as { sessionId?: string; status?: string };
+    assert.equal(cancelledBody.sessionId, cancellableSessionId);
+    assert.ok(["accepted", "no_active_turn"].includes(cancelledBody.status ?? ""));
+    await expectBinding(store, project.id, cancellableSessionId, candidate.id, `${stableBeforeSplit.id}:r2`);
 
     await store.updateDeploymentStatus(candidate.id, "draining");
     await invalidateGateway(gatewayPort, localHost);
@@ -141,7 +166,7 @@ async function main(): Promise<void> {
     assert.equal(production.statusCode, 401, `production Host spoofing reached Eve localDev: ${production.body}`);
 
     console.log(
-      `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 promoted=1 rolledBack=1 preview=200 localDev=202 production=401 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
+      `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=${cancelledBody.status} promoted=1 rolledBack=1 preview=200 localDev=202 production=401 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
     );
   } finally {
     if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));

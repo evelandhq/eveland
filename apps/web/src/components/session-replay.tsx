@@ -124,6 +124,7 @@ function ItemView({ item }: { item: TranscriptItem }) {
 const toolStates = {
   completed: "output-available",
   failed: "output-error",
+  cancelled: "output-error",
   pending: "input-streaming",
 } as const
 

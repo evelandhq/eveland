@@ -132,6 +132,7 @@ describe("Gateway", () => {
     for (const request of [
       { method: "POST", path: "/eve/v1/session" },
       { method: "POST", path: "/eve/v1/session/eve_old" },
+      { method: "POST", path: "/eve/v1/session/eve_old/cancel" },
       { method: "GET", path: "/eve/v1/session/eve_old/stream" },
     ]) {
       const response = await app.request(`http://p-alpha.agent.localhost${request.path}`, {
@@ -152,7 +153,7 @@ describe("Gateway", () => {
       });
     }
 
-    expect(repo.getDeploymentEveVersion).toHaveBeenCalledTimes(3);
+    expect(repo.getDeploymentEveVersion).toHaveBeenCalledTimes(4);
     expect(repo.getDeploymentEveVersion).toHaveBeenCalledWith("dep_1");
     expect(activationClient.activate).not.toHaveBeenCalled();
     expect(upstreamRequests).toBe(0);
@@ -493,6 +494,12 @@ describe("Gateway", () => {
       headers: { host: "p-alpha.agent.localhost" },
     });
     await expect(pinnedAfterZero.json()).resolves.toMatchObject({ deployment: "b" });
+    const cancelAfterZero = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_weighted/cancel", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
+      body: JSON.stringify({ turnId: "turn_weighted" }),
+    });
+    await expect(cancelAfterZero.json()).resolves.toMatchObject({ deployment: "b" });
     expect(repo.bindings).toContainEqual(expect.objectContaining({
       deploymentId: "dep_b",
       variantName: "candidate",
@@ -786,6 +793,11 @@ describe("Gateway", () => {
           response.end(JSON.stringify({ sessionId: "eve_stream", continuationToken: "continue_2" }));
           return;
         }
+        if (request.method === "POST" && request.url === "/eve/v1/session/eve_stream/cancel") {
+          response.writeHead(202, { "content-type": "application/json" });
+          response.end(JSON.stringify({ sessionId: "eve_stream", status: "accepted" }));
+          return;
+        }
         if (request.method === "GET" && request.url === "/eve/v1/session/eve_stream/stream?startIndex=1") {
           response.writeHead(200, { "content-type": "application/x-ndjson" });
           response.write(`${JSON.stringify({ type: "reasoning.appended", data: { reasoningDelta: "Checking" } })}\n`);
@@ -797,7 +809,10 @@ describe("Gateway", () => {
     });
     const repo = repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]);
     const activationClient = {
-      activate: vi.fn(async () => ({ leaseId: crypto.randomUUID(), endpointPort: upstream.port })),
+      activate: vi.fn(async (
+        _input: { deploymentId: string; kind: "public_request" | "stream" | "turn"; ownerId: string },
+        _signal?: AbortSignal,
+      ) => ({ leaseId: crypto.randomUUID(), endpointPort: upstream.port })),
       renew: vi.fn(async () => {}),
       release: vi.fn(async () => {}),
     };
@@ -833,6 +848,12 @@ describe("Gateway", () => {
       headers: { authorization: "Bearer service-secret", "content-type": "application/json" },
       body: continuationBody,
     });
+    const cancelBody = JSON.stringify({ turnId: "turn_2" });
+    const cancel = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_stream/cancel", {
+      method: "POST",
+      headers: { authorization: "Bearer service-secret", "content-type": "application/json" },
+      body: cancelBody,
+    });
     const startedAt = Date.now();
     const stream = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_stream/stream?startIndex=1", {
       headers: { authorization: "Bearer service-secret", accept: "application/x-ndjson" },
@@ -845,17 +866,21 @@ describe("Gateway", () => {
     await expect(initial.json()).resolves.toMatchObject({ sessionId: "eve_stream", continuationToken: "continue_1" });
     expect(continuation.status).toBe(202);
     await expect(continuation.json()).resolves.toMatchObject({ continuationToken: "continue_2" });
+    expect(cancel.status).toBe(202);
+    await expect(cancel.json()).resolves.toEqual({ sessionId: "eve_stream", status: "accepted" });
     expect(new TextDecoder().decode(first.value)).toContain("reasoning.appended");
     expect(Date.now() - startedAt).toBeLessThan(200);
     await reader.cancel();
     expect(requests).toEqual(expect.arrayContaining([
       { method: "POST", path: "/eve/v1/session", host: `localhost:${upstream.port}`, body: initialBody },
       { method: "POST", path: "/eve/v1/session/eve_stream", host: `localhost:${upstream.port}`, body: continuationBody },
+      { method: "POST", path: "/eve/v1/session/eve_stream/cancel", host: `localhost:${upstream.port}`, body: cancelBody },
       { method: "GET", path: "/eve/v1/session/eve_stream/stream?startIndex=1", host: `localhost:${upstream.port}`, body: "" },
     ]));
     expect(repo.bindings).toContainEqual(expect.objectContaining({ eveSessionId: "eve_stream", trigger: "playground" }));
     expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({ kind: "turn" }), expect.any(AbortSignal));
     expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({ kind: "stream" }), expect.any(AbortSignal));
+    expect(activationClient.activate.mock.calls.filter(([input]) => input.kind === "turn")).toHaveLength(3);
   });
 
   test("invalidates cached Host resolution through the service-authenticated control path", async () => {

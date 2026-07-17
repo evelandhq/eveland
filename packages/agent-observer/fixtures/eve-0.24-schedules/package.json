@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "eve": "0.24.x"
+    "eve": "0.24.6"
   }
 }
