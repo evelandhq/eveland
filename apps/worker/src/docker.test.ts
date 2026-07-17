@@ -420,6 +420,38 @@ describe("createDockerAdapter", () => {
     ]);
   });
 
+  test("collects bounded container state and recent logs before cleanup", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "status=restarting restarting=true exitCode=1 oomKilled=false restartCount=4",
+        all: "status=restarting restarting=true exitCode=1 oomKilled=false restartCount=4",
+      } as never)
+      .mockResolvedValueOnce({ failed: false, all: "Eve startup failed\nstack trace" } as never);
+    const adapter = createDockerAdapter(dockerAdapterConfig) as ReturnType<typeof createDockerAdapter> & {
+      getProcessDiagnostics(processName: string): Promise<{ state: string; logs: string }>;
+    };
+
+    await expect(adapter.getProcessDiagnostics("eveland-proj_123")).resolves.toEqual({
+      state: "status=restarting restarting=true exitCode=1 oomKilled=false restartCount=4",
+      logs: "Eve startup failed\nstack trace",
+    });
+    expect(vi.mocked(execa).mock.calls).toEqual([
+      [
+        "docker",
+        [
+          "inspect",
+          "--format",
+          "status={{.State.Status}} restarting={{.State.Restarting}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} restartCount={{.RestartCount}} error={{json .State.Error}}",
+          "eveland-proj_123",
+        ],
+        { all: true, reject: false },
+      ],
+      ["docker", ["logs", "--tail", "200", "eveland-proj_123"], { all: true, reject: false }],
+    ]);
+  });
+
   test("stopProcess shells out to docker rm --force with the process name", async () => {
     vi.mocked(execa).mockClear();
     const adapter = createDockerAdapter(dockerAdapterConfig);

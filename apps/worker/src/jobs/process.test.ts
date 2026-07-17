@@ -844,6 +844,74 @@ describe("processNextJob", () => {
     });
   });
 
+  test("captures and masks runtime startup diagnostics before cleaning up an unhealthy deployment", async () => {
+    const calls: string[] = [];
+    const secretValue = "sk-runtime-diagnostic-secret";
+    const appSecretKey = "eveland-test-secret-key-00000000";
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name: "Diagnostic Agent", importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.upsertSecret(
+      project.id,
+      "OPENAI_API_KEY",
+      JSON.stringify(encryptSecretValue(secretValue, appSecretKey)),
+    );
+    await store.enqueueJob(project.id, "build_deploy");
+
+    const runtime = {
+      name: "docker",
+      async buildRelease() {
+        return { releaseRef: "eveland/proj:rel_diagnostic", log: "" };
+      },
+      async startProcess() {
+        return { internalPort: 3000, log: "" };
+      },
+      async getProcessDiagnostics() {
+        calls.push("diagnostics");
+        return {
+          state: "status=restarting restartCount=4 exitCode=1",
+          logs: `${"x".repeat(35_000)}\nAgent startup failed while using ${secretValue}`,
+        };
+      },
+      async stopProcess() {
+        calls.push("stop");
+      },
+    } as RuntimeAdapter & {
+      getProcessDiagnostics(processName: string): Promise<{ state: string; logs: string }>;
+    };
+
+    await expect(processNextJob(store, "worker-a", {
+      runtime,
+      appSecretKey,
+      allocateHostPort: () => 41113,
+      async waitForDeployment() {
+        throw new Error("health check timed out");
+      },
+    })).resolves.toBe(true);
+
+    expect(calls).toEqual(["diagnostics", "stop"]);
+    const runtimeLogs = await store.listLogs(project.id, "runtime");
+    expect(runtimeLogs).toContainEqual(expect.objectContaining({
+      line: expect.stringMatching(/Runtime startup diagnostics.*status=restarting.*Recent logs:.*Agent startup failed/s),
+    }));
+    expect(JSON.stringify(runtimeLogs)).not.toContain(secretValue);
+    expect(JSON.stringify(runtimeLogs)).toContain("***");
+    expect(runtimeLogs.find((log) => log.line.includes("Runtime startup diagnostics"))?.line.length).toBeLessThanOrEqual(32_000);
+    expect(JSON.stringify(runtimeLogs)).toContain("runtime diagnostics truncated");
+    expect(runtimeLogs.at(-1)?.line).toContain("health check timed out");
+  });
+
   test("does not attempt to stop the new process when startProcess itself fails (nothing was started)", async () => {
     let stopCalled = false;
     const store = createMemoryStore();
@@ -893,7 +961,7 @@ describe("processNextJob", () => {
     );
   });
 
-  test("keeps the original health-check error and separately logs a cleanup stopProcess failure", async () => {
+  test("keeps the original health-check error when diagnostics and cleanup both fail", async () => {
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({ name: "Double Fail Agent", importKind: "zip", sourcePath });
@@ -920,6 +988,9 @@ describe("processNextJob", () => {
           async startProcess() {
             return { internalPort: 3000, log: "" };
           },
+          async getProcessDiagnostics() {
+            throw new Error("docker logs unavailable");
+          },
           async stopProcess() {
             throw new Error("systemctl stop timed out");
           },
@@ -941,13 +1012,15 @@ describe("processNextJob", () => {
     // "Job failed" line -- and the ORIGINAL health error, not the cleanup
     // error, is what the job ultimately fails with.
     await expect(store.listLogs(project.id, "runtime")).resolves.toEqual([
+      expect.objectContaining({ line: "Runtime startup diagnostics (docker) unavailable before cleanup: docker logs unavailable" }),
       expect.objectContaining({ line: "Cleanup after failed deploy also failed: systemctl stop timed out" }),
       expect.objectContaining({
         line: expect.stringMatching(/port 41112 did not open/),
       }),
     ]);
-    const jobFailedLine = (await store.listLogs(project.id, "runtime"))[1]?.line ?? "";
+    const jobFailedLine = (await store.listLogs(project.id, "runtime"))[2]?.line ?? "";
     expect(jobFailedLine).not.toContain("systemctl stop timed out");
+    expect(jobFailedLine).not.toContain("docker logs unavailable");
   });
 
   test("injects a platform-owned Postgres world and runtime URL even when the agent does not configure either", async () => {

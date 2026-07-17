@@ -173,6 +173,18 @@ try {
   if (!failRuntimeLogs.some((log) => log.line.includes("did not respond within"))) {
     throw new Error(`Expected a health-timeout failure, got: ${JSON.stringify(failRuntimeLogs.map((log) => log.line))}`);
   }
+  const diagnosticIndex = failRuntimeLogs.findIndex((log) =>
+    log.line.includes("Runtime startup diagnostics (systemd) before cleanup:")
+      && log.line.includes("State:")
+      && log.line.includes("ActiveState=")
+      && log.line.includes("Recent logs:"),
+  );
+  const failureIndex = failRuntimeLogs.findIndex((log) => log.line.includes("did not respond within"));
+  if (diagnosticIndex < 0 || diagnosticIndex >= failureIndex) {
+    throw new Error(
+      `Expected systemd diagnostics before the health failure log, got: ${JSON.stringify(failRuntimeLogs.map((log) => log.line))}`,
+    );
+  }
 
   // The health-check timeout is thrown before recordDeployment ever runs, so no
   // deployment row -- and no exact unit/env-file name -- exists to look up. Glob by

@@ -45,6 +45,11 @@ export type ProcessStartResult = {
   log: string;
 };
 
+export type ProcessDiagnostics = {
+  state: string;
+  logs: string;
+};
+
 export type RuntimeAdapter = {
   // Structural match for the shared RuntimeKind contract. Keeping the adapter
   // name narrow makes each deployment's persisted runtime owner unambiguous.
@@ -52,6 +57,8 @@ export type RuntimeAdapter = {
   buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult>;
   startProcess(input: ProcessStartInput): Promise<ProcessStartResult>;
   inspectProcess?(processName: string): Promise<"missing" | "starting" | "ready" | "stopped" | "failed">;
+  /** Best-effort state and recent output captured before an unhealthy process is removed. */
+  getProcessDiagnostics?(processName: string): Promise<ProcessDiagnostics>;
   /** Names of currently running processes this runtime owns whose name starts with the prefix. */
   listProcesses?(namePrefix: string): Promise<string[]>;
   ensureProcess?(input: ProcessStartInput): Promise<ProcessStartResult>;

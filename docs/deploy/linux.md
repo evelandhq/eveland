@@ -395,7 +395,10 @@ does not inject a world and Eve keeps its local development world.
   `MemoryMax`, `CPUQuota`, `Restart=on-failure`. The app binds `127.0.0.1:<hostPort>`;
   secrets arrive via a root-owned 0600 `EnvironmentFile`.
 - Health: the worker polls `http://127.0.0.1:<hostPort>/eve/v1/health` until any
-  HTTP response arrives.
+  HTTP response arrives. If the deadline expires, it captures unit state plus
+  the final 200 journal lines, masks Project Secret values, persists a bounded
+  diagnostic, and only then stops and resets the transient unit. Diagnostic or
+  cleanup failures never replace the original health-check error.
 - Idle: a Deployment may retain its immutable Release, preview route, and
   SessionBindings while no transient unit exists. Cron or Gateway asks API for
   an ActivationLease; API coalesces `ensure_deployment_running`, Worker starts

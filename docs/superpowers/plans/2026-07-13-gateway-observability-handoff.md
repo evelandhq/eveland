@@ -1275,3 +1275,14 @@ API 不通过 Project 创建后的第二个 Secrets 请求补写初始配置。�
 消费 completed Preflight；Postgres 使用单个 transaction，memory store 保持相同行为。这样 worker
 能 claim import/deploy job 时，常见的 `OPENAI_API_KEY` 等首次运行依赖已经存在。任何失败整体回滚，
 明文 Value 不进入响应、job payload 或日志。
+
+---
+
+## 25. 2026-07-17 follow-up：健康检查失败的启动诊断
+
+`build_deploy` 与 `restart_deployment` 在进程启动后健康检查失败时，必须在清理前通过
+Deployment 所属 runtime adapter 采集诊断。Docker 读取不含 env 的 state/exit/OOM/restart
+摘要与最后 200 行 container logs；systemd 读取 unit state/result/restart 摘要与最后 200 行
+journal。worker 使用本次注入的完整 Secret value 集合脱敏，最多持久化 32,000 字符，并保留
+头部状态与尾部最近日志。诊断采集或 stop 失败各自追加 runtime log，但不能替换触发清理的
+原始 health error。

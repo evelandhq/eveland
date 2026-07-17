@@ -404,6 +404,25 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       if (status === "inactive" || status === "deactivating") return "stopped";
       return "failed";
     },
+    async getProcessDiagnostics(processName) {
+      const unit = `${processName}.service`;
+      const [state, logs] = await Promise.all([
+        execa("systemctl", [
+          "show",
+          unit,
+          "--property=ActiveState,SubState,NRestarts,ExecMainCode,ExecMainStatus,Result",
+          "--no-pager",
+        ], { all: true, reject: false }),
+        execa("journalctl", ["--unit", unit, "--lines", "200", "--no-pager", "--output=short-iso"], {
+          all: true,
+          reject: false,
+        }),
+      ]);
+      return {
+        state: diagnosticCommandOutput(state, "systemctl show"),
+        logs: diagnosticCommandOutput(logs, "journalctl"),
+      };
+    },
     async ensureProcess(input) {
       const status = await adapter.inspectProcess!(input.processName);
       if (status === "ready" || status === "starting") {
@@ -441,4 +460,13 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
     },
   };
   return adapter;
+}
+
+function diagnosticCommandOutput(
+  result: { failed?: boolean; all?: string; stdout?: string; stderr?: string },
+  command: string,
+): string {
+  const output = (result.all || result.stdout || result.stderr || "").trim();
+  if (result.failed) return output ? `${command} unavailable: ${output}` : `${command} unavailable`;
+  return output;
 }
