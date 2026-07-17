@@ -105,7 +105,10 @@ the detected dependency version and the required line.
 Release builds also preserve the imported project's dependency resolution: `pnpm-lock.yaml` selects a frozen
 pnpm install, `package-lock.json` selects `npm ci`, and an unlocked project falls back to `npm install`. The same
 selection is used by Docker and systemd, including the platform-owned workflow-world dependency, so a pnpm
-project is never re-resolved through npm's peer-dependency rules.
+project is never re-resolved through npm's peer-dependency rules. Docker makes a root `pnpm-workspace.yaml` and
+non-secret `.npmrc` available before dependency installation so committed pnpm settings and registry mappings
+match the lockfile. Registry credentials are not read from runtime Project Secrets and must not be committed;
+authenticated package installation remains unsupported until a worker-owned build-secret mechanism exists.
 
 Local Docker Deployments receive the same injected `@eveland/sandbox-bwrap` backend as
 systemd Deployments. Their generated image includes bubblewrap plus the platform sandbox

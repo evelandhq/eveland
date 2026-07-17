@@ -225,7 +225,11 @@ Release 构建必须尊重导入项目提交的包管理器锁文件：存在 `p
 pnpm 版本执行 frozen install，存在 `package-lock.json` 时使用 `npm ci`，没有锁文件时才回退
 到 `npm install`。pnpm frozen install 仍校验 lockfile 与 package integrity，但不得因为平台
 自身的 package minimum-release-age 策略拒绝项目已经提交的锁定版本。Docker 与 systemd
-runtime 必须使用相同选择，不能改用 npm 重新解析 pnpm 项目并绕过其 lockfile。
+runtime 必须使用相同选择，不能改用 npm 重新解析 pnpm 项目并绕过其 lockfile。Docker 必须在
+dependency install 前读取根目录的 `pnpm-workspace.yaml` 与不含 Secret 的 `.npmrc`，使项目提交的
+pnpm 设置和 registry 映射与 lockfile 一致。runtime Project Secret 不参与 package install，
+registry credential 不得提交进源码或 Release；在实现独立的 worker-owned build-secret 机制前，
+需要认证的 registry 不受支持。
 
 Git 拉取由 worker 以非交互方式执行，默认最多等待 120 秒；可通过
 `EVELAND_GIT_CLONE_TIMEOUT_MS` 调整。超时或 Git 失败必须终止拉取、清理未完成的
