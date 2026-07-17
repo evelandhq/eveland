@@ -270,6 +270,9 @@ describe("Agent Auth control-plane routes", () => {
         async refresh() {
           throw new Error("refresh should not run");
         },
+        async fetchUserInfo() {
+          throw new Error("fetchUserInfo should not run");
+        },
       },
       oidcVerifyAccessToken: async () => ({ issuer: "https://idp.example", subject: "agent-subject-not-eveland-user" }),
       agentAuthNow: () => new Date("2029-01-01T00:00:00.000Z"),
@@ -331,6 +334,117 @@ describe("Agent Auth control-plane routes", () => {
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({ eveSessionId: "eve_oidc", status: "running" }),
     ]);
+  });
+
+  test("authorizes an audience-less OIDC connection by verifying the opaque token via UserInfo", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "oidc-userinfo-playground", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/oidc-userinfo-playground",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "oidc-userinfo-playground",
+      containerName: "oidc-userinfo-playground",
+      internalPort: 3000,
+      hostPort: 41993,
+      runtimeKind: "docker",
+    });
+    const connection = await store.createAgentConnection({
+      target: { kind: "managed-project", projectId: project.id },
+      method: "local-dev",
+      configEncrypted: "legacy-local-dev",
+    });
+    const fetchUserInfoCalls: Array<{ accessToken: string; expectedSubject: string }> = [];
+    // No oidcVerifyAccessToken injection: the default verifier must pick the
+    // UserInfo path because the connection has no audience.
+    const app = createApp(store, {
+      appSecretKey,
+      webOrigin: "https://eveland.example",
+      oidcProtocol: {
+        async preflight() {},
+        async buildAuthorizationUrl(_config, transaction) {
+          return new URL(`https://account.example/authorize?state=${encodeURIComponent(transaction.state)}`);
+        },
+        async exchangeAuthorizationCode() {
+          return {
+            accessToken: "opaque-jinshuju-token",
+            refreshToken: "opaque-refresh-token",
+            expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+            issuer: "https://account.example",
+            subject: "jinshuju-user-42",
+          };
+        },
+        async refresh() {
+          throw new Error("refresh should not run");
+        },
+        async fetchUserInfo(_config, accessToken, expectedSubject) {
+          fetchUserInfoCalls.push({ accessToken, expectedSubject });
+          if (accessToken !== "opaque-jinshuju-token") return { outcome: "rejected", message: "Unknown access token." };
+          return { outcome: "ok", subject: expectedSubject };
+        },
+      },
+      agentAuthNow: () => new Date("2029-01-01T00:00:00.000Z"),
+      playgroundProxy: async (input) => {
+        const envelope = input.agentAuthEnvelope ? decodeAgentAuthEnvelope(input.agentAuthEnvelope) : null;
+        if (JSON.stringify(envelope?.headers) !== JSON.stringify([["authorization", "Bearer opaque-jinshuju-token"]])) {
+          return Response.json({ error: "Authorization is required for this route." }, { status: 401 });
+        }
+        return Response.json({ sessionId: "eve_userinfo" }, { status: 202, headers: { "x-eve-session-id": "eve_userinfo" } });
+      },
+    });
+    const configured = await app.request(`/agent-connections/${connection.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedSecurityRevision: 1,
+        method: "oidc",
+        config: {
+          issuer: "https://account.example",
+          clientId: "eveland-playground",
+          clientSecret: "jinshuju-client-secret",
+          scopes: ["openid", "profile"],
+        },
+      }),
+    });
+    expect(configured.status).toBe(200);
+    const configuredBody = await configured.json() as { connection: { config: Record<string, unknown> } };
+    expect(configuredBody.connection.config).not.toHaveProperty("audience");
+
+    const first = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello jinshuju" }),
+    });
+    expect(first.status).toBe(401);
+    const failure = await first.json() as { interaction: { url: string } };
+
+    const interactionUrl = new URL(failure.interaction.url, "https://eveland.example");
+    const start = await app.request(`${interactionUrl.pathname.replace(/^\/api\/eveland/, "")}${interactionUrl.search}`);
+    expect(start.status).toBe(302);
+    const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+    const callback = await app.request("/agent-auth/oidc/callback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ search: `?code=authorization-code&state=${encodeURIComponent(state)}` }),
+    });
+    expect(callback.status).toBe(200);
+
+    const resumed = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello jinshuju" }),
+    });
+    expect(resumed.status).toBe(202);
+    // OIDC Core 5.3.2: UserInfo sub compared against the ID-token subject.
+    expect(fetchUserInfoCalls).toEqual([{ accessToken: "opaque-jinshuju-token", expectedSubject: "jinshuju-user-42" }]);
   });
 
   test("returns the Agent response when the server runtime overrides the global Response class", async () => {

@@ -27,6 +27,10 @@ export type OidcTokenResult = {
   subject: string;
 };
 
+export type OidcUserInfoVerification =
+  | { outcome: "ok"; subject: string }
+  | { outcome: "rejected"; message: string };
+
 export type OidcProtocol = {
   preflight(config: OidcAuthorizationCodeConfig): Promise<void>;
   buildAuthorizationUrl(
@@ -38,6 +42,17 @@ export type OidcProtocol = {
     input: OidcAuthorizationTransaction & { currentUrl: URL },
   ): Promise<OidcTokenResult>;
   refresh(config: OidcAuthorizationCodeConfig, refreshToken: string, subject: string): Promise<OidcTokenResult>;
+  /**
+   * Verifies an access token against the issuer's UserInfo endpoint
+   * (OIDC Core 5.3). `rejected` means the provider definitively refused the
+   * token or its `sub` differs from `expectedSubject`; transient failures
+   * (network, provider outage) throw instead.
+   */
+  fetchUserInfo(
+    config: OidcAuthorizationCodeConfig,
+    accessToken: string,
+    expectedSubject: string,
+  ): Promise<OidcUserInfoVerification>;
 };
 
 type OidcTransactionPayload = OidcAuthorizationTransaction & {
@@ -110,7 +125,14 @@ export function createOidcAuthorizationCodeProvider(options: {
   const protocol = options.protocol ?? createOpenIdClientProtocol({ allowInsecureIssuer: options.allowInsecureIssuer });
   const now = options.now ?? (() => new Date());
   const callbackUrl = new URL(options.callbackUrl).toString();
-  const verifyAccessToken = options.verifyAccessToken ?? verifyAccessTokenWithEve;
+  // An audience marks the provider as audience-binding (JWT access tokens
+  // verified offline); without one the access token is opaque and can only be
+  // verified against the provider's UserInfo endpoint.
+  const verifyAccessToken = options.verifyAccessToken
+    ?? ((accessToken: string, config: OidcAuthorizationCodeConfig, expected: { issuer: string; subject: string }) =>
+      config.audience === undefined
+        ? verifyAccessTokenWithUserInfo(protocol, accessToken, config, expected)
+        : verifyAccessTokenWithEve(accessToken, config, expected));
   const refreshOwner = randomUUID();
   const refreshFlights = new Map<string, Promise<void>>();
 
@@ -277,7 +299,7 @@ export function createOidcAuthorizationCodeProvider(options: {
             return {
               code: "configuration_invalid",
               method: registration.method,
-              message: "The OIDC access token is not accepted by Eve's verifier.",
+              message: error.message || "The OIDC access token was rejected.",
             };
           }
           return {
@@ -341,7 +363,7 @@ export function createOidcAuthorizationCodeProvider(options: {
             return {
               code: "configuration_invalid",
               method: registration.method,
-              message: "The refreshed OIDC access token is not accepted by Eve's verifier.",
+              message: error.message || "The refreshed OIDC access token was rejected.",
             };
           }
           return {
@@ -459,7 +481,7 @@ export function createOidcAuthorizationCodeProvider(options: {
             failure: {
               code: "configuration_invalid",
               method: registration.method,
-              message: "The refreshed OIDC access token is not accepted by Eve's verifier.",
+              message: error.message || "The refreshed OIDC access token was rejected.",
             },
           };
         }
@@ -659,12 +681,26 @@ async function verifyAccessTokenWithEve(
   config: OidcAuthorizationCodeConfig,
   _expected: { issuer: string; subject: string },
 ): Promise<{ issuer: string; subject: string }> {
+  if (config.audience === undefined) {
+    throw new OidcAccessTokenRejectedError("OIDC audience is required to verify the access token as a JWT.");
+  }
   const result = await verifyOidc(accessToken, { issuer: config.issuer, audiences: [config.audience] });
   if (!result.ok) throw new OidcAccessTokenRejectedError("OIDC access token is not accepted by Eve's OIDC verifier.");
   return {
     issuer: result.sessionAuth.issuer ?? config.issuer,
     subject: result.sessionAuth.subject ?? result.sessionAuth.principalId,
   };
+}
+
+async function verifyAccessTokenWithUserInfo(
+  protocol: OidcProtocol,
+  accessToken: string,
+  config: OidcAuthorizationCodeConfig,
+  expected: { issuer: string; subject: string },
+): Promise<{ issuer: string; subject: string }> {
+  const result = await protocol.fetchUserInfo(config, accessToken, expected.subject);
+  if (result.outcome === "rejected") throw new OidcAccessTokenRejectedError(result.message);
+  return { issuer: config.issuer, subject: result.subject };
 }
 
 function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }): OidcProtocol {
@@ -698,10 +734,14 @@ function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }):
     }
     return pending;
   };
-  const audienceParameters = (config: OidcAuthorizationCodeConfig) => ({
-    ...(config.audienceMode === "resource" || config.audienceMode === "both" ? { resource: config.audience } : {}),
-    ...(config.audienceMode === "audience" || config.audienceMode === "both" ? { audience: config.audience } : {}),
-  });
+  const audienceParameters = (config: OidcAuthorizationCodeConfig): Record<string, string> => {
+    if (config.audience === undefined) return {};
+    const mode = config.audienceMode ?? "resource";
+    return {
+      ...(mode === "resource" || mode === "both" ? { resource: config.audience } : {}),
+      ...(mode === "audience" || mode === "both" ? { audience: config.audience } : {}),
+    };
+  };
 
   return {
     async preflight(config) {
@@ -758,5 +798,31 @@ function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }):
         subject,
       };
     },
+    async fetchUserInfo(config, accessToken, expectedSubject) {
+      const configuration = await getConfiguration(config);
+      try {
+        const claims = await oidc.fetchUserInfo(configuration, accessToken, expectedSubject);
+        return { outcome: "ok", subject: claims.sub };
+      } catch (error) {
+        const rejection = classifyUserInfoRejection(error);
+        if (rejection !== null) return { outcome: "rejected", message: rejection };
+        throw error;
+      }
+    },
   };
+}
+
+function classifyUserInfoRejection(error: unknown): string | null {
+  if (error instanceof oidc.WWWAuthenticateChallengeError) {
+    return "The identity provider rejected the access token at the UserInfo endpoint.";
+  }
+  if (error instanceof oidc.ClientError) {
+    if (error.code === "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED") {
+      return "The UserInfo subject does not match the authorized user.";
+    }
+    if (error.code === "OAUTH_MISSING_SERVER_METADATA" || error.code === "OAUTH_INVALID_SERVER_METADATA") {
+      return "The identity provider does not advertise a UserInfo endpoint, which audience-less OIDC verification requires.";
+    }
+  }
+  return null;
 }

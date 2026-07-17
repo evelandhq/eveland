@@ -315,8 +315,8 @@ const builtinMethodDescriptors: AgentAuthMethodDescriptor[] = [
       { key: "issuer", label: "Issuer", input: "text", required: true, secret: false, valueType: "string" },
       { key: "clientId", label: "Client ID", input: "text", required: true, secret: false, valueType: "string" },
       { key: "clientSecret", label: "Client secret", input: "password", required: false, secret: true, valueType: "string" },
-      { key: "audience", label: "Audience", input: "text", required: true, secret: false, valueType: "string" },
       { key: "scopes", label: "Scopes", input: "text", required: true, secret: false, valueType: "string-list" },
+      { key: "audience", label: "Audience (blank if the provider has no audience binding)", input: "text", required: false, secret: false, valueType: "string" },
     ],
   },
   {

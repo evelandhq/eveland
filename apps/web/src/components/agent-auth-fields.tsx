@@ -40,6 +40,7 @@ export function AgentAuthFields({
       </Field>
       {descriptor?.fields.map((field) => {
         const id = `agent-auth-${method}-${field.key}`;
+        const required = field.required && !(allowBlankSecrets && field.secret);
         const common = {
           id,
           value: values[field.key] ?? "",
@@ -47,11 +48,16 @@ export function AgentAuthFields({
             ...values,
             [field.key]: event.target.value,
           }),
-          required: field.required && !(allowBlankSecrets && field.secret),
+          required,
         };
         return (
           <Field key={field.key}>
-            <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
+            <FieldLabel htmlFor={id}>
+              <span>
+                {required ? <span aria-hidden className="mr-1 text-destructive">*</span> : null}
+                {field.label}
+              </span>
+            </FieldLabel>
             {field.input === "textarea"
               ? <Textarea {...common} rows={4} />
               : <Input {...common} type={field.input === "password" ? "password" : "text"} autoComplete="off" />}

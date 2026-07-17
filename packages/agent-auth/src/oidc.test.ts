@@ -49,6 +49,9 @@ describe("OIDC Agent Auth provider", () => {
         async refresh() {
           throw new Error("refresh should not run");
         },
+        async fetchUserInfo() {
+          throw new Error("fetchUserInfo should not run");
+        },
       },
       verifyAccessToken: async () => ({ issuer: "https://idp.example", subject: "access-token-agent-user-42" }),
       now: () => new Date("2029-01-01T00:00:00.000Z"),
@@ -172,6 +175,9 @@ describe("OIDC Agent Auth provider", () => {
             subject,
           };
         },
+        async fetchUserInfo() {
+          throw new Error("fetchUserInfo should not run");
+        },
       },
       verifyAccessToken: async () => ({ issuer: "https://idp.example", subject: "access-token-agent-user-refresh" }),
       now: () => new Date("2029-01-01T00:00:00.000Z"),
@@ -264,6 +270,9 @@ describe("OIDC Agent Auth provider", () => {
         async refresh() {
           throw new Error("refresh should not run");
         },
+        async fetchUserInfo() {
+          throw new Error("fetchUserInfo should not run");
+        },
       },
       verifyAccessToken: async () => ({ issuer: "https://idp.example", subject: "agent-user-concurrent" }),
       now: () => new Date("2029-01-01T00:00:00.000Z"),
@@ -337,6 +346,9 @@ describe("OIDC Agent Auth provider", () => {
             response: new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 }),
           });
         },
+        async fetchUserInfo() {
+          throw new Error("fetchUserInfo should not run");
+        },
       },
       verifyAccessToken: async (_token, _config, expected) => expected,
       now: () => new Date("2029-01-01T00:00:00.000Z"),
@@ -406,6 +418,9 @@ describe("OIDC Agent Auth provider", () => {
         async refresh() {
           throw new Error("refresh should not run");
         },
+        async fetchUserInfo() {
+          throw new Error("fetchUserInfo should not run");
+        },
       },
       verifyAccessToken: async () => {
         verifyCalls += 1;
@@ -441,6 +456,236 @@ describe("OIDC Agent Auth provider", () => {
     expect(unavailable).toMatchObject({ code: "provider_unavailable" });
     expect(verified).toEqual({
       credential: { kind: "headers", headers: [["authorization", "Bearer candidate-access-token"]] },
+      version: { securityRevision: 1, rotationSeq: 1 },
+    });
+  });
+
+  test("verifies an audience-less opaque access token through the UserInfo endpoint", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "oidc-userinfo", importKind: "zip" });
+    const connectionId = "acon_oidc_userinfo";
+    const config = {
+      issuer: "https://account.example",
+      clientId: "eveland-playground",
+      tokenEndpointAuthMethod: "none" as const,
+      scopes: ["openid", "profile"],
+    };
+    const connection = await store.createAgentConnection({
+      id: connectionId,
+      target: { kind: "managed-project", projectId: project.id },
+      method: "oidc",
+      configEncrypted: sealAgentAuthConfig(config, appSecretKey, {
+        agentConnectionId: connectionId,
+        method: "oidc",
+        securityRevision: 1,
+      }),
+    });
+    const fetchUserInfoCalls: Array<{ accessToken: string; expectedSubject: string }> = [];
+    const provider = createOidcAuthorizationCodeProvider({
+      store,
+      appSecretKey,
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
+      protocol: {
+        async preflight() {},
+        async buildAuthorizationUrl(oidcConfig, transaction) {
+          expect(oidcConfig).not.toHaveProperty("audience");
+          return new URL(`https://account.example/authorize?state=${encodeURIComponent(transaction.state)}`);
+        },
+        async exchangeAuthorizationCode() {
+          return {
+            accessToken: "opaque-access-token",
+            refreshToken: "opaque-refresh-token",
+            expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+            issuer: "https://account.example",
+            subject: "jinshuju-user-42",
+          };
+        },
+        async refresh() {
+          throw new Error("refresh should not run");
+        },
+        async fetchUserInfo(_config, accessToken, expectedSubject) {
+          fetchUserInfoCalls.push({ accessToken, expectedSubject });
+          if (accessToken !== "opaque-access-token") return { outcome: "rejected", message: "Unknown access token." };
+          return { outcome: "ok", subject: expectedSubject };
+        },
+      },
+      now: () => new Date("2029-01-01T00:00:00.000Z"),
+    });
+    const snapshot = { ...connection, config };
+
+    const interaction = await provider.start({
+      connection: snapshot,
+      callerPrincipalId: "eveland-member-a",
+      returnPath: `/projects/${project.id}/playground`,
+    });
+    const callback = await provider.callback({
+      state: interaction.state,
+      currentUrl: new URL(`${provider.callbackUrl}?code=authorization-code&state=${encodeURIComponent(interaction.state)}`),
+      callerPrincipalId: "eveland-member-a",
+      getConnection: async () => snapshot,
+    });
+    const credential = await provider.registration.getCredential({
+      target: { agentConnectionId: connection.id, callerPrincipalId: "eveland-member-a" },
+      connection: snapshot,
+      config,
+    });
+
+    expect(callback).toEqual({ returnPath: `/projects/${project.id}/playground` });
+    // OIDC Core 5.3.2: the UserInfo subject must be compared against the ID-token subject.
+    expect(fetchUserInfoCalls).toEqual([{ accessToken: "opaque-access-token", expectedSubject: "jinshuju-user-42" }]);
+    expect(credential).toEqual({
+      credential: { kind: "headers", headers: [["authorization", "Bearer opaque-access-token"]] },
+      version: { securityRevision: 1, rotationSeq: 0 },
+    });
+  });
+
+  test("fails the callback when the UserInfo endpoint definitively rejects the audience-less token", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "oidc-userinfo-rejected", importKind: "zip" });
+    const connectionId = "acon_oidc_userinfo_rejected";
+    const config = {
+      issuer: "https://account.example",
+      clientId: "eveland-playground",
+      tokenEndpointAuthMethod: "none" as const,
+      scopes: ["openid"],
+    };
+    const connection = await store.createAgentConnection({
+      id: connectionId,
+      target: { kind: "managed-project", projectId: project.id },
+      method: "oidc",
+      configEncrypted: sealAgentAuthConfig(config, appSecretKey, {
+        agentConnectionId: connectionId,
+        method: "oidc",
+        securityRevision: 1,
+      }),
+    });
+    const provider = createOidcAuthorizationCodeProvider({
+      store,
+      appSecretKey,
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
+      protocol: {
+        async preflight() {},
+        async buildAuthorizationUrl(_config, transaction) {
+          return new URL(`https://account.example/authorize?state=${encodeURIComponent(transaction.state)}`);
+        },
+        async exchangeAuthorizationCode() {
+          return {
+            accessToken: "token-for-someone-else",
+            expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+            issuer: "https://account.example",
+            subject: "jinshuju-user-42",
+          };
+        },
+        async refresh() {
+          throw new Error("refresh should not run");
+        },
+        async fetchUserInfo() {
+          return { outcome: "rejected", message: "The UserInfo subject does not match the authorized user." };
+        },
+      },
+      now: () => new Date("2029-01-01T00:00:00.000Z"),
+    });
+    const snapshot = { ...connection, config };
+
+    const interaction = await provider.start({
+      connection: snapshot,
+      callerPrincipalId: "eveland-member-a",
+      returnPath: `/projects/${project.id}/playground`,
+    });
+
+    await expect(provider.callback({
+      state: interaction.state,
+      currentUrl: new URL(`${provider.callbackUrl}?code=authorization-code&state=${encodeURIComponent(interaction.state)}`),
+      callerPrincipalId: "eveland-member-a",
+      getConnection: async () => snapshot,
+    })).rejects.toThrow("The UserInfo subject does not match the authorized user.");
+    await expect(store.getAgentAuthCredential({
+      agentConnectionId: connection.id,
+      securityRevision: 1,
+      authMethod: "oidc",
+      credentialScope: "principal",
+      scopeSubject: "eveland-member-a",
+      credentialKey: "",
+    })).resolves.toBeNull();
+  });
+
+  test("keeps an audience-less credential pending while UserInfo is unavailable, then activates it", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "oidc-userinfo-pending", importKind: "zip" });
+    const connectionId = "acon_oidc_userinfo_pending";
+    const config = {
+      issuer: "https://account.example",
+      clientId: "eveland-playground",
+      tokenEndpointAuthMethod: "none" as const,
+      scopes: ["openid"],
+    };
+    const connection = await store.createAgentConnection({
+      id: connectionId,
+      target: { kind: "managed-project", projectId: project.id },
+      method: "oidc",
+      configEncrypted: sealAgentAuthConfig(config, appSecretKey, {
+        agentConnectionId: connectionId,
+        method: "oidc",
+        securityRevision: 1,
+      }),
+    });
+    let userInfoAvailable = false;
+    const provider = createOidcAuthorizationCodeProvider({
+      store,
+      appSecretKey,
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
+      protocol: {
+        async preflight() {},
+        async buildAuthorizationUrl(_config, transaction) {
+          return new URL(`https://account.example/authorize?state=${encodeURIComponent(transaction.state)}`);
+        },
+        async exchangeAuthorizationCode() {
+          return {
+            accessToken: "opaque-access-token",
+            refreshToken: "opaque-refresh-token",
+            expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+            issuer: "https://account.example",
+            subject: "jinshuju-user-42",
+          };
+        },
+        async refresh() {
+          throw new Error("refresh should not run");
+        },
+        async fetchUserInfo(_config, _accessToken, expectedSubject) {
+          if (!userInfoAvailable) throw new Error("userinfo endpoint unreachable");
+          return { outcome: "ok", subject: expectedSubject };
+        },
+      },
+      now: () => new Date("2029-01-01T00:00:00.000Z"),
+    });
+    const snapshot = { ...connection, config };
+
+    const interaction = await provider.start({
+      connection: snapshot,
+      callerPrincipalId: "eveland-member-a",
+      returnPath: `/projects/${project.id}/playground`,
+    });
+    await provider.callback({
+      state: interaction.state,
+      currentUrl: new URL(`${provider.callbackUrl}?code=authorization-code&state=${encodeURIComponent(interaction.state)}`),
+      callerPrincipalId: "eveland-member-a",
+      getConnection: async () => snapshot,
+    });
+    const unavailable = await provider.registration.getCredential({
+      target: { agentConnectionId: connection.id, callerPrincipalId: "eveland-member-a" },
+      connection: snapshot,
+      config,
+    });
+    userInfoAvailable = true;
+    const activated = await provider.registration.getCredential({
+      target: { agentConnectionId: connection.id, callerPrincipalId: "eveland-member-a" },
+      connection: snapshot,
+      config,
+    });
+
+    expect(unavailable).toMatchObject({ code: "provider_unavailable" });
+    expect(activated).toEqual({
+      credential: { kind: "headers", headers: [["authorization", "Bearer opaque-access-token"]] },
       version: { securityRevision: 1, rotationSeq: 1 },
     });
   });

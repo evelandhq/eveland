@@ -12,8 +12,14 @@ export type OidcAuthorizationCodeConfig = {
   clientId: string;
   clientSecret?: string;
   tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
-  audience: string;
-  audienceMode: "resource" | "audience" | "both";
+  /**
+   * Identifier of the target Agent, minted into the access token's `aud`.
+   * Absent means the identity provider does no audience binding (opaque
+   * access tokens): no RFC 8707 `resource` parameter is sent and the access
+   * token is verified against the UserInfo endpoint instead of as a JWT.
+   */
+  audience?: string;
+  audienceMode?: "resource" | "audience" | "both";
   scopes: string[];
   promptConsent: boolean;
 };
@@ -75,8 +81,7 @@ export function redactAgentAuthConfig(method: string, config: Record<string, unk
       clientId: oidc.clientId,
       clientSecretConfigured: typeof oidc.clientSecret === "string" && oidc.clientSecret.length > 0,
       tokenEndpointAuthMethod: oidc.tokenEndpointAuthMethod,
-      audience: oidc.audience,
-      audienceMode: oidc.audienceMode,
+      ...(oidc.audience === undefined ? {} : { audience: oidc.audience, audienceMode: oidc.audienceMode }),
       scopes: oidc.scopes,
       promptConsent: oidc.promptConsent,
     };
@@ -87,16 +92,22 @@ export function redactAgentAuthConfig(method: string, config: Record<string, unk
 export function normalizeOidcAuthorizationCodeConfig(config: Record<string, unknown>): OidcAuthorizationCodeConfig {
   const issuer = requiredString(config.issuer, "OIDC issuer is required.").replace(/\/$/, "");
   const clientId = requiredString(config.clientId, "OIDC client ID is required.");
-  const audience = requiredString(config.audience, "OIDC audience is required.");
   const tokenEndpointAuthMethod = config.tokenEndpointAuthMethod ?? (config.clientSecret ? "client_secret_basic" : "none");
   if (tokenEndpointAuthMethod !== "client_secret_basic" && tokenEndpointAuthMethod !== "client_secret_post" && tokenEndpointAuthMethod !== "none") {
     throw new Error("Unsupported OIDC token endpoint authentication method.");
   }
   const clientSecret = config.clientSecret === undefined ? undefined : requiredString(config.clientSecret, "OIDC client secret must not be empty.");
   if (tokenEndpointAuthMethod !== "none" && !clientSecret) throw new Error("OIDC client secret is required for the selected token endpoint authentication method.");
-  const audienceMode = config.audienceMode ?? "resource";
-  if (audienceMode !== "resource" && audienceMode !== "audience" && audienceMode !== "both") {
-    throw new Error("Unsupported OIDC audience mode.");
+  let audienceConfig: Pick<OidcAuthorizationCodeConfig, "audience" | "audienceMode"> = {};
+  if (config.audience !== undefined) {
+    const audience = requiredString(config.audience, "OIDC audience must be a non-empty string.");
+    const audienceMode = config.audienceMode ?? "resource";
+    if (audienceMode !== "resource" && audienceMode !== "audience" && audienceMode !== "both") {
+      throw new Error("Unsupported OIDC audience mode.");
+    }
+    audienceConfig = { audience, audienceMode };
+  } else if (config.audienceMode !== undefined) {
+    throw new Error("OIDC audience mode requires an audience.");
   }
   const configuredScopes = config.scopes ?? ["openid", "offline_access"];
   if (!Array.isArray(configuredScopes) || configuredScopes.some((scope) => typeof scope !== "string" || !scope.trim())) {
@@ -109,8 +120,7 @@ export function normalizeOidcAuthorizationCodeConfig(config: Record<string, unkn
     clientId,
     ...(clientSecret ? { clientSecret } : {}),
     tokenEndpointAuthMethod,
-    audience,
-    audienceMode,
+    ...audienceConfig,
     scopes,
     promptConsent: config.promptConsent === undefined ? true : config.promptConsent === true,
   };
