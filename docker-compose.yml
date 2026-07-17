@@ -111,6 +111,7 @@ services:
       # docker run bind mounts are resolved by the host daemon, not inside this container.
       EVELAND_HOST_DATA_DIR: ${EVELAND_HOST_DATA_DIR:-${PWD}/.eveland-data}
       EVELAND_RUNTIME: docker
+      EVELAND_GIT_CLONE_TIMEOUT_MS: ${EVELAND_GIT_CLONE_TIMEOUT_MS:-120000}
       EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
       EVELAND_GATEWAY_INTERNAL_URL: http://gateway:4080
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}

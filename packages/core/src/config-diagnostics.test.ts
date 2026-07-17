@@ -53,6 +53,18 @@ describe("configuration diagnostics", () => {
     );
   });
 
+  test("reports the effective Git clone timeout for the worker", () => {
+    const defaults = createConfigurationSnapshot("worker", {});
+    const configured = createConfigurationSnapshot("worker", { EVELAND_GIT_CLONE_TIMEOUT_MS: "45000" });
+
+    expect(defaults.entries).toContainEqual(
+      expect.objectContaining({ name: "EVELAND_GIT_CLONE_TIMEOUT_MS", value: "120000", source: "default" }),
+    );
+    expect(configured.entries).toContainEqual(
+      expect.objectContaining({ name: "EVELAND_GIT_CLONE_TIMEOUT_MS", value: "45000", source: "environment" }),
+    );
+  });
+
   test("does not replace an explicitly empty secret with a development fallback", () => {
     const snapshot = createConfigurationSnapshot("api", { APP_SECRET_KEY: "" });
 

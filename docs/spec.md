@@ -188,6 +188,12 @@ Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一
 * 识别项目配置、agent、tools、skills、schedules
 * 创建 Source Revision
 
+Git 拉取由 worker 以非交互方式执行，默认最多等待 120 秒；可通过
+`EVELAND_GIT_CLONE_TIMEOUT_MS` 调整。超时或 Git 失败必须终止拉取、清理未完成的
+job source 目录、将 job 和 Project 标记为失败，并保存经过限长和凭据脱敏的错误。
+Project 页面展示最近 Git import job 的 queued/running/failed 状态，在活动期间自动刷新，
+失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
+
 Eveland 当前只运行 Eve 0.24.x Agent。允许精确的 0.24 patch、锚定在
 0.24 patch 上的 `~`/`^` range，以及 `0.24` / `0.24.x` / `0.24.*`；缺少
 Eve 依赖或任何可能解析到 0.24.x 之外的声明都必须 fail closed，并明确提醒

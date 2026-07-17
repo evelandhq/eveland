@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BadgeCheckIcon } from "lucide-react";
-import { getAgentEndpoints, getDeploymentOverview, getEveVersion, getLogs, getProject, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
+import { getAgentEndpoints, getDeploymentOverview, getEveVersion, getLogs, getProject, getProjectJobs, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
 import { ProjectDangerZone } from "@/components/project-danger-zone";
@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectOverviewPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const [project, endpoints, eveVersion, sessions, schedules, logs, deploymentOverview, variantMetrics] = await Promise.all([
+  const [project, jobs, endpoints, eveVersion, sessions, schedules, logs, deploymentOverview, variantMetrics] = await Promise.all([
     getProject(projectId),
+    getProjectJobs(projectId),
     getAgentEndpoints(projectId),
     getEveVersion(projectId),
     getSessions(projectId),
@@ -22,6 +23,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
     getVariantMetrics(projectId),
   ]);
   const recentFailureLog = project?.status === "failed" || project?.deploymentStatus === "failed" ? findRecentFailureLog(logs) : null;
+  const latestImportJob = jobs.find((job) => job.type === "import_source") ?? null;
   const stableRoute = deploymentOverview.routes.find((route) => route.kind === "project") ?? null;
 
   return (
@@ -51,6 +53,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
             importKind={project?.importKind === "git" ? "git" : "zip"}
             canSync={project?.importKind === "git" && Boolean(project?.gitUrl)}
             canDeploy={Boolean(project?.sourceRevisionId)}
+            importJob={latestImportJob}
           />
         </div>
         <dl className="grid grid-cols-2 gap-px bg-border text-sm">

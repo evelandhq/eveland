@@ -580,6 +580,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     return c.json({ project });
   });
 
+  app.get("/projects/:projectId/jobs", async (c) => {
+    const projectId = c.req.param("projectId");
+    const project = await store.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const projectJobs = await store.listProjectJobs(projectId, { type: "import_source" });
+    return c.json({
+      jobs: projectJobs.map((job) => ({ ...job, payload: {} })),
+    });
+  });
+
   app.get("/projects/:projectId/endpoints", async (c) => {
     const routes = await store.listProjectRoutes(c.req.param("projectId"));
     if (routes.length === 0) return c.json({ error: "Agent endpoints not found" }, 404);

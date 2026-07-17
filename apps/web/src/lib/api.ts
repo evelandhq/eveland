@@ -238,7 +238,7 @@ export type ModelUsageEvent = {
 export type Job = {
   id: string;
   projectId: string;
-  type: "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "archive_deployment" | "delete_project";
+  type: "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "ensure_deployment_running" | "archive_deployment" | "delete_project";
   status: "queued" | "running" | "completed" | "failed";
   payload: Record<string, unknown>;
   attempts: number;
@@ -246,6 +246,36 @@ export type Job = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type ProjectImportNotice = {
+  active: boolean;
+  title: string;
+  detail: string;
+};
+
+export function getProjectImportNotice(job: Job | null): ProjectImportNotice | null {
+  if (job?.type !== "import_source") return null;
+  if (job.status === "queued") {
+    return {
+      active: true,
+      title: "Repository fetch queued",
+      detail: "Waiting for a worker to start fetching the repository.",
+    };
+  }
+  if (job.status === "running") {
+    return {
+      active: true,
+      title: "Fetching repository…",
+      detail: "The worker is cloning and validating the latest source.",
+    };
+  }
+  if (job.status !== "failed") return null;
+  return {
+    active: false,
+    title: "Repository fetch failed",
+    detail: job.lastError ?? "The repository could not be fetched. Check the worker logs and retry.",
+  };
+}
 
 export type LogLine = {
   id: string;

@@ -1751,6 +1751,34 @@ describe("api app", () => {
     });
   });
 
+  test("returns project job status without exposing job payloads", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({
+      name: "Visible Import Job",
+      importKind: "git",
+      gitUrl: "https://token@example.com/agent.git",
+    });
+    const job = await store.claimNextJob("worker-a");
+    await store.failJob(job!.id, "Repository fetch timed out after 120000ms.");
+    await store.enqueueJob(project.id, "build_deploy");
+    const buildJob = await store.claimNextJob("worker-a");
+    await store.failJob(buildJob!.id, "provider returned a sensitive build detail");
+
+    const response = await createApp(store).request(`/projects/${project.id}/jobs`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      jobs: [expect.objectContaining({
+        id: job!.id,
+        projectId: project.id,
+        type: "import_source",
+        status: "failed",
+        payload: {},
+        lastError: "Repository fetch timed out after 120000ms.",
+      })],
+    });
+  });
+
   test("syncs a git source without deploying when no deploy flag is sent", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Sync Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });

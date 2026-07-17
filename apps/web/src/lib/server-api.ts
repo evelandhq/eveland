@@ -7,6 +7,7 @@ import type {
   CollectorHealth,
   DeploymentOverview,
   EveVersionInfo,
+  Job,
   LogLine,
   ModelUsageEvent,
   Project,
@@ -27,6 +28,7 @@ const apiBaseUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "ht
 
 export const getProjects = () => apiGet<{ projects: Project[] }>("/projects").then((data) => data.projects);
 export const getProject = (projectId: string) => apiGet<{ project: Project | null }>(`/projects/${projectId}`).then((data) => data.project);
+export const getProjectJobs = (projectId: string) => apiGet<{ jobs: Job[] }>(`/projects/${projectId}/jobs`).then((data) => data.jobs);
 export const getAgentEndpoints = (projectId: string) =>
   apiGetOptional<AgentEndpoints>(`/projects/${projectId}/endpoints`).then((data) => data ?? { stable: null, previews: [] });
 export const getEveVersion = (projectId: string) =>

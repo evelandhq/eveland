@@ -233,6 +233,7 @@ const definitions: ConfigurationDefinition[] = [
   entry("EVELAND_CPU_QUOTA", ["worker"], "systemd CPUQuota limit applied per Deployment.", "200%"),
   entry("EVELAND_INTERNAL_PORT", ["worker"], "Container-internal port used by Docker Deployments.", "3000"),
   entry("EVELAND_DEPLOYMENT_PORT", ["worker"], "Start of the private host-port allocation range.", "41000"),
+  entry("EVELAND_GIT_CLONE_TIMEOUT_MS", ["worker"], "Maximum duration of a non-interactive Git source clone.", "120000"),
   entry("EVELAND_HEALTH_TIMEOUT_MS", ["worker"], "Time allowed for a Deployment to become healthy.", "15000"),
   entry("EVELAND_SCHEDULER_PREWARM_MS", ["worker"], "How far before nextRunAt a scheduler target is kept warm or proactively activated.", "60000"),
   entry("EVELAND_ACTIVATION_IDLE_TTL_MS", ["worker"], "Idle time after the final lease before a ready RuntimeInstance is stopped.", "300000"),
