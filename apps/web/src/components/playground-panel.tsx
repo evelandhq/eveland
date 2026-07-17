@@ -70,6 +70,7 @@ import {
 import { cancelPlaygroundTurn, createPlaygroundMessage } from "@/lib/client-api";
 import type { EveVersionInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { AgentConnectionSettings } from "@/components/agent-connection-settings";
 
 type PlaygroundPanelProps = {
   projectId: string;
@@ -100,6 +101,9 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           {eveVersion.version ?? "Unknown"}
         </Badge>
         <span>Requires {eveVersion.expected}</span>
+        <div className="ml-auto">
+          <AgentConnectionSettings projectId={projectId} />
+        </div>
       </div>
       <Conversation className="min-h-0">
         <ConversationContent className="mx-auto w-full max-w-3xl px-1 py-6 sm:px-6">

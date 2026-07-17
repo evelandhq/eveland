@@ -5,6 +5,7 @@ import { createBuildInfo } from "@eveland/core/build-info";
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createGatewayApp, type GatewayRepository, type ResolvedAgentRoute } from "./app.js";
 import { affinityBucketForRoute } from "@eveland/core/routing";
+import { AGENT_AUTH_ENVELOPE_HEADER, encodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 const gatewayServers: Array<ReturnType<typeof serve>> = [];
@@ -910,6 +911,72 @@ describe("Gateway", () => {
     await expect((await app.request("http://p-alpha.agent.localhost/", { headers: { host: "p-alpha.agent.localhost" } })).text()).resolves.toBe(
       "second",
     );
+  });
+
+  test("accepts credential envelopes only on the service-authenticated Playground path", async () => {
+    const requests: Array<{ host: string; authorization: string; envelope: string }> = [];
+    const upstream = await startUpstream((request, response) => {
+      requests.push({
+        host: request.headers.host ?? "",
+        authorization: request.headers.authorization ?? "",
+        envelope: String(request.headers[AGENT_AUTH_ENVELOPE_HEADER] ?? ""),
+      });
+      response.writeHead(202, { "content-type": "application/json", "x-eve-session-id": `eve_${requests.length}` });
+      response.end(JSON.stringify({ sessionId: `eve_${requests.length}` }));
+    });
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+    });
+    const canonical = encodeAgentAuthEnvelope({
+      version: 1,
+      authority: "canonical",
+      headers: [["authorization", "Bearer agent-token"]],
+    });
+    const local = encodeAgentAuthEnvelope({ version: 1, authority: "loopback", headers: [] });
+
+    const forged = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session", {
+      method: "POST",
+      headers: { [AGENT_AUTH_ENVELOPE_HEADER]: canonical, "content-type": "application/json" },
+      body: JSON.stringify({ message: "forged" }),
+    });
+    const canonicalResponse = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer service-secret",
+        [AGENT_AUTH_ENVELOPE_HEADER]: canonical,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ message: "canonical" }),
+    });
+    const localResponse = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer service-secret",
+        [AGENT_AUTH_ENVELOPE_HEADER]: local,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ message: "local" }),
+    });
+    const malformed = await app.request("http://gateway/internal/projects/proj_1/playground/eve/v1/session", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer service-secret",
+        [AGENT_AUTH_ENVELOPE_HEADER]: "malformed",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ message: "malformed" }),
+    });
+
+    expect(forged.status).toBe(404);
+    expect(canonicalResponse.status).toBe(202);
+    expect(localResponse.status).toBe(202);
+    expect(malformed.status).toBe(400);
+    expect(requests).toEqual([
+      { host: "p-alpha.agent.localhost", authorization: "Bearer agent-token", envelope: "" },
+      { host: `localhost:${upstream.port}`, authorization: "", envelope: "" },
+    ]);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { FileUIPart, UserContent } from "ai";
 import type { Job, ScheduleRun } from "./api";
 import type { PublicGitCredential } from "@eveland/core/contracts";
+import type { AgentAuthMethodDescriptor } from "@eveland/core/agent-auth";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -25,6 +26,45 @@ export type Invitation = {
   invitedByUserId: string;
   createdAt: string;
 };
+
+export type AgentConnectionView = {
+  id: string;
+  target: { kind: "managed-project"; projectId: string };
+  method: string;
+  securityRevision: number;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentAuthStatus =
+  | { state: "not_required" }
+  | { state: "credential_available" }
+  | { state: "interaction_required" }
+  | { state: "misconfigured"; message: string };
+
+export async function getAgentAuthMethods(): Promise<AgentAuthMethodDescriptor[]> {
+  return clientRequest<{ methods: AgentAuthMethodDescriptor[] }>("/agent-auth/methods", { method: "GET" })
+    .then((data) => data.methods);
+}
+
+export async function getProjectAgentConnection(projectId: string): Promise<{
+  connection: AgentConnectionView;
+  status: AgentAuthStatus;
+}> {
+  return clientRequest(`/projects/${projectId}/playground/connection`, { method: "GET" });
+}
+
+export async function updateAgentConnection(
+  connectionId: string,
+  input: { expectedSecurityRevision: number; method: string; config: Record<string, unknown> },
+): Promise<{ connection: AgentConnectionView; status: AgentAuthStatus }> {
+  return clientRequest(`/agent-connections/${connectionId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
 
 export async function signIn(email: string, password: string): Promise<CurrentMember> {
   await clientRequest("/api/auth/sign-in/email", {

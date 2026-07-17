@@ -43,6 +43,9 @@ import type {
   PublicGitCredential,
   SourcePreflight,
   SourcePreflightRecord,
+  AgentConnection,
+  AgentAuthCredential,
+  AgentAuthTransaction,
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -125,6 +128,11 @@ export function projectDeletionSourcePaths(payloads: unknown[]): string[] {
 
 export const DEFAULT_TEAM_ID = "team_local";
 
+export type AgentAuthCredentialKey = Pick<
+  AgentAuthCredential,
+  "agentConnectionId" | "securityRevision" | "authMethod" | "credentialScope" | "scopeSubject" | "credentialKey"
+>;
+
 export type Store = {
   listProjects(): Promise<Project[]>;
   isProjectSlugAvailable(slug: string): Promise<boolean>;
@@ -153,6 +161,58 @@ export type Store = {
   getGitCredential(userId: string, host: string): Promise<GitCredentialRecord | null>;
   upsertGitCredential(userId: string, host: string, encryptedToken: string): Promise<GitCredentialRecord>;
   deleteGitCredential(userId: string, credentialId: string): Promise<boolean>;
+  createAgentConnection(input: {
+    id?: string;
+    target: AgentConnection["target"];
+    method: string;
+    configEncrypted: string;
+  }): Promise<AgentConnection>;
+  getAgentConnection(agentConnectionId: string): Promise<AgentConnection | null>;
+  getProjectAgentConnection(projectId: string): Promise<AgentConnection | null>;
+  updateAgentConnection(input: {
+    id: string;
+    expectedSecurityRevision: number;
+    method: string;
+    configEncrypted: string;
+    securityChanged: boolean;
+  }): Promise<AgentConnection | null>;
+  putAgentAuthCredential(input: AgentAuthCredentialKey & {
+    payloadEncrypted: string;
+    expiresAt: Date | null;
+  }): Promise<AgentAuthCredential>;
+  getAgentAuthCredential(key: AgentAuthCredentialKey): Promise<AgentAuthCredential | null>;
+  deleteAgentAuthCredential(key: AgentAuthCredentialKey, expectedRotationSeq: number): Promise<boolean>;
+  replaceAgentAuthCredential(input: AgentAuthCredentialKey & {
+    expectedRotationSeq: number;
+    payloadEncrypted: string;
+    expiresAt: Date | null;
+  }): Promise<AgentAuthCredential | null>;
+  claimAgentAuthCredentialRefresh(input: AgentAuthCredentialKey & {
+    expectedRotationSeq: number;
+    owner: string;
+    leaseId: string;
+    leaseUntil: Date;
+    now: Date;
+  }): Promise<AgentAuthCredential | null>;
+  completeAgentAuthCredentialRefresh(input: AgentAuthCredentialKey & {
+    expectedRotationSeq: number;
+    owner: string;
+    leaseId: string;
+    payloadEncrypted: string;
+    expiresAt: Date | null;
+  }): Promise<AgentAuthCredential | null>;
+  releaseAgentAuthCredentialRefresh(input: AgentAuthCredentialKey & {
+    expectedRotationSeq: number;
+    owner: string;
+    leaseId: string;
+  }): Promise<AgentAuthCredential | null>;
+  createAgentAuthTransaction(input: {
+    agentConnectionId: string;
+    stateHash: string;
+    payloadEncrypted: string;
+    expiresAt: Date;
+  }): Promise<AgentAuthTransaction>;
+  consumeAgentAuthTransaction(stateHash: string, now?: Date): Promise<AgentAuthTransaction | null>;
   requestProjectDeletion(projectId: string): Promise<ProjectDeletionRequest>;
   setProjectDeletionFailed(projectId: string, error: string): Promise<Project | null>;
   deleteProject(projectId: string): Promise<boolean>;
@@ -334,6 +394,9 @@ type MemoryState = {
   projects: Project[];
   gitCredentials: GitCredentialRecord[];
   sourcePreflights: SourcePreflightRecord[];
+  agentConnections: AgentConnection[];
+  agentAuthCredentials: AgentAuthCredential[];
+  agentAuthTransactions: AgentAuthTransaction[];
   secrets: SecretRecord[];
   jobs: Job[];
   schedules: ScheduleRecord[];
@@ -362,6 +425,9 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     projects: initialState?.projects ?? [],
     gitCredentials: initialState?.gitCredentials ?? [],
     sourcePreflights: initialState?.sourcePreflights ?? [],
+    agentConnections: initialState?.agentConnections ?? [],
+    agentAuthCredentials: initialState?.agentAuthCredentials ?? [],
+    agentAuthTransactions: initialState?.agentAuthTransactions ?? [],
     secrets: initialState?.secrets ?? [],
     jobs: initialState?.jobs ?? [],
     schedules: initialState?.schedules ?? [],
@@ -645,6 +711,175 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return state.gitCredentials.length !== before;
     },
 
+    async createAgentConnection(input) {
+      if (!state.projects.some((project) => project.id === input.target.projectId)) {
+        throw new Error("Cannot create an Agent Connection for an unknown Project.");
+      }
+      if (state.agentConnections.some((connection) => connection.target.projectId === input.target.projectId)) {
+        throw new Error("A managed Agent Connection already exists for this Project.");
+      }
+      const now = new Date().toISOString();
+      const connection: AgentConnection = {
+        id: input.id ?? createId("acon"),
+        target: input.target,
+        method: input.method,
+        configEncrypted: input.configEncrypted,
+        securityRevision: 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.agentConnections.push(connection);
+      return { ...connection, target: { ...connection.target } };
+    },
+
+    async getAgentConnection(agentConnectionId) {
+      const connection = state.agentConnections.find((candidate) => candidate.id === agentConnectionId);
+      return connection ? { ...connection, target: { ...connection.target } } : null;
+    },
+
+    async getProjectAgentConnection(projectId) {
+      const connection = state.agentConnections.find((candidate) => candidate.target.projectId === projectId);
+      return connection ? { ...connection, target: { ...connection.target } } : null;
+    },
+
+    async updateAgentConnection(input) {
+      const connection = state.agentConnections.find(
+        (candidate) => candidate.id === input.id && candidate.securityRevision === input.expectedSecurityRevision,
+      );
+      if (!connection) return null;
+      connection.method = input.method;
+      connection.configEncrypted = input.configEncrypted;
+      if (input.securityChanged) connection.securityRevision += 1;
+      connection.updatedAt = new Date().toISOString();
+      return { ...connection, target: { ...connection.target } };
+    },
+
+    async putAgentAuthCredential(input) {
+      assertCredentialScope(input);
+      const existing = state.agentAuthCredentials.find((credential) => agentAuthCredentialMatches(credential, input));
+      const now = new Date().toISOString();
+      if (existing) {
+        existing.payloadEncrypted = input.payloadEncrypted;
+        existing.expiresAt = input.expiresAt?.toISOString() ?? null;
+        existing.rotationSeq += 1;
+        existing.refreshOwner = null;
+        existing.refreshLeaseId = null;
+        existing.refreshLeaseUntil = null;
+        existing.updatedAt = now;
+        return { ...existing };
+      }
+      const credential: AgentAuthCredential = {
+        ...input,
+        expiresAt: input.expiresAt?.toISOString() ?? null,
+        rotationSeq: 0,
+        refreshOwner: null,
+        refreshLeaseId: null,
+        refreshLeaseUntil: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.agentAuthCredentials.push(credential);
+      return { ...credential };
+    },
+
+    async getAgentAuthCredential(key) {
+      const credential = state.agentAuthCredentials.find((candidate) => agentAuthCredentialMatches(candidate, key));
+      return credential ? { ...credential } : null;
+    },
+
+    async deleteAgentAuthCredential(key, expectedRotationSeq) {
+      const index = state.agentAuthCredentials.findIndex(
+        (credential) => agentAuthCredentialMatches(credential, key) && credential.rotationSeq === expectedRotationSeq,
+      );
+      if (index < 0) return false;
+      state.agentAuthCredentials.splice(index, 1);
+      return true;
+    },
+
+    async replaceAgentAuthCredential(input) {
+      const credential = state.agentAuthCredentials.find(
+        (candidate) => agentAuthCredentialMatches(candidate, input) && candidate.rotationSeq === input.expectedRotationSeq,
+      );
+      if (!credential) return null;
+      credential.payloadEncrypted = input.payloadEncrypted;
+      credential.expiresAt = input.expiresAt?.toISOString() ?? null;
+      credential.rotationSeq += 1;
+      credential.refreshOwner = null;
+      credential.refreshLeaseId = null;
+      credential.refreshLeaseUntil = null;
+      credential.updatedAt = new Date().toISOString();
+      return { ...credential };
+    },
+
+    async claimAgentAuthCredentialRefresh(input) {
+      const credential = state.agentAuthCredentials.find(
+        (candidate) => agentAuthCredentialMatches(candidate, input)
+          && candidate.rotationSeq === input.expectedRotationSeq
+          && (!candidate.refreshLeaseUntil || candidate.refreshLeaseUntil <= input.now.toISOString()),
+      );
+      if (!credential) return null;
+      credential.refreshOwner = input.owner;
+      credential.refreshLeaseId = input.leaseId;
+      credential.refreshLeaseUntil = input.leaseUntil.toISOString();
+      credential.updatedAt = input.now.toISOString();
+      return { ...credential };
+    },
+
+    async completeAgentAuthCredentialRefresh(input) {
+      const credential = state.agentAuthCredentials.find(
+        (candidate) => agentAuthCredentialMatches(candidate, input)
+          && candidate.rotationSeq === input.expectedRotationSeq
+          && candidate.refreshOwner === input.owner
+          && candidate.refreshLeaseId === input.leaseId,
+      );
+      if (!credential) return null;
+      credential.payloadEncrypted = input.payloadEncrypted;
+      credential.expiresAt = input.expiresAt?.toISOString() ?? null;
+      credential.rotationSeq += 1;
+      credential.refreshOwner = null;
+      credential.refreshLeaseId = null;
+      credential.refreshLeaseUntil = null;
+      credential.updatedAt = new Date().toISOString();
+      return { ...credential };
+    },
+
+    async releaseAgentAuthCredentialRefresh(input) {
+      const credential = state.agentAuthCredentials.find(
+        (candidate) => agentAuthCredentialMatches(candidate, input)
+          && candidate.rotationSeq === input.expectedRotationSeq
+          && candidate.refreshOwner === input.owner
+          && candidate.refreshLeaseId === input.leaseId,
+      );
+      if (!credential) return null;
+      credential.refreshOwner = null;
+      credential.refreshLeaseId = null;
+      credential.refreshLeaseUntil = null;
+      credential.updatedAt = new Date().toISOString();
+      return { ...credential };
+    },
+
+    async createAgentAuthTransaction(input) {
+      if (state.agentAuthTransactions.some((transaction) => transaction.stateHash === input.stateHash)) {
+        throw new Error("Agent Auth transaction already exists.");
+      }
+      const transaction: AgentAuthTransaction = {
+        agentConnectionId: input.agentConnectionId,
+        stateHash: input.stateHash,
+        payloadEncrypted: input.payloadEncrypted,
+        expiresAt: input.expiresAt.toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+      state.agentAuthTransactions.push(transaction);
+      return { ...transaction };
+    },
+
+    async consumeAgentAuthTransaction(stateHash, now = new Date()) {
+      const index = state.agentAuthTransactions.findIndex((transaction) => transaction.stateHash === stateHash);
+      if (index < 0) return null;
+      const [transaction] = state.agentAuthTransactions.splice(index, 1);
+      return transaction && transaction.expiresAt > now.toISOString() ? { ...transaction } : null;
+    },
+
     async requestProjectDeletion(projectId) {
       const project = state.projects.find((candidate) => candidate.id === projectId);
       if (!project) return { outcome: "not_found" };
@@ -711,6 +946,16 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       state.schedules = state.schedules.filter((schedule) => schedule.projectId !== projectId);
       state.jobs = state.jobs.filter((job) => job.projectId !== projectId);
       state.secrets = state.secrets.filter((secret) => secret.projectId !== projectId);
+      const connectionIds = state.agentConnections
+        .filter((connection) => connection.target.projectId === projectId)
+        .map((connection) => connection.id);
+      state.agentAuthCredentials = state.agentAuthCredentials.filter(
+        (credential) => !connectionIds.includes(credential.agentConnectionId),
+      );
+      state.agentAuthTransactions = state.agentAuthTransactions.filter(
+        (transaction) => !connectionIds.includes(transaction.agentConnectionId),
+      );
+      state.agentConnections = state.agentConnections.filter((connection) => connection.target.projectId !== projectId);
       state.projects = state.projects.filter((project) => project.id !== projectId);
       return state.projects.length !== before;
     },
@@ -2344,6 +2589,24 @@ function upsertMemoryRoute(
   };
   state.agentRoutes.push(route);
   return route;
+}
+
+function agentAuthCredentialMatches(credential: AgentAuthCredential, key: AgentAuthCredentialKey): boolean {
+  return credential.agentConnectionId === key.agentConnectionId
+    && credential.securityRevision === key.securityRevision
+    && credential.authMethod === key.authMethod
+    && credential.credentialScope === key.credentialScope
+    && credential.scopeSubject === key.scopeSubject
+    && credential.credentialKey === key.credentialKey;
+}
+
+function assertCredentialScope(key: AgentAuthCredentialKey): void {
+  if (
+    (key.credentialScope === "connection" && key.scopeSubject !== "")
+    || (key.credentialScope === "principal" && key.scopeSubject === "")
+  ) {
+    throw new Error("Agent credential scope subject does not match its scope.");
+  }
 }
 
 function createJob(projectId: string, type: JobType, payload: Record<string, unknown>): Job {

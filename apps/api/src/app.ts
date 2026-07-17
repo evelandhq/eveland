@@ -7,6 +7,13 @@ import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
+import { encodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
+import {
+  agentAuthConfigsEqual,
+  createAgentAuthRegistry,
+  type AgentAuthProviderRegistration,
+} from "@eveland/agent-auth";
+import { openAgentAuthConfig, sealAgentAuthConfig } from "@eveland/agent-auth/sealed-config";
 import type {
   ActivationLeaseClaim,
   AuthPrincipal,
@@ -37,6 +44,7 @@ import {
 } from "@eveland/core/server/scheduler-dispatch";
 import {
   inferProjectSlugFromGitUrl,
+  createId,
   normalizeGitHttpHost,
   PROJECT_SLUG_MAX_LENGTH,
   PROJECT_SLUG_PATTERN,
@@ -117,6 +125,12 @@ const secretSchema = environmentVariableSchema;
 
 const playgroundMessageSchema = z.object({
   message: z.string().min(1),
+});
+
+const updateAgentConnectionSchema = z.object({
+  expectedSecurityRevision: z.number().int().positive(),
+  method: z.string().min(1),
+  config: z.unknown(),
 });
 
 const invitationSchema = z.object({
@@ -248,6 +262,7 @@ export type AppOptions = {
   runtimeActivationLeaseTtlMs?: number;
   runtimeActivationWaitTimeoutMs?: number;
   sourcePreflightTtlMs?: number;
+  agentAuthProviders?: AgentAuthProviderRegistration[];
   runtimeActivationWaiter?: (
     claim: ActivationLeaseClaim,
     input: { signal: AbortSignal; timeoutMs: number },
@@ -278,6 +293,64 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
+  const agentAuthRegistry = createAgentAuthRegistry(options.agentAuthProviders);
+  const ensureProjectAgentConnection = async (projectId: string) => {
+    const existing = await store.getProjectAgentConnection(projectId);
+    if (existing) return existing;
+    const id = createId("acon");
+    return store.createAgentConnection({
+      id,
+      target: { kind: "managed-project", projectId },
+      method: "local-dev",
+      configEncrypted: sealAgentAuthConfig({}, appSecretKey, {
+        agentConnectionId: id,
+        method: "local-dev",
+        securityRevision: 1,
+      }),
+    });
+  };
+  const readConnectionConfig = (connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>): unknown =>
+    openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
+      agentConnectionId: connection.id,
+      method: connection.method,
+      securityRevision: connection.securityRevision,
+    });
+  const publicConnection = async (connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>) => {
+    const provider = agentAuthRegistry.get(connection.method);
+    if (!provider) {
+      return {
+        connection: { ...connection, configEncrypted: undefined, config: {} },
+        status: { state: "misconfigured" as const, message: `Unsupported Agent Auth Method: ${connection.method}.` },
+      };
+    }
+    try {
+      const config = readConnectionConfig(connection);
+      const { configEncrypted: _configEncrypted, ...safe } = connection;
+      return {
+        connection: { ...safe, config: provider.redactConfig(config) },
+        status: {
+          state: provider.descriptor.interactive
+            ? "interaction_required" as const
+            : provider.method === "local-dev" || provider.method === "none"
+              ? "not_required" as const
+              : "credential_available" as const,
+        },
+      };
+    } catch {
+      const { configEncrypted: _configEncrypted, ...safe } = connection;
+      return {
+        connection: { ...safe, config: provider.redactConfig({}) },
+        status: { state: "misconfigured" as const, message: "The stored Agent Auth configuration cannot be decrypted." },
+      };
+    }
+  };
+  const resolveProjectAgentAuthEnvelope = async (projectId: string, callerPrincipalId: string): Promise<string> => {
+    const connection = await ensureProjectAgentConnection(projectId);
+    const provider = agentAuthRegistry.get(connection.method);
+    if (!provider) throw new Error(`Unsupported Agent Auth Method: ${connection.method}.`);
+    const config = readConnectionConfig(connection);
+    return encodeAgentAuthEnvelope(await provider.getCredential({ config, callerPrincipalId }));
+  };
   const enqueueLiveDeploymentRestarts = async (projectId: string) => {
     const deployments = (await store.listDeployments(projectId)).filter(
       (deployment) => deployment.status === "running" || deployment.status === "draining",
@@ -569,6 +642,55 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       }
     });
   }
+
+  app.get("/agent-auth/methods", (c) => c.json({ methods: agentAuthRegistry.listDescriptors() }));
+
+  app.get("/projects/:projectId/playground/connection", async (c) => {
+    const project = await store.getProject(c.req.param("projectId"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    return c.json(await publicConnection(await ensureProjectAgentConnection(project.id)));
+  });
+
+  app.put("/agent-connections/:connectionId", async (c) => {
+    const parsed = updateAgentConnectionSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid Agent Connection", issues: parsed.error.issues }, 400);
+    const connection = await store.getAgentConnection(c.req.param("connectionId"));
+    if (!connection) return c.json({ error: "Agent Connection not found" }, 404);
+    if (connection.securityRevision !== parsed.data.expectedSecurityRevision) {
+      return c.json({ error: "Agent Connection was updated by another request" }, 409);
+    }
+    const provider = agentAuthRegistry.get(parsed.data.method);
+    if (!provider) return c.json({ error: `Unsupported Agent Auth Method: ${parsed.data.method}.` }, 422);
+    let previous: unknown;
+    if (connection.method === parsed.data.method) {
+      try {
+        previous = readConnectionConfig(connection);
+      } catch {
+        previous = undefined;
+      }
+    }
+    let normalized: unknown;
+    try {
+      normalized = provider.normalizeConfig(parsed.data.config, previous);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration." }, 422);
+    }
+    const securityChanged = connection.method !== parsed.data.method || !agentAuthConfigsEqual(previous, normalized);
+    const securityRevision = connection.securityRevision + (securityChanged ? 1 : 0);
+    const updated = await store.updateAgentConnection({
+      id: connection.id,
+      expectedSecurityRevision: connection.securityRevision,
+      method: parsed.data.method,
+      configEncrypted: sealAgentAuthConfig(normalized, appSecretKey, {
+        agentConnectionId: connection.id,
+        method: parsed.data.method,
+        securityRevision,
+      }),
+      securityChanged,
+    });
+    if (!updated) return c.json({ error: "Agent Connection was updated by another request" }, 409);
+    return c.json(await publicConnection(updated));
+  });
 
   const rejectProjectMutationsWhileDeleting: MiddlewareHandler = async (c, next) => {
     const method = c.req.method;
@@ -968,6 +1090,15 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
+    let agentAuthEnvelope: string;
+    try {
+      agentAuthEnvelope = await resolveProjectAgentAuthEnvelope(projectId, currentUserId(c));
+    } catch (error) {
+      return c.json({
+        error: "Agent Connection is not ready",
+        detail: error instanceof Error ? error.message : "Invalid Agent Auth configuration.",
+      }, 409);
+    }
     let platformSession = pathSessionId ? await store.getSessionByEveSessionId(projectId, pathSessionId) : null;
     if (pathSessionId && !platformSession) return c.json({ error: "Playground session not found" }, 404);
     const eveVersion = platformSession?.deploymentId
@@ -1006,6 +1137,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         headers: c.req.raw.headers,
         body,
         signal: c.req.raw.signal,
+        agentAuthEnvelope,
       });
     } catch (error) {
       if (platformSession && !isCancel) {

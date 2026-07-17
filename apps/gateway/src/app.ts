@@ -2,6 +2,11 @@ import http from "node:http";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Readable } from "node:stream";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
+import {
+  AGENT_AUTH_ENVELOPE_HEADER,
+  decodeAgentAuthEnvelope,
+  type AgentAuthEnvelope,
+} from "@eveland/core/agent-auth";
 import { createConfigurationSnapshot, type ConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import type { DeploymentRecord, ResolvedAgentRoute, SessionBinding as GatewaySessionBinding } from "@eveland/core/contracts";
 import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
@@ -85,6 +90,12 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
       return context.json({ error: "Not found" }, 404);
     }
+    let agentAuth: AgentAuthEnvelope;
+    try {
+      agentAuth = readAgentAuthEnvelope(context.req.header(AGENT_AUTH_ENVELOPE_HEADER));
+    } catch {
+      return context.json({ error: "Invalid Agent Auth envelope" }, 400);
+    }
 
     const requestUrl = new URL(context.req.url);
     const playgroundPrefix = `/internal/projects/${encodeURIComponent(context.req.param("projectId"))}/playground`;
@@ -133,12 +144,13 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       const body = requestHasBody(context.req.method)
         ? await readLimitedBody(context.req.raw.body, PLAYGROUND_MAX_TRANSPORT_BYTES, context.req.raw.signal)
         : null;
-      const authority = `localhost:${target.hostPort}`;
+      const endpointPort = activation?.endpointPort ?? target.hostPort;
+      const authority = agentAuth.authority === "loopback" ? `localhost:${endpointPort}` : route.hostname;
       upstream = await proxyToDeployment({
-        port: activation?.endpointPort ?? target.hostPort,
+        port: endpointPort,
         path: `${evePath}${requestUrl.search}`,
         method: context.req.method,
-        headers: buildInternalPlaygroundHeaders(context.req.raw.headers, authority),
+        headers: buildInternalPlaygroundHeaders(context.req.raw.headers, authority, agentAuth.headers),
         body,
         signal: context.req.raw.signal,
         timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
@@ -837,13 +849,24 @@ function buildUpstreamHeaders(
   return headers;
 }
 
-function buildInternalPlaygroundHeaders(input: Headers, authority: string): Headers {
+function buildInternalPlaygroundHeaders(
+  input: Headers,
+  authority: string,
+  credentials: AgentAuthEnvelope["headers"] = [],
+): Headers {
   const headers = new Headers({ host: authority });
   const accept = input.get("accept");
   const contentType = input.get("content-type");
   if (accept) headers.set("accept", accept);
   if (contentType) headers.set("content-type", contentType);
+  for (const [name, value] of credentials) headers.set(name, value);
   return headers;
+}
+
+function readAgentAuthEnvelope(value: string | undefined): AgentAuthEnvelope {
+  return value
+    ? decodeAgentAuthEnvelope(value)
+    : { version: 1, authority: "loopback", headers: [] };
 }
 
 function remoteAddress(context: Parameters<typeof getConnInfo>[0]): string | null {

@@ -182,6 +182,22 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_COLD_START_TIMEOUT_MS` | `30000` | Maximum time Gateway waits for API/Worker to make a dormant Deployment ready before returning 503/504. |
 | `EVELAND_ACTIVATION_RENEW_INTERVAL_MS` | `60000` | Gateway renewal interval while an upstream response stream is still active. |
 | `EVELAND_SCHEDULER_RUNTIME_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Authenticates the injected private Scheduler Channel and its API callback; keep it independent from Gateway and Better Auth secrets. |
+
+### Agent Connection credential boundary
+
+Playground route-auth credentials are not control-plane cookies and are not Gateway configuration.
+API owns the encrypted Agent Connection config and uses `APP_SECRET_KEY` to open it for a single request.
+It then sends a versioned credential envelope over the existing private `/internal/projects/:projectId/playground/eve/*`
+path. Gateway accepts that envelope only after `EVELAND_GATEWAY_SERVICE_TOKEN` succeeds, validates its authority
+and Header policy, applies the credential last, and never persists it.
+
+Keep `/internal/*` excluded from every public Traefik route. A missing envelope currently retains the
+service-authenticated loopback behavior for rolling-upgrade compatibility, but current API instances always send an
+explicit envelope. `local-dev` is the only method that selects loopback authority; `none`, Basic, Bearer, and custom
+headers use the canonical Project hostname so Eve cannot mistake a public-style request for local development.
+Changing a normalized Connection method/config increments its security revision; unchanged re-saves do not.
+Connection password, token, and custom Header values must never be copied into Compose files, systemd env files,
+runtime diagnostics, logs, Source Revisions, Releases, observer events, or browser payloads.
 | `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
 | `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
 | `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
