@@ -417,6 +417,14 @@ export function createPostgresStore(database: Database): Store {
               persistAfterImport: preflight.persistCredential,
             }
           : null;
+        if (input.secrets?.length) {
+          await tx.insert(secrets).values(input.secrets.map((secret) => ({
+            id: createId("secret"),
+            projectId: projectRow.id,
+            key: secret.key,
+            encryptedValue: secret.encryptedValue,
+          })));
+        }
         await tx.insert(jobs).values({
           id: createId("job"),
           projectId: projectRow.id,

@@ -8,12 +8,17 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckIcon,
+  ChevronDownIcon,
   CircleIcon,
   CopyIcon,
+  EyeIcon,
+  EyeOffIcon,
   FileArchiveIcon,
   GitBranchIcon,
+  PlusIcon,
   RocketIcon,
   TerminalIcon,
+  Trash2Icon,
   XIcon,
 } from "lucide-react";
 import {
@@ -27,13 +32,14 @@ import type { PublicGitCredential, SourcePreflight } from "@eveland/core/contrac
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { getGitCredentials } from "@/lib/client-api";
 import type { AgentEndpoints, Job, LogLine, Project } from "@/lib/api";
-import { getNewProjectProgress } from "@/lib/new-project";
+import { getNewProjectProgress, validateNewProjectEnvironmentVariables } from "@/lib/new-project";
 import { cn } from "@/lib/utils";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -42,6 +48,7 @@ const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no
 type Step = "source" | "configure" | "deploy";
 type SourceKind = "git" | "zip";
 type Availability = "idle" | "checking" | "available" | "unavailable" | "error";
+type EnvironmentVariableDraft = { id: number; key: string; value: string; visible: boolean };
 
 export function NewProjectFlow() {
   const [step, setStep] = useState<Step>("source");
@@ -54,6 +61,8 @@ export function NewProjectFlow() {
   const [savedCredentials, setSavedCredentials] = useState<PublicGitCredential[]>([]);
   const [availability, setAvailability] = useState<Availability>("idle");
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [environmentOpen, setEnvironmentOpen] = useState(false);
+  const [environmentVariables, setEnvironmentVariables] = useState<EnvironmentVariableDraft[]>([]);
   const [pending, setPending] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -62,6 +71,7 @@ export function NewProjectFlow() {
   const [endpoints, setEndpoints] = useState<AgentEndpoints>({ stable: null, previews: [] });
   const [copied, setCopied] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const nextEnvironmentVariableId = useRef(1);
 
   const inferredGitName = inferProjectSlugFromGitUrl(gitUrl);
   const inferredZipName = archive ? safeProjectSlug(archive.name.replace(/\.zip$/i, "")) : null;
@@ -71,6 +81,10 @@ export function NewProjectFlow() {
   const savedCredential = savedCredentials.find((credential) => credential.host === gitHost);
   const patUnsupported = sourceKind === "git" && gitlabPat.length > 0 && gitHost === null;
   const progress = useMemo(() => getNewProjectProgress(project, jobs), [jobs, project]);
+  const environmentValidation = useMemo(
+    () => validateNewProjectEnvironmentVariables(environmentVariables),
+    [environmentVariables],
+  );
 
   useEffect(() => {
     if (step !== "source" || !preflight || !["queued", "running"].includes(preflight.status)) return;
@@ -209,7 +223,14 @@ export function NewProjectFlow() {
 
   async function deploy(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!preflight || preflight.status !== "completed" || !name || nameInvalid || availability !== "available") return;
+    if (
+      !preflight
+      || preflight.status !== "completed"
+      || !name
+      || nameInvalid
+      || availability !== "available"
+      || environmentValidation.invalid
+    ) return;
 
     setPending(true);
     setCreateError(null);
@@ -219,7 +240,15 @@ export function NewProjectFlow() {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, preflightId: preflight.id, deployAfterImport: true }),
+        body: JSON.stringify({
+          name,
+          preflightId: preflight.id,
+          deployAfterImport: true,
+          environmentVariables: environmentValidation.variables.map((variable) => ({
+            key: variable.key.trim(),
+            value: variable.value,
+          })),
+        }),
       });
     } catch {
       setPending(false);
@@ -240,6 +269,33 @@ export function NewProjectFlow() {
     setJobs([]);
     setLogs([]);
     setStep("deploy");
+  }
+
+  function addEnvironmentVariable() {
+    setEnvironmentOpen(true);
+    setEnvironmentVariables((current) => [
+      ...current,
+      { id: nextEnvironmentVariableId.current++, key: "", value: "", visible: false },
+    ]);
+  }
+
+  function setEnvironmentVariable(id: number, patch: Partial<EnvironmentVariableDraft>) {
+    setEnvironmentVariables((current) => current.map((variable) =>
+      variable.id === id ? { ...variable, ...patch } : variable,
+    ));
+  }
+
+  function removeEnvironmentVariable(id: number) {
+    setEnvironmentVariables((current) => current.filter((variable) => variable.id !== id));
+  }
+
+  function setEnvironmentVariablesOpen(open: boolean) {
+    setEnvironmentOpen(open);
+    if (open) {
+      setEnvironmentVariables((current) => current.length > 0
+        ? current
+        : [{ id: nextEnvironmentVariableId.current++, key: "", value: "", visible: false }]);
+    }
   }
 
   return (
@@ -426,6 +482,118 @@ export function NewProjectFlow() {
 
               </FieldGroup>
 
+              <Collapsible
+                open={environmentOpen}
+                onOpenChange={setEnvironmentVariablesOpen}
+                className="overflow-hidden rounded-xl border bg-card"
+              >
+                <CollapsibleTrigger type="button" className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50">
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="font-medium">Environment variables</span>
+                    <span className="text-sm font-normal text-muted-foreground">
+                      Optional secrets and runtime configuration for the first deployment.
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                    {environmentValidation.variables.length > 0 ? (
+                      <span className="text-xs tabular-nums">{environmentValidation.variables.length} added</span>
+                    ) : null}
+                    <ChevronDownIcon className={cn("size-4 transition-transform", environmentOpen && "rotate-180")} />
+                  </span>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="border-t outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-top-2">
+                  <div className="flex flex-col gap-5 p-5">
+                    <p className="text-sm text-muted-foreground">
+                      Add provider keys such as <code className="font-mono text-foreground">OPENAI_API_KEY</code>. Values are encrypted before they are stored.
+                    </p>
+
+                    <AnimatePresence initial={false}>
+                      {environmentVariables.map((variable, index) => {
+                        const errors = environmentValidation.errors.get(variable.id);
+                        return (
+                          <motion.div
+                            key={variable.id}
+                            layout
+                            initial={{ opacity: 0, y: -6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, height: 0, marginTop: -8 }}
+                            className="grid gap-4 border-b pb-5 last:border-b-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                          >
+                            <Field data-invalid={Boolean(errors?.key) || undefined}>
+                              <FieldLabel htmlFor={`environment-key-${variable.id}`}>Key {index + 1}</FieldLabel>
+                              <Input
+                                id={`environment-key-${variable.id}`}
+                                value={variable.key}
+                                onChange={(event) => setEnvironmentVariable(variable.id, { key: event.target.value })}
+                                aria-invalid={Boolean(errors?.key)}
+                                autoCapitalize="characters"
+                                autoComplete="off"
+                                spellCheck={false}
+                                className="font-mono"
+                                placeholder="OPENAI_API_KEY"
+                              />
+                              {errors?.key ? <FieldError>{errors.key}</FieldError> : null}
+                            </Field>
+
+                            <Field data-invalid={Boolean(errors?.value) || undefined}>
+                              <FieldLabel htmlFor={`environment-value-${variable.id}`}>Value</FieldLabel>
+                              <div className="relative">
+                                <Input
+                                  id={`environment-value-${variable.id}`}
+                                  type={variable.visible ? "text" : "password"}
+                                  value={variable.value}
+                                  onChange={(event) => setEnvironmentVariable(variable.id, { value: event.target.value })}
+                                  aria-invalid={Boolean(errors?.value)}
+                                  autoComplete="new-password"
+                                  className="pr-10"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                  aria-label={variable.visible ? "Hide value" : "Show value"}
+                                  onClick={() => setEnvironmentVariable(variable.id, { visible: !variable.visible })}
+                                >
+                                  {variable.visible ? <EyeOffIcon /> : <EyeIcon />}
+                                </Button>
+                              </div>
+                              {errors?.value ? <FieldError>{errors.value}</FieldError> : null}
+                            </Field>
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="self-end text-muted-foreground hover:text-destructive sm:mb-0.5"
+                              aria-label="Remove variable"
+                              title="Remove variable"
+                              onClick={() => removeEnvironmentVariable(variable.id)}
+                            >
+                              <Trash2Icon />
+                            </Button>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-xs text-muted-foreground">Available to preview and stable deployments.</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={environmentVariables.length >= 50}
+                        onClick={addEnvironmentVariable}
+                      >
+                        <PlusIcon data-icon="inline-start" />
+                        Add variable
+                      </Button>
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
               {createError ? (
                 <Alert variant="destructive">
                   <AlertCircleIcon />
@@ -438,7 +606,7 @@ export function NewProjectFlow() {
                 type="submit"
                 size="lg"
                 className="w-full"
-                disabled={pending || nameInvalid || availability !== "available"}
+                disabled={pending || nameInvalid || availability !== "available" || environmentValidation.invalid}
               >
                 {pending ? <Spinner data-icon="inline-start" /> : <RocketIcon data-icon="inline-start" />}
                 {pending ? "Starting deployment…" : "Deploy"}

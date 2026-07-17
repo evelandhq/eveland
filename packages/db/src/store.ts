@@ -101,6 +101,8 @@ export type CreateProjectFromSourcePreflightResult =
   | { outcome: "not_ready" }
   | { outcome: "consumed" };
 
+export type InitialProjectSecret = Pick<SecretRecord, "key" | "encryptedValue">;
+
 export type ProjectDeletionRequest =
   | { outcome: "queued"; job: Job }
   | { outcome: "not_found" }
@@ -143,6 +145,7 @@ export type Store = {
     userId: string;
     name: string;
     deployAfterImport?: boolean;
+    secrets?: InitialProjectSecret[];
   }): Promise<CreateProjectFromSourcePreflightResult>;
   expireSourcePreflights(now?: Date, limit?: number): Promise<string[]>;
   getProject(projectId: string): Promise<Project | null>;
@@ -562,6 +565,16 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         updatedAt: now,
       };
       state.projects.push(project);
+      for (const secret of input.secrets ?? []) {
+        state.secrets.push({
+          id: createId("secret"),
+          projectId: project.id,
+          key: secret.key,
+          encryptedValue: secret.encryptedValue,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       state.jobs.push(createJob(project.id, "import_source", {
         importKind: preflight.kind,
         gitUrl: preflight.gitUrl,

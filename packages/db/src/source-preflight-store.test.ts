@@ -58,6 +58,10 @@ describe("source preflight store", () => {
       userId: "user_a",
       name: "validated-agent",
       deployAfterImport: true,
+      secrets: [
+        { key: "OPENAI_API_KEY", encryptedValue: "encrypted-openai-key" },
+        { key: "MODEL_NAME", encryptedValue: "encrypted-model-name" },
+      ],
     });
     expect(result.outcome).toBe("created");
     if (result.outcome !== "created") throw new Error("Expected project creation.");
@@ -72,6 +76,10 @@ describe("source preflight store", () => {
         deployAfterImport: true,
       },
     });
+    await expect(store.listSecretRecords(result.project.id)).resolves.toEqual([
+      expect.objectContaining({ key: "OPENAI_API_KEY", encryptedValue: "encrypted-openai-key" }),
+      expect.objectContaining({ key: "MODEL_NAME", encryptedValue: "encrypted-model-name" }),
+    ]);
     await expect(store.createProjectFromSourcePreflight({
       preflightId: preflight.id,
       userId: "user_a",

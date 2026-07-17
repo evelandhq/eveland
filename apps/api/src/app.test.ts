@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { describe, expect, test, vi } from "vitest";
 import { createBuildInfo } from "@eveland/core/build-info";
 import { createScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
+import { decryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
 import { createMemoryStore, type Store } from "@eveland/db";
 
@@ -410,11 +411,25 @@ describe("api app", () => {
     const projectResponse = await app.request("/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "validated-agent", preflightId: queued.preflight.id, deployAfterImport: true }),
+      body: JSON.stringify({
+        name: "validated-agent",
+        preflightId: queued.preflight.id,
+        deployAfterImport: true,
+        environmentVariables: [
+          { key: "OPENAI_API_KEY", value: "sk-first-deploy" },
+          { key: "MODEL_NAME", value: "gpt-5" },
+        ],
+      }),
     });
     expect(projectResponse.status).toBe(201);
     const created = await projectResponse.json() as { project: { id: string; name: string } };
     expect(created.project.name).toBe("validated-agent");
+    const secretRecords = await store.listSecretRecords(created.project.id);
+    expect(secretRecords.map((secret) => secret.key)).toEqual(["OPENAI_API_KEY", "MODEL_NAME"]);
+    expect(secretRecords.map((secret) => decryptSecretValue(
+      JSON.parse(secret.encryptedValue) as EncryptedSecret,
+      "eveland-test-secret-key-00000000",
+    ))).toEqual(["sk-first-deploy", "gpt-5"]);
     await expect(store.listProjectJobs(created.project.id)).resolves.toEqual([
       expect.objectContaining({
         type: "import_source",
@@ -425,6 +440,36 @@ describe("api app", () => {
         }),
       }),
     ]);
+  });
+
+  test("rejects duplicate initial environment variable keys before consuming a source preflight", async () => {
+    const store = createMemoryStore();
+    const app = createApp(store);
+
+    const response = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "duplicate-environment",
+        preflightId: "pre_duplicateEnvironment",
+        environmentVariables: [
+          { key: "OPENAI_API_KEY", value: "first" },
+          { key: "OPENAI_API_KEY", value: "second" },
+        ],
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid project input",
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          path: ["environmentVariables", 1, "key"],
+          message: "Environment variable keys must be unique.",
+        }),
+      ]),
+    });
+    await expect(store.listProjects()).resolves.toEqual([]);
   });
 
   test("encrypts a supplied GitLab PAT for the import job without saving it before import succeeds", async () => {
