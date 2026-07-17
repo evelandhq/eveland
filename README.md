@@ -102,6 +102,10 @@ fails closed during import, build, restart, cold activation, Playground, and pub
 when the dependency is missing, outside that line, or cannot be proven compatible; the diagnostic tells the
 developer to upgrade instead of attempting an older Eve protocol. Project Overview, Source, and Playground show
 the detected dependency version and the required line.
+Release builds also preserve the imported project's dependency resolution: `pnpm-lock.yaml` selects a frozen
+pnpm install, `package-lock.json` selects `npm ci`, and an unlocked project falls back to `npm install`. The same
+selection is used by Docker and systemd, including the platform-owned workflow-world dependency, so a pnpm
+project is never re-resolved through npm's peer-dependency rules.
 
 Local Docker Deployments receive the same injected `@eveland/sandbox-bwrap` backend as
 systemd Deployments. Their generated image includes bubblewrap plus the platform sandbox

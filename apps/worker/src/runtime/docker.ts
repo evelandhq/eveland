@@ -4,6 +4,7 @@ import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
+import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
@@ -144,7 +145,7 @@ export async function writeGeneratedDockerfile(
   const dockerfilePath = path.join(buildDir, "Dockerfile");
   const sandboxPackages = SANDBOX_TOOLCHAIN_APK_PACKAGES.join(" ");
   const workflowWorldInstall = workflowWorld
-    ? `RUN ${buildWorkflowWorldInstallCommand(workflowWorld)}\n`
+    ? `RUN if [ -f pnpm-lock.yaml ]; then ${buildWorkflowWorldInstallCommand(workflowWorld, "pnpm")}; else ${buildWorkflowWorldInstallCommand(workflowWorld, "npm")}; fi\n`
     : "";
   await writeFile(
     dockerfilePath,
@@ -160,9 +161,9 @@ RUN ln -sf /usr/bin/python3 /usr/local/bin/python \
 # bwrap bind-mounts each durable session workspace here. The mountpoint must
 # exist before the container root is remounted read-only inside the sandbox.
 RUN mkdir -p /workspace
-COPY package*.json ./
+COPY package*.json pnpm-lock.yaml* ./
 # Install all dependencies: eve projects need their build toolchain to compile.
-RUN if [ -f package-lock.json ]; then npm ci; elif [ -f package.json ]; then npm install; fi
+RUN if [ -f pnpm-lock.yaml ]; then ${PNPM_FROZEN_INSTALL_COMMAND}; elif [ -f package-lock.json ]; then npm ci; elif [ -f package.json ]; then npm install; fi
 ${workflowWorldInstall}COPY . .
 # Compile the eve application ahead of time so \`eve start\` can serve it.
 RUN if node -e "const p=require('./package.json');process.exit(p.dependencies&&p.dependencies.eve?0:1)"; then npx eve build; fi
