@@ -40,6 +40,9 @@ The public docs process is independent of that control-plane path. Use
 
 Git imports run non-interactively and time out after 120 seconds by default. Set
 `EVELAND_GIT_CLONE_TIMEOUT_MS` on the worker to tune that limit for slow networks.
+Transient network failures retry up to three times with exponential backoff. Running jobs
+renew a generic lease; stale jobs are re-queued after a worker crash, and attempt fencing
+prevents a late worker from overwriting the recovered job's terminal status.
 The Project page follows the asynchronous import job until completion and exposes a
 credential-redacted failure with a retry action; an accepted create/sync request only means
 the job was queued.

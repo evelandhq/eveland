@@ -23,6 +23,7 @@ describe("git source importer", () => {
         gitUrl: "https://example.com/agent.git",
         targetDir: path.join(root, "source"),
         timeoutMs: 50,
+        maxAttempts: 1,
       }),
     ).rejects.toThrow("Repository fetch timed out after 50ms. Check the worker network, proxy, DNS, or repository availability, then retry.");
   });
@@ -33,7 +34,7 @@ describe("git source importer", () => {
     await useFakeGit(root, "mkdir -p \"$5\"\nexit 1");
     const targetDir = path.join(root, "source");
 
-    await expect(importGitSource({ gitUrl: "https://example.com/agent.git", targetDir })).rejects.toThrow();
+    await expect(importGitSource({ gitUrl: "https://example.com/agent.git", targetDir, maxAttempts: 1 })).rejects.toThrow();
 
     await expect(access(targetDir)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -56,11 +57,46 @@ describe("git source importer", () => {
     const failure = await importGitSource({
       gitUrl: "https://secret-token@example.com/agent.git",
       targetDir: path.join(root, "source"),
+      maxAttempts: 1,
     }).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("fatal: unable to access https://***@example.com/agent.git");
     expect((failure as Error).message).not.toContain("secret-token");
+  });
+
+  test("retries a transient network failure and succeeds", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-retry-"));
+    temporaryDirectories.push(root);
+    const attemptsPath = path.join(root, "attempts");
+    await useFakeGit(root, `[ -f "${attemptsPath}" ] && count=$(cat "${attemptsPath}") || count=0
+count=$((count + 1))
+echo "$count" > "${attemptsPath}"
+if [ "$count" -eq 1 ]; then echo 'fatal: Could not resolve host: example.com' >&2; exit 1; fi
+mkdir -p "$5"`);
+    const retries: number[] = [];
+
+    await expect(importGitSource({
+      gitUrl: "https://example.com/agent.git",
+      targetDir: path.join(root, "source"),
+      maxAttempts: 2,
+      retryDelayMs: 0,
+      onRetry: (attempt) => { retries.push(attempt); },
+    })).resolves.toBeUndefined();
+
+    expect(retries).toEqual([2]);
+  });
+
+  test("does not treat an invalid attempt count as a successful import", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-invalid-attempts-"));
+    temporaryDirectories.push(root);
+    await useFakeGit(root, "echo 'fatal: repository not found' >&2\nexit 1");
+
+    await expect(importGitSource({
+      gitUrl: "https://example.com/agent.git",
+      targetDir: path.join(root, "source"),
+      maxAttempts: Number.NaN,
+    })).rejects.toThrow("Repository fetch failed");
   });
 });
 

@@ -65,6 +65,18 @@ describe("configuration diagnostics", () => {
     );
   });
 
+  test("reports Git retry and generic job lease defaults for the worker", () => {
+    const snapshot = createConfigurationSnapshot("worker", {});
+
+    expect(snapshot.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "EVELAND_GIT_CLONE_MAX_ATTEMPTS", value: "3" }),
+      expect.objectContaining({ name: "EVELAND_GIT_CLONE_RETRY_DELAY_MS", value: "1000" }),
+      expect.objectContaining({ name: "WORKER_JOB_HEARTBEAT_INTERVAL_MS", value: "30000" }),
+      expect.objectContaining({ name: "WORKER_JOB_STALE_MS", value: "120000" }),
+      expect.objectContaining({ name: "WORKER_JOB_RECOVERY_BATCH_SIZE", value: "25" }),
+    ]));
+  });
+
   test("does not replace an explicitly empty secret with a development fallback", () => {
     const snapshot = createConfigurationSnapshot("api", { APP_SECRET_KEY: "" });
 

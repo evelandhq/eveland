@@ -40,6 +40,7 @@ export type ProcessJobOptions = {
   schedulerDispatchSecret?: string;
   schedulerRuntimeSecret?: string;
   schedulerRedeemUrl?: string;
+  jobHeartbeatIntervalMs?: number;
   dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
 };
 
@@ -59,12 +60,17 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
   }
 
   try {
-    await processJob(store, job, options);
-    await store.completeJob(job.id);
+    await runWithJobHeartbeat({
+      intervalMs: options.jobHeartbeatIntervalMs ?? Number(process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000),
+      heartbeat: () => store.heartbeatJob(job.id, job.attempts),
+      work: () => processJob(store, job, options),
+    });
+    await store.completeJob(job.id, job.attempts);
     return true;
   } catch (error) {
     const message = errorMessage(error);
-    await store.failJob(job.id, message);
+    const failed = await store.failJob(job.id, message, job.attempts);
+    if (!failed) return true;
     // A failed import never touches the running container, so it must not report a
     // live deployment as failed; only deploy/restart jobs change deployment status.
     if (job.type === "delete_project") {
@@ -94,6 +100,22 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
   }
 }
 
+export async function runWithJobHeartbeat<T>(input: {
+  intervalMs: number;
+  heartbeat: () => Promise<boolean>;
+  work: () => Promise<T>;
+}): Promise<T> {
+  const timer = setInterval(() => {
+    void input.heartbeat().catch(() => undefined);
+  }, input.intervalMs);
+  timer.unref();
+  try {
+    return await input.work();
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 async function processJob(store: Store, job: Job, options: ProcessJobOptions): Promise<void> {
   switch (job.type) {
     case "import_source": {
@@ -112,7 +134,17 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
           throw new Error("Git import missing gitUrl.");
         }
         sourcePath = path.join(process.env.EVELAND_DATA_DIR ?? ".eveland-data", "sources", job.projectId, job.id);
-        await importGitSource({ gitUrl, targetDir: sourcePath });
+        await importGitSource({
+          gitUrl,
+          targetDir: sourcePath,
+          onRetry: async (attempt, detail) => {
+            await store.appendLog({
+              projectId: job.projectId,
+              type: "build",
+              line: `Retrying repository fetch (attempt ${attempt}): ${detail}`,
+            });
+          },
+        });
         commitSha = await getGitCommitSha(sourcePath);
       }
 

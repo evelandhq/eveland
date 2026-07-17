@@ -6,29 +6,44 @@ export type ImportGitInput = {
   gitUrl: string;
   targetDir: string;
   timeoutMs?: number;
+  maxAttempts?: number;
+  retryDelayMs?: number;
+  onRetry?: (nextAttempt: number, detail: string) => void | Promise<void>;
 };
 
 export async function importGitSource(input: ImportGitInput): Promise<void> {
   await mkdir(path.dirname(input.targetDir), { recursive: true });
   const timeoutMs = input.timeoutMs ?? Number(process.env.EVELAND_GIT_CLONE_TIMEOUT_MS ?? 120_000);
-  try {
-    await execa("git", ["clone", "--depth", "1", input.gitUrl, input.targetDir], {
-      all: true,
-      env: { GIT_TERMINAL_PROMPT: "0" },
-      timeout: timeoutMs,
-    });
-  } catch (error) {
-    await rm(input.targetDir, { recursive: true, force: true });
-    if (isTimedOutError(error)) {
-      throw new Error(
-        `Repository fetch timed out after ${timeoutMs}ms. Check the worker network, proxy, DNS, or repository availability, then retry.`,
-        { cause: error },
-      );
+  const configuredAttempts = input.maxAttempts ?? Number(process.env.EVELAND_GIT_CLONE_MAX_ATTEMPTS ?? 3);
+  const maxAttempts = Number.isFinite(configuredAttempts) ? Math.max(1, Math.floor(configuredAttempts)) : 1;
+  const configuredDelay = input.retryDelayMs ?? Number(process.env.EVELAND_GIT_CLONE_RETRY_DELAY_MS ?? 1_000);
+  const retryDelayMs = Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await execa("git", ["clone", "--depth", "1", input.gitUrl, input.targetDir], {
+        all: true,
+        env: { GIT_TERMINAL_PROMPT: "0" },
+        timeout: timeoutMs,
+      });
+      return;
+    } catch (error) {
+      await rm(input.targetDir, { recursive: true, force: true });
+      const detail = gitErrorOutput(error);
+      if (attempt < maxAttempts && isTransientGitError(error, detail)) {
+        await input.onRetry?.(attempt + 1, detail || `timeout after ${timeoutMs}ms`);
+        await delay(retryDelayMs * 2 ** (attempt - 1));
+        continue;
+      }
+      if (isTimedOutError(error)) {
+        throw new Error(
+          `Repository fetch timed out after ${timeoutMs}ms. Check the worker network, proxy, DNS, or repository availability, then retry.`,
+          { cause: error },
+        );
+      }
+      throw new Error(detail ? `Repository fetch failed: ${detail}` : "Repository fetch failed. Check the repository URL, credentials, and worker network, then retry.", {
+        cause: error,
+      });
     }
-    const detail = gitErrorOutput(error);
-    throw new Error(detail ? `Repository fetch failed: ${detail}` : "Repository fetch failed. Check the repository URL, credentials, and worker network, then retry.", {
-      cause: error,
-    });
   }
 }
 
@@ -47,4 +62,12 @@ function isTimedOutError(error: unknown): error is { timedOut: true } {
 function gitErrorOutput(error: unknown): string {
   if (typeof error !== "object" || error === null || !("stderr" in error) || typeof error.stderr !== "string") return "";
   return error.stderr.trim().slice(0, 2_000).replace(/\b(https?:\/\/)[^/@\s]+@/gi, "$1***@");
+}
+
+function isTransientGitError(error: unknown, detail: string): boolean {
+  return isTimedOutError(error) || /could not resolve host|failed to connect|connection (?:reset|timed out)|tls|http (?:500|502|503|504)/i.test(detail);
+}
+
+function delay(durationMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
 }

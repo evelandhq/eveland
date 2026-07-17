@@ -110,8 +110,10 @@ export type Store = {
     staleAfterMs?: number,
   ): Promise<Job>;
   claimNextJob(workerId: string, now?: Date): Promise<Job | null>;
-  completeJob(jobId: string): Promise<void>;
-  failJob(jobId: string, error: string): Promise<void>;
+  heartbeatJob(jobId: string, attempt: number, now?: Date): Promise<boolean>;
+  recoverStaleJobs(now?: Date, staleAfterMs?: number, limit?: number): Promise<number>;
+  completeJob(jobId: string, attempt?: number): Promise<boolean>;
+  failJob(jobId: string, error: string, attempt?: number): Promise<boolean>;
   updateProjectState(projectId: string, state: { status?: ProjectStatus; deploymentStatus?: DeploymentStatus }): Promise<Project | null>;
   appendLog(input: { projectId: string; deploymentId?: string | null; type: LogRecord["type"]; line: string }): Promise<LogRecord>;
   recordSourceRevision(input: {
@@ -518,21 +520,40 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       return job;
     },
 
-    async completeJob(jobId) {
-      const job = state.jobs.find((candidate) => candidate.id === jobId);
-      if (job) {
-        job.status = "completed";
-        job.updatedAt = new Date().toISOString();
+    async recoverStaleJobs(now = new Date(), staleAfterMs = 300_000, limit = 25) {
+      const cutoff = now.getTime() - staleAfterMs;
+      const stale = state.jobs
+        .filter((job) => job.status === "running" && Date.parse(job.updatedAt) <= cutoff)
+        .slice(0, limit);
+      for (const job of stale) {
+        job.status = "queued";
+        job.updatedAt = now.toISOString();
       }
+      return stale.length;
     },
 
-    async failJob(jobId, error) {
-      const job = state.jobs.find((candidate) => candidate.id === jobId);
-      if (job) {
-        job.status = "failed";
-        job.lastError = error;
-        job.updatedAt = new Date().toISOString();
-      }
+    async heartbeatJob(jobId, attempt, now = new Date()) {
+      const job = state.jobs.find((candidate) => candidate.id === jobId && candidate.status === "running" && candidate.attempts === attempt);
+      if (!job) return false;
+      job.updatedAt = now.toISOString();
+      return true;
+    },
+
+    async completeJob(jobId, attempt) {
+      const job = state.jobs.find((candidate) => candidate.id === jobId && (attempt === undefined || (candidate.status === "running" && candidate.attempts === attempt)));
+      if (!job) return false;
+      job.status = "completed";
+      job.updatedAt = new Date().toISOString();
+      return true;
+    },
+
+    async failJob(jobId, error, attempt) {
+      const job = state.jobs.find((candidate) => candidate.id === jobId && (attempt === undefined || (candidate.status === "running" && candidate.attempts === attempt)));
+      if (!job) return false;
+      job.status = "failed";
+      job.lastError = error;
+      job.updatedAt = new Date().toISOString();
+      return true;
     },
 
     async updateProjectState(projectId, nextState) {
