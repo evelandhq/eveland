@@ -4,6 +4,7 @@ import {
   allocateAvailableHostPort,
   invalidateGatewayRouteCache,
   processNextJob,
+  runWithJobHeartbeat,
   resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
   type ScheduleDispatchInput,
@@ -19,6 +20,22 @@ import type { DeploymentRecord } from "@eveland/core/contracts";
 import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 
 describe("processNextJob", () => {
+  test("heartbeats while a claimed job is still running", async () => {
+    let finish!: (value: string) => void;
+    let heartbeatObserved!: () => void;
+    const observed = new Promise<void>((resolve) => { heartbeatObserved = resolve; });
+
+    const running = runWithJobHeartbeat({
+      intervalMs: 1,
+      heartbeat: async () => { heartbeatObserved(); return true; },
+      work: () => new Promise<string>((resolve) => { finish = resolve; }),
+    });
+    await observed;
+    finish("done");
+
+    await expect(running).resolves.toBe("done");
+  });
+
   test("starts an API-claimed RuntimeInstance from its prebuilt Release", async () => {
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();
@@ -251,6 +268,17 @@ describe("processNextJob", () => {
     ]);
     // Without a deploy flag the import must not chain a build_deploy job.
     await expect(store.claimNextJob("worker-idle")).resolves.toBeNull();
+  });
+
+  test("completes a job with its claimed attempt token", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    await store.createProject({ name: "Fenced Completion Agent", importKind: "zip", sourcePath });
+    const completeJob = vi.spyOn(store, "completeJob");
+
+    await processNextJob(store, "worker-a");
+
+    expect(completeJob).toHaveBeenCalledWith(expect.any(String), 1);
   });
 
   test("chains a build_deploy job after a deploy-flagged import", async () => {

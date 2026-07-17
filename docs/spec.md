@@ -191,6 +191,10 @@ Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一
 Git 拉取由 worker 以非交互方式执行，默认最多等待 120 秒；可通过
 `EVELAND_GIT_CLONE_TIMEOUT_MS` 调整。超时或 Git 失败必须终止拉取、清理未完成的
 job source 目录、将 job 和 Project 标记为失败，并保存经过限长和凭据脱敏的错误。
+DNS、连接、TLS、timeout 和 HTTP 5xx 等瞬时错误默认最多尝试三次并指数退避；认证失败、
+仓库不存在等确定性错误不重试。worker 必须为 running job 持续续租，回收超过 stale
+窗口且没有心跳的 job；complete/fail 必须使用 claim attempt 作为 fencing token，迟到的旧
+worker 不得覆盖新 attempt 的状态。
 Project 页面展示最近 Git import job 的 queued/running/failed 状态，在活动期间自动刷新，
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 

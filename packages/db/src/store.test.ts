@@ -112,6 +112,59 @@ describe("memory store jobs", () => {
     expect(none).toBeNull();
   });
 
+  test("recovers a running job after its lease becomes stale", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Recover Job Agent", importKind: "zip" });
+    const startedAt = new Date("2026-07-17T00:00:00.000Z");
+    const firstClaim = await store.claimNextJob("worker-a", startedAt);
+
+    await expect(store.recoverStaleJobs(new Date("2026-07-17T00:01:00.000Z"), 30_000)).resolves.toBe(1);
+    await expect(store.claimNextJob("worker-b", new Date("2026-07-17T00:01:01.000Z"))).resolves.toMatchObject({
+      id: firstClaim!.id,
+      projectId: project.id,
+      status: "running",
+      attempts: 2,
+    });
+  });
+
+  test("keeps a running job leased when its current attempt heartbeats", async () => {
+    const store = createMemoryStore();
+    await store.createProject({ name: "Heartbeat Job Agent", importKind: "zip" });
+    const job = await store.claimNextJob("worker-a", new Date("2026-07-17T00:00:00.000Z"));
+
+    await expect(store.heartbeatJob(job!.id, job!.attempts, new Date("2026-07-17T00:00:20.000Z"))).resolves.toBe(true);
+    await expect(store.recoverStaleJobs(new Date("2026-07-17T00:00:40.000Z"), 30_000)).resolves.toBe(0);
+  });
+
+  test("rejects completion from an attempt that lost its lease", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Fenced Job Agent", importKind: "zip" });
+    const first = await store.claimNextJob("worker-a", new Date("2026-07-17T00:00:00.000Z"));
+    const firstAttempt = first!.attempts;
+    await store.recoverStaleJobs(new Date("2026-07-17T00:01:00.000Z"), 30_000);
+    const second = await store.claimNextJob("worker-b", new Date("2026-07-17T00:01:01.000Z"));
+
+    await expect(store.completeJob(first!.id, firstAttempt)).resolves.toBe(false);
+    await expect(store.listProjectJobs(project.id)).resolves.toContainEqual(
+      expect.objectContaining({ id: second!.id, status: "running", attempts: 2 }),
+    );
+    await expect(store.completeJob(second!.id, second!.attempts)).resolves.toBe(true);
+  });
+
+  test("rejects failure from an attempt that lost its lease", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Fenced Failure Agent", importKind: "zip" });
+    const first = await store.claimNextJob("worker-a", new Date("2026-07-17T00:00:00.000Z"));
+    const firstAttempt = first!.attempts;
+    await store.recoverStaleJobs(new Date("2026-07-17T00:01:00.000Z"), 30_000);
+    await store.claimNextJob("worker-b", new Date("2026-07-17T00:01:01.000Z"));
+
+    await expect(store.failJob(first!.id, "late failure", firstAttempt)).resolves.toBe(false);
+    await expect(store.listProjectJobs(project.id)).resolves.toContainEqual(
+      expect.objectContaining({ id: first!.id, status: "running", attempts: 2, lastError: null }),
+    );
+  });
+
   test("records failure details on a claimed job", async () => {
     const store = createMemoryStore();
     const project = await store.createProject({ name: "Fail Agent", importKind: "zip" });

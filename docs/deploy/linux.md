@@ -196,6 +196,11 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_ORPHAN_GRACE_MS` | `300000` | How long an out-of-model process may keep running before the sweep stops it. |
 | `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
 | `EVELAND_GIT_CLONE_TIMEOUT_MS` | `120000` | Maximum non-interactive Git clone duration before an import fails and its partial source directory is removed. Increase this only when the worker's network requires a longer bounded transfer window. |
+| `EVELAND_GIT_CLONE_MAX_ATTEMPTS` | `3` | Maximum attempts for transient Git network failures; authentication and repository-not-found failures are not retried. |
+| `EVELAND_GIT_CLONE_RETRY_DELAY_MS` | `1000` | Initial exponential backoff delay between Git attempts. |
+| `WORKER_JOB_HEARTBEAT_INTERVAL_MS` | `30000` | How often a running job renews its lease. |
+| `WORKER_JOB_STALE_MS` | `120000` | Time without a heartbeat before a running job is re-queued after worker failure. Keep this above the heartbeat interval. |
+| `WORKER_JOB_RECOVERY_BATCH_SIZE` | `25` | Maximum stale jobs recovered per worker poll. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from archive. Mutable route targets and active SessionBindings are protected independently of age. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |

@@ -62,6 +62,11 @@ async function tick() {
       reconcileRuntimeInstances(storeFactory.store, {
         limit: Number(process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100),
       }),
+      storeFactory.store.recoverStaleJobs(
+        new Date(),
+        Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
+        Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
+      ),
       processNextJob(storeFactory.store, workerId),
     ]);
   } catch (error) {

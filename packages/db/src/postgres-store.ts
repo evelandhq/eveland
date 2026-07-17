@@ -475,19 +475,47 @@ export function createPostgresStore(database: Database): Store {
       return row ? jobRowToJob(row) : null;
     },
 
-    async completeJob(jobId) {
-      await db
+    async recoverStaleJobs(now = new Date(), staleAfterMs = 300_000, limit = 25) {
+      const cutoff = new Date(now.getTime() - staleAfterMs);
+      const recovered = await db
+        .update(jobs)
+        .set({ status: "queued", lockedAt: null, updatedAt: now })
+        .where(inArray(jobs.id, db
+          .select({ id: jobs.id })
+          .from(jobs)
+          .where(and(eq(jobs.status, "running"), lte(jobs.lockedAt, cutoff)))
+          .orderBy(asc(jobs.lockedAt))
+          .limit(limit)))
+        .returning({ id: jobs.id });
+      return recovered.length;
+    },
+
+    async heartbeatJob(jobId, attempt, now = new Date()) {
+      const renewed = await db
+        .update(jobs)
+        .set({ lockedAt: now, updatedAt: now })
+        .where(and(eq(jobs.id, jobId), eq(jobs.status, "running"), eq(jobs.attempts, attempt)))
+        .returning({ id: jobs.id });
+      return renewed.length === 1;
+    },
+
+    async completeJob(jobId, attempt) {
+      const completed = await db
         .update(jobs)
         .set({
           status: "completed",
           updatedAt: new Date(),
           lockedAt: null,
         })
-        .where(eq(jobs.id, jobId));
+        .where(attempt === undefined
+          ? eq(jobs.id, jobId)
+          : and(eq(jobs.id, jobId), eq(jobs.status, "running"), eq(jobs.attempts, attempt)))
+        .returning({ id: jobs.id });
+      return completed.length === 1;
     },
 
-    async failJob(jobId, error) {
-      await db
+    async failJob(jobId, error, attempt) {
+      const failed = await db
         .update(jobs)
         .set({
           status: "failed",
@@ -495,7 +523,11 @@ export function createPostgresStore(database: Database): Store {
           updatedAt: new Date(),
           lockedAt: null,
         })
-        .where(eq(jobs.id, jobId));
+        .where(attempt === undefined
+          ? eq(jobs.id, jobId)
+          : and(eq(jobs.id, jobId), eq(jobs.status, "running"), eq(jobs.attempts, attempt)))
+        .returning({ id: jobs.id });
+      return failed.length === 1;
     },
 
     async updateProjectState(projectId, state) {

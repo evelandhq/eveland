@@ -64,10 +64,15 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `EVELAND_INTERNAL_PORT` | Container-internal port for the docker adapter. | `3000` | `apps/worker/src/runtime/select.ts` |
 | `EVELAND_DEPLOYMENT_PORT` | Start of the host-port allocation range (scans the next 100 ports for a free one). | `41000` | `apps/worker/src/jobs/process.ts` |
 | `EVELAND_GIT_CLONE_TIMEOUT_MS` | Maximum duration of a non-interactive Git source clone before the worker fails the import and removes its partial source directory. | `120000` | worker (`source/importer.ts`) |
+| `EVELAND_GIT_CLONE_MAX_ATTEMPTS` | Maximum attempts for transient DNS, connection, TLS, timeout, and HTTP 5xx clone failures. | `3` | worker (`source/importer.ts`) |
+| `EVELAND_GIT_CLONE_RETRY_DELAY_MS` | Initial Git retry delay; each subsequent retry doubles it. | `1000` | worker (`source/importer.ts`) |
 | `EVELAND_HEALTH_TIMEOUT_MS` | Timeout waiting for a freshly started deployment to pass its health check. | `15000` | worker (`process.ts`) |
 | `EVELAND_RELEASE_RETENTION` | Deployments/releases retained per project by the archive policy. | `3` (minimum 3) | worker (`process.ts`) |
 | `WORKER_ID` | Worker instance identity, used when claiming jobs. | — | `apps/worker/src/worker.ts` |
 | `WORKER_POLL_INTERVAL_MS` | Interval between worker job-queue polls. | `5000` | `apps/worker/src/worker.ts` |
+| `WORKER_JOB_HEARTBEAT_INTERVAL_MS` | Interval between running job lease renewals. Keep it comfortably below `WORKER_JOB_STALE_MS`. | `30000` | worker (`jobs/process.ts`) |
+| `WORKER_JOB_STALE_MS` | Time without a successful heartbeat before a running job is re-queued for recovery. | `120000` | worker (`worker.ts`) |
+| `WORKER_JOB_RECOVERY_BATCH_SIZE` | Maximum stale jobs re-queued in one worker tick. | `25` | worker (`worker.ts`) |
 | `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | Interval between orphan-process sweeps that reconcile running `eveland-*-dep_*` host processes with the control plane (adopt into RuntimeInstance lifecycle, or stop unknown/archived/wrong-runtime leftovers). `0` disables the sweep. | `3600000` (1 hour) | `apps/worker/src/worker.ts` |
 | `EVELAND_ORPHAN_GRACE_MS` | How long a running process may stay out-of-model before the sweep stops it; covers the window where `build_deploy` starts a process before its Deployment row exists. | `300000` | `apps/worker/src/runtime/orphan-reaper.ts` |
 | `PATH` | Passed through (allowlisted) to build and sandbox child processes. | system `PATH` | worker (`systemd.ts`) |
