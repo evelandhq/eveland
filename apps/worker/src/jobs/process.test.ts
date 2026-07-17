@@ -31,7 +31,7 @@ const jinshujuOidcConfig: OidcAuthorizationCodeConfig = {
   clientId: "worker-managed-client",
   clientSecret: "worker-managed-secret",
   scopes: ["openid", "profile"],
-  promptConsent: true,
+  promptConsent: false,
 };
 
 describe("processNextJob", () => {

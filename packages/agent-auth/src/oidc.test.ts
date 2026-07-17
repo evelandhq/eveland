@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createMemoryStore } from "@eveland/db";
 import { ResponseBodyError } from "openid-client";
-import { sealAgentAuthConfig } from "./config.js";
+import { JINSHUJU_OIDC_METHOD, sealAgentAuthConfig } from "./config.js";
 import { createOidcAuthorizationCodeProvider, selectOidcTokenEndpointAuthMethod } from "./oidc.js";
 
 const appSecretKey = "0123456789abcdef0123456789abcdef";
@@ -16,6 +16,91 @@ describe("OIDC Agent Auth provider", () => {
       promptConsent: true,
       legacyTokenEndpointAuthMethod: "none",
     })).toBe("none");
+  });
+
+  test("uses client_secret_post for the server-managed Jinshuju provider", () => {
+    expect(selectOidcTokenEndpointAuthMethod({
+      issuer: "https://account.uat.jinshuju.net",
+      clientId: "eveland-client",
+      clientSecret: "secret_with_underscores__",
+      scopes: ["openid", "profile"],
+      promptConsent: false,
+    }, JINSHUJU_OIDC_METHOD)).toBe("client_secret_post");
+  });
+
+  test("preserves the Jinshuju method when a shared OIDC callback completes the transaction", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "jinshuju-agent", importKind: "git" });
+    const connectionId = "acon_jinshuju_shared_callback";
+    const config = {
+      issuer: "https://account.uat.jinshuju.net",
+      clientId: "eveland-client",
+      clientSecret: "secret",
+      scopes: ["openid", "profile"],
+      promptConsent: false,
+    };
+    const connection = await store.createAgentConnection({
+      id: connectionId,
+      target: { kind: "managed-project", projectId: project.id },
+      method: JINSHUJU_OIDC_METHOD,
+      configEncrypted: sealAgentAuthConfig(config, appSecretKey, {
+        agentConnectionId: connectionId,
+        method: JINSHUJU_OIDC_METHOD,
+        securityRevision: 1,
+      }),
+    });
+    const callbackUrl = "https://eveland.example/agent-auth/oidc/callback";
+    const startProvider = createOidcAuthorizationCodeProvider({
+      store,
+      appSecretKey,
+      callbackUrl,
+      method: JINSHUJU_OIDC_METHOD,
+      protocol: {
+        async preflight() {},
+        async buildAuthorizationUrl(_config, transaction) {
+          return new URL(`https://account.uat.jinshuju.net/oauth/authorize?state=${transaction.state}`);
+        },
+        async exchangeAuthorizationCode() { throw new Error("start provider must not complete the callback"); },
+        async refresh() { throw new Error("refresh should not run"); },
+        async fetchUserInfo() { throw new Error("userinfo should not run"); },
+      },
+    });
+    let callbackAuthMethod: string | undefined;
+    const callbackProvider = createOidcAuthorizationCodeProvider({
+      store,
+      appSecretKey,
+      callbackUrl,
+      protocol: {
+        async preflight() {},
+        async buildAuthorizationUrl() { throw new Error("callback provider must not start the transaction"); },
+        async exchangeAuthorizationCode(_config, input) {
+          callbackAuthMethod = input.authMethod;
+          return {
+            accessToken: "access-token",
+            expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+            issuer: config.issuer,
+            subject: "jinshuju-user",
+          };
+        },
+        async refresh() { throw new Error("refresh should not run"); },
+        async fetchUserInfo() { throw new Error("userinfo should not run"); },
+      },
+      verifyAccessToken: async () => ({ issuer: config.issuer, subject: "jinshuju-user" }),
+    });
+    const interaction = await startProvider.start({
+      connection: { ...connection, config },
+      callerPrincipalId: "eveland-user",
+      returnPath: `/projects/${project.id}/playground`,
+    });
+
+    await callbackProvider.callback({
+      state: interaction.state,
+      currentUrl: new URL(`${callbackUrl}?code=authorization-code&state=${interaction.state}`),
+      callerPrincipalId: "eveland-user",
+      getConnection: async () => ({ ...connection, config }),
+    });
+
+    expect(callbackAuthMethod).toBe(JINSHUJU_OIDC_METHOD);
   });
 
   test("accepts an Agent access-token subject that differs from the caller and ID-token subject", async () => {

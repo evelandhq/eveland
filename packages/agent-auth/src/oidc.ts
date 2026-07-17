@@ -3,6 +3,7 @@ import { verifyOidc } from "eve/channels/auth";
 import * as oidc from "openid-client";
 import type { Store } from "@eveland/db";
 import {
+  JINSHUJU_OIDC_METHOD,
   normalizeOidcAuthorizationCodeConfig,
   normalizeStoredOidcAuthorizationCodeConfig,
   type OidcAuthorizationCodeConfig,
@@ -18,6 +19,7 @@ export type OidcAuthorizationTransaction = {
   codeVerifier: string;
   nonce: string;
   redirectUri: string;
+  authMethod: string;
 };
 
 export type OidcTokenResult = {
@@ -60,7 +62,6 @@ type OidcTransactionPayload = OidcAuthorizationTransaction & {
   agentConnectionId: string;
   securityRevision: number;
   callerPrincipalId: string;
-  authMethod: string;
   returnPath: string;
 };
 
@@ -125,7 +126,10 @@ export function createOidcAuthorizationCodeProvider(options: {
   now?: () => Date;
 }): OidcAuthorizationCodeProvider {
   const method = options.method ?? "oidc";
-  const protocol = options.protocol ?? createOpenIdClientProtocol({ allowInsecureIssuer: options.allowInsecureIssuer });
+  const protocol = options.protocol ?? createOpenIdClientProtocol({
+    allowInsecureIssuer: options.allowInsecureIssuer,
+    method,
+  });
   const now = options.now ?? (() => new Date());
   const callbackUrl = new URL(options.callbackUrl).toString();
   // An audience marks the provider as audience-binding (JWT access tokens
@@ -530,7 +534,10 @@ export function createOidcAuthorizationCodeProvider(options: {
       await protocol.preflight(config);
     },
     async start(input) {
-      const config = normalizeStoredOidcAuthorizationCodeConfig(asRecord(input.connection.config));
+      const storedConfig = normalizeStoredOidcAuthorizationCodeConfig(asRecord(input.connection.config));
+      const config = method === JINSHUJU_OIDC_METHOD
+        ? { ...storedConfig, promptConsent: false }
+        : storedConfig;
       assertReturnPath(input.returnPath, input.connection.target.projectId);
       await this.preflight(config);
       const state = oidc.randomState();
@@ -581,6 +588,7 @@ export function createOidcAuthorizationCodeProvider(options: {
         codeVerifier: transaction.codeVerifier,
         nonce: transaction.nonce,
         redirectUri: transaction.redirectUri,
+        authMethod: transaction.authMethod,
         currentUrl: input.currentUrl,
       });
       const key = credentialKey(connection, input.callerPrincipalId);
@@ -708,13 +716,13 @@ async function verifyAccessTokenWithUserInfo(
   return { issuer: config.issuer, subject: result.subject };
 }
 
-function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }): OidcProtocol {
+function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean; method: string }): OidcProtocol {
   const cache = new Map<string, Promise<oidc.Configuration>>();
-  const getConfiguration = (config: OidcAuthorizationCodeConfig) => {
-    const key = JSON.stringify(config);
+  const getConfiguration = (config: OidcAuthorizationCodeConfig, method = options.method) => {
+    const key = JSON.stringify([config, method]);
     let pending = cache.get(key);
     if (!pending) {
-      const tokenEndpointAuthMethod = selectOidcTokenEndpointAuthMethod(config);
+      const tokenEndpointAuthMethod = selectOidcTokenEndpointAuthMethod(config, method);
       const clientAuth = tokenEndpointAuthMethod === "client_secret_post"
         ? oidc.ClientSecretPost(config.clientSecret)
         : tokenEndpointAuthMethod === "client_secret_basic"
@@ -754,7 +762,7 @@ function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }):
       await getConfiguration(config);
     },
     async buildAuthorizationUrl(config, transaction) {
-      const configuration = await getConfiguration(config);
+      const configuration = await getConfiguration(config, transaction.authMethod);
       return oidc.buildAuthorizationUrl(configuration, {
         redirect_uri: transaction.redirectUri,
         response_type: "code",
@@ -768,7 +776,7 @@ function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }):
       });
     },
     async exchangeAuthorizationCode(config, input) {
-      const configuration = await getConfiguration(config);
+      const configuration = await getConfiguration(config, input.authMethod);
       const tokens = await oidc.authorizationCodeGrant(
         configuration,
         input.currentUrl,
@@ -821,7 +829,11 @@ function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean }):
 /** @internal Compatibility boundary for persisted OIDC Connection configuration. */
 export function selectOidcTokenEndpointAuthMethod(
   config: OidcAuthorizationCodeConfig,
+  method = "oidc",
 ): "client_secret_basic" | "client_secret_post" | "none" {
+  if (method === JINSHUJU_OIDC_METHOD) {
+    return config.clientSecret ? "client_secret_post" : "none";
+  }
   return config.legacyTokenEndpointAuthMethod
     ?? (config.clientSecret ? "client_secret_basic" : "none");
 }

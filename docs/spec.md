@@ -312,9 +312,12 @@ OIDC 是 Eve Route Auth 的客户端凭证获取方式，不是 Eve Connection A
 `JINSHUJU_OIDC_CLIENT_ID`、`JINSHUJU_OIDC_CLIENT_SECRET` 和
 `JINSHUJU_OIDC_SCOPES` 读取统一的服务端 OAuth 应用配置，并像其他 method 一样加密写入
 Agent Connection 的数据库记录；运行时统一解密数据库配置，不再为 Jinshuju 单独读取环境。
-环境变量变化不会隐式修改已有 Connection，需重新保存后生效。token endpoint
-authentication 不属于 Connection 配置；有 client secret 时统一使用标准的
-`client_secret_basic`，否则使用 public-client `none`。
+环境变量变化不会隐式修改已有 Connection，需重新保存后生效。通用 OIDC 仅在 scopes 包含
+`offline_access` 时允许发送 `prompt=consent`；Jinshuju authorization request 始终不得发送其
+OAuth provider 不支持的 `prompt` 参数，即使旧 Connection 保存了通用 OIDC 的 consent 默认值，
+运行时也必须忽略。token endpoint authentication 不属于 Connection 配置；通用 OIDC 有 client
+secret 时自动使用标准的 `client_secret_basic`，Jinshuju OIDC 有 client secret 时自动使用
+provider 实际接受的 `client_secret_post`，没有 client secret 时使用 public-client `none`。
 用户第一次提交受保护消息时，若当前
 `(agentConnectionId, callerPrincipalId)` 没有
 凭证，API 在请求 Agent 之前返回 `interaction_required`。Web 暂存尚未被 Agent 接受的

@@ -38,10 +38,23 @@ describe("OIDC Agent Auth config", () => {
 
     expect(normalized).not.toHaveProperty("audience");
     expect(normalized).not.toHaveProperty("audienceMode");
-    expect(normalized).toHaveProperty("promptConsent", true);
+    expect(normalized).toHaveProperty("promptConsent", false);
     const redacted = redactAgentAuthConfig("oidc", normalized);
     expect(redacted).not.toHaveProperty("audience");
     expect(redacted).not.toHaveProperty("audienceMode");
+  });
+
+  test("only enables the consent prompt when offline access is requested", () => {
+    expect(normalizeAgentAuthConfig("oidc", {
+      issuer: "https://account.example",
+      clientId: "eveland-playground",
+    })).toMatchObject({ scopes: ["openid", "offline_access"], promptConsent: true });
+    expect(normalizeAgentAuthConfig("oidc", {
+      issuer: "https://account.example",
+      clientId: "eveland-playground",
+      scopes: ["openid", "profile"],
+      promptConsent: true,
+    })).toHaveProperty("promptConsent", false);
   });
 
   test("derives token endpoint authentication instead of accepting it as connection config", () => {
@@ -87,7 +100,7 @@ describe("OIDC Agent Auth config", () => {
       clientId: "eveland-client",
       clientSecret: "server-only-secret",
       scopes: ["openid", "public", "profile", "forms"],
-      promptConsent: true,
+      promptConsent: false,
     });
     expect(normalizeAgentAuthConfig("jinshuju-oidc", { ignored: "browser-input" })).toEqual({});
     expect(redactAgentAuthConfig("jinshuju-oidc", config)).toEqual({});

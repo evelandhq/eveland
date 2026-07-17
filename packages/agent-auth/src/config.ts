@@ -126,7 +126,8 @@ export function normalizeOidcAuthorizationCodeConfig(config: Record<string, unkn
     ...(clientSecret ? { clientSecret } : {}),
     ...audienceConfig,
     scopes,
-    promptConsent: config.promptConsent === undefined ? true : config.promptConsent === true,
+    promptConsent: scopes.includes("offline_access")
+      && (config.promptConsent === undefined ? true : config.promptConsent === true),
   };
 }
 
@@ -151,6 +152,7 @@ export function resolveJinshujuOidcConfig(env: JinshujuOidcEnvironment): OidcAut
     clientId: requiredString(env.JINSHUJU_OIDC_CLIENT_ID, "JINSHUJU_OIDC_CLIENT_ID is required."),
     ...(clientSecret ? { clientSecret } : {}),
     scopes,
+    promptConsent: false,
   });
 }
 

@@ -106,7 +106,7 @@ describe("Agent Auth control-plane routes", () => {
     await expect(store.listProjects()).resolves.toEqual([]);
   });
 
-  test("uses server-managed Jinshuju OAuth configuration with the shared OIDC callback", async () => {
+  test("uses server-managed Jinshuju OAuth without an unsupported prompt parameter", async () => {
     const store = createMemoryStore();
     const observedConfigs: Array<Record<string, unknown>> = [];
     const serverManagedConfig = {
@@ -126,7 +126,9 @@ describe("Agent Auth control-plane routes", () => {
         },
         async buildAuthorizationUrl(config, transaction) {
           observedConfigs.push(config);
-          return new URL(`https://account.example/authorize?state=${encodeURIComponent(transaction.state)}`);
+          const authorizationUrl = new URL(`https://account.example/authorize?state=${encodeURIComponent(transaction.state)}`);
+          if (config.promptConsent) authorizationUrl.searchParams.set("prompt", "consent");
+          return authorizationUrl;
         },
         async exchangeAuthorizationCode(config) {
           observedConfigs.push(config);
@@ -213,7 +215,9 @@ describe("Agent Auth control-plane routes", () => {
     const interactionUrl = new URL(failure.interaction.url, "https://eveland.example");
     const start = await app.request(`${interactionUrl.pathname.replace(/^\/api\/eveland/, "")}${interactionUrl.search}`);
     expect(start.status).toBe(302);
-    const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+    const authorizationUrl = new URL(start.headers.get("location")!);
+    expect(authorizationUrl.searchParams.has("prompt")).toBe(false);
+    const state = authorizationUrl.searchParams.get("state")!;
     const callback = await app.request("/agent-auth/oidc/callback", {
       method: "POST",
       headers: { "content-type": "application/json" },
