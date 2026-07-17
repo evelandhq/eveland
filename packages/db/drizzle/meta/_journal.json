@@ -127,6 +127,13 @@
       "when": 1784261028300,
       "tag": "0017_awesome_mantis",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784297016686,
+      "tag": "0018_hesitant_lilandra",
+      "breakpoints": true
     }
   ]
 }

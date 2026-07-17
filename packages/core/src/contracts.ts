@@ -98,6 +98,41 @@ export type SourcePreflightRecord = SourcePreflight & {
   } | null;
 };
 
+export type AgentConnection = {
+  id: string;
+  target: { kind: "managed-project"; projectId: string };
+  method: string;
+  configEncrypted: string;
+  securityRevision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentAuthCredential = {
+  agentConnectionId: string;
+  securityRevision: number;
+  authMethod: string;
+  credentialScope: "connection" | "principal";
+  scopeSubject: string;
+  credentialKey: string;
+  payloadEncrypted: string;
+  expiresAt: string | null;
+  rotationSeq: number;
+  refreshOwner: string | null;
+  refreshLeaseId: string | null;
+  refreshLeaseUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentAuthTransaction = {
+  agentConnectionId: string;
+  stateHash: string;
+  payloadEncrypted: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
 export type JobType = "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "ensure_deployment_running" | "archive_deployment" | "delete_project";
 export type JobStatus = "queued" | "running" | "completed" | "failed";
 

@@ -1,0 +1,68 @@
+import { afterAll, describe, expect, test } from "vitest";
+import { createDatabase } from "./client.js";
+import { createPostgresStore } from "./postgres-store.js";
+
+const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
+const database = databaseUrl ? createDatabase(databaseUrl) : null;
+
+afterAll(async () => database?.close());
+
+describe.skipIf(!database)("Postgres Agent Auth", () => {
+  test("fences revisions and credential rotation across two store instances", async () => {
+    const firstStore = createPostgresStore(database!);
+    const secondStore = createPostgresStore(database!);
+    const project = await firstStore.createProject({ name: `agent-auth-${Date.now()}`, importKind: "zip" });
+    const connection = await firstStore.createAgentConnection({
+      target: { kind: "managed-project", projectId: project.id },
+      method: "future-interactive",
+      configEncrypted: "encrypted-config-v1",
+    });
+    const key = {
+      agentConnectionId: connection.id,
+      securityRevision: 1,
+      authMethod: "future-interactive",
+      credentialScope: "principal" as const,
+      scopeSubject: "member-a",
+      credentialKey: "default",
+    };
+    await firstStore.putAgentAuthCredential({ ...key, payloadEncrypted: "token-v0", expiresAt: null });
+
+    const [winner, loser] = await Promise.all([
+      firstStore.replaceAgentAuthCredential({
+        ...key,
+        expectedRotationSeq: 0,
+        payloadEncrypted: "token-v1-a",
+        expiresAt: null,
+      }),
+      secondStore.replaceAgentAuthCredential({
+        ...key,
+        expectedRotationSeq: 0,
+        payloadEncrypted: "token-v1-b",
+        expiresAt: null,
+      }),
+    ]);
+    const changed = await firstStore.updateAgentConnection({
+      id: connection.id,
+      expectedSecurityRevision: 1,
+      method: "bearer",
+      configEncrypted: "encrypted-config-v2",
+      securityChanged: true,
+    });
+    const stale = await secondStore.updateAgentConnection({
+      id: connection.id,
+      expectedSecurityRevision: 1,
+      method: "none",
+      configEncrypted: "encrypted-stale",
+      securityChanged: true,
+    });
+
+    expect([winner, loser].filter(Boolean)).toHaveLength(1);
+    expect(changed).toMatchObject({ method: "bearer", securityRevision: 2 });
+    expect(stale).toBeNull();
+    await expect(firstStore.getAgentAuthCredential({ ...key, securityRevision: 2 })).resolves.toBeNull();
+
+    await expect(firstStore.deleteProject(project.id)).resolves.toBe(true);
+    await expect(firstStore.getAgentConnection(connection.id)).resolves.toBeNull();
+    await expect(firstStore.getAgentAuthCredential(key)).resolves.toBeNull();
+  }, 30_000);
+});

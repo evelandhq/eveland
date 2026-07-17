@@ -285,6 +285,31 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 
 用户输入消息后，Web 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
 
+每个受管 Project 最多有一个 Agent Connection。它是 Playground 调用 Agent 的客户端配置，
+不是 Project、Deployment、Eve Connection 或控制面登录 Session。当前通用方法包括：
+
+* `local-dev`：不发送 credential，并且只允许 Gateway 用 loopback Host 调用 Eve `localDev()`；
+* `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
+* `basic`：发送加密保存的 HTTP Basic username/password；
+* `bearer`：发送加密保存的外部签发 Bearer token；
+* `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
+
+用户必须在 Playground 的 Connection 设置中显式选择客户端方法；平台不得从 Eve verifier
+名称、源码 import、401 或 `WWW-Authenticate` 猜测 credential acquisition。Eveland member id
+只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
+verifier 建立的 Caller 做隐式映射。
+
+Connection 的 normalized config 使用 `APP_SECRET_KEY` 派生用途密钥并以 AES-256-GCM 保存，
+AAD 绑定 Connection id、opaque method 和 security revision。API/Web 只返回 descriptor 与脱敏
+configured 状态，不返回 password、token 或 custom Header value。只有 method 或 normalized config
+发生语义变化时 security revision 才递增；旧 revision credential 不再命中新请求。
+
+API 为每次 initial、continuation、cancel 和 stream/reconnect 重新解析当前 credential，并通过
+service-authenticated internal path 发送严格校验的 versioned envelope。Gateway 只在验证 service
+token 后读取 envelope：`local-dev` 构造 loopback Host，其他方法构造 canonical Project Host，
+最后写入 credential Header。Gateway 不保存、解密或刷新 provider credential；public path 的
+Authorization、Cookie、Origin、Host、abort 与 NDJSON streaming 继续透明转发。
+
 每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Observer/Collector 的权威观测路径。
 
 平台记录该 Session 的来源：
@@ -630,6 +655,8 @@ MVP 不做：
 * Kubernetes
 * 团队权限系统
 * Connection marketplace
+* OIDC Authorization Code credential provider（作为后续通用 provider 切片交付）
+* 平台级 Secret Profile 与 Agent runtime 变量绑定
 * 复杂计费与用量统计
 * workerd / isolate runtime
 * 完整的多租户 sandbox

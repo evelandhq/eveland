@@ -1,4 +1,5 @@
 import type { DeploymentRecord, Project, SessionStatus } from "@eveland/core/contracts";
+import { AGENT_AUTH_ENVELOPE_HEADER } from "@eveland/core/agent-auth";
 
 export type PlaygroundRunEvent = {
   type: string;
@@ -34,6 +35,7 @@ export type PlaygroundProxyInput = {
   headers: Headers;
   body: Uint8Array | null;
   signal?: AbortSignal;
+  agentAuthEnvelope?: string;
 };
 
 export type PlaygroundProxy = (input: PlaygroundProxyInput) => Promise<Response>;
@@ -58,6 +60,7 @@ export async function proxyGatewayPlayground(
   const contentType = input.headers.get("content-type");
   if (accept) headers.accept = accept;
   if (contentType) headers["content-type"] = contentType;
+  if (input.agentAuthEnvelope) headers[AGENT_AUTH_ENVELOPE_HEADER] = input.agentAuthEnvelope;
 
   return (options.fetchImplementation ?? fetch)(
     `${gatewayUrl}/internal/projects/${encodeURIComponent(input.projectId)}/playground${input.path}`,
