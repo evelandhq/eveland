@@ -4,6 +4,22 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.4.0](https://github.com/evelandhq/eveland/compare/v0.3.0...v0.4.0) (2026-07-17)
+
+
+### Features
+
+* add GitLab PAT imports ([#77](https://github.com/evelandhq/eveland/issues/77)) ([b524abf](https://github.com/evelandhq/eveland/commit/b524abf6451b4c79e1d7c0f2a8726e5674c1ce52))
+* configure secrets before initial deployment ([#79](https://github.com/evelandhq/eveland/issues/79)) ([3899dc0](https://github.com/evelandhq/eveland/commit/3899dc067bdfa9ca1655fcbedb1bf9113b837fff))
+* validate source before project creation ([#78](https://github.com/evelandhq/eveland/issues/78)) ([11ed3b7](https://github.com/evelandhq/eveland/commit/11ed3b7c3a06b2aec686bba6825b5ea0dd0753e6))
+
+
+### Bug Fixes
+
+* preserve deployment startup diagnostics ([#80](https://github.com/evelandhq/eveland/issues/80)) ([2b98cf2](https://github.com/evelandhq/eveland/commit/2b98cf274e5839af43507e1bc5b79960928aa261))
+* report and bound git imports ([c25a921](https://github.com/evelandhq/eveland/commit/c25a92168e832d412bbd2c89eb49c14bde51e547))
+* retry imports and recover stale jobs ([3d364b3](https://github.com/evelandhq/eveland/commit/3d364b370b7dfec2fe6345056129532bdf3238d0))
+
 ## [0.3.0](https://github.com/evelandhq/eveland/compare/v0.2.0...v0.3.0) (2026-07-16)
 
 
