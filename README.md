@@ -173,10 +173,12 @@ Before a real production deploy, replace it for the API through a site-specific
 Compose override with a private 32-byte value, and configure that exact value in
 the host worker. Do not use the checked-in development fallback in production.
 OIDC clients must register
-`$WEB_ORIGIN/api/eveland/agent-auth/callback/oidc`
-as an exact redirect URI. The Web rewrite forwards this same-origin callback to
-API so the existing Better Auth session can bind the grant to the initiating
-Eveland member without equating that member with the IdP subject.
+`$WEB_ORIGIN/agent-auth/oidc/callback`
+as an exact redirect URI. That URL is a Web page: it receives the authorization
+response, immediately scrubs it from the address bar, and submits it to API with
+the existing Better Auth session so the grant is bound to the initiating Eveland
+member without equating that member with the IdP subject. The registered
+redirect URI therefore never depends on how the API is mounted or proxied.
 
 The production overlay uses host networking so Gateway can reach systemd Agent
 processes on host loopback. It runs the web production build and configures the

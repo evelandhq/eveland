@@ -313,9 +313,13 @@ describe("Agent Auth control-plane routes", () => {
     expect(start.status).toBe(302);
     const authorizeUrl = new URL(start.headers.get("location")!);
     const state = authorizeUrl.searchParams.get("state")!;
-    const callback = await app.request(`/agent-auth/callback/oidc?code=authorization-code&state=${encodeURIComponent(state)}`);
-    expect(callback.status).toBe(302);
-    expect(callback.headers.get("location")).toBe(`https://eveland.example/projects/${project.id}/playground`);
+    const callback = await app.request("/agent-auth/oidc/callback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ search: `?code=authorization-code&state=${encodeURIComponent(state)}` }),
+    });
+    expect(callback.status).toBe(200);
+    await expect(callback.json()).resolves.toEqual({ returnPath: `/projects/${project.id}/playground` });
 
     const resumed = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",

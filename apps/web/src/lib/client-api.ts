@@ -65,6 +65,17 @@ export async function updateAgentConnection(
   }).then((data) => data.connection);
 }
 
+export async function completeAgentAuthCallback(
+  method: string,
+  search: string,
+): Promise<{ returnPath: string }> {
+  return clientRequest<{ returnPath: string }>(`/agent-auth/${encodeURIComponent(method)}/callback`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ search }),
+  });
+}
+
 export async function signIn(email: string, password: string): Promise<CurrentMember> {
   await clientRequest("/api/auth/sign-in/email", {
     method: "POST",

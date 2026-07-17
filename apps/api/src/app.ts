@@ -142,6 +142,10 @@ const agentConnectionUpdateSchema = z.object({
   config: z.unknown(),
 });
 
+const agentAuthCallbackSchema = z.object({
+  search: z.string().min(1).max(8_192),
+});
+
 const playgroundMessageSchema = z.object({
   message: z.string().min(1),
 });
@@ -338,7 +342,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     store,
     appSecretKey,
     callbackUrl: options.oidcCallbackUrl
-      ?? `${webOrigin.replace(/\/$/, "")}/api/eveland/agent-auth/callback/oidc`,
+      ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
     ...(options.oidcProtocol ? { protocol: options.oidcProtocol } : {}),
     ...(options.oidcVerifyAccessToken ? { verifyAccessToken: options.oidcVerifyAccessToken } : {}),
     allowInsecureIssuer: options.allowInsecureOidcIssuer ?? process.env.NODE_ENV !== "production",
@@ -819,14 +823,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     }
   });
 
-  app.get("/agent-auth/callback/:method", async (c) => {
+  app.post("/agent-auth/:method/callback", async (c) => {
     c.header("cache-control", "no-store");
     const provider = interactionProviders.get(c.req.param("method"));
     if (!provider) return c.json({ error: "Agent Auth interaction not found" }, 404);
-    const state = c.req.query("state");
-    if (!state) return c.json({ error: "OIDC state is required" }, 400);
+    const parsed = agentAuthCallbackSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid Agent Auth callback input" }, 400);
     const callbackUrl = new URL(provider.callbackUrl);
-    callbackUrl.search = new URL(c.req.url).search;
+    callbackUrl.search = parsed.data.search;
+    const state = callbackUrl.searchParams.get("state");
+    if (!state) return c.json({ error: "OIDC state is required" }, 400);
     try {
       const result = await provider.callback({
         state,
@@ -834,7 +840,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         callerPrincipalId: options.auth ? c.get("principal").userId : "test-control-plane-user",
         getConnection: readAgentConnectionSnapshot,
       });
-      return c.redirect(`${webOrigin.replace(/\/$/, "")}${result.returnPath}`, 302);
+      return c.json({ returnPath: result.returnPath });
     } catch {
       return c.json({ error: "Agent authorization could not be completed" }, 400);
     }

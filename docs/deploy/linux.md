@@ -211,11 +211,12 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
 For OIDC Agent Connections, register the exact redirect URI
-`${WEB_ORIGIN}/api/eveland/agent-auth/callback/oidc`
-at each IdP. `WEB_ORIGIN` must be the browser-visible HTTPS Web origin; the Web
-rewrite forwards the callback to API while preserving the Better Auth cookie
-needed to bind and consume the one-time transaction. Production rejects HTTP
-issuers. API needs outbound HTTPS and DNS access to the configured discovery,
+`${WEB_ORIGIN}/agent-auth/oidc/callback`
+at each IdP. `WEB_ORIGIN` must be the browser-visible HTTPS Web origin; the URI
+is a Web page that submits the authorization response to API together with the
+Better Auth session cookie needed to bind and consume the one-time transaction,
+so it stays valid even if the API mount or proxy layout changes. Production
+rejects HTTP issuers. API needs outbound HTTPS and DNS access to the configured discovery,
 authorization metadata, token, and JWKS endpoints. Enforce a network egress
 policy that blocks loopback, link-local, cloud metadata, and unapproved private
 networks; application URL validation is not a substitute for that boundary and

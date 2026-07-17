@@ -31,7 +31,7 @@ describe("OIDC Agent Auth provider", () => {
     const provider = createOidcAuthorizationCodeProvider({
       store,
       appSecretKey,
-      callbackUrl: "https://eveland.example/api/eveland/agent-auth/callback/oidc",
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
       protocol: {
         async preflight() {},
         async buildAuthorizationUrl(_config, transaction) {
@@ -145,7 +145,7 @@ describe("OIDC Agent Auth provider", () => {
     const provider = createOidcAuthorizationCodeProvider({
       store,
       appSecretKey,
-      callbackUrl: "https://eveland.example/api/eveland/agent-auth/callback/oidc",
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
       protocol: {
         async preflight() {},
         async buildAuthorizationUrl(_config, transaction) {
@@ -246,7 +246,7 @@ describe("OIDC Agent Auth provider", () => {
     const provider = createOidcAuthorizationCodeProvider({
       store,
       appSecretKey,
-      callbackUrl: "https://eveland.example/api/eveland/agent-auth/callback/oidc",
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
       protocol: {
         async preflight() {},
         async buildAuthorizationUrl(_config, transaction) {
@@ -316,7 +316,7 @@ describe("OIDC Agent Auth provider", () => {
     const provider = createOidcAuthorizationCodeProvider({
       store,
       appSecretKey,
-      callbackUrl: "https://eveland.example/api/eveland/agent-auth/callback/oidc",
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
       protocol: {
         async preflight() {},
         async buildAuthorizationUrl(_config, transaction) {
@@ -389,7 +389,7 @@ describe("OIDC Agent Auth provider", () => {
     const provider = createOidcAuthorizationCodeProvider({
       store,
       appSecretKey,
-      callbackUrl: "https://eveland.example/api/eveland/agent-auth/callback/oidc",
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
       protocol: {
         async preflight() {},
         async buildAuthorizationUrl(_config, transaction) {
