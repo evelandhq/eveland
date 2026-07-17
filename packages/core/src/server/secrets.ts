@@ -41,6 +41,20 @@ export function maskKnownSecrets(input: string, values: string[]): string {
   return output;
 }
 
+export function mergeRuntimeEnvironment(input: {
+  projectSecrets: Readonly<Record<string, string>>;
+  projectProfile?: Readonly<Record<string, string>>;
+  deploymentProfile?: Readonly<Record<string, string>>;
+  reserved?: Readonly<Record<string, string>>;
+}): Record<string, string> {
+  return {
+    ...input.projectSecrets,
+    ...input.projectProfile,
+    ...input.deploymentProfile,
+    ...input.reserved,
+  };
+}
+
 function normalizeKey(key: string): Buffer {
   const utf8 = Buffer.from(key, "utf8");
   if (utf8.length === 32) {

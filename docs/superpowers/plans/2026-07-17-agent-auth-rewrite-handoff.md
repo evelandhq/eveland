@@ -1,7 +1,7 @@
 # Agent Auth 重写与 Provider 边界实施交接
 
 **日期：** 2026-07-17
-**状态：** PR A 已在 Eve 0.24.6 的 `main` 上实施；PR B 已发布为 draft PR #87 并完成 registry/Vercel/真实 IdP 补充验证；PR C 已发布为 draft PR #88
+**状态：** PR A 与 PR B 已在 Eve 0.24.6 的 `main` 上实施；PR C draft PR #88 已重放到通用 Provider 生命周期并完成组合验证
 **替代对象：** PR #72 `feat: agent auth OIDC route auth` 只保留为原型和研究资料，不作为合并候选
 
 ## 1. 结论
@@ -350,7 +350,9 @@ PR B 通用 OIDC 和 PR C 平台级变量/Secret Profile 保持独立纵向切�
 把 provider-specific 代码或 runtime Secret 注入混入 PR A。PR B 的 API interaction、preflight、
 credential resolution 与 401 recovery 已全部通过 opaque registry registration 调度，主流程不按
 method 分支；独立 `vercel-oidc` registration 镜像 Eve 0.24.6 Client 的 Bearer + trusted deployment
-header。
+header。PR C 没有把 OIDC protocol state machine 或 provider-specific code 混入平台 Secret/runtime
+injection；重放到 PR B 后，Basic、Bearer、Vercel OIDC 与 OIDC confidential client 统一通过
+Project Secret 或已绑定的 `agent-connection` Platform Secret reference 延迟解析当前值。
 
 ## 11. 分阶段 PR
 
@@ -394,6 +396,13 @@ caller，不包含 Jinshuju provider knowledge。
 - generic OIDC docs。
 
 ### PR C：平台级变量与 Secret Profile
+
+实施状态：`codex/platform-secret-profiles` 已完成 revisioned encrypted Profile、Project/Deployment
+binding、`agent-runtime`/`agent-connection` consumer、memory/Postgres store 与 migrations、runtime-only
+injection、定向 restart、Agent Connection reference catalog/resolution、Admin Web UI 和运维文档；
+完整 test/typecheck/build、真实 Postgres 与 Linux runtime smoke 已通过。重放到 PR B 后再次通过完整
+test/typecheck/build 与真实 Postgres；Basic、Bearer、Vercel OIDC 和 OIDC confidential client 均使用
+同一延迟 Secret reference resolver，API 主流程仍不按 OIDC method 分支。
 
 范围：
 

@@ -129,7 +129,7 @@ describe("Agent Auth provider registry", () => {
     expect(provider?.normalizeConfig({
       issuer: "https://idp.example/",
       clientId: "eveland-playground",
-      clientSecretKey: "OIDC_CLIENT_SECRET",
+      clientSecretRef: { kind: "platform-secret", key: "OIDC_CLIENT_SECRET" },
       scopes: ["profile", "openid", "profile"],
       audience: "https://agent.example",
       audienceMode: "both",
@@ -139,7 +139,7 @@ describe("Agent Auth provider registry", () => {
     })).toEqual({
       issuer: "https://idp.example",
       clientId: "eveland-playground",
-      clientSecretRef: { kind: "project-secret", key: "OIDC_CLIENT_SECRET" },
+      clientSecretRef: { kind: "platform-secret", key: "OIDC_CLIENT_SECRET" },
       scopes: ["openid", "profile"],
       audience: "https://agent.example",
       audienceMode: "both",
@@ -169,6 +169,50 @@ describe("Agent Auth provider registry", () => {
       ...base,
       authorizationParams: { redirect_uri: "https://attacker.example", state: "fixed" },
     })).toThrow(/authorization parameter/i);
+  });
+
+  test("materializes credentials from current secret references without copying values into config", async () => {
+    const registry = createAgentAuthRegistry();
+    const resolveSecret = async (reference: { kind: "project-secret" | "platform-secret"; key: string }) => `${reference.kind}:${reference.key}`;
+    const basic = registry.get("basic")!;
+    const bearer = registry.get("bearer")!;
+    const vercelOidc = registry.get("vercel-oidc")!;
+    const headers = registry.get("headers")!;
+
+    expect(basic.descriptor.fields.find((field) => field.key === "password")).toMatchObject({
+      secretReferenceKey: "passwordRef",
+    });
+    expect(bearer.descriptor.fields.find((field) => field.key === "token")).toMatchObject({
+      secretReferenceKey: "tokenRef",
+    });
+    expect(vercelOidc.descriptor.fields.find((field) => field.key === "token")).toMatchObject({
+      secretReferenceKey: "tokenRef",
+    });
+
+    const basicConfig = basic.normalizeConfig({
+      username: "alice",
+      passwordRef: { kind: "project-secret", key: "BASIC_PASSWORD" },
+    });
+    expect(JSON.stringify(basicConfig)).not.toContain("project-secret:BASIC_PASSWORD");
+    await expect(basic.getCredential(context("basic", basicConfig, resolveSecret)))
+      .resolves.toMatchObject({ envelope: { headers: [["authorization", "Basic YWxpY2U6cHJvamVjdC1zZWNyZXQ6QkFTSUNfUEFTU1dPUkQ="]] } });
+
+    const bearerConfig = bearer.normalizeConfig({ tokenRef: { kind: "platform-secret", key: "ACCESS_TOKEN" } });
+    await expect(bearer.getCredential(context("bearer", bearerConfig, resolveSecret)))
+      .resolves.toMatchObject({ envelope: { headers: [["authorization", "Bearer platform-secret:ACCESS_TOKEN"]] } });
+
+    const vercelOidcConfig = vercelOidc.normalizeConfig({ tokenRef: { kind: "platform-secret", key: "VERCEL_OIDC_TOKEN" } });
+    await expect(vercelOidc.getCredential(context("vercel-oidc", vercelOidcConfig, resolveSecret)))
+      .resolves.toMatchObject({ envelope: { headers: [
+        ["authorization", "Bearer platform-secret:VERCEL_OIDC_TOKEN"],
+        ["x-vercel-trusted-oidc-idp-token", "platform-secret:VERCEL_OIDC_TOKEN"],
+      ] } });
+
+    const headerConfig = headers.normalizeConfig({
+      headers: { "X-Api-Key": { kind: "platform-secret", key: "API_KEY" }, "X-Tenant": "acme" },
+    });
+    await expect(headers.getCredential(context("headers", headerConfig, resolveSecret)))
+      .resolves.toMatchObject({ envelope: { headers: [["x-api-key", "platform-secret:API_KEY"], ["x-tenant", "acme"]] } });
   });
 });
 
@@ -231,7 +275,11 @@ function registryWithOidc() {
   }]);
 }
 
-function context(method: string, config: unknown) {
+function context(
+  method: string,
+  config: unknown,
+  resolveSecret?: (reference: { kind: "project-secret" | "platform-secret"; key: string }) => Promise<string>,
+) {
   return {
     connection: {
       id: "acon_test",
@@ -244,5 +292,6 @@ function context(method: string, config: unknown) {
       config,
     },
     callerPrincipalId: "member_1",
+    ...(resolveSecret ? { resolveSecret } : {}),
   };
 }

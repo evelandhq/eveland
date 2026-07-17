@@ -2,7 +2,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
 import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
-import type { PublicGitCredential } from "@eveland/core/contracts";
+import type {
+  PlatformSecretProfile,
+  PlatformSecretProfileBinding,
+  PublicGitCredential,
+} from "@eveland/core/contracts";
 import type {
   AgentEndpoints,
   CollectorHealth,
@@ -64,6 +68,11 @@ export const getSystemConfigurationDiagnostics = () =>
   apiGet<SystemConfigurationDiagnostics>("/system/configuration");
 export const getGitCredentials = () =>
   apiGet<{ credentials: PublicGitCredential[] }>("/git-credentials").then((data) => data.credentials);
+export const getPlatformSecretProfiles = () =>
+  apiGet<{ profiles: PlatformSecretProfile[] }>("/platform/secret-profiles").then((data) => data.profiles);
+export const getProjectPlatformSecretBindings = (projectId: string) =>
+  apiGet<{ bindings: PlatformSecretProfileBinding[] }>(`/projects/${projectId}/platform-secret-bindings`)
+    .then((data) => data.bindings);
 
 function queryString(filters: Record<string, string | undefined>): string {
   const query = new URLSearchParams();

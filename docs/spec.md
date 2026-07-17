@@ -290,8 +290,8 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 
 * `local-dev`：不发送 credential，并且只允许 Gateway 用 loopback Host 调用 Eve `localDev()`；
 * `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
-* `basic`：发送加密保存的 HTTP Basic username/password；
-* `bearer`：发送加密保存的外部签发 Bearer token；
+* `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
+* `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
 * `vercel-oidc`：镜像 Eve 0.24.6 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
 * `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
@@ -304,12 +304,13 @@ verifier 建立的 Caller 做隐式映射。
 `vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.24.6
 `ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
 `x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
-Connection 只保存加密 token/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
+Connection 只保存 token Secret reference/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
 
 通用 `oidc` 方法只使用协议级配置：HTTPS issuer、client id、scope、可选 audience 及其
 `resource`/`audience` 参数模式、显式 token endpoint client authentication、附加 authorization
 parameters，以及 `eve-jwt` 或 `userinfo` access-token verification。confidential client secret
-通过 Project Secret key 引用，不能进入 Connection browser payload。`eve-jwt` 必须绑定已配置的
+通过 Project Secret 或显式绑定的 `agent-connection` Platform Secret 引用，不能进入 Connection browser
+payload。`eve-jwt` 必须绑定已配置的
 issuer/audience；`userinfo` 必须让 UserInfo `sub` 与已验证 ID Token `sub` 一致。Provider 名称不能
 改变 scope、prompt、client authentication 或 verification 行为。
 
@@ -523,6 +524,32 @@ Secret 仅在运行时注入容器，不进入：
 
 ---
 
+### Platform Secret Profiles (/settings/secret-profiles)
+
+Admin 可创建 operator-owned Platform Secret Profile。Profile 是一个带单调 `revision` 的命名值集合；
+entry 明确区分 `variable` 与 `secret`，但两者的 Value 都使用 `APP_SECRET_KEY` 加密，API/Web 只返回
+key、kind、configured 状态和 revision，不能返回密文、明文、长度或可恢复片段。Member 可以查看自己
+Project 的 binding 结果，但不能创建、修改、删除 Profile 或 binding。
+
+Profile 必须显式绑定到一个 Project 或该 Project 的单个 Deployment，并声明 consumer：
+
+* `agent-runtime`：Project binding 作为所有 Deployment 的默认值；Deployment binding 只覆盖该目标；
+* `agent-connection`：只允许 Project scope，供 Basic/Bearer 等调用端 credential provider 在每次请求时解析。
+
+同一 target/consumer 最多一个 binding。Agent runtime 的确定性优先级为 Project Secret < Project Profile
+< Deployment Profile < Eveland 保留变量。Profile 值只在 deploy、restart、cold activation 或 schedule
+activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、generated
+Dockerfile、observer envelope、日志或 Web payload。完整 Project/Profile 值集合必须参与 runtime/build
+diagnostic 脱敏。
+
+Profile entry 语义变化才递增 revision。新增、替换、解除 runtime binding，更新或删除被 runtime binding
+引用的 Profile 时，API 对受影响的 `running`/`draining` Deployment 去重后排定向 restart；没有 live
+Deployment 时从下一次启动生效。`agent-connection` 不重启 Agent 进程，而是在每次 initial、continuation、
+cancel 和 stream/reconnect 请求时解析当前 Project Secret 或当前绑定 Profile revision；引用缺失、解绑或
+无法解密必须 fail closed，不得回退到旧值或 inline copy。旧 inline Connection config 仅保留兼容读取。
+
+---
+
 ### Logs (/projects/proj_xxxxxxxxxx/logs)
 
 MVP 只提供三类日志：
@@ -681,7 +708,6 @@ MVP 不做：
 * Kubernetes
 * 团队权限系统
 * Connection marketplace
-* 平台级 Secret Profile 与 Agent runtime 变量绑定
 * 复杂计费与用量统计
 * workerd / isolate runtime
 * 完整的多租户 sandbox
