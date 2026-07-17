@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/registry.ts",
+    "./oidc": "./src/oidc.ts",
     "./sealed-config": "./src/sealed-config.ts",
     "./sealed-credential": "./src/sealed-credential.ts"
   },
@@ -15,7 +16,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*"
+    "@eveland/core": "workspace:*",
+    "@eveland/db": "workspace:*",
+    "eve": "0.24.6",
+    "openid-client": "^6.8.4"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

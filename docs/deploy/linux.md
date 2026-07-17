@@ -193,11 +193,29 @@ and Header policy, applies the credential last, and never persists it.
 
 Keep `/internal/*` excluded from every public Traefik route. A missing envelope currently retains the
 service-authenticated loopback behavior for rolling-upgrade compatibility, but current API instances always send an
-explicit envelope. `local-dev` is the only method that selects loopback authority; `none`, Basic, Bearer, and custom
-headers use the canonical Project hostname so Eve cannot mistake a public-style request for local development.
+explicit envelope. `local-dev` is the only method that selects loopback authority; `none`, Basic, Bearer, Vercel
+OIDC, generic OIDC, and custom headers use the canonical Project hostname so Eve cannot mistake a public-style request for local development.
 Changing a normalized Connection method/config increments its security revision; unchanged re-saves do not.
 Connection password, token, and custom Header values must never be copied into Compose files, systemd env files,
 runtime diagnostics, logs, Source Revisions, Releases, observer events, or browser payloads.
+
+For generic OIDC, register `${WEB_ORIGIN}/agent-auth/oidc/callback` as an exact redirect URI. The callback page is
+owned by Web and completes through the authenticated API; API encrypts one-time ten-minute transactions and
+principal-scoped access/refresh tokens with `APP_SECRET_KEY`. A confidential client's Connection stores only a
+Project Secret key reference, so create that Secret before saving a `client_secret_basic` or `client_secret_post`
+Connection. Rotating the Project Secret does not change the Connection revision automatically; re-save the
+Connection after rotation so in-flight transactions and old credentials are invalidated.
+
+Production network policy must allow API egress only to approved OIDC discovery, authorization metadata, JWKS,
+token, and UserInfo HTTPS endpoints. Application URL policy rejects userinfo/fragments, non-HTTPS endpoints,
+localhost, literal private addresses, and redirects; the network layer must additionally prevent DNS rebinding and
+resolved private/link-local destinations. Never expose OIDC tokens, authorization codes, state, client secrets, or
+PKCE verifiers through reverse-proxy access logs or runtime diagnostics.
+
+The explicit Vercel OIDC Connection method mirrors Eve 0.24.6 by sending the configured token in both
+`Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short lived; rotate the
+encrypted Connection value before expiry. Eveland does not infer this method from a Vercel deployment, Agent source,
+or a 401 response.
 | `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
 | `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
 | `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |

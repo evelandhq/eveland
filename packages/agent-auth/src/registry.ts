@@ -3,6 +3,40 @@ import {
   type AgentAuthEnvelope,
   type AgentAuthMethodDescriptor,
 } from "@eveland/core/agent-auth";
+import type { AgentConnection } from "@eveland/core/contracts";
+
+// Eve 0.24.6's Client `vercelOidc` variant sends this Deployment Protection
+// header alongside Authorization. It is declared in Eve's client/types module
+// but is not re-exported from the public `eve/client` entry point.
+const VERCEL_TRUSTED_OIDC_IDP_TOKEN_HEADER = "x-vercel-trusted-oidc-idp-token";
+
+export type AgentAuthFailure = {
+  code: "interaction_required" | "configuration_invalid" | "provider_unavailable" | "credential_rejected" | "retry_required";
+  method: string;
+  message: string;
+  interaction?: { type: "redirect"; url: string };
+};
+
+export type AgentAuthConnectionSnapshot = AgentConnection & { config: unknown };
+
+export type AgentCredentialContext = {
+  connection: AgentAuthConnectionSnapshot;
+  callerPrincipalId: string;
+  returnPath?: string;
+};
+
+export type AgentCredentialResolution =
+  | { envelope: AgentAuthEnvelope; version?: unknown }
+  | { failure: AgentAuthFailure };
+
+export type UnauthorizedRecoveryResult =
+  | { action: "retry" }
+  | { action: "give_up"; failure: AgentAuthFailure };
+
+export type AgentAuthInteractionHandler = {
+  start(context: AgentCredentialContext & { returnPath: string }): Promise<{ authorizationUrl: string }>;
+  callback(context: { search: string; callerPrincipalId: string }): Promise<{ returnPath: string }>;
+};
 
 export type AgentAuthProviderRegistration = {
   method: string;
@@ -11,7 +45,25 @@ export type AgentAuthProviderRegistration = {
   authority: "loopback" | "canonical";
   normalizeConfig(input: unknown, existing?: unknown): unknown;
   redactConfig(config: unknown): Record<string, unknown>;
-  getCredential(context: { config: unknown; callerPrincipalId: string }): Promise<AgentAuthEnvelope>;
+  preflight?(context: AgentCredentialContext): Promise<void>;
+  getCredential(context: AgentCredentialContext): Promise<AgentCredentialResolution>;
+  recoverUnauthorized?(context: AgentCredentialContext & {
+    rejectedVersion: unknown;
+    attempt: 0 | 1;
+  }): Promise<UnauthorizedRecoveryResult>;
+  interaction?: AgentAuthInteractionHandler;
+};
+
+export type OidcAuthorizationCodeConfig = {
+  issuer: string;
+  clientId: string;
+  clientSecretRef?: { kind: "project-secret"; key: string };
+  scopes: string[];
+  audience?: string;
+  audienceMode?: "resource" | "audience" | "both";
+  tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
+  authorizationParams?: Record<string, string>;
+  accessTokenVerification: "eve-jwt" | "userinfo";
 };
 
 export type AgentAuthRegistry = {
@@ -30,10 +82,14 @@ export function createAgentAuthRegistry(extensions: AgentAuthProviderRegistratio
       return providers.get(method) ?? null;
     },
     listDescriptors() {
-      return [...providers.values()].map(({ descriptor }) => ({
-        ...descriptor,
-        fields: descriptor.fields.map((field) => ({ ...field })),
-      }));
+      return [...providers.values()].sort((left, right) => providerOrder(left.method) - providerOrder(right.method))
+        .map(({ descriptor }) => ({
+          ...descriptor,
+          fields: descriptor.fields.map((field) => ({
+            ...field,
+            ...(field.options ? { options: field.options.map((option) => ({ ...option })) } : {}),
+          })),
+        }));
     },
   };
 }
@@ -85,11 +141,11 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
         passwordConfigured: typeof value?.password === "string" && value.password.length > 0,
       };
     },
-    async getCredential({ config }) {
+    async getCredential({ connection: { config } }) {
       const value = record(config, "Invalid HTTP Basic configuration.");
       const username = requiredString(value.username, "Basic username is required.");
       const password = requiredString(value.password, "Basic password is required.");
-      return envelope("canonical", [["authorization", `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`]]);
+      return { envelope: envelope("canonical", [["authorization", `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`]]) };
     },
   },
   {
@@ -113,11 +169,42 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
       const value = optionalRecord(config);
       return { tokenConfigured: typeof value?.token === "string" && value.token.length > 0 };
     },
-    async getCredential({ config }) {
+    async getCredential({ connection: { config } }) {
       const value = record(config, "Invalid Bearer configuration.");
       const token = requiredString(value.token, "Bearer token is required.").trim();
       if (!token) throw new Error("Bearer token is required.");
-      return envelope("canonical", [["authorization", `Bearer ${token}`]]);
+      return { envelope: envelope("canonical", [["authorization", `Bearer ${token}`]]) };
+    },
+  },
+  {
+    method: "vercel-oidc",
+    descriptor: {
+      method: "vercel-oidc",
+      label: "Vercel OIDC",
+      description: "Send a Vercel-issued OIDC token using Eve 0.24.6's trusted deployment and Agent headers.",
+      credentialScope: "connection",
+      interactive: false,
+      fields: [{ key: "token", label: "Vercel OIDC token", input: "password", required: true, secret: true, valueType: "string" }],
+    },
+    credentialScope: "connection",
+    authority: "canonical",
+    normalizeConfig(input, existing) {
+      const next = record(input, "Vercel OIDC configuration must be an object.");
+      const previous = optionalRecord(existing);
+      return { token: requiredString(next.token ?? previous?.token, "Vercel OIDC token is required.") };
+    },
+    redactConfig(config) {
+      const value = optionalRecord(config);
+      return { tokenConfigured: typeof value?.token === "string" && value.token.length > 0 };
+    },
+    async getCredential({ connection: { config } }) {
+      const value = record(config, "Invalid Vercel OIDC configuration.");
+      const token = requiredString(value.token, "Vercel OIDC token is required.").trim();
+      if (!token) throw new Error("Vercel OIDC token is required.");
+      return { envelope: envelope("canonical", [
+        ["authorization", `Bearer ${token}`],
+        [VERCEL_TRUSTED_OIDC_IDP_TOKEN_HEADER, token],
+      ]) };
     },
   },
   {
@@ -150,15 +237,172 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
       const headers = optionalRecord(optionalRecord(config)?.headers);
       return { headerNames: Object.keys(headers ?? {}).map((name) => name.toLowerCase()).sort() };
     },
-    async getCredential({ config }) {
+    async getCredential({ connection: { config } }) {
       const configured = record(record(config, "Invalid custom header configuration.").headers, "Custom credential headers must be an object.");
-      return envelope("canonical", Object.entries(configured).map(([name, value]) => [
+      return { envelope: envelope("canonical", Object.entries(configured).map(([name, value]) => [
         name,
         requiredString(value, `Header ${name} must be a string.`),
-      ]));
+      ])) };
     },
   },
 ];
+
+export function createOidcProviderDefinition(): Omit<AgentAuthProviderRegistration, "getCredential"> {
+  return {
+    method: "oidc",
+    descriptor: {
+      method: "oidc",
+      label: "OIDC Authorization Code",
+      description: "Let each Playground caller authorize with the Agent's OIDC provider using Authorization Code and PKCE.",
+      credentialScope: "principal",
+      interactive: true,
+      fields: [
+        { key: "issuer", label: "Issuer", input: "text", required: true, secret: false, valueType: "string" },
+        { key: "clientId", label: "Client ID", input: "text", required: true, secret: false, valueType: "string" },
+        { key: "clientSecretKey", label: "Project Secret key", input: "text", required: false, secret: false, valueType: "string" },
+        { key: "scopes", label: "Scopes", input: "text", required: true, secret: false, valueType: "string-list", defaultValue: "openid offline_access" },
+        { key: "audience", label: "Audience", input: "text", required: false, secret: false, valueType: "string" },
+        { key: "audienceMode", label: "Audience parameter mode", input: "select", required: false, secret: false, valueType: "string", options: [
+          { value: "resource", label: "Resource indicator" },
+          { value: "audience", label: "Audience parameter" },
+          { value: "both", label: "Both parameters" },
+        ] },
+        { key: "tokenEndpointAuthMethod", label: "Token endpoint auth method", input: "select", required: true, secret: false, valueType: "string", defaultValue: "none", options: [
+          { value: "client_secret_basic", label: "Client secret basic" },
+          { value: "client_secret_post", label: "Client secret post" },
+          { value: "none", label: "None (public client)" },
+        ] },
+        { key: "authorizationParams", label: "Additional authorization parameters (JSON)", input: "textarea", required: false, secret: false, valueType: "json-record" },
+        { key: "accessTokenVerification", label: "Access token verification", input: "select", required: true, secret: false, valueType: "string", defaultValue: "userinfo", options: [
+          { value: "eve-jwt", label: "Eve OIDC JWT verification" },
+          { value: "userinfo", label: "OIDC UserInfo" },
+        ] },
+      ],
+    },
+    credentialScope: "principal",
+    authority: "canonical",
+    normalizeConfig(input, existing) {
+      return normalizeOidcConfig(input, existing);
+    },
+    redactConfig(config) {
+      const value = optionalRecord(config);
+      const secretRef = optionalRecord(value?.clientSecretRef);
+      return {
+        issuer: value?.issuer,
+        clientId: value?.clientId,
+        clientSecretKey: secretRef?.key,
+        clientSecretConfigured: typeof secretRef?.key === "string" && secretRef.key.length > 0,
+        scopes: value?.scopes,
+        ...(value?.audience === undefined ? {} : { audience: value.audience, audienceMode: value.audienceMode }),
+        tokenEndpointAuthMethod: value?.tokenEndpointAuthMethod,
+        authorizationParams: value?.authorizationParams,
+        accessTokenVerification: value?.accessTokenVerification,
+      };
+    },
+  };
+}
+
+const reservedOidcAuthorizationParameters = new Set([
+  "client_id",
+  "code_challenge",
+  "code_challenge_method",
+  "audience",
+  "nonce",
+  "redirect_uri",
+  "response_type",
+  "resource",
+  "scope",
+  "state",
+]);
+
+function normalizeOidcConfig(input: unknown, existing?: unknown): OidcAuthorizationCodeConfig {
+  const next = record(input, "OIDC configuration must be an object.");
+  const previous = optionalRecord(existing);
+  const issuer = normalizeHttpsIssuer(requiredString(next.issuer ?? previous?.issuer, "OIDC issuer is required."));
+  const clientId = requiredString(next.clientId ?? previous?.clientId, "OIDC client ID is required.").trim();
+  if (!clientId) throw new Error("OIDC client ID is required.");
+  const tokenEndpointAuthMethod = oneOf(
+    next.tokenEndpointAuthMethod ?? previous?.tokenEndpointAuthMethod ?? "none",
+    ["client_secret_basic", "client_secret_post", "none"] as const,
+    "Unsupported OIDC token endpoint auth method.",
+  );
+  const accessTokenVerification = oneOf(
+    next.accessTokenVerification ?? previous?.accessTokenVerification ?? "userinfo",
+    ["eve-jwt", "userinfo"] as const,
+    "Unsupported OIDC access-token verification mode.",
+  );
+  const secretKeyInput = next.clientSecretKey;
+  const previousSecretRef = optionalRecord(previous?.clientSecretRef);
+  const secretKey = typeof secretKeyInput === "string" && secretKeyInput.trim()
+    ? secretKeyInput.trim()
+    : typeof previousSecretRef?.key === "string"
+      ? previousSecretRef.key
+      : undefined;
+  if (secretKey && !/^[A-Z][A-Z0-9_]*$/.test(secretKey)) {
+    throw new Error("OIDC Project Secret key must be an uppercase environment variable name.");
+  }
+  if (tokenEndpointAuthMethod !== "none" && !secretKey) {
+    throw new Error(`OIDC ${tokenEndpointAuthMethod} authentication requires a client secret reference.`);
+  }
+  const configuredScopes = next.scopes ?? previous?.scopes ?? ["openid", "offline_access"];
+  if (!Array.isArray(configuredScopes) || configuredScopes.some((scope) => typeof scope !== "string" || !scope.trim())) {
+    throw new Error("OIDC scopes must be a list of non-empty strings.");
+  }
+  const uniqueScopes = new Set(configuredScopes.map((scope) => (scope as string).trim()));
+  uniqueScopes.delete("openid");
+  const scopes = ["openid", ...[...uniqueScopes].sort()];
+
+  const audienceInput = next.audience ?? previous?.audience;
+  const audience = audienceInput === undefined ? undefined : requiredString(audienceInput, "OIDC audience must not be empty.").trim();
+  const audienceModeInput = next.audienceMode ?? previous?.audienceMode;
+  if (!audience && audienceModeInput !== undefined) throw new Error("OIDC audience mode requires an audience.");
+  const audienceMode = audience
+    ? oneOf(audienceModeInput ?? "resource", ["resource", "audience", "both"] as const, "Unsupported OIDC audience mode.")
+    : undefined;
+  if (accessTokenVerification === "eve-jwt" && !audience) {
+    throw new Error("OIDC eve-jwt access-token verification requires an audience.");
+  }
+
+  const authorizationParamsInput = next.authorizationParams ?? previous?.authorizationParams;
+  const authorizationParams = authorizationParamsInput === undefined
+    ? undefined
+    : normalizeAuthorizationParams(authorizationParamsInput);
+  return {
+    issuer,
+    clientId,
+    ...(secretKey ? { clientSecretRef: { kind: "project-secret" as const, key: secretKey } } : {}),
+    scopes,
+    ...(audience ? { audience, audienceMode } : {}),
+    tokenEndpointAuthMethod,
+    ...(authorizationParams && Object.keys(authorizationParams).length > 0 ? { authorizationParams } : {}),
+    accessTokenVerification,
+  };
+}
+
+function normalizeHttpsIssuer(value: string): string {
+  const issuer = new URL(value);
+  if (issuer.protocol !== "https:") throw new Error("OIDC issuer must use HTTPS.");
+  if (issuer.username || issuer.password || issuer.search || issuer.hash) {
+    throw new Error("OIDC issuer must not contain userinfo, query, or fragment components.");
+  }
+  issuer.pathname = issuer.pathname.replace(/\/$/, "");
+  return issuer.toString().replace(/\/$/, "");
+}
+
+function normalizeAuthorizationParams(value: unknown): Record<string, string> {
+  const params = record(value, "OIDC authorization parameters must be an object.");
+  return Object.fromEntries(Object.entries(params).sort(([left], [right]) => left.localeCompare(right)).map(([key, candidate]) => {
+    if (reservedOidcAuthorizationParameters.has(key)) {
+      throw new Error(`OIDC authorization parameter ${key} is managed by Eveland.`);
+    }
+    return [key, requiredString(candidate, `OIDC authorization parameter ${key} must be a string.`)];
+  }));
+}
+
+function oneOf<const T extends readonly string[]>(value: unknown, allowed: T, message: string): T[number] {
+  if (typeof value !== "string" || !allowed.includes(value)) throw new Error(message);
+  return value as T[number];
+}
 
 function noCredentialProvider(
   method: string,
@@ -177,7 +421,7 @@ function noCredentialProvider(
     },
     redactConfig: () => ({}),
     async getCredential() {
-      return envelope(authority, []);
+      return { envelope: envelope(authority, []) };
     },
   };
 }
@@ -194,6 +438,12 @@ function validateProvider(
   if (provider.descriptor.credentialScope !== provider.credentialScope) {
     throw new Error(`Agent Auth descriptor credential scope must match provider ${provider.method}.`);
   }
+}
+
+function providerOrder(method: string): number {
+  const order = ["local-dev", "none", "basic", "bearer", "vercel-oidc", "oidc", "headers"];
+  const index = order.indexOf(method);
+  return index === -1 ? order.length : index;
 }
 
 function envelope(authority: "loopback" | "canonical", input: unknown): AgentAuthEnvelope {

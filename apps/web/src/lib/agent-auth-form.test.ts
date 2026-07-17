@@ -13,6 +13,7 @@ const descriptor: AgentAuthMethodDescriptor = {
     { key: "token", label: "Token", input: "password", required: true, secret: true, valueType: "string" },
     { key: "scopes", label: "Scopes", input: "text", required: false, secret: false, valueType: "string-list" },
     { key: "headers", label: "Headers", input: "textarea", required: false, secret: true, valueType: "json-record" },
+    { key: "mode", label: "Mode", input: "select", required: true, secret: false, valueType: "string", defaultValue: "safe" },
   ],
 };
 
@@ -27,6 +28,7 @@ describe("Agent Auth form", () => {
       name: "Agent",
       scopes: ["openid", "profile"],
       headers: { "x-api-key": "secret" },
+      mode: "safe",
     });
   });
 
@@ -36,7 +38,7 @@ describe("Agent Auth form", () => {
       token: "must-not-render",
       scopes: ["openid", "profile"],
       headers: { "x-api-key": "must-not-render" },
-    })).toEqual({ name: "Agent", scopes: "openid profile" });
+    })).toEqual({ name: "Agent", scopes: "openid profile", mode: "safe" });
   });
 
   test("rejects missing required public fields and malformed JSON records", () => {

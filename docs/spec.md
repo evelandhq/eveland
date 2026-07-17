@@ -292,12 +292,38 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 * `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
 * `basic`：发送加密保存的 HTTP Basic username/password；
 * `bearer`：发送加密保存的外部签发 Bearer token；
+* `vercel-oidc`：镜像 Eve 0.24.6 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
+* `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
 用户必须在 Playground 的 Connection 设置中显式选择客户端方法；平台不得从 Eve verifier
 名称、源码 import、401 或 `WWW-Authenticate` 猜测 credential acquisition。Eveland member id
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
 verifier 建立的 Caller 做隐式映射。
+
+`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.24.6
+`ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
+`x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
+Connection 只保存加密 token/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
+
+通用 `oidc` 方法只使用协议级配置：HTTPS issuer、client id、scope、可选 audience 及其
+`resource`/`audience` 参数模式、显式 token endpoint client authentication、附加 authorization
+parameters，以及 `eve-jwt` 或 `userinfo` access-token verification。confidential client secret
+通过 Project Secret key 引用，不能进入 Connection browser payload。`eve-jwt` 必须绑定已配置的
+issuer/audience；`userinfo` 必须让 UserInfo `sub` 与已验证 ID Token `sub` 一致。Provider 名称不能
+改变 scope、prompt、client authentication 或 verification 行为。
+
+OIDC interaction 使用 Web-owned callback page 和经过控制面登录认证的 API callback。state、nonce、
+PKCE verifier、Caller Principal、Connection revision 与 return path 保存在十分钟、一次性消费、
+加密的 transaction 中；过期 transaction 有实际清理路径。access/refresh token 按 Caller Principal
+隔离加密保存，只有 JWT/UserInfo 验证成功后才能发送给 Agent。暂时 verification failure 保持
+pending，永久 token rejection 不激活 credential。refresh 使用进程内 singleflight 和 Postgres
+lease/rotation fencing；过期 lease writer 不能完成更新。
+
+缺少 OIDC credential 的第一轮 Playground turn 先保存在当前 browser session，跳转授权，callback
+完成后 claim 并仅重发一次；授权前不得创建 Agent request。已有 credential 收到第一个 401 时最多
+refresh 并重发一次，第二个 401 不产生第三个 Agent request；403 不 refresh。Caller Principal 是
+Eveland member id 的隔离键，可以与 ID Token `sub`、access-token subject 和 Agent Caller 完全不同。
 
 Connection 的 normalized config 使用 `APP_SECRET_KEY` 派生用途密钥并以 AES-256-GCM 保存，
 AAD 绑定 Connection id、opaque method 和 security revision。API/Web 只返回 descriptor 与脱敏
@@ -655,7 +681,6 @@ MVP 不做：
 * Kubernetes
 * 团队权限系统
 * Connection marketplace
-* OIDC Authorization Code credential provider（作为后续通用 provider 切片交付）
 * 平台级 Secret Profile 与 Agent runtime 变量绑定
 * 复杂计费与用量统计
 * workerd / isolate runtime

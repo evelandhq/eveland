@@ -11,9 +11,16 @@ import { encodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
 import {
   agentAuthConfigsEqual,
   createAgentAuthRegistry,
+  type AgentAuthFailure,
+  type AgentCredentialContext,
   type AgentAuthProviderRegistration,
 } from "@eveland/agent-auth";
 import { openAgentAuthConfig, sealAgentAuthConfig } from "@eveland/agent-auth/sealed-config";
+import {
+  createOidcAgentAuthProvider,
+  type OidcAuthorizationCodeProviderOptions,
+  type OidcProtocol,
+} from "@eveland/agent-auth/oidc";
 import type {
   ActivationLeaseClaim,
   AuthPrincipal,
@@ -36,7 +43,7 @@ import {
 } from "@eveland/core/source";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
+import { assertValidSecretKey, decryptSecretValue, encryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
 import {
   resolveSchedulerDispatchSecret,
   resolveSchedulerRuntimeSecret,
@@ -131,6 +138,10 @@ const updateAgentConnectionSchema = z.object({
   expectedSecurityRevision: z.number().int().positive(),
   method: z.string().min(1),
   config: z.unknown(),
+});
+
+const agentAuthCallbackSchema = z.object({
+  search: z.string().min(1).max(8_192).refine((value) => value.startsWith("?"), "OIDC callback search must start with ?."),
 });
 
 const invitationSchema = z.object({
@@ -263,6 +274,10 @@ export type AppOptions = {
   runtimeActivationWaitTimeoutMs?: number;
   sourcePreflightTtlMs?: number;
   agentAuthProviders?: AgentAuthProviderRegistration[];
+  oidcProtocol?: OidcProtocol;
+  oidcVerifyAccessToken?: OidcAuthorizationCodeProviderOptions["verifyAccessToken"];
+  oidcCallbackUrl?: string;
+  agentAuthNow?: () => Date;
   runtimeActivationWaiter?: (
     claim: ActivationLeaseClaim,
     input: { signal: AbortSignal; timeoutMs: number },
@@ -293,7 +308,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
-  const agentAuthRegistry = createAgentAuthRegistry(options.agentAuthProviders);
   const ensureProjectAgentConnection = async (projectId: string) => {
     const existing = await store.getProjectAgentConnection(projectId);
     if (existing) return existing;
@@ -315,7 +329,39 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       method: connection.method,
       securityRevision: connection.securityRevision,
     });
-  const publicConnection = async (connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>) => {
+  const oidcRegistration = createOidcAgentAuthProvider({
+    store,
+    appSecretKey,
+    callbackUrl: options.oidcCallbackUrl ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
+    resolveClientSecret: async (config, connection) => {
+      if (!config.clientSecretRef) return undefined;
+      const secret = (await store.listSecretRecords(connection.target.projectId))
+        .find((candidate) => candidate.key === config.clientSecretRef?.key);
+      if (!secret) throw new Error(`Project Secret ${config.clientSecretRef.key} is not configured.`);
+      return decryptSecretValue(JSON.parse(secret.encryptedValue) as EncryptedSecret, appSecretKey);
+    },
+    ...(options.oidcProtocol ? { protocol: options.oidcProtocol } : {}),
+    ...(options.oidcVerifyAccessToken ? { verifyAccessToken: options.oidcVerifyAccessToken } : {}),
+    ...(options.agentAuthNow ? { now: options.agentAuthNow } : {}),
+    getConnection: async (connectionId) => {
+      const connection = await store.getAgentConnection(connectionId);
+      return connection ? { ...connection, config: readConnectionConfig(connection) } : null;
+    },
+  });
+  const agentAuthRegistry = createAgentAuthRegistry([oidcRegistration, ...(options.agentAuthProviders ?? [])]);
+  const credentialContext = (
+    connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>,
+    callerPrincipalId: string,
+    returnPath?: string,
+  ): AgentCredentialContext => ({
+    connection: { ...connection, config: readConnectionConfig(connection) },
+    callerPrincipalId,
+    ...(returnPath ? { returnPath } : {}),
+  });
+  const publicConnection = async (
+    connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>,
+    callerPrincipalId?: string,
+  ) => {
     const provider = agentAuthRegistry.get(connection.method);
     if (!provider) {
       return {
@@ -324,8 +370,27 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       };
     }
     try {
-      const config = readConnectionConfig(connection);
+      const context = credentialContext(
+        connection,
+        callerPrincipalId ?? "",
+        `/projects/${connection.target.projectId}/playground`,
+      );
+      const config = context.connection.config;
       const { configEncrypted: _configEncrypted, ...safe } = connection;
+      if (provider.descriptor.interactive && callerPrincipalId) {
+        const resolved = await provider.getCredential(context);
+        return {
+          connection: { ...safe, config: provider.redactConfig(config) },
+          status: "failure" in resolved
+            ? resolved.failure.code === "interaction_required"
+              ? {
+                  state: "interaction_required" as const,
+                  ...(resolved.failure.interaction ? { interaction: resolved.failure.interaction } : {}),
+                }
+              : { state: "misconfigured" as const, message: resolved.failure.message }
+            : { state: "credential_available" as const },
+        };
+      }
       return {
         connection: { ...safe, config: provider.redactConfig(config) },
         status: {
@@ -344,12 +409,12 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       };
     }
   };
-  const resolveProjectAgentAuthEnvelope = async (projectId: string, callerPrincipalId: string): Promise<string> => {
+  const resolveProjectAgentAuthCredential = async (projectId: string, callerPrincipalId: string) => {
     const connection = await ensureProjectAgentConnection(projectId);
     const provider = agentAuthRegistry.get(connection.method);
     if (!provider) throw new Error(`Unsupported Agent Auth Method: ${connection.method}.`);
-    const config = readConnectionConfig(connection);
-    return encodeAgentAuthEnvelope(await provider.getCredential({ config, callerPrincipalId }));
+    const context = credentialContext(connection, callerPrincipalId, `/projects/${projectId}/playground`);
+    return { connection, provider, context, resolution: await provider.getCredential(context) };
   };
   const enqueueLiveDeploymentRestarts = async (projectId: string) => {
     const deployments = (await store.listDeployments(projectId)).filter(
@@ -645,10 +710,48 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   app.get("/agent-auth/methods", (c) => c.json({ methods: agentAuthRegistry.listDescriptors() }));
 
+  app.get("/agent-connections/:connectionId/auth/interactions/:method/start", async (c) => {
+    c.header("cache-control", "no-store");
+    const connection = await store.getAgentConnection(c.req.param("connectionId"));
+    const provider = agentAuthRegistry.get(c.req.param("method"));
+    if (!connection || !provider || connection.method !== provider.method || !provider.interaction) {
+      return c.json({ error: "Agent Auth interaction not found" }, 404);
+    }
+    const returnPath = c.req.query("returnPath");
+    if (!returnPath) return c.json({ error: "Agent Auth return path is required" }, 400);
+    try {
+      const interaction = await provider.interaction.start(
+        credentialContext(connection, currentUserId(c), returnPath) as AgentCredentialContext & { returnPath: string },
+      );
+      return c.redirect(interaction.authorizationUrl, 302);
+    } catch (error) {
+      return c.json({
+        error: "Agent authorization could not be started",
+        detail: error instanceof Error ? error.message : "Invalid Agent Auth configuration.",
+      }, 400);
+    }
+  });
+
+  app.post("/agent-auth/callback/:method", async (c) => {
+    c.header("cache-control", "no-store");
+    const parsed = agentAuthCallbackSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid Agent Auth callback" }, 400);
+    const provider = agentAuthRegistry.get(c.req.param("method"));
+    if (!provider?.interaction) return c.json({ error: "Agent Auth interaction not found" }, 404);
+    try {
+      return c.json(await provider.interaction.callback({
+        search: parsed.data.search,
+        callerPrincipalId: currentUserId(c),
+      }));
+    } catch (error) {
+      return c.json({ error: "Agent authorization could not be completed" }, 400);
+    }
+  });
+
   app.get("/projects/:projectId/playground/connection", async (c) => {
     const project = await store.getProject(c.req.param("projectId"));
     if (!project) return c.json({ error: "Project not found" }, 404);
-    return c.json(await publicConnection(await ensureProjectAgentConnection(project.id)));
+    return c.json(await publicConnection(await ensureProjectAgentConnection(project.id), currentUserId(c)));
   });
 
   app.put("/agent-connections/:connectionId", async (c) => {
@@ -677,6 +780,24 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     }
     const securityChanged = connection.method !== parsed.data.method || !agentAuthConfigsEqual(previous, normalized);
     const securityRevision = connection.securityRevision + (securityChanged ? 1 : 0);
+    if (provider.preflight && securityChanged) {
+      try {
+        await provider.preflight({
+          connection: {
+            ...connection,
+            method: parsed.data.method,
+            securityRevision,
+            config: normalized,
+          },
+          callerPrincipalId: currentUserId(c),
+        });
+      } catch (error) {
+        return c.json({
+          error: "Agent Auth provider preflight failed",
+          detail: error instanceof Error ? error.message : "Invalid Agent Auth provider configuration.",
+        }, 422);
+      }
+    }
     const updated = await store.updateAgentConnection({
       id: connection.id,
       expectedSecurityRevision: connection.securityRevision,
@@ -689,7 +810,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       securityChanged,
     });
     if (!updated) return c.json({ error: "Agent Connection was updated by another request" }, 409);
-    return c.json(await publicConnection(updated));
+    if (securityChanged) await store.deleteStaleAgentAuthCredentials(updated.id, updated.securityRevision);
+    return c.json(await publicConnection(updated, currentUserId(c)));
   });
 
   const rejectProjectMutationsWhileDeleting: MiddlewareHandler = async (c, next) => {
@@ -1091,8 +1213,18 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
     let agentAuthEnvelope: string;
+    let activeProvider: AgentAuthProviderRegistration;
+    let activeContext: AgentCredentialContext;
+    let credentialVersion: unknown;
     try {
-      agentAuthEnvelope = await resolveProjectAgentAuthEnvelope(projectId, currentUserId(c));
+      const resolved = await resolveProjectAgentAuthCredential(projectId, currentUserId(c));
+      if ("failure" in resolved.resolution) {
+        return c.json(resolved.resolution.failure, agentAuthFailureStatus(resolved.resolution.failure));
+      }
+      activeProvider = resolved.provider;
+      activeContext = resolved.context;
+      credentialVersion = resolved.resolution.version;
+      agentAuthEnvelope = encodeAgentAuthEnvelope(resolved.resolution.envelope);
     } catch (error) {
       return c.json({
         error: "Agent Connection is not ready",
@@ -1130,15 +1262,49 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
     let upstream: Response;
     try {
-      upstream = await playgroundProxy({
+      const proxy = (envelope: string) => playgroundProxy({
         projectId,
         path: `${evePath}${requestUrl.search}`,
         method: c.req.method,
         headers: c.req.raw.headers,
         body,
         signal: c.req.raw.signal,
-        agentAuthEnvelope,
+        agentAuthEnvelope: envelope,
       });
+      upstream = await proxy(agentAuthEnvelope);
+      if (upstream.status === 401 && activeProvider.recoverUnauthorized && credentialVersion !== undefined) {
+        await upstream.body?.cancel().catch(() => undefined);
+        const recovery = await activeProvider.recoverUnauthorized({
+          ...activeContext,
+          rejectedVersion: credentialVersion,
+          attempt: 0,
+        });
+        if (recovery.action === "give_up") return c.json(recovery.failure, agentAuthFailureStatus(recovery.failure));
+        const currentConnection = await store.getAgentConnection(activeContext.connection.id);
+        if (!currentConnection || currentConnection.method !== activeProvider.method) {
+          return c.json({ error: "Agent Connection changed; retry the request." }, 409);
+        }
+        const retryContext = credentialContext(currentConnection, currentUserId(c), `/projects/${projectId}/playground`);
+        const retryCredential = await activeProvider.getCredential(retryContext);
+        if ("failure" in retryCredential) return c.json(retryCredential.failure, agentAuthFailureStatus(retryCredential.failure));
+        upstream = await proxy(encodeAgentAuthEnvelope(retryCredential.envelope));
+        if (upstream.status === 401) {
+          await upstream.body?.cancel().catch(() => undefined);
+          const terminal = await activeProvider.recoverUnauthorized({
+            ...retryContext,
+            rejectedVersion: retryCredential.version,
+            attempt: 1,
+          });
+          const failure = terminal.action === "give_up"
+            ? terminal.failure
+            : {
+                code: "retry_required" as const,
+                method: activeProvider.method,
+                message: "The Agent credential was rejected twice; retry the request.",
+              };
+          return c.json(failure, agentAuthFailureStatus(failure));
+        }
+      }
     } catch (error) {
       if (platformSession && !isCancel) {
         await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
@@ -1508,6 +1674,13 @@ function isMultipartRequest(c: Context): boolean {
 
 function currentUserId(c: Context<{ Variables: { principal: AuthPrincipal } }>): string {
   return c.get("principal")?.userId ?? "user_local_admin";
+}
+
+function agentAuthFailureStatus(failure: AgentAuthFailure): 401 | 409 | 422 | 503 {
+  if (failure.code === "interaction_required" || failure.code === "credential_rejected") return 401;
+  if (failure.code === "retry_required") return 409;
+  if (failure.code === "configuration_invalid") return 422;
+  return 503;
 }
 
 // The sync body is optional; only `{ "deploy": true }` opts into an automatic

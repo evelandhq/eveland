@@ -6,7 +6,7 @@ export function serializeAgentAuthConfig(
 ): Record<string, unknown> {
   const config: Record<string, unknown> = {};
   for (const field of descriptor.fields) {
-    const value = (values[field.key] ?? "").trim();
+    const value = (values[field.key] ?? field.defaultValue ?? "").trim();
     if (!value && field.secret) continue;
     if (!value && field.required) throw new Error(`${field.label} is required.`);
     if (!value) continue;
@@ -33,7 +33,7 @@ export function agentAuthValuesFromConfig(
 ): Record<string, string> {
   return Object.fromEntries(descriptor.fields.flatMap((field) => {
     if (field.secret) return [];
-    const value = config[field.key];
+    const value = config[field.key] ?? field.defaultValue;
     if (Array.isArray(value)) return [[field.key, value.join(" ")]];
     return typeof value === "string" ? [[field.key, value]] : [];
   }));

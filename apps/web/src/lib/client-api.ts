@@ -40,7 +40,7 @@ export type AgentConnectionView = {
 export type AgentAuthStatus =
   | { state: "not_required" }
   | { state: "credential_available" }
-  | { state: "interaction_required" }
+  | { state: "interaction_required"; interaction?: { type: "redirect"; url: string } }
   | { state: "misconfigured"; message: string };
 
 export async function getAgentAuthMethods(): Promise<AgentAuthMethodDescriptor[]> {
@@ -63,6 +63,14 @@ export async function updateAgentConnection(
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
+  });
+}
+
+export async function completeAgentAuthCallback(search: string): Promise<{ returnPath: string }> {
+  return clientRequest("/agent-auth/callback/oidc", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ search }),
   });
 }
 

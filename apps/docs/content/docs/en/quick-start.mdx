@@ -42,6 +42,19 @@ Open [http://localhost:3000](http://localhost:3000). All four applications are r
 
 The first successful deploy creates an immutable release and a preview deployment. Open **Playground** for a fresh continuous conversation through Gateway. It streams messages, live thinking, tool calls and results, supports approval, choice, text, and external-authorization prompts, and accepts up to four image, PDF, text, or code files. Reloading the page starts a new conversation; the generated platform Session remains available under **Sessions**.
 
+## Configure protected Agents
+
+Open **Playground → Connection** and explicitly choose how Eveland calls the Agent's Eve route. Local development, no credential, HTTP Basic, Bearer, Vercel OIDC, custom headers, and generic OIDC Authorization Code are available; Eveland does not infer this choice from Agent source or an authentication challenge. Vercel OIDC mirrors Eve 0.24.6 by sending the configured short-lived token as both Bearer authorization and the trusted deployment header.
+
+For OIDC:
+
+1. Register `<your Web origin>/agent-auth/oidc/callback` as the client's exact redirect URI.
+2. For a confidential client, create a Project Secret containing the client secret, then enter that Secret's key in the Connection. Public clients choose `none` and do not need a Secret.
+3. Configure issuer, client id, scopes, optional audience and parameter mode, token endpoint authentication, optional authorization parameters, and either Eve JWT or UserInfo verification.
+4. Save the Connection, then choose **Authorize with identity provider** or send the first Playground message.
+
+Each Eveland member authorizes an isolated credential. The first message waits in that browser session during the redirect and is sent exactly once after the callback. Access and refresh tokens remain encrypted in API storage and are never returned to Web.
+
 ## Verify the workspace
 
 Run the same checks used by the repository before committing a change:
