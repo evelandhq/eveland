@@ -49,6 +49,16 @@ export function inferProjectSlugFromGitUrl(input: string): string | null {
   }
 }
 
+export function normalizeGitHttpHost(input: string): string | null {
+  try {
+    const url = new URL(input.trim());
+    if (url.protocol !== "https:" || url.username || url.password) return null;
+    return url.host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 export async function claimProjectSlug<T>(
   requestedName: string,
   claim: (candidate: string) => Promise<T | null>,

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircleIcon, GitBranchIcon, UploadIcon } from "lucide-react";
 import {
   inferProjectSlugFromGitUrl,
+  normalizeGitHttpHost,
   PROJECT_SLUG_MAX_LENGTH,
   PROJECT_SLUG_PATTERN,
   slugifyProjectName,
@@ -22,6 +23,8 @@ import {
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { getGitCredentials } from "@/lib/client-api";
+import type { PublicGitCredential } from "@eveland/core/contracts";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.";
@@ -40,16 +43,31 @@ function GitProjectForm() {
   const [name, setName] = useState("");
   const [nameEdited, setNameEdited] = useState(false);
   const [gitUrl, setGitUrl] = useState("");
+  const [gitlabPat, setGitlabPat] = useState("");
+  const [savedCredentials, setSavedCredentials] = useState<PublicGitCredential[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const inferredName = inferProjectSlugFromGitUrl(gitUrl);
+  const gitHost = normalizeGitHttpHost(gitUrl);
+  const savedCredential = savedCredentials.find((credential) => credential.host === gitHost);
+  const patUnsupported = gitlabPat.length > 0 && gitHost === null;
   const repositoryInvalid = gitUrl.length > 0 && inferredName === null;
   const nameInvalid =
     name.length > 0 && (name.length > PROJECT_SLUG_MAX_LENGTH || !PROJECT_SLUG_PATTERN.test(name));
 
+  useEffect(() => {
+    let cancelled = false;
+    void getGitCredentials()
+      .then((credentials) => {
+        if (!cancelled) setSavedCredentials(credentials);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (repositoryInvalid || nameInvalid || !name) return;
+    if (repositoryInvalid || nameInvalid || patUnsupported || !name) return;
     setPending(true);
     setError(null);
 
@@ -57,7 +75,7 @@ function GitProjectForm() {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, importKind: "git", gitUrl }),
+      body: JSON.stringify({ name, importKind: "git", gitUrl, ...(gitlabPat ? { gitlabPat } : {}) }),
     });
 
     setPending(false);
@@ -101,6 +119,26 @@ function GitProjectForm() {
               <FieldDescription>HTTPS, SSH, and SCP-style Git addresses are supported.</FieldDescription>
               {repositoryInvalid ? <FieldError>Enter a Git repository URL with a repository name.</FieldError> : null}
             </Field>
+            <Field data-invalid={patUnsupported || undefined}>
+              <FieldLabel htmlFor="gitlab-pat">GitLab personal access token</FieldLabel>
+              <Input
+                id="gitlab-pat"
+                type="password"
+                value={gitlabPat}
+                onChange={(event) => setGitlabPat(event.target.value)}
+                aria-invalid={patUnsupported}
+                autoComplete="off"
+                placeholder={savedCredential ? "Saved PAT will be reused" : "glpat-…"}
+              />
+              <FieldDescription>
+                {savedCredential && !gitlabPat
+                  ? `A saved PAT for ${savedCredential.host} will be reused.`
+                  : "Optional for private GitLab repositories. Use read_repository scope; Eveland saves it only after a successful import."}
+              </FieldDescription>
+              {patUnsupported ? (
+                <FieldError>Use an HTTPS repository URL without embedded credentials to authenticate with a PAT.</FieldError>
+              ) : null}
+            </Field>
             <Field data-invalid={nameInvalid || undefined}>
               <FieldLabel htmlFor="git-project-name">Project name</FieldLabel>
               <Input
@@ -131,7 +169,7 @@ function GitProjectForm() {
           </FieldGroup>
         </CardContent>
         <CardFooter>
-          <Button type="submit" className="w-full" disabled={pending || repositoryInvalid || nameInvalid || !name}>
+          <Button type="submit" className="w-full" disabled={pending || repositoryInvalid || nameInvalid || patUnsupported || !name}>
             {pending ? <Spinner data-icon="inline-start" /> : <GitBranchIcon data-icon="inline-start" />}
             {pending ? "Importing..." : "Import Git repository"}
           </Button>

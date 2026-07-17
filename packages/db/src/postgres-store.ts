@@ -13,6 +13,8 @@ import {
   secretRowToSecretRecord,
   scheduleRowToSchedule,
   secretRowToPublicSecret,
+  gitCredentialRowToPublic,
+  gitCredentialRowToRecord,
   sessionEventRowToSessionEvent,
   sessionNodeRowToSessionNode,
   sessionRowToSession,
@@ -36,6 +38,7 @@ import {
   releases,
   schedules,
   secrets,
+  gitCredentials,
   sessionEvents,
   sessionBindings,
   sessionNodes,
@@ -227,6 +230,7 @@ export function createPostgresStore(database: Database): Store {
         importKind: input.importKind,
         gitUrl: input.gitUrl ?? null,
         sourcePath: input.sourcePath ?? null,
+        ...(input.gitCredential ? { gitCredential: input.gitCredential } : {}),
       });
 
       return projectRowToProject(row);
@@ -235,6 +239,45 @@ export function createPostgresStore(database: Database): Store {
     async getProject(projectId) {
       const [row] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
       return row ? projectRowToProject(row) : null;
+    },
+
+    async listGitCredentials(userId) {
+      const rows = await db
+        .select()
+        .from(gitCredentials)
+        .where(eq(gitCredentials.userId, userId))
+        .orderBy(desc(gitCredentials.updatedAt));
+      return rows.map(gitCredentialRowToPublic);
+    },
+
+    async getGitCredential(userId, host) {
+      const [row] = await db
+        .select()
+        .from(gitCredentials)
+        .where(and(eq(gitCredentials.userId, userId), eq(gitCredentials.host, host)))
+        .limit(1);
+      return row ? gitCredentialRowToRecord(row) : null;
+    },
+
+    async upsertGitCredential(userId, host, encryptedToken) {
+      const [row] = await db
+        .insert(gitCredentials)
+        .values({ id: createId("gitcred"), userId, host, encryptedToken })
+        .onConflictDoUpdate({
+          target: [gitCredentials.userId, gitCredentials.host],
+          set: { encryptedToken, updatedAt: new Date() },
+        })
+        .returning();
+      if (!row) throw new Error("Failed to upsert Git credential.");
+      return gitCredentialRowToRecord(row);
+    },
+
+    async deleteGitCredential(userId, credentialId) {
+      const rows = await db
+        .delete(gitCredentials)
+        .where(and(eq(gitCredentials.userId, userId), eq(gitCredentials.id, credentialId)))
+        .returning({ id: gitCredentials.id });
+      return rows.length > 0;
     },
 
     async requestProjectDeletion(projectId) {
@@ -497,6 +540,15 @@ export function createPostgresStore(database: Database): Store {
         .where(and(eq(jobs.id, jobId), eq(jobs.status, "running"), eq(jobs.attempts, attempt)))
         .returning({ id: jobs.id });
       return renewed.length === 1;
+    },
+
+    async replaceJobPayload(jobId, payload, attempt) {
+      const updated = await db
+        .update(jobs)
+        .set({ payload, updatedAt: new Date() })
+        .where(and(eq(jobs.id, jobId), eq(jobs.status, "running"), eq(jobs.attempts, attempt)))
+        .returning({ id: jobs.id });
+      return updated.length === 1;
     },
 
     async completeJob(jobId, attempt) {

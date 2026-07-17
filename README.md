@@ -47,6 +47,14 @@ The Project page follows the asynchronous import job until completion and expose
 credential-redacted failure with a retry action; an accepted create/sync request only means
 the job was queued.
 
+Private GitLab imports, including self-managed hosts, can provide a PAT with the minimal
+`read_repository` scope next to an HTTPS repository URL. The API encrypts it with
+`APP_SECRET_KEY`; the worker scopes temporary Git HTTP authentication to the exact normalized
+host and never writes the token into the clone URL or imported repository. A PAT becomes a
+personal saved host credential only after the source import succeeds. Later imports and syncs
+by the same user automatically reuse it, while Settings > Git credentials can list hosts or
+remove a credential without ever revealing its value.
+
 ## Public docs deployment
 
 `apps/docs` is deployed as the `eveland-docs` Cloudflare Worker at

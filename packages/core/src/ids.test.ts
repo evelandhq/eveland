@@ -6,6 +6,7 @@ import {
   createId,
   idAlphabet,
   inferProjectSlugFromGitUrl,
+  normalizeGitHttpHost,
   slugifyProjectName,
 } from "./ids.js";
 
@@ -51,6 +52,17 @@ describe("project slugs", () => {
       "sample-office-assistant-2",
     ]);
     expect(claimed).toEqual({ slug: "sample-office-assistant-2" });
+  });
+});
+
+describe("Git HTTP hosts", () => {
+  test("normalizes HTTPS repository hosts without accepting embedded credentials or SSH addresses", () => {
+    expect(normalizeGitHttpHost(" https://GitLab.Example.COM:8443/group/agent.git ")).toBe(
+      "gitlab.example.com:8443",
+    );
+    expect(normalizeGitHttpHost("https://oauth2:token@gitlab.example.com/group/agent.git")).toBeNull();
+    expect(normalizeGitHttpHost("http://gitlab.example.com/group/agent.git")).toBeNull();
+    expect(normalizeGitHttpHost("git@gitlab.example.com:group/agent.git")).toBeNull();
   });
 });
 

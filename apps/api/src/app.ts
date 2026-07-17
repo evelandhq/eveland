@@ -37,6 +37,7 @@ import {
 } from "@eveland/core/server/scheduler-dispatch";
 import {
   inferProjectSlugFromGitUrl,
+  normalizeGitHttpHost,
   PROJECT_SLUG_MAX_LENGTH,
   PROJECT_SLUG_PATTERN,
 } from "@eveland/core/ids";
@@ -71,6 +72,7 @@ const createProjectSchema = z.discriminatedUnion("importKind", [
     name: projectNameSchema.optional(),
     importKind: z.literal("git"),
     gitUrl: gitRepositoryUrlSchema,
+    gitlabPat: z.string().min(1).max(1024).optional(),
   }),
   z.object({
     name: projectNameSchema,
@@ -189,6 +191,13 @@ function validateTargetsPayload(
 }
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
+
+type CreateGitCredentialInput = {
+  userId: string;
+  host: string;
+  encryptedToken: string;
+  persistAfterImport: boolean;
+};
 
 export type AppOptions = {
   buildInfo?: EvelandBuildInfo;
@@ -551,6 +560,15 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   app.get("/projects", async (c) => c.json({ projects: await store.listProjects() }));
 
+  app.get("/git-credentials", async (c) => {
+    return c.json({ credentials: await store.listGitCredentials(currentUserId(c)) });
+  });
+
+  app.delete("/git-credentials/:credentialId", async (c) => {
+    const deleted = await store.deleteGitCredential(currentUserId(c), c.req.param("credentialId"));
+    return deleted ? c.body(null, 204) : c.json({ error: "Git credential not found" }, 404);
+  });
+
   app.post("/projects", async (c) => {
     if (isMultipartRequest(c)) {
       return createZipProjectFromUpload(c, store, dataDir);
@@ -568,7 +586,40 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     if (!name) {
       return c.json({ error: "Invalid project input" }, 400);
     }
-    const project = await store.createProject({ ...parsed.data, name });
+    let gitCredential: CreateGitCredentialInput | undefined;
+    if (parsed.data.importKind === "git") {
+      const host = normalizeGitHttpHost(parsed.data.gitUrl);
+      if (parsed.data.gitlabPat && !host) {
+        return c.json({ error: "GitLab PAT authentication requires an HTTPS repository URL without embedded credentials." }, 400);
+      }
+      if (host) {
+        const userId = currentUserId(c);
+        const stored = parsed.data.gitlabPat ? null : await store.getGitCredential(userId, host);
+        if (parsed.data.gitlabPat) {
+          gitCredential = {
+            userId,
+            host,
+            encryptedToken: JSON.stringify(encryptSecretValue(parsed.data.gitlabPat, appSecretKey)),
+            persistAfterImport: true,
+          };
+        } else if (stored) {
+          gitCredential = {
+            userId,
+            host,
+            encryptedToken: stored.encryptedToken,
+            persistAfterImport: false,
+          };
+        }
+      }
+    }
+    const project = parsed.data.importKind === "git"
+      ? await store.createProject({
+          name,
+          importKind: "git",
+          gitUrl: parsed.data.gitUrl,
+          ...(gitCredential ? { gitCredential } : {}),
+        })
+      : await store.createProject({ ...parsed.data, name });
     return c.json({ project }, 201);
   });
 
@@ -734,10 +785,20 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     }
 
     const deploy = await readSyncDeployFlag(c);
+    const host = normalizeGitHttpHost(project.gitUrl);
+    const storedCredential = host ? await store.getGitCredential(currentUserId(c), host) : null;
     const job = await store.enqueueJob(projectId, "import_source", {
       importKind: "git",
       gitUrl: project.gitUrl,
       deployAfterImport: deploy,
+      ...(storedCredential ? {
+        gitCredential: {
+          userId: storedCredential.userId,
+          host: storedCredential.host,
+          encryptedToken: storedCredential.encryptedToken,
+          persistAfterImport: false,
+        },
+      } : {}),
     });
     return c.json({ job }, 202);
   });
@@ -1168,6 +1229,10 @@ async function projectPlaygroundStreamLine(
 
 function isMultipartRequest(c: Context): boolean {
   return (c.req.header("content-type") ?? "").toLowerCase().includes("multipart/form-data");
+}
+
+function currentUserId(c: Context<{ Variables: { principal: AuthPrincipal } }>): string {
+  return c.get("principal")?.userId ?? "user_local_admin";
 }
 
 // The sync body is optional; only `{ "deploy": true }` opts into an automatic

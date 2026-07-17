@@ -270,6 +270,68 @@ describe("processNextJob", () => {
     await expect(store.claimNextJob("worker-idle")).resolves.toBeNull();
   });
 
+  test("saves a pending user Git credential only after a source import succeeds", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Private GitLab Agent",
+      importKind: "git",
+      gitUrl: "https://gitlab.example.com/group/agent.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    await store.enqueueJob(project.id, "import_source", {
+      importKind: "git",
+      sourcePath,
+      gitCredential: {
+        userId: "user_one",
+        host: "gitlab.example.com",
+        encryptedToken: "encrypted-token",
+        persistAfterImport: true,
+      },
+    });
+
+    await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toBeNull();
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+    await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toMatchObject({
+      encryptedToken: "encrypted-token",
+    });
+    await expect(store.listProjectJobs(project.id, { type: "import_source", limit: 1 })).resolves.toEqual([
+      expect.objectContaining({ payload: expect.not.objectContaining({ gitCredential: expect.anything() }) }),
+    ]);
+  });
+
+  test("removes a pending Git credential from a failed import job without saving it", async () => {
+    const store = createMemoryStore();
+    const invalidSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-invalid-git-import-"));
+    const project = await store.createProject({
+      name: "Failed Private GitLab Agent",
+      importKind: "git",
+      gitUrl: "https://gitlab.example.com/group/agent.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    await store.enqueueJob(project.id, "import_source", {
+      importKind: "git",
+      sourcePath: invalidSourcePath,
+      gitCredential: {
+        userId: "user_one",
+        host: "gitlab.example.com",
+        encryptedToken: "encrypted-token",
+        persistAfterImport: true,
+      },
+    });
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+    await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toBeNull();
+    await expect(store.listProjectJobs(project.id, { type: "import_source", limit: 1 })).resolves.toEqual([
+      expect.objectContaining({
+        status: "failed",
+        payload: expect.not.objectContaining({ gitCredential: expect.anything() }),
+      }),
+    ]);
+  });
+
   test("completes a job with its claimed attempt token", async () => {
     const store = createMemoryStore();
     const sourcePath = await createFixtureEveProject();

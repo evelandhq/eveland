@@ -224,6 +224,15 @@ and rebuilds the process environment from the current encrypted Secret set. Wait
 those jobs to complete before testing the new value; a single-target route can be
 briefly unavailable while its process restarts.
 
+GitLab PAT imports use the same `APP_SECRET_KEY` on API and worker. The database stores only
+AES-256-GCM ciphertext keyed by user and normalized HTTP host. During `git clone`, the worker
+passes a host-scoped Basic authorization header through Git's temporary environment config;
+the token is not embedded in argv, the repository URL, `.git/config`, job/status responses,
+or logs. The credential is promoted to the user's saved settings only after a complete source
+import succeeds. Operators should require PAT expiry and the minimal `read_repository` scope,
+and can revoke a compromised token in GitLab plus remove its host entry in Settings. SSH/SCP
+imports continue to use the worker host's existing SSH configuration and do not consume PATs.
+
 Build-trust note: building a project executes that project's dependency
 lifecycle scripts (`npm ci`/`npm install`, e.g. `postinstall`) inside the build
 sandbox as the unprivileged build user (`EVELAND_BUILD_USER`, default

@@ -38,7 +38,10 @@ describe("sidebar navigation", () => {
     }))).toEqual([
       {
         label: "Personal",
-        items: [{ href: "/settings/profile", label: "Profile" }],
+        items: [
+          { href: "/settings/profile", label: "Profile" },
+          { href: "/settings/git-credentials", label: "Git credentials" },
+        ],
       },
       {
         label: "System",

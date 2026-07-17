@@ -145,6 +145,22 @@ export const projects = pgTable(
   ],
 );
 
+export const gitCredentials = pgTable(
+  "git_credentials",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    host: text("host").notNull(),
+    encryptedToken: text("encrypted_token").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("git_credentials_user_host_idx").on(table.userId, table.host),
+    index("git_credentials_user_idx").on(table.userId),
+  ],
+);
+
 export const secrets = pgTable(
   "secrets",
   {

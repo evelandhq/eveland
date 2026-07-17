@@ -1,5 +1,6 @@
 import type { FileUIPart, UserContent } from "ai";
 import type { Job, ScheduleRun } from "./api";
+import type { PublicGitCredential } from "@eveland/core/contracts";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -61,6 +62,15 @@ export async function changePassword(currentPassword: string, newPassword: strin
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ currentPassword, newPassword }),
   });
+}
+
+export async function getGitCredentials(): Promise<PublicGitCredential[]> {
+  return clientRequest<{ credentials: PublicGitCredential[] }>("/git-credentials", { method: "GET" })
+    .then((data) => data.credentials);
+}
+
+export async function deleteGitCredential(credentialId: string): Promise<void> {
+  await clientRequest(`/git-credentials/${credentialId}`, { method: "DELETE" });
 }
 
 export async function inviteMember(email: string): Promise<{ invitation: Invitation; inviteUrl: string }> {

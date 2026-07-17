@@ -29,6 +29,8 @@ import type {
   ScheduleRun,
   RuntimeInstance,
   ActivationLease,
+  GitCredentialRecord,
+  PublicGitCredential,
 } from "@eveland/core/contracts";
 
 export type ProjectRow = {
@@ -101,6 +103,38 @@ export function secretRowToSecretRecord(row: {
     projectId: row.projectId,
     key: row.key,
     encryptedValue: row.encryptedValue,
+    createdAt: timestampToIso(row.createdAt),
+    updatedAt: timestampToIso(row.updatedAt),
+  };
+}
+
+export function gitCredentialRowToRecord(row: {
+  id: string;
+  userId: string;
+  host: string;
+  encryptedToken: string;
+  createdAt: Date;
+  updatedAt: Date;
+}): GitCredentialRecord {
+  return {
+    id: row.id,
+    userId: row.userId,
+    host: row.host,
+    encryptedToken: row.encryptedToken,
+    createdAt: timestampToIso(row.createdAt),
+    updatedAt: timestampToIso(row.updatedAt),
+  };
+}
+
+export function gitCredentialRowToPublic(row: {
+  id: string;
+  host: string;
+  createdAt: Date;
+  updatedAt: Date;
+}): PublicGitCredential {
+  return {
+    id: row.id,
+    host: row.host,
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };

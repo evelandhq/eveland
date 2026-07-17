@@ -59,6 +59,17 @@ export type SecretRecord = {
 
 export type PublicSecret = Omit<SecretRecord, "encryptedValue">;
 
+export type GitCredentialRecord = {
+  id: string;
+  userId: string;
+  host: string;
+  encryptedToken: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PublicGitCredential = Omit<GitCredentialRecord, "encryptedToken" | "userId">;
+
 export type JobType = "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "ensure_deployment_running" | "archive_deployment" | "delete_project";
 export type JobStatus = "queued" | "running" | "completed" | "failed";
 

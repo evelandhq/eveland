@@ -34,7 +34,7 @@ production" means the process throws or a deploy is blocked when it is missing.
 
 | Variable | Purpose | Default | Read by |
 | --- | --- | --- | --- |
-| `APP_SECRET_KEY` | Symmetric key (aes-256-gcm) for encrypting/decrypting project secrets. The API encrypts on write; the worker decrypts before injecting into a deployment. Validated by `assertValidSecretKey`. | dev-only `eveland-dev-secret-key-000000000` | API + worker |
+| `APP_SECRET_KEY` | Symmetric key (aes-256-gcm) for project secrets and personal Git host credentials. The API encrypts on write; the worker decrypts project secrets for deployments and GitLab PATs only for host-scoped source clone authentication. Validated by `assertValidSecretKey`. | dev-only `eveland-dev-secret-key-000000000` | API + worker |
 
 > **Change `APP_SECRET_KEY` in production.** Leaving the dev default in place means
 > stored secrets are effectively unprotected.

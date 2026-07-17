@@ -357,6 +357,86 @@ describe("api app", () => {
     });
   });
 
+  test("encrypts a supplied GitLab PAT for the import job without saving it before import succeeds", async () => {
+    const store = createMemoryStore();
+    const app = createApp(store, { appSecretKey: "eveland-test-secret-key-00000000" });
+
+    const response = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "private-agent",
+        importKind: "git",
+        gitUrl: "https://GitLab.Example.com/group/private-agent.git",
+        gitlabPat: "glpat-first-import-secret",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const job = await store.claimNextJob("test-worker");
+    expect(job?.payload).toMatchObject({
+      gitCredential: {
+        userId: "user_local_admin",
+        host: "gitlab.example.com",
+        persistAfterImport: true,
+        encryptedToken: expect.any(String),
+      },
+    });
+    expect(JSON.stringify(job?.payload)).not.toContain("glpat-first-import-secret");
+    await expect(store.getGitCredential("user_local_admin", "gitlab.example.com")).resolves.toBeNull();
+  });
+
+  test("reuses the current user's saved GitLab PAT for another repository on the same host", async () => {
+    const store = createMemoryStore();
+    await store.upsertGitCredential("user_local_admin", "gitlab.example.com:8443", "saved-encrypted-token");
+    const app = createApp(store);
+
+    const response = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "reused-agent",
+        importKind: "git",
+        gitUrl: "https://gitlab.example.com:8443/group/reused-agent.git",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    await expect(store.claimNextJob("test-worker")).resolves.toMatchObject({
+      payload: {
+        gitCredential: {
+          userId: "user_local_admin",
+          host: "gitlab.example.com:8443",
+          encryptedToken: "saved-encrypted-token",
+          persistAfterImport: false,
+        },
+        gitUrl: "https://gitlab.example.com:8443/group/reused-agent.git",
+        importKind: "git",
+        sourcePath: null,
+      },
+    });
+  });
+
+  test("lists and removes only the current user's saved Git credentials without returning tokens", async () => {
+    const store = createMemoryStore();
+    const credential = await store.upsertGitCredential("user_local_admin", "gitlab.example.com", "encrypted-token");
+    await store.upsertGitCredential("another_user", "gitlab.example.com", "other-token");
+    const app = createApp(store);
+
+    const list = await app.request("/git-credentials");
+    expect(list.status).toBe(200);
+    const listed = await list.json();
+    expect(listed).toEqual({
+      credentials: [expect.objectContaining({ id: credential.id, host: "gitlab.example.com" })],
+    });
+    expect(JSON.stringify(listed)).not.toContain("user_local_admin");
+    expect(JSON.stringify(listed)).not.toContain("encrypted-token");
+    const deleted = await app.request(`/git-credentials/${credential.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(204);
+    await expect(store.getGitCredential("user_local_admin", "gitlab.example.com")).resolves.toBeNull();
+    await expect(store.getGitCredential("another_user", "gitlab.example.com")).resolves.not.toBeNull();
+  });
+
   test("rejects a manually edited project name that is not already URL-friendly", async () => {
     const response = await createApp(createMemoryStore()).request("/projects", {
       method: "POST",
