@@ -42,6 +42,19 @@ pnpm --filter @eveland/worker dev
 
 首次成功部署会创建不可变 Release 和 Preview Deployment。打开 **Playground**，通过 Gateway 开始一段全新的连续对话。界面会流式展示消息、实时 thinking、tool 调用和结果，支持确认、选项、文本及外部授权提示，并可上传最多 4 个图片、PDF、文本或代码文件。刷新页面会开始新对话；产生的平台 Session 仍可在 **Sessions** 中查看。
 
+## 配置受保护的 Agent
+
+打开 **Playground → Connection**，显式选择 Eveland 调用 Agent Eve route 的方式。可选 Local development、无凭证、HTTP Basic、Bearer、custom headers 与通用 OIDC Authorization Code；Eveland 不会根据 Agent 源码或认证 challenge 自动猜测。
+
+配置 OIDC：
+
+1. 在 IdP 中把 `<Web origin>/agent-auth/oidc/callback` 注册为精确 redirect URI。
+2. confidential client 先创建保存 client secret 的 Project Secret，再在 Connection 中填写该 Secret 的 key；public client 选择 `none`，不需要 Secret。
+3. 配置 issuer、client id、scopes、可选 audience 与参数模式、token endpoint authentication、可选 authorization parameters，以及 Eve JWT 或 UserInfo verification。
+4. 保存 Connection，然后点击 **Authorize with identity provider**，或直接发送第一条 Playground 消息。
+
+每位 Eveland member 都使用隔离的授权凭证。跳转期间第一条消息只保存在当前 browser session，callback 完成后仅发送一次。access/refresh token 始终加密保存在 API，不会返回 Web。
+
 ## 验证工作区
 
 提交更改前，运行仓库使用的相同检查：

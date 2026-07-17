@@ -14,6 +14,12 @@ import {
   type AgentAuthProviderRegistration,
 } from "@eveland/agent-auth";
 import { openAgentAuthConfig, sealAgentAuthConfig } from "@eveland/agent-auth/sealed-config";
+import {
+  createOidcAuthorizationCodeProvider,
+  type AgentAuthFailure,
+  type OidcConnectionSnapshot,
+  type OidcProtocol,
+} from "@eveland/agent-auth/oidc";
 import type {
   ActivationLeaseClaim,
   AuthPrincipal,
@@ -36,7 +42,7 @@ import {
 } from "@eveland/core/source";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import { assertValidSecretKey, encryptSecretValue } from "@eveland/core/server/secrets";
+import { assertValidSecretKey, decryptSecretValue, encryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
 import {
   resolveSchedulerDispatchSecret,
   resolveSchedulerRuntimeSecret,
@@ -131,6 +137,10 @@ const updateAgentConnectionSchema = z.object({
   expectedSecurityRevision: z.number().int().positive(),
   method: z.string().min(1),
   config: z.unknown(),
+});
+
+const oidcCallbackSchema = z.object({
+  search: z.string().min(1).max(8_192).refine((value) => value.startsWith("?"), "OIDC callback search must start with ?."),
 });
 
 const invitationSchema = z.object({
@@ -263,6 +273,10 @@ export type AppOptions = {
   runtimeActivationWaitTimeoutMs?: number;
   sourcePreflightTtlMs?: number;
   agentAuthProviders?: AgentAuthProviderRegistration[];
+  oidcProtocol?: OidcProtocol;
+  oidcVerifyAccessToken?: Parameters<typeof createOidcAuthorizationCodeProvider>[0]["verifyAccessToken"];
+  oidcCallbackUrl?: string;
+  agentAuthNow?: () => Date;
   runtimeActivationWaiter?: (
     claim: ActivationLeaseClaim,
     input: { signal: AbortSignal; timeoutMs: number },
@@ -315,7 +329,30 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       method: connection.method,
       securityRevision: connection.securityRevision,
     });
-  const publicConnection = async (connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>) => {
+  const readOidcConnection = async (connectionId: string): Promise<OidcConnectionSnapshot | null> => {
+    const connection = await store.getAgentConnection(connectionId);
+    if (!connection || connection.method !== "oidc") return null;
+    return { ...connection, config: readConnectionConfig(connection) as OidcConnectionSnapshot["config"] };
+  };
+  const oidcProvider = createOidcAuthorizationCodeProvider({
+    store,
+    appSecretKey,
+    callbackUrl: options.oidcCallbackUrl ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
+    resolveClientSecret: async (config, connection) => {
+      if (!config.clientSecretRef) return undefined;
+      const secret = (await store.listSecretRecords(connection.target.projectId))
+        .find((candidate) => candidate.key === config.clientSecretRef?.key);
+      if (!secret) throw new Error(`Project Secret ${config.clientSecretRef.key} is not configured.`);
+      return decryptSecretValue(JSON.parse(secret.encryptedValue) as EncryptedSecret, appSecretKey);
+    },
+    ...(options.oidcProtocol ? { protocol: options.oidcProtocol } : {}),
+    ...(options.oidcVerifyAccessToken ? { verifyAccessToken: options.oidcVerifyAccessToken } : {}),
+    ...(options.agentAuthNow ? { now: options.agentAuthNow } : {}),
+  });
+  const publicConnection = async (
+    connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>,
+    callerPrincipalId?: string,
+  ) => {
     const provider = agentAuthRegistry.get(connection.method);
     if (!provider) {
       return {
@@ -326,6 +363,24 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     try {
       const config = readConnectionConfig(connection);
       const { configEncrypted: _configEncrypted, ...safe } = connection;
+      if (connection.method === "oidc" && callerPrincipalId) {
+        const resolved = await oidcProvider.getCredential({
+          connection: { ...connection, config: config as OidcConnectionSnapshot["config"] },
+          callerPrincipalId,
+          returnPath: `/projects/${connection.target.projectId}/playground`,
+        });
+        return {
+          connection: { ...safe, config: provider.redactConfig(config) },
+          status: "failure" in resolved
+            ? resolved.failure.code === "interaction_required"
+              ? {
+                  state: "interaction_required" as const,
+                  ...(resolved.failure.interaction ? { interaction: resolved.failure.interaction } : {}),
+                }
+              : { state: "misconfigured" as const, message: resolved.failure.message }
+            : { state: "credential_available" as const },
+        };
+      }
       return {
         connection: { ...safe, config: provider.redactConfig(config) },
         status: {
@@ -645,10 +700,51 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   app.get("/agent-auth/methods", (c) => c.json({ methods: agentAuthRegistry.listDescriptors() }));
 
+  app.get("/agent-connections/:connectionId/auth/interactions/oidc/start", async (c) => {
+    c.header("cache-control", "no-store");
+    const connection = await readOidcConnection(c.req.param("connectionId"));
+    if (!connection) return c.json({ error: "OIDC Agent Connection not found" }, 404);
+    const returnPath = c.req.query("returnPath");
+    if (!returnPath) return c.json({ error: "Agent Auth return path is required" }, 400);
+    try {
+      const interaction = await oidcProvider.start({
+        connection,
+        callerPrincipalId: currentUserId(c),
+        returnPath,
+      });
+      return c.redirect(interaction.authorizationUrl, 302);
+    } catch (error) {
+      return c.json({
+        error: "Agent authorization could not be started",
+        detail: error instanceof Error ? error.message : "Invalid OIDC configuration.",
+      }, 400);
+    }
+  });
+
+  app.post("/agent-auth/callback/oidc", async (c) => {
+    c.header("cache-control", "no-store");
+    const parsed = oidcCallbackSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid OIDC callback" }, 400);
+    const callbackUrl = new URL(oidcProvider.callbackUrl);
+    callbackUrl.search = parsed.data.search;
+    const state = callbackUrl.searchParams.get("state");
+    if (!state) return c.json({ error: "OIDC state is required" }, 400);
+    try {
+      return c.json(await oidcProvider.callback({
+        state,
+        currentUrl: callbackUrl,
+        callerPrincipalId: currentUserId(c),
+        getConnection: readOidcConnection,
+      }));
+    } catch (error) {
+      return c.json({ error: "Agent authorization could not be completed" }, 400);
+    }
+  });
+
   app.get("/projects/:projectId/playground/connection", async (c) => {
     const project = await store.getProject(c.req.param("projectId"));
     if (!project) return c.json({ error: "Project not found" }, 404);
-    return c.json(await publicConnection(await ensureProjectAgentConnection(project.id)));
+    return c.json(await publicConnection(await ensureProjectAgentConnection(project.id), currentUserId(c)));
   });
 
   app.put("/agent-connections/:connectionId", async (c) => {
@@ -677,6 +773,21 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     }
     const securityChanged = connection.method !== parsed.data.method || !agentAuthConfigsEqual(previous, normalized);
     const securityRevision = connection.securityRevision + (securityChanged ? 1 : 0);
+    if (parsed.data.method === "oidc" && securityChanged) {
+      try {
+        await oidcProvider.preflight({
+          ...connection,
+          method: "oidc",
+          securityRevision,
+          config: normalized as OidcConnectionSnapshot["config"],
+        });
+      } catch (error) {
+        return c.json({
+          error: "OIDC provider preflight failed",
+          detail: error instanceof Error ? error.message : "Invalid OIDC provider configuration.",
+        }, 422);
+      }
+    }
     const updated = await store.updateAgentConnection({
       id: connection.id,
       expectedSecurityRevision: connection.securityRevision,
@@ -689,7 +800,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       securityChanged,
     });
     if (!updated) return c.json({ error: "Agent Connection was updated by another request" }, 409);
-    return c.json(await publicConnection(updated));
+    if (securityChanged) await store.deleteStaleAgentAuthCredentials(updated.id, updated.securityRevision);
+    return c.json(await publicConnection(updated, currentUserId(c)));
   });
 
   const rejectProjectMutationsWhileDeleting: MiddlewareHandler = async (c, next) => {
@@ -1091,8 +1203,24 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
     let agentAuthEnvelope: string;
+    let oidcConnection: OidcConnectionSnapshot | null = null;
+    let oidcVersion: { securityRevision: number; rotationSeq: number } | null = null;
     try {
-      agentAuthEnvelope = await resolveProjectAgentAuthEnvelope(projectId, currentUserId(c));
+      const connection = await ensureProjectAgentConnection(projectId);
+      if (connection.method === "oidc") {
+        oidcConnection = await readOidcConnection(connection.id);
+        if (!oidcConnection) throw new Error("OIDC Agent Connection is not available.");
+        const resolved = await oidcProvider.getCredential({
+          connection: oidcConnection,
+          callerPrincipalId: currentUserId(c),
+          returnPath: `/projects/${projectId}/playground`,
+        });
+        if ("failure" in resolved) return c.json(resolved.failure, agentAuthFailureStatus(resolved.failure));
+        agentAuthEnvelope = encodeAgentAuthEnvelope(resolved.envelope);
+        oidcVersion = resolved.version;
+      } else {
+        agentAuthEnvelope = await resolveProjectAgentAuthEnvelope(projectId, currentUserId(c));
+      }
     } catch (error) {
       return c.json({
         error: "Agent Connection is not ready",
@@ -1130,15 +1258,50 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
     let upstream: Response;
     try {
-      upstream = await playgroundProxy({
+      const proxy = (envelope: string) => playgroundProxy({
         projectId,
         path: `${evePath}${requestUrl.search}`,
         method: c.req.method,
         headers: c.req.raw.headers,
         body,
         signal: c.req.raw.signal,
-        agentAuthEnvelope,
+        agentAuthEnvelope: envelope,
       });
+      upstream = await proxy(agentAuthEnvelope);
+      if (upstream.status === 401 && oidcConnection && oidcVersion) {
+        await upstream.body?.cancel().catch(() => undefined);
+        const recovery = await oidcProvider.recoverUnauthorized({
+          connection: oidcConnection,
+          callerPrincipalId: currentUserId(c),
+          rejectedVersion: oidcVersion,
+          attempt: 0,
+          returnPath: `/projects/${projectId}/playground`,
+        });
+        if (recovery.action === "give_up") return c.json(recovery.failure, agentAuthFailureStatus(recovery.failure));
+        const currentConnection = await readOidcConnection(oidcConnection.id);
+        if (!currentConnection) return c.json({ error: "OIDC Agent Connection changed; retry the request." }, 409);
+        const retryCredential = await oidcProvider.getCredential({
+          connection: currentConnection,
+          callerPrincipalId: currentUserId(c),
+          returnPath: `/projects/${projectId}/playground`,
+        });
+        if ("failure" in retryCredential) return c.json(retryCredential.failure, agentAuthFailureStatus(retryCredential.failure));
+        upstream = await proxy(encodeAgentAuthEnvelope(retryCredential.envelope));
+        if (upstream.status === 401) {
+          await upstream.body?.cancel().catch(() => undefined);
+          const terminal = await oidcProvider.recoverUnauthorized({
+            connection: currentConnection,
+            callerPrincipalId: currentUserId(c),
+            rejectedVersion: retryCredential.version,
+            attempt: 1,
+            returnPath: `/projects/${projectId}/playground`,
+          });
+          const failure = terminal.action === "give_up"
+            ? terminal.failure
+            : oidcProvider.interactionRequired(currentConnection.id, `/projects/${projectId}/playground`);
+          return c.json(failure, agentAuthFailureStatus(failure));
+        }
+      }
     } catch (error) {
       if (platformSession && !isCancel) {
         await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
@@ -1508,6 +1671,13 @@ function isMultipartRequest(c: Context): boolean {
 
 function currentUserId(c: Context<{ Variables: { principal: AuthPrincipal } }>): string {
   return c.get("principal")?.userId ?? "user_local_admin";
+}
+
+function agentAuthFailureStatus(failure: AgentAuthFailure): 401 | 409 | 422 | 503 {
+  if (failure.code === "interaction_required" || failure.code === "credential_rejected") return 401;
+  if (failure.code === "retry_required") return 409;
+  if (failure.code === "configuration_invalid") return 422;
+  return 503;
 }
 
 // The sync body is optional; only `{ "deploy": true }` opts into an automatic

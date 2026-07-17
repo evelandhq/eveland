@@ -66,6 +66,19 @@ export function AgentAuthFields({
                 required={required}
                 onChange={(event) => onChange(event.target.value)}
               />
+            ) : field.input === "select" ? (
+              <Select value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
+                <SelectTrigger id={id} className="w-full">
+                  <SelectValue placeholder={`Select ${field.label.toLowerCase()}`} />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {field.options?.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             ) : (
               <Input
                 id={id}

@@ -1,7 +1,7 @@
 # Agent Auth 重写与 Provider 边界实施交接
 
 **日期：** 2026-07-17
-**状态：** 架构决策已确认；PR A 通用 Agent Auth 基础已在 Eve 0.24.6 的 `main` 上实施，PR B/C 待后续独立切片
+**状态：** PR A 已在 Eve 0.24.6 的 `main` 上实施；PR B 通用 OIDC 已在 `codex/generic-oidc-authorization-code` 完成并验证、待合并；PR C 待后续独立切片
 **替代对象：** PR #72 `feat: agent auth OIDC route auth` 只保留为原型和研究资料，不作为合并候选
 
 ## 1. 结论
@@ -369,6 +369,12 @@ PR B 通用 OIDC 和 PR C 平台级变量/Secret Profile 仍保持独立纵向�
 不包含 OIDC、provider-specific code、source detection 或 platform Secret Profile。
 
 ### PR B：通用 OIDC Authorization Code
+
+实施状态：`codex/generic-oidc-authorization-code` 已完成 generic registration、Web-owned callback、
+pending first turn、加密 transaction/principal credential、JWT/UserInfo verification、refresh rotation、
+process singleflight、Postgres lease/rotation fencing、单次 401 recovery、cleanup 和双语文档；使用 Eve
+0.24.6 与 `openid-client` 6.8.4。真实 Postgres two-store concurrency 与进程内 mock IdP protocol
+matrix 已通过，待 PR 合并后把本段状态更新为 `main`。
 
 范围：
 

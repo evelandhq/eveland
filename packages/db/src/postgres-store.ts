@@ -667,6 +667,7 @@ export function createPostgresStore(database: Database): Store {
           eq(agentAuthCredentials.rotationSeq, input.expectedRotationSeq),
           eq(agentAuthCredentials.refreshOwner, input.owner),
           eq(agentAuthCredentials.refreshLeaseId, input.leaseId),
+          gt(agentAuthCredentials.refreshLeaseUntil, input.now),
         ))
         .returning();
       return row ? agentAuthCredentialRowToAgentAuthCredential(row) : null;
@@ -681,6 +682,7 @@ export function createPostgresStore(database: Database): Store {
           eq(agentAuthCredentials.rotationSeq, input.expectedRotationSeq),
           eq(agentAuthCredentials.refreshOwner, input.owner),
           eq(agentAuthCredentials.refreshLeaseId, input.leaseId),
+          gt(agentAuthCredentials.refreshLeaseUntil, input.now),
         ))
         .returning();
       return row ? agentAuthCredentialRowToAgentAuthCredential(row) : null;
@@ -695,6 +697,29 @@ export function createPostgresStore(database: Database): Store {
     async consumeAgentAuthTransaction(stateHash, now = new Date()) {
       const [row] = await db.delete(agentAuthTransactions).where(eq(agentAuthTransactions.stateHash, stateHash)).returning();
       return row && row.expiresAt > now ? agentAuthTransactionRowToAgentAuthTransaction(row) : null;
+    },
+
+    async deleteExpiredAgentAuthTransactions(now = new Date(), limit = 100) {
+      const rows = await db
+        .delete(agentAuthTransactions)
+        .where(inArray(agentAuthTransactions.stateHash, db
+          .select({ stateHash: agentAuthTransactions.stateHash })
+          .from(agentAuthTransactions)
+          .where(lte(agentAuthTransactions.expiresAt, now))
+          .limit(limit)))
+        .returning({ stateHash: agentAuthTransactions.stateHash });
+      return rows.length;
+    },
+
+    async deleteStaleAgentAuthCredentials(agentConnectionId, currentSecurityRevision) {
+      const credentials = await db
+        .delete(agentAuthCredentials)
+        .where(and(
+          eq(agentAuthCredentials.agentConnectionId, agentConnectionId),
+          lt(agentAuthCredentials.securityRevision, currentSecurityRevision),
+        ))
+        .returning({ rotationSeq: agentAuthCredentials.rotationSeq });
+      return credentials.length;
     },
 
     async requestProjectDeletion(projectId) {

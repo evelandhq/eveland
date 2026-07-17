@@ -14,10 +14,12 @@ export type AgentAuthEnvelope = {
 export type AgentAuthMethodFieldDescriptor = {
   key: string;
   label: string;
-  input: "text" | "password" | "textarea";
+  input: "text" | "password" | "textarea" | "select";
   required: boolean;
   secret: boolean;
   valueType: "string" | "string-list" | "json-record";
+  options?: Array<{ value: string; label: string }>;
+  defaultValue?: string;
 };
 
 export type AgentAuthMethodDescriptor = {

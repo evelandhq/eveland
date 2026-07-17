@@ -117,13 +117,23 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
                 {statusLabel(status)}
               </Badge>
             </div>
+            {status?.state === "interaction_required" && status.interaction ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => window.location.assign(status.interaction!.url)}
+              >
+                Authorize with identity provider
+              </Button>
+            ) : null}
             <AgentAuthFields
               methods={methods}
               method={method}
               values={values}
               onMethodChange={(nextMethod) => {
                 setMethod(nextMethod);
-                setValues({});
+                const nextDescriptor = methods.find((candidate) => candidate.method === nextMethod);
+                setValues(nextDescriptor ? agentAuthValuesFromConfig(nextDescriptor, {}) : {});
               }}
               onValuesChange={setValues}
             />

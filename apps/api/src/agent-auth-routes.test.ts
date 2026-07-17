@@ -1,4 +1,5 @@
 import { decodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
+import type { OidcProtocol } from "@eveland/agent-auth/oidc";
 import { createMemoryStore } from "@eveland/db";
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
@@ -21,6 +22,7 @@ describe("Agent Auth control-plane routes", () => {
         expect.objectContaining({ method: "none", credentialScope: "connection" }),
         expect.objectContaining({ method: "basic", credentialScope: "connection" }),
         expect.objectContaining({ method: "bearer", credentialScope: "connection" }),
+        expect.objectContaining({ method: "oidc", credentialScope: "principal", interactive: true }),
         expect.objectContaining({ method: "headers", credentialScope: "connection" }),
       ],
     });
@@ -115,6 +117,7 @@ describe("Agent Auth control-plane routes", () => {
       appSecretKey,
       playgroundProxy: async (input) => {
         seen.push(input.agentAuthEnvelope ?? "");
+        if (input.path.endsWith("/stream")) return new Response(null, { status: 200 });
         return Response.json(
           { sessionId: "eve_protected", continuationToken: "continue_protected" },
           { status: 202, headers: { "x-eve-session-id": "eve_protected" } },
@@ -136,11 +139,239 @@ describe("Agent Auth control-plane routes", () => {
     });
 
     expect(response.status).toBe(202);
+    await app.request(`/agent-connections/${body.connection.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedSecurityRevision: 2, method: "bearer", config: { token: "continued-token" } }),
+    });
+    const continuation = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_protected`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "continue" }),
+    });
+    expect(continuation.status).toBe(202);
+    await app.request(`/agent-connections/${body.connection.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedSecurityRevision: 3, method: "bearer", config: { token: "stream-token" } }),
+    });
+    const stream = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_protected/stream`);
+    expect(stream.status).toBe(200);
+
+    expect(seen.map((value) => decodeAgentAuthEnvelope(value))).toEqual([{
+      version: 1,
+      authority: "canonical",
+      headers: [["authorization", "Bearer protected-token"]],
+    }, {
+      version: 1,
+      authority: "canonical",
+      headers: [["authorization", "Bearer continued-token"]],
+    }, {
+      version: 1,
+      authority: "canonical",
+      headers: [["authorization", "Bearer stream-token"]],
+    }]);
+  });
+
+  test("holds the first turn until the OIDC callback and then sends it once", async () => {
+    const store = createMemoryStore();
+    const project = await deployedProject(store, "oidc-first-turn");
+    const seen: string[] = [];
+    const app = createApp(store, {
+      appSecretKey,
+      webOrigin: "https://eveland.example",
+      oidcProtocol: mockOidcProtocol(),
+      oidcVerifyAccessToken: async () => ({ issuer: "https://idp.example", subject: "agent-subject" }),
+      playgroundProxy: async (input) => {
+        seen.push(input.agentAuthEnvelope ?? "");
+        return Response.json(
+          { sessionId: "eve_oidc", continuationToken: "continue_oidc" },
+          { status: 202, headers: { "x-eve-session-id": "eve_oidc" } },
+        );
+      },
+    });
+    const initial = await app.request(`/projects/${project.id}/playground/connection`);
+    const connectionId = ((await initial.json()) as { connection: { id: string } }).connection.id;
+    const configured = await app.request(`/agent-connections/${connectionId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedSecurityRevision: 1,
+        method: "oidc",
+        config: oidcConfig(),
+      }),
+    });
+    expect(configured.status).toBe(200);
+
+    const first = await sendInitialTurn(app, project.id);
+    expect(first.status).toBe(401);
+    expect(seen).toHaveLength(0);
+    const failure = await first.json() as { code: string; interaction: { url: string } };
+    expect(failure.code).toBe("interaction_required");
+    const interactionUrl = new URL(failure.interaction.url, "https://eveland.example");
+    const start = await app.request(`${interactionUrl.pathname.replace(/^\/api\/eveland/, "")}${interactionUrl.search}`);
+    expect(start.status).toBe(302);
+    const authorization = new URL(start.headers.get("location")!);
+    const state = authorization.searchParams.get("state");
+    expect(state).toBeTruthy();
+
+    const callback = await app.request("/agent-auth/callback/oidc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ search: `?code=authorization-code&state=${encodeURIComponent(state!)}` }),
+    });
+    expect(callback.status).toBe(200);
+    await expect(callback.json()).resolves.toEqual({ returnPath: `/projects/${project.id}/playground` });
+
+    const resumed = await sendInitialTurn(app, project.id);
+    expect(resumed.status).toBe(202);
     expect(seen).toHaveLength(1);
     expect(decodeAgentAuthEnvelope(seen[0]!)).toEqual({
       version: 1,
       authority: "canonical",
-      headers: [["authorization", "Bearer protected-token"]],
+      headers: [["authorization", "Bearer oidc-access-token"]],
     });
   });
+
+  test("refreshes and retries one OIDC 401 but never refreshes a 403", async () => {
+    const store = createMemoryStore();
+    const project = await deployedProject(store, "oidc-recovery");
+    let refreshCalls = 0;
+    let upstreamCalls = 0;
+    let responseMode: "normal" | "forbidden" | "unauthorized" = "normal";
+    const app = createApp(store, {
+      appSecretKey,
+      webOrigin: "https://eveland.example",
+      oidcProtocol: mockOidcProtocol({
+        async refresh(_config, _secret, _refreshToken, subject) {
+          refreshCalls += 1;
+          return {
+            accessToken: "refreshed-access-token",
+            refreshToken: "rotated-refresh-token",
+            expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+            issuer: "https://idp.example",
+            subject,
+          };
+        },
+      }),
+      oidcVerifyAccessToken: async () => ({ issuer: "https://idp.example", subject: "agent-subject" }),
+      playgroundProxy: async (input) => {
+        upstreamCalls += 1;
+        const envelope = decodeAgentAuthEnvelope(input.agentAuthEnvelope ?? "");
+        if (responseMode === "forbidden") return Response.json({ error: "forbidden" }, { status: 403 });
+        if (responseMode === "unauthorized") return Response.json({ error: "unauthorized" }, { status: 401 });
+        if (envelope.headers[0]?.[1] === "Bearer oidc-access-token") {
+          return Response.json({ error: "expired" }, { status: 401 });
+        }
+        return Response.json(
+          { sessionId: "eve_refreshed", continuationToken: "continue_refreshed" },
+          { status: 202, headers: { "x-eve-session-id": "eve_refreshed" } },
+        );
+      },
+    });
+    await authorizeOidc(app, project.id);
+
+    const recovered = await sendInitialTurn(app, project.id);
+    expect(recovered.status).toBe(202);
+    expect(refreshCalls).toBe(1);
+    expect(upstreamCalls).toBe(2);
+
+    responseMode = "forbidden";
+    const denied = await sendInitialTurn(app, project.id);
+    expect(denied.status).toBe(403);
+    expect(refreshCalls).toBe(1);
+    expect(upstreamCalls).toBe(3);
+
+    responseMode = "unauthorized";
+    const rejected = await sendInitialTurn(app, project.id);
+    expect(rejected.status).toBe(401);
+    expect(refreshCalls).toBe(2);
+    expect(upstreamCalls).toBe(5);
+  });
 });
+
+function oidcConfig() {
+  return {
+    issuer: "https://idp.example",
+    clientId: "eveland-playground",
+    scopes: ["openid", "offline_access"],
+    audience: "https://agent.example",
+    audienceMode: "resource",
+    tokenEndpointAuthMethod: "none",
+    accessTokenVerification: "eve-jwt",
+  };
+}
+
+function mockOidcProtocol(overrides: Partial<OidcProtocol> = {}): OidcProtocol {
+  return {
+    async preflight() {},
+    async buildAuthorizationUrl(_config, _secret, transaction) {
+      return new URL(`https://idp.example/authorize?state=${transaction.state}`);
+    },
+    async exchangeAuthorizationCode() {
+      return {
+        accessToken: "oidc-access-token",
+        refreshToken: "oidc-refresh-token",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+        issuer: "https://idp.example",
+        subject: "id-token-subject",
+      };
+    },
+    async refresh() { throw new Error("refresh should not run"); },
+    async fetchUserInfo() { return { subject: "id-token-subject" }; },
+    ...overrides,
+  };
+}
+
+async function deployedProject(store: ReturnType<typeof createMemoryStore>, name: string) {
+  const project = await store.createProject({ name, importKind: "zip" });
+  const revision = await store.recordSourceRevision({
+    projectId: project.id,
+    kind: "zip",
+    sourcePath: `/tmp/${name}`,
+    summary: {},
+    envVars: [],
+    files: [],
+    schedules: [],
+  });
+  await store.recordDeployment({
+    projectId: project.id,
+    sourceRevisionId: revision.id,
+    imageTag: name,
+    containerName: name,
+    internalPort: 3000,
+    hostPort: 41992,
+    runtimeKind: "docker",
+  });
+  return project;
+}
+
+function sendInitialTurn(app: ReturnType<typeof createApp>, projectId: string) {
+  return app.request(`/projects/${projectId}/playground/eve/v1/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message: "hello" }),
+  });
+}
+
+async function authorizeOidc(app: ReturnType<typeof createApp>, projectId: string) {
+  const initial = await app.request(`/projects/${projectId}/playground/connection`);
+  const connectionId = ((await initial.json()) as { connection: { id: string } }).connection.id;
+  const configured = await app.request(`/agent-connections/${connectionId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ expectedSecurityRevision: 1, method: "oidc", config: oidcConfig() }),
+  });
+  expect(configured.status).toBe(200);
+  const first = await sendInitialTurn(app, projectId);
+  const failure = await first.json() as { interaction: { url: string } };
+  const interaction = new URL(failure.interaction.url, "https://eveland.example");
+  const start = await app.request(`${interaction.pathname.replace(/^\/api\/eveland/, "")}${interaction.search}`);
+  const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+  const callback = await app.request("/agent-auth/callback/oidc", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ search: `?code=code&state=${encodeURIComponent(state)}` }),
+  });
+  expect(callback.status).toBe(200);
+}

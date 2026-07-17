@@ -10,6 +10,7 @@ describe("Agent Auth provider registry", () => {
       "none",
       "basic",
       "bearer",
+      "oidc",
       "headers",
     ]);
     for (const descriptor of registry.listDescriptors()) {
@@ -38,11 +39,13 @@ describe("Agent Auth provider registry", () => {
     ["none", "canonical"],
     ["basic", "canonical"],
     ["bearer", "canonical"],
+    ["oidc", "canonical"],
     ["headers", "canonical"],
   ] as const)("resolves %s through %s authority", async (method, authority) => {
     const provider = createAgentAuthRegistry().get(method);
     expect(provider?.authority).toBe(authority);
     const config = provider?.normalizeConfig(configFor(method));
+    if (provider?.descriptor.interactive) return;
     await expect(provider?.getCredential({ config, callerPrincipalId: "member_1" })).resolves.toMatchObject({ authority });
   });
 
@@ -81,6 +84,71 @@ describe("Agent Auth provider registry", () => {
     expect(agentAuthConfigsEqual(existing, { password: "secret", username: "alice" })).toBe(true);
     expect(agentAuthConfigsEqual(existing, { password: "rotated", username: "alice" })).toBe(false);
   });
+
+  test("normalizes generic OIDC protocol settings without provider-specific defaults", () => {
+    const provider = createAgentAuthRegistry().get("oidc");
+
+    expect(provider?.descriptor).toMatchObject({
+      method: "oidc",
+      credentialScope: "principal",
+      interactive: true,
+    });
+    expect(provider?.descriptor.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: "tokenEndpointAuthMethod",
+        input: "select",
+        options: expect.arrayContaining([expect.objectContaining({ value: "none" })]),
+      }),
+      expect.objectContaining({
+        key: "accessTokenVerification",
+        input: "select",
+        options: expect.arrayContaining([expect.objectContaining({ value: "userinfo" })]),
+      }),
+    ]));
+    expect(provider?.normalizeConfig({
+      issuer: "https://idp.example/",
+      clientId: "eveland-playground",
+      clientSecretKey: "OIDC_CLIENT_SECRET",
+      scopes: ["profile", "openid", "profile"],
+      audience: "https://agent.example",
+      audienceMode: "both",
+      tokenEndpointAuthMethod: "client_secret_basic",
+      authorizationParams: { prompt: "consent", login_hint: "member@example.com" },
+      accessTokenVerification: "eve-jwt",
+    })).toEqual({
+      issuer: "https://idp.example",
+      clientId: "eveland-playground",
+      clientSecretRef: { kind: "project-secret", key: "OIDC_CLIENT_SECRET" },
+      scopes: ["openid", "profile"],
+      audience: "https://agent.example",
+      audienceMode: "both",
+      tokenEndpointAuthMethod: "client_secret_basic",
+      authorizationParams: { login_hint: "member@example.com", prompt: "consent" },
+      accessTokenVerification: "eve-jwt",
+    });
+  });
+
+  test("rejects unsafe or contradictory generic OIDC settings", () => {
+    const provider = createAgentAuthRegistry().get("oidc");
+    const base = {
+      issuer: "https://idp.example",
+      clientId: "eveland-playground",
+      scopes: ["openid"],
+      tokenEndpointAuthMethod: "none",
+      accessTokenVerification: "userinfo",
+    };
+
+    expect(() => provider?.normalizeConfig({ ...base, issuer: "http://idp.example" })).toThrow(/HTTPS/);
+    expect(() => provider?.normalizeConfig({ ...base, audienceMode: "resource" })).toThrow(/audience/i);
+    expect(() => provider?.normalizeConfig({
+      ...base,
+      tokenEndpointAuthMethod: "client_secret_post",
+    })).toThrow(/client secret/i);
+    expect(() => provider?.normalizeConfig({
+      ...base,
+      authorizationParams: { redirect_uri: "https://attacker.example", state: "fixed" },
+    })).toThrow(/authorization parameter/i);
+  });
 });
 
 function registration(method: string): AgentAuthProviderRegistration {
@@ -106,6 +174,14 @@ function configFor(method: string): unknown {
   if (method === "basic") return { username: "alice", password: "secret" };
   if (method === "bearer") return { token: "secret" };
   if (method === "headers") return { headers: { "x-api-key": "secret" } };
+  if (method === "oidc") return {
+    issuer: "https://idp.example",
+    clientId: "client",
+    scopes: ["openid"],
+    audience: "https://agent.example",
+    tokenEndpointAuthMethod: "none",
+    accessTokenVerification: "eve-jwt",
+  };
   return {};
 }
 

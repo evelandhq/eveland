@@ -126,4 +126,68 @@ describe("Agent Connection store", () => {
     await expect(store.getAgentConnection(connection.id)).resolves.toBeNull();
     await expect(store.getAgentAuthCredential(key)).resolves.toBeNull();
   });
+
+  test("cleans expired transactions and stale security revisions", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "cleanup-agent-auth", importKind: "zip" });
+    const connection = await store.createAgentConnection({
+      target: { kind: "managed-project", projectId: project.id },
+      method: "oidc",
+      configEncrypted: "encrypted-config",
+    });
+    const key = {
+      agentConnectionId: connection.id,
+      securityRevision: 1,
+      authMethod: "oidc",
+      credentialScope: "principal" as const,
+      scopeSubject: "member-a",
+      credentialKey: "",
+    };
+    await store.putAgentAuthCredential({ ...key, payloadEncrypted: "credential-v1", expiresAt: null });
+    const leaseNow = new Date("2029-01-01T00:00:00.000Z");
+    await expect(store.claimAgentAuthCredentialRefresh({
+      ...key,
+      expectedRotationSeq: 0,
+      owner: "slow-instance",
+      leaseId: "expired-lease",
+      now: leaseNow,
+      leaseUntil: new Date("2029-01-01T00:00:30.000Z"),
+    })).resolves.not.toBeNull();
+    await expect(store.completeAgentAuthCredentialRefresh({
+      ...key,
+      expectedRotationSeq: 0,
+      owner: "slow-instance",
+      leaseId: "expired-lease",
+      now: new Date("2029-01-01T00:00:31.000Z"),
+      payloadEncrypted: "late-token",
+      expiresAt: null,
+    })).resolves.toBeNull();
+    await expect(store.releaseAgentAuthCredentialRefresh({
+      ...key,
+      expectedRotationSeq: 0,
+      owner: "slow-instance",
+      leaseId: "expired-lease",
+      now: new Date("2029-01-01T00:00:31.000Z"),
+    })).resolves.toBeNull();
+    await store.createAgentAuthTransaction({
+      agentConnectionId: connection.id,
+      stateHash: "expired-state",
+      payloadEncrypted: "expired-transaction",
+      expiresAt: new Date("2029-01-01T00:00:00.000Z"),
+    });
+    await store.createAgentAuthTransaction({
+      agentConnectionId: connection.id,
+      stateHash: "active-state",
+      payloadEncrypted: "active-transaction",
+      expiresAt: new Date("2031-01-01T00:00:00.000Z"),
+    });
+
+    await expect(store.deleteExpiredAgentAuthTransactions(new Date("2030-01-01T00:00:00.000Z"), 10)).resolves.toBe(1);
+    await expect(store.consumeAgentAuthTransaction("expired-state", new Date("2028-01-01T00:00:00.000Z"))).resolves.toBeNull();
+    await expect(store.deleteStaleAgentAuthCredentials(connection.id, 2)).resolves.toBe(1);
+    await expect(store.getAgentAuthCredential(key)).resolves.toBeNull();
+    await expect(store.consumeAgentAuthTransaction("active-state", new Date("2030-01-01T00:00:00.000Z"))).resolves.toMatchObject({
+      payloadEncrypted: "active-transaction",
+    });
+  });
 });

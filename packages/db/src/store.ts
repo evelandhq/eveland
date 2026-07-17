@@ -198,6 +198,7 @@ export type Store = {
     expectedRotationSeq: number;
     owner: string;
     leaseId: string;
+    now: Date;
     payloadEncrypted: string;
     expiresAt: Date | null;
   }): Promise<AgentAuthCredential | null>;
@@ -205,6 +206,7 @@ export type Store = {
     expectedRotationSeq: number;
     owner: string;
     leaseId: string;
+    now: Date;
   }): Promise<AgentAuthCredential | null>;
   createAgentAuthTransaction(input: {
     agentConnectionId: string;
@@ -213,6 +215,8 @@ export type Store = {
     expiresAt: Date;
   }): Promise<AgentAuthTransaction>;
   consumeAgentAuthTransaction(stateHash: string, now?: Date): Promise<AgentAuthTransaction | null>;
+  deleteExpiredAgentAuthTransactions(now?: Date, limit?: number): Promise<number>;
+  deleteStaleAgentAuthCredentials(agentConnectionId: string, currentSecurityRevision: number): Promise<number>;
   requestProjectDeletion(projectId: string): Promise<ProjectDeletionRequest>;
   setProjectDeletionFailed(projectId: string, error: string): Promise<Project | null>;
   deleteProject(projectId: string): Promise<boolean>;
@@ -830,7 +834,9 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         (candidate) => agentAuthCredentialMatches(candidate, input)
           && candidate.rotationSeq === input.expectedRotationSeq
           && candidate.refreshOwner === input.owner
-          && candidate.refreshLeaseId === input.leaseId,
+          && candidate.refreshLeaseId === input.leaseId
+          && candidate.refreshLeaseUntil !== null
+          && candidate.refreshLeaseUntil > input.now.toISOString(),
       );
       if (!credential) return null;
       credential.payloadEncrypted = input.payloadEncrypted;
@@ -848,7 +854,9 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         (candidate) => agentAuthCredentialMatches(candidate, input)
           && candidate.rotationSeq === input.expectedRotationSeq
           && candidate.refreshOwner === input.owner
-          && candidate.refreshLeaseId === input.leaseId,
+          && candidate.refreshLeaseId === input.leaseId
+          && candidate.refreshLeaseUntil !== null
+          && candidate.refreshLeaseUntil > input.now.toISOString(),
       );
       if (!credential) return null;
       credential.refreshOwner = null;
@@ -878,6 +886,24 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       if (index < 0) return null;
       const [transaction] = state.agentAuthTransactions.splice(index, 1);
       return transaction && transaction.expiresAt > now.toISOString() ? { ...transaction } : null;
+    },
+
+    async deleteExpiredAgentAuthTransactions(now = new Date(), limit = 100) {
+      const expired = state.agentAuthTransactions
+        .filter((transaction) => transaction.expiresAt <= now.toISOString())
+        .slice(0, limit);
+      const hashes = new Set(expired.map((transaction) => transaction.stateHash));
+      state.agentAuthTransactions = state.agentAuthTransactions.filter((transaction) => !hashes.has(transaction.stateHash));
+      return expired.length;
+    },
+
+    async deleteStaleAgentAuthCredentials(agentConnectionId, currentSecurityRevision) {
+      const credentialsBefore = state.agentAuthCredentials.length;
+      state.agentAuthCredentials = state.agentAuthCredentials.filter(
+        (credential) => credential.agentConnectionId !== agentConnectionId
+          || credential.securityRevision >= currentSecurityRevision,
+      );
+      return credentialsBefore - state.agentAuthCredentials.length;
     },
 
     async requestProjectDeletion(projectId) {
