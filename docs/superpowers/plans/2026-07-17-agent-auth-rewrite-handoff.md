@@ -1,7 +1,7 @@
 # Agent Auth 重写与 Provider 边界实施交接
 
 **日期：** 2026-07-17
-**状态：** PR A #86、PR B #87 与 PR C #88 已在 Eve 0.24.6 的 `main` 上实施；外部 Jinshuju verifier 已合并到 `jinshuju/oidc`，npm 首次发布等待发布凭据
+**状态：** PR A #86、PR B #87 与 PR C #88 已在 Eve 0.24.6 的 `main` 上实施；外部 Jinshuju verifier 已合并到 `jinshuju/oidc`，`@jinshuju/eve-oidc@0.1.0` 已公开发布
 **替代对象：** PR #72 `feat: agent auth OIDC route auth` 已关闭，只保留为原型和研究资料
 
 ## 1. 结论
@@ -290,8 +290,11 @@ Eveland 不负责该 package 的版本、环境变量 schema、provider 文档�
 `@jinshuju/eve-oidc@0.1.0`、`jinshujuOidc()`、延迟 runtime env 解析、opaque token UserInfo
 验证、fail-closed/sanitized failure、Eve `SessionAuthContext` 映射、CI 与 11 个契约测试。跨仓库 UAT
 使用 Eveland 的实际 `createOpenIdClientProtocol` 完成 Authorization Code + PKCE/token exchange，再由
-package 验证 opaque access token 的 UserInfo 并建立 Eve caller。npm name 尚未占用，但本机没有 npm
-登录或 trusted-publishing 配置，因此不能把“可发布”误报成“已发布”。
+package 验证 opaque access token 的 UserInfo 并建立 Eve caller。`@jinshuju/eve-oidc@0.1.0` 已通过
+npm maintainer 2FA 首次公开发布；registry `latest`、public access、repository metadata，以及从全新
+临时目录安装后导入 `jinshujuOidc()` 均已验证。后续版本使用该仓库 `publish.yml` 的 npm trusted
+publisher；workflow 已合并，npm trust binding 仍等待 maintainer security-key 确认，不保存长期
+write token。
 
 ## 9. 不进行源码自动推断
 
@@ -421,7 +424,7 @@ test/typecheck/build 与真实 Postgres；Basic、Bearer、Vercel OIDC 和 OIDC 
 - Compose/systemd/preflight/docs；
 - Secret 不进入 Release/build/observer/log 的验证。
 
-Jinshuju package 在独立仓库完成，不是 PR C 的一部分；npm 首次发布仍由该仓库单独推进。
+Jinshuju package 在独立仓库完成并发布，不是 PR C 的一部分。
 
 ## 12. TDD 与验证要求
 
@@ -522,9 +525,8 @@ git status --short
 9. abandoned transaction 和旧 revision 数据有清理路径；
 10. Jinshuju 通过外部 package 与 Eveland generic OIDC 完成互操作，不要求 Eveland 发布 provider code。
 
-以上 1–10 已由合并实现、完整仓库验证、真实 Postgres、真实 Keycloak 与跨仓库 Jinshuju UAT 覆盖。
-唯一未完成的分发动作是把已合并的 `@jinshuju/eve-oidc@0.1.0` 发布到 npm；这不改变 Eveland
-架构完成状态，但在 npm 凭据或 trusted publishing 就绪前不能宣称 package 已发布。
+以上 1–10 已由合并实现、完整仓库验证、真实 Postgres、真实 Keycloak、跨仓库 Jinshuju UAT、
+npm `0.1.0` 公开发布与全新安装验证覆盖。
 
 ## 15. 新 session 的第一步
 
