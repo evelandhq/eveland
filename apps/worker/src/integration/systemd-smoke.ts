@@ -38,11 +38,7 @@ await mkdir(path.join(sourcePath, "agent"), { recursive: true });
 await writeFile(path.join(sourcePath, "agent", "instructions.md"), "Smoke fixture.\n");
 await writeFile(
   path.join(sourcePath, "package.json"),
-  JSON.stringify({ name: "eveland-smoke", version: "0.0.0", scripts: { start: "node server.js" } }, null, 2),
-);
-await writeFile(
-  path.join(sourcePath, "server.js"),
-  'const http = require("node:http");\nhttp.createServer((req, res) => res.end("smoke-ok")).listen(Number(process.env.PORT ?? 3000), "127.0.0.1");\n',
+  JSON.stringify({ name: "eveland-smoke", version: "0.0.0", dependencies: { eve: "0.24.6" } }, null, 2),
 );
 
 const store = createMemoryStore();
@@ -63,10 +59,8 @@ try {
     throw new Error(`Deploy failed: ${JSON.stringify({ deployed, logs })}`);
   }
 
-  const response = await fetch(`http://127.0.0.1:${deployment.hostPort}/`);
-  const body = await response.text();
-
-  if (!body.includes("smoke-ok")) throw new Error(`Unexpected response body: ${body}`);
+  const response = await fetch(`http://127.0.0.1:${deployment.hostPort}/eve/v1/health`);
+  if (!response.ok) throw new Error(`Unexpected health response: ${response.status} ${await response.text()}`);
   console.log("SMOKE OK");
 
   const unit = `${deployment.containerName}.service`;
@@ -88,9 +82,10 @@ try {
     throw new Error(`Restart did not start a new process: MainPID before=${pidBefore} after=${pidAfter}`);
   }
 
-  const restartResponse = await fetch(`http://127.0.0.1:${deployment.hostPort}/`);
-  const restartBody = await restartResponse.text();
-  if (!restartBody.includes("smoke-ok")) throw new Error(`Unexpected response body after restart: ${restartBody}`);
+  const restartResponse = await fetch(`http://127.0.0.1:${deployment.hostPort}/eve/v1/health`);
+  if (!restartResponse.ok) {
+    throw new Error(`Unexpected health response after restart: ${restartResponse.status} ${await restartResponse.text()}`);
+  }
   console.log("RESTART OK");
 
   // --- delete_project: prove it stops the unit, removes its env file, and drops the project.
@@ -119,17 +114,14 @@ try {
 
   // --- build_deploy cleanup on health-check timeout: prove PR 3's fix on a real host --
   // stopping the process this job itself started also removes its EnvironmentFile and
-  // frees its port. The fixture's start command runs but never binds HTTP, so
-  // startProcess succeeds and waitForHttpHealth is the piece that must time out. ---
+  // frees its port. The fixture is a valid Eve Agent, while a deliberately tiny
+  // health timeout makes waitForHttpHealth expire before Eve can bind HTTP. ---
   const failSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-smoke-fail-"));
   await mkdir(path.join(failSourcePath, "agent"), { recursive: true });
   await writeFile(path.join(failSourcePath, "agent", "instructions.md"), "Smoke fixture (never healthy).\n");
   await writeFile(
     path.join(failSourcePath, "package.json"),
-    // No "eve" dependency, same as the fixture above -- this is a plain Node
-    // start command. `sleep` starts a real process (so startProcess succeeds)
-    // but never binds a socket on $PORT, so the health check can only time out.
-    JSON.stringify({ name: "eveland-smoke-fail", version: "0.0.0", scripts: { start: "sleep 30" } }, null, 2),
+    JSON.stringify({ name: "eveland-smoke-fail", version: "0.0.0", dependencies: { eve: "0.24.6" } }, null, 2),
   );
 
   const failProject = await store.createProject({ name: "Systemd Smoke Fail", importKind: "zip", sourcePath: failSourcePath });
@@ -141,10 +133,11 @@ try {
 
   // build_deploy reads EVELAND_HEALTH_TIMEOUT_MS straight off process.env per call (see
   // jobs/process.ts), not from job options -- shrink it for just this one job so the
-  // timeout this step is proving takes ~1s instead of the default 15s, then restore
+  // timeout this step is proving happens before Eve can bind instead of waiting for
+  // the default 15s, then restore
   // whatever was there before so it can't leak into anything that runs after this step.
   const previousHealthTimeoutMs = process.env.EVELAND_HEALTH_TIMEOUT_MS;
-  process.env.EVELAND_HEALTH_TIMEOUT_MS = "1000";
+  process.env.EVELAND_HEALTH_TIMEOUT_MS = "1";
   // Fixed and well outside EVELAND_DEPLOYMENT_PORT's default allocation range so it can
   // never collide with a port a real deployment picked earlier in this same run --
   // build_deploy only calls allocateAvailableHostPort for a *new* project (no
