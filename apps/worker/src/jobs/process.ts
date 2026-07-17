@@ -65,10 +65,12 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
       heartbeat: () => store.heartbeatJob(job.id, job.attempts),
       work: () => processJob(store, job, options),
     });
+    await clearTemporaryGitCredential(store, job);
     await store.completeJob(job.id, job.attempts);
     return true;
   } catch (error) {
     const message = errorMessage(error);
+    await clearTemporaryGitCredential(store, job);
     const failed = await store.failJob(job.id, message, job.attempts);
     if (!failed) return true;
     // A failed import never touches the running container, so it must not report a
@@ -100,6 +102,12 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
   }
 }
 
+async function clearTemporaryGitCredential(store: Store, job: Job): Promise<void> {
+  if (job.type !== "import_source" || !("gitCredential" in job.payload)) return;
+  const { gitCredential: _gitCredential, ...payload } = job.payload;
+  await store.replaceJobPayload(job.id, payload, job.attempts);
+}
+
 export async function runWithJobHeartbeat<T>(input: {
   intervalMs: number;
   heartbeat: () => Promise<boolean>;
@@ -125,6 +133,7 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
       }
 
       const sourcePathFromPayload = typeof job.payload.sourcePath === "string" ? job.payload.sourcePath : null;
+      const gitCredential = readGitCredentialPayload(job.payload.gitCredential);
       let sourcePath = sourcePathFromPayload;
       let commitSha: string | null = null;
 
@@ -137,6 +146,15 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         await importGitSource({
           gitUrl,
           targetDir: sourcePath,
+          ...(gitCredential ? {
+            credential: {
+              host: gitCredential.host,
+              token: decryptSecretValue(
+                parseEncryptedSecret(gitCredential.encryptedToken),
+                options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey,
+              ),
+            },
+          } : {}),
           onRetry: async (attempt, detail) => {
             await store.appendLog({
               projectId: job.projectId,
@@ -161,6 +179,9 @@ async function processJob(store: Store, job: Job, options: ProcessJobOptions): P
         projectId: job.projectId,
         ...scan,
       });
+      if (gitCredential?.persistAfterImport) {
+        await store.upsertGitCredential(gitCredential.userId, gitCredential.host, gitCredential.encryptedToken);
+      }
       await store.appendLog({
         projectId: job.projectId,
         type: "build",
@@ -833,6 +854,25 @@ function parseEncryptedSecret(value: string): EncryptedSecret {
     throw new Error("Invalid encrypted secret payload.");
   }
   return parsed as EncryptedSecret;
+}
+
+type GitCredentialPayload = {
+  userId: string;
+  host: string;
+  encryptedToken: string;
+  persistAfterImport: boolean;
+};
+
+function readGitCredentialPayload(value: unknown): GitCredentialPayload | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Partial<GitCredentialPayload>;
+  if (
+    typeof candidate.userId !== "string" ||
+    typeof candidate.host !== "string" ||
+    typeof candidate.encryptedToken !== "string" ||
+    typeof candidate.persistAfterImport !== "boolean"
+  ) return null;
+  return candidate as GitCredentialPayload;
 }
 
 async function resolveRuntimeCommandContext(sourcePath: string): Promise<RuntimeCommandContext> {

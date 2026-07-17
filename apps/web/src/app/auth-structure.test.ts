@@ -13,12 +13,32 @@ describe("team management web surfaces", () => {
       "./accept-invite/page.tsx",
       "./settings/layout.tsx",
       "./settings/profile/page.tsx",
+      "./settings/git-credentials/page.tsx",
       "./settings/members/page.tsx",
       "../proxy.ts",
     ]) {
       expect(existsSync(fileURLToPath(new URL(path, import.meta.url)))).toBe(true);
     }
     expect(existsSync(fileURLToPath(new URL("./members/page.tsx", import.meta.url)))).toBe(false);
+  });
+
+  test("offers GitLab PAT import and personal host credential management", () => {
+    const newProjectForm = source("../components/new-project-forms.tsx");
+    const credentialsPageUrl = new URL("./settings/git-credentials/page.tsx", import.meta.url);
+    const credentialsFormUrl = new URL("../components/git-credentials-settings.tsx", import.meta.url);
+
+    expect(newProjectForm).toContain("GitLab personal access token");
+    expect(newProjectForm).toContain("gitlabPat");
+    expect(newProjectForm).toContain('type="password"');
+    expect(existsSync(fileURLToPath(credentialsPageUrl))).toBe(true);
+    expect(existsSync(fileURLToPath(credentialsFormUrl))).toBe(true);
+    if (!existsSync(fileURLToPath(credentialsPageUrl)) || !existsSync(fileURLToPath(credentialsFormUrl))) return;
+    expect(source("./settings/git-credentials/page.tsx")).toContain("getGitCredentials");
+    const credentialsForm = source("../components/git-credentials-settings.tsx");
+    expect(credentialsForm).toContain("<Card");
+    expect(credentialsForm).toContain("<Table");
+    expect(credentialsForm).toContain("<Badge");
+    expect(credentialsForm).toContain("deleteGitCredential");
   });
 
   test("composes the settings pages from profile forms and the existing member controls", () => {

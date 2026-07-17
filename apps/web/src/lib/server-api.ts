@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
 import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
+import type { PublicGitCredential } from "@eveland/core/contracts";
 import type {
   AgentEndpoints,
   CollectorHealth,
@@ -61,6 +62,8 @@ export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invi
 export const getApiBuildInfo = () => apiGet<{ ok: true } & EvelandBuildInfo>("/health");
 export const getSystemConfigurationDiagnostics = () =>
   apiGet<SystemConfigurationDiagnostics>("/system/configuration");
+export const getGitCredentials = () =>
+  apiGet<{ credentials: PublicGitCredential[] }>("/git-credentials").then((data) => data.credentials);
 
 function queryString(filters: Record<string, string | undefined>): string {
   const query = new URLSearchParams();

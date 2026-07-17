@@ -1208,3 +1208,21 @@ Eve 0.24.0 不再允许 self-hosted build 通过 `WORKFLOW_TARGET_WORLD` 环境�
 
 本节不改变 Gateway public Agent auth/header/streaming boundary，也不扩大 API 或 Gateway 的
 host privilege；诊断数据仍属于 Admin-only control plane。
+
+---
+
+## 21. 2026-07-17 follow-up：GitLab PAT source import
+
+企业自建 GitLab 的 hostname 不一定包含 `gitlab`，且控制面额外探测任意内网 URL 会扩大
+SSRF 与网络权限边界，因此 source import credential 收敛为显式、host-scoped 行为：
+
+- HTTPS Git import 可显式提交 GitLab PAT，推荐只授予 `read_repository`；不靠 hostname
+  猜测 provider，也不新增 API 对 Repo host 的预检请求；
+- API 以 `APP_SECRET_KEY` 加密 PAT，job payload 只持有密文；worker 使用与 Repo URL 完全
+  匹配的规范化 host 作用域 Git HTTP 配置，不把 token 写入 URL、argv、源码或日志；
+- clone、Eve 扫描和 Source Revision 记录成功后，密文才按 `(userId, host)` 保存；失败不保存，
+  显式新 PAT 也只在成功后替换旧值；
+- 同一用户后续 import/sync 自动复用，同 Team 其他用户不可读取或使用；Settings 只列 host
+  和更新时间并允许删除，永不 reveal/copy；
+- 该能力只服务 Eveland source import，不改变前文 GitHub Channel credential/network broker
+  的独立边界，也不向 Agent sandbox 或 Gateway 注入 GitLab 凭据。

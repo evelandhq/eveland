@@ -1,6 +1,30 @@
 import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "./store.js";
 
+describe("memory store Git credentials", () => {
+  test("keeps one encrypted credential per user and normalized host", async () => {
+    const store = createMemoryStore();
+
+    const created = await store.upsertGitCredential("user_one", "gitlab.example.com", "encrypted-one");
+    await store.upsertGitCredential("user_two", "gitlab.example.com", "encrypted-two");
+    const updated = await store.upsertGitCredential("user_one", "gitlab.example.com", "encrypted-new");
+
+    expect(updated.id).toBe(created.id);
+    await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toMatchObject({
+      encryptedToken: "encrypted-new",
+    });
+    await expect(store.listGitCredentials("user_one")).resolves.toEqual([
+      expect.objectContaining({ host: "gitlab.example.com" }),
+    ]);
+    expect(JSON.stringify(await store.listGitCredentials("user_one"))).not.toContain("encrypted-new");
+    await expect(store.deleteGitCredential("user_one", created.id)).resolves.toBe(true);
+    await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toBeNull();
+    await expect(store.getGitCredential("user_two", "gitlab.example.com")).resolves.toMatchObject({
+      encryptedToken: "encrypted-two",
+    });
+  });
+});
+
 describe("memory store jobs", () => {
   test("lists a project's jobs newest first", async () => {
     const store = createMemoryStore();

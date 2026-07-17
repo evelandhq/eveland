@@ -49,6 +49,41 @@ describe("git source importer", () => {
     ).resolves.toBeUndefined();
   });
 
+  test("supplies a GitLab PAT through host-scoped Git configuration without putting it in the clone URL", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-pat-"));
+    temporaryDirectories.push(root);
+    await useFakeGit(root, `
+[ "$GIT_CONFIG_COUNT" = "1" ] || exit 40
+[ "$GIT_CONFIG_KEY_0" = "http.https://gitlab.example.com:8443/.extraHeader" ] || exit 41
+[ "$GIT_CONFIG_VALUE_0" = "Authorization: Basic b2F1dGgyOmdscGF0LXNlY3JldA==" ] || exit 42
+[ "$4" = "https://gitlab.example.com:8443/group/agent.git" ] || exit 43
+mkdir -p "$5"`);
+
+    await expect(importGitSource({
+      gitUrl: "https://gitlab.example.com:8443/group/agent.git",
+      targetDir: path.join(root, "source"),
+      credential: { host: "gitlab.example.com:8443", token: "glpat-secret" },
+    })).resolves.toBeUndefined();
+  });
+
+  test("redacts a PAT and its Basic authorization value from Git errors", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-pat-redaction-"));
+    temporaryDirectories.push(root);
+    await useFakeGit(root, "echo \"fatal: $GIT_CONFIG_VALUE_0 glpat-secret\" >&2\nexit 1");
+
+    const failure = await importGitSource({
+      gitUrl: "https://gitlab.example.com/group/agent.git",
+      targetDir: path.join(root, "source"),
+      credential: { host: "gitlab.example.com", token: "glpat-secret" },
+      maxAttempts: 1,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).not.toContain("glpat-secret");
+    expect((failure as Error).message).not.toContain("b2F1dGgyOmdscGF0LXNlY3JldA==");
+    expect((failure as Error).message).toContain("***");
+  });
+
   test("reports git stderr without exposing URL credentials", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-redaction-"));
     temporaryDirectories.push(root);

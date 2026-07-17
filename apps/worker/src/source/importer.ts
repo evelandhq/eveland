@@ -9,9 +9,11 @@ export type ImportGitInput = {
   maxAttempts?: number;
   retryDelayMs?: number;
   onRetry?: (nextAttempt: number, detail: string) => void | Promise<void>;
+  credential?: { host: string; token: string };
 };
 
 export async function importGitSource(input: ImportGitInput): Promise<void> {
+  const credentialEnv = gitCredentialEnv(input.gitUrl, input.credential);
   await mkdir(path.dirname(input.targetDir), { recursive: true });
   const timeoutMs = input.timeoutMs ?? Number(process.env.EVELAND_GIT_CLONE_TIMEOUT_MS ?? 120_000);
   const configuredAttempts = input.maxAttempts ?? Number(process.env.EVELAND_GIT_CLONE_MAX_ATTEMPTS ?? 3);
@@ -22,13 +24,13 @@ export async function importGitSource(input: ImportGitInput): Promise<void> {
     try {
       await execa("git", ["clone", "--depth", "1", input.gitUrl, input.targetDir], {
         all: true,
-        env: { GIT_TERMINAL_PROMPT: "0" },
+        env: { GIT_TERMINAL_PROMPT: "0", ...credentialEnv },
         timeout: timeoutMs,
       });
       return;
     } catch (error) {
       await rm(input.targetDir, { recursive: true, force: true });
-      const detail = gitErrorOutput(error);
+      const detail = gitErrorOutput(error, input.credential?.token);
       if (attempt < maxAttempts && isTransientGitError(error, detail)) {
         await input.onRetry?.(attempt + 1, detail || `timeout after ${timeoutMs}ms`);
         await delay(retryDelayMs * 2 ** (attempt - 1));
@@ -59,9 +61,37 @@ function isTimedOutError(error: unknown): error is { timedOut: true } {
   return typeof error === "object" && error !== null && "timedOut" in error && error.timedOut === true;
 }
 
-function gitErrorOutput(error: unknown): string {
+function gitErrorOutput(error: unknown, token?: string): string {
   if (typeof error !== "object" || error === null || !("stderr" in error) || typeof error.stderr !== "string") return "";
-  return error.stderr.trim().slice(0, 2_000).replace(/\b(https?:\/\/)[^/@\s]+@/gi, "$1***@");
+  let detail = error.stderr
+    .trim()
+    .slice(0, 2_000)
+    .replace(/\b(https?:\/\/)[^/@\s]+@/gi, "$1***@")
+    .replace(/Authorization:\s*Basic\s+[A-Za-z0-9+/=]+/gi, "Authorization: Basic ***");
+  if (token) {
+    detail = detail.replaceAll(token, "***");
+    detail = detail.replaceAll(Buffer.from(`oauth2:${token}`, "utf8").toString("base64"), "***");
+  }
+  return detail;
+}
+
+function gitCredentialEnv(
+  gitUrl: string,
+  credential?: { host: string; token: string },
+): Record<string, string> {
+  if (!credential) return {};
+  const url = new URL(gitUrl);
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("GitLab PAT authentication requires an HTTPS repository URL without embedded credentials.");
+  }
+  if (url.host.toLowerCase() !== credential.host.toLowerCase()) {
+    throw new Error("Git credential host does not match the repository URL.");
+  }
+  return {
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: `http.${url.protocol}//${url.host.toLowerCase()}/.extraHeader`,
+    GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(`oauth2:${credential.token}`, "utf8").toString("base64")}`,
+  };
 }
 
 function isTransientGitError(error: unknown, detail: string): boolean {

@@ -117,6 +117,12 @@ Personal 与 System 分组导航。
 Profile 更新复用 Better Auth 用户记录，不允许通过公开的 Better Auth `update-user`
 端点绕过 Eveland 的姓名与头像输入约束。
 
+#### Git Credentials (/settings/git-credentials)
+
+个人设置列出当前用户已验证并保存的 Git HTTPS host 凭据，只显示规范化的 host、更新时间
+和删除操作，不返回、复制或提示 PAT 原值、长度或前后缀。凭据按 `(userId, host)` 隔离，
+不能由同一 Team 的其他成员复用。删除后仅影响后续 import/sync，不修改已导入的 Source Revision。
+
 #### Members (/settings/members)
 
 Members 位于 Settings 的 System 分组，不再出现在 Workspace 全局导航。
@@ -173,6 +179,14 @@ Git 导入先填写 Repo URL。Web 从 URL 最后一个 path segment 去掉 `.gi
 Project 名称，例如 `evelandhq/sample-office-assistant` 得到
 `sample-office-assistant`；用户可以在提交前编辑。Zip 导入先选择压缩包，并以文件名
 使用相同规则猜测名称。
+
+私有 GitLab（包括自建实例）可在 HTTPS Repo URL 旁提供 Personal Access Token；建议只授予
+`read_repository`。平台不通过域名猜测或额外请求探测内网 GitLab。PAT 由 API 使用
+`APP_SECRET_KEY` 加密后进入 import job，worker 仅以匹配的规范化 host 作用域向 `git clone`
+提供临时 HTTP 认证，不把 PAT 拼入 URL、源码 `.git/config`、日志或错误。只有 clone、Eve
+结构扫描和 Source Revision 记录全部成功后，PAT 密文才按当前用户与 host 保存；失败导入不保存。
+同一用户以后从同 host 导入或同步时自动复用已保存凭据，显式提交的新 PAT 仅在该次导入成功后替换旧值。
+SSH/SCP URL 不接受 PAT，URL 中也不允许内嵌 credentials。
 
 Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一、最长 53 个字符，
 只允许小写字母、数字和 `-`，且不能以 `-` 开头或结尾。名称冲突时，API 必须在同一

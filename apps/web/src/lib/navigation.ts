@@ -10,6 +10,7 @@ import {
   InfoIcon,
   LayoutGridIcon,
   LogsIcon,
+  KeyRoundIcon,
   PlayIcon,
   RocketIcon,
   ScrollTextIcon,
@@ -26,7 +27,10 @@ export const globalNavigationItems = [
 export const settingsNavigationGroups = [
   {
     label: 'Personal',
-    items: [{ href: '/settings/profile', label: 'Profile', icon: ShieldUserIcon }],
+    items: [
+      { href: '/settings/profile', label: 'Profile', icon: ShieldUserIcon },
+      { href: '/settings/git-credentials', label: 'Git credentials', icon: KeyRoundIcon },
+    ],
   },
   {
     label: 'System',

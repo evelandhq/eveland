@@ -39,6 +39,8 @@ import type {
   ActivationLease,
   ActivationLeaseClaim,
   ActivationLeaseKind,
+  GitCredentialRecord,
+  PublicGitCredential,
 } from "@eveland/core/contracts";
 import { parseStepUsageEvent, type ModelStepUsage } from "@eveland/core/eve";
 import { ObserverEnvelopeRejectedError, type ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -65,6 +67,12 @@ export type CreateProjectInput = {
   importKind: ProjectImportKind;
   gitUrl?: string | null;
   sourcePath?: string | null;
+  gitCredential?: {
+    userId: string;
+    host: string;
+    encryptedToken: string;
+    persistAfterImport: boolean;
+  };
 };
 
 export type ProjectDeletionRequest =
@@ -93,6 +101,10 @@ export type Store = {
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<Project>;
   getProject(projectId: string): Promise<Project | null>;
+  listGitCredentials(userId: string): Promise<PublicGitCredential[]>;
+  getGitCredential(userId: string, host: string): Promise<GitCredentialRecord | null>;
+  upsertGitCredential(userId: string, host: string, encryptedToken: string): Promise<GitCredentialRecord>;
+  deleteGitCredential(userId: string, credentialId: string): Promise<boolean>;
   requestProjectDeletion(projectId: string): Promise<ProjectDeletionRequest>;
   setProjectDeletionFailed(projectId: string, error: string): Promise<Project | null>;
   deleteProject(projectId: string): Promise<boolean>;
@@ -111,6 +123,7 @@ export type Store = {
   ): Promise<Job>;
   claimNextJob(workerId: string, now?: Date): Promise<Job | null>;
   heartbeatJob(jobId: string, attempt: number, now?: Date): Promise<boolean>;
+  replaceJobPayload(jobId: string, payload: Record<string, unknown>, attempt: number): Promise<boolean>;
   recoverStaleJobs(now?: Date, staleAfterMs?: number, limit?: number): Promise<number>;
   completeJob(jobId: string, attempt?: number): Promise<boolean>;
   failJob(jobId: string, error: string, attempt?: number): Promise<boolean>;
@@ -271,6 +284,7 @@ export type StoreState = MemoryState;
 
 type MemoryState = {
   projects: Project[];
+  gitCredentials: GitCredentialRecord[];
   secrets: SecretRecord[];
   jobs: Job[];
   schedules: ScheduleRecord[];
@@ -297,6 +311,7 @@ type MemoryState = {
 export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
   const state: MemoryState = {
     projects: initialState?.projects ?? [],
+    gitCredentials: initialState?.gitCredentials ?? [],
     secrets: initialState?.secrets ?? [],
     jobs: initialState?.jobs ?? [],
     schedules: initialState?.schedules ?? [],
@@ -350,12 +365,58 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
         state.projects.push(claimed);
         return claimed;
       });
-      state.jobs.push(createJob(project.id, "import_source", { importKind: input.importKind, gitUrl: input.gitUrl ?? null, sourcePath: input.sourcePath ?? null }));
+      state.jobs.push(createJob(project.id, "import_source", {
+        importKind: input.importKind,
+        gitUrl: input.gitUrl ?? null,
+        sourcePath: input.sourcePath ?? null,
+        ...(input.gitCredential ? { gitCredential: input.gitCredential } : {}),
+      }));
       return project;
     },
 
     async getProject(projectId) {
       return state.projects.find((project) => project.id === projectId) ?? null;
+    },
+
+    async listGitCredentials(userId) {
+      return state.gitCredentials
+        .filter((credential) => credential.userId === userId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map(toPublicGitCredential);
+    },
+
+    async getGitCredential(userId, host) {
+      return state.gitCredentials.find((credential) => credential.userId === userId && credential.host === host) ?? null;
+    },
+
+    async upsertGitCredential(userId, host, encryptedToken) {
+      const existing = state.gitCredentials.find(
+        (credential) => credential.userId === userId && credential.host === host,
+      );
+      const now = new Date().toISOString();
+      if (existing) {
+        existing.encryptedToken = encryptedToken;
+        existing.updatedAt = now;
+        return existing;
+      }
+      const credential: GitCredentialRecord = {
+        id: createId("gitcred"),
+        userId,
+        host,
+        encryptedToken,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.gitCredentials.push(credential);
+      return credential;
+    },
+
+    async deleteGitCredential(userId, credentialId) {
+      const before = state.gitCredentials.length;
+      state.gitCredentials = state.gitCredentials.filter(
+        (credential) => credential.userId !== userId || credential.id !== credentialId,
+      );
+      return state.gitCredentials.length !== before;
     },
 
     async requestProjectDeletion(projectId) {
@@ -536,6 +597,16 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       const job = state.jobs.find((candidate) => candidate.id === jobId && candidate.status === "running" && candidate.attempts === attempt);
       if (!job) return false;
       job.updatedAt = now.toISOString();
+      return true;
+    },
+
+    async replaceJobPayload(jobId, payload, attempt) {
+      const job = state.jobs.find(
+        (candidate) => candidate.id === jobId && candidate.status === "running" && candidate.attempts === attempt,
+      );
+      if (!job) return false;
+      job.payload = payload;
+      job.updatedAt = new Date().toISOString();
       return true;
     },
 
@@ -2067,4 +2138,9 @@ function createJob(projectId: string, type: JobType, payload: Record<string, unk
 function toPublicSecret(secret: SecretRecord): PublicSecret {
   const { encryptedValue: _encryptedValue, ...publicSecret } = secret;
   return publicSecret;
+}
+
+function toPublicGitCredential(credential: GitCredentialRecord): PublicGitCredential {
+  const { encryptedToken: _encryptedToken, userId: _userId, ...publicCredential } = credential;
+  return publicCredential;
 }
