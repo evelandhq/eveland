@@ -1,0 +1,74 @@
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, test } from "vitest";
+import { importGitSource } from "./importer.js";
+
+const temporaryDirectories: string[] = [];
+const originalPath = process.env.PATH;
+
+afterEach(async () => {
+  process.env.PATH = originalPath;
+  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
+
+describe("git source importer", () => {
+  test("fails with an actionable error when git clone exceeds its timeout", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-timeout-"));
+    temporaryDirectories.push(root);
+    await useFakeGit(root, "mkdir -p \"$5\"\nsleep 0.25");
+
+    await expect(
+      importGitSource({
+        gitUrl: "https://example.com/agent.git",
+        targetDir: path.join(root, "source"),
+        timeoutMs: 50,
+      }),
+    ).rejects.toThrow("Repository fetch timed out after 50ms. Check the worker network, proxy, DNS, or repository availability, then retry.");
+  });
+
+  test("removes a partial source directory when git clone fails", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-failure-"));
+    temporaryDirectories.push(root);
+    await useFakeGit(root, "mkdir -p \"$5\"\nexit 1");
+    const targetDir = path.join(root, "source");
+
+    await expect(importGitSource({ gitUrl: "https://example.com/agent.git", targetDir })).rejects.toThrow();
+
+    await expect(access(targetDir)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("disables interactive git credential prompts", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-noninteractive-"));
+    temporaryDirectories.push(root);
+    await useFakeGit(root, "[ \"$GIT_TERMINAL_PROMPT\" = \"0\" ] || exit 42\nmkdir -p \"$5\"");
+
+    await expect(
+      importGitSource({ gitUrl: "https://example.com/agent.git", targetDir: path.join(root, "source") }),
+    ).resolves.toBeUndefined();
+  });
+
+  test("reports git stderr without exposing URL credentials", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-redaction-"));
+    temporaryDirectories.push(root);
+    await useFakeGit(root, "echo 'fatal: unable to access https://secret-token@example.com/agent.git' >&2\nexit 1");
+
+    const failure = await importGitSource({
+      gitUrl: "https://secret-token@example.com/agent.git",
+      targetDir: path.join(root, "source"),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("fatal: unable to access https://***@example.com/agent.git");
+    expect((failure as Error).message).not.toContain("secret-token");
+  });
+});
+
+async function useFakeGit(root: string, body: string): Promise<void> {
+  const binDir = path.join(root, "bin");
+  const gitPath = path.join(binDir, "git");
+  await mkdir(binDir, { recursive: true });
+  await writeFile(gitPath, `#!/bin/sh\n${body}\n`, { flag: "wx" });
+  await chmod(gitPath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+}

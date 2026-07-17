@@ -63,6 +63,7 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `EVELAND_HOST_DATA_DIR` | Host-side real path when the worker runs inside Compose but drives the host Docker daemon (used to bind the observer outbox into agent containers). | same as `EVELAND_DATA_DIR` | worker (`process.ts`) |
 | `EVELAND_INTERNAL_PORT` | Container-internal port for the docker adapter. | `3000` | `apps/worker/src/runtime/select.ts` |
 | `EVELAND_DEPLOYMENT_PORT` | Start of the host-port allocation range (scans the next 100 ports for a free one). | `41000` | `apps/worker/src/jobs/process.ts` |
+| `EVELAND_GIT_CLONE_TIMEOUT_MS` | Maximum duration of a non-interactive Git source clone before the worker fails the import and removes its partial source directory. | `120000` | worker (`source/importer.ts`) |
 | `EVELAND_HEALTH_TIMEOUT_MS` | Timeout waiting for a freshly started deployment to pass its health check. | `15000` | worker (`process.ts`) |
 | `EVELAND_RELEASE_RETENTION` | Deployments/releases retained per project by the archive policy. | `3` (minimum 3) | worker (`process.ts`) |
 | `WORKER_ID` | Worker instance identity, used when claiming jobs. | — | `apps/worker/src/worker.ts` |

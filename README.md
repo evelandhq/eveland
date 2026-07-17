@@ -38,6 +38,12 @@ The public docs process is independent of that control-plane path. Use
 `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
 `pnpm dev:docs` in separate terminals when isolated logs are more useful.
 
+Git imports run non-interactively and time out after 120 seconds by default. Set
+`EVELAND_GIT_CLONE_TIMEOUT_MS` on the worker to tune that limit for slow networks.
+The Project page follows the asynchronous import job until completion and exposes a
+credential-redacted failure with a retry action; an accepted create/sync request only means
+the job was queued.
+
 ## Public docs deployment
 
 `apps/docs` is deployed as the `eveland-docs` Cloudflare Worker at

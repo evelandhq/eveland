@@ -101,6 +101,7 @@ export type Store = {
   deleteSecret(projectId: string, secretId: string): Promise<boolean>;
   listSecretRecords(projectId: string): Promise<SecretRecord[]>;
   enqueueJob(projectId: string, type: JobType, payload?: Record<string, unknown>): Promise<Job>;
+  listProjectJobs(projectId: string, options?: { type?: JobType; limit?: number }): Promise<Job[]>;
   enqueueDeploymentActivation(
     projectId: string,
     deploymentId: string,
@@ -465,6 +466,14 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
       const job = createJob(projectId, type, payload);
       state.jobs.push(job);
       return job;
+    },
+
+    async listProjectJobs(projectId, options = {}) {
+      const limit = options.limit ?? 20;
+      return state.jobs
+        .filter((job) => job.projectId === projectId && (!options.type || job.type === options.type))
+        .slice(-limit)
+        .reverse();
     },
 
     async enqueueDeploymentActivation(projectId, deploymentId, runtimeInstanceId, now = new Date(), staleAfterMs = 300_000) {

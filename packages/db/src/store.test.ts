@@ -2,6 +2,32 @@ import { describe, expect, test } from "vitest";
 import { createMemoryStore } from "./store.js";
 
 describe("memory store jobs", () => {
+  test("lists a project's jobs newest first", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Visible Jobs Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
+    const initialImport = await store.claimNextJob("worker-a");
+    await store.completeJob(initialImport!.id);
+    const latest = await store.enqueueJob(project.id, "build_deploy");
+    await store.createProject({ name: "Other Jobs Agent", importKind: "zip" });
+
+    await expect(store.listProjectJobs(project.id)).resolves.toEqual([
+      latest,
+      expect.objectContaining({ id: initialImport!.id, projectId: project.id }),
+    ]);
+  });
+
+  test("filters project jobs before applying the result limit", async () => {
+    const store = createMemoryStore();
+    const project = await store.createProject({ name: "Filtered Jobs Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    for (let index = 0; index < 25; index += 1) await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(store.listProjectJobs(project.id, { type: "import_source", limit: 1 })).resolves.toEqual([
+      expect.objectContaining({ id: importJob!.id, type: "import_source" }),
+    ]);
+  });
+
   test("marks a project as deleting and replaces queued work with one deletion job", async () => {
     const store = createMemoryStore();
     const pendingSourcePath = "/data/uploads/zip-pending/source";

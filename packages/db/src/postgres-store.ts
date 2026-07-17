@@ -363,6 +363,16 @@ export function createPostgresStore(database: Database): Store {
       return createJob(projectId, type, payload);
     },
 
+    async listProjectJobs(projectId, options = {}) {
+      const rows = await db
+        .select()
+        .from(jobs)
+        .where(options.type ? and(eq(jobs.projectId, projectId), eq(jobs.type, options.type)) : eq(jobs.projectId, projectId))
+        .orderBy(desc(jobs.createdAt))
+        .limit(options.limit ?? 20);
+      return rows.map(jobRowToJob);
+    },
+
     async enqueueDeploymentActivation(projectId, deploymentId, runtimeInstanceId, now = new Date(), staleAfterMs = 300_000) {
       return db.transaction(async (tx) => {
         const [runtimeInstance] = await tx

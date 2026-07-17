@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { enqueueBuildDeploy, syncSource } from "./client-api";
+import { getProjectImportNotice, type Job } from "./api";
 
 describe("web api helpers", () => {
   afterEach(() => {
@@ -23,6 +24,66 @@ describe("web api helpers", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/build-deploy", {
       method: "POST",
       credentials: "include",
+    });
+  });
+
+  test("maps a failed import job to a visible retry notice", () => {
+    const job: Job = {
+      id: "job_failed",
+      projectId: "proj_123",
+      type: "import_source",
+      status: "failed",
+      payload: {},
+      attempts: 1,
+      lastError: "Repository fetch timed out after 120000ms.",
+      createdAt: "2026-07-17T00:00:00.000Z",
+      updatedAt: "2026-07-17T00:02:00.000Z",
+    };
+
+    expect(getProjectImportNotice(job)).toEqual({
+      active: false,
+      title: "Repository fetch failed",
+      detail: "Repository fetch timed out after 120000ms.",
+    });
+  });
+
+  test("maps a queued import job to an active notice", () => {
+    const job: Job = {
+      id: "job_queued",
+      projectId: "proj_123",
+      type: "import_source",
+      status: "queued",
+      payload: {},
+      attempts: 0,
+      lastError: null,
+      createdAt: "2026-07-17T00:00:00.000Z",
+      updatedAt: "2026-07-17T00:00:00.000Z",
+    };
+
+    expect(getProjectImportNotice(job)).toEqual({
+      active: true,
+      title: "Repository fetch queued",
+      detail: "Waiting for a worker to start fetching the repository.",
+    });
+  });
+
+  test("maps a running import job to an active notice", () => {
+    const job: Job = {
+      id: "job_running",
+      projectId: "proj_123",
+      type: "import_source",
+      status: "running",
+      payload: {},
+      attempts: 1,
+      lastError: null,
+      createdAt: "2026-07-17T00:00:00.000Z",
+      updatedAt: "2026-07-17T00:00:01.000Z",
+    };
+
+    expect(getProjectImportNotice(job)).toEqual({
+      active: true,
+      title: "Fetching repository…",
+      detail: "The worker is cloning and validating the latest source.",
     });
   });
 
