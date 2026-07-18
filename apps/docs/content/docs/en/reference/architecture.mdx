@@ -1,0 +1,42 @@
+---
+title: Architecture reference
+description: Review application ownership, dependency direction, data paths, and the public request path.
+---
+
+<RuntimeTopology lang="en" />
+
+## Application ownership
+
+| Component | Responsibility |
+| --- | --- |
+| Web | Authenticated team control panel |
+| API | Control-plane contract, persistence, auth, import handling, and collector host |
+| Gateway | Public Agent data plane, trusted routing, affinity, streaming, and private Playground path |
+| Worker | Import, build, systemd runtime control, schedules, recovery, and cleanup |
+| Postgres | Control-plane state plus platform-owned durable workflow databases |
+
+## Dependency direction
+
+```text
+apps → packages
+session-collector → core + db
+db → core
+core → no other Eveland package
+apps -X→ apps
+```
+
+## Public request path
+
+```text
+Client
+  → wildcard HTTPS Host
+  → Traefik
+  → Gateway
+  → route policy / SessionBinding
+  → private loopback Deployment
+  → Eve HTTP channel
+```
+
+## Observation path
+
+Injected hooks write durable envelopes to the Deployment outbox. API's collector claims, validates, and projects those envelopes into Sessions and Usage. Playground streaming is not the authoritative collection path.

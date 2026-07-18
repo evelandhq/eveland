@@ -1,0 +1,28 @@
+---
+title: Health and diagnostics
+description: Find failures in the component, job, runtime, or session surface that owns them.
+---
+
+Start with the state that actually failed. Eveland keeps component health, asynchronous job logs, runtime output, and session events separate so one noisy stream does not become the only debugging interface.
+
+## Component health
+
+- API and Gateway public `/health` report product version, revision, channel, and component.
+- Worker reports startup identity and writes an already-masked configuration snapshot.
+- Collector degradation is separate from control-plane health because queued observer envelopes can recover.
+- **Settings → About** compares Web/API identity and shows allowlisted masked configuration to admins.
+
+## Choose the right evidence
+
+| Failure | Start here |
+| --- | --- |
+| Import or source validation | Import job and Source Preflight log |
+| Dependency install or `eve build` | Build log |
+| Unit startup or health timeout | Deploy diagnostic and systemd journal |
+| Agent process output | Runtime stdout/stderr |
+| Model, tool, subagent, or usage issue | Session timeline |
+| Stable or preview Host failure | Gateway health, route policy, and target RuntimeInstance |
+
+Initial health failures capture bounded recent unit state and journal output before cleanup. Project Secret values are masked, and a diagnostic or cleanup failure never replaces the original deployment error.
+
+Continue with [Troubleshooting](/docs/reference/troubleshooting) for symptom-specific checks.

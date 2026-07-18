@@ -1,0 +1,29 @@
+---
+title: Security model
+description: Understand authentication, secret, build, runtime, network, and observer trust boundaries.
+---
+
+Eveland minimizes the number of components that can cross each privilege boundary.
+
+## Authentication boundaries
+
+The invite-only control plane uses Better Auth sessions and Team membership. Public Agent traffic remains on the Agent's own authentication boundary. A control-plane login never becomes an Agent credential.
+
+## Component privilege
+
+- Gateway receives public Agent traffic but no source tree, observer data, decrypted secrets, or runtime controller.
+- API owns authenticated control-plane state and encryption but no host runtime privilege.
+- Worker is the only Docker/systemd controller and has no public service endpoint.
+- Agent units run as an unprivileged user with strict systemd filesystem and resource controls.
+
+## Untrusted builds and execution
+
+Project dependency lifecycle scripts execute as the unprivileged build user inside the documented build sandbox. Worker secrets are removed from the build environment. Prepared Releases receive Eveland's bwrap backend so Agent execution uses a real isolated workspace without Docker or KVM access.
+
+## Secret lifecycle
+
+Secrets never enter source snapshots, Release layers, logs, observer filenames, events, fixtures, or client responses. API and Worker must share the production application encryption key; Gateway never receives it.
+
+## Network boundary
+
+Only Gateway reaches public wildcard Agent hosts. Raw Agent ports stay on loopback, and `/internal/*` remains service-authenticated and excluded from the public proxy.

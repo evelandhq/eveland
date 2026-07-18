@@ -1,0 +1,31 @@
+---
+title: 安装宿主机 Worker
+description: 将特权 Worker 安装为 systemd Service，并连接到控制面。
+---
+
+Worker 是唯一的 Runtime Controller。生产环境将它放在宿主机上，从而避免 API 与 Gateway 获得 systemd 或 Docker Controller 权限。
+
+## 安装 Service
+
+```bash
+sudo install -d -m 0750 /etc/eveland
+sudo cp infra/systemd/eveland-worker.env.example /etc/eveland/eveland-worker.env
+sudo cp infra/systemd/eveland-worker.service /etc/systemd/system/
+```
+
+启动前配置 Environment File。至少应与控制面对齐数据库访问、`/var/lib/eveland`、应用加密、Agent Domain、Gateway Service Authentication、Workflow Postgres、Scheduler Secrets、Release Identity 与 `EVELAND_RUNTIME=systemd`。
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now eveland-worker
+```
+
+## 验证权限边界
+
+- Worker 以 root 运行，控制 `systemd-run`、`systemctl` 与文件所有权。
+- Build 在配置的 Build Sandbox 内以非特权构建用户运行。
+- Eve 进程以非特权应用用户运行。
+- Worker 没有公开监听端口。
+- Project Secret 只进入目标进程专属、由 root 管理的 `0600` EnvironmentFile。
+
+生产 Preflight 或 Durable Workflow 配置不完整时，Worker 会拒绝接收 Job。继续之前检查 Service Journal 与已脱敏的 Worker Configuration Snapshot。

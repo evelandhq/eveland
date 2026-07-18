@@ -1,0 +1,25 @@
+---
+title: 验证平台
+description: 用真实 Eve Deployment、稳定请求和已观察 Session 验证完整生产链路。
+---
+
+登录页可以打开并不能证明 Runtime 链路正常。使用有代表性的 Eve 项目验收完整系统。
+
+## 平台检查
+
+1. 确认 API 与 Gateway Health 返回预期的稳定版本和精确 Revision。
+2. 确认 Worker 已启动且生产 Preflight 通过。
+3. 以初始 Admin 登录，在 **Settings → About** 检查已脱敏的组件配置。
+4. 邀请第二名团队成员，并确认 Invitation 只能使用一次。
+
+## Runtime 检查
+
+1. 导入依赖版本受支持的 Eve 项目。
+2. 添加最少所需 Project Secrets。
+3. 构建新的不可变 Preview。
+4. 通过 Gateway 调用 Preview Host，并完成一次真实 Turn。
+5. 将健康 Deployment Promote 到 Stable Route。
+6. 调用 Stable Host，确认 Session 带有 Deployment Provenance 与 Eve 报告的 Usage。
+7. 等待 Idle Window 到期，再次调用并确认按需唤醒成功。
+
+记录本次验收使用的精确 Revision 与配置。继续阅读面向团队成员的[部署第一个 Agent](/zh/docs/agents/first-deployment)。

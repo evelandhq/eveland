@@ -1,0 +1,33 @@
+---
+title: 准备宿主机
+description: 安装前准备 Linux 用户、目录、工具、存储、数据库访问与资源容量。
+---
+
+使用带有 systemd 的 Linux 宿主机；Eveland 已在 Ubuntu 24.04 验证。生产环境需要 Node.js 24、pnpm 11、Git、bubblewrap、systemd 工具以及平台规定的 Sandbox 命令基线。
+
+## 建立运行边界
+
+- Worker 作为 root 管理的 systemd Service 运行。
+- 创建非特权应用用户，默认为 `eveland-app`。
+- 创建独立的非特权构建用户，默认为 `eveland-build`。
+- 创建 `/workspace` 与绝对数据根目录，通常为 `/var/lib/eveland`。
+- API 挂载路径与 Worker 的 `EVELAND_DATA_DIR` 必须使用完全相同的绝对路径。
+
+## 规划存储与数据库
+
+将 Source Revision、Release、Observer Outbox 与 Sandbox Cache 放在数据根目录下。为 Eveland 配置 Postgres 角色，并提供生产 `WORKFLOW_POSTGRES_URL`；该角色需要创建每项目独立 Workflow 数据库的权限。
+
+## 规划容量
+
+通过 `EVELAND_MEMORY_MAX` 与 `EVELAND_CPU_QUOTA` 设置每个 Deployment 的资源边界。容量估算应覆盖同时 Ready 的 RuntimeInstance、构建任务、Postgres、控制面、Release Artifact 与持久化 Sandbox Cache。空闲停止减少常驻进程数量，但不会删除保留中的 Artifact 或 Session Workspace。
+
+## 运行 Preflight
+
+先构建平台 Sandbox Backend，再运行独立检查：
+
+```bash
+pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+```
+
+只有输出 `PREFLIGHT OK` 后才能继续。检查会一次性列出所有缺失项。

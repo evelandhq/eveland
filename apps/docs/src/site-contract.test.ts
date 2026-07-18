@@ -60,6 +60,22 @@ describe("Eveland public website contract", () => {
     expect(existsSync(path("./app/[lang]/docs/[[...slug]]/page.tsx"))).toBe(true);
   });
 
+  test("localizes the documentation chrome and production diagrams", () => {
+    const layout = source("./lib/layout.shared.tsx");
+    const topology = source("./components/runtime-topology.tsx");
+
+    expect(layout).toContain('search: "搜索"');
+    expect(layout).toContain('toc: "本页内容"');
+    expect(layout).toContain('nextPage: "下一页"');
+    expect(topology).toContain("lang?: Language");
+    expect(source("../content/docs/en/production/index.mdx")).toContain(
+      '<RuntimeTopology lang="en" />',
+    );
+    expect(source("../content/docs/zh/production/index.mdx")).toContain(
+      '<RuntimeTopology lang="zh" />',
+    );
+  });
+
   test("keeps English URLs clean and prefixes only Chinese URLs", () => {
     expect(source("./lib/i18n.ts")).toContain("hideLocale: 'default-locale'");
     expect(source("./lib/urls.ts")).toContain(
@@ -71,34 +87,79 @@ describe("Eveland public website contract", () => {
     expect(source("./app/sitemap.ts")).not.toContain("${siteUrl}/en");
   });
 
-  test("keeps equivalent public documentation in both languages", () => {
+  test("publishes the production-first documentation architecture in both languages", () => {
     const requiredPages = [
       "index.mdx",
-      "quick-start.mdx",
-      "concepts.mdx",
-      "deploy.mdx",
-      "operate.mdx",
-      "architecture.mdx",
-      "troubleshooting.mdx",
+      "production/index.mdx",
+      "production/prerequisites.mdx",
+      "production/control-plane.mdx",
+      "production/worker.mdx",
+      "production/networking.mdx",
+      "production/verify.mdx",
+      "agents/first-deployment.mdx",
+      "agents/secrets-connections.mdx",
+      "agents/releases-routing.mdx",
+      "observe/sessions.mdx",
+      "observe/schedules.mdx",
+      "operations/runtime.mdx",
+      "operations/diagnostics.mdx",
+      "operations/upgrades.mdx",
+      "operations/security.mdx",
+      "reference/configuration.mdx",
+      "reference/eve-compatibility.mdx",
+      "reference/architecture.mdx",
+      "reference/troubleshooting.mdx",
     ];
 
     for (const locale of ["en", "zh"]) {
       for (const page of requiredPages) {
         expect(existsSync(path(`../content/docs/${locale}/${page}`))).toBe(true);
       }
-      expect(source(`../content/docs/${locale}/meta.json`)).toContain('"quick-start"');
-      expect(source(`../content/docs/${locale}/meta.json`)).toContain('"architecture"');
+      const navigation = source(`../content/docs/${locale}/meta.json`);
+      expect(navigation).toContain('"production"');
+      expect(navigation).toContain('"agents"');
+      expect(navigation).toContain('"observe"');
+      expect(navigation).toContain('"operations"');
+      expect(navigation).toContain('"reference"');
     }
   });
 
-  test("orients developers, agent authors, and operators from the homepage", () => {
+  test("makes production deployment the primary homepage journey", () => {
     const page = source("./app/[lang]/page.tsx");
+    const copy = source("./lib/site-copy.ts");
 
     expect(page).toContain("<RuntimeStage");
-    expect(page).toContain("<AudiencePaths");
     expect(page).toContain("<DeploymentFlow");
-    expect(page).toContain("getStartedHref");
+    expect(page).not.toContain("<AudiencePaths");
+    expect(page).toContain("productionHref");
     expect(page).toContain("github.com/evelandhq/eveland");
+    expect(copy).toContain('href: "/docs/production"');
+    expect(copy).toContain('href: "/zh/docs/production"');
+    expect(copy).toContain("systemd");
+    expect(copy).toContain("按需唤醒");
+  });
+
+  test("keeps development commands out of the production-first public path", () => {
+    const stage = source("./components/runtime-stage.tsx");
+    const englishOverview = source("../content/docs/en/index.mdx");
+    const chineseOverview = source("../content/docs/zh/index.mdx");
+
+    expect(stage).not.toContain("docker compose up -d postgres");
+    expect(stage).not.toContain("pnpm dev");
+    expect(stage).toContain("systemd");
+    expect(englishOverview).not.toContain("pnpm typecheck");
+    expect(chineseOverview).not.toContain("pnpm typecheck");
+  });
+
+  test("redirects the former flat documentation URLs into the new structure", () => {
+    const config = source("../next.config.mjs");
+
+    expect(config).toContain('source: "/docs/quick-start"');
+    expect(config).toContain('destination: "/docs/production"');
+    expect(config).toContain('source: "/docs/deploy"');
+    expect(config).toContain('destination: "/docs/agents/first-deployment"');
+    expect(config).toContain('source: "/zh/docs/operate"');
+    expect(config).toContain('destination: "/zh/docs/operations/runtime"');
   });
 
   test("uses the light editorial visual system across the homepage and docs", () => {
@@ -115,8 +176,8 @@ describe("Eveland public website contract", () => {
     expect(page).toContain("<RuntimeStage");
     expect(existsSync(path("./components/runtime-stage.tsx"))).toBe(true);
     expect(stage).toContain('className="runtime-stage"');
-    expect(stage).toContain('className="runtime-code"');
-    expect(stage).toContain('className="runtime-events"');
+    expect(stage).toContain('className="topology-plane"');
+    expect(stage).toContain('className="topology-runtime"');
     expect(styles).toContain("--accent: #ff5c35");
     expect(styles).toContain("--fd-background: #ffffff");
     expect(styles).toContain(".docs-shell");

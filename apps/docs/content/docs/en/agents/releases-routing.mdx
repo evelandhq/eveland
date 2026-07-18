@@ -1,0 +1,31 @@
+---
+title: Releases and traffic
+description: Understand immutable previews, stable routes, weighted targets, session affinity, and retention.
+---
+
+Eveland separates authored source, build output, route identity, and running processes so a release can be tested beside production.
+
+```text
+Project
+  └─ Source Revision
+       └─ Release
+            └─ Deployment
+                 ├─ immutable Preview Host
+                 └─ mutable Stable / Alias Routes
+```
+
+## Preview and promotion
+
+Every successful Build & Deploy creates a new Release and concurrent preview Deployment. Promote updates a route; it does not rebuild or mutate the Release. Rollback selects another retained healthy Deployment and moves the route back.
+
+## Weighted traffic
+
+A mutable route selects one target or at most two targets whose basis-point weights total 10,000. New root sessions use deterministic affinity. Each multi-target policy revision creates a distinct experiment identity for comparison.
+
+## Session affinity
+
+After Eve returns a session ID, Eveland persists a binding to the owning Deployment. Continue, cancel, and stream requests return to that exact target after promotion, rollback, or a zero traffic weight. A Deployment can therefore drain after leaving new traffic.
+
+## Retention
+
+Eveland protects at least the newest configured Release count. A mutable route target, an active SessionBinding, or other lifecycle protection can keep an older Release from archive independently of age.

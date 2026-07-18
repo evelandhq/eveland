@@ -1,14 +1,16 @@
 {
-  "title": "Eveland documentation",
+  "title": "Eveland Documentation",
   "pages": [
     "index",
-    "quick-start",
-    "---Core model---",
-    "concepts",
-    "deploy",
-    "operate",
+    "---Deploy Eveland---",
+    "production",
+    "---Deploy agents---",
+    "agents",
+    "---Observe and automate---",
+    "observe",
+    "---Operate---",
+    "operations",
     "---Reference---",
-    "architecture",
-    "troubleshooting"
+    "reference"
   ]
 }

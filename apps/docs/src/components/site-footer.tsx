@@ -18,11 +18,13 @@ export function SiteFooter({ lang }: { lang: Language }) {
           <strong>{t.product}</strong>
           <Link href={localizedHref(lang)}>{t.home}</Link>
           <Link href={localizedHref(lang, "/docs")}>{t.docs}</Link>
-          <Link href={localizedHref(lang, "/docs/quick-start")}>{t.quickStart}</Link>
+          <Link href={localizedHref(lang, "/docs/production")}>{t.production}</Link>
+          <Link href={localizedHref(lang, "/docs/agents/first-deployment")}>{t.firstAgent}</Link>
         </nav>
         <nav aria-label="Resources">
           <strong>{t.resources}</strong>
-          <Link href={localizedHref(lang, "/docs/architecture")}>{t.architecture}</Link>
+          <Link href={localizedHref(lang, "/docs/operations/runtime")}>{t.operations}</Link>
+          <Link href={localizedHref(lang, "/docs/reference/architecture")}>{t.architecture}</Link>
           <a href={githubUrl}>{t.github}</a>
         </nav>
       </div>

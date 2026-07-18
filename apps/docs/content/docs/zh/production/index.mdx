@@ -1,0 +1,26 @@
+---
+title: 生产架构
+description: 理解受支持的控制面、宿主机 Worker、Gateway 与 systemd Runtime 拓扑。
+---
+
+Eveland 的生产边界刻意不同于本地开发栈。生产 Eve Deployment 不通过开发阶段的 Docker Runtime 运行。
+
+<RuntimeTopology lang="zh" />
+
+## 控制面
+
+Web、API、Gateway 与 Postgres 使用生产 Compose Overlay。API 负责需要团队认证的操作和持久化。Gateway 是唯一公开的 Agent 数据面，既不持有 Docker Socket，也不能访问 Source、Release、Secrets 或 Observer Outbox。
+
+## 宿主机运行控制器
+
+Worker 作为 root 管理的 systemd Service 直接运行在 Linux 宿主机上，是唯一可以构建不受信任项目代码并控制 systemd Unit 的组件。Eve Deployment 使用非特权应用用户运行，只监听私有 `127.0.0.1:41xxx` 端口。
+
+## 共享数据契约
+
+API 与 Worker 必须看到相同的绝对数据根目录，通常为 `/var/lib/eveland`。导入源码、Prepared Release、Observer Outbox 与 Sandbox Cache 通过存入 Postgres 的路径衔接；挂载路径不一致会直接破坏部署链路。
+
+## 资源生命周期
+
+持久化 Deployment 不等于永久运行的进程。流量、Continuation 或 Schedule 通过 Activation Lease 唤醒精确 Release。最后一个 Lease 结束后，Worker 在配置的空闲时间后停止 RuntimeInstance，同时保留 Deployment、Preview 地址与 SessionBinding。
+
+继续[准备宿主机](/zh/docs/production/prerequisites)。

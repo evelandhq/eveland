@@ -1,0 +1,28 @@
+---
+title: 健康与诊断
+description: 在实际拥有故障的组件、Job、Runtime 或 Session Surface 中定位问题。
+---
+
+从真正失败的状态开始。Eveland 将组件 Health、异步 Job Log、Runtime Output 与 Session Event 分开，避免一条嘈杂日志成为唯一调试界面。
+
+## 组件健康
+
+- API 与 Gateway Public `/health` 返回产品版本、Revision、Channel 与 Component。
+- Worker 输出 Startup Identity，并写入已脱敏的 Configuration Snapshot。
+- Collector Degradation 独立于控制面 Health，因为排队的 Observer Envelope 可以恢复。
+- **Settings → About** 比较 Web/API Identity，并向管理员显示 Allowlisted Masked Configuration。
+
+## 选择正确证据
+
+| 故障 | 首先检查 |
+| --- | --- |
+| Import 或 Source Validation | Import Job 与 Source Preflight Log |
+| 依赖安装或 `eve build` | Build Log |
+| Unit 启动或 Health Timeout | Deploy Diagnostic 与 systemd Journal |
+| Agent 进程输出 | Runtime stdout/stderr |
+| Model、Tool、Subagent 或 Usage | Session Timeline |
+| Stable/Preview Host | Gateway Health、Route Policy 与 Target RuntimeInstance |
+
+初始 Health Failure 会在清理前捕获有限长度的近期 Unit State 与 Journal。Project Secret 会被 Mask；Diagnostic 或 Cleanup Failure 不会覆盖原始 Deployment Error。
+
+继续使用[故障排查](/zh/docs/reference/troubleshooting)检查具体症状。

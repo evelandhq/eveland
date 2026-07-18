@@ -22,7 +22,7 @@ export function SiteHeader({ lang }: { lang: Language }) {
         <Link className="language-link" href={localizedHref(otherLanguage)} hrefLang={otherLanguage}>
           {t.nav.language}
         </Link>
-        <Link className="nav-cta" href={localizedHref(lang, "/docs/quick-start")}>
+        <Link className="nav-cta" href={localizedHref(lang, "/docs/production")}>
           {t.nav.getStarted}
         </Link>
       </div>

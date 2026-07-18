@@ -217,7 +217,7 @@
 
 .button svg,
 .text-link svg,
-.audience-grid a svg {
+.foundation-list a svg {
   width: 15px;
   height: 15px;
   transition: transform 180ms ease;
@@ -229,7 +229,7 @@
 
 .button:hover svg,
 .text-link:hover svg,
-.audience-grid a:hover svg {
+.foundation-list a:hover svg {
   transform: translateX(3px);
 }
 
@@ -457,61 +457,12 @@
   line-height: 1.75;
 }
 
-.audience-section {
-  padding: 142px 0 158px;
-}
-
 .section-intro {
   display: grid;
   grid-template-columns: 0.65fr 1.35fr;
   gap: clamp(60px, 9vw, 150px);
 }
 
-.audience-grid {
-  display: grid;
-  margin-top: 88px;
-  grid-template-columns: repeat(3, 1fr);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.audience-grid article {
-  display: flex;
-  min-height: 370px;
-  padding: 32px 38px 36px;
-  flex-direction: column;
-  border-right: 1px solid var(--line);
-  transition: background 220ms ease;
-}
-
-.audience-grid article:hover {
-  background: var(--surface);
-}
-
-.audience-grid article:last-child {
-  border-right: 0;
-}
-
-.audience-grid article > span {
-  color: var(--accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-}
-
-.audience-grid h3 {
-  margin: 76px 0 18px;
-  font-size: 27px;
-  font-weight: 520;
-  letter-spacing: -0.045em;
-}
-
-.audience-grid p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.7;
-}
-
-.audience-grid a,
 .text-link {
   display: inline-flex;
   margin-top: auto;
@@ -758,4 +709,259 @@
   border-top: 1px solid var(--line);
   color: #9a9a9a;
   font-size: 10px;
+}
+
+/* Production topology hero */
+.runtime-stage {
+  position: relative;
+  display: grid;
+  width: min(100%, 1180px);
+  min-height: 360px;
+  margin-top: clamp(54px, 7vh, 76px);
+  padding: 12px;
+  grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr);
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid #222;
+  border-radius: 18px;
+  background: #101010;
+  color: #fff;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.1);
+  animation: stage-in 850ms 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.topology-edge {
+  display: flex;
+  min-height: 54px;
+  padding: 0 18px;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.48);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+
+.topology-edge strong {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 520;
+}
+
+.topology-rail {
+  position: absolute;
+  top: 62px;
+  right: 34px;
+  display: flex;
+  gap: 5px;
+}
+
+.topology-rail i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3d3d3d;
+}
+
+.topology-rail i:first-child {
+  background: var(--accent);
+  box-shadow: 0 0 0 5px rgba(255, 92, 53, 0.1);
+}
+
+.topology-plane,
+.topology-runtime {
+  display: flex;
+  min-height: 270px;
+  margin-top: 12px;
+  padding: 22px;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #171717;
+}
+
+.topology-plane header,
+.topology-runtime header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.48);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+
+.topology-plane header b,
+.topology-runtime header b {
+  color: #ff9a82;
+  font-weight: 520;
+}
+
+.topology-plane > strong {
+  max-width: 340px;
+  margin: 56px 0 0;
+  font-size: clamp(22px, 2.2vw, 34px);
+  font-weight: 480;
+  letter-spacing: -0.04em;
+  line-height: 1.12;
+}
+
+.plane-boundary {
+  display: flex;
+  margin-top: auto;
+  padding-top: 18px;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.topology-handoff {
+  display: flex;
+  margin-top: 12px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.38);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.topology-handoff i {
+  width: 56px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+
+.runtime-unit {
+  display: flex;
+  margin: 32px 0 0;
+  padding: 20px;
+  flex-direction: column;
+  gap: 7px;
+  border-left: 2px solid var(--accent);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.runtime-unit span,
+.runtime-unit small,
+.topology-runtime footer {
+  color: rgba(255, 255, 255, 0.44);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.runtime-unit strong {
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 520;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topology-runtime footer {
+  display: flex;
+  margin-top: auto;
+  padding-top: 16px;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.topology-runtime ol {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  align-items: center;
+  gap: 16px;
+  list-style: none;
+}
+
+.topology-runtime li {
+  position: relative;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.topology-runtime li:not(:last-child)::after {
+  position: absolute;
+  right: -11px;
+  content: "→";
+}
+
+.topology-runtime li:last-child {
+  color: #ff9a82;
+}
+
+/* Production principles use rows, not cards. */
+.foundation-section {
+  padding: 126px 0 138px;
+  border-top: 1px solid var(--line);
+}
+
+.foundation-list {
+  margin: 76px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.foundation-list li {
+  display: grid;
+  min-height: 210px;
+  padding: 34px 0;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+}
+
+.foundation-list > li > span {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.foundation-list li > div {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(260px, 1fr) auto;
+  align-items: start;
+  gap: 44px;
+}
+
+.foundation-list h3 {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 44px);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.foundation-list p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+.foundation-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.foundation-list a svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 180ms ease;
+}
+
+.foundation-list a:hover svg {
+  transform: translateX(3px);
 }

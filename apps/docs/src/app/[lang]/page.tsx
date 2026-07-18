@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
-import { AudiencePaths } from "@/components/audience-paths";
 import { DeploymentFlow } from "@/components/deployment-flow";
+import { ProductionFoundations } from "@/components/production-foundations";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { RuntimeStage } from "@/components/runtime-stage";
@@ -25,7 +25,8 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
   const { lang: candidate } = await params;
   const lang = isLanguage(candidate) ? candidate : "en";
   const t = getSiteCopy(lang);
-  const getStartedHref = localizedHref(lang, "/docs/quick-start");
+  const productionHref = localizedHref(lang, "/docs/production");
+  const architectureHref = localizedHref(lang, "/docs/reference/architecture");
   const repositoryHref = "https://github.com/evelandhq/eveland";
 
   return (
@@ -41,12 +42,12 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
             <h1>{t.hero.title.split("\n").map((line) => <span key={line}>{line}</span>)}</h1>
             <p>{t.hero.body}</p>
             <div className="hero-actions">
-              <Link className="button button-primary" href={getStartedHref}>
+              <Link className="button button-primary" href={productionHref}>
                 {t.hero.primary}<ArrowRight aria-hidden="true" />
               </Link>
-              <a className="button button-secondary" href={repositoryHref} target="_blank" rel="noreferrer">
-                {t.hero.secondary}<ArrowUpRight aria-hidden="true" />
-              </a>
+              <Link className="button button-secondary" href={architectureHref}>
+                {t.hero.secondary}<ArrowRight aria-hidden="true" />
+              </Link>
             </div>
           </div>
           <RuntimeStage lang={lang} />
@@ -61,7 +62,7 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
         </div>
       </section>
 
-      <AudiencePaths lang={lang} />
+      <ProductionFoundations lang={lang} />
       <DeploymentFlow lang={lang} />
 
       <section className="control-section page-section">
@@ -93,12 +94,12 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
         <h2>{t.cta.title}</h2>
         <p>{t.cta.body}</p>
         <div className="hero-actions">
-          <Link className="button button-primary" href={getStartedHref}>
+          <Link className="button button-primary" href={productionHref}>
             {t.cta.primary}<ArrowRight aria-hidden="true" />
           </Link>
-          <Link className="text-link" href={localizedHref(lang, "/docs/architecture")}>
-            {t.cta.secondary}<ArrowRight aria-hidden="true" />
-          </Link>
+          <a className="text-link" href={repositoryHref} target="_blank" rel="noreferrer">
+            {t.cta.secondary}<ArrowUpRight aria-hidden="true" />
+          </a>
         </div>
       </section>
 
