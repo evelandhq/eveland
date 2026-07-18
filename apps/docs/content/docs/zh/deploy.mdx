@@ -5,6 +5,8 @@ description: 导入源码、配置 Secrets、构建 Preview，并安全提升到
 
 Eveland 部署普通的 Eve 项目。继续按照 Eve 的标准文件位置组织 Agent instructions、tools、skills、channels、connections、subagents、sandboxes 和 schedules。
 
+在 Eve 发布稳定产品兼容承诺前，Eveland 使用滑动双 minor 窗口：支持最新一个已经完成验证的 Eve minor 与其前一个 minor。当前窗口是 `0.24.x` 和 `0.25.x`，精确验证 patch 为 `0.24.6` 和 `0.25.1`。新 minor 只有在源码核对与完整兼容矩阵通过后才进入窗口；窗口外版本和跨 minor 的宽泛 range 都会 fail closed。
+
 ## 1. 导入源码
 
 可以使用：

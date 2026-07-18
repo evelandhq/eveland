@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { inspectEveProject, isSupportedEveDependency } from "./source.js";
+import { createEveVersionInfo, inspectEveProject, isSupportedEveDependency } from "./source.js";
 
 describe("inspectEveProject", () => {
   test("recognizes nested eve agent layout and summarizes authored slots", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.24.4" } }) },
+      { path: "package.json", content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.25.1" } }) },
       { path: "agent/agent.ts", content: `export default defineAgent({ model: process.env.DEFAULT_MODEL })` },
       { path: "agent/instructions.md", content: "You are a weather agent." },
       { path: "agent/tools/get_weather.ts", content: "export default defineTool({})" },
@@ -19,7 +19,7 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(true);
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
-    expect(result.eveVersion).toBe("0.24.4");
+    expect(result.eveVersion).toBe("0.25.1");
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
       instructions: ["agent/instructions.md"],
@@ -49,24 +49,37 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.24.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.24.x or 0.25.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts only dependency declarations contained inside Eve 0.24.x", () => {
-    for (const version of ["0.24.0", "0.24.4", "~0.24.2", "^0.24.0", "0.24", "0.24.x", "0.24.*"]) {
+  test("accepts dependency declarations contained inside either verified Eve minor", () => {
+    for (const version of [
+      "0.24.0", "0.24.6", "~0.24.2", "^0.24.0", "0.24", "0.24.x", "0.24.*",
+      "0.25.0", "0.25.1", "~0.25.0", "^0.25.0", "0.25", "0.25.x", "0.25.*",
+    ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
-    for (const version of ["0.22.6", "0.23.9", "0.25.0", ">=0.24.0", "*", "latest"]) {
+    for (const version of ["0.22.6", "0.23.9", "0.26.0", ">=0.24.0", ">=0.25.0", "*", "latest"]) {
       expect(isSupportedEveDependency(version)).toBe(false);
     }
+  });
+
+  test("reports the sliding compatibility window as structured ranges", () => {
+    expect(createEveVersionInfo("0.24.6", "src_1")).toEqual({
+      version: "0.24.6",
+      expected: "0.24.x or 0.25.x",
+      supportedRanges: ["0.24.x", "0.25.x"],
+      supported: true,
+      sourceRevisionId: "src_1",
+    });
   });
 });
 
 describe("inspectEveProject platform-owned workflow world", () => {
   test("does not inspect authored workflow configuration for a platform runtime concern", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.24.x" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.25.x" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       {
         path: "agent/agent.ts",

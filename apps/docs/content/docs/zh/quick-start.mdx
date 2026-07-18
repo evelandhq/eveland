@@ -46,7 +46,7 @@ pnpm --filter @eveland/worker dev
 
 ## 配置受保护的 Agent
 
-打开 **Playground → Connection**，显式选择 Eveland 调用 Agent Eve route 的方式。可选 Local development、无凭证、HTTP Basic、Bearer、Vercel OIDC、custom headers 与通用 OIDC Authorization Code；Eveland 不会根据 Agent 源码或认证 challenge 自动猜测。Vercel OIDC 镜像 Eve 0.24.6，同时把短期 token 作为 Bearer 与 trusted deployment header 发送。
+打开 **Playground → Connection**，显式选择 Eveland 调用 Agent Eve route 的方式。可选 Local development、无凭证、HTTP Basic、Bearer、Vercel OIDC、custom headers 与通用 OIDC Authorization Code；Eveland 不会根据 Agent 源码或认证 challenge 自动猜测。Vercel OIDC 镜像已验证的 Eve 0.24.6/0.25.1 行为，同时把短期 token 作为 Bearer 与 trusted deployment header 发送。
 
 配置 OIDC：
 

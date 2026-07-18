@@ -121,7 +121,7 @@ describe("api app", () => {
       {
         sourcePath: "/data/preflights/source",
         commitSha: "abc123",
-        summary: { eveVersion: "0.24.4", layout: "single-agent" },
+        summary: { eveVersion: "0.25.1", layout: "single-agent" },
       },
     );
 
@@ -133,7 +133,7 @@ describe("api app", () => {
       preflight: expect.objectContaining({
         id: queued.preflight.id,
         status: "completed",
-        summary: { eveVersion: "0.24.4", layout: "single-agent" },
+        summary: { eveVersion: "0.25.1", layout: "single-agent" },
       }),
     });
 

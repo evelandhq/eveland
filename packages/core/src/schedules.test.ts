@@ -36,7 +36,7 @@ Sweep the billing ledger.
 
   test.each(["mdx", "tsx", "jsx", "json"])("rejects Eve-unsupported .%s schedule files", (extension) => {
     expect(() => parseScheduleSource(`agent/schedules/nightly.${extension}`, "content")).toThrow(
-      /unsupported Eve 0\.24 schedule extension/,
+      /unsupported schedule extension for Eveland's supported Eve releases/,
     );
   });
 

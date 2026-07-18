@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 describe("injectObserverHooks", () => {
-  test("Eve 0.24.x root and directory-form subagents get hooks while file-form coverage is reported", async () => {
+  test("supported Eve minors give root and directory-form subagents hooks while file-form coverage is reported", async () => {
     const releaseDir = await createRelease();
     await write("agent/subagents/directory-child/agent.ts", "export default {}", releaseDir);
     await write("agent/subagents/file-child.ts", "export default {}", releaseDir);
@@ -68,7 +68,7 @@ describe("injectObserverHooks", () => {
     expect(generatedObserverModule).not.toContain("@eveland/");
   });
 
-  test("collects Eve 0.24.6 turn.cancelled events while still filtering deltas", async () => {
+  test("collects Eve 0.25.1 turn.cancelled events while still filtering deltas", async () => {
     const releaseDir = await createRelease();
     const outboxDir = await mkdtemp(path.join(packageRoot, ".observer-outbox-test-"));
     temporaryDirectories.push(outboxDir);

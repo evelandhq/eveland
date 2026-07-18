@@ -115,8 +115,9 @@ export function repository(
     async getDeploymentEveVersion(deploymentId) {
       return deployments.has(deploymentId)
         ? {
-            version: "0.24.4",
-            expected: "0.24.x",
+            version: "0.25.1",
+            expected: "0.24.x or 0.25.x",
+            supportedRanges: ["0.24.x", "0.25.x"],
             supported: true,
             sourceRevisionId: `src-${deploymentId}`,
           }

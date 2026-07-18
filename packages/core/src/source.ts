@@ -30,11 +30,14 @@ export type EveProjectInspection = {
   errors: string[];
 };
 
-export const SUPPORTED_EVE_VERSION_RANGE = "0.24.x";
+export const SUPPORTED_EVE_VERSION_RANGES = ["0.24.x", "0.25.x"] as const;
+export type SupportedEveVersionRange = (typeof SUPPORTED_EVE_VERSION_RANGES)[number];
+export const SUPPORTED_EVE_VERSION_RANGE = SUPPORTED_EVE_VERSION_RANGES.join(" or ") as "0.24.x or 0.25.x";
 
 export type EveVersionInfo = {
   version: string | null;
   expected: typeof SUPPORTED_EVE_VERSION_RANGE;
+  supportedRanges: readonly SupportedEveVersionRange[];
   supported: boolean;
   sourceRevisionId: string | null;
 };
@@ -129,7 +132,11 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
 
 export function isSupportedEveDependency(specifier: string | null): boolean {
   if (specifier === null) return false;
-  return /^[~^]?0\.24\.\d+$/.test(specifier.trim()) || /^0\.24(\.[x*])?$/.test(specifier.trim());
+  const match = specifier.trim().match(/^([~^]?)(0\.\d+)(?:\.(\d+|[x*]))?$/);
+  if (!match) return false;
+  const [, operator, minor, patch] = match;
+  if (operator && (patch === undefined || patch === "x" || patch === "*")) return false;
+  return SUPPORTED_EVE_VERSION_RANGES.includes(`${minor}.x` as SupportedEveVersionRange);
 }
 
 export function unsupportedEveVersionMessage(specifier: string | null): string {
@@ -143,6 +150,7 @@ export function createEveVersionInfo(version: string | null, sourceRevisionId: s
   return {
     version,
     expected: SUPPORTED_EVE_VERSION_RANGE,
+    supportedRanges: [...SUPPORTED_EVE_VERSION_RANGES],
     supported: isSupportedEveDependency(version),
     sourceRevisionId,
   };

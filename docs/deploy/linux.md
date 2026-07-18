@@ -212,7 +212,7 @@ localhost, literal private addresses, and redirects; the network layer must addi
 resolved private/link-local destinations. Never expose OIDC tokens, authorization codes, state, client secrets, or
 PKCE verifiers through reverse-proxy access logs or runtime diagnostics.
 
-The explicit Vercel OIDC Connection method mirrors Eve 0.24.6 by resolving its configured Secret reference and
+The explicit Vercel OIDC Connection method mirrors Eve 0.25.1 by resolving its configured Secret reference and
 sending the token in both `Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short
 lived; rotate the referenced Secret before expiry. Eveland does not infer this method from a Vercel deployment,
 Agent source, or a 401 response.
@@ -677,7 +677,7 @@ smoke test as root inside the guest. A successful run
 exits 0 and prints `SMOKE OK`. If it fails, inspect the unit logs from the
 host: `limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`.
 
-The same script also runs a real Eve 0.24.x schedule fixture through the
+The same script also runs real Eve 0.24.x and 0.25.x compatibility fixtures through the
 systemd adapter. It proves a dormant scheduler target wakes for one due cron,
 executes the authored TypeScript definition once, projects two Sessions and
 provider usage, observes no duplicate from the neutralized native tick, stops
