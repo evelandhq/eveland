@@ -6,30 +6,7 @@ import { createApp } from "./app.js";
 const appSecretKey = "eveland-test-secret-key-00000000";
 
 describe("shared Agent environment routes", () => {
-  test("does not expose legacy named Profile or binding endpoints", async () => {
-    const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
-    const project = await store.createProject({ name: "No Legacy Profiles Agent", importKind: "zip" });
-
-    const responses = await Promise.all([
-      app.request("/platform/secret-profiles"),
-      app.request("/platform/secret-profiles", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "legacy", entries: [] }),
-      }),
-      app.request(`/projects/${project.id}/platform-secret-bindings`),
-      app.request(`/projects/${project.id}/platform-secret-bindings/agent-runtime`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ profileId: "sp_legacy", deploymentId: null }),
-      }),
-    ]);
-
-    expect(responses.map((response) => response.status)).toEqual([404, 404, 404, 404]);
-  });
-
-  test("reads and saves the singleton environment without Profile metadata", async () => {
+  test("reads and saves the singleton environment", async () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });
 
@@ -59,8 +36,6 @@ describe("shared Agent environment routes", () => {
       },
       jobs: [],
     });
-    expect(JSON.stringify(saved)).not.toContain("name");
-    expect(JSON.stringify(saved)).not.toContain("profile");
     expect(JSON.stringify(saved)).not.toContain("us-east-1");
     expect(JSON.stringify(saved)).not.toContain("sk-shared-secret");
 
@@ -169,23 +144,4 @@ describe("shared Agent environment routes", () => {
     expect(rotated.jobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
   });
 
-  test("does not expose Project or Deployment binding endpoints", async () => {
-    const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
-    const project = await store.createProject({ name: "Global Shared Environment Agent", importKind: "zip" });
-
-    const responses = await Promise.all([
-      app.request(`/projects/${project.id}/shared-agent-environment-bindings`),
-      app.request(`/projects/${project.id}/shared-agent-environment-bindings`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deploymentId: null }),
-      }),
-      app.request(`/projects/${project.id}/shared-agent-environment-bindings/binding`, {
-        method: "DELETE",
-      }),
-    ]);
-
-    expect(responses.map((response) => response.status)).toEqual([404, 404, 404]);
-  });
 });

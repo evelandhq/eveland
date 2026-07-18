@@ -109,13 +109,6 @@ describe("create", () => {
     expect(await again.session.readTextFile({ path: "keep.txt" })).toBe("durable");
   });
 
-  test("the handle exposes shutdown and no longer exposes dispose", async () => {
-    const { backend, runtimeContext } = await makeBackend();
-    const handle = await backend.create({ templateKey: null, sessionKey: "sess-api", runtimeContext });
-    expect(typeof handle.shutdown).toBe("function");
-    expect((handle as unknown as Record<string, unknown>).dispose).toBeUndefined();
-  });
-
   test("session state survives a change of appRoot when cacheDir is pinned", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "bwrap-redeploy-"));
     const cacheDir = path.join(root, "stable");

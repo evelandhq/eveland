@@ -9,7 +9,5 @@ describe("systemd integration smoke", () => {
     expect(smokeScript.match(/dependencies: \{ eve: "0\.25\.1" \}/g)).toHaveLength(1);
     expect(smokeScript).toContain("/eve/v1/health");
     expect(smokeScript).toContain('process.env.EVELAND_HEALTH_TIMEOUT_MS = "1"');
-    expect(smokeScript).not.toContain("server.js");
-    expect(smokeScript).not.toContain('start: "sleep 30"');
   });
 });

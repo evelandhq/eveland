@@ -38,8 +38,6 @@ describe("Eveland public website contract", () => {
     expect(source("../public/_headers")).toContain("/_next/static/*");
     expect(source("../next.config.mjs")).toContain("async rewrites()");
     expect(source("../next.config.mjs")).toContain('destination: "/en/docs/:path*"');
-    expect(existsSync(path("./middleware.ts"))).toBe(false);
-    expect(existsSync(path("./proxy.ts"))).toBe(false);
   });
 
   test("deploys docs changes pushed to main", () => {
@@ -130,25 +128,12 @@ describe("Eveland public website contract", () => {
 
     expect(page).toContain("<RuntimeStage");
     expect(page).toContain("<DeploymentFlow");
-    expect(page).not.toContain("<AudiencePaths");
     expect(page).toContain("productionHref");
     expect(page).toContain("github.com/evelandhq/eveland");
     expect(copy).toContain('href: "/docs/production"');
     expect(copy).toContain('href: "/zh/docs/production"');
     expect(copy).toContain("systemd");
     expect(copy).toContain("按需唤醒");
-  });
-
-  test("keeps development commands out of the production-first public path", () => {
-    const stage = source("./components/runtime-stage.tsx");
-    const englishOverview = source("../content/docs/en/index.mdx");
-    const chineseOverview = source("../content/docs/zh/index.mdx");
-
-    expect(stage).not.toContain("docker compose up -d postgres");
-    expect(stage).not.toContain("pnpm dev");
-    expect(stage).toContain("systemd");
-    expect(englishOverview).not.toContain("pnpm typecheck");
-    expect(chineseOverview).not.toContain("pnpm typecheck");
   });
 
   test("redirects the former flat documentation URLs into the new structure", () => {
@@ -181,7 +166,6 @@ describe("Eveland public website contract", () => {
     expect(styles).toContain("--accent: #ff5c35");
     expect(styles).toContain("--fd-background: #ffffff");
     expect(styles).toContain(".docs-shell");
-    expect(styles).not.toContain("--signal: #66e68b");
     expect(globalStyles).toContain('@import "./documentation.css"');
   });
 

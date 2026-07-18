@@ -33,6 +33,17 @@ do not silently make the implementation, spec, and operational docs disagree.
 - For a feature or bug fix, add or update tests first, observe the relevant
   failure, implement the smallest coherent change, and then broaden
   verification.
+- Pure deletion is an exception to the test-first rule. When a feature or code
+  path is no longer part of the product contract and leaves no supported
+  compatibility, migration, security, or runtime boundary, delete the
+  implementation and its obsolete tests directly; no red-green cycle or
+  replacement test is required.
+- Do not add tombstone tests that only assert a deleted file, export, method,
+  field, route, component, string, or configuration option is absent. A
+  negative test must protect durable current behavior such as authorization,
+  validation, data isolation, secret handling, fail-closed protocol behavior,
+  or an explicitly supported upgrade/compatibility path, and should exercise
+  observable behavior rather than implementation absence.
 - Finish a requested vertical slice across contracts, persistence, API, worker,
   UI, examples, and docs where those surfaces are affected. A compilable
   scaffold alone is not a finished feature.

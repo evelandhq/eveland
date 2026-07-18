@@ -3,15 +3,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
 describe("Better Auth team migration", () => {
-  test("creates Better Auth identity tables without retaining the custom credential model", () => {
+  test("creates Better Auth identity tables", () => {
     const migration = readMigration();
 
     expect(migration).toContain('CREATE TABLE "auth_accounts"');
     expect(migration).toContain('CREATE TABLE "auth_verifications"');
     expect(migration).toContain('CREATE TABLE "auth_sessions"');
     expect(migration).toContain('"token" text NOT NULL');
-    expect(migration).not.toContain('"password_hash"');
-    expect(migration).not.toContain('"token_hash"');
   });
 
   test("backfills legacy users and the default team before adding stricter constraints", () => {
