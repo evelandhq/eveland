@@ -30,7 +30,7 @@ export function parseScheduleSource(sourcePath: string, content: string): Discov
     return { key, kind: "module", sourcePath: normalizedPath, executable: true };
   }
   if (extension !== ".md") {
-    throw new Error(`Schedule ${sourcePath} uses an unsupported Eve 0.24 schedule extension.`);
+    throw new Error(`Schedule ${sourcePath} uses an unsupported schedule extension for Eveland's supported Eve releases.`);
   }
 
   const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n)?([\s\S]*)$/);

@@ -536,3 +536,12 @@ npm `0.1.0` 公开发布与全新安装验证覆盖。
 4. 为 PR A 写一份只覆盖 generic Agent Auth 的小型实施清单；
 5. 从最窄 contract test 开始，先证明 `local-dev` 与 canonical `none` 的 authority 边界；
 6. 每完成一个纵向行为再进入下一项，不提前加入 OIDC 或 provider-specific extension。
+
+## 16. 2026-07-18 Eve compatibility update
+
+本文件前文的 0.24.6 描述保留为 Agent Auth 实施时的历史基线。Eveland 当前兼容窗口是
+Eve 0.24.x 与 0.25.x，仓库默认锁定 0.25.1 并以 0.24.6 做上一 minor 矩阵验证。对
+`eve@0.24.6..eve@0.25.1` 的源码核对确认
+`eve/channels/auth` 的 Vercel OIDC wire behavior 与 Eveland 使用的 Client credential header
+约定未变，因此 generic Agent Auth 架构和独立 `vercel-oidc` provider 不需要协议分叉；相关
+依赖、描述、测试与公开文档已改为 0.25.1。未来 minor 仍须重新核对 auth source，不能只改文案。

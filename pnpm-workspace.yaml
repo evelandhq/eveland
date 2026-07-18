@@ -6,8 +6,8 @@ allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
-# The workspace and real fixtures pin the verified Eve 0.24.6 patch, while
-# imported Agents may use the supported 0.24.x line. Waive the release-age
+# The workspace defaults to Eve 0.25.1 and the compatibility matrix also pins
+# Eve 0.24.6. Imported Agents may use either verified minor. Waive the release-age
 # cooldown only for this explicitly reviewed package.
 minimumReleaseAgeExclude:
   - eve

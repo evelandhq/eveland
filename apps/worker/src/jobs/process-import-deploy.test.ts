@@ -39,7 +39,7 @@ describe("processNextJob", () => {
     });
     await expect(
       store.getCurrentSourceRevision(project.id),
-    ).resolves.toMatchObject({ summary: { eveVersion: "0.24.2" } });
+    ).resolves.toMatchObject({ summary: { eveVersion: "0.25.1" } });
     await expect(
       store.getSourceFile(project.id, "agent/instructions.md"),
     ).resolves.toMatchObject({ content: "You are concise." });

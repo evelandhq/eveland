@@ -119,7 +119,8 @@ export type AgentEndpoints = {
 
 export type EveVersionInfo = {
   version: string | null;
-  expected: "0.24.x";
+  expected: "0.24.x or 0.25.x";
+  supportedRanges: readonly ["0.24.x", "0.25.x"];
   supported: boolean;
   sourceRevisionId: string | null;
 };

@@ -73,7 +73,7 @@ describe("buildTranscriptTurns", () => {
     expect(turnToolCalls(turns[1]!)[0]).toMatchObject({ name: "slow_tool", status: "pending", output: null });
   });
 
-  test("records Eve 0.24.6 cancelled turns and settles pending calls", () => {
+  test("records Eve 0.25.1 cancelled turns and settles pending calls", () => {
     const turns = buildTranscriptTurns([
       event("message.received", { message: "Long task", turnId: "turn_0" }),
       event("actions.requested", {

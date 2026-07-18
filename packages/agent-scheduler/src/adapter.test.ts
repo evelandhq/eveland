@@ -9,21 +9,37 @@ import { describe, expect, test } from "vitest";
 import { injectSchedulerAdapter } from "./adapter.js";
 
 const execFileAsync = promisify(execFile);
-const eveBin = path.resolve(import.meta.dirname, "../node_modules/.bin/eve");
+const compatibilityMatrix = [
+  { version: "0.24.6", packageName: "eve-0-24" },
+  { version: "0.25.1", packageName: "eve" },
+] as const;
+const eveBin = eveBinFor("eve");
 
 describe("injectSchedulerAdapter", () => {
-  test("fails closed unless the Release declares an Eve dependency inside 0.24.x", async () => {
-    for (const eveVersion of ["0.25.0", "0.23.9", "~0.25.0", ">=0.24.0", "*", "latest"]) {
+  test("pins both exact Eve patches used by the compatibility matrix", async () => {
+    const packageJson = JSON.parse(
+      await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
+    ) as { devDependencies: Record<string, string> };
+
+    expect(packageJson.devDependencies["eve-0-24"]).toBe("npm:eve@0.24.6");
+    expect(packageJson.devDependencies.eve).toBe("0.25.1");
+  });
+
+  test("fails closed outside the latest two verified Eve minors", async () => {
+    for (const eveVersion of ["0.23.9", "0.26.0", "~0.26.0", ">=0.24.0", "*", "latest"]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
-        new RegExp(`supports Eve 0\\.24\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+        new RegExp(`supports Eve 0\\.24\\.x or 0\\.25\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
       );
     }
   });
 
-  test("accepts every dependency form that stays inside 0.24.x", async () => {
-    for (const eveVersion of ["0.24.2", "0.24.3", "~0.24.2", "^0.24.0", "0.24", "0.24.x", "0.24.*"]) {
+  test("accepts every dependency form that stays inside either verified Eve minor", async () => {
+    for (const eveVersion of [
+      "0.24.0", "0.24.6", "~0.24.2", "^0.24.0", "0.24", "0.24.x", "0.24.*",
+      "0.25.0", "0.25.1", "~0.25.0", "^0.25.0", "0.25", "0.25.x", "0.25.*",
+    ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
       const result = await injectSchedulerAdapter({ releaseDir });
@@ -34,7 +50,7 @@ describe("injectSchedulerAdapter", () => {
 
   test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.24.2",
+      eveVersion: "0.25.1",
       files: {
         "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
 import { helper } from "../../lib/helper";
@@ -83,7 +99,7 @@ Produce the daily report.
 
   test("generates a closed authenticated dispatch Channel without embedding secrets", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.24.2",
+      eveVersion: "0.25.1",
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
       },
@@ -110,7 +126,7 @@ Produce the daily report.
     async (extension) => {
       const sourcePath = `agent/schedules/nested/direct.${extension}`;
       const releaseDir = await fixture({
-        eveVersion: "0.24.2",
+        eveVersion: "0.25.1",
         files: { [sourcePath]: `export default { cron: "0 6 * * *", async run() {} };` },
       });
 
@@ -127,7 +143,7 @@ Produce the daily report.
 
   test("rejects reserved authored identifiers and the reserved Channel path", async () => {
     const identifierCollision = await fixture({
-      eveVersion: "0.24.2",
+      eveVersion: "0.25.1",
       files: {
         "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
       },
@@ -135,7 +151,7 @@ Produce the daily report.
     await expect(injectSchedulerAdapter({ releaseDir: identifierCollision })).rejects.toThrow(/reserved identifier/);
 
     const channelCollision = await fixture({
-      eveVersion: "0.24.2",
+      eveVersion: "0.25.1",
       files: {
         "agent/schedules/ok.ts": `export default { cron: "* * * * *", async run() {} };`,
         "agent/channels/eveland-scheduler.ts": `export default {};`,
@@ -144,7 +160,7 @@ Produce the daily report.
     await expect(injectSchedulerAdapter({ releaseDir: channelCollision })).rejects.toThrow(/reserved Channel/);
 
     const defaultReExport = await fixture({
-      eveVersion: "0.24.2",
+      eveVersion: "0.25.1",
       files: {
         "agent/lib/shared.ts": `export default { cron: "0 7 * * *", async run() {} };`,
         "agent/schedules/re-export.ts": `export { default } from "../lib/shared";`,
@@ -155,9 +171,10 @@ Produce the daily report.
     );
   });
 
-  test("builds the transformed overlay with the real Eve 0.24.x compiler", async () => {
+  test.each(compatibilityMatrix)("builds the transformed overlay with the real Eve $version compiler", async ({ packageName, version }) => {
     const releaseDir = await fixture({
-      eveVersion: "0.24.2",
+      eveVersion: version,
+      evePackageName: packageName,
       files: {
         "agent/schedules/nested/markdown.md": `---
 cron: "0 3 * * *"
@@ -171,24 +188,27 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
     });
     await injectSchedulerAdapter({ releaseDir });
 
-    const { stdout } = await execFileAsync(eveBin, ["info", "--json"], { cwd: releaseDir });
+    const compilerBin = eveBinFor(packageName);
+    const { stdout } = await execFileAsync(process.execPath, [compilerBin, "info", "--json"], { cwd: releaseDir });
     const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as { diagnostics: { errors: number } };
     expect(info.diagnostics.errors).toBe(0);
-    await expect(execFileAsync(eveBin, ["build", "--skip-sandbox-prewarm"], { cwd: releaseDir })).resolves.toMatchObject({
+    await expect(execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], { cwd: releaseDir })).resolves.toMatchObject({
       stderr: expect.not.stringContaining("error"),
     });
   }, 60_000);
 
-  test("executes an authenticated zero-Session handler through a real Eve 0.24.x production server", async () => {
+  test.each(compatibilityMatrix)("executes the authenticated scheduler channel on Eve $version", async ({ packageName, version }) => {
     const releaseDir = await fixture({
-      eveVersion: "0.24.2",
+      eveVersion: version,
+      evePackageName: packageName,
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } };`,
         "agent/schedules/broken.ts": `export default { cron: "* * * * *", async run() { throw new Error("fixture handler exploded"); } };`,
       },
     });
     await injectSchedulerAdapter({ releaseDir });
-    await execFileAsync(eveBin, ["build", "--skip-sandbox-prewarm"], { cwd: releaseDir });
+    const compilerBin = eveBinFor(packageName);
+    await execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], { cwd: releaseDir });
     const runtimePort = await availablePort();
     const reports: unknown[] = [];
     const claimedCredentials = new Set<string>();
@@ -209,7 +229,7 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
     await new Promise<void>((resolve) => redeemServer.listen(0, "127.0.0.1", resolve));
     const redeemAddress = redeemServer.address();
     if (!redeemAddress || typeof redeemAddress === "string") throw new Error("Expected redeem server port.");
-    const child = spawn(eveBin, ["start", "--host", "127.0.0.1", "--port", String(runtimePort)], {
+    const child = spawn(process.execPath, [compilerBin, "start", "--host", "127.0.0.1", "--port", String(runtimePort)], {
       cwd: releaseDir,
       env: {
         ...process.env,
@@ -321,14 +341,21 @@ async function waitUntilReachable(url: string): Promise<void> {
   throw new Error(`Timed out waiting for ${url}.`);
 }
 
-async function fixture(input: { eveVersion: string; files: Record<string, string> }): Promise<string> {
+function eveBinFor(packageName: string): string {
+  return path.resolve(import.meta.dirname, `../node_modules/${packageName}/bin/eve.js`);
+}
+
+async function fixture(input: { eveVersion: string; evePackageName?: string; files: Record<string, string> }): Promise<string> {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-scheduler-"));
   await writeFile(
     path.join(releaseDir, "package.json"),
     JSON.stringify({ name: "scheduler-fixture", dependencies: { eve: input.eveVersion } }),
   );
   await mkdir(path.join(releaseDir, "node_modules"));
-  await symlink(path.resolve(import.meta.dirname, "../node_modules/eve"), path.join(releaseDir, "node_modules/eve"));
+  await symlink(
+    path.resolve(import.meta.dirname, `../node_modules/${input.evePackageName ?? "eve"}`),
+    path.join(releaseDir, "node_modules/eve"),
+  );
   await mkdir(path.join(releaseDir, "agent"), { recursive: true });
   await writeFile(path.join(releaseDir, "agent/instructions.md"), "Fixture.");
   for (const [relativePath, content] of Object.entries(input.files)) {

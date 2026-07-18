@@ -5,6 +5,8 @@ description: Import source, configure secrets, build a preview, and promote it s
 
 Eveland deploys ordinary Eve projects. Keep agent instructions, tools, skills, channels, connections, subagents, sandboxes, and schedules in their standard Eve filesystem locations.
 
+Until Eve publishes a stable product compatibility contract, Eveland supports a sliding two-minor window: the latest fully verified Eve minor and the one immediately before it. The current window is `0.24.x` and `0.25.x`, verified at `0.24.6` and `0.25.1`. A newly published minor enters the window only after source review and the full compatibility matrix pass; versions and broad ranges outside the window fail closed.
+
 ## 1. Import source
 
 Use either:

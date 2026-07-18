@@ -373,7 +373,7 @@ Node fetch 代理 request body 时不能先 `.text()` / `.json()`；保留 strea
 
 Playground 是管理员开发工具，不等同于真实终端用户调用。当前 Web 以 `/projects/:projectId/playground/eve/*` 代理 Eve canonical session protocol；API 在一个页面会话中只创建一个平台 Session，Gateway 再通过仅 private network 可达且需要 service credential 的 `/internal/projects/:projectId/playground/eve/*` 路径转发 initial、continuation、cancel 和 stream 请求。Gateway 使用 loopback Host 获得 Eve local-dev principal，并用 SessionBinding 固定后续请求的 Deployment。
 
-每次打开或刷新页面都从一个新的空白会话开始；页面内连续 turn、HITL 回答和外部授权恢复保留同一个 Eve Session。UI 实时展示 conversation、reasoning、tool state 和 input request，允许停止生成，并接受最多 4 个、单个 5 MiB、合计 10 MiB 的图片/PDF/文本/代码附件。Eve 0.24.5+ 的停止操作调用 canonical cancel route，并继续消费 stream 直到 `turn.cancelled` 与后续 session boundary；旧 0.24 patch 对 cancel 返回 404 时只回退为本地 stream abort，不能将平台 Session 标记为 failed。Playground 不持久化 raw reasoning 或上传文件，Sessions/usage 的权威采集仍由 Observer/Collector 完成。
+每次打开或刷新页面都从一个新的空白会话开始；页面内连续 turn、HITL 回答和外部授权恢复保留同一个 Eve Session。UI 实时展示 conversation、reasoning、tool state 和 input request，允许停止生成，并接受最多 4 个、单个 5 MiB、合计 10 MiB 的图片/PDF/文本/代码附件。Eve 0.25.x 与 0.24.5+ 的停止操作调用 canonical cancel route，并继续消费 stream 直到 `turn.cancelled` 与后续 session boundary；旧 0.24 patch 对 cancel 返回 404 时只回退为本地 stream abort，不能将平台 Session 标记为 failed。Playground 不持久化 raw reasoning 或上传文件，Sessions/usage 的权威采集仍由 Observer/Collector 完成。
 
 后续可增加“Test with real auth”模式，允许管理员显式传入测试 Authorization，并使用 canonical public Host；不要伪造最终用户身份。
 
@@ -1253,7 +1253,7 @@ route 或公开 Agent auth/streaming 边界。
 首次创建在命名之前增加独立的 Source Preflight，不以 Draft Project 模拟临时生命周期：
 
 - `source_preflights` 是用户隔离的短期队列；Git 使用 shallow clone，Zip 使用安全解压后的
-  快照，worker 在没有 Project 的情况下扫描真实文件树、Eve layout 与 0.24.x 依赖；
+  快照，worker 在没有 Project 的情况下扫描真实文件树、Eve layout 与当前受支持的双 minor 依赖；
 - Preflight 使用 heartbeat、stale recovery 与 attempt fencing；公开 API 永不返回 sourcePath、
   commit、worker lease 或加密 Git credential；
 - Project 与 initial import job 通过数据库事务精确占用 slug 并消费 completed Preflight；冲突
@@ -1286,3 +1286,22 @@ Deployment 所属 runtime adapter 采集诊断。Docker 读取不含 env 的 sta
 journal。worker 使用本次注入的完整 Secret value 集合脱敏，最多持久化 32,000 字符，并保留
 头部状态与尾部最近日志。诊断采集或 stop 失败各自追加 runtime log，但不能替换触发清理的
 原始 health error。
+
+---
+
+## 26. 2026-07-18 follow-up：Eve sliding compatibility window
+
+在 Eve 提供稳定产品兼容承诺前，Eveland 支持“最新一个已完成验证的 minor 与其前一个 minor”
+的滑动窗口。当前窗口为 0.24.x 与 0.25.x，精确测试 patch 为 0.24.6 与 0.25.1；仓库默认开发
+依赖仍使用最新 patch。Eve 0.26 只有在 changelog、源码与真实 fixtures 完成验证后才进入窗口，
+届时 0.24.x 才退出。导入、build、restart、冷启动、Playground、Gateway 与 scheduler adapter
+继续共享 fail-closed 门禁，跨 minor 宽泛 range 与窗口外版本都不接受。
+
+升级判断基于 0.25.0、0.25.1 changelog 与 `eve@0.24.6..eve@0.25.1` 源码 diff：本次 minor
+主要增加可发布 extension distribution、tool input schema validation、stale HITL response
+处理与 portable hook declarations。Eveland 使用的 canonical session/cancel/stream route、
+Vercel OIDC header、schedule/channel surface、observer stream events 与 `SandboxBackend` public
+types 没有发生需要 adapter 分叉的变化。兼容矩阵同时运行 0.24.6/0.25.1 observer discovery、
+schedule discovery/dev dispatch、scheduler adapter build/start 与 sandbox public type checks；Linux
+basic systemd smoke 使用 0.24.6，其余完整 observer/Gateway/schedule/sandbox 链路使用 0.25.1。
+后续 Eve minor 仍必须重复源码核对与真实 fixture 验证，不能因为 npm 发布而自动扩宽窗口。
