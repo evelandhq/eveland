@@ -714,7 +714,7 @@ packages/core -> 不依赖其他 Eveland package
 apps -X-> apps
 ```
 
-`packages/core` 通过显式 subpath 分开 contracts、Eve wire protocol 与 Node-only server 工具，不提供根 barrel；Drizzle schema、migration、repository 和 memory store 统一由 `packages/db` 持有。API 与 worker 只依赖 package，不互相导入。
+`packages/core` 通过显式 subpath 分开 contracts、Eve wire protocol 与 Node-only server 工具，不提供根 barrel；Drizzle schema、migration 和唯一一份 Postgres repository 统一由 `packages/db` 持有。生产使用真实 Postgres，普通测试通过 PGlite 执行同一份 repository；多连接锁、驱动兼容和 migration 集成测试仍使用真实 Postgres。API 与 worker 只依赖 package，不互相导入。
 
 ---
 

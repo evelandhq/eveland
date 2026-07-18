@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { ProjectSlugConflictError, createMemoryStore } from "./store.js";
+import { ProjectSlugConflictError } from "./store.js";
+import { createTestStore } from "./vitest-store.js";
 
 describe("source preflight store", () => {
   test("keeps preflights user-scoped and fences worker completion by attempt", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
       kind: "git",
@@ -39,7 +40,7 @@ describe("source preflight store", () => {
   });
 
   test("atomically creates a project from the validated snapshot and consumes it once", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
       kind: "zip",
@@ -89,7 +90,7 @@ describe("source preflight store", () => {
   });
 
   test("does not consume a validated snapshot when its exact project name conflicts", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     await store.createProject({ name: "taken-name", importKind: "zip", requireExactSlug: true });
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
@@ -114,7 +115,7 @@ describe("source preflight store", () => {
   });
 
   test("expires only unconsumed terminal snapshots and returns their cleanup paths", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
       kind: "zip",

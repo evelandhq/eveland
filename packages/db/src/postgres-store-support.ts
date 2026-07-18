@@ -10,13 +10,13 @@ import type {
   SharedAgentEnvironment,
   SharedAgentEnvironmentRecord,
 } from "@eveland/core/contracts";
-import type { Database } from "./client.js";
+import type { StoreDatabase } from "./client.js";
 import { agentAuthCredentials, modelUsageEvents, platformSecretProfileBindings, platformSecretProfiles } from "./schema.js";
 import type { AgentAuthCredentialKey, Store } from "./store-domains.js";
 
 export type PostgresStoreContext = {
-  database: Database;
-  db: Database["db"];
+  database: StoreDatabase;
+  db: StoreDatabase["db"];
   ensureDeploymentRoutes(projectId: string, deploymentId: string, baseDomain: string): Promise<AgentRoute[]>;
   ensureDefaultOwner(): Promise<void>;
   createJob(projectId: string, type: JobType, payload: Record<string, unknown>): Promise<Job>;

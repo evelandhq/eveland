@@ -1,11 +1,11 @@
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { DeploymentRecord } from "@eveland/core/contracts";
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "./store.js";
+import { createTestStore } from "./vitest-store.js";
 
 describe("routing repository", () => {
   test("normalizes project names and atomically claims deterministic duplicate suffixes", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
 
     const first = await store.createProject({ name: "Sample Office Assistant", importKind: "git" });
     const second = await store.createProject({ name: "sample-office-assistant", importKind: "git" });
@@ -15,7 +15,7 @@ describe("routing repository", () => {
   });
 
   test("keeps concurrent deployments, atomically promotes and splits stable traffic, and preserves previews", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Concurrent Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id, kind: "zip", sourcePath: "/tmp/concurrent", summary: {}, envVars: [], files: [], schedules: [],
@@ -63,7 +63,7 @@ describe("routing repository", () => {
   });
 
   test("creates named aliases and reports retention protection from routes and active sessions", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Retention Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id, kind: "zip", sourcePath: "/tmp/retention", summary: {}, envVars: [], files: [], schedules: [],
@@ -86,7 +86,7 @@ describe("routing repository", () => {
   });
 
   test("assigns a semantic project slug and short deployment key and materializes stable/preview routes", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Gateway Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -131,7 +131,7 @@ describe("routing repository", () => {
   });
 
   test("binding a Gateway session upgrades observer provenance without creating a duplicate root", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Bound Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -175,7 +175,7 @@ describe("routing repository", () => {
   });
 
   test("applies a binding learned before the Playground session learns its Eve id", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Playground Binding", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,

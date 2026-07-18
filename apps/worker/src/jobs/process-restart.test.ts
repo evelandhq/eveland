@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import {
   allocateAvailableHostPort,
   cleanupExpiredSourcePreflights,
@@ -26,7 +27,7 @@ describe("processNextJob", () => {
   test("restarts the current deployment by stopping and starting it on the recorded runtime kind", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Restart Agent",
@@ -121,7 +122,7 @@ describe("processNextJob", () => {
 
   test("restarts the deployment targeted by the job instead of the current project deployment", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Targeted Restart Agent",
@@ -205,7 +206,7 @@ describe("processNextJob", () => {
   test("resolves the runtime adapter by the deployment's recorded runtimeKind when no runtime override is injected", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Restart Systemd Agent",
@@ -274,7 +275,7 @@ describe("processNextJob", () => {
 
   test("stops the restarted process when its health check fails after restart's own stop and start succeed", async () => {
     const stopCalls: string[] = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Restart Cleanup Agent",
@@ -344,7 +345,7 @@ describe("processNextJob", () => {
 
   test("stops the pre-restart process exactly once when startProcess itself fails during restart (nothing new was started)", async () => {
     const stopCalls: string[] = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Restart Start Fail Agent",
@@ -408,7 +409,7 @@ describe("processNextJob", () => {
   });
 
   test("fails a restart_deployment job when there is no deployment to restart", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "No Deployment Agent",
@@ -442,7 +443,7 @@ describe("processNextJob", () => {
   });
 
   test("fails a restart_deployment job when the deployment's release record is missing", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Corrupt State Agent",
@@ -496,7 +497,7 @@ describe("processNextJob", () => {
   });
 
   test("fails a restart_deployment job loudly when the revision's source directory has vanished from disk, without stopping the running process first", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Vanished Source Agent",

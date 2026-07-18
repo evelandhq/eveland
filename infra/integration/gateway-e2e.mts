@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { serve } from "../../apps/gateway/node_modules/@hono/node-server/dist/index.mjs";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
 import { affinityBucketForRoute } from "../../packages/core/src/routing.js";
-import { createStoreFromEnv } from "../../packages/db/src/store-factory.js";
+import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
@@ -17,7 +17,7 @@ const FIXTURE = fileURLToPath(new URL("../../apps/worker/src/integration/fixture
 const execFileAsync = promisify(execFile);
 
 async function main(): Promise<void> {
-  const { store, close } = createStoreFromEnv();
+  const { store, close } = await createPgliteTestStore();
   const runtime = createRuntimeAdapterFromEnv();
   const project = await store.createProject({ name: `Gateway E2E ${Date.now()}`, importKind: "zip", sourcePath: FIXTURE });
   await store.upsertSecret(project.id, "EVE_MOCK_AUTHORED_MODELS", JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)));
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
 }
 
 async function expectBinding(
-  store: ReturnType<typeof createStoreFromEnv>["store"],
+  store: Awaited<ReturnType<typeof createPgliteTestStore>>["store"],
   projectId: string,
   eveSessionId: string,
   deploymentId: string,

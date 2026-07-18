@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "./store.js";
+import { createTestStore } from "./vitest-store.js";
 
 describe("schedule persistence", () => {
   test("keeps stable logical identity and immutable versions across source revisions", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Versioned schedules", importKind: "git" });
     const firstRevision = await store.recordSourceRevision({
       projectId: project.id,
@@ -107,7 +107,7 @@ describe("schedule persistence", () => {
   });
 
   test("coalesces due ticks and atomically creates one run and one job under concurrent planners", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Planner race", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     if (!importJob) throw new Error("Expected the fixture import job.");
@@ -202,7 +202,7 @@ describe("schedule persistence", () => {
   });
 
   test("creates manual runs on the explicitly promoted scheduler target and pins provenance", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Manual schedule", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -276,7 +276,7 @@ describe("schedule persistence", () => {
   });
 
   test("paginates filtered run and Session history with zero-Session runs and aggregate usage", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Schedule history", importKind: "zip" });
     await store.completeJob((await store.claimNextJob("fixture-import"))!.id);
     const revision = await store.recordSourceRevision({

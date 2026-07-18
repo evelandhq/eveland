@@ -40,18 +40,18 @@ limactl shell "$VM" -- sudo bash -c "
   # Observer vertical slice under the real systemd hardening: a direct private-port
   # turn (including a directory-form subagent) writes the shared outbox, then the
   # collector projects one root tree and replay-safe usage.
-  EVELAND_RUNTIME=systemd STORE_DRIVER=memory EVELAND_BUILD_SANDBOX=bwrap \
+  EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_OBSERVER_ROOT=/var/lib/eveland-data/observer \
     corepack pnpm exec tsx infra/integration/observer-e2e.mts
 
-  EVELAND_RUNTIME=systemd STORE_DRIVER=memory EVELAND_BUILD_SANDBOX=bwrap \
+  EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/gateway-e2e.mts
 
   # Complete scheduler/scale-to-zero proof against Eve 0.25.1 and the real
   # systemd runtime: dormant cron wake, observer usage, native no-op, idle
   # shutdown, and a bound public continuation wake.
-  EVELAND_RUNTIME=systemd STORE_DRIVER=memory EVELAND_BUILD_SANDBOX=bwrap \
+  EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/schedule-scale-zero-e2e.mts
 

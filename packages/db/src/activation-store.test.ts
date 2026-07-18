@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "./store.js";
+import { createTestStore } from "./vitest-store.js";
 
 describe("runtime activation persistence", () => {
   test("elects one starter and shares its RuntimeInstance across concurrent leases", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Dormant Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -60,7 +60,7 @@ describe("runtime activation persistence", () => {
   });
 
   test("renews only live leases and starts the idle deadline after the final release", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { deployment } = await deploymentFixture(store, "Idle Agent", 41996);
     const startedAt = new Date("2026-07-15T02:00:00.000Z");
     const claim = await store.acquireActivationLease({
@@ -108,7 +108,7 @@ describe("runtime activation persistence", () => {
   });
 
   test("coalesces activation jobs and recovers a stale Worker claim", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { project, deployment } = await deploymentFixture(store, "Activation Job Agent", 41995);
     const claim = await store.acquireActivationLease({
       deploymentId: deployment.id,
@@ -149,7 +149,7 @@ describe("runtime activation persistence", () => {
 
 describe("orphan process adoption persistence", () => {
   test("finds a deployment by its container name", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { deployment } = await deploymentFixture(store, "Adoptable Agent", 41991);
 
     await expect(store.getDeploymentByContainerName(deployment.containerName)).resolves.toMatchObject({
@@ -159,7 +159,7 @@ describe("orphan process adoption persistence", () => {
   });
 
   test("adopts an unmanaged deployment into a ready RuntimeInstance that activation reuses and idle claiming drains", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { deployment } = await deploymentFixture(store, "Zombie Agent", 41992);
     const now = new Date("2026-07-16T08:00:00.000Z");
 
@@ -198,7 +198,7 @@ describe("orphan process adoption persistence", () => {
   });
 
   test("refuses adoption while a live or draining instance exists and re-adopts after stop", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { deployment } = await deploymentFixture(store, "Readopt Agent", 41993);
     const now = new Date("2026-07-16T09:00:00.000Z");
 
@@ -225,7 +225,7 @@ describe("orphan process adoption persistence", () => {
   });
 });
 
-async function deploymentFixture(store: ReturnType<typeof createMemoryStore>, name: string, hostPort: number) {
+async function deploymentFixture(store: ReturnType<typeof createTestStore>, name: string, hostPort: number) {
   const project = await store.createProject({ name, importKind: "zip" });
   const importJob = await store.claimNextJob("fixture-import");
   await store.completeJob(importJob!.id);

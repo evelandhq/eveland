@@ -12,7 +12,8 @@ import {
   type EncryptedSecret,
 } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 
 import {
   createScheduleRunFixture,
@@ -21,7 +22,7 @@ import {
 
 describe("api app", () => {
   test("stores secrets without returning secret values", async () => {
-    const app = createApp(createMemoryStore());
+    const app = createApp(createTestStore());
     const createProject = await app.request("/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -53,7 +54,7 @@ describe("api app", () => {
   });
 
   test("queues a targeted restart for every live deployment after saving a secret", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Secret Refresh Agent",
       importKind: "zip",
@@ -127,7 +128,7 @@ describe("api app", () => {
   });
 
   test("queues live deployment secret refreshes only when a secret was deleted", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Secret Delete Agent",
       importKind: "zip",
@@ -189,7 +190,7 @@ describe("api app", () => {
 
   test("rejects an invalid secret encryption key when the API starts", () => {
     expect(() =>
-      createApp(createMemoryStore(), {
+      createApp(createTestStore(), {
         appSecretKey: "1234567890123456789012345678901",
       }),
     ).toThrow(
@@ -198,7 +199,7 @@ describe("api app", () => {
   });
 
   test("returns current source revision and files", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Source Agent",
       importKind: "zip",

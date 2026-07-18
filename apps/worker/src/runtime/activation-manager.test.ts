@@ -1,11 +1,11 @@
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { ensureDeploymentActive, reconcileRuntimeInstances } from "./activation-manager.js";
 import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
 
 describe("ensureDeploymentActive", () => {
   test("waits for a draining RuntimeInstance to stop before starting its next generation", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Draining Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -89,7 +89,7 @@ describe("ensureDeploymentActive", () => {
   });
 
   test("elects one cold starter and returns one ready RuntimeInstance to concurrent leases", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Cold Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -152,7 +152,7 @@ describe("ensureDeploymentActive", () => {
   });
 
   test("releases every concurrent lease when the elected starter fails", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Broken Cold Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -217,7 +217,7 @@ describe("ensureDeploymentActive", () => {
   });
 
   test("reconciles a ready RuntimeInstance whose process disappeared", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Crashed Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);

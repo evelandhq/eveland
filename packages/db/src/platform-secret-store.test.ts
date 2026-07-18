@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "./store.js";
+import { createTestStore } from "./vitest-store.js";
 import { SHARED_AGENT_ENVIRONMENT_PROFILE_ID } from "@eveland/core/contracts";
 
 describe("platform Secret Profile store", () => {
   test("keeps entry values private and revisions semantic", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const saveProfile = Reflect.get(store, "savePlatformSecretProfile");
     const getProfileRecord = Reflect.get(store, "getPlatformSecretProfileRecord");
 
@@ -53,7 +53,7 @@ describe("platform Secret Profile store", () => {
   });
 
   test("keeps one explicit binding per target and consumer", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Profile Binding Agent", importKind: "zip" });
     const firstProfile = await store.savePlatformSecretProfile({
       name: "First profile",
@@ -111,7 +111,7 @@ describe("platform Secret Profile store", () => {
 
 describe("shared Agent environment store", () => {
   test("stores one revisioned environment without exposing encrypted values", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const saveEnvironment = Reflect.get(store, "saveSharedAgentEnvironment");
     const getEnvironmentRecord = Reflect.get(store, "getSharedAgentEnvironmentRecord");
 
@@ -158,7 +158,7 @@ describe("shared Agent environment store", () => {
   });
 
   test("binds the shared environment without exposing Profile concepts", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Shared Environment Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,

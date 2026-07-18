@@ -2,7 +2,7 @@ import { decodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
 import type { OidcProtocol } from "@eveland/agent-auth/oidc";
 import type { AgentAuthProviderRegistration } from "@eveland/agent-auth";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 
@@ -10,7 +10,7 @@ const appSecretKey = "0123456789abcdef0123456789abcdef";
 
 describe("Agent Auth control-plane routes", () => {
   test("lists generic methods and lazily creates a redacted local-dev Connection", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "connection-descriptor", importKind: "zip" });
     const app = createApp(store, { appSecretKey });
 
@@ -43,7 +43,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("redacts secrets and only increments revision for semantic changes", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "bearer-control-plane", importKind: "zip" });
     const app = createApp(store, { appSecretKey });
     const initial = await app.request(`/projects/${project.id}/playground/connection`);
@@ -74,7 +74,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("rejects an unsafe custom credential header without changing the Connection", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "unsafe-header", importKind: "zip" });
     const app = createApp(store, { appSecretKey });
     const initial = await app.request(`/projects/${project.id}/playground/connection`);
@@ -95,7 +95,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("resolves the current credential for every canonical Playground request", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "bearer-playground", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -177,7 +177,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("holds the first turn until the OIDC callback and then sends it once", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await deployedProject(store, "oidc-first-turn");
     const seen: string[] = [];
     const app = createApp(store, {
@@ -237,7 +237,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("refreshes and retries one OIDC 401 but never refreshes a 403", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await deployedProject(store, "oidc-recovery");
     let refreshCalls = 0;
     let upstreamCalls = 0;
@@ -293,7 +293,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("delegates 401 recovery to an opaque registered provider", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await deployedProject(store, "opaque-recovery");
     let generation = 1;
     let recoveryCalls = 0;
@@ -339,7 +339,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("dispatches interaction routes through an opaque registered provider", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "opaque-interaction", importKind: "zip" });
     const provider: AgentAuthProviderRegistration = {
       ...opaqueProvider("future-interactive", true),
@@ -371,7 +371,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("resolves current Project and Platform Secret references for every Agent request", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "referenced-bearer-playground", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -476,7 +476,7 @@ describe("Agent Auth control-plane routes", () => {
   });
 
   test("resolves a bound Platform Secret for confidential OIDC preflight", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "platform-oidc-client", importKind: "zip" });
     const profile = await store.savePlatformSecretProfile({
       name: "OIDC clients",
@@ -559,7 +559,7 @@ function mockOidcProtocol(overrides: Partial<OidcProtocol> = {}): OidcProtocol {
   };
 }
 
-async function deployedProject(store: ReturnType<typeof createMemoryStore>, name: string) {
+async function deployedProject(store: ReturnType<typeof createTestStore>, name: string) {
   const project = await store.createProject({ name, importKind: "zip" });
   const revision = await store.recordSourceRevision({
     projectId: project.id,

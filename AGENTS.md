@@ -84,8 +84,8 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
   families, and shared runtime helpers.
 - `packages/core`: shared contracts and domain logic, split into explicit
   browser-safe and Node-only subpath exports.
-- `packages/db`: Drizzle schema, migrations, repositories, mappers, and
-  domain-oriented memory and Postgres stores composed behind one Store.
+- `packages/db`: Drizzle schema, migrations, repositories, mappers, and one
+  domain-oriented SQL Store used by production Postgres and PGlite tests.
 - `packages/agent-observer`: release-time Eve hook injection.
 - `packages/session-collector`: observer outbox claiming, validation,
   ingestion, and projection.
@@ -249,7 +249,8 @@ healthy. When a Compose worker controls the host Docker daemon,
 
 - Database changes: update `packages/db/src/schema.ts`, repositories/mappers,
   the relevant contract in `store-domains.ts`, and the matching
-  `memory-*-store.ts` and `postgres-*-store.ts` domain implementations. Keep
+  `postgres-*-store.ts` domain implementation. Exercise it through the PGlite
+  Store tests and real Postgres where multi-connection or driver behavior matters. Keep
   composer files free of domain behavior. Generate a new Drizzle migration
   with `pnpm --filter @eveland/db db:generate`; do not rewrite an
   already-shipped migration. Apply migrations with
@@ -263,8 +264,8 @@ healthy. When a Compose worker controls the host Docker daemon,
   request helpers in `app-support.ts`.
 - Worker changes: keep claiming, heartbeat, completion, and failure fencing in
   `jobs/process.ts`; put concrete import/build or runtime job behavior in the
-  corresponding `process-*` module. Test state transitions, retries,
-  idempotency, and both memory-store and Postgres assumptions where relevant.
+  corresponding `process-*` module. Test state transitions, retries, and
+  idempotency through PGlite, plus real Postgres assumptions where relevant.
 - Gateway changes: test Host parsing, header sanitization, auth/cookie
   transparency, body limits, abort propagation, streaming, affinity, and
   internal/public route separation. Pure Host/header/affinity/target rules
@@ -320,8 +321,9 @@ Additional expectations:
 - Run `bash infra/integration/run.sh` for systemd, bwrap, build isolation,
   observer, private-port, or Gateway behavior that requires the real Linux
   topology. It is intentionally heavier than unit tests and requires Lima.
-- For database semantics, exercise the relevant Postgres integration path; the
-  in-memory store alone is not proof of SQL constraints or transaction behavior.
+- For multi-connection locking, driver behavior, and migration compatibility,
+  exercise the relevant real Postgres integration path; single-connection
+  PGlite alone is not proof of those semantics.
 
 Report exactly what was run, what passed, and what was not run. Do not describe
 an unexecuted smoke test as verified.

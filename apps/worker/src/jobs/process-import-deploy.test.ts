@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import {
   allocateAvailableHostPort,
   cleanupExpiredSourcePreflights,
@@ -24,7 +25,7 @@ import { createFixtureEveProject } from "./process.test-support.js";
 
 describe("processNextJob", () => {
   test("processes import_source jobs into imported project state", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Import Agent",
@@ -53,7 +54,7 @@ describe("processNextJob", () => {
   });
 
   test("saves a pending user Git credential only after a source import succeeds", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Private GitLab Agent",
@@ -94,7 +95,7 @@ describe("processNextJob", () => {
   });
 
   test("removes a pending Git credential from a failed import job without saving it", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const invalidSourcePath = await mkdtemp(
       path.join(os.tmpdir(), "eveland-invalid-git-import-"),
     );
@@ -133,7 +134,7 @@ describe("processNextJob", () => {
   });
 
   test("completes a job with its claimed attempt token", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     await store.createProject({
       name: "Fenced Completion Agent",
@@ -148,7 +149,7 @@ describe("processNextJob", () => {
   });
 
   test("chains a build_deploy job after a deploy-flagged import", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "CD Agent",
@@ -175,7 +176,7 @@ describe("processNextJob", () => {
   });
 
   test("a failed re-sync import leaves an already-running deployment's status untouched", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const badSource = await mkdtemp(path.join(os.tmpdir(), "eveland-empty-"));
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
@@ -219,7 +220,7 @@ describe("processNextJob", () => {
   });
 
   test("returns false when no queued job exists", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
 
     await expect(processNextJob(store, "worker-a")).resolves.toBe(false);
   });
@@ -227,7 +228,7 @@ describe("processNextJob", () => {
   test("builds and runs the current source revision as a deployment", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Deploy Agent",
@@ -355,7 +356,7 @@ describe("processNextJob", () => {
   });
 
   test("selects pnpm when the imported source has a pnpm lockfile", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     await writeFile(
       path.join(sourcePath, "pnpm-lock.yaml"),
@@ -406,7 +407,7 @@ describe("processNextJob", () => {
 
   test("deploys a concurrent preview without stopping current or reusing its host port", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Redeploy Agent",
@@ -489,7 +490,7 @@ describe("processNextJob", () => {
     const activeRuntimeCalls: Array<{ name: string; input: unknown }> = [];
     const oldRuntimeStopCalls: Array<{ processName: string }> = [];
     let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Cross Kind Agent",
@@ -580,7 +581,7 @@ describe("processNextJob", () => {
   });
 
   test("archives only an unprotected artifact outside the recent-three retention window", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Retention Worker",

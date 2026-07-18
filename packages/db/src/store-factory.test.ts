@@ -12,16 +12,14 @@ describe("createStoreFromEnv", () => {
     restoreEnv("DATABASE_URL", original.DATABASE_URL);
   });
 
-  test("uses an in-memory store when STORE_DRIVER=memory", async () => {
+  test("requires DATABASE_URL even when the removed memory driver is requested", () => {
     process.env.STORE_DRIVER = "memory";
     delete process.env.DATABASE_URL;
 
-    const factory = createStoreFromEnv();
-    await expect(factory.store.listProjects()).resolves.toEqual([]);
-    await factory.close();
+    expect(() => createStoreFromEnv()).toThrow(/DATABASE_URL/);
   });
 
-  test("throws a clear error when DATABASE_URL is missing and STORE_DRIVER is not memory", () => {
+  test("throws a clear error when DATABASE_URL is missing", () => {
     delete process.env.STORE_DRIVER;
     delete process.env.DATABASE_URL;
 

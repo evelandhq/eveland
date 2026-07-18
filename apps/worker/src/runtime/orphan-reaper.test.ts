@@ -1,4 +1,4 @@
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { reapIdleDeployments } from "./idle-reaper.js";
 import { createOrphanProcessReaper } from "./orphan-reaper.js";
@@ -17,7 +17,7 @@ function fakeAdapter(name: "docker" | "systemd", processNames: string[]) {
 }
 
 async function deploymentFixture(
-  store: ReturnType<typeof createMemoryStore>,
+  store: ReturnType<typeof createTestStore>,
   name: string,
   hostPort: number,
   containerName: string,
@@ -48,7 +48,7 @@ async function deploymentFixture(
 
 describe("createOrphanProcessReaper", () => {
   test("never touches platform processes that do not match the deployment name shape", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { adapter, stopProcess } = fakeAdapter("docker", ["eveland-postgres-1", "eveland-api-1", "eveland-gateway-1"]);
     const reap = createOrphanProcessReaper(store, {
       kinds: ["docker"],
@@ -63,7 +63,7 @@ describe("createOrphanProcessReaper", () => {
   });
 
   test("stops a process with no Deployment row only after the grace period", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { adapter, stopProcess } = fakeAdapter("docker", ["eveland-proj_gone-dep_gone123"]);
     const reap = createOrphanProcessReaper(store, {
       kinds: ["docker"],
@@ -80,7 +80,7 @@ describe("createOrphanProcessReaper", () => {
   });
 
   test("adopts an unmanaged known deployment so the idle reaper stops it later", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const containerName = "eveland-proj_zombie-dep_zombie99";
     const { deployment } = await deploymentFixture(store, "Zombie Sweep Agent", 41981, containerName);
     const { adapter, stopProcess } = fakeAdapter("docker", [containerName]);
@@ -114,7 +114,7 @@ describe("createOrphanProcessReaper", () => {
   });
 
   test("skips deployments already under activation management", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const containerName = "eveland-proj_active-dep_active77";
     const { deployment } = await deploymentFixture(store, "Active Sweep Agent", 41982, containerName);
     await store.acquireActivationLease({
@@ -138,7 +138,7 @@ describe("createOrphanProcessReaper", () => {
   });
 
   test("stops an archived deployment's leftover process after the grace period", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const containerName = "eveland-proj_arch-dep_arch55";
     const { project, deployment } = await deploymentFixture(store, "Archived Sweep Agent", 41983, containerName);
     await store.updateDeploymentStatus(deployment.id, "archived");
@@ -159,7 +159,7 @@ describe("createOrphanProcessReaper", () => {
   });
 
   test("stops a process found under a runtime kind the deployment does not own", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const containerName = "eveland-proj_kind-dep_kind33";
     // Fixture records runtimeKind "docker"; the same name showing up under
     // systemd is by definition a leftover from a runtime migration.
@@ -178,7 +178,7 @@ describe("createOrphanProcessReaper", () => {
   });
 
   test("a runtime whose listing fails is skipped without failing the sweep", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const broken = {
       name: "systemd",
       listProcesses: vi.fn(async () => {
