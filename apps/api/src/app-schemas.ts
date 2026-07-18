@@ -137,14 +137,6 @@ export const platformSecretBindingSchema = z.object({
     .default(null),
 });
 
-export const sharedAgentEnvironmentBindingSchema = z.object({
-  deploymentId: z
-    .string()
-    .regex(/^dep_[0-9A-Za-z]+$/)
-    .nullable()
-    .default(null),
-});
-
 export const platformSecretConsumerSchema = z.enum([
   "agent-runtime",
   "agent-connection",

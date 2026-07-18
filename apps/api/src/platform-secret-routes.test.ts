@@ -255,12 +255,12 @@ describe("shared Agent environment routes", () => {
     expect(decryptSecretValue(encrypted, appSecretKey)).toBe("sk-shared-secret");
   });
 
-  test("binds the singleton environment and restarts only affected Deployments", async () => {
+  test("restarts every live Deployment when the global environment changes", async () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });
-    const project = await store.createProject({ name: "Shared Environment Restart Agent", importKind: "zip" });
-    const revision = await store.recordSourceRevision({
-      projectId: project.id,
+    const firstProject = await store.createProject({ name: "Shared Environment Restart Agent", importKind: "zip" });
+    const firstRevision = await store.recordSourceRevision({
+      projectId: firstProject.id,
       kind: "zip",
       sourcePath: "/tmp/shared-environment-restart-source",
       summary: {},
@@ -269,8 +269,8 @@ describe("shared Agent environment routes", () => {
       schedules: [],
     });
     const firstDeployment = await store.recordDeployment({
-      projectId: project.id,
-      sourceRevisionId: revision.id,
+      projectId: firstProject.id,
+      sourceRevisionId: firstRevision.id,
       imageTag: "shared:first",
       containerName: "shared-first",
       internalPort: 3000,
@@ -278,63 +278,65 @@ describe("shared Agent environment routes", () => {
       runtimeKind: "docker",
     });
     const secondDeployment = await store.recordDeployment({
-      projectId: project.id,
-      sourceRevisionId: revision.id,
+      projectId: firstProject.id,
+      sourceRevisionId: firstRevision.id,
       imageTag: "shared:second",
       containerName: "shared-second",
       internalPort: 3000,
       hostPort: 42002,
       runtimeKind: "docker",
     });
-    await app.request("/platform/shared-agent-environment", {
+    const secondProject = await store.createProject({ name: "Other Shared Environment Agent", importKind: "zip" });
+    const secondRevision = await store.recordSourceRevision({
+      projectId: secondProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/other-shared-environment-source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const otherLiveDeployment = await store.recordDeployment({
+      projectId: secondProject.id,
+      sourceRevisionId: secondRevision.id,
+      imageTag: "shared:other-live",
+      containerName: "shared-other-live",
+      internalPort: 3000,
+      hostPort: 42003,
+      runtimeKind: "docker",
+    });
+    const stoppedDeployment = await store.recordDeployment({
+      projectId: secondProject.id,
+      sourceRevisionId: secondRevision.id,
+      imageTag: "shared:stopped",
+      containerName: "shared-stopped",
+      internalPort: 3000,
+      hostPort: 42004,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(stoppedDeployment.id, "stopped");
+
+    const savedResponse = await app.request("/platform/shared-agent-environment", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "shared-key" }] }),
     });
+    expect(savedResponse.status).toBe(200);
+    const saved = await savedResponse.json() as { jobs: Array<{ payload: { deploymentId: string; reason: string } }> };
+    expect(saved.jobs.map((job) => job.payload.deploymentId).sort()).toEqual([
+      firstDeployment.id,
+      secondDeployment.id,
+      otherLiveDeployment.id,
+    ].sort());
+    expect(saved.jobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
 
-    const projectBindingResponse = await app.request(
-      `/projects/${project.id}/shared-agent-environment-bindings`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deploymentId: null }),
-      },
-    );
-    expect(projectBindingResponse.status).toBe(200);
-    await expect(projectBindingResponse.json()).resolves.toMatchObject({
-      binding: {
-        projectId: project.id,
-        deploymentId: null,
-        environmentRevision: 1,
-      },
-      jobs: expect.arrayContaining([
-        expect.objectContaining({ payload: { deploymentId: firstDeployment.id, reason: "shared_agent_environment_binding_changed" } }),
-        expect.objectContaining({ payload: { deploymentId: secondDeployment.id, reason: "shared_agent_environment_binding_changed" } }),
-      ]),
+    const unchangedResponse = await app.request("/platform/shared-agent-environment", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ entries: [{ key: "OPENAI_API_KEY", kind: "secret" }] }),
     });
-
-    const deploymentBindingResponse = await app.request(
-      `/projects/${project.id}/shared-agent-environment-bindings`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deploymentId: secondDeployment.id }),
-      },
-    );
-    expect(deploymentBindingResponse.status).toBe(200);
-    const deploymentBindingBody = await deploymentBindingResponse.json() as {
-      binding: { id: string };
-      jobs: Array<{ payload: { deploymentId: string } }>;
-    };
-    expect(deploymentBindingBody.jobs.map((job) => job.payload.deploymentId)).toEqual([secondDeployment.id]);
-
-    const listedResponse = await app.request(
-      `/projects/${project.id}/shared-agent-environment-bindings`,
-    );
-    expect(listedResponse.status).toBe(200);
-    const listed = await listedResponse.json();
-    expect(JSON.stringify(listed)).not.toContain("profile");
-    expect(JSON.stringify(listed)).not.toContain("consumer");
+    expect(unchangedResponse.status).toBe(200);
+    await expect(unchangedResponse.json()).resolves.toMatchObject({ jobs: [] });
 
     const rotatedResponse = await app.request("/platform/shared-agent-environment", {
       method: "PUT",
@@ -346,20 +348,28 @@ describe("shared Agent environment routes", () => {
     expect(rotated.jobs.map((job) => job.payload.deploymentId).sort()).toEqual([
       firstDeployment.id,
       secondDeployment.id,
+      otherLiveDeployment.id,
     ].sort());
     expect(rotated.jobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
+  });
 
-    const unboundResponse = await app.request(
-      `/projects/${project.id}/shared-agent-environment-bindings/${deploymentBindingBody.binding.id}`,
-      { method: "DELETE" },
-    );
-    expect(unboundResponse.status).toBe(200);
-    await expect(unboundResponse.json()).resolves.toMatchObject({
-      deleted: true,
-      jobs: [expect.objectContaining({ payload: {
-        deploymentId: secondDeployment.id,
-        reason: "shared_agent_environment_binding_changed",
-      } })],
-    });
+  test("does not expose Project or Deployment binding endpoints", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+    const project = await store.createProject({ name: "Global Shared Environment Agent", importKind: "zip" });
+
+    const responses = await Promise.all([
+      app.request(`/projects/${project.id}/shared-agent-environment-bindings`),
+      app.request(`/projects/${project.id}/shared-agent-environment-bindings`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deploymentId: null }),
+      }),
+      app.request(`/projects/${project.id}/shared-agent-environment-bindings/binding`, {
+        method: "DELETE",
+      }),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([404, 404, 404]);
   });
 });

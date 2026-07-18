@@ -6,23 +6,19 @@ import {
   platformSecretConsumerSchema,
   platformSecretProfileSchema,
   secretSchema,
-  sharedAgentEnvironmentBindingSchema,
   sharedAgentEnvironmentSchema,
 } from "./app-schemas.js";
 import type {
   PlatformSecretProfileBinding,
-  SharedAgentEnvironmentBinding,
   SharedAgentEnvironmentRecord,
 } from "@eveland/core/contracts";
 import { SHARED_AGENT_ENVIRONMENT_PROFILE_ID } from "@eveland/core/contracts";
 
 type PlatformSecretRestart = (
-  bindings: Array<PlatformSecretProfileBinding | SharedAgentEnvironmentBinding>,
+  bindings: PlatformSecretProfileBinding[],
   reason:
     | "platform_secret_binding_changed"
-    | "platform_secret_profile_changed"
-    | "shared_agent_environment_binding_changed"
-    | "shared_agent_environment_changed",
+    | "platform_secret_profile_changed",
 ) => Promise<unknown>;
 
 export function registerSecretRoutes(input: {
@@ -123,75 +119,9 @@ export function registerSecretRoutes(input: {
     });
     const jobs = environment.revision === previousRevision
       ? []
-      : await enqueuePlatformSecretRestarts(
-          await store.listSharedAgentEnvironmentBindings(),
-          "shared_agent_environment_changed",
-        );
+      : await enqueueAllLiveDeploymentRestarts(store);
     return c.json({ environment, jobs });
   });
-
-  app.get("/projects/:projectId/shared-agent-environment-bindings", async (c) => {
-    const project = await store.getProject(c.req.param("projectId"));
-    if (!project) return c.json({ error: "Project not found" }, 404);
-    return c.json({
-      bindings: await store.listProjectSharedAgentEnvironmentBindings(project.id),
-    });
-  });
-
-  app.put("/projects/:projectId/shared-agent-environment-bindings", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin")
-      return c.json({ error: "Admin access required" }, 403);
-    const parsed = sharedAgentEnvironmentBindingSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
-    if (!parsed.success) {
-      return c.json({ error: "Invalid shared Agent environment binding" }, 400);
-    }
-    if (!await store.getSharedAgentEnvironmentRecord()) {
-      return c.json({ error: "Configure the shared Agent environment before binding it." }, 409);
-    }
-    const projectId = c.req.param("projectId");
-    const previous = (await store.listProjectSharedAgentEnvironmentBindings(projectId))
-      .find((binding) => binding.deploymentId === parsed.data.deploymentId);
-    try {
-      const binding = await store.bindSharedAgentEnvironment({
-        projectId,
-        deploymentId: parsed.data.deploymentId,
-      });
-      const jobs = previous
-        ? []
-        : await enqueuePlatformSecretRestarts(
-            [binding],
-            "shared_agent_environment_binding_changed",
-          );
-      return c.json({ binding, jobs });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return c.json(
-        { error: message },
-        message.includes("not found") ? 404 : 409,
-      );
-    }
-  });
-
-  app.delete(
-    "/projects/:projectId/shared-agent-environment-bindings/:bindingId",
-    async (c) => {
-      if (options.auth && c.get("principal").role !== "admin")
-        return c.json({ error: "Admin access required" }, 403);
-      const binding = await store.deleteSharedAgentEnvironmentBinding(
-        c.req.param("projectId"),
-        c.req.param("bindingId"),
-      );
-      const jobs = binding
-        ? await enqueuePlatformSecretRestarts(
-            [binding],
-            "shared_agent_environment_binding_changed",
-          )
-        : [];
-      return c.json({ deleted: binding !== null, jobs });
-    },
-  );
 
   app.get("/platform/secret-profiles", async (c) => {
     if (options.auth && c.get("principal").role !== "admin")
@@ -392,6 +322,20 @@ export function registerSecretRoutes(input: {
       return c.json({ deleted: binding !== null, jobs });
     },
   );
+}
+
+async function enqueueAllLiveDeploymentRestarts(store: Store) {
+  const projects = await store.listProjects();
+  const targets = (await Promise.all(projects.map(async (project) =>
+    (await store.listDeployments(project.id))
+      .filter((deployment) => deployment.status === "running" || deployment.status === "draining")
+      .map((deployment) => ({ projectId: project.id, deploymentId: deployment.id })),
+  ))).flat();
+  return Promise.all(targets.map((target) => store.enqueueJob(
+    target.projectId,
+    "restart_deployment",
+    { deploymentId: target.deploymentId, reason: "shared_agent_environment_changed" },
+  )));
 }
 
 function publicSharedAgentEnvironment(record: SharedAgentEnvironmentRecord) {

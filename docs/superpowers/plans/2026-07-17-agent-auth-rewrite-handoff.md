@@ -407,8 +407,8 @@ caller，不包含 Jinshuju provider knowledge。
 
 ### PR C：平台级变量与 Secret Profile
 
-后续收敛（2026-07-18）：System 设置只暴露一套 Shared Agent Environment，并保留 Project/Deployment
-显式 runtime binding。Project Secret 覆盖同名共享默认；Agent Connection 新配置只引用 Project Secret。
+后续收敛（2026-07-18）：System 设置只暴露一套 Shared Agent Environment，它自动注入所有 Agent
+Deployment，不再提供 Project/Deployment binding。Project Secret 覆盖同名共享默认；Agent Connection 新配置只引用 Project Secret。
 底层旧 Profile 表、runtime binding 与 connection reference 暂时保留兼容读取，直到管理员完成替换，
 不能把已完成的 PR C checklist 误当成仍需恢复多 Profile UI 的 backlog。
 

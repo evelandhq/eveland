@@ -234,22 +234,19 @@ export async function composeDeploymentEnv(
   const appSecretKey =
     options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
   const secrets = await readRuntimeSecrets(store, projectId, appSecretKey);
-  const [sharedEnvironmentRecords, legacyProfileRecords] = await Promise.all([
-    store.resolveSharedAgentEnvironmentRecords({ projectId, deploymentId }),
+  const [sharedEnvironmentRecord, legacyProfileRecords] = await Promise.all([
+    store.getSharedAgentEnvironmentRecord(),
     store.resolvePlatformSecretProfileRecords({
       projectId,
       deploymentId,
       consumer: "agent-runtime",
     }),
   ]);
-  const projectSharedEnvironment = readSharedAgentEnvironmentValues(
-    sharedEnvironmentRecords.project ?? legacyProfileRecords.project,
-    appSecretKey,
-  );
-  const deploymentSharedEnvironment = readSharedAgentEnvironmentValues(
-    sharedEnvironmentRecords.deployment ?? legacyProfileRecords.deployment,
-    appSecretKey,
-  );
+  const sharedEnvironment = {
+    ...readSharedAgentEnvironmentValues(sharedEnvironmentRecord, appSecretKey),
+    ...readSharedAgentEnvironmentValues(legacyProfileRecords.project, appSecretKey),
+    ...readSharedAgentEnvironmentValues(legacyProfileRecords.deployment, appSecretKey),
+  };
   // Project secrets are runtime input, but the workflow database is
   // platform-owned and bootstrapped before this worker accepts jobs. Keep its
   // URL reserved so a project cannot silently redirect the injected world to
@@ -268,14 +265,12 @@ export async function composeDeploymentEnv(
   };
   const env = mergeRuntimeEnvironment({
     projectSecrets: secrets,
-    projectSharedEnvironment,
-    deploymentSharedEnvironment,
+    sharedEnvironment,
     reserved,
   });
   const secretValues = [
     ...Object.values(secrets),
-    ...Object.values(projectSharedEnvironment),
-    ...Object.values(deploymentSharedEnvironment),
+    ...Object.values(sharedEnvironment),
     ...(workflowPostgresUrl ? [workflowPostgresUrl] : []),
     ...(projectWorkflowUrl ? [projectWorkflowUrl] : []),
     ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),

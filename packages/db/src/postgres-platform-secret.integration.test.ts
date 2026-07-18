@@ -8,7 +8,7 @@ const database = databaseUrl ? createDatabase(databaseUrl) : null;
 afterAll(async () => database?.close());
 
 describe.skipIf(!database)("Postgres platform Secret Profiles", () => {
-  test("persists the singleton shared Agent environment and target bindings", async () => {
+  test("persists the singleton global shared Agent environment", async () => {
     const store = createPostgresStore(database!);
     const suffix = Date.now().toString();
     const environment = await store.saveSharedAgentEnvironment({
@@ -21,17 +21,6 @@ describe.skipIf(!database)("Postgres platform Secret Profiles", () => {
     expect(environment).not.toHaveProperty("name");
     await expect(store.getSharedAgentEnvironmentRecord()).resolves.toMatchObject({
       entries: [{ key: "OPENAI_API_KEY", kind: "secret", encryptedValue: `encrypted-${suffix}` }],
-    });
-
-    const project = await store.createProject({ name: `shared-environment-${suffix}`, importKind: "zip" });
-    const binding = await store.bindSharedAgentEnvironment({ projectId: project.id, deploymentId: null });
-    expect(binding).toMatchObject({ projectId: project.id, deploymentId: null });
-    expect(binding).not.toHaveProperty("profileId");
-    await expect(store.listProjectSharedAgentEnvironmentBindings(project.id)).resolves.toEqual([
-      expect.objectContaining({ id: binding.id }),
-    ]);
-    await expect(store.deleteSharedAgentEnvironmentBinding(project.id, binding.id)).resolves.toMatchObject({
-      id: binding.id,
     });
   });
 

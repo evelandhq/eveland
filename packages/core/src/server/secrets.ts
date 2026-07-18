@@ -43,13 +43,11 @@ export function maskKnownSecrets(input: string, values: string[]): string {
 
 export function mergeRuntimeEnvironment(input: {
   projectSecrets: Readonly<Record<string, string>>;
-  projectSharedEnvironment?: Readonly<Record<string, string>>;
-  deploymentSharedEnvironment?: Readonly<Record<string, string>>;
+  sharedEnvironment?: Readonly<Record<string, string>>;
   reserved?: Readonly<Record<string, string>>;
 }): Record<string, string> {
   return {
-    ...input.projectSharedEnvironment,
-    ...input.deploymentSharedEnvironment,
+    ...input.sharedEnvironment,
     ...input.projectSecrets,
     ...input.reserved,
   };

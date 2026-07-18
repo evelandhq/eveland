@@ -24,20 +24,18 @@ describe("secret encryption", () => {
     expect(mergeRuntimeEnvironment).toBeTypeOf("function");
     expect((mergeRuntimeEnvironment as (input: unknown) => unknown)({
       projectSecrets: { SHARED: "project", PROJECT_ONLY: "project" },
-      projectSharedEnvironment: { SHARED: "shared-project", SHARED_ONLY: "shared" },
-      deploymentSharedEnvironment: { SHARED: "shared-deployment", DEPLOYMENT_ONLY: "deployment" },
+      sharedEnvironment: { SHARED: "shared", SHARED_ONLY: "shared" },
       reserved: { SHARED: "reserved", NODE_ENV: "production" },
     })).toEqual({
       SHARED: "reserved",
       PROJECT_ONLY: "project",
       SHARED_ONLY: "shared",
-      DEPLOYMENT_ONLY: "deployment",
       NODE_ENV: "production",
     });
 
     expect((mergeRuntimeEnvironment as (input: unknown) => Record<string, string>)({
       projectSecrets: { OPENAI_API_KEY: "project-key" },
-      projectSharedEnvironment: { OPENAI_API_KEY: "shared-key" },
+      sharedEnvironment: { OPENAI_API_KEY: "shared-key" },
     }).OPENAI_API_KEY).toBe("project-key");
   });
 });

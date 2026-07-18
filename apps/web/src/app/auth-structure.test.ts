@@ -44,33 +44,32 @@ describe("team management web surfaces", () => {
     expect(credentialsForm).toContain("deleteGitCredential");
   });
 
-  test("provides one shared Agent environment and target-only binding controls", () => {
+  test("provides one global shared Agent environment without binding controls", () => {
     const environmentPageUrl = new URL("./settings/shared-agent-environment/page.tsx", import.meta.url);
     const environmentSettingsUrl = new URL("../components/shared-agent-environment-settings.tsx", import.meta.url);
     const bindingSettingsUrl = new URL("../components/shared-agent-environment-bindings.tsx", import.meta.url);
 
     expect(existsSync(fileURLToPath(environmentPageUrl))).toBe(true);
     expect(existsSync(fileURLToPath(environmentSettingsUrl))).toBe(true);
-    expect(existsSync(fileURLToPath(bindingSettingsUrl))).toBe(true);
+    expect(existsSync(fileURLToPath(bindingSettingsUrl))).toBe(false);
     if (
       !existsSync(fileURLToPath(environmentPageUrl)) ||
-      !existsSync(fileURLToPath(environmentSettingsUrl)) ||
-      !existsSync(fileURLToPath(bindingSettingsUrl))
+      !existsSync(fileURLToPath(environmentSettingsUrl))
     ) return;
 
-    expect(source("./settings/shared-agent-environment/page.tsx")).toContain("getSharedAgentEnvironment");
+    const environmentPage = source("./settings/shared-agent-environment/page.tsx");
+    expect(environmentPage).toContain("getSharedAgentEnvironment");
+    expect(environmentPage).toContain("every Agent Deployment");
     const environmentSettings = source("../components/shared-agent-environment-settings.tsx");
     expect(environmentSettings).toContain("<Card");
     expect(environmentSettings).toContain("<FieldGroup");
     expect(environmentSettings).toContain("saveSharedAgentEnvironment");
     expect(environmentSettings).toContain("<Field key={index}>");
     expect(environmentSettings).not.toContain("profileName");
-    const bindingSettings = source("../components/shared-agent-environment-bindings.tsx");
-    expect(bindingSettings).toContain("<Select");
-    expect(bindingSettings).toContain("bindSharedAgentEnvironment");
-    expect(bindingSettings).not.toContain("consumerItems");
-    expect(bindingSettings).not.toContain("profileId");
-    expect(source("./projects/[projectId]/secrets/page.tsx")).toContain("<SharedAgentEnvironmentBindings");
+    const projectSecretsPage = source("./projects/[projectId]/secrets/page.tsx");
+    expect(projectSecretsPage).not.toContain("SharedAgentEnvironmentBindings");
+    expect(projectSecretsPage).not.toContain("getProjectSharedAgentEnvironmentBindings");
+    expect(projectSecretsPage).not.toContain("getSharedAgentEnvironment");
     expect(source("../components/agent-auth-fields.tsx")).not.toContain("Secret Profile");
     expect(existsSync(fileURLToPath(new URL("../components/platform-secret-profile-settings.tsx", import.meta.url)))).toBe(false);
     expect(existsSync(fileURLToPath(new URL("../components/platform-secret-bindings.tsx", import.meta.url)))).toBe(false);

@@ -357,11 +357,6 @@ await store.saveSharedAgentEnvironment({
     encryptedValue: JSON.stringify(encryptSecretValue(SHARED_ENVIRONMENT_VALUE, APP_SECRET_KEY)),
   }],
 });
-await store.bindSharedAgentEnvironment({
-  projectId: project.id,
-  deploymentId: null,
-});
-
 let deployment: DeploymentRecord | null = null;
 
 try {

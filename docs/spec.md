@@ -552,24 +552,24 @@ Secret 仅在运行时注入容器，不进入：
 系统只有一套 operator-owned Shared Agent Environment，主要保存多个 Agent 共用的 LLM Key 和运行时默认值。
 它不是用户可命名、创建或选择的 Profile 集合。Entry 明确区分 `variable` 与 `secret`，但两者的 Value 都使用
 `APP_SECRET_KEY` 加密；API/Web 只返回 key、kind、configured 状态和单调 revision，不能返回密文、明文、
-长度或可恢复片段。Admin 可以维护共享环境和 binding；Member 只能查看自己 Project 的 binding 结果。
+长度或可恢复片段。只有 Admin 可以查看或维护共享环境。
 
-共享环境必须显式绑定到一个 Project 或该 Project 的单个 Deployment。Project binding 让所有 Deployment
-继承共享默认；只绑定 Deployment 时仅该目标获得共享值。同一 target 最多一个 binding。确定性优先级为
-Project-scope Shared Agent Environment < Deployment-scope Shared Agent Environment < Project Secret < Eveland
-保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。共享值只在 deploy、restart、cold activation
+共享环境自动应用到所有 Project 的每个 Agent Deployment，不存在 Project/Deployment binding。确定性优先级为
+Shared Agent Environment < Project Secret < Eveland 保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。
+共享值只在 deploy、restart、cold activation
 或 schedule activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、
 generated Dockerfile、observer envelope、日志或 Web payload。完整 Project/Shared Environment 值集合必须
 参与 runtime/build diagnostic 脱敏。
 
-Entry 语义变化才递增内部 revision。新增或解除 binding、更新或清空共享环境时，API 对受影响的
-`running`/`draining` Deployment 去重后排定向 restart；没有 live Deployment 时从下一次启动生效。
+Entry 语义变化才递增内部 revision。更新或清空共享环境时，API 对所有 Project 的
+`running`/`draining` Deployment 排定向 restart；没有 live Deployment 时从下一次启动生效。
 Shared Agent Environment 只属于 Agent runtime，不得作为 Agent Connection credential。新的 Basic、Bearer、
 Vercel OIDC 和 confidential OIDC 配置通过 Project Secret reference 延迟解析；引用缺失、删除或无法解密必须
 fail closed，不得回退到旧值或 inline copy。迁移前已经保存的 named Platform Secret Profile、runtime binding
-和 `agent-connection` reference 继续兼容读取，直到管理员用共享环境 binding 或 Project Secret 替换；旧设置
+和 `agent-connection` reference 继续兼容读取，直到管理员用全局共享环境或 Project Secret 替换；历史 runtime
+Profile 值在全局共享环境之后、Project Secret 之前叠加。旧设置
 地址重定向到 Shared Agent Environment。新的受支持 UI/API 不再创建 named Profile；旧 Profile API 暂时只作
-deprecated 迁移窗口，不应承载新配置。
+deprecated 迁移窗口，不应承载新配置，也不得为内部 Shared Agent Environment singleton 创建 binding。
 
 ---
 

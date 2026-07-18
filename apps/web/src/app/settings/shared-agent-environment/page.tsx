@@ -24,7 +24,7 @@ export default async function SharedAgentEnvironmentSettingsPage() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Shared Agent environment</h2>
         <p className="text-sm text-muted-foreground">
-          Maintain one encrypted set of fallback runtime values for explicitly bound Agents.
+          Maintain one encrypted set of fallback runtime values applied automatically to every Agent Deployment.
         </p>
       </div>
       <SharedAgentEnvironmentSettings initialEnvironment={environment} />

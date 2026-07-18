@@ -94,15 +94,6 @@ export type SharedAgentEnvironmentRecord = Omit<
   "id" | "name"
 >;
 
-export type SharedAgentEnvironmentBinding = {
-  id: string;
-  projectId: string;
-  deploymentId: string | null;
-  environmentRevision: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type PlatformSecretConsumer = "agent-runtime" | "agent-connection";
 
 export type PlatformSecretProfileBinding = {

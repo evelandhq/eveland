@@ -157,80 +157,28 @@ describe("shared Agent environment store", () => {
     });
   });
 
-  test("binds the shared environment without exposing Profile concepts", async () => {
+  test("keeps the shared environment global without binding helpers", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Shared Environment Agent", importKind: "zip" });
-    const revision = await store.recordSourceRevision({
-      projectId: project.id,
-      kind: "zip",
-      sourcePath: "/tmp/shared-environment-source",
-      summary: {},
-      envVars: [],
-      files: [],
-      schedules: [],
-    });
-    const deployment = await store.recordDeployment({
-      projectId: project.id,
-      sourceRevisionId: revision.id,
-      imageTag: "shared:environment",
-      containerName: "shared-environment",
-      internalPort: 3000,
-      hostPort: 42001,
-      runtimeKind: "docker",
-    });
     await Reflect.get(store, "saveSharedAgentEnvironment").call(store, {
       entries: [{ key: "OPENAI_API_KEY", kind: "secret", encryptedValue: "encrypted-key" }],
     });
-    const bindEnvironment = Reflect.get(store, "bindSharedAgentEnvironment");
-    const listProjectBindings = Reflect.get(store, "listProjectSharedAgentEnvironmentBindings");
-    const listAllBindings = Reflect.get(store, "listSharedAgentEnvironmentBindings");
-    const resolveEnvironment = Reflect.get(store, "resolveSharedAgentEnvironmentRecords");
-    const deleteBinding = Reflect.get(store, "deleteSharedAgentEnvironmentBinding");
 
-    expect(bindEnvironment).toBeTypeOf("function");
-    expect(listProjectBindings).toBeTypeOf("function");
-    expect(listAllBindings).toBeTypeOf("function");
-    expect(resolveEnvironment).toBeTypeOf("function");
-    expect(deleteBinding).toBeTypeOf("function");
+    expect(Reflect.get(store, "bindSharedAgentEnvironment")).toBeUndefined();
+    expect(Reflect.get(store, "listProjectSharedAgentEnvironmentBindings")).toBeUndefined();
+    expect(Reflect.get(store, "listSharedAgentEnvironmentBindings")).toBeUndefined();
+    expect(Reflect.get(store, "resolveSharedAgentEnvironmentRecords")).toBeUndefined();
+    expect(Reflect.get(store, "deleteSharedAgentEnvironmentBinding")).toBeUndefined();
+    await expect(store.getSharedAgentEnvironmentRecord()).resolves.toMatchObject({
+      revision: 1,
+      entries: [{ key: "OPENAI_API_KEY", encryptedValue: "encrypted-key" }],
+    });
 
     await expect(store.bindPlatformSecretProfile({
       profileId: SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
       projectId: project.id,
       deploymentId: null,
-      consumer: "agent-connection",
-    })).rejects.toThrow("cannot be used for Agent Connection credentials");
-
-    const projectBinding = await bindEnvironment.call(store, {
-      projectId: project.id,
-      deploymentId: null,
-    });
-    const deploymentBinding = await bindEnvironment.call(store, {
-      projectId: project.id,
-      deploymentId: deployment.id,
-    });
-    expect(projectBinding).toMatchObject({
-      projectId: project.id,
-      deploymentId: null,
-      environmentRevision: 1,
-    });
-    expect(projectBinding).not.toHaveProperty("profileId");
-    expect(projectBinding).not.toHaveProperty("profileName");
-    expect(projectBinding).not.toHaveProperty("consumer");
-    await expect(listProjectBindings.call(store, project.id)).resolves.toHaveLength(2);
-    await expect(listAllBindings.call(store)).resolves.toHaveLength(2);
-    await expect(resolveEnvironment.call(store, {
-      projectId: project.id,
-      deploymentId: deployment.id,
-    })).resolves.toEqual({
-      project: expect.objectContaining({ revision: 1 }),
-      deployment: expect.objectContaining({ revision: 1 }),
-    });
-    await expect(deleteBinding.call(store, project.id, deploymentBinding.id)).resolves.toMatchObject({
-      id: deploymentBinding.id,
-      deploymentId: deployment.id,
-    });
-    await expect(listProjectBindings.call(store, project.id)).resolves.toEqual([
-      expect.objectContaining({ id: projectBinding.id }),
-    ]);
+      consumer: "agent-runtime",
+    })).rejects.toThrow("cannot be bound");
   });
 });

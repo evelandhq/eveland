@@ -34,7 +34,6 @@ import type {
   RuntimeInstance,
   RuntimeInstanceStatus,
   SharedAgentEnvironment,
-  SharedAgentEnvironmentBinding,
   SharedAgentEnvironmentRecord,
   RuntimeKind,
   ScheduleRecord,
@@ -249,23 +248,6 @@ export interface SecretStore {
   listSecretRecords(projectId: string): Promise<SecretRecord[]>;
   saveSharedAgentEnvironment(input: SaveSharedAgentEnvironmentInput): Promise<SharedAgentEnvironment>;
   getSharedAgentEnvironmentRecord(): Promise<SharedAgentEnvironmentRecord | null>;
-  bindSharedAgentEnvironment(input: {
-    projectId: string;
-    deploymentId: string | null;
-  }): Promise<SharedAgentEnvironmentBinding>;
-  listProjectSharedAgentEnvironmentBindings(projectId: string): Promise<SharedAgentEnvironmentBinding[]>;
-  listSharedAgentEnvironmentBindings(): Promise<SharedAgentEnvironmentBinding[]>;
-  deleteSharedAgentEnvironmentBinding(
-    projectId: string,
-    bindingId: string,
-  ): Promise<SharedAgentEnvironmentBinding | null>;
-  resolveSharedAgentEnvironmentRecords(input: {
-    projectId: string;
-    deploymentId: string | null;
-  }): Promise<{
-    project: SharedAgentEnvironmentRecord | null;
-    deployment: SharedAgentEnvironmentRecord | null;
-  }>;
   savePlatformSecretProfile(input: SavePlatformSecretProfileInput): Promise<PlatformSecretProfile>;
   listPlatformSecretProfiles(): Promise<PlatformSecretProfile[]>;
   getPlatformSecretProfileRecord(profileId: string): Promise<PlatformSecretProfileRecord | null>;

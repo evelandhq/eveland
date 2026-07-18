@@ -263,20 +263,21 @@ briefly unavailable while its process restarts.
 
 The singleton Shared Agent Environment is stored in Postgres as AES-256-GCM ciphertext
 using the same `APP_SECRET_KEY`; it does not add another host environment variable or
-Compose secret. Only admins can change it or bind it to a Project/Deployment. At process
-start the worker resolves Project shared defaults < Deployment shared defaults < Project
-Secret < Eveland-reserved precedence, writes the final values only to the Docker process
+Compose secret. Only admins can change it, and it applies automatically to every Agent
+Deployment. At process start the worker resolves Shared Agent Environment < Project Secret
+< Eveland-reserved precedence, writes the final values only to the Docker process
 environment or the systemd adapter's root-owned `0600` `EnvironmentFile`, and adds every
 decrypted shared value to runtime/build diagnostic masking. Values never enter a Release,
 build layer, observer event, API response, Web payload, or worker configuration snapshot.
 
-Changing the shared environment or a binding queues deduplicated `restart_deployment`
-jobs only for affected `running`/`draining` targets. Removing a binding or clearing the
-environment also queues restart so an old process cannot retain deleted values. With no
-live target, the next deploy, restart, cold activation, or schedule activation reads the
-latest revision. Agent Connection credentials are separate and new configuration uses
+Changing or clearing the shared environment queues `restart_deployment` jobs for every
+`running`/`draining` Deployment so an old process cannot retain stale or deleted values.
+With no live target, the next deploy, restart, cold activation, or schedule activation reads
+the latest revision. Agent Connection credentials are separate and new configuration uses
 Project Secret references resolved per request. Existing named Profile runtime bindings
-and Agent Connection references remain readable during migration until replaced. Existing
+remain readable as compatibility overlays until replaced, but no supported API creates a
+binding for the Shared Agent Environment singleton. Existing Agent Connection references
+also remain readable during migration. Existing
 API/worker `APP_SECRET_KEY` values must continue to match; worker preflight and Compose
 topology otherwise require no new setting.
 
