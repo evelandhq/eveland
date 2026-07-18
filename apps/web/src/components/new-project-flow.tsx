@@ -9,24 +9,19 @@ import {
   ArrowRightIcon,
   CheckIcon,
   ChevronDownIcon,
-  CircleIcon,
   CopyIcon,
   EyeIcon,
   EyeOffIcon,
-  FileArchiveIcon,
-  GitBranchIcon,
   PlusIcon,
   RocketIcon,
   TerminalIcon,
   Trash2Icon,
-  XIcon,
 } from "lucide-react";
 import {
   inferProjectSlugFromGitUrl,
   normalizeGitHttpHost,
   PROJECT_SLUG_MAX_LENGTH,
   PROJECT_SLUG_PATTERN,
-  slugifyProjectName,
 } from "@eveland/core/ids";
 import type { PublicGitCredential, SourcePreflight } from "@eveland/core/contracts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -41,12 +36,24 @@ import { getGitCredentials } from "@/lib/client-api";
 import type { AgentEndpoints, Job, LogLine, Project } from "@/lib/api";
 import { getNewProjectProgress, validateNewProjectEnvironmentVariables } from "@/lib/new-project";
 import { cn } from "@/lib/utils";
+import {
+  browserGet,
+  browserGetOptional,
+  readError,
+  safeProjectSlug,
+  uploadZipPreflight,
+} from "./new-project-flow-api";
+import {
+  DeploymentStage,
+  SourceSummary,
+  StepIndicator,
+  type NewProjectSourceKind as SourceKind,
+  type NewProjectStep as Step,
+} from "./new-project-flow-parts";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.";
 
-type Step = "source" | "configure" | "deploy";
-type SourceKind = "git" | "zip";
 type Availability = "idle" | "checking" | "available" | "unavailable" | "error";
 type EnvironmentVariableDraft = { id: number; key: string; value: string; visible: boolean };
 
@@ -720,99 +727,4 @@ export function NewProjectFlow() {
       </AnimatePresence>
     </div>
   );
-}
-
-function StepIndicator({ step }: { step: Step }) {
-  const current = step === "source" ? 0 : step === "configure" ? 1 : 2;
-  return (
-    <ol className="grid grid-cols-3 border-b pb-4 text-xs text-muted-foreground" aria-label="Project creation progress">
-      {["Source", "Configure", "Deploy"].map((label, index) => (
-        <li key={label} className={cn("flex items-center gap-2", index === 1 && "justify-center", index === 2 && "justify-end", index <= current && "font-medium text-foreground")}>
-          {index < current ? <CheckIcon className="size-3.5" /> : <CircleIcon className="size-3.5" />}
-          {label}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function SourceSummary({
-  sourceKind,
-  gitUrl,
-  archive,
-  preflight,
-}: {
-  sourceKind: SourceKind;
-  gitUrl: string;
-  archive: File | null;
-  preflight?: SourcePreflight | null;
-}) {
-  const eveVersion = typeof preflight?.summary?.eveVersion === "string" ? preflight.summary.eveVersion : null;
-  return (
-    <div className="flex items-center gap-3 rounded-lg bg-muted px-4 py-3">
-      {sourceKind === "git" ? <GitBranchIcon className="size-5" /> : <FileArchiveIcon className="size-5" />}
-      <div className="min-w-0">
-        <p className="text-xs text-muted-foreground">
-          {preflight?.status === "completed"
-            ? `Validated Eve ${eveVersion ?? "project"}`
-            : sourceKind === "git" ? "Importing from Git" : "Uploading Zip source"}
-        </p>
-        <p className="truncate text-sm font-medium">{sourceKind === "git" ? gitUrl : archive?.name}</p>
-      </div>
-    </div>
-  );
-}
-
-function DeploymentStage({ label, complete, failed, active }: { label: string; complete: boolean; failed: boolean; active: boolean }) {
-  return (
-    <li className="flex items-center justify-between rounded-lg border px-4 py-3">
-      <span className="flex items-center gap-2 text-sm font-medium">
-        {failed ? <XIcon className="size-4 text-destructive" /> : complete ? <CheckIcon className="size-4 text-primary" /> : active ? <Spinner /> : <CircleIcon className="size-4 text-muted-foreground" />}
-        {label}
-      </span>
-      <Badge variant={failed ? "destructive" : complete ? "default" : "secondary"}>
-        {failed ? "Failed" : complete ? "Complete" : active ? "Running" : "Waiting"}
-      </Badge>
-    </li>
-  );
-}
-
-async function uploadZipPreflight(archive: File): Promise<Response> {
-  const form = new FormData();
-  form.set("archive", archive);
-  return fetch(`${apiBaseUrl}/source-preflights`, {
-    method: "POST",
-    credentials: "include",
-    body: form,
-  });
-}
-
-async function browserGet<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, { credentials: "include", cache: "no-store" });
-  if (!response.ok) throw new Error(await readError(response, `Request failed with ${response.status}.`));
-  return response.json() as Promise<T>;
-}
-
-async function browserGetOptional<T>(path: string): Promise<T | null> {
-  const response = await fetch(`${apiBaseUrl}${path}`, { credentials: "include", cache: "no-store" });
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(await readError(response, `Request failed with ${response.status}.`));
-  return response.json() as Promise<T>;
-}
-
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: string; detail?: string; issues?: Array<{ message?: string }> };
-    return body.detail ?? body.issues?.[0]?.message ?? body.error ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function safeProjectSlug(value: string): string | null {
-  try {
-    return slugifyProjectName(value);
-  } catch {
-    return null;
-  }
 }

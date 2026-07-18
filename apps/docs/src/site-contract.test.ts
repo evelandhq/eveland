@@ -104,7 +104,13 @@ describe("Eveland public website contract", () => {
   test("uses the light editorial visual system across the homepage and docs", () => {
     const page = source("./app/[lang]/page.tsx");
     const stage = source("./components/runtime-stage.tsx");
-    const styles = source("./app/global.css");
+    const globalStyles = source("./app/global.css");
+    const styles = [
+      globalStyles,
+      source("./app/marketing.css"),
+      source("./app/documentation.css"),
+      source("./app/responsive.css"),
+    ].join("\n");
 
     expect(page).toContain("<RuntimeStage");
     expect(existsSync(path("./components/runtime-stage.tsx"))).toBe(true);
@@ -115,6 +121,7 @@ describe("Eveland public website contract", () => {
     expect(styles).toContain("--fd-background: #ffffff");
     expect(styles).toContain(".docs-shell");
     expect(styles).not.toContain("--signal: #66e68b");
+    expect(globalStyles).toContain('@import "./documentation.css"');
   });
 
   test("ships discovery endpoints for people, search engines, and agents", () => {

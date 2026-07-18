@@ -5,16 +5,44 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 ## Current MVP Slice
 
 - `packages/core`: dependency-free Eveland contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths. It intentionally has no root barrel so browser-safe imports cannot accidentally pull in Node-only code.
-- `packages/db`: Drizzle schema and migrations, Postgres repository, memory repository, mappers, and store factory shared by API and worker.
+- `packages/db`: Drizzle schema and migrations, domain-oriented Postgres and memory stores, mappers, and the store factory shared by API and worker.
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
 - `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
 - `packages/agent-auth`: Node-only generic Agent Connection registry plus Authorization Code + PKCE OIDC acquisition, encrypted transaction/credential state, verification, refresh, and Basic/Bearer/Vercel-OIDC/custom-header materialization.
 - `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
-- `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Persistence is supplied by `packages/db`.
-- `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private.
-- `apps/worker`: Docker and systemd runtime adapters, Postgres job consumer, and worker processors for import/build/restart/schedule job state transitions.
+- `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Its thin app entrypoint composes focused route modules; persistence is supplied by `packages/db`.
+- `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private. Pure Host/header/affinity/target rules are separated from request lifecycle orchestration.
+- `apps/worker`: Docker and systemd runtime adapters, Postgres job consumer, and domain processors for import/build/restart/schedule job state transitions, with queue fencing kept separate from concrete job execution.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4. Its account menu opens profile/password settings; System settings owns member management and an About view that compares Web/API build identity and gives admins a masked, component-aware runtime configuration diagnostic.
 - `apps/docs`: Bilingual public website and documentation for `eveland.ai`, built with Next.js and Fumadocs. It keeps the marketing site separate from the authenticated control panel and publishes English and Chinese routes, search, sitemap, and `llms.txt`.
+
+## Contributor Code Map
+
+The main entrypoints are composers rather than homes for every implementation:
+
+- Database contracts live in `packages/db/src/store-domains.ts`. Add behavior
+  to the matching `memory-*-store.ts` and `postgres-*-store.ts` modules;
+  `store.ts`, `memory-store.ts`, and `postgres-store.ts` compose the public
+  Store.
+- API route families live in `apps/api/src/app-*-routes.ts`, request schemas in
+  `app-schemas.ts`, and reusable protocol/request helpers in `app-support.ts`.
+  `app.ts` owns cross-cutting auth services, middleware, and composition.
+- Worker queue claiming, heartbeats, and terminal fencing live in
+  `apps/worker/src/jobs/process.ts`. Import/build and runtime job execution are
+  split across `process-job.ts` and `process-runtime-job.ts`; shared runtime,
+  secret, filesystem, and networking helpers live in `process-support.ts`.
+- Gateway request/response lifecycle handling lives in
+  `apps/gateway/src/app.ts`; canonical Host validation, trusted forwarding
+  headers, affinity cookies, and target selection live in
+  `gateway-routing.ts`.
+- The new-project screen keeps orchestration in
+  `apps/web/src/components/new-project-flow.tsx`, with presentation and browser
+  request helpers in adjacent `new-project-flow-*` modules.
+- The docs global stylesheet imports focused marketing, documentation, and
+  responsive stylesheets from `apps/docs/src/app` in cascade order.
+
+Large test suites are split by behavior. Reuse colocated `*.test-support.ts`
+fixtures rather than duplicating setup when adding coverage.
 
 ## Local Development
 

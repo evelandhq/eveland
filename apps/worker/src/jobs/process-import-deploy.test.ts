@@ -1,0 +1,654 @@
+import { describe, expect, test, vi } from "vitest";
+import { createMemoryStore, type Store } from "@eveland/db";
+import {
+  allocateAvailableHostPort,
+  cleanupExpiredSourcePreflights,
+  invalidateGatewayRouteCache,
+  processNextJob,
+  processNextSourcePreflight,
+  runWithJobHeartbeat,
+  resolveObserverOutboxDirs,
+  resolveSandboxCacheDirs,
+  type ScheduleDispatchInput,
+} from "./process.js";
+import { processSafeName, type RuntimeAdapter } from "../runtime/types.js";
+import { deriveProjectWorkflowUrl } from "../runtime/workflow-world-bootstrap.js";
+import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { encryptSecretValue } from "@eveland/core/server/secrets";
+import type { DeploymentRecord } from "@eveland/core/contracts";
+import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
+import { createFixtureEveProject } from "./process.test-support.js";
+
+describe("processNextJob", () => {
+  test("processes import_source jobs into imported project state", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Import Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "imported",
+      sourceRevisionId: expect.stringMatching(/^src_/),
+    });
+    await expect(
+      store.getCurrentSourceRevision(project.id),
+    ).resolves.toMatchObject({ summary: { eveVersion: "0.24.2" } });
+    await expect(
+      store.getSourceFile(project.id, "agent/instructions.md"),
+    ).resolves.toMatchObject({ content: "You are concise." });
+    await expect(store.listLogs(project.id, "build")).resolves.toEqual([
+      expect.objectContaining({
+        line: "Source import completed for import-agent.",
+      }),
+    ]);
+    // Without a deploy flag the import must not chain a build_deploy job.
+    await expect(store.claimNextJob("worker-idle")).resolves.toBeNull();
+  });
+
+  test("saves a pending user Git credential only after a source import succeeds", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Private GitLab Agent",
+      importKind: "git",
+      gitUrl: "https://gitlab.example.com/group/agent.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    await store.enqueueJob(project.id, "import_source", {
+      importKind: "git",
+      sourcePath,
+      gitCredential: {
+        userId: "user_one",
+        host: "gitlab.example.com",
+        encryptedToken: "encrypted-token",
+        persistAfterImport: true,
+      },
+    });
+
+    await expect(
+      store.getGitCredential("user_one", "gitlab.example.com"),
+    ).resolves.toBeNull();
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+    await expect(
+      store.getGitCredential("user_one", "gitlab.example.com"),
+    ).resolves.toMatchObject({
+      encryptedToken: "encrypted-token",
+    });
+    await expect(
+      store.listProjectJobs(project.id, { type: "import_source", limit: 1 }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        payload: expect.not.objectContaining({
+          gitCredential: expect.anything(),
+        }),
+      }),
+    ]);
+  });
+
+  test("removes a pending Git credential from a failed import job without saving it", async () => {
+    const store = createMemoryStore();
+    const invalidSourcePath = await mkdtemp(
+      path.join(os.tmpdir(), "eveland-invalid-git-import-"),
+    );
+    const project = await store.createProject({
+      name: "Failed Private GitLab Agent",
+      importKind: "git",
+      gitUrl: "https://gitlab.example.com/group/agent.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    await store.enqueueJob(project.id, "import_source", {
+      importKind: "git",
+      sourcePath: invalidSourcePath,
+      gitCredential: {
+        userId: "user_one",
+        host: "gitlab.example.com",
+        encryptedToken: "encrypted-token",
+        persistAfterImport: true,
+      },
+    });
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+    await expect(
+      store.getGitCredential("user_one", "gitlab.example.com"),
+    ).resolves.toBeNull();
+    await expect(
+      store.listProjectJobs(project.id, { type: "import_source", limit: 1 }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        status: "failed",
+        payload: expect.not.objectContaining({
+          gitCredential: expect.anything(),
+        }),
+      }),
+    ]);
+  });
+
+  test("completes a job with its claimed attempt token", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    await store.createProject({
+      name: "Fenced Completion Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const completeJob = vi.spyOn(store, "completeJob");
+
+    await processNextJob(store, "worker-a");
+
+    expect(completeJob).toHaveBeenCalledWith(expect.any(String), 1);
+  });
+
+  test("chains a build_deploy job after a deploy-flagged import", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "CD Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const initialImport = await store.claimNextJob("worker-a");
+    await store.completeJob(initialImport!.id);
+    await store.enqueueJob(project.id, "import_source", {
+      importKind: "zip",
+      sourcePath,
+      deployAfterImport: true,
+    });
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+
+    const chained = await store.claimNextJob("worker-b");
+    expect(chained).toMatchObject({ type: "build_deploy", status: "running" });
+    await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
+      expect.objectContaining({
+        line: expect.stringContaining("Queued deploy of the latest source"),
+      }),
+    );
+  });
+
+  test("a failed re-sync import leaves an already-running deployment's status untouched", async () => {
+    const store = createMemoryStore();
+    const badSource = await mkdtemp(path.join(os.tmpdir(), "eveland-empty-"));
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Live Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/agent.git",
+    });
+    const initialImport = await store.claimNextJob("worker-a");
+    await store.completeJob(initialImport!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/live:rel_1",
+      containerName: "eveland-live",
+      internalPort: 3000,
+      hostPort: 41010,
+      runtimeKind: "docker",
+    });
+    // A re-sync whose source fails to scan (here, an empty directory) must not
+    // knock the running deployment into a failed state.
+    await store.enqueueJob(project.id, "import_source", {
+      importKind: "git",
+      sourcePath: badSource,
+    });
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "failed",
+      deploymentStatus: "running",
+    });
+  });
+
+  test("returns false when no queued job exists", async () => {
+    const store = createMemoryStore();
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(false);
+  });
+
+  test("builds and runs the current source revision as a deployment", async () => {
+    const secretKey = "eveland-test-secret-key-00000000";
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Deploy Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: ["OPENAI_API_KEY"],
+      files: [],
+      schedules: [],
+    });
+    await store.upsertSecret(
+      project.id,
+      "OPENAI_API_KEY",
+      JSON.stringify(encryptSecretValue("sk-test-123456", secretKey)),
+    );
+    await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        appSecretKey: secretKey,
+        workflowPostgresUrl: "",
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            runtimeCalls.push({
+              name: "buildRelease",
+              input: {
+                sourcePath: input.sourcePath,
+                projectId: input.projectId,
+              },
+            });
+            return {
+              releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`,
+              log: "build ok",
+              schedulerDefinitions: [
+                {
+                  key: "daily",
+                  kind: "markdown" as const,
+                  cron: "0 8 * * *",
+                  sourcePath: "agent/schedules/daily.md",
+                  definitionHash: "daily-v1",
+                  modulePath: "agent/schedules/daily.ts",
+                },
+              ],
+            };
+          },
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            runtimeCalls.push({ name: "stopProcess", input: { processName } });
+          },
+        },
+        allocateHostPort() {
+          return 41001;
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "deployed",
+      deploymentStatus: "running",
+      sourceRevisionId: revision.id,
+      releaseId: expect.stringMatching(/^rel_/),
+      deploymentId: expect.stringMatching(/^dep_/),
+    });
+    expect(runtimeCalls).toEqual([
+      {
+        name: "buildRelease",
+        input: {
+          sourcePath,
+          projectId: project.id,
+        },
+      },
+      {
+        name: "startProcess",
+        input: expect.objectContaining({
+          processName: expect.stringMatching(
+            new RegExp(`^eveland-${project.id.toLowerCase()}-dep_`),
+          ),
+          releaseRef: `eveland/${project.id.toLowerCase()}:rel`,
+          port: 41001,
+          env: expect.objectContaining({
+            OPENAI_API_KEY: "sk-test-123456",
+            EVELAND_DEPLOYMENT_ID: expect.stringMatching(/^dep_/),
+          }),
+          observerOutboxDir: expect.stringContaining(
+            path.join("observer", project.id.toLowerCase()),
+          ),
+        }),
+      },
+    ]);
+    await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
+      expect.objectContaining({ line: "build ok" }),
+    );
+    await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
+      expect.objectContaining({
+        line: "Deployment running on 127.0.0.1:41001.",
+      }),
+    );
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
+      { runtimeKind: "docker" },
+    );
+    await expect(
+      store.listProjectScheduleVersions(project.id, revision.id),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        schedule: expect.objectContaining({ key: "daily" }),
+        version: expect.objectContaining({
+          kind: "markdown",
+          cron: "0 8 * * *",
+          definitionHash: "daily-v1",
+        }),
+      }),
+    ]);
+  });
+
+  test("selects pnpm when the imported source has a pnpm lockfile", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    await writeFile(
+      path.join(sourcePath, "pnpm-lock.yaml"),
+      "lockfileVersion: '9.0'\n",
+    );
+    const project = await store.createProject({
+      name: "Pnpm Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    let selectedPackageManager: unknown;
+    await expect(
+      processNextJob(store, "worker-a", {
+        workflowPostgresUrl: "",
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            selectedPackageManager = input.commandContext.packageManager;
+            return { releaseRef: "eveland/pnpm:rel", log: "build ok" };
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {},
+        },
+        allocateHostPort() {
+          return 41071;
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(selectedPackageManager).toBe("pnpm");
+  });
+
+  test("deploys a concurrent preview without stopping current or reusing its host port", async () => {
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Redeploy Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const current = await store.recordDeployment({
+      releaseId: "rel_old",
+      deploymentId: "dep_old",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_old",
+      containerName: "eveland-old-container",
+      internalPort: 3000,
+      hostPort: 41077,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            runtimeCalls.push({
+              name: "buildRelease",
+              input: {
+                sourcePath: input.sourcePath,
+                projectId: input.projectId,
+              },
+            });
+            return {
+              releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`,
+              log: "",
+            };
+          },
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            runtimeCalls.push({ name: "stopProcess", input: { processName } });
+          },
+        },
+        allocateHostPort: () => Promise.resolve(41078),
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeCalls).not.toContainEqual({
+      name: "stopProcess",
+      input: { processName: current.containerName },
+    });
+    expect(runtimeCalls).toContainEqual({
+      name: "startProcess",
+      input: expect.objectContaining({ port: 41078 }),
+    });
+    await expect(store.listDeployments(project.id)).resolves.toHaveLength(2);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      deploymentId: "dep_old",
+      releaseId: "rel_old",
+    });
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
+      { runtimeKind: "docker" },
+    );
+  });
+
+  test("deploys across runtime kinds without touching the old runtime process", async () => {
+    const activeRuntimeCalls: Array<{ name: string; input: unknown }> = [];
+    const oldRuntimeStopCalls: Array<{ processName: string }> = [];
+    let runtimeForKindCalledWith: "docker" | "systemd" | null = null;
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Cross Kind Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // The current deployment was made by systemd; the worker's active runtime
+    // below is docker. Only the systemd adapter may stop the systemd unit.
+    const current = await store.recordDeployment({
+      releaseId: "rel_old",
+      deploymentId: "dep_old",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_old",
+      containerName: "eveland-old-systemd-unit",
+      internalPort: 3000,
+      hostPort: 41078,
+      runtimeKind: "systemd",
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    const oldKindAdapter: RuntimeAdapter = {
+      name: "systemd",
+      async buildRelease() {
+        throw new Error(
+          "the old deployment's adapter must never be asked to build",
+        );
+      },
+      async startProcess() {
+        throw new Error(
+          "the old deployment's adapter must never be asked to start",
+        );
+      },
+      async stopProcess(processName) {
+        oldRuntimeStopCalls.push({ processName });
+      },
+    };
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            return {
+              releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`,
+              log: "",
+            };
+          },
+          async startProcess(input) {
+            activeRuntimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            activeRuntimeCalls.push({
+              name: "stopProcess",
+              input: { processName },
+            });
+          },
+        },
+        runtimeForKind(kind) {
+          runtimeForKindCalledWith = kind;
+          return oldKindAdapter;
+        },
+        allocateHostPort: () => Promise.resolve(41079),
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeForKindCalledWith).toBeNull();
+    expect(oldRuntimeStopCalls).toEqual([]);
+    expect(activeRuntimeCalls.some((call) => call.name === "stopProcess")).toBe(
+      false,
+    );
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
+      { id: current.id, runtimeKind: "systemd" },
+    );
+  });
+
+  test("archives only an unprotected artifact outside the recent-three retention window", async () => {
+    const store = createMemoryStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Retention Worker",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const versions: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      versions.push(
+        await store.recordDeployment({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          imageTag: `image:v${index}`,
+          containerName: `process-v${index}`,
+          internalPort: 3000,
+          hostPort: 41200 + index,
+          runtimeKind: "docker",
+        }),
+      );
+    }
+    await store.ensureDeploymentRoutes(
+      project.id,
+      versions[3]!.id,
+      "agent.localhost",
+    );
+    await store.promoteDeployment(project.id, versions[3]!.id);
+    await store.enqueueJob(project.id, "archive_deployment", {
+      deploymentId: versions[0]!.id,
+    });
+    const calls: string[] = [];
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("not used");
+          },
+          async startProcess() {
+            throw new Error("not used");
+          },
+          async stopProcess(name) {
+            calls.push(`stop:${name}`);
+          },
+          async removeRelease(ref) {
+            calls.push(`remove:${ref}`);
+          },
+        },
+      }),
+    ).resolves.toBe(true);
+
+    expect(calls).toEqual(["stop:process-v0", "remove:image:v0"]);
+    await expect(store.getDeployment(versions[0]!.id)).resolves.toMatchObject({
+      status: "archived",
+    });
+    await expect(store.getDeployment(versions[1]!.id)).resolves.toMatchObject({
+      status: "running",
+    });
+  });
+});
