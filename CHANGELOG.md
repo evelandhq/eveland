@@ -4,6 +4,24 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.5.0](https://github.com/evelandhq/eveland/compare/v0.4.0...v0.5.0) (2026-07-18)
+
+
+### Features
+
+* add configurable Agent authentication ([#86](https://github.com/evelandhq/eveland/issues/86)) ([b3f6644](https://github.com/evelandhq/eveland/commit/b3f6644dcd740f813d14366fda9f69c6d0e55b33))
+* add generic Agent OIDC credentials ([a995f19](https://github.com/evelandhq/eveland/commit/a995f19c7e88a7cf366cf1f818d5f3205523f85d))
+* add platform secret profiles ([5c42bcc](https://github.com/evelandhq/eveland/commit/5c42bccc0a78edf2c64a275974bfc6a74febe3d7))
+* improve project log viewer ([#81](https://github.com/evelandhq/eveland/issues/81)) ([f829850](https://github.com/evelandhq/eveland/commit/f8298503b553a71b1b8d317654b6233b08a4fa0f))
+* refresh web theme ([#83](https://github.com/evelandhq/eveland/issues/83)) ([74272be](https://github.com/evelandhq/eveland/commit/74272be2656a36ede86e4dc76743261ca8c4b301))
+* support Eve 0.24.x and 0.25.x ([0d17b60](https://github.com/evelandhq/eveland/commit/0d17b60d3799b349832a1efe250fb157b4aea9d6))
+* upgrade Eve to 0.24.6 and add cancellation ([#85](https://github.com/evelandhq/eveland/issues/85)) ([5bdcf94](https://github.com/evelandhq/eveland/commit/5bdcf947eff4a64a33f1b92dff2bf9bb0956b15c))
+
+
+### Bug Fixes
+
+* respect pnpm lockfiles in release builds ([4053ad5](https://github.com/evelandhq/eveland/commit/4053ad50d1aa81142f686b1eeaf678d94b95cb61))
+
 ## [0.4.0](https://github.com/evelandhq/eveland/compare/v0.3.0...v0.4.0) (2026-07-17)
 
 
