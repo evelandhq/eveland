@@ -29,6 +29,7 @@ import type {
   SourcePreflightRecord,
   SourceRevision,
 } from "@eveland/core/contracts";
+import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
 
 export type MemoryState = {
   projects: Project[];
@@ -60,4 +61,6 @@ export type MemoryState = {
   scheduleRuns: ScheduleRun[];
   runtimeInstances: RuntimeInstance[];
   activationLeases: ActivationLease[];
+  workerHeartbeats: WorkerHeartbeat[];
+  hostMetricSamples: HostMetricSample[];
 };

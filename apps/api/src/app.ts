@@ -38,6 +38,7 @@ import { registerProjectRoutes } from "./app-project-routes.js";
 import { registerQueryRoutes } from "./app-query-routes.js";
 import { registerSecretRoutes } from "./app-secret-routes.js";
 import type { AppOptions } from "./app-types.js";
+import { collectInstanceHealth, probeGatewayHealth } from "./instance-health.js";
 export type { AppOptions } from "./app-types.js";
 import {
   agentAuthFailureStatus,
@@ -321,6 +322,23 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         return c.json(await options.configurationDiagnostics());
       } catch {
         return c.json({ error: "Configuration diagnostics unavailable" }, 503);
+      }
+    });
+
+    app.get("/system/health", async (c) => {
+      if (c.get("principal").role !== "admin") return c.json({ error: "Admin access required" }, 403);
+      const requestedHours = Number(c.req.query("hours") ?? 24);
+      const historyHours = Number.isFinite(requestedHours)
+        ? Math.max(1, Math.min(168, Math.round(requestedHours)))
+        : 24;
+      try {
+        return c.json(await collectInstanceHealth(store, {
+          historyHours,
+          gatewayHealth: options.gatewayHealth ?? (() => probeGatewayHealth(process.env)),
+          collectorHealth: () => options.collectorHealth?.() ?? null,
+        }));
+      } catch {
+        return c.json({ error: "Instance health diagnostics unavailable" }, 503);
       }
     });
 

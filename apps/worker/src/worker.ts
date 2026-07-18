@@ -11,11 +11,13 @@ import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { reconcileRuntimeInstances, recoverStartingRuntimeInstances } from "./runtime/activation-manager.js";
 import { planDueSchedules } from "./scheduler/planner.js";
+import { createWorkerTelemetry } from "./runtime/worker-telemetry.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
 const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_MS ?? 3_600_000);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
+const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
 
@@ -31,7 +33,7 @@ try {
 }
 
 await writeConfigurationSnapshotFile(
-  process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+  dataDir,
   createConfigurationSnapshot("worker", process.env),
 ).catch(() => console.warn("Worker configuration diagnostics are unavailable."));
 
@@ -42,7 +44,28 @@ console.log(
   })}`,
 );
 
+const telemetry = createWorkerTelemetry(storeFactory.store, {
+  workerId,
+  dataDir,
+  intervalMs,
+  metricIntervalMs: Number(process.env.EVELAND_HOST_METRIC_INTERVAL_MS ?? 60_000),
+  retentionMs: Number(process.env.EVELAND_HOST_METRIC_RETENTION_MS ?? 2_592_000_000),
+  onMetricError: (error) => console.warn("Worker host metrics are unavailable:", error instanceof Error ? error.message : String(error)),
+});
+let lastTickDurationMs = 0;
+let lastTickError: unknown | null = null;
+let telemetryPublishing = false;
+
+function publishTelemetry() {
+  if (telemetryPublishing) return;
+  telemetryPublishing = true;
+  telemetry.publishTick({ durationMs: lastTickDurationMs, error: lastTickError })
+    .catch((error: unknown) => console.warn("Worker heartbeat is unavailable:", error instanceof Error ? error.message : String(error)))
+    .finally(() => { telemetryPublishing = false; });
+}
+
 async function tick() {
+  const startedAt = Date.now();
   try {
     await Promise.all([
       planDueSchedules(storeFactory.store, {
@@ -76,15 +99,21 @@ async function tick() {
       processNextSourcePreflight(storeFactory.store, workerId),
       processNextJob(storeFactory.store, workerId),
     ]);
+    lastTickError = null;
   } catch (error) {
+    lastTickError = error;
     console.error(error);
+  } finally {
+    lastTickDurationMs = Date.now() - startedAt;
   }
 }
 
 void tick();
+publishTelemetry();
 const timer = setInterval(() => {
   void tick();
 }, intervalMs);
+const telemetryTimer = setInterval(publishTelemetry, intervalMs);
 
 // Separate cadence from tick(): host process listing is comparatively heavy
 // and orphan cleanup is not latency-sensitive. Set the interval to 0 to
@@ -104,6 +133,7 @@ if (orphanSweepIntervalMs > 0) {
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     clearInterval(timer);
+    clearInterval(telemetryTimer);
     if (orphanTimer) clearInterval(orphanTimer);
     void storeFactory.close().finally(() => process.exit(0));
   });

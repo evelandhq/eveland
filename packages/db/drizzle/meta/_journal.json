@@ -155,6 +155,13 @@
       "when": 1784306569221,
       "tag": "0021_clean_vivisector",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784378096018,
+      "tag": "0022_curly_excalibur",
+      "breakpoints": true
     }
   ]
 }

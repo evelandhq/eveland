@@ -166,6 +166,26 @@ Gateway configuration 只能通过现有 service-authenticated `/internal/*` 边
 Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：前者标识控制面
 软件本身，后者仍表示某个导入 Agent 的不可变构建产物与运行目标。
 
+#### Instance Health (/settings/health)
+
+Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“当前是否可用”与
+“是否正在接近容量风险”分开呈现，并至少展示：
+
+* API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间
+* Worker 持续 heartbeat；启动时配置 snapshot 不能替代在线状态
+* Worker 宿主机的 CPU、load、可用内存、`EVELAND_DATA_DIR` 所在文件系统容量与 inode
+* queued/running Job 数量、最老 queued Job，以及 RuntimeInstance 状态分布
+* 24 小时与 7 天趋势；有足够增长历史时给出磁盘预计耗尽天数
+
+Worker 是唯一采集宿主机指标的特权组件；它把脱敏后的 heartbeat 与 metric sample 写入
+Postgres，API 只读取并聚合，Web 只读展示。默认每 60 秒采样、保留 30 天，并每日清理过期
+sample。Worker heartbeat 独立于长时间 build/deploy Job 持续发布，不能因为 Job 正在执行而
+被误判离线。`stopped` RuntimeInstance 是正常 scale-to-zero 状态，不得单独视为故障；
+Collector delayed/degraded 使实例显示降级，但不等价于 Agent Traffic 已中断。
+
+页面内风险提示不能声称覆盖整机断电：服务器完全失联仍需要外部监控轮询公开的 API 与
+Gateway `/health`。Instance Health 不提供 shell、systemd restart 或其他宿主机写操作。
+
 ---
 
 ### 新建项目 (/new)

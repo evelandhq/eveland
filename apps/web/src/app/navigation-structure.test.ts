@@ -52,6 +52,38 @@ describe("web application shell", () => {
     expect(about).toContain("Secrets are never returned")
   })
 
+  test("provides an administrator instance health and capacity workspace", () => {
+    const healthUrl = new URL("./settings/health/page.tsx", import.meta.url)
+    const navigation = source("../lib/navigation.ts")
+    const serverApi = source("../lib/server-api.ts")
+
+    expect(navigation).toContain("'/settings/health'")
+    expect(navigation).toContain("'Instance health'")
+    expect(serverApi).toContain("export const getInstanceHealth")
+    expect(existsSync(fileURLToPath(healthUrl))).toBe(true)
+    if (!existsSync(fileURLToPath(healthUrl))) return
+
+    const health = source("./settings/health/page.tsx")
+    expect(health).toContain("getCurrentMember")
+    expect(health).toContain('currentMember.role !== "admin"')
+    expect(health).toContain("Current risks")
+    expect(health).toContain("Components")
+    expect(health).toContain("Capacity")
+    expect(health).toContain("Workload")
+    expect(health).toContain("<CapacityProgress")
+    expect(health).toContain("<CapacityTrend")
+    expect(health).toContain("hours={historyHours}")
+
+    const capacityProgressUrl = new URL("../components/capacity-progress.tsx", import.meta.url)
+    expect(existsSync(fileURLToPath(capacityProgressUrl))).toBe(true)
+    if (existsSync(fileURLToPath(capacityProgressUrl))) {
+      const capacityProgress = source("../components/capacity-progress.tsx")
+      expect(capacityProgress).toContain('"use client"')
+      expect(capacityProgress).toContain("<Progress")
+      expect(capacityProgress).toContain("<ProgressValue")
+    }
+  })
+
   test("renders project navigation as a shadcn sidebar menu", () => {
     const projectNav = source("../components/project-nav.tsx")
 

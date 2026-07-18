@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
+import type { InstanceHealthReport } from "@eveland/core/instance-health";
 import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
 import type {
   PublicGitCredential,
@@ -66,6 +67,8 @@ export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invi
 export const getApiBuildInfo = () => apiGet<{ ok: true } & EvelandBuildInfo>("/health");
 export const getSystemConfigurationDiagnostics = () =>
   apiGet<SystemConfigurationDiagnostics>("/system/configuration");
+export const getInstanceHealth = (hours = 24) =>
+  apiGet<InstanceHealthReport>(`/system/health?hours=${encodeURIComponent(hours)}`);
 export const getGitCredentials = () =>
   apiGet<{ credentials: PublicGitCredential[] }>("/git-credentials").then((data) => data.credentials);
 export const getSharedAgentEnvironment = () =>

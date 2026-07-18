@@ -1,6 +1,7 @@
 import { createMemoryAgentAuthStore } from "./memory-agent-auth-store.js";
 import { createMemoryDeploymentStore } from "./memory-deployment-store.js";
 import { createMemoryJobStore } from "./memory-job-store.js";
+import { createMemoryInstanceHealthStore } from "./memory-instance-health-store.js";
 import { createMemoryLogStore } from "./memory-log-store.js";
 import { createMemoryProjectSourceStore } from "./memory-project-source-store.js";
 import { createMemoryRoutingStore } from "./memory-routing-store.js";
@@ -45,6 +46,8 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     scheduleRuns: initialState?.scheduleRuns ?? [],
     runtimeInstances: initialState?.runtimeInstances ?? [],
     activationLeases: initialState?.activationLeases ?? [],
+    workerHeartbeats: initialState?.workerHeartbeats ?? [],
+    hostMetricSamples: initialState?.hostMetricSamples ?? [],
   };
 
   const store: Store = {
@@ -57,6 +60,7 @@ export function createMemoryStore(initialState?: Partial<MemoryState>): Store {
     ...createMemorySessionStore(state),
     ...createMemoryScheduleStore(state),
     ...createMemoryRuntimeStore(state),
+    ...createMemoryInstanceHealthStore(state),
     ...createMemoryLogStore(state),
   };
   return store;
