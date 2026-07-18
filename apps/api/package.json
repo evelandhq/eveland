@@ -11,7 +11,7 @@
     "db:migrate": "pnpm --filter @eveland/db db:migrate",
     "db:push": "pnpm --filter @eveland/db db:push",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --maxWorkers=4 --testTimeout=30000"
+    "test": "vitest run --maxWorkers=2 --testTimeout=30000"
   },
   "dependencies": {
     "@eveland/agent-auth": "workspace:*",

@@ -18,7 +18,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --maxWorkers=4 --testTimeout=30000"
+    "test": "vitest run --maxWorkers=2 --testTimeout=30000"
   },
   "dependencies": {
     "@eveland/core": "workspace:*",
