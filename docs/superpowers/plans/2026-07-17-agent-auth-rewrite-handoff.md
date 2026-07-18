@@ -293,8 +293,8 @@ Eveland 不负责该 package 的版本、环境变量 schema、provider 文档�
 package 验证 opaque access token 的 UserInfo 并建立 Eve caller。`@jinshuju/eve-oidc@0.1.0` 已通过
 npm maintainer 2FA 首次公开发布；registry `latest`、public access、repository metadata，以及从全新
 临时目录安装后导入 `jinshujuOidc()` 均已验证。后续版本使用该仓库 `publish.yml` 的 npm trusted
-publisher；workflow 已合并，npm trust binding 仍等待 maintainer security-key 确认，不保存长期
-write token。
+publisher；GitHub repository、workflow 与 publish permission binding 已通过 maintainer
+security-key 配置完成，不保存长期 write token。
 
 ## 9. 不进行源码自动推断
 
