@@ -1,0 +1,609 @@
+import type { DeploymentStatus } from "@eveland/core/contracts";
+import { claimDeploymentKey, createId } from "@eveland/core/ids";
+import { validateRouteTargets } from "@eveland/core/routing";
+import { getNextRunAt } from "@eveland/core/schedules";
+import {
+  createEveVersionInfo,
+  readDeclaredEveVersion,
+} from "@eveland/core/source";
+import { and, desc, eq, sql } from "drizzle-orm";
+import {
+  agentRouteRowToAgentRoute,
+  deploymentRowToDeployment,
+  releaseRowToRelease,
+  sessionBindingRowToSessionBinding,
+} from "./mappers.js";
+import {
+  agentRoutes,
+  deployments,
+  projectSchedulerTargets,
+  projectSchedules,
+  projects,
+  releases,
+  routeTargets,
+  scheduleVersions,
+  sessionBindings,
+  sessions,
+  sourceFiles,
+  sourceRevisions,
+} from "./schema.js";
+
+const defaultOwner = {
+  id: "user_local_admin",
+  email: "admin@example.com",
+  name: "Local Admin",
+};
+
+import type {
+  PostgresDomain,
+  PostgresStoreContext,
+} from "./postgres-store-support.js";
+import {
+  isUniqueConstraint,
+  normalizeBaseDomain,
+} from "./postgres-store-support.js";
+
+export function createPostgresDeploymentRoutingStore({
+  db,
+  ensureDeploymentRoutes,
+  ensureDefaultOwner,
+  createJob,
+}: PostgresStoreContext): PostgresDomain {
+  return {
+    async recordDeployment(input) {
+      const [releaseRow] = await db
+        .insert(releases)
+        .values({
+          id: input.releaseId ?? createId("rel"),
+          projectId: input.projectId,
+          sourceRevisionId: input.sourceRevisionId,
+          imageTag: input.imageTag,
+        })
+        .returning();
+
+      if (!releaseRow) {
+        throw new Error("Failed to create release.");
+      }
+
+      const deploymentRow = await claimDeploymentKey(async (deploymentKey) => {
+        try {
+          const [claimed] = await db
+            .insert(deployments)
+            .values({
+              id: input.deploymentId ?? createId("dep"),
+              deploymentKey,
+              projectId: input.projectId,
+              releaseId: releaseRow.id,
+              containerName: input.containerName,
+              internalPort: input.internalPort,
+              hostPort: input.hostPort,
+              status: "running",
+              runtimeKind: input.runtimeKind,
+            })
+            .returning();
+          if (!claimed) throw new Error("Failed to create deployment.");
+          return claimed;
+        } catch (error) {
+          if (isUniqueConstraint(error, "deployments_project_key_idx"))
+            return null;
+          throw error;
+        }
+      });
+
+      await db
+        .update(projects)
+        .set({
+          status: "deployed",
+          deploymentStatus: "running",
+          releaseId: releaseRow.id,
+          deploymentId: deploymentRow.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, input.projectId));
+
+      return deploymentRowToDeployment(deploymentRow);
+    },
+
+    async getCurrentDeployment(projectId) {
+      const [project] = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      if (!project?.deploymentId) {
+        return null;
+      }
+
+      const [deployment] = await db
+        .select()
+        .from(deployments)
+        .where(eq(deployments.id, project.deploymentId))
+        .limit(1);
+      return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
+    async listDeployments(projectId) {
+      const rows = await db
+        .select()
+        .from(deployments)
+        .where(eq(deployments.projectId, projectId))
+        .orderBy(desc(deployments.createdAt), desc(deployments.id));
+      return rows.map(deploymentRowToDeployment);
+    },
+
+    async getDeployment(deploymentId) {
+      const [deployment] = await db
+        .select()
+        .from(deployments)
+        .where(eq(deployments.id, deploymentId))
+        .limit(1);
+      return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
+    async getDeploymentEveVersion(deploymentId) {
+      const [record] = await db
+        .select({
+          sourceRevisionId: sourceRevisions.id,
+          summary: sourceRevisions.summary,
+        })
+        .from(deployments)
+        .innerJoin(releases, eq(releases.id, deployments.releaseId))
+        .innerJoin(
+          sourceRevisions,
+          eq(sourceRevisions.id, releases.sourceRevisionId),
+        )
+        .where(eq(deployments.id, deploymentId))
+        .limit(1);
+      if (!record) return null;
+      const summary =
+        record.summary && typeof record.summary === "object"
+          ? (record.summary as Record<string, unknown>)
+          : {};
+      let version =
+        typeof summary.eveVersion === "string" ? summary.eveVersion : null;
+      if (!version) {
+        const [packageJson] = await db
+          .select({ path: sourceFiles.path, content: sourceFiles.content })
+          .from(sourceFiles)
+          .where(
+            and(
+              eq(sourceFiles.revisionId, record.sourceRevisionId),
+              eq(sourceFiles.path, "package.json"),
+            ),
+          )
+          .limit(1);
+        if (packageJson) version = readDeclaredEveVersion([packageJson]);
+      }
+      return createEveVersionInfo(version, record.sourceRevisionId);
+    },
+
+    async getDeploymentByContainerName(containerName) {
+      const [deployment] = await db
+        .select()
+        .from(deployments)
+        .where(eq(deployments.containerName, containerName))
+        .orderBy(desc(deployments.createdAt), desc(deployments.id))
+        .limit(1);
+      return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
+    async updateDeploymentStatus(deploymentId, status) {
+      const [deployment] = await db
+        .update(deployments)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(deployments.id, deploymentId))
+        .returning();
+      return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
+    async getRelease(releaseId) {
+      const [release] = await db
+        .select()
+        .from(releases)
+        .where(eq(releases.id, releaseId))
+        .limit(1);
+      return release ? releaseRowToRelease(release) : null;
+    },
+
+    ensureDeploymentRoutes,
+
+    async reconcileAgentRoutes(baseDomain) {
+      const rows = await db
+        .select({ projectId: projects.id, deploymentId: projects.deploymentId })
+        .from(projects);
+      for (const row of rows) {
+        if (row.deploymentId)
+          await ensureDeploymentRoutes(
+            row.projectId,
+            row.deploymentId,
+            baseDomain,
+          );
+      }
+    },
+
+    async findRouteByHostname(hostname) {
+      const [route] = await db
+        .select()
+        .from(agentRoutes)
+        .where(eq(agentRoutes.hostname, hostname.toLowerCase()))
+        .limit(1);
+      if (!route) return null;
+      const targets = await db
+        .select({
+          routeId: routeTargets.routeId,
+          deploymentId: routeTargets.deploymentId,
+          weight: routeTargets.weight,
+          variantName: routeTargets.variantName,
+          hostPort: deployments.hostPort,
+          status: deployments.status,
+        })
+        .from(routeTargets)
+        .innerJoin(deployments, eq(deployments.id, routeTargets.deploymentId))
+        .where(eq(routeTargets.routeId, route.id));
+      return {
+        ...agentRouteRowToAgentRoute(route),
+        targets: targets.map((target) => ({
+          ...target,
+          status: target.status as DeploymentStatus,
+        })),
+      };
+    },
+
+    async findProjectRoute(projectId) {
+      const [route] = await db
+        .select()
+        .from(agentRoutes)
+        .where(
+          and(
+            eq(agentRoutes.projectId, projectId),
+            eq(agentRoutes.kind, "project"),
+          ),
+        )
+        .limit(1);
+      if (!route) return null;
+      const targets = await db
+        .select({
+          routeId: routeTargets.routeId,
+          deploymentId: routeTargets.deploymentId,
+          weight: routeTargets.weight,
+          variantName: routeTargets.variantName,
+          hostPort: deployments.hostPort,
+          status: deployments.status,
+        })
+        .from(routeTargets)
+        .innerJoin(deployments, eq(deployments.id, routeTargets.deploymentId))
+        .where(eq(routeTargets.routeId, route.id));
+      return {
+        ...agentRouteRowToAgentRoute(route),
+        targets: targets.map((target) => ({
+          ...target,
+          status: target.status as DeploymentStatus,
+        })),
+      };
+    },
+
+    async listProjectRoutes(projectId) {
+      const routeRows = await db
+        .select()
+        .from(agentRoutes)
+        .where(eq(agentRoutes.projectId, projectId));
+      const resolved = [];
+      for (const route of routeRows) {
+        const targets = await db
+          .select({
+            routeId: routeTargets.routeId,
+            deploymentId: routeTargets.deploymentId,
+            weight: routeTargets.weight,
+            variantName: routeTargets.variantName,
+            hostPort: deployments.hostPort,
+            status: deployments.status,
+          })
+          .from(routeTargets)
+          .innerJoin(deployments, eq(deployments.id, routeTargets.deploymentId))
+          .where(eq(routeTargets.routeId, route.id));
+        resolved.push({
+          ...agentRouteRowToAgentRoute(route),
+          targets: targets.map((target) => ({
+            ...target,
+            status: target.status as DeploymentStatus,
+          })),
+        });
+      }
+      return resolved;
+    },
+
+    async updateRouteTargets(routeId, targets) {
+      validateRouteTargets(targets);
+      await db.transaction(async (tx) => {
+        const [route] = await tx
+          .select()
+          .from(agentRoutes)
+          .where(eq(agentRoutes.id, routeId))
+          .limit(1);
+        if (!route) throw new Error("Agent route not found.");
+        if (route.kind === "deployment")
+          throw new Error("Deployment preview routes are immutable.");
+        for (const target of targets) {
+          const [deployment] = await tx
+            .select()
+            .from(deployments)
+            .where(eq(deployments.id, target.deploymentId))
+            .limit(1);
+          if (!deployment || deployment.projectId !== route.projectId)
+            throw new Error(
+              "Route target deployment does not belong to the project.",
+            );
+          if (target.weight > 0 && deployment.status !== "running")
+            throw new Error("A weighted route target must be running.");
+        }
+        await tx.delete(routeTargets).where(eq(routeTargets.routeId, routeId));
+        await tx
+          .insert(routeTargets)
+          .values(targets.map((target) => ({ routeId, ...target })));
+        await tx
+          .update(agentRoutes)
+          .set({
+            policyRevision: sql`${agentRoutes.policyRevision} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(agentRoutes.id, routeId));
+      });
+      const [route] = await db
+        .select()
+        .from(agentRoutes)
+        .where(eq(agentRoutes.id, routeId))
+        .limit(1);
+      if (!route) throw new Error("Agent route not found after update.");
+      return (await this.findRouteByHostname(route.hostname))!;
+    },
+
+    async promoteDeployment(projectId, deploymentId) {
+      const hostname = await db.transaction(async (tx) => {
+        const [route] = await tx
+          .select()
+          .from(agentRoutes)
+          .where(
+            and(
+              eq(agentRoutes.projectId, projectId),
+              eq(agentRoutes.kind, "project"),
+            ),
+          )
+          .limit(1);
+        const [deployment] = await tx
+          .select()
+          .from(deployments)
+          .where(
+            and(
+              eq(deployments.id, deploymentId),
+              eq(deployments.projectId, projectId),
+            ),
+          )
+          .limit(1);
+        if (!route) throw new Error("Project route not found.");
+        if (!deployment || deployment.status !== "running")
+          throw new Error(
+            "A promoted deployment must be running and belong to the project.",
+          );
+        await tx.delete(routeTargets).where(eq(routeTargets.routeId, route.id));
+        await tx
+          .insert(routeTargets)
+          .values({
+            routeId: route.id,
+            deploymentId,
+            weight: 10_000,
+            variantName: null,
+          });
+        await tx
+          .update(agentRoutes)
+          .set({
+            policyRevision: sql`${agentRoutes.policyRevision} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(agentRoutes.id, route.id));
+        await tx
+          .update(projects)
+          .set({
+            deploymentId,
+            releaseId: deployment.releaseId,
+            deploymentStatus: deployment.status,
+            updatedAt: new Date(),
+          })
+          .where(eq(projects.id, projectId));
+        const now = new Date();
+        await tx
+          .insert(projectSchedulerTargets)
+          .values({ projectId, deploymentId, updatedAt: now })
+          .onConflictDoUpdate({
+            target: projectSchedulerTargets.projectId,
+            set: { deploymentId, updatedAt: now },
+          });
+        const scheduleRows = await tx
+          .select()
+          .from(projectSchedules)
+          .where(eq(projectSchedules.projectId, projectId));
+        const [release] = await tx
+          .select()
+          .from(releases)
+          .where(eq(releases.id, deployment.releaseId))
+          .limit(1);
+        if (!release) throw new Error("Promoted Deployment has no Release.");
+        for (const schedule of scheduleRows) {
+          const [version] = await tx
+            .select()
+            .from(scheduleVersions)
+            .where(
+              and(
+                eq(scheduleVersions.scheduleId, schedule.id),
+                eq(scheduleVersions.sourceRevisionId, release.sourceRevisionId),
+              ),
+            )
+            .limit(1);
+          await tx
+            .update(projectSchedules)
+            .set({
+              nextRunAt:
+                version && schedule.enabled
+                  ? getNextRunAt(version.cron, now)
+                  : null,
+              updatedAt: now,
+            })
+            .where(eq(projectSchedules.id, schedule.id));
+        }
+        return route.hostname;
+      });
+      return (await this.findRouteByHostname(hostname))!;
+    },
+
+    async ensureAliasRoute(projectId, alias, baseDomain, targets) {
+      validateRouteTargets(targets);
+      if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(alias))
+        throw new Error("Alias must be a DNS-safe label.");
+      const hostname = await db.transaction(async (tx) => {
+        const [project] = await tx
+          .select()
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1);
+        if (!project) throw new Error("Project not found.");
+        for (const target of targets) {
+          const [deployment] = await tx
+            .select()
+            .from(deployments)
+            .where(eq(deployments.id, target.deploymentId))
+            .limit(1);
+          if (
+            !deployment ||
+            deployment.projectId !== projectId ||
+            (target.weight > 0 && deployment.status !== "running")
+          ) {
+            throw new Error(
+              "Alias target must be a running deployment in this project.",
+            );
+          }
+        }
+        const hostname = `${alias}--${project.slug}.${normalizeBaseDomain(baseDomain)}`;
+        const [existing] = await tx
+          .select()
+          .from(agentRoutes)
+          .where(eq(agentRoutes.hostname, hostname))
+          .limit(1);
+        const [route] = existing
+          ? await tx
+              .update(agentRoutes)
+              .set({
+                enabled: true,
+                policyRevision: sql`${agentRoutes.policyRevision} + 1`,
+                updatedAt: new Date(),
+              })
+              .where(eq(agentRoutes.id, existing.id))
+              .returning()
+          : await tx
+              .insert(agentRoutes)
+              .values({
+                id: createId("route"),
+                projectId,
+                hostname,
+                kind: "alias",
+              })
+              .returning();
+        if (!route) throw new Error("Failed to materialize alias route.");
+        await tx.delete(routeTargets).where(eq(routeTargets.routeId, route.id));
+        await tx
+          .insert(routeTargets)
+          .values(targets.map((target) => ({ routeId: route.id, ...target })));
+        return hostname;
+      });
+      return (await this.findRouteByHostname(hostname))!;
+    },
+
+    async getDeploymentRetention(projectId, keepRecent = 3) {
+      const deploymentList = await this.listDeployments(projectId);
+      const routes = await this.listProjectRoutes(projectId);
+      const targeted = new Set(
+        routes
+          .filter((route) => route.kind !== "deployment")
+          .flatMap((route) =>
+            route.targets.map((target) => target.deploymentId),
+          ),
+      );
+      const bindingRows = await db
+        .select()
+        .from(sessionBindings)
+        .where(eq(sessionBindings.projectId, projectId));
+      const sessionRows = await db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.projectId, projectId));
+      const terminalByEveId = new Map(
+        sessionRows
+          .filter((session) => session.eveSessionId)
+          .map((session) => [
+            session.eveSessionId!,
+            ["completed", "failed"].includes(session.status),
+          ]),
+      );
+      const active = new Set(
+        bindingRows
+          .filter(
+            (binding) => terminalByEveId.get(binding.eveSessionId) !== true,
+          )
+          .map((binding) => binding.deploymentId),
+      );
+      const recent = new Set(
+        deploymentList.slice(0, keepRecent).map((deployment) => deployment.id),
+      );
+      return deploymentList.map((deployment) => {
+        const reasons: Array<
+          "route_target" | "active_session" | "recent_artifact"
+        > = [];
+        if (targeted.has(deployment.id)) reasons.push("route_target");
+        if (active.has(deployment.id)) reasons.push("active_session");
+        if (recent.has(deployment.id)) reasons.push("recent_artifact");
+        return { deployment, protected: reasons.length > 0, reasons };
+      });
+    },
+
+    async findSessionBinding(projectId, eveSessionId) {
+      const [binding] = await db
+        .select()
+        .from(sessionBindings)
+        .where(
+          and(
+            eq(sessionBindings.projectId, projectId),
+            eq(sessionBindings.eveSessionId, eveSessionId),
+          ),
+        )
+        .limit(1);
+      return binding ? sessionBindingRowToSessionBinding(binding) : null;
+    },
+
+    async bindSession(input) {
+      const [binding] = await db
+        .insert(sessionBindings)
+        .values({ id: createId("bind"), ...input })
+        .onConflictDoUpdate({
+          target: [sessionBindings.projectId, sessionBindings.eveSessionId],
+          set: { ...input, updatedAt: new Date() },
+        })
+        .returning();
+      if (!binding)
+        throw new Error("Failed to persist the Gateway SessionBinding.");
+      await db
+        .update(sessions)
+        .set({
+          trigger: input.trigger,
+          routeId: input.routeId,
+          experimentId: input.experimentId,
+          variantName: input.variantName,
+          deploymentId: input.deploymentId,
+        })
+        .where(
+          and(
+            eq(sessions.projectId, input.projectId),
+            eq(sessions.eveSessionId, input.eveSessionId),
+          ),
+        );
+      return sessionBindingRowToSessionBinding(binding);
+    },
+  };
+}

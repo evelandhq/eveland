@@ -75,15 +75,17 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
 - `apps/docs`: bilingual public website and Fumadocs documentation, separate
   from the authenticated control panel.
 - `apps/api`: Hono control-plane API, Better Auth/team host, and the current
-  embedded collector host.
+  embedded collector host. `app.ts` composes focused route, schema, and support
+  modules.
 - `apps/gateway`: public Agent data plane and internal privileged Playground
-  path.
+  path. Request lifecycle orchestration is separate from pure routing rules.
 - `apps/worker`: import, build, deployment, restart, scheduling, health, and
-  runtime-controller jobs.
+  runtime-controller jobs, split between queue orchestration, concrete job
+  families, and shared runtime helpers.
 - `packages/core`: shared contracts and domain logic, split into explicit
   browser-safe and Node-only subpath exports.
-- `packages/db`: Drizzle schema, migrations, repositories, mappers, memory
-  store, and Postgres store.
+- `packages/db`: Drizzle schema, migrations, repositories, mappers, and
+  domain-oriented memory and Postgres stores composed behind one Store.
 - `packages/agent-observer`: release-time Eve hook injection.
 - `packages/session-collector`: observer outbox claiming, validation,
   ingestion, and projection.
@@ -104,6 +106,13 @@ Do not add a `packages/core` root barrel. Import its explicit exports such as
 `@eveland/core/contracts`, `@eveland/core/eve`, and
 `@eveland/core/server/archive`. Shared app behavior belongs in a package, not in
 an app-to-app import.
+
+Keep composition entrypoints thin. Add behavior to the module that owns the
+domain instead of rebuilding monoliths in `packages/db/src/store.ts`,
+`packages/db/src/postgres-store.ts`, `apps/api/src/app.ts`,
+`apps/gateway/src/app.ts`, or `apps/worker/src/jobs/process.ts`. When tests need
+substantial shared setup, put it in a colocated `*.test-support.ts` module
+instead of copying fixtures between test files.
 
 ## Product and runtime invariants
 
@@ -239,18 +248,28 @@ healthy. When a Compose worker controls the host Docker daemon,
 ## Change-specific rules
 
 - Database changes: update `packages/db/src/schema.ts`, repositories/mappers,
-  both memory and Postgres behavior, and generate a new Drizzle migration with
-  `pnpm --filter @eveland/db db:generate`. Do not rewrite an already-shipped
-  migration. Apply migrations with `pnpm --filter @eveland/api db:migrate`;
-  `db:push` is only for disposable local databases.
+  the relevant contract in `store-domains.ts`, and the matching
+  `memory-*-store.ts` and `postgres-*-store.ts` domain implementations. Keep
+  composer files free of domain behavior. Generate a new Drizzle migration
+  with `pnpm --filter @eveland/db db:generate`; do not rewrite an
+  already-shipped migration. Apply migrations with
+  `pnpm --filter @eveland/api db:migrate`; `db:push` is only for disposable
+  local databases.
 - Contract or ID changes: put shared shapes and rules in the appropriate
   `packages/core` subpath and update every producer and consumer. Preserve the
   repository's prefixed ID alphabet and DNS-safe routing keys.
-- API/worker changes: test state transitions, retries, idempotency, and both
-  memory-store and Postgres assumptions where relevant.
+- API changes: register route families in the appropriate `app-*-routes.ts`
+  module, keep validation in `app-schemas.ts`, and keep reusable protocol or
+  request helpers in `app-support.ts`.
+- Worker changes: keep claiming, heartbeat, completion, and failure fencing in
+  `jobs/process.ts`; put concrete import/build or runtime job behavior in the
+  corresponding `process-*` module. Test state transitions, retries,
+  idempotency, and both memory-store and Postgres assumptions where relevant.
 - Gateway changes: test Host parsing, header sanitization, auth/cookie
   transparency, body limits, abort propagation, streaming, affinity, and
-  internal/public route separation.
+  internal/public route separation. Pure Host/header/affinity/target rules
+  belong in `gateway-routing.ts`; socket and response lifecycle orchestration
+  stays in `app.ts`.
 - Observer/collector changes: test replay, duplicate usage, claim recovery,
   provenance merge, child-before-parent arrival, degraded health, and real Eve
   event coverage when the protocol surface changes.
