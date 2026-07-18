@@ -63,7 +63,7 @@ export function SharedAgentEnvironmentSettings({
       setEntries(result.environment.entries.map((entry) => ({ ...entry, value: "" })));
       setNotice(result.jobs.length > 0
         ? `Shared environment saved. ${result.jobs.length} live deployment restart${result.jobs.length === 1 ? "" : "s"} queued.`
-        : "Shared environment saved. Bound Agents will use it the next time their process starts.");
+        : "Shared environment saved. Agent Deployments will use it the next time their process starts.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save the shared Agent environment.");
     } finally {
@@ -77,7 +77,7 @@ export function SharedAgentEnvironmentSettings({
         <CardTitle>Shared Agent environment</CardTitle>
         <CardDescription>
           Configure fallback values such as shared LLM keys. Project Secrets override matching keys.
-          Values stay encrypted and are materialized only for explicitly bound Agent processes.
+          Values stay encrypted and are materialized automatically for every Agent process.
         </CardDescription>
       </CardHeader>
       <form onSubmit={submit}>

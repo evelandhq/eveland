@@ -1,7 +1,7 @@
 # Agent Auth 重写与 Provider 边界实施交接
 
 **日期：** 2026-07-17
-**状态：** PR A #86、PR B #87 与 PR C #88 已在 Eve 0.24.6 的 `main` 上实施；外部 Jinshuju verifier 已合并到 `jinshuju/oidc`，`@jinshuju/eve-oidc@0.1.0` 已公开发布。2026-07-18 起，PR C 的多命名 Profile 产品面被一套 Shared Agent Environment 取代；旧 Profile 数据只保留迁移兼容。
+**状态：** PR A #86、PR B #87 与 PR C #88 已在 Eve 0.24.6 的 `main` 上实施；外部 Jinshuju verifier 已合并到 `jinshuju/oidc`，`@jinshuju/eve-oidc@0.1.0` 已公开发布。2026-07-18 起，PR C 的多命名 Profile 产品面被一套 Shared Agent Environment 取代；由于该版本尚未发布，旧 Profile、binding 和 reference 兼容代码已直接删除。
 **替代对象：** PR #72 `feat: agent auth OIDC route auth` 已关闭，只保留为原型和研究资料
 
 ## 1. 结论
@@ -362,7 +362,7 @@ credential resolution 与 401 recovery 已全部通过 opaque registry registrat
 method 分支；独立 `vercel-oidc` registration 镜像 Eve 0.24.6 Client 的 Bearer + trusted deployment
 header。PR C 没有把 OIDC protocol state machine 或 provider-specific code 混入平台 Secret/runtime
 injection；重放到 PR B 后，Basic、Bearer、Vercel OIDC 与 OIDC confidential client 统一通过
-Project Secret 或已绑定的 `agent-connection` Platform Secret reference 延迟解析当前值。
+Project Secret reference 延迟解析当前值。
 
 ## 11. 分阶段 PR
 
@@ -407,10 +407,10 @@ caller，不包含 Jinshuju provider knowledge。
 
 ### PR C：平台级变量与 Secret Profile
 
-后续收敛（2026-07-18）：System 设置只暴露一套 Shared Agent Environment，并保留 Project/Deployment
-显式 runtime binding。Project Secret 覆盖同名共享默认；Agent Connection 新配置只引用 Project Secret。
-底层旧 Profile 表、runtime binding 与 connection reference 暂时保留兼容读取，直到管理员完成替换，
-不能把已完成的 PR C checklist 误当成仍需恢复多 Profile UI 的 backlog。
+后续收敛（2026-07-18）：System 设置只暴露一套 Shared Agent Environment，它自动注入所有 Agent
+Deployment，不再提供 Project/Deployment binding。Project Secret 覆盖同名共享默认；Agent Connection 新配置只引用 Project Secret。
+Shared Agent Environment 使用独立 singleton 表；旧 Profile 表、runtime binding、connection reference 和兼容 API
+在发布前直接删除，不能把已完成的 PR C checklist 误当成仍需恢复多 Profile UI 的 backlog。
 
 实施状态：`codex/platform-secret-profiles` 已完成 revisioned encrypted Profile、Project/Deployment
 binding、`agent-runtime`/`agent-connection` consumer、memory/Postgres store 与 migrations、runtime-only

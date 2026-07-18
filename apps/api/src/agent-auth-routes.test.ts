@@ -370,7 +370,7 @@ describe("Agent Auth control-plane routes", () => {
     await expect(callback.json()).resolves.toEqual({ returnPath: `/projects/${project.id}/playground` });
   });
 
-  test("resolves current Project and Platform Secret references for every Agent request", async () => {
+  test("resolves the current Project Secret reference for every Agent request", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "referenced-bearer-playground", importKind: "zip" });
     const revision = await store.recordSourceRevision({
@@ -392,29 +392,13 @@ describe("Agent Auth control-plane routes", () => {
       runtimeKind: "docker",
     });
     await store.upsertSecret(project.id, "PROJECT_TOKEN", JSON.stringify(encryptSecretValue("project-token-v1", appSecretKey)));
-    const profile = await store.savePlatformSecretProfile({
-      name: "Agent connection credentials",
-      entries: [{
-        key: "PLATFORM_TOKEN",
-        kind: "secret",
-        encryptedValue: JSON.stringify(encryptSecretValue("platform-token-v1", appSecretKey)),
-      }],
-    });
-    await store.bindPlatformSecretProfile({
-      profileId: profile.id,
-      projectId: project.id,
-      deploymentId: null,
-      consumer: "agent-connection",
-    });
     const catalogApp = createApp(store, { appSecretKey });
     const catalogResponse = await catalogApp.request(`/projects/${project.id}/agent-auth/secret-references`);
     expect(catalogResponse.status).toBe(200);
     const catalog = await catalogResponse.json();
     expect(catalog).toEqual({ references: [
-      { kind: "platform-secret", key: "PLATFORM_TOKEN", label: "Agent connection credentials · PLATFORM_TOKEN", revision: 1 },
       { kind: "project-secret", key: "PROJECT_TOKEN", label: "Project Secret · PROJECT_TOKEN" },
     ] });
-    expect(JSON.stringify(catalog)).not.toContain("platform-token-v1");
     expect(JSON.stringify(catalog)).not.toContain("project-token-v1");
     const seen: string[] = [];
     const app = createApp(store, {
@@ -451,47 +435,30 @@ describe("Agent Auth control-plane routes", () => {
       body: JSON.stringify({
         expectedSecurityRevision: 2,
         method: "bearer",
-        config: { tokenRef: { kind: "platform-secret", key: "PLATFORM_TOKEN" } },
+        config: { tokenRef: { kind: "project-secret", key: "PROJECT_TOKEN" } },
       }),
     });
-    await store.savePlatformSecretProfile({
-      id: profile.id,
-      name: profile.name,
-      entries: [{
-        key: "PLATFORM_TOKEN",
-        kind: "secret",
-        encryptedValue: JSON.stringify(encryptSecretValue("platform-token-v2", appSecretKey)),
-      }],
-    });
+    await store.upsertSecret(project.id, "PROJECT_TOKEN", JSON.stringify(encryptSecretValue("project-token-v2", appSecretKey)));
     await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: "platform reference" }),
+      body: JSON.stringify({ message: "rotated project reference" }),
     });
 
     expect(seen.map((encoded) => decodeAgentAuthEnvelope(encoded).headers)).toEqual([
       [["authorization", "Bearer project-token-v1"]],
-      [["authorization", "Bearer platform-token-v2"]],
+      [["authorization", "Bearer project-token-v2"]],
     ]);
   });
 
-  test("resolves a bound Platform Secret for confidential OIDC preflight", async () => {
+  test("resolves a Project Secret for confidential OIDC preflight", async () => {
     const store = createTestStore();
-    const project = await store.createProject({ name: "platform-oidc-client", importKind: "zip" });
-    const profile = await store.savePlatformSecretProfile({
-      name: "OIDC clients",
-      entries: [{
-        key: "OIDC_CLIENT_SECRET",
-        kind: "secret",
-        encryptedValue: JSON.stringify(encryptSecretValue("platform-client-secret", appSecretKey)),
-      }],
-    });
-    await store.bindPlatformSecretProfile({
-      profileId: profile.id,
-      projectId: project.id,
-      deploymentId: null,
-      consumer: "agent-connection",
-    });
+    const project = await store.createProject({ name: "project-oidc-client", importKind: "zip" });
+    await store.upsertSecret(
+      project.id,
+      "OIDC_CLIENT_SECRET",
+      JSON.stringify(encryptSecretValue("project-client-secret", appSecretKey)),
+    );
     let preflightSecret: string | undefined;
     const app = createApp(store, {
       appSecretKey,
@@ -513,13 +480,13 @@ describe("Agent Auth control-plane routes", () => {
         config: {
           ...oidcConfig(),
           tokenEndpointAuthMethod: "client_secret_post",
-          clientSecretRef: { kind: "platform-secret", key: "OIDC_CLIENT_SECRET" },
+          clientSecretRef: { kind: "project-secret", key: "OIDC_CLIENT_SECRET" },
         },
       }),
     });
 
     expect(configured.status).toBe(200);
-    expect(preflightSecret).toBe("platform-client-secret");
+    expect(preflightSecret).toBe("project-client-secret");
     await expect(configured.json()).resolves.toMatchObject({
       connection: { config: { clientSecretConfigured: true } },
     });

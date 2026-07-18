@@ -4,14 +4,11 @@ import type {
   Job,
   JobType,
   ModelUsageEvent,
-  PlatformSecretProfile,
-  PlatformSecretProfileBinding,
-  PlatformSecretProfileRecord,
   SharedAgentEnvironment,
   SharedAgentEnvironmentRecord,
 } from "@eveland/core/contracts";
 import type { StoreDatabase } from "./client.js";
-import { agentAuthCredentials, modelUsageEvents, platformSecretProfileBindings, platformSecretProfiles } from "./schema.js";
+import { agentAuthCredentials, modelUsageEvents, sharedAgentEnvironment } from "./schema.js";
 import type { AgentAuthCredentialKey, Store } from "./store-domains.js";
 
 export type PostgresStoreContext = {
@@ -35,77 +32,41 @@ export function agentAuthCredentialWhere(key: AgentAuthCredentialKey) {
   );
 }
 
-export function normalizePlatformSecretProfileEntries(value: unknown): PlatformSecretProfileRecord["entries"] {
-  if (!Array.isArray(value)) throw new Error("Invalid Platform Secret Profile entries.");
+export function normalizeSharedAgentEnvironmentEntries(value: unknown): SharedAgentEnvironmentRecord["entries"] {
+  if (!Array.isArray(value)) throw new Error("Invalid shared Agent environment entries.");
   return value.map((entry) => {
-    if (!entry || typeof entry !== "object") throw new Error("Invalid Platform Secret Profile entry.");
+    if (!entry || typeof entry !== "object") throw new Error("Invalid shared Agent environment entry.");
     const candidate = entry as Record<string, unknown>;
     if (
       typeof candidate.key !== "string"
       || (candidate.kind !== "variable" && candidate.kind !== "secret")
       || typeof candidate.encryptedValue !== "string"
     ) {
-      throw new Error("Invalid Platform Secret Profile entry.");
+      throw new Error("Invalid shared Agent environment entry.");
     }
     const kind = candidate.kind as "variable" | "secret";
     return { key: candidate.key, kind, encryptedValue: candidate.encryptedValue };
   }).sort((left, right) => left.key.localeCompare(right.key));
 }
 
-export function platformSecretProfileRowToRecord(
-  row: typeof platformSecretProfiles.$inferSelect,
-): PlatformSecretProfileRecord {
+export function sharedAgentEnvironmentRowToRecord(
+  row: typeof sharedAgentEnvironment.$inferSelect,
+): SharedAgentEnvironmentRecord {
   return {
-    id: row.id,
-    name: row.name,
     revision: row.revision,
-    entries: normalizePlatformSecretProfileEntries(row.entries),
+    entries: normalizeSharedAgentEnvironmentEntries(row.entries),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-export function platformSecretProfileRowToPublic(
-  row: typeof platformSecretProfiles.$inferSelect,
-): PlatformSecretProfile {
-  const record = platformSecretProfileRowToRecord(row);
+export function sharedAgentEnvironmentRowToPublic(
+  row: typeof sharedAgentEnvironment.$inferSelect,
+): SharedAgentEnvironment {
+  const record = sharedAgentEnvironmentRowToRecord(row);
   return {
     ...record,
     entries: record.entries.map(({ key, kind }) => ({ key, kind, configured: true })),
-  };
-}
-
-export function platformSecretProfileRowToSharedEnvironmentRecord(
-  row: typeof platformSecretProfiles.$inferSelect,
-): SharedAgentEnvironmentRecord {
-  const { id: _id, name: _name, ...environment } = platformSecretProfileRowToRecord(row);
-  return environment;
-}
-
-export function platformSecretProfileRowToSharedEnvironment(
-  row: typeof platformSecretProfiles.$inferSelect,
-): SharedAgentEnvironment {
-  const { id: _id, name: _name, ...environment } = platformSecretProfileRowToPublic(row);
-  return environment;
-}
-
-export function platformSecretProfileBindingRowToPublic(
-  row: typeof platformSecretProfileBindings.$inferSelect,
-  profile: typeof platformSecretProfiles.$inferSelect,
-): PlatformSecretProfileBinding {
-  if (row.consumer !== "agent-runtime" && row.consumer !== "agent-connection") {
-    throw new Error(`Unsupported Platform Secret Profile consumer: ${row.consumer}.`);
-  }
-  return {
-    id: row.id,
-    profileId: row.profileId,
-    profileName: profile.name,
-    profileRevision: profile.revision,
-    projectId: row.projectId,
-    deploymentId: row.deploymentId,
-    consumer: row.consumer,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
   };
 }
 

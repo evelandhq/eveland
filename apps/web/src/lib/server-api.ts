@@ -6,7 +6,6 @@ import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagno
 import type {
   PublicGitCredential,
   SharedAgentEnvironment,
-  SharedAgentEnvironmentBinding,
 } from "@eveland/core/contracts";
 import type {
   AgentEndpoints,
@@ -74,9 +73,6 @@ export const getGitCredentials = () =>
 export const getSharedAgentEnvironment = () =>
   apiGet<{ environment: SharedAgentEnvironment | null }>("/platform/shared-agent-environment")
     .then((data) => data.environment);
-export const getProjectSharedAgentEnvironmentBindings = (projectId: string) =>
-  apiGet<{ bindings: SharedAgentEnvironmentBinding[] }>(`/projects/${projectId}/shared-agent-environment-bindings`)
-    .then((data) => data.bindings);
 
 function queryString(filters: Record<string, string | undefined>): string {
   const query = new URLSearchParams();

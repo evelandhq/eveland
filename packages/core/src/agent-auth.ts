@@ -6,7 +6,7 @@ export type AgentAuthAuthority = "loopback" | "canonical";
 export type AgentCredentialHeader = readonly [name: string, value: string];
 
 export type AgentAuthSecretReference = {
-  kind: "project-secret" | "platform-secret";
+  kind: "project-secret";
   key: string;
 };
 

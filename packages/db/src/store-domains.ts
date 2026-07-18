@@ -14,11 +14,6 @@ import type {
   JobType,
   LogRecord,
   ModelUsageEvent,
-  PlatformSecretConsumer,
-  PlatformSecretProfile,
-  PlatformSecretProfileBinding,
-  PlatformSecretProfileEntryKind,
-  PlatformSecretProfileRecord,
   Project,
   ProjectImportKind,
   ProjectSchedule,
@@ -34,7 +29,7 @@ import type {
   RuntimeInstance,
   RuntimeInstanceStatus,
   SharedAgentEnvironment,
-  SharedAgentEnvironmentBinding,
+  SharedAgentEnvironmentEntryKind,
   SharedAgentEnvironmentRecord,
   RuntimeKind,
   ScheduleRecord,
@@ -101,18 +96,12 @@ export type CreateProjectFromSourcePreflightResult =
 
 export type InitialProjectSecret = Pick<SecretRecord, "key" | "encryptedValue">;
 
-export type SavePlatformSecretProfileInput = {
-  id?: string;
-  name: string;
+export type SaveSharedAgentEnvironmentInput = {
   entries: Array<{
     key: string;
-    kind: PlatformSecretProfileEntryKind;
+    kind: SharedAgentEnvironmentEntryKind;
     encryptedValue: string;
   }>;
-};
-
-export type SaveSharedAgentEnvironmentInput = {
-  entries: SavePlatformSecretProfileInput["entries"];
 };
 
 export type ProjectDeletionRequest =
@@ -249,44 +238,6 @@ export interface SecretStore {
   listSecretRecords(projectId: string): Promise<SecretRecord[]>;
   saveSharedAgentEnvironment(input: SaveSharedAgentEnvironmentInput): Promise<SharedAgentEnvironment>;
   getSharedAgentEnvironmentRecord(): Promise<SharedAgentEnvironmentRecord | null>;
-  bindSharedAgentEnvironment(input: {
-    projectId: string;
-    deploymentId: string | null;
-  }): Promise<SharedAgentEnvironmentBinding>;
-  listProjectSharedAgentEnvironmentBindings(projectId: string): Promise<SharedAgentEnvironmentBinding[]>;
-  listSharedAgentEnvironmentBindings(): Promise<SharedAgentEnvironmentBinding[]>;
-  deleteSharedAgentEnvironmentBinding(
-    projectId: string,
-    bindingId: string,
-  ): Promise<SharedAgentEnvironmentBinding | null>;
-  resolveSharedAgentEnvironmentRecords(input: {
-    projectId: string;
-    deploymentId: string | null;
-  }): Promise<{
-    project: SharedAgentEnvironmentRecord | null;
-    deployment: SharedAgentEnvironmentRecord | null;
-  }>;
-  savePlatformSecretProfile(input: SavePlatformSecretProfileInput): Promise<PlatformSecretProfile>;
-  listPlatformSecretProfiles(): Promise<PlatformSecretProfile[]>;
-  getPlatformSecretProfileRecord(profileId: string): Promise<PlatformSecretProfileRecord | null>;
-  bindPlatformSecretProfile(input: {
-    profileId: string;
-    projectId: string;
-    deploymentId: string | null;
-    consumer: PlatformSecretConsumer;
-  }): Promise<PlatformSecretProfileBinding>;
-  listProjectPlatformSecretBindings(projectId: string): Promise<PlatformSecretProfileBinding[]>;
-  listPlatformSecretProfileBindings(profileId: string): Promise<PlatformSecretProfileBinding[]>;
-  deletePlatformSecretProfileBinding(
-    projectId: string,
-    bindingId: string,
-  ): Promise<PlatformSecretProfileBinding | null>;
-  deletePlatformSecretProfile(profileId: string): Promise<boolean>;
-  resolvePlatformSecretProfileRecords(input: {
-    projectId: string;
-    deploymentId: string | null;
-    consumer: PlatformSecretConsumer;
-  }): Promise<{ project: PlatformSecretProfileRecord | null; deployment: PlatformSecretProfileRecord | null }>;
 }
 
 export interface JobStore {

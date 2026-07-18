@@ -502,7 +502,7 @@ describe("processNextJob", () => {
     );
   });
 
-  test("injects the shared Agent environment as a fallback for Project Secrets", async () => {
+  test("injects the global shared Agent environment as a fallback for Project Secrets", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createTestStore();
@@ -545,10 +545,6 @@ describe("processNextJob", () => {
           ),
         },
       ],
-    });
-    await store.bindSharedAgentEnvironment({
-      projectId: project.id,
-      deploymentId: null,
     });
     await store.enqueueJob(project.id, "build_deploy");
 

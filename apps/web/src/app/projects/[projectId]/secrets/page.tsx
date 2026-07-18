@@ -1,24 +1,11 @@
-import {
-  getCurrentMember,
-  getDeploymentOverview,
-  getProjectSharedAgentEnvironmentBindings,
-  getSecrets,
-  getSharedAgentEnvironment,
-} from "@/lib/server-api";
+import { getSecrets } from "@/lib/server-api";
 import { SecretForm } from "@/components/secret-form";
-import { SharedAgentEnvironmentBindings } from "@/components/shared-agent-environment-bindings";
 
 export const dynamic = "force-dynamic";
 
 export default async function SecretsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const member = await getCurrentMember();
-  const [secrets, bindings, overview] = await Promise.all([
-    getSecrets(projectId),
-    getProjectSharedAgentEnvironmentBindings(projectId),
-    getDeploymentOverview(projectId),
-  ]);
-  const environment = member.role === "admin" ? await getSharedAgentEnvironment() : null;
+  const secrets = await getSecrets(projectId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -47,16 +34,6 @@ export default async function SecretsPage({ params }: { params: Promise<{ projec
         </section>
         <SecretForm projectId={projectId} />
       </div>
-      <SharedAgentEnvironmentBindings
-        projectId={projectId}
-        environment={environment}
-        initialBindings={bindings}
-        deployments={overview.deployments.map((deployment) => ({
-          id: deployment.id,
-          label: `${deployment.deploymentKey} · ${deployment.status}`,
-        }))}
-        canManage={member.role === "admin"}
-      />
     </div>
   );
 }

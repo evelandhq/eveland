@@ -129,7 +129,7 @@ describe("Agent Auth provider registry", () => {
     expect(provider?.normalizeConfig({
       issuer: "https://idp.example/",
       clientId: "eveland-playground",
-      clientSecretRef: { kind: "platform-secret", key: "OIDC_CLIENT_SECRET" },
+      clientSecretRef: { kind: "project-secret", key: "OIDC_CLIENT_SECRET" },
       scopes: ["profile", "openid", "profile"],
       audience: "https://agent.example",
       audienceMode: "both",
@@ -139,7 +139,7 @@ describe("Agent Auth provider registry", () => {
     })).toEqual({
       issuer: "https://idp.example",
       clientId: "eveland-playground",
-      clientSecretRef: { kind: "platform-secret", key: "OIDC_CLIENT_SECRET" },
+      clientSecretRef: { kind: "project-secret", key: "OIDC_CLIENT_SECRET" },
       scopes: ["openid", "profile"],
       audience: "https://agent.example",
       audienceMode: "both",
@@ -171,9 +171,17 @@ describe("Agent Auth provider registry", () => {
     })).toThrow(/authorization parameter/i);
   });
 
+  test("rejects legacy platform Secret references", () => {
+    const registry = registryWithOidc();
+
+    expect(() => registry.get("bearer")?.normalizeConfig({
+      tokenRef: { kind: "platform-secret", key: "ACCESS_TOKEN" },
+    })).toThrow(/reference kind/i);
+  });
+
   test("materializes credentials from current secret references without copying values into config", async () => {
     const registry = createAgentAuthRegistry();
-    const resolveSecret = async (reference: { kind: "project-secret" | "platform-secret"; key: string }) => `${reference.kind}:${reference.key}`;
+    const resolveSecret = async (reference: { kind: "project-secret"; key: string }) => `${reference.kind}:${reference.key}`;
     const basic = registry.get("basic")!;
     const bearer = registry.get("bearer")!;
     const vercelOidc = registry.get("vercel-oidc")!;
@@ -197,22 +205,22 @@ describe("Agent Auth provider registry", () => {
     await expect(basic.getCredential(context("basic", basicConfig, resolveSecret)))
       .resolves.toMatchObject({ envelope: { headers: [["authorization", "Basic YWxpY2U6cHJvamVjdC1zZWNyZXQ6QkFTSUNfUEFTU1dPUkQ="]] } });
 
-    const bearerConfig = bearer.normalizeConfig({ tokenRef: { kind: "platform-secret", key: "ACCESS_TOKEN" } });
+    const bearerConfig = bearer.normalizeConfig({ tokenRef: { kind: "project-secret", key: "ACCESS_TOKEN" } });
     await expect(bearer.getCredential(context("bearer", bearerConfig, resolveSecret)))
-      .resolves.toMatchObject({ envelope: { headers: [["authorization", "Bearer platform-secret:ACCESS_TOKEN"]] } });
+      .resolves.toMatchObject({ envelope: { headers: [["authorization", "Bearer project-secret:ACCESS_TOKEN"]] } });
 
-    const vercelOidcConfig = vercelOidc.normalizeConfig({ tokenRef: { kind: "platform-secret", key: "VERCEL_OIDC_TOKEN" } });
+    const vercelOidcConfig = vercelOidc.normalizeConfig({ tokenRef: { kind: "project-secret", key: "VERCEL_OIDC_TOKEN" } });
     await expect(vercelOidc.getCredential(context("vercel-oidc", vercelOidcConfig, resolveSecret)))
       .resolves.toMatchObject({ envelope: { headers: [
-        ["authorization", "Bearer platform-secret:VERCEL_OIDC_TOKEN"],
-        ["x-vercel-trusted-oidc-idp-token", "platform-secret:VERCEL_OIDC_TOKEN"],
+        ["authorization", "Bearer project-secret:VERCEL_OIDC_TOKEN"],
+        ["x-vercel-trusted-oidc-idp-token", "project-secret:VERCEL_OIDC_TOKEN"],
       ] } });
 
     const headerConfig = headers.normalizeConfig({
-      headers: { "X-Api-Key": { kind: "platform-secret", key: "API_KEY" }, "X-Tenant": "acme" },
+      headers: { "X-Api-Key": { kind: "project-secret", key: "API_KEY" }, "X-Tenant": "acme" },
     });
     await expect(headers.getCredential(context("headers", headerConfig, resolveSecret)))
-      .resolves.toMatchObject({ envelope: { headers: [["x-api-key", "platform-secret:API_KEY"], ["x-tenant", "acme"]] } });
+      .resolves.toMatchObject({ envelope: { headers: [["x-api-key", "project-secret:API_KEY"], ["x-tenant", "acme"]] } });
   });
 });
 
@@ -278,7 +286,7 @@ function registryWithOidc() {
 function context(
   method: string,
   config: unknown,
-  resolveSecret?: (reference: { kind: "project-secret" | "platform-secret"; key: string }) => Promise<string>,
+  resolveSecret?: (reference: { kind: "project-secret"; key: string }) => Promise<string>,
 ) {
   return {
     connection: {

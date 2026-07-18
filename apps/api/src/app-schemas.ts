@@ -80,7 +80,7 @@ export const createGitSourcePreflightSchema = z.object({
 
 export const secretSchema = environmentVariableSchema;
 
-export const platformSecretProfileEntrySchema = z.object({
+export const sharedAgentEnvironmentEntrySchema = z.object({
   key: z
     .string()
     .regex(
@@ -91,28 +91,9 @@ export const platformSecretProfileEntrySchema = z.object({
   value: z.string().min(1).max(65_536).optional(),
 });
 
-export const platformSecretProfileSchema = z
-  .object({
-    name: z.string().trim().min(1).max(80),
-    entries: z.array(platformSecretProfileEntrySchema).min(1).max(50),
-  })
-  .superRefine((input, context) => {
-    const keys = new Set<string>();
-    input.entries.forEach((entry, index) => {
-      if (keys.has(entry.key)) {
-        context.addIssue({
-          code: "custom",
-          path: ["entries", index, "key"],
-          message: "Platform Secret Profile keys must be unique.",
-        });
-      }
-      keys.add(entry.key);
-    });
-  });
-
 export const sharedAgentEnvironmentSchema = z
   .object({
-    entries: z.array(platformSecretProfileEntrySchema).max(50),
+    entries: z.array(sharedAgentEnvironmentEntrySchema).max(50),
   })
   .superRefine((input, context) => {
     const keys = new Set<string>();
@@ -127,28 +108,6 @@ export const sharedAgentEnvironmentSchema = z
       keys.add(entry.key);
     });
   });
-
-export const platformSecretBindingSchema = z.object({
-  profileId: z.string().regex(/^sp_[0-9A-Za-z]+$/),
-  deploymentId: z
-    .string()
-    .regex(/^dep_[0-9A-Za-z]+$/)
-    .nullable()
-    .default(null),
-});
-
-export const sharedAgentEnvironmentBindingSchema = z.object({
-  deploymentId: z
-    .string()
-    .regex(/^dep_[0-9A-Za-z]+$/)
-    .nullable()
-    .default(null),
-});
-
-export const platformSecretConsumerSchema = z.enum([
-  "agent-runtime",
-  "agent-connection",
-]);
 
 export const playgroundMessageSchema = z.object({
   message: z.string().min(1),

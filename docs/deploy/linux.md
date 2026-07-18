@@ -202,8 +202,8 @@ runtime diagnostics, logs, Source Revisions, Releases, observer events, or brows
 For generic OIDC, register `${WEB_ORIGIN}/agent-auth/oidc/callback` as an exact redirect URI. The callback page is
 owned by Web and completes through the authenticated API; API encrypts one-time ten-minute transactions and
 principal-scoped access/refresh tokens with `APP_SECRET_KEY`. A confidential client's Connection stores only a
-Project Secret or explicitly bound `agent-connection` Platform Secret reference, so create or bind that Secret
-before saving a `client_secret_basic` or `client_secret_post` Connection. API resolves the current referenced value
+Project Secret reference, so create that Secret before saving a `client_secret_basic` or `client_secret_post`
+Connection. API resolves the current referenced value
 again for preflight, callback, verification, and refresh; rotating the Secret does not copy it into Connection config.
 
 Production network policy must allow API egress only to approved OIDC discovery, authorization metadata, JWKS,
@@ -263,21 +263,20 @@ briefly unavailable while its process restarts.
 
 The singleton Shared Agent Environment is stored in Postgres as AES-256-GCM ciphertext
 using the same `APP_SECRET_KEY`; it does not add another host environment variable or
-Compose secret. Only admins can change it or bind it to a Project/Deployment. At process
-start the worker resolves Project shared defaults < Deployment shared defaults < Project
-Secret < Eveland-reserved precedence, writes the final values only to the Docker process
+Compose secret. Only admins can change it, and it applies automatically to every Agent
+Deployment. At process start the worker resolves Shared Agent Environment < Project Secret
+< Eveland-reserved precedence, writes the final values only to the Docker process
 environment or the systemd adapter's root-owned `0600` `EnvironmentFile`, and adds every
 decrypted shared value to runtime/build diagnostic masking. Values never enter a Release,
 build layer, observer event, API response, Web payload, or worker configuration snapshot.
 
-Changing the shared environment or a binding queues deduplicated `restart_deployment`
-jobs only for affected `running`/`draining` targets. Removing a binding or clearing the
-environment also queues restart so an old process cannot retain deleted values. With no
-live target, the next deploy, restart, cold activation, or schedule activation reads the
-latest revision. Agent Connection credentials are separate and new configuration uses
-Project Secret references resolved per request. Existing named Profile runtime bindings
-and Agent Connection references remain readable during migration until replaced. Existing
-API/worker `APP_SECRET_KEY` values must continue to match; worker preflight and Compose
+Changing or clearing the shared environment queues `restart_deployment` jobs for every
+`running`/`draining` Deployment so an old process cannot retain stale or deleted values.
+With no live target, the next deploy, restart, cold activation, or schedule activation reads
+the latest revision. Agent Connection credentials are separate and new configuration uses
+Project Secret references resolved per request. There are no named Profile, runtime binding,
+or Platform Secret reference compatibility paths. API/worker `APP_SECRET_KEY` values must
+continue to match; worker preflight and Compose
 topology otherwise require no new setting.
 
 GitLab PAT imports use the same `APP_SECRET_KEY` on API and worker. The database stores only

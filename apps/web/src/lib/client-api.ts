@@ -3,7 +3,6 @@ import type { Job, ScheduleRun } from "./api";
 import type {
   PublicGitCredential,
   SharedAgentEnvironment,
-  SharedAgentEnvironmentBinding,
 } from "@eveland/core/contracts";
 import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 
@@ -145,24 +144,6 @@ export async function saveSharedAgentEnvironment(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ entries }),
   });
-}
-
-export async function bindSharedAgentEnvironment(input: {
-  projectId: string;
-  deploymentId: string | null;
-}): Promise<{ binding: SharedAgentEnvironmentBinding; jobs: Job[] }> {
-  return clientRequest(`/projects/${input.projectId}/shared-agent-environment-bindings`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ deploymentId: input.deploymentId }),
-  });
-}
-
-export async function unbindSharedAgentEnvironment(
-  projectId: string,
-  bindingId: string,
-): Promise<{ deleted: boolean; jobs: Job[] }> {
-  return clientRequest(`/projects/${projectId}/shared-agent-environment-bindings/${bindingId}`, { method: "DELETE" });
 }
 
 export async function inviteMember(email: string): Promise<{ invitation: Invitation; inviteUrl: string }> {
