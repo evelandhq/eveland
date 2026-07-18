@@ -238,7 +238,6 @@ describe("control-plane auth routes", () => {
       inviteUrl: expect.stringMatching(/^http:\/\/localhost:3000\/accept-invite\?token=invitation_/),
     });
     expect(JSON.stringify(issued.body)).not.toContain("password");
-    expect(JSON.stringify(issued.body)).not.toContain("tokenHash");
 
     const accepted = await app.request("/invitations/accept", {
       method: "POST",

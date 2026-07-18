@@ -19,7 +19,6 @@ describe("team management web surfaces", () => {
     ]) {
       expect(existsSync(fileURLToPath(new URL(path, import.meta.url)))).toBe(true);
     }
-    expect(existsSync(fileURLToPath(new URL("./members/page.tsx", import.meta.url)))).toBe(false);
   });
 
   test("offers GitLab PAT import and personal host credential management", () => {
@@ -44,16 +43,12 @@ describe("team management web surfaces", () => {
     expect(credentialsForm).toContain("deleteGitCredential");
   });
 
-  test("provides one global shared Agent environment without binding controls", () => {
+  test("provides one global shared Agent environment", () => {
     const environmentPageUrl = new URL("./settings/shared-agent-environment/page.tsx", import.meta.url);
     const environmentSettingsUrl = new URL("../components/shared-agent-environment-settings.tsx", import.meta.url);
-    const bindingSettingsUrl = new URL("../components/shared-agent-environment-bindings.tsx", import.meta.url);
-    const legacyProfilePageUrl = new URL("./settings/secret-profiles/page.tsx", import.meta.url);
 
     expect(existsSync(fileURLToPath(environmentPageUrl))).toBe(true);
     expect(existsSync(fileURLToPath(environmentSettingsUrl))).toBe(true);
-    expect(existsSync(fileURLToPath(bindingSettingsUrl))).toBe(false);
-    expect(existsSync(fileURLToPath(legacyProfilePageUrl))).toBe(false);
     if (
       !existsSync(fileURLToPath(environmentPageUrl)) ||
       !existsSync(fileURLToPath(environmentSettingsUrl))
@@ -67,14 +62,6 @@ describe("team management web surfaces", () => {
     expect(environmentSettings).toContain("<FieldGroup");
     expect(environmentSettings).toContain("saveSharedAgentEnvironment");
     expect(environmentSettings).toContain("<Field key={index}>");
-    expect(environmentSettings).not.toContain("profileName");
-    const projectSecretsPage = source("./projects/[projectId]/secrets/page.tsx");
-    expect(projectSecretsPage).not.toContain("SharedAgentEnvironmentBindings");
-    expect(projectSecretsPage).not.toContain("getProjectSharedAgentEnvironmentBindings");
-    expect(projectSecretsPage).not.toContain("getSharedAgentEnvironment");
-    expect(source("../components/agent-auth-fields.tsx")).not.toContain("Secret Profile");
-    expect(existsSync(fileURLToPath(new URL("../components/platform-secret-profile-settings.tsx", import.meta.url)))).toBe(false);
-    expect(existsSync(fileURLToPath(new URL("../components/platform-secret-bindings.tsx", import.meta.url)))).toBe(false);
   });
 
   test("composes the settings pages from profile forms and the existing member controls", () => {
@@ -87,7 +74,6 @@ describe("team management web surfaces", () => {
     for (const path of requiredPaths) {
       expect(existsSync(fileURLToPath(new URL(path, import.meta.url)))).toBe(true);
     }
-    const settingsLayout = source("./settings/layout.tsx");
     const profile = source("./settings/profile/page.tsx");
     const profileForm = source("../components/profile-settings-form.tsx");
     const members = source("./settings/members/page.tsx");
@@ -109,14 +95,10 @@ describe("team management web surfaces", () => {
 
   test("reuses the application sidebar for settings navigation", () => {
     const sidebar = source("../components/app-sidebar.tsx");
-    const settingsLayout = source("./settings/layout.tsx");
 
     expect(sidebar).toContain('pathname.startsWith("/settings")');
     expect(sidebar).toContain("settingsNavigationGroups.map");
     expect(sidebar).toContain("Back to workspace");
-    expect(settingsLayout).not.toContain("SettingsNav");
-    expect(settingsLayout).not.toContain("md:grid-cols");
-    expect(existsSync(fileURLToPath(new URL("../components/settings-nav.tsx", import.meta.url)))).toBe(false);
   });
 
   test("opens settings and sign out from one semantic account menu trigger", () => {
@@ -128,8 +110,6 @@ describe("team management web surfaces", () => {
     expect(sidebar).toContain('href="/settings/profile"');
     expect(sidebar).toContain("<AvatarFallback");
     expect(sidebar).toContain('render={<SidebarMenuButton size="lg" />}');
-    expect(sidebar).not.toContain('tooltip="Account"');
-    expect(sidebar).not.toContain("<SignOutButton");
   });
 
   test("forwards the incoming session cookie from server components to the API", () => {

@@ -15,7 +15,7 @@ async function loadEnvironmentModule(): Promise<EnvironmentModule | null> {
 }
 
 describe("shared Agent environment form", () => {
-  test("preserves configured entries without a Profile name or copied values", async () => {
+  test("preserves configured entries without copying their values", async () => {
     const module = await loadEnvironmentModule();
 
     expect(module).not.toBeNull();

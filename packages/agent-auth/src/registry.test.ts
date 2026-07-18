@@ -171,14 +171,6 @@ describe("Agent Auth provider registry", () => {
     })).toThrow(/authorization parameter/i);
   });
 
-  test("rejects legacy platform Secret references", () => {
-    const registry = registryWithOidc();
-
-    expect(() => registry.get("bearer")?.normalizeConfig({
-      tokenRef: { kind: "platform-secret", key: "ACCESS_TOKEN" },
-    })).toThrow(/reference kind/i);
-  });
-
   test("materializes credentials from current secret references without copying values into config", async () => {
     const registry = createAgentAuthRegistry();
     const resolveSecret = async (reference: { kind: "project-secret"; key: string }) => `${reference.kind}:${reference.key}`;

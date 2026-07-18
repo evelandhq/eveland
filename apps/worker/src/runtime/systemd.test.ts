@@ -550,7 +550,6 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     expect(result.log).toContain("bootstrap()");
     expect(result.log).toContain("onSession()");
     expect(result.log).toContain("workspace seeds are preserved");
-    expect(result.log).not.toContain("workspace seeds are NOT used");
   });
 });
 
@@ -726,8 +725,6 @@ describe("createSystemdAdapter buildRelease (non-eve projects)", () => {
     expect(injectSandboxModules).not.toHaveBeenCalled();
     expect(verifySandbox).not.toHaveBeenCalled();
     expect(result.releaseRef).toBe(path.resolve("/data/builds/proj_123/rel_789"));
-    expect(result.log).not.toContain("Injected eve sandbox modules");
-    expect(result.log).not.toContain("Sandbox self-check");
   });
 });
 

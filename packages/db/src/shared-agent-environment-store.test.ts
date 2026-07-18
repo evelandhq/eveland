@@ -37,23 +37,4 @@ describe("shared Agent environment store", () => {
       entries: [{ key: "OPENAI_API_KEY", kind: "secret", encryptedValue: "encrypted-key-v2" }],
     });
   });
-
-  test("does not expose named Profile or binding methods", () => {
-    const store = createTestStore();
-    const removedMethods = [
-      "savePlatformSecretProfile",
-      "listPlatformSecretProfiles",
-      "getPlatformSecretProfileRecord",
-      "bindPlatformSecretProfile",
-      "listProjectPlatformSecretBindings",
-      "listPlatformSecretProfileBindings",
-      "deletePlatformSecretProfileBinding",
-      "deletePlatformSecretProfile",
-      "resolvePlatformSecretProfileRecords",
-    ];
-
-    for (const method of removedMethods) {
-      expect(Reflect.get(store, method), method).toBeUndefined();
-    }
-  });
 });

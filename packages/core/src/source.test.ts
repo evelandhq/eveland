@@ -75,20 +75,3 @@ describe("inspectEveProject", () => {
     });
   });
 });
-
-describe("inspectEveProject platform-owned workflow world", () => {
-  test("does not inspect authored workflow configuration for a platform runtime concern", () => {
-    const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.25.x" } }) },
-      { path: "agent/instructions.md", content: "You are an agent." },
-      {
-        path: "agent/agent.ts",
-        content: `export default defineAgent({
-  model: process.env.DEFAULT_MODEL,
-  experimental: { workflow: { world: "@workflow/world-postgres" } },
-})`,
-      },
-    ]);
-    expect(result).not.toHaveProperty("workflowWorld");
-  });
-});

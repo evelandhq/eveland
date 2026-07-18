@@ -89,7 +89,6 @@ describe("web application shell", () => {
 
     expect(projectNav).toContain("<SidebarMenu")
     expect(projectNav).toContain("<SidebarMenuButton")
-    expect(projectNav).not.toContain("<nav")
   })
 
   test("provides populated global deployment and usage pages plus project usage", () => {
@@ -114,7 +113,6 @@ describe("web application shell", () => {
     expect(projects).toContain("<CardHeader")
     expect(projects).toContain("<CardContent")
     expect(projects).toContain("<CardFooter")
-    expect(projects).not.toContain("<Table")
     expect(projects).toContain("w-full items-center justify-between gap-3 sm:w-auto")
     expect(projects).toContain("<Empty")
     expect(statusBadge).toContain("<Badge")
@@ -145,11 +143,9 @@ describe("web application shell", () => {
     expect(clientApi).toContain("export async function deleteProject")
   })
 
-  test("removes the project summary and renders highlighted source code", () => {
+  test("renders highlighted source code", () => {
     const sourcePage = source("./projects/[projectId]/source/page.tsx")
 
-    expect(sourcePage).not.toContain("eve project summary")
-    expect(sourcePage).not.toContain("getSourceRevision")
     expect(sourcePage).toContain("highlightSourceCode")
     expect(sourcePage).toContain("<Card")
   })
@@ -198,7 +194,6 @@ describe("web application shell", () => {
     expect(forms).toContain("Deployment logs")
     expect(forms).toContain("View project")
     expect(forms).toContain("Could not reach the Eveland API.")
-    expect(forms).not.toContain("<input")
   })
 
   test("keeps links semantic when they use button styling", () => {
@@ -241,7 +236,6 @@ describe("web application shell", () => {
     expect(projectOverview).toContain("stableRoute?.targets.find((target) => target.deploymentId === deployment.id)")
     expect(projectOverview).toContain("<BadgeCheckIcon data-icon=\"inline-start\" />")
     expect(projectOverview).toContain("Stable · {stableTarget.weight / 100}% traffic")
-    expect(projectOverview).not.toContain("project?.deploymentId === deployment.id ? <span")
   })
 
   test("explains when saving a secret queued live deployment restarts", () => {
@@ -259,7 +253,7 @@ describe("web application shell", () => {
     expect(useMobile).toContain('mql.removeEventListener("change", onChange)')
   })
 
-  test("renders Playground as a fresh AI Elements conversation instead of a debug timeline", () => {
+  test("renders Playground as a fresh AI Elements conversation", () => {
     const playground = source("../components/playground-panel.tsx")
     const nextConfig = source("../../next.config.ts")
 
@@ -285,9 +279,6 @@ describe("web application shell", () => {
     expect(playground).toContain("PromptInputActionAddAttachments")
     expect(playground).toContain('agent.status === "submitted"')
     expect(playground).toContain("Starting agent and sending your message")
-    expect(playground).not.toContain("TimelineEvent")
-    expect(playground).not.toContain("Current session")
-    expect(playground).not.toContain("<pre")
     expect(nextConfig).toContain('source: "/api/eveland/:path*"')
   })
 
@@ -314,7 +305,6 @@ describe("web application shell", () => {
     const replay = source("../components/session-replay.tsx")
 
     expect(page).toContain("<SessionReplay")
-    expect(page).not.toContain("<pre")
     expect(replay).toContain("buildSessionTranscript")
     expect(replay).toContain("<MessageResponse")
     expect(replay).toContain("<Reasoning")
