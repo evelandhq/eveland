@@ -6,11 +6,23 @@ import {
   platformSecretConsumerSchema,
   platformSecretProfileSchema,
   secretSchema,
+  sharedAgentEnvironmentBindingSchema,
+  sharedAgentEnvironmentSchema,
 } from "./app-schemas.js";
+import type {
+  PlatformSecretProfileBinding,
+  SharedAgentEnvironmentBinding,
+  SharedAgentEnvironmentRecord,
+} from "@eveland/core/contracts";
+import { SHARED_AGENT_ENVIRONMENT_PROFILE_ID } from "@eveland/core/contracts";
 
 type PlatformSecretRestart = (
-  bindings: Awaited<ReturnType<Store["listPlatformSecretProfileBindings"]>>,
-  reason: "platform_secret_binding_changed" | "platform_secret_profile_changed",
+  bindings: Array<PlatformSecretProfileBinding | SharedAgentEnvironmentBinding>,
+  reason:
+    | "platform_secret_binding_changed"
+    | "platform_secret_profile_changed"
+    | "shared_agent_environment_binding_changed"
+    | "shared_agent_environment_changed",
 ) => Promise<unknown>;
 
 export function registerSecretRoutes(input: {
@@ -64,10 +76,131 @@ export function registerSecretRoutes(input: {
     return c.json({ deleted, jobs });
   });
 
+  app.get("/platform/shared-agent-environment", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin")
+      return c.json({ error: "Admin access required" }, 403);
+    const record = await store.getSharedAgentEnvironmentRecord();
+    return c.json({
+      environment: record ? publicSharedAgentEnvironment(record) : null,
+    });
+  });
+
+  app.put("/platform/shared-agent-environment", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin")
+      return c.json({ error: "Admin access required" }, 403);
+    const parsed = sharedAgentEnvironmentSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid shared Agent environment", issues: parsed.error.issues },
+        400,
+      );
+    }
+    const existing = await store.getSharedAgentEnvironmentRecord();
+    const entries = parsed.data.entries.map((entry) => {
+      const previous = existing?.entries.find(
+        (candidate) => candidate.key === entry.key && candidate.kind === entry.kind,
+      );
+      if (entry.value === undefined && !previous) return null;
+      return {
+        key: entry.key,
+        kind: entry.kind,
+        encryptedValue: entry.value === undefined
+          ? previous!.encryptedValue
+          : JSON.stringify(encryptSecretValue(entry.value, appSecretKey)),
+      };
+    });
+    if (entries.some((entry) => entry === null)) {
+      return c.json(
+        { error: "A value is required for every new or changed shared Agent environment entry." },
+        400,
+      );
+    }
+    const previousRevision = existing?.revision ?? 0;
+    const environment = await store.saveSharedAgentEnvironment({
+      entries: entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
+    });
+    const jobs = environment.revision === previousRevision
+      ? []
+      : await enqueuePlatformSecretRestarts(
+          await store.listSharedAgentEnvironmentBindings(),
+          "shared_agent_environment_changed",
+        );
+    return c.json({ environment, jobs });
+  });
+
+  app.get("/projects/:projectId/shared-agent-environment-bindings", async (c) => {
+    const project = await store.getProject(c.req.param("projectId"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    return c.json({
+      bindings: await store.listProjectSharedAgentEnvironmentBindings(project.id),
+    });
+  });
+
+  app.put("/projects/:projectId/shared-agent-environment-bindings", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin")
+      return c.json({ error: "Admin access required" }, 403);
+    const parsed = sharedAgentEnvironmentBindingSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      return c.json({ error: "Invalid shared Agent environment binding" }, 400);
+    }
+    if (!await store.getSharedAgentEnvironmentRecord()) {
+      return c.json({ error: "Configure the shared Agent environment before binding it." }, 409);
+    }
+    const projectId = c.req.param("projectId");
+    const previous = (await store.listProjectSharedAgentEnvironmentBindings(projectId))
+      .find((binding) => binding.deploymentId === parsed.data.deploymentId);
+    try {
+      const binding = await store.bindSharedAgentEnvironment({
+        projectId,
+        deploymentId: parsed.data.deploymentId,
+      });
+      const jobs = previous
+        ? []
+        : await enqueuePlatformSecretRestarts(
+            [binding],
+            "shared_agent_environment_binding_changed",
+          );
+      return c.json({ binding, jobs });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json(
+        { error: message },
+        message.includes("not found") ? 404 : 409,
+      );
+    }
+  });
+
+  app.delete(
+    "/projects/:projectId/shared-agent-environment-bindings/:bindingId",
+    async (c) => {
+      if (options.auth && c.get("principal").role !== "admin")
+        return c.json({ error: "Admin access required" }, 403);
+      const binding = await store.deleteSharedAgentEnvironmentBinding(
+        c.req.param("projectId"),
+        c.req.param("bindingId"),
+      );
+      const jobs = binding
+        ? await enqueuePlatformSecretRestarts(
+            [binding],
+            "shared_agent_environment_binding_changed",
+          )
+        : [];
+      return c.json({ deleted: binding !== null, jobs });
+    },
+  );
+
   app.get("/platform/secret-profiles", async (c) => {
     if (options.auth && c.get("principal").role !== "admin")
       return c.json({ error: "Admin access required" }, 403);
-    return c.json({ profiles: await store.listPlatformSecretProfiles() });
+    return c.json({
+      profiles: (await store.listPlatformSecretProfiles()).filter(
+        (profile) => profile.id !== SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+      ),
+    });
   });
 
   app.post("/platform/secret-profiles", async (c) => {
@@ -106,6 +239,8 @@ export function registerSecretRoutes(input: {
   app.put("/platform/secret-profiles/:profileId", async (c) => {
     if (options.auth && c.get("principal").role !== "admin")
       return c.json({ error: "Admin access required" }, 403);
+    if (c.req.param("profileId") === SHARED_AGENT_ENVIRONMENT_PROFILE_ID)
+      return c.json({ error: "Platform Secret Profile not found" }, 404);
     const parsed = platformSecretProfileSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -168,6 +303,8 @@ export function registerSecretRoutes(input: {
     if (options.auth && c.get("principal").role !== "admin")
       return c.json({ error: "Admin access required" }, 403);
     const profileId = c.req.param("profileId");
+    if (profileId === SHARED_AGENT_ENVIRONMENT_PROFILE_ID)
+      return c.json({ error: "Platform Secret Profile not found" }, 404);
     const bindings = await store.listPlatformSecretProfileBindings(profileId);
     const deleted = await store.deletePlatformSecretProfile(profileId);
     const jobs = deleted
@@ -255,4 +392,13 @@ export function registerSecretRoutes(input: {
       return c.json({ deleted: binding !== null, jobs });
     },
   );
+}
+
+function publicSharedAgentEnvironment(record: SharedAgentEnvironmentRecord) {
+  return {
+    revision: record.revision,
+    entries: record.entries.map(({ key, kind }) => ({ key, kind, configured: true as const })),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
 }

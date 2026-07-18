@@ -1,10 +1,9 @@
-import type { Job, PlatformSecretProfileRecord } from "@eveland/core/contracts";
+import type { Job } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
 import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@eveland/core/source";
 import {
   decryptSecretValue,
   maskKnownSecrets,
-  mergeRuntimeEnvironment,
   type EncryptedSecret,
 } from "@eveland/core/server/secrets";
 import {

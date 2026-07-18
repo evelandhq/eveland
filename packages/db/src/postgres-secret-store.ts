@@ -1,4 +1,12 @@
 import { createId } from "@eveland/core/ids";
+import {
+  SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+  SHARED_AGENT_ENVIRONMENT_PROFILE_NAME,
+  type PlatformSecretProfileBinding,
+  type PlatformSecretProfileRecord,
+  type SharedAgentEnvironmentBinding,
+  type SharedAgentEnvironmentRecord,
+} from "@eveland/core/contracts";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { secretRowToPublicSecret, secretRowToSecretRecord } from "./mappers.js";
 import {
@@ -24,6 +32,8 @@ import {
   platformSecretProfileBindingRowToPublic,
   platformSecretProfileRowToPublic,
   platformSecretProfileRowToRecord,
+  platformSecretProfileRowToSharedEnvironment,
+  platformSecretProfileRowToSharedEnvironmentRecord,
 } from "./postgres-store-support.js";
 
 export function createPostgresSecretStore({
@@ -82,6 +92,100 @@ export function createPostgresSecretStore({
         .from(secrets)
         .where(eq(secrets.projectId, projectId));
       return rows.map(secretRowToSecretRecord);
+    },
+
+    async saveSharedAgentEnvironment(input) {
+      return db.transaction(async (tx) => {
+        const entries = normalizePlatformSecretProfileEntries(input.entries);
+        let [existing] = await tx
+          .select()
+          .from(platformSecretProfiles)
+          .where(eq(platformSecretProfiles.id, SHARED_AGENT_ENVIRONMENT_PROFILE_ID))
+          .for("update");
+        if (!existing) {
+          const [created] = await tx
+            .insert(platformSecretProfiles)
+            .values({
+              id: SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+              name: SHARED_AGENT_ENVIRONMENT_PROFILE_NAME,
+              entries,
+            })
+            .onConflictDoNothing({ target: platformSecretProfiles.id })
+            .returning();
+          if (created) return platformSecretProfileRowToSharedEnvironment(created);
+          [existing] = await tx
+            .select()
+            .from(platformSecretProfiles)
+            .where(eq(platformSecretProfiles.id, SHARED_AGENT_ENVIRONMENT_PROFILE_ID))
+            .for("update");
+          if (!existing) throw new Error("Failed to create the shared Agent environment.");
+        }
+        const existingEntries = normalizePlatformSecretProfileEntries(existing.entries);
+        if (JSON.stringify(existingEntries) === JSON.stringify(entries)) {
+          return platformSecretProfileRowToSharedEnvironment(existing);
+        }
+        const [updated] = await tx
+          .update(platformSecretProfiles)
+          .set({ entries, revision: existing.revision + 1, updatedAt: new Date() })
+          .where(eq(platformSecretProfiles.id, SHARED_AGENT_ENVIRONMENT_PROFILE_ID))
+          .returning();
+        if (!updated) throw new Error("Failed to update the shared Agent environment.");
+        return platformSecretProfileRowToSharedEnvironment(updated);
+      });
+    },
+
+    async getSharedAgentEnvironmentRecord() {
+      const [row] = await db
+        .select()
+        .from(platformSecretProfiles)
+        .where(eq(platformSecretProfiles.id, SHARED_AGENT_ENVIRONMENT_PROFILE_ID));
+      return row ? platformSecretProfileRowToSharedEnvironmentRecord(row) : null;
+    },
+
+    async bindSharedAgentEnvironment(input) {
+      const binding = await this.bindPlatformSecretProfile({
+        ...input,
+        profileId: SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+        consumer: "agent-runtime",
+      });
+      return toSharedAgentEnvironmentBinding(binding);
+    },
+
+    async listProjectSharedAgentEnvironmentBindings(projectId) {
+      return (await this.listProjectPlatformSecretBindings(projectId))
+        .filter(isSharedAgentEnvironmentBinding)
+        .map(toSharedAgentEnvironmentBinding);
+    },
+
+    async listSharedAgentEnvironmentBindings() {
+      return (await this.listPlatformSecretProfileBindings(
+        SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+      ))
+        .filter(isSharedAgentEnvironmentBinding)
+        .map(toSharedAgentEnvironmentBinding);
+    },
+
+    async deleteSharedAgentEnvironmentBinding(projectId, bindingId) {
+      const existing = (await this.listProjectPlatformSecretBindings(projectId))
+        .find((binding) => binding.id === bindingId && isSharedAgentEnvironmentBinding(binding));
+      if (!existing) return null;
+      const deleted = await this.deletePlatformSecretProfileBinding(projectId, bindingId);
+      return deleted ? toSharedAgentEnvironmentBinding(deleted) : null;
+    },
+
+    async resolveSharedAgentEnvironmentRecords(input) {
+      const records = await this.resolvePlatformSecretProfileRecords({
+        ...input,
+        consumer: "agent-runtime",
+      });
+      const toSharedRecord = (record: PlatformSecretProfileRecord | null): SharedAgentEnvironmentRecord | null =>
+        record?.id === SHARED_AGENT_ENVIRONMENT_PROFILE_ID
+          ? platformSecretProfileRecordToSharedEnvironmentRecord(record)
+          : null;
+      return {
+        project: toSharedRecord(records.project),
+        deployment: toSharedRecord(records.deployment),
+      };
     },
 
     async savePlatformSecretProfile(input) {
@@ -150,6 +254,12 @@ export function createPostgresSecretStore({
     },
 
     async bindPlatformSecretProfile(input) {
+      if (
+        input.profileId === SHARED_AGENT_ENVIRONMENT_PROFILE_ID
+        && input.consumer !== "agent-runtime"
+      ) {
+        throw new Error("The shared Agent environment cannot be used for Agent Connection credentials.");
+      }
       if (input.consumer === "agent-connection" && input.deploymentId) {
         throw new Error(
           "Agent Connection Secret Profile bindings must be Project-scoped.",
@@ -329,4 +439,31 @@ export function createPostgresSecretStore({
       };
     },
   };
+}
+
+function isSharedAgentEnvironmentBinding(
+  binding: PlatformSecretProfileBinding,
+): boolean {
+  return binding.profileId === SHARED_AGENT_ENVIRONMENT_PROFILE_ID
+    && binding.consumer === "agent-runtime";
+}
+
+function toSharedAgentEnvironmentBinding(
+  binding: PlatformSecretProfileBinding,
+): SharedAgentEnvironmentBinding {
+  return {
+    id: binding.id,
+    projectId: binding.projectId,
+    deploymentId: binding.deploymentId,
+    environmentRevision: binding.profileRevision,
+    createdAt: binding.createdAt,
+    updatedAt: binding.updatedAt,
+  };
+}
+
+function platformSecretProfileRecordToSharedEnvironmentRecord(
+  profile: PlatformSecretProfileRecord,
+): SharedAgentEnvironmentRecord {
+  const { id: _id, name: _name, ...environment } = profile;
+  return environment;
 }

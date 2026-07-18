@@ -18,21 +18,26 @@ describe("secret encryption", () => {
     expect(maskKnownSecrets(log, ["sk-test-123", "", "abc"])).toBe("OPENAI_API_KEY=***\nEMPTY=\nshort=abc");
   });
 
-  test("merges runtime values with platform and reserved precedence", () => {
+  test("uses the shared Agent environment as a fallback for Project Secrets", () => {
     const mergeRuntimeEnvironment = (secrets as Record<string, unknown>).mergeRuntimeEnvironment;
 
     expect(mergeRuntimeEnvironment).toBeTypeOf("function");
     expect((mergeRuntimeEnvironment as (input: unknown) => unknown)({
       projectSecrets: { SHARED: "project", PROJECT_ONLY: "project" },
-      projectProfile: { SHARED: "profile", PROFILE_ONLY: "profile" },
-      deploymentProfile: { SHARED: "deployment", DEPLOYMENT_ONLY: "deployment" },
+      projectSharedEnvironment: { SHARED: "shared-project", SHARED_ONLY: "shared" },
+      deploymentSharedEnvironment: { SHARED: "shared-deployment", DEPLOYMENT_ONLY: "deployment" },
       reserved: { SHARED: "reserved", NODE_ENV: "production" },
     })).toEqual({
       SHARED: "reserved",
       PROJECT_ONLY: "project",
-      PROFILE_ONLY: "profile",
+      SHARED_ONLY: "shared",
       DEPLOYMENT_ONLY: "deployment",
       NODE_ENV: "production",
     });
+
+    expect((mergeRuntimeEnvironment as (input: unknown) => Record<string, string>)({
+      projectSecrets: { OPENAI_API_KEY: "project-key" },
+      projectSharedEnvironment: { OPENAI_API_KEY: "shared-key" },
+    }).OPENAI_API_KEY).toBe("project-key");
   });
 });

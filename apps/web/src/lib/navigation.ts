@@ -37,7 +37,7 @@ export const settingsNavigationGroups = [
     label: 'System',
     items: [
       { href: '/settings/members', label: 'Members', icon: UsersIcon },
-      { href: '/settings/secret-profiles', label: 'Secret profiles', icon: LockKeyholeIcon },
+      { href: '/settings/shared-agent-environment', label: 'Shared agent environment', icon: LockKeyholeIcon },
       { href: '/settings/about', label: 'About', icon: InfoIcon },
     ],
   },

@@ -1,4 +1,7 @@
-import type { PlatformSecretProfileRecord } from "@eveland/core/contracts";
+import type {
+  PlatformSecretProfileRecord,
+  SharedAgentEnvironmentRecord,
+} from "@eveland/core/contracts";
 import { resolveSchedulerRuntimeSecret } from "@eveland/core/server/scheduler-dispatch";
 import {
   decryptSecretValue,
@@ -231,17 +234,20 @@ export async function composeDeploymentEnv(
   const appSecretKey =
     options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
   const secrets = await readRuntimeSecrets(store, projectId, appSecretKey);
-  const profileRecords = await store.resolvePlatformSecretProfileRecords({
-    projectId,
-    deploymentId,
-    consumer: "agent-runtime",
-  });
-  const projectProfile = readPlatformSecretProfileValues(
-    profileRecords.project,
+  const [sharedEnvironmentRecords, legacyProfileRecords] = await Promise.all([
+    store.resolveSharedAgentEnvironmentRecords({ projectId, deploymentId }),
+    store.resolvePlatformSecretProfileRecords({
+      projectId,
+      deploymentId,
+      consumer: "agent-runtime",
+    }),
+  ]);
+  const projectSharedEnvironment = readSharedAgentEnvironmentValues(
+    sharedEnvironmentRecords.project ?? legacyProfileRecords.project,
     appSecretKey,
   );
-  const deploymentProfile = readPlatformSecretProfileValues(
-    profileRecords.deployment,
+  const deploymentSharedEnvironment = readSharedAgentEnvironmentValues(
+    sharedEnvironmentRecords.deployment ?? legacyProfileRecords.deployment,
     appSecretKey,
   );
   // Project secrets are runtime input, but the workflow database is
@@ -262,14 +268,14 @@ export async function composeDeploymentEnv(
   };
   const env = mergeRuntimeEnvironment({
     projectSecrets: secrets,
-    projectProfile,
-    deploymentProfile,
+    projectSharedEnvironment,
+    deploymentSharedEnvironment,
     reserved,
   });
   const secretValues = [
     ...Object.values(secrets),
-    ...Object.values(projectProfile),
-    ...Object.values(deploymentProfile),
+    ...Object.values(projectSharedEnvironment),
+    ...Object.values(deploymentSharedEnvironment),
     ...(workflowPostgresUrl ? [workflowPostgresUrl] : []),
     ...(projectWorkflowUrl ? [projectWorkflowUrl] : []),
     ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),
@@ -277,12 +283,12 @@ export async function composeDeploymentEnv(
   return { env, secretValues };
 }
 
-export function readPlatformSecretProfileValues(
-  profile: PlatformSecretProfileRecord | null,
+export function readSharedAgentEnvironmentValues(
+  environment: SharedAgentEnvironmentRecord | PlatformSecretProfileRecord | null,
   appSecretKey: string,
 ): Record<string, string> {
   return Object.fromEntries(
-    (profile?.entries ?? []).map((entry) => [
+    (environment?.entries ?? []).map((entry) => [
       entry.key,
       decryptSecretValue(
         parseEncryptedSecret(entry.encryptedValue),

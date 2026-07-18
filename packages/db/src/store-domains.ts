@@ -33,6 +33,9 @@ import type {
   RouteTarget,
   RuntimeInstance,
   RuntimeInstanceStatus,
+  SharedAgentEnvironment,
+  SharedAgentEnvironmentBinding,
+  SharedAgentEnvironmentRecord,
   RuntimeKind,
   ScheduleRecord,
   ScheduleRun,
@@ -101,6 +104,10 @@ export type SavePlatformSecretProfileInput = {
     kind: PlatformSecretProfileEntryKind;
     encryptedValue: string;
   }>;
+};
+
+export type SaveSharedAgentEnvironmentInput = {
+  entries: SavePlatformSecretProfileInput["entries"];
 };
 
 export type ProjectDeletionRequest =
@@ -235,6 +242,25 @@ export interface SecretStore {
   upsertSecret(projectId: string, key: string, value: string): Promise<PublicSecret>;
   deleteSecret(projectId: string, secretId: string): Promise<boolean>;
   listSecretRecords(projectId: string): Promise<SecretRecord[]>;
+  saveSharedAgentEnvironment(input: SaveSharedAgentEnvironmentInput): Promise<SharedAgentEnvironment>;
+  getSharedAgentEnvironmentRecord(): Promise<SharedAgentEnvironmentRecord | null>;
+  bindSharedAgentEnvironment(input: {
+    projectId: string;
+    deploymentId: string | null;
+  }): Promise<SharedAgentEnvironmentBinding>;
+  listProjectSharedAgentEnvironmentBindings(projectId: string): Promise<SharedAgentEnvironmentBinding[]>;
+  listSharedAgentEnvironmentBindings(): Promise<SharedAgentEnvironmentBinding[]>;
+  deleteSharedAgentEnvironmentBinding(
+    projectId: string,
+    bindingId: string,
+  ): Promise<SharedAgentEnvironmentBinding | null>;
+  resolveSharedAgentEnvironmentRecords(input: {
+    projectId: string;
+    deploymentId: string | null;
+  }): Promise<{
+    project: SharedAgentEnvironmentRecord | null;
+    deployment: SharedAgentEnvironmentRecord | null;
+  }>;
   savePlatformSecretProfile(input: SavePlatformSecretProfileInput): Promise<PlatformSecretProfile>;
   listPlatformSecretProfiles(): Promise<PlatformSecretProfile[]>;
   getPlatformSecretProfileRecord(profileId: string): Promise<PlatformSecretProfileRecord | null>;

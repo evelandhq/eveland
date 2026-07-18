@@ -8,6 +8,51 @@ const database = databaseUrl ? createDatabase(databaseUrl) : null;
 afterAll(async () => database?.close());
 
 describe.skipIf(!database)("Postgres platform Secret Profiles", () => {
+  test("persists the singleton shared Agent environment and target bindings", async () => {
+    const store = createPostgresStore(database!);
+    const suffix = Date.now().toString();
+    const environment = await store.saveSharedAgentEnvironment({
+      entries: [{ key: "OPENAI_API_KEY", kind: "secret", encryptedValue: `encrypted-${suffix}` }],
+    });
+    expect(environment.entries).toEqual([
+      { key: "OPENAI_API_KEY", kind: "secret", configured: true },
+    ]);
+    expect(environment).not.toHaveProperty("id");
+    expect(environment).not.toHaveProperty("name");
+    await expect(store.getSharedAgentEnvironmentRecord()).resolves.toMatchObject({
+      entries: [{ key: "OPENAI_API_KEY", kind: "secret", encryptedValue: `encrypted-${suffix}` }],
+    });
+
+    const project = await store.createProject({ name: `shared-environment-${suffix}`, importKind: "zip" });
+    const binding = await store.bindSharedAgentEnvironment({ projectId: project.id, deploymentId: null });
+    expect(binding).toMatchObject({ projectId: project.id, deploymentId: null });
+    expect(binding).not.toHaveProperty("profileId");
+    await expect(store.listProjectSharedAgentEnvironmentBindings(project.id)).resolves.toEqual([
+      expect.objectContaining({ id: binding.id }),
+    ]);
+    await expect(store.deleteSharedAgentEnvironmentBinding(project.id, binding.id)).resolves.toMatchObject({
+      id: binding.id,
+    });
+  });
+
+  test("serializes concurrent writes to the shared Agent environment", async () => {
+    const store = createPostgresStore(database!);
+    const suffix = Date.now().toString();
+    const results = await Promise.all([
+      store.saveSharedAgentEnvironment({
+        entries: [{ key: "MODEL_ACCOUNT", kind: "variable", encryptedValue: `account-a-${suffix}` }],
+      }),
+      store.saveSharedAgentEnvironment({
+        entries: [{ key: "MODEL_ACCOUNT", kind: "variable", encryptedValue: `account-b-${suffix}` }],
+      }),
+    ]);
+
+    expect(results).toHaveLength(2);
+    await expect(store.getSharedAgentEnvironmentRecord()).resolves.toMatchObject({
+      entries: [expect.objectContaining({ key: "MODEL_ACCOUNT" })],
+    });
+  });
+
   test("persists encrypted entries and exposes only configured metadata", async () => {
     const store = createPostgresStore(database!);
     const saveProfile = Reflect.get(store, "savePlatformSecretProfile");

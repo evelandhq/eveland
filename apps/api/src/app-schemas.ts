@@ -110,8 +110,34 @@ export const platformSecretProfileSchema = z
     });
   });
 
+export const sharedAgentEnvironmentSchema = z
+  .object({
+    entries: z.array(platformSecretProfileEntrySchema).max(50),
+  })
+  .superRefine((input, context) => {
+    const keys = new Set<string>();
+    input.entries.forEach((entry, index) => {
+      if (keys.has(entry.key)) {
+        context.addIssue({
+          code: "custom",
+          path: ["entries", index, "key"],
+          message: "Shared Agent environment keys must be unique.",
+        });
+      }
+      keys.add(entry.key);
+    });
+  });
+
 export const platformSecretBindingSchema = z.object({
   profileId: z.string().regex(/^sp_[0-9A-Za-z]+$/),
+  deploymentId: z
+    .string()
+    .regex(/^dep_[0-9A-Za-z]+$/)
+    .nullable()
+    .default(null),
+});
+
+export const sharedAgentEnvironmentBindingSchema = z.object({
   deploymentId: z
     .string()
     .regex(/^dep_[0-9A-Za-z]+$/)

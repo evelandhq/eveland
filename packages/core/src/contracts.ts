@@ -84,6 +84,25 @@ export type PlatformSecretProfileRecord = Omit<PlatformSecretProfile, "entries">
   }>;
 };
 
+export const SHARED_AGENT_ENVIRONMENT_PROFILE_ID = "sp_sharedagentenvironment";
+export const SHARED_AGENT_ENVIRONMENT_PROFILE_NAME = "__eveland_internal_shared_agent_environment__";
+
+export type SharedAgentEnvironment = Omit<PlatformSecretProfile, "id" | "name">;
+
+export type SharedAgentEnvironmentRecord = Omit<
+  PlatformSecretProfileRecord,
+  "id" | "name"
+>;
+
+export type SharedAgentEnvironmentBinding = {
+  id: string;
+  projectId: string;
+  deploymentId: string | null;
+  environmentRevision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PlatformSecretConsumer = "agent-runtime" | "agent-connection";
 
 export type PlatformSecretProfileBinding = {

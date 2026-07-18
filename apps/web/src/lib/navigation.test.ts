@@ -47,7 +47,7 @@ describe("sidebar navigation", () => {
         label: "System",
         items: [
           { href: "/settings/members", label: "Members" },
-          { href: "/settings/secret-profiles", label: "Secret profiles" },
+          { href: "/settings/shared-agent-environment", label: "Shared agent environment" },
           { href: "/settings/about", label: "About" },
         ],
       },

@@ -1,10 +1,9 @@
 import type { FileUIPart, UserContent } from "ai";
 import type { Job, ScheduleRun } from "./api";
 import type {
-  PlatformSecretConsumer,
-  PlatformSecretProfile,
-  PlatformSecretProfileBinding,
   PublicGitCredential,
+  SharedAgentEnvironment,
+  SharedAgentEnvironmentBinding,
 } from "@eveland/core/contracts";
 import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 
@@ -138,42 +137,32 @@ export async function deleteGitCredential(credentialId: string): Promise<void> {
   await clientRequest(`/git-credentials/${credentialId}`, { method: "DELETE" });
 }
 
-export async function savePlatformSecretProfile(
-  input: {
-    id?: string;
-    name: string;
-    entries: Array<{ key: string; kind: "variable" | "secret"; value?: string }>;
-  },
-): Promise<{ profile: PlatformSecretProfile; jobs: Job[] }> {
-  return clientRequest(input.id ? `/platform/secret-profiles/${input.id}` : "/platform/secret-profiles", {
-    method: input.id ? "PUT" : "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: input.name, entries: input.entries }),
-  });
-}
-
-export async function deletePlatformSecretProfile(profileId: string): Promise<{ deleted: boolean; jobs: Job[] }> {
-  return clientRequest(`/platform/secret-profiles/${profileId}`, { method: "DELETE" });
-}
-
-export async function bindPlatformSecretProfile(input: {
-  projectId: string;
-  profileId: string;
-  deploymentId: string | null;
-  consumer: PlatformSecretConsumer;
-}): Promise<{ binding: PlatformSecretProfileBinding; jobs: Job[] }> {
-  return clientRequest(`/projects/${input.projectId}/platform-secret-bindings/${input.consumer}`, {
+export async function saveSharedAgentEnvironment(
+  entries: Array<{ key: string; kind: "variable" | "secret"; value?: string }>,
+): Promise<{ environment: SharedAgentEnvironment; jobs: Job[] }> {
+  return clientRequest("/platform/shared-agent-environment", {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ profileId: input.profileId, deploymentId: input.deploymentId }),
+    body: JSON.stringify({ entries }),
   });
 }
 
-export async function unbindPlatformSecretProfile(
+export async function bindSharedAgentEnvironment(input: {
+  projectId: string;
+  deploymentId: string | null;
+}): Promise<{ binding: SharedAgentEnvironmentBinding; jobs: Job[] }> {
+  return clientRequest(`/projects/${input.projectId}/shared-agent-environment-bindings`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ deploymentId: input.deploymentId }),
+  });
+}
+
+export async function unbindSharedAgentEnvironment(
   projectId: string,
   bindingId: string,
 ): Promise<{ deleted: boolean; jobs: Job[] }> {
-  return clientRequest(`/projects/${projectId}/platform-secret-bindings/${bindingId}`, { method: "DELETE" });
+  return clientRequest(`/projects/${projectId}/shared-agent-environment-bindings/${bindingId}`, { method: "DELETE" });
 }
 
 export async function inviteMember(email: string): Promise<{ invitation: Invitation; inviteUrl: string }> {
