@@ -1,0 +1,33 @@
+---
+title: Prepare the host
+description: Prepare Linux users, directories, tools, storage, database access, and capacity before installation.
+---
+
+Use a Linux host with systemd; Eveland is verified on Ubuntu 24.04. Production requires Node.js 24, pnpm 11, Git, bubblewrap, systemd tools, and the platform sandbox command baseline.
+
+## Create the runtime boundary
+
+- Run Worker as a root-owned systemd service.
+- Create an unprivileged application user, normally `eveland-app`.
+- Create a separate unprivileged build user, normally `eveland-build`.
+- Create `/workspace` and an absolute data root, normally `/var/lib/eveland`.
+- Ensure both API's mounted path and Worker's `EVELAND_DATA_DIR` use that exact absolute path.
+
+## Plan storage and database access
+
+Keep source revisions, releases, observer outboxes, and sandbox caches below the data root. Configure a Postgres role for Eveland and a production `WORKFLOW_POSTGRES_URL` whose role can create the isolated per-project workflow databases.
+
+## Plan capacity
+
+Set a per-deployment `EVELAND_MEMORY_MAX` and `EVELAND_CPU_QUOTA` for the host. Capacity planning should include concurrent ready RuntimeInstances, build work, Postgres, the control plane, release artifacts, and durable sandbox caches. Idle stopping reduces steady-state process count; it does not remove retained artifacts or session workspaces.
+
+## Run preflight
+
+Build the platform sandbox backend, then run the standalone check:
+
+```bash
+pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+```
+
+Do not continue until it reports `PREFLIGHT OK`. It returns the complete missing-prerequisite list in one pass.

@@ -1,0 +1,4 @@
+{
+  "title": "Deploy agents",
+  "pages": ["first-deployment", "secrets-connections", "releases-routing"]
+}

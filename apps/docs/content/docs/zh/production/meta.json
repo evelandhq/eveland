@@ -1,0 +1,4 @@
+{
+  "title": "部署 Eveland",
+  "pages": ["index", "prerequisites", "control-plane", "worker", "networking", "verify"]
+}

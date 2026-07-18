@@ -1,0 +1,25 @@
+---
+title: Verify the platform
+description: Prove the complete production path with a real Eve deployment, stable request, and observed session.
+---
+
+A working login page is not proof that the runtime path works. Verify the complete system with a representative Eve project.
+
+## Platform checks
+
+1. Confirm API and Gateway health report the intended stable version and exact revision.
+2. Confirm Worker is active and its production preflight passed.
+3. Sign in as the initial admin and inspect the masked component configuration under **Settings → About**.
+4. Invite a second team member and confirm the invitation is single-use.
+
+## Runtime checks
+
+1. Import an Eve project with a supported dependency version.
+2. Add the minimum required Project Secrets.
+3. Build a new immutable preview.
+4. Call the preview hostname through Gateway and complete a real turn.
+5. Promote the healthy Deployment to the stable route.
+6. Call the stable hostname and confirm the Session appears with Deployment provenance and reported usage.
+7. Allow the idle window to expire, then call again and confirm on-demand activation succeeds.
+
+Record the exact revision and configuration used for the verification. Continue with [Deploy your first agent](/docs/agents/first-deployment) for the team-facing workflow.

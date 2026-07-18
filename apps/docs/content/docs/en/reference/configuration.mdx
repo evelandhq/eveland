@@ -1,0 +1,28 @@
+---
+title: Configuration
+description: Find the production configuration families and the component that owns each value.
+---
+
+Use the checked-in `.env.example`, production Compose overlay, and `infra/systemd/eveland-worker.env.example` as the exact configuration surface for your release. This page organizes ownership; it does not replace release-specific defaults.
+
+## Control plane
+
+Configure public origins, Better Auth, Team bootstrap, Postgres, the shared data root, application encryption, and release identity. Set a cookie domain only when Web and API intentionally share a parent domain.
+
+## Gateway
+
+Configure Agent base domains, service authentication, affinity signing, the private API origin, and cold-start timeout. Keep Gateway service and affinity secrets independent.
+
+## Worker and runtime
+
+Configure `EVELAND_RUNTIME=systemd`, the same absolute data root, application encryption, app/build users, build sandbox, per-deployment CPU and memory, retention, and workflow Postgres.
+
+## Scheduler and activation
+
+Configure independent runtime and dispatch secrets, the private redeem URL, prewarm duration, activation idle TTL, and recovery/reconciliation batch controls.
+
+## Observability
+
+Configure the observer data root and collector timing only when changing the documented defaults. Observer degradation must remain separate from Agent-turn success.
+
+Never copy a development fallback into production. Admins can compare the allowlisted effective component configuration under **Settings → About**; secret values remain masked.

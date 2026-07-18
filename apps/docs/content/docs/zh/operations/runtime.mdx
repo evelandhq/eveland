@@ -1,0 +1,22 @@
+---
+title: 运行时与资源
+description: 在生产宿主机上控制进程生命周期、Cold Activation、CPU、内存与 Orphan Recovery。
+---
+
+Eveland 将持久化 Deployment Identity 与进程生命周期分开。即使 RuntimeInstance 已停止，Deployment 仍可保留 Release、Preview Host、Route 与 SessionBinding。
+
+## Activation 生命周期
+
+Public Request、Continuation、Stream 与 Schedule 在访问进程前获取 ActivationLease。目标 Dormant 时，API 合并为一个 Activation Job，Worker 使用持久化 Runtime Adapter 启动精确 Release。Gateway 只等待配置的 Cold Start 时间。
+
+最后一个 Lease 结束后，Worker 等待 `EVELAND_ACTIVATION_IDLE_TTL_MS`，再次检查是否出现新保护，然后只停止进程。Upcoming 或 Non-terminal ScheduleRun 会保护其固定 Target。
+
+## 每 Deployment 限制
+
+systemd Adapter 为每个 Transient Unit 应用来自 `EVELAND_MEMORY_MAX` 的 `MemoryMax` 与来自 `EVELAND_CPU_QUOTA` 的 `CPUQuota`。设置时需要为 Build、Postgres、控制面与并发 Cold Start 留出余量。
+
+## Recovery 与 Reconciliation
+
+Worker 恢复中断的 Activation Job，对账数据库状态与真实进程，并清扫 Orphan `eveland-*-dep_*` Unit。它可以将合法但失管的进程纳入 RuntimeInstance 生命周期，也可以停止没有有效 Deployment Owner 的进程。
+
+宿主机存在 Live Deployment 时永远不要切换 Resolved Runtime。必须先 Drain 所有 Target；每个 Deployment 要继续使用其 `runtimeKind` 记录的 Adapter。

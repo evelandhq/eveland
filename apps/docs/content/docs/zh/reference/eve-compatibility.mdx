@@ -1,0 +1,21 @@
+---
+title: Eve 兼容性
+description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
+---
+
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近两个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.24.x` 与 `0.25.x`，验证版本为 `0.24.6` 与 `0.25.1`。
+
+仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；进入时会有意识地移除较旧 Minor。
+
+## Enforcement Point
+
+依赖缺失、超出窗口或无法证明兼容时，Eveland 会在以下位置 Fail Closed：
+
+- Source Import 与 Preflight
+- Build 与 Restart
+- Cold Activation
+- Playground Traffic
+- Public Session Create、Continue、Cancel 与 Stream
+- Schedule Execution
+
+Diagnostic 会要求项目 Owner Upgrade，而不是猜测旧 Protocol。生产环境升级 Eve 或 Eveland 前都应阅读 Release Note。

@@ -1,0 +1,25 @@
+---
+title: 升级与回滚
+description: 在明确 Migration、组件 Identity 与 Runtime Ownership 的前提下升级精确 Eveland Release。
+---
+
+将 Eveland Upgrade 视为协调一致的产品变更，而不是四个应用各自重启。
+
+## 升级前
+
+1. 阅读目标 GitHub Release Note 与兼容性变化。
+2. 使用团队基础设施的标准流程备份 Postgres 与配置的数据根目录。
+3. 确认每个组件报告当前精确 Revision。
+4. 检查是否存在需要 Drain Deployment 的 Runtime Migration 或特别说明。
+
+## 应用 Release
+
+获取 Tag，Checkout 目标 Stable Tag，安装 Frozen Lockfile 并应用版本化数据库 Migration。为 Web、API、Gateway 与 Worker 设置相同 Release Channel 和 Revision，再从同一 Checkout 重启。
+
+只有 Public Health、Worker Startup Identity 与 **Settings → About** 全部一致后，升级才算完成。
+
+## 回滚边界
+
+只有旧版本仍兼容所有已应用 Migration 时，Checkout 旧 Tag 才安全。数据库 Migration 不会自动反向执行。必须遵循 Release 专属 Rollback Note，不能假设源码回滚已经足够。
+
+不要通过切换 `EVELAND_RUNTIME` 规避升级步骤。已有 Deployment 保留其记录的 Runtime Owner；迁移宿主机 Runtime 前必须有意识地 Drain。

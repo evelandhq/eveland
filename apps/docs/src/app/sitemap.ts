@@ -2,7 +2,29 @@ import type { MetadataRoute } from "next";
 import { siteUrl } from "@/lib/site-copy";
 import { localizedHref } from "@/lib/urls";
 
-const pages = ["", "/docs", "/docs/quick-start", "/docs/concepts", "/docs/deploy", "/docs/operate", "/docs/architecture", "/docs/troubleshooting"];
+const pages = [
+  "",
+  "/docs",
+  "/docs/production",
+  "/docs/production/prerequisites",
+  "/docs/production/control-plane",
+  "/docs/production/worker",
+  "/docs/production/networking",
+  "/docs/production/verify",
+  "/docs/agents/first-deployment",
+  "/docs/agents/secrets-connections",
+  "/docs/agents/releases-routing",
+  "/docs/observe/sessions",
+  "/docs/observe/schedules",
+  "/docs/operations/runtime",
+  "/docs/operations/diagnostics",
+  "/docs/operations/upgrades",
+  "/docs/operations/security",
+  "/docs/reference/configuration",
+  "/docs/reference/eve-compatibility",
+  "/docs/reference/architecture",
+  "/docs/reference/troubleshooting",
+];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return (["en", "zh"] as const).flatMap((lang) =>

@@ -1,0 +1,42 @@
+---
+title: 架构参考
+description: 查看应用 Ownership、Dependency Direction、Data Path 与 Public Request Path。
+---
+
+<RuntimeTopology lang="zh" />
+
+## 应用 Ownership
+
+| 组件 | 职责 |
+| --- | --- |
+| Web | 经过认证的团队控制面 |
+| API | Control-plane Contract、Persistence、Auth、Import Handling 与 Collector Host |
+| Gateway | Public Agent Data Plane、Trusted Routing、Affinity、Streaming 与 Private Playground Path |
+| Worker | Import、Build、systemd Runtime Control、Schedule、Recovery 与 Cleanup |
+| Postgres | 控制面状态与平台管理的 Durable Workflow Database |
+
+## Dependency Direction
+
+```text
+apps → packages
+session-collector → core + db
+db → core
+core → no other Eveland package
+apps -X→ apps
+```
+
+## Public Request Path
+
+```text
+Client
+  → wildcard HTTPS Host
+  → Traefik
+  → Gateway
+  → Route Policy / SessionBinding
+  → Private Loopback Deployment
+  → Eve HTTP Channel
+```
+
+## Observation Path
+
+注入 Hook 将 Durable Envelope 写入 Deployment Outbox。API Collector Claim、Validate 并将 Envelope 投影为 Session 与 Usage。Playground Streaming 不是权威采集路径。

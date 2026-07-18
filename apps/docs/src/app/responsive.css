@@ -50,7 +50,7 @@
 
 @supports (animation-timeline: view()) {
   .proof-section,
-  .audience-section,
+  .foundation-section,
   .control-section,
   .final-cta {
     animation: section-in linear both;
@@ -212,30 +212,6 @@
     font-size: 42px;
   }
 
-  .audience-section {
-    padding: 94px 0 104px;
-  }
-
-  .audience-grid {
-    grid-template-columns: 1fr;
-    margin-top: 58px;
-  }
-
-  .audience-grid article {
-    min-height: 320px;
-    padding: 28px 4px 32px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .audience-grid article:last-child {
-    border-bottom: 0;
-  }
-
-  .audience-grid h3 {
-    margin-top: 48px;
-  }
-
   .flow-section {
     padding: 96px 0 108px;
     gap: 58px;
@@ -304,5 +280,57 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 1080px) {
+  .topology-handoff {
+    min-height: 54px;
+    flex-direction: row;
+  }
+
+  .foundation-list li > div {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .foundation-list a {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .runtime-stage {
+    min-height: auto;
+  }
+
+  .topology-plane,
+  .topology-runtime {
+    min-height: 250px;
+  }
+
+  .topology-runtime ol {
+    gap: 12px;
+  }
+
+  .foundation-section {
+    padding: 94px 0 104px;
+  }
+
+  .foundation-list {
+    margin-top: 56px;
+  }
+
+  .foundation-list li {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .foundation-list li > div {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .foundation-list a {
+    grid-column: auto;
+    white-space: normal;
   }
 }

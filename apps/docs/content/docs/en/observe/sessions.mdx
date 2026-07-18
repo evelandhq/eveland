@@ -1,0 +1,26 @@
+---
+title: Sessions and usage
+description: Trace root and child Eve sessions with deployment provenance and provider-reported usage.
+---
+
+Session collection is independent of Playground. Injected Eve hooks write durable envelopes to a filesystem outbox, and the collector projects them into Postgres. Direct Agent requests, Playground, schedules, and child sessions can all appear in the same history.
+
+## Session model
+
+A platform Session is the root conversation. Each root or subagent Eve session becomes a SessionNode. Durable Eve identity is scoped to the Project, while individual observations retain the Deployment that produced them.
+
+Child-before-parent delivery and discovery races are expected. Projection merges relationships and provenance idempotently without following arbitrary remote subagent URLs.
+
+## Usage
+
+Usage comes only from Eve's provider-reported `step.completed.data.usage`:
+
+- input and output tokens
+- cache-read and cache-write tokens
+- provider or gateway cost when reported
+
+Missing usage remains explicitly missing; Eveland does not estimate it. At-least-once envelope delivery cannot double-count already projected usage.
+
+## Observer health
+
+Observer failure must not make an Agent turn fail. Envelopes remain queued for recovery, while collector health reports degradation separately from control-plane health.

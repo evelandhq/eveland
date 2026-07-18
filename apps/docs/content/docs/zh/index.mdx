@@ -1,32 +1,33 @@
 ---
-title: 介绍
-description: 用于部署和运行标准 Eve 项目的自托管控制平面。
+title: Eveland 概览
+description: 在自己的基础设施上为团队部署和运营 Eve Agents。
 ---
 
-Eveland 将一个标准 [Eve](https://eve.dev) 项目变成运行在你自己基础设施上的、可观察和可路由的 Deployment。你可以在同一处导入源码、注入 Secrets、构建 Release、运行 Agent、路由流量并检查它们创建的 Session。
+Eveland 是面向团队的自托管部署与运营平台，服务于已经使用 [Eve](https://eve.dev) 构建 Agent 的团队。Eve 定义 Agent；Eveland 为 Agent 提供由 Release、Preview、稳定路由、运行时隔离、Schedules 与 Session 可观测性组成的生产运行环境。
 
-## Eveland 适合谁
+## Eveland 负责什么
 
-- **Agent 编写者**继续编写普通、文件系统优先的 Eve 项目。Eveland 会识别项目已有的 agents、tools、skills、connections、sandboxes、subagents 与 schedules。
-- **应用开发者**获得稳定与预览 Agent 入口、Playground，以及将用户输入连接到模型和工具活动的 Session 时间线。
-- **运维人员**获得明确的 Release、Deployment、路由、健康检查、日志、隔离、保留策略和用量边界。
+```text
+Eve Project
+  → Source Revision
+  → 不可变 Release
+  → Preview Deployment
+  → Stable Route
+  → Sessions、Usage 与 Schedules
+```
 
-## 从这里开始
+Eveland 不替代 Eve 的文件系统优先编写方式，也不接管 Agent 自己的应用认证。它管理的是项目准备好运行之后的部分。
 
-1. 按照[快速开始](/zh/docs/quick-start)在本地运行控制平面。
-2. 第一次生产部署前，先阅读[核心概念](/zh/docs/concepts)。
-3. 使用[部署 Eve 项目](/zh/docs/deploy)完成从源码到稳定路由的流程。
-4. 在 Linux 主机安装前阅读[运行 Eveland](/zh/docs/operate)。
+## 为生产环境而设计
 
-## Eveland 管理什么
+受支持的生产拓扑将控制面与宿主机运行权限分开。Web、API、Gateway 和 Postgres 组成控制面；宿主机 Worker 将 Eve Deployment 启动为隔离的 systemd Service。Agent 端口只监听私有 Loopback，Gateway 负责稳定与预览 Host。
 
-| 对象 | 用途 |
-| --- | --- |
-| Project | 一个导入 Eve 项目的持久归属。 |
-| Source Revision | 不可变的 Git commit 或上传 Zip 快照。 |
-| Release | 从 Source Revision 生成的构建产物。 |
-| Deployment | 有独立运行时身份和私有端口的运行中 Release。 |
-| Route | 指向 Deployment 的稳定、预览或命名 Host。 |
-| Session | 带 Deployment 来源信息的持久 Eve 执行过程。 |
+该边界使 Docker Controller、源码、解密后的 Secrets 和 Observer 数据远离公开 Agent 流量。每个 Deployment 的 CPU/内存限制、空闲停止与按需唤醒让资源使用保持可控。
 
-Eveland 目前处于**预览阶段**。文档和运行时契约仍会演进，升级生产主机前请检查版本变更。
+## 选择你的路径
+
+- **平台管理员：** 从[生产架构](/zh/docs/production)开始，准备 Linux 主机，安装控制面和 Worker，再验收完整链路。
+- **团队成员：** 如果 Eveland 已安装，直接[部署第一个 Agent](/zh/docs/agents/first-deployment)。
+- **平台运维：** 使用[运行时与资源](/zh/docs/operations/runtime)和[健康与诊断](/zh/docs/operations/diagnostics)处理日常运营。
+
+本地 Docker 开发和仓库贡献流程继续由仓库 README 承载，不属于生产部署主路径。
