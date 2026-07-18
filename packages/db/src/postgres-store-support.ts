@@ -7,6 +7,8 @@ import type {
   PlatformSecretProfile,
   PlatformSecretProfileBinding,
   PlatformSecretProfileRecord,
+  SharedAgentEnvironment,
+  SharedAgentEnvironmentRecord,
 } from "@eveland/core/contracts";
 import type { Database } from "./client.js";
 import { agentAuthCredentials, modelUsageEvents, platformSecretProfileBindings, platformSecretProfiles } from "./schema.js";
@@ -71,6 +73,20 @@ export function platformSecretProfileRowToPublic(
     ...record,
     entries: record.entries.map(({ key, kind }) => ({ key, kind, configured: true })),
   };
+}
+
+export function platformSecretProfileRowToSharedEnvironmentRecord(
+  row: typeof platformSecretProfiles.$inferSelect,
+): SharedAgentEnvironmentRecord {
+  const { id: _id, name: _name, ...environment } = platformSecretProfileRowToRecord(row);
+  return environment;
+}
+
+export function platformSecretProfileRowToSharedEnvironment(
+  row: typeof platformSecretProfiles.$inferSelect,
+): SharedAgentEnvironment {
+  const { id: _id, name: _name, ...environment } = platformSecretProfileRowToPublic(row);
+  return environment;
 }
 
 export function platformSecretProfileBindingRowToPublic(

@@ -121,7 +121,7 @@ describe("control-plane auth routes", () => {
     await expect(memberResponse.json()).resolves.toEqual({ error: "Admin access required" });
   });
 
-  test("allows only administrators to manage platform Secret Profiles", async () => {
+  test("allows only administrators to manage the shared Agent environment", async () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
     const issued = await invite(app, adminCookie, "profile-member@example.com");
@@ -131,22 +131,19 @@ describe("control-plane auth routes", () => {
       body: JSON.stringify({ token: issued.body.invitation.id, name: "Profile Member", password: "member-password" }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
-    const input = {
-      name: "Operator profile",
-      entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "operator-secret" }],
-    };
+    const input = { entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "operator-secret" }] };
 
-    expect((await app.request("/platform/secret-profiles")).status).toBe(401);
-    const memberResponse = await app.request("/platform/secret-profiles", { headers: { cookie: memberCookie } });
+    expect((await app.request("/platform/shared-agent-environment")).status).toBe(401);
+    const memberResponse = await app.request("/platform/shared-agent-environment", { headers: { cookie: memberCookie } });
     expect(memberResponse.status).toBe(403);
     await expect(memberResponse.json()).resolves.toEqual({ error: "Admin access required" });
 
-    const adminResponse = await app.request("/platform/secret-profiles", {
-      method: "POST",
+    const adminResponse = await app.request("/platform/shared-agent-environment", {
+      method: "PUT",
       headers: { cookie: adminCookie, "content-type": "application/json" },
       body: JSON.stringify(input),
     });
-    expect(adminResponse.status).toBe(201);
+    expect(adminResponse.status).toBe(200);
   });
 
   test("updates the signed-in profile and revokes other sessions when changing the password", async () => {

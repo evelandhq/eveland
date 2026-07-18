@@ -259,25 +259,24 @@ and rebuilds the process environment from the current encrypted Secret set. Wait
 those jobs to complete before testing the new value; a single-target route can be
 briefly unavailable while its process restarts.
 
-Platform Secret Profiles are stored in Postgres as AES-256-GCM ciphertext using the
-same `APP_SECRET_KEY`; they do not add another host environment variable or Compose
-secret. Only admins can manage Profiles and bindings. An `agent-runtime` binding may
-target a whole Project or one Deployment, while `agent-connection` is Project-scoped.
-At process start the worker resolves Project Secret < Project Profile < Deployment
-Profile < Eveland-reserved precedence, writes the final values only to the Docker
-process environment or the systemd adapter's root-owned `0600` `EnvironmentFile`, and
-adds every decrypted Profile value to runtime/build diagnostic masking. Values never
-enter a Release, build layer, observer event, API response, Web payload, or worker
-configuration snapshot.
+The singleton Shared Agent Environment is stored in Postgres as AES-256-GCM ciphertext
+using the same `APP_SECRET_KEY`; it does not add another host environment variable or
+Compose secret. Only admins can change it or bind it to a Project/Deployment. At process
+start the worker resolves Project shared defaults < Deployment shared defaults < Project
+Secret < Eveland-reserved precedence, writes the final values only to the Docker process
+environment or the systemd adapter's root-owned `0600` `EnvironmentFile`, and adds every
+decrypted shared value to runtime/build diagnostic masking. Values never enter a Release,
+build layer, observer event, API response, Web payload, or worker configuration snapshot.
 
-Changing a Profile revision or binding queues deduplicated `restart_deployment` jobs
-only for affected `running`/`draining` targets. Removing a binding/Profile also queues
-restart so an old process cannot retain deleted values. With no live target, the next
-deploy, restart, cold activation, or schedule activation reads the latest revision.
-Agent Connection references do not restart an Agent: API resolves the current Project
-Secret or bound Profile entry for every request and fails closed if it is missing or
-cannot be decrypted. Existing API/worker `APP_SECRET_KEY` values must continue to match;
-worker preflight and Compose topology otherwise require no new setting.
+Changing the shared environment or a binding queues deduplicated `restart_deployment`
+jobs only for affected `running`/`draining` targets. Removing a binding or clearing the
+environment also queues restart so an old process cannot retain deleted values. With no
+live target, the next deploy, restart, cold activation, or schedule activation reads the
+latest revision. Agent Connection credentials are separate and new configuration uses
+Project Secret references resolved per request. Existing named Profile runtime bindings
+and Agent Connection references remain readable during migration until replaced. Existing
+API/worker `APP_SECRET_KEY` values must continue to match; worker preflight and Compose
+topology otherwise require no new setting.
 
 GitLab PAT imports use the same `APP_SECRET_KEY` on API and worker. The database stores only
 AES-256-GCM ciphertext keyed by user and normalized HTTP host. During `git clone`, the worker

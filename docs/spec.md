@@ -311,8 +311,8 @@ Connection 只保存 token Secret reference/configured 状态；平台不从 Age
 通用 `oidc` 方法只使用协议级配置：HTTPS issuer、client id、scope、可选 audience 及其
 `resource`/`audience` 参数模式、显式 token endpoint client authentication、附加 authorization
 parameters，以及 `eve-jwt` 或 `userinfo` access-token verification。confidential client secret
-通过 Project Secret 或显式绑定的 `agent-connection` Platform Secret 引用，不能进入 Connection browser
-payload。`eve-jwt` 必须绑定已配置的
+通过 Project Secret 引用，不能进入 Connection browser payload。迁移前已经保存的 Platform Secret
+reference 只保留兼容解析，不能从新的 Shared Agent Environment 创建。`eve-jwt` 必须绑定已配置的
 issuer/audience；`userinfo` 必须让 UserInfo `sub` 与已验证 ID Token `sub` 一致。Provider 名称不能
 改变 scope、prompt、client authentication 或 verification 行为。
 
@@ -527,29 +527,29 @@ Secret 仅在运行时注入容器，不进入：
 
 ---
 
-### Platform Secret Profiles (/settings/secret-profiles)
+### Shared Agent Environment (/settings/shared-agent-environment)
 
-Admin 可创建 operator-owned Platform Secret Profile。Profile 是一个带单调 `revision` 的命名值集合；
-entry 明确区分 `variable` 与 `secret`，但两者的 Value 都使用 `APP_SECRET_KEY` 加密，API/Web 只返回
-key、kind、configured 状态和 revision，不能返回密文、明文、长度或可恢复片段。Member 可以查看自己
-Project 的 binding 结果，但不能创建、修改、删除 Profile 或 binding。
+系统只有一套 operator-owned Shared Agent Environment，主要保存多个 Agent 共用的 LLM Key 和运行时默认值。
+它不是用户可命名、创建或选择的 Profile 集合。Entry 明确区分 `variable` 与 `secret`，但两者的 Value 都使用
+`APP_SECRET_KEY` 加密；API/Web 只返回 key、kind、configured 状态和单调 revision，不能返回密文、明文、
+长度或可恢复片段。Admin 可以维护共享环境和 binding；Member 只能查看自己 Project 的 binding 结果。
 
-Profile 必须显式绑定到一个 Project 或该 Project 的单个 Deployment，并声明 consumer：
+共享环境必须显式绑定到一个 Project 或该 Project 的单个 Deployment。Project binding 让所有 Deployment
+继承共享默认；只绑定 Deployment 时仅该目标获得共享值。同一 target 最多一个 binding。确定性优先级为
+Project-scope Shared Agent Environment < Deployment-scope Shared Agent Environment < Project Secret < Eveland
+保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。共享值只在 deploy、restart、cold activation
+或 schedule activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、
+generated Dockerfile、observer envelope、日志或 Web payload。完整 Project/Shared Environment 值集合必须
+参与 runtime/build diagnostic 脱敏。
 
-* `agent-runtime`：Project binding 作为所有 Deployment 的默认值；Deployment binding 只覆盖该目标；
-* `agent-connection`：只允许 Project scope，供 Basic/Bearer 等调用端 credential provider 在每次请求时解析。
-
-同一 target/consumer 最多一个 binding。Agent runtime 的确定性优先级为 Project Secret < Project Profile
-< Deployment Profile < Eveland 保留变量。Profile 值只在 deploy、restart、cold activation 或 schedule
-activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、generated
-Dockerfile、observer envelope、日志或 Web payload。完整 Project/Profile 值集合必须参与 runtime/build
-diagnostic 脱敏。
-
-Profile entry 语义变化才递增 revision。新增、替换、解除 runtime binding，更新或删除被 runtime binding
-引用的 Profile 时，API 对受影响的 `running`/`draining` Deployment 去重后排定向 restart；没有 live
-Deployment 时从下一次启动生效。`agent-connection` 不重启 Agent 进程，而是在每次 initial、continuation、
-cancel 和 stream/reconnect 请求时解析当前 Project Secret 或当前绑定 Profile revision；引用缺失、解绑或
-无法解密必须 fail closed，不得回退到旧值或 inline copy。旧 inline Connection config 仅保留兼容读取。
+Entry 语义变化才递增内部 revision。新增或解除 binding、更新或清空共享环境时，API 对受影响的
+`running`/`draining` Deployment 去重后排定向 restart；没有 live Deployment 时从下一次启动生效。
+Shared Agent Environment 只属于 Agent runtime，不得作为 Agent Connection credential。新的 Basic、Bearer、
+Vercel OIDC 和 confidential OIDC 配置通过 Project Secret reference 延迟解析；引用缺失、删除或无法解密必须
+fail closed，不得回退到旧值或 inline copy。迁移前已经保存的 named Platform Secret Profile、runtime binding
+和 `agent-connection` reference 继续兼容读取，直到管理员用共享环境 binding 或 Project Secret 替换；旧设置
+地址重定向到 Shared Agent Environment。新的受支持 UI/API 不再创建 named Profile；旧 Profile API 暂时只作
+deprecated 迁移窗口，不应承载新配置。
 
 ---
 

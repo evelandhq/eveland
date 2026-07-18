@@ -43,8 +43,8 @@ const SESSION_KEY = "e2e-durable-session";
 const MARKER_CONTENT = "eveland-e2e-marker: durable-session-workspace-survives-redeploy\n";
 const INITIAL_SEED_CONTENT = "eveland-seed-preserved";
 const UPDATED_SEED_CONTENT = "eveland-seed-updated-after-sync";
-const PLATFORM_PROFILE_ENV_KEY = "EVELAND_E2E_PLATFORM_PROFILE";
-const PLATFORM_PROFILE_ENV_VALUE = "platform-profile-reaches-systemd";
+const SHARED_ENVIRONMENT_KEY = "EVELAND_E2E_SHARED_ENVIRONMENT";
+const SHARED_ENVIRONMENT_VALUE = "shared-environment-reaches-systemd";
 
 // A fresh `npx eve build`/`npx eve start` inside the Lima VM (cold npm
 // install, no warm caches) is slower than the 15s default health timeout.
@@ -350,19 +350,16 @@ const project = await store.createProject({ name: "Agent Sandbox E2E", importKin
 // the unit's environment -- through the real store/build_deploy pipeline,
 // with no code change to systemd.ts needed.
 await store.upsertSecret(project.id, "EVE_MOCK_AUTHORED_MODELS", JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)));
-const runtimeProfile = await store.savePlatformSecretProfile({
-  name: "Agent Sandbox E2E runtime profile",
+await store.saveSharedAgentEnvironment({
   entries: [{
-    key: PLATFORM_PROFILE_ENV_KEY,
+    key: SHARED_ENVIRONMENT_KEY,
     kind: "secret",
-    encryptedValue: JSON.stringify(encryptSecretValue(PLATFORM_PROFILE_ENV_VALUE, APP_SECRET_KEY)),
+    encryptedValue: JSON.stringify(encryptSecretValue(SHARED_ENVIRONMENT_VALUE, APP_SECRET_KEY)),
   }],
 });
-await store.bindPlatformSecretProfile({
-  profileId: runtimeProfile.id,
+await store.bindSharedAgentEnvironment({
   projectId: project.id,
   deploymentId: null,
-  consumer: "agent-runtime",
 });
 
 let deployment: DeploymentRecord | null = null;
@@ -396,12 +393,12 @@ try {
   assert.match(mainPid, /^[1-9][0-9]*$/, "the deployed systemd unit must have a running MainPID");
   const processEnvironment = (await readFile(`/proc/${mainPid}/environ`, "utf8")).split("\0");
   assert.ok(
-    processEnvironment.includes(`${PLATFORM_PROFILE_ENV_KEY}=${PLATFORM_PROFILE_ENV_VALUE}`),
-    "the project-bound agent-runtime Profile must reach the real systemd process environment",
+    processEnvironment.includes(`${SHARED_ENVIRONMENT_KEY}=${SHARED_ENVIRONMENT_VALUE}`),
+    "the project-bound shared Agent environment must reach the real systemd process environment",
   );
 
   const buildLogs = (await store.listLogs(project.id, "build")).map((log) => log.line).join("\n");
-  assert.ok(!buildLogs.includes(PLATFORM_PROFILE_ENV_VALUE), "the Profile value must be masked from build logs");
+  assert.ok(!buildLogs.includes(SHARED_ENVIRONMENT_VALUE), "the shared environment value must be masked from build logs");
   assert.ok(
     buildLogs.includes("Injected eve sandbox modules: agent/sandbox/sandbox.js"),
     `build log missing the injection line:\n${buildLogs}`,

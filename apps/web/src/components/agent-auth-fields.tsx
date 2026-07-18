@@ -102,9 +102,9 @@ export function AgentAuthFields({
                 </SelectContent>
               </Select>
               <FieldDescription>
-                {secretReferences.length > 0
-                  ? "Select a current Project Secret or bound Platform Secret. Leave unchanged to preserve the existing reference."
-                  : "Add a Project Secret or bind an agent-connection Secret Profile before configuring this method."}
+                 {secretReferences.length > 0
+                   ? "Select a current Project Secret or available connection credential reference. Leave unchanged to preserve the existing reference."
+                   : "Add a Project Secret before configuring this method."}
               </FieldDescription>
             </Field>
           );

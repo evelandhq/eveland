@@ -233,12 +233,19 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     );
   };
   const enqueuePlatformSecretRestarts = async (
-    bindings: Awaited<ReturnType<Store["listPlatformSecretProfileBindings"]>>,
-    reason: "platform_secret_binding_changed" | "platform_secret_profile_changed",
+    bindings: Array<
+      Awaited<ReturnType<Store["listPlatformSecretProfileBindings"]>>[number]
+      | Awaited<ReturnType<Store["listSharedAgentEnvironmentBindings"]>>[number]
+    >,
+    reason:
+      | "platform_secret_binding_changed"
+      | "platform_secret_profile_changed"
+      | "shared_agent_environment_binding_changed"
+      | "shared_agent_environment_changed",
   ) => {
     const targets = new Map<string, { projectId: string; deploymentId: string }>();
     for (const binding of bindings) {
-      if (binding.consumer !== "agent-runtime") continue;
+      if ("consumer" in binding && binding.consumer !== "agent-runtime") continue;
       const live = (await store.listDeployments(binding.projectId)).filter(
         (deployment) => deployment.status === "running" || deployment.status === "draining",
       );

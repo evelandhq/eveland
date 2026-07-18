@@ -4,6 +4,13 @@ import type {
   PlatformSecretProfileRecord,
   PublicSecret,
   SecretRecord,
+  SharedAgentEnvironment,
+  SharedAgentEnvironmentBinding,
+  SharedAgentEnvironmentRecord,
+} from "@eveland/core/contracts";
+import {
+  SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+  SHARED_AGENT_ENVIRONMENT_PROFILE_NAME,
 } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
 import type { MemoryState } from "./memory-state.js";
@@ -54,6 +61,85 @@ export function createMemorySecretStore(
 
     async listSecretRecords(projectId) {
       return state.secrets.filter((secret) => secret.projectId === projectId);
+    },
+
+    async saveSharedAgentEnvironment(input) {
+      const now = new Date().toISOString();
+      const entries = normalizePlatformSecretProfileEntries(input.entries);
+      const existing = state.platformSecretProfiles.find(
+        (profile) => profile.id === SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+      );
+      if (existing) {
+        if (!platformSecretProfileEntriesEqual(existing.entries, entries)) {
+          existing.entries = entries;
+          existing.revision += 1;
+          existing.updatedAt = now;
+        }
+        return toSharedAgentEnvironment(existing);
+      }
+      const profile: PlatformSecretProfileRecord = {
+        id: SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+        name: SHARED_AGENT_ENVIRONMENT_PROFILE_NAME,
+        revision: 1,
+        entries,
+        createdAt: now,
+        updatedAt: now,
+      };
+      state.platformSecretProfiles.push(profile);
+      return toSharedAgentEnvironment(profile);
+    },
+
+    async getSharedAgentEnvironmentRecord() {
+      const profile = state.platformSecretProfiles.find(
+        (candidate) => candidate.id === SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+      );
+      return profile ? toSharedAgentEnvironmentRecord(profile) : null;
+    },
+
+    async bindSharedAgentEnvironment(input) {
+      const binding = await this.bindPlatformSecretProfile({
+        ...input,
+        profileId: SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+        consumer: "agent-runtime",
+      });
+      return toSharedAgentEnvironmentBinding(binding);
+    },
+
+    async listProjectSharedAgentEnvironmentBindings(projectId) {
+      return (await this.listProjectPlatformSecretBindings(projectId))
+        .filter(isSharedAgentEnvironmentBinding)
+        .map(toSharedAgentEnvironmentBinding);
+    },
+
+    async listSharedAgentEnvironmentBindings() {
+      return (await this.listPlatformSecretProfileBindings(
+        SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
+      ))
+        .filter(isSharedAgentEnvironmentBinding)
+        .map(toSharedAgentEnvironmentBinding);
+    },
+
+    async deleteSharedAgentEnvironmentBinding(projectId, bindingId) {
+      const existing = (await this.listProjectPlatformSecretBindings(projectId))
+        .find((binding) => binding.id === bindingId && isSharedAgentEnvironmentBinding(binding));
+      if (!existing) return null;
+      const deleted = await this.deletePlatformSecretProfileBinding(projectId, bindingId);
+      return deleted ? toSharedAgentEnvironmentBinding(deleted) : null;
+    },
+
+    async resolveSharedAgentEnvironmentRecords(input) {
+      const records = await this.resolvePlatformSecretProfileRecords({
+        ...input,
+        consumer: "agent-runtime",
+      });
+      const toSharedRecord = (record: PlatformSecretProfileRecord | null) =>
+        record?.id === SHARED_AGENT_ENVIRONMENT_PROFILE_ID
+          ? toSharedAgentEnvironmentRecord(record)
+          : null;
+      return {
+        project: toSharedRecord(records.project),
+        deployment: toSharedRecord(records.deployment),
+      };
     },
 
     async savePlatformSecretProfile(input) {
@@ -107,6 +193,12 @@ export function createMemorySecretStore(
     },
 
     async bindPlatformSecretProfile(input) {
+      if (
+        input.profileId === SHARED_AGENT_ENVIRONMENT_PROFILE_ID
+        && input.consumer !== "agent-runtime"
+      ) {
+        throw new Error("The shared Agent environment cannot be used for Agent Connection credentials.");
+      }
       const profile = state.platformSecretProfiles.find(
         (candidate) => candidate.id === input.profileId,
       );
@@ -270,6 +362,40 @@ function toPlatformSecretProfile(
       kind,
       configured: true,
     })),
+  };
+}
+
+function toSharedAgentEnvironmentRecord(
+  profile: PlatformSecretProfileRecord,
+): SharedAgentEnvironmentRecord {
+  const { id: _id, name: _name, ...environment } = profile;
+  return environment;
+}
+
+function toSharedAgentEnvironment(
+  profile: PlatformSecretProfileRecord,
+): SharedAgentEnvironment {
+  const { id: _id, name: _name, ...environment } = toPlatformSecretProfile(profile);
+  return environment;
+}
+
+function isSharedAgentEnvironmentBinding(
+  binding: PlatformSecretProfileBinding,
+): boolean {
+  return binding.profileId === SHARED_AGENT_ENVIRONMENT_PROFILE_ID
+    && binding.consumer === "agent-runtime";
+}
+
+function toSharedAgentEnvironmentBinding(
+  binding: PlatformSecretProfileBinding,
+): SharedAgentEnvironmentBinding {
+  return {
+    id: binding.id,
+    projectId: binding.projectId,
+    deploymentId: binding.deploymentId,
+    environmentRevision: binding.profileRevision,
+    createdAt: binding.createdAt,
+    updatedAt: binding.updatedAt,
   };
 }
 
