@@ -2,6 +2,19 @@ import { describe, expect, test } from "vitest";
 import { createConfigurationSnapshot } from "./config-diagnostics.js";
 
 describe("configuration diagnostics", () => {
+  test("requires Postgres and does not expose the removed memory Store driver", () => {
+    const snapshot = createConfigurationSnapshot("api", {
+      STORE_DRIVER: "memory",
+    });
+
+    expect(snapshot.entries).not.toContainEqual(
+      expect.objectContaining({ name: "STORE_DRIVER" }),
+    );
+    expect(snapshot.entries).toContainEqual(
+      expect.objectContaining({ name: "DATABASE_URL", status: "missing" }),
+    );
+  });
+
   test("never includes a configured secret in a snapshot", () => {
     const snapshot = createConfigurationSnapshot("api", {
       APP_SECRET_KEY: "do-not-leak-this-secret-value",

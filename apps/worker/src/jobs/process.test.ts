@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import {
   allocateAvailableHostPort,
   cleanupExpiredSourcePreflights,
@@ -24,7 +25,7 @@ import { createFixtureEveProject } from "./process.test-support.js";
 
 describe("processNextJob", () => {
   test("validates an Eve source before a Project exists", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const preflight = await store.createSourcePreflight({
       userId: "user_local_admin",
@@ -42,7 +43,7 @@ describe("processNextJob", () => {
   });
 
   test("reports invalid Eve source without creating a Project", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-invalid-preflight-"));
     await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.23.0" } }));
     const preflight = await store.createSourcePreflight({
@@ -62,7 +63,7 @@ describe("processNextJob", () => {
   });
 
   test("cleans expired managed preflight snapshots but preserves outside paths", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-cleanup-"));
     const managedSource = path.join(dataDir, "preflights", "pre_managed", "source");
     const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-outside-"));
@@ -110,7 +111,7 @@ describe("processNextJob", () => {
   });
 
   test("starts an API-claimed RuntimeInstance from its prebuilt Release", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({ name: "Wake Deployment", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
@@ -167,7 +168,7 @@ describe("processNextJob", () => {
   });
 
   test("dispatches a ScheduleRun once to its pinned Deployment and preserves returned Sessions", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({ name: "Trigger Schedule", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");

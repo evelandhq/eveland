@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { decryptSecretValue, encryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
 import { SHARED_AGENT_ENVIRONMENT_PROFILE_ID } from "@eveland/core/contracts";
@@ -8,7 +8,7 @@ const appSecretKey = "eveland-test-secret-key-00000000";
 
 describe("platform Secret Profile routes", () => {
   test("creates, lists, and semantically updates profiles without exposing values", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store, { appSecretKey });
 
     const createdResponse = await app.request("/platform/secret-profiles", {
@@ -70,7 +70,7 @@ describe("platform Secret Profile routes", () => {
   });
 
   test("binds profiles explicitly and queues only affected runtime restarts", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store, { appSecretKey });
     const project = await store.createProject({ name: "Profile Restart Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
@@ -203,7 +203,7 @@ describe("platform Secret Profile routes", () => {
 
 describe("shared Agent environment routes", () => {
   test("reads and saves the singleton environment without Profile metadata", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store, { appSecretKey });
 
     const emptyResponse = await app.request("/platform/shared-agent-environment");
@@ -256,7 +256,7 @@ describe("shared Agent environment routes", () => {
   });
 
   test("binds the singleton environment and restarts only affected Deployments", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store, { appSecretKey });
     const project = await store.createProject({ name: "Shared Environment Restart Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({

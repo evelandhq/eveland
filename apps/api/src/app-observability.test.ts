@@ -12,7 +12,8 @@ import {
   type EncryptedSecret,
 } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 
 import {
   createScheduleRunFixture,
@@ -21,7 +22,7 @@ import {
 
 describe("api app", () => {
   test("leaves token usage projection to the observer collector", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Token Agent",
       importKind: "zip",
@@ -134,7 +135,7 @@ describe("api app", () => {
     if (!address || typeof address === "string")
       throw new Error("Failed to bind the Eve fixture server.");
 
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Streaming Usage Agent",
       importKind: "zip",
@@ -203,7 +204,7 @@ describe("api app", () => {
   });
 
   test("serializes timeline writes from concurrent agent streams", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Concurrent Stream Agent",
       importKind: "zip",
@@ -390,7 +391,7 @@ describe("api app", () => {
     if (!address || typeof address === "string")
       throw new Error("Failed to bind the Eve subagent fixture server.");
 
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Subagent Usage Agent",
       importKind: "zip",
@@ -445,7 +446,7 @@ describe("api app", () => {
   });
 
   test("returns per-agent model usage for a session", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Usage API Agent",
       importKind: "zip",
@@ -538,7 +539,7 @@ describe("api app", () => {
     if (!address || typeof address === "string")
       throw new Error("Failed to bind the missing-child fixture server.");
 
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Missing Child Agent",
       importKind: "zip",
@@ -654,7 +655,7 @@ describe("api app", () => {
     if (!address || typeof address === "string")
       throw new Error("Failed to bind the remote-parent fixture.");
 
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Remote Boundary Agent",
       importKind: "zip",

@@ -72,11 +72,17 @@ export function createPostgresInstanceHealthStore(
       return {
         queuedJobs: queued?.count ?? 0,
         runningJobs: jobGroups.find((group) => group.status === "running")?.count ?? 0,
-        oldestQueuedAt: queued?.oldest?.toISOString() ?? null,
+        oldestQueuedAt: timestampToIso(queued?.oldest),
         runtimeInstances: runtimeCounts,
       };
     },
   };
+}
+
+function timestampToIso(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string") return new Date(value).toISOString();
+  return null;
 }
 
 function toHeartbeatRow(heartbeat: WorkerHeartbeat) {

@@ -6,7 +6,7 @@ import {
   createEveVersionInfo,
   readDeclaredEveVersion,
 } from "@eveland/core/source";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   agentRouteRowToAgentRoute,
   deploymentRowToDeployment,
@@ -99,7 +99,12 @@ export function createPostgresDeploymentRoutingStore({
           deploymentId: deploymentRow.id,
           updatedAt: new Date(),
         })
-        .where(eq(projects.id, input.projectId));
+        .where(
+          and(
+            eq(projects.id, input.projectId),
+            isNull(projects.deploymentId),
+          ),
+        );
 
       return deploymentRowToDeployment(deploymentRow);
     },

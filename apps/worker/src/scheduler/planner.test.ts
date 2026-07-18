@@ -1,10 +1,11 @@
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { planDueSchedules } from "./planner.js";
 
 describe("planDueSchedules", () => {
   test("does not prewarm the next tick while the current tick is already queued for the same Deployment", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Due Scheduler Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -53,7 +54,7 @@ describe("planDueSchedules", () => {
   });
 
   test("prewarms a stopped scheduler target before its next run becomes due", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Prewarm Scheduler Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);

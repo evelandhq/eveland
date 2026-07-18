@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { JobType } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
-import type { Database } from "./client.js";
+import type { StoreDatabase } from "./client.js";
 import { agentRouteRowToAgentRoute, jobRowToJob } from "./mappers.js";
 import { createPostgresAgentAuthStore } from "./postgres-agent-auth-store.js";
 import { createPostgresDeploymentRoutingStore } from "./postgres-deployment-routing-store.js";
@@ -35,7 +35,7 @@ const defaultOwner = {
   name: "Local Admin",
 };
 
-export function createPostgresStore(database: Database): Store {
+export function createPostgresStore(database: StoreDatabase): Store {
   const { db } = database;
 
   async function ensureDeploymentRoutes(

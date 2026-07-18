@@ -12,7 +12,8 @@ import {
   type EncryptedSecret,
 } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 
 import {
   createScheduleRunFixture,
@@ -21,7 +22,7 @@ import {
 
 describe("api app", () => {
   test("syncs the latest git source by enqueuing an import_source job with a deploy chained", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store);
     const createResponse = await app.request("/projects", {
       method: "POST",
@@ -57,7 +58,7 @@ describe("api app", () => {
   });
 
   test("returns project job status without exposing job payloads", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Visible Import Job",
       importKind: "git",
@@ -110,7 +111,7 @@ describe("api app", () => {
   });
 
   test("syncs a git source without deploying when no deploy flag is sent", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Sync Agent",
       importKind: "git",
@@ -133,7 +134,7 @@ describe("api app", () => {
   });
 
   test("rejects a source sync for a zip project", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Zip Agent",
       importKind: "zip",
@@ -152,7 +153,7 @@ describe("api app", () => {
   });
 
   test("returns 404 when syncing a project that does not exist", async () => {
-    const app = createApp(createMemoryStore());
+    const app = createApp(createTestStore());
     const response = await app.request("/projects/missing/sync-source", {
       method: "POST",
     });
@@ -160,7 +161,7 @@ describe("api app", () => {
   });
 
   test("rejects playground messages when no deployment is running", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Idle Agent",
       importKind: "zip",
@@ -180,7 +181,7 @@ describe("api app", () => {
   });
 
   test("returns 404 when deleting a project that does not exist", async () => {
-    const app = createApp(createMemoryStore());
+    const app = createApp(createTestStore());
 
     const response = await app.request("/projects/missing", {
       method: "DELETE",
@@ -193,7 +194,7 @@ describe("api app", () => {
   });
 
   test("marks a project as deleting, enqueues one deletion job, and rejects duplicate requests", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Delete Me Agent",
       importKind: "zip",
@@ -233,7 +234,7 @@ describe("api app", () => {
   });
 
   test("keeps reads available while rejecting project mutations during deletion", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Deleting Agent",
       importKind: "zip",

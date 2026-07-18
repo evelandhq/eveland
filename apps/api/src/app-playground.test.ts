@@ -12,7 +12,8 @@ import {
   type EncryptedSecret,
 } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 
 import {
   createScheduleRunFixture,
@@ -21,7 +22,7 @@ import {
 
 describe("api app", () => {
   test("runs playground messages against the current deployment and records a session timeline", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Playground Agent",
       importKind: "zip",
@@ -100,7 +101,7 @@ describe("api app", () => {
   });
 
   test("lets the legacy Playground runner activate a dormant current Deployment", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Dormant Legacy Playground Agent",
       importKind: "zip",
@@ -150,7 +151,7 @@ describe("api app", () => {
   });
 
   test("forwards a canonical Playground session request when the current Deployment is dormant", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Dormant Playground Agent",
       importKind: "zip",
@@ -174,11 +175,16 @@ describe("api app", () => {
       runtimeKind: "docker",
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
+    const [route] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployment.id,
+      "agent.localhost",
+    );
     const playgroundProxy = vi.fn(async () => {
       await store.bindSession({
         projectId: project.id,
         eveSessionId: "eve_dormant",
-        routeId: "route_dormant",
+        routeId: route!.id,
         deploymentId: deployment.id,
         trigger: "playground",
         variantName: null,
@@ -225,7 +231,7 @@ describe("api app", () => {
   });
 
   test("attributes a canonical Playground Session to the Gateway-selected Deployment", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Routed Playground Agent",
       importKind: "zip",
@@ -257,16 +263,21 @@ describe("api app", () => {
       hostPort: 41006,
       runtimeKind: "docker",
     });
+    const [route] = await store.ensureDeploymentRoutes(
+      project.id,
+      projectCurrentDeployment.id,
+      "agent.localhost",
+    );
     const app = createApp(store, {
       async playgroundProxy() {
         await store.bindSession({
           projectId: project.id,
           eveSessionId: "eve_routed",
-          routeId: "route_weighted",
+          routeId: route!.id,
           deploymentId: gatewaySelectedDeployment.id,
           trigger: "playground",
           variantName: "selected",
-          experimentId: "route_weighted:r2",
+          experimentId: `${route!.id}:r2`,
           requestId: "req_routed",
           remoteIp: null,
           affinityFingerprint: null,
@@ -302,8 +313,8 @@ describe("api app", () => {
       expect.objectContaining({
         eveSessionId: "eve_routed",
         deploymentId: gatewaySelectedDeployment.id,
-        routeId: "route_weighted",
-        experimentId: "route_weighted:r2",
+        routeId: route!.id,
+        experimentId: `${route!.id}:r2`,
         variantName: "selected",
       }),
     ]);
@@ -314,7 +325,7 @@ describe("api app", () => {
   });
 
   test("keeps one platform Session across streamed Playground turns and HITL continuation", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Streaming Playground Agent",
       importKind: "zip",
@@ -550,7 +561,7 @@ describe("api app", () => {
   });
 
   test("reports the deployed Eve version and rejects pinned unsupported Playground sessions", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Old Eve Playground Agent",
       importKind: "zip",

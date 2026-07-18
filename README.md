@@ -5,7 +5,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 ## Current MVP Slice
 
 - `packages/core`: dependency-free Eveland contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths. It intentionally has no root barrel so browser-safe imports cannot accidentally pull in Node-only code.
-- `packages/db`: Drizzle schema and migrations, domain-oriented Postgres and memory stores, mappers, and the store factory shared by API and worker.
+- `packages/db`: Drizzle schema and migrations, one domain-oriented SQL Store used by production Postgres and PGlite tests, mappers, and the store factory shared by API and worker.
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
 - `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
 - `packages/agent-auth`: Node-only generic Agent Connection registry plus Authorization Code + PKCE OIDC acquisition, encrypted transaction/credential state, verification, refresh, and Basic/Bearer/Vercel-OIDC/custom-header materialization.
@@ -21,9 +21,9 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 The main entrypoints are composers rather than homes for every implementation:
 
 - Database contracts live in `packages/db/src/store-domains.ts`. Add behavior
-  to the matching `memory-*-store.ts` and `postgres-*-store.ts` modules;
-  `store.ts`, `memory-store.ts`, and `postgres-store.ts` compose the public
-  Store.
+  to the matching `postgres-*-store.ts` domain module; `postgres-store.ts`
+  composes the public Store. Vitest uses the same Store through the PGlite
+  helper exported by `@eveland/db/vitest`.
 - API route families live in `apps/api/src/app-*-routes.ts`, request schemas in
   `app-schemas.ts`, and reusable protocol/request helpers in `app-support.ts`.
   `app.ts` owns cross-cutting auth services, middleware, and composition.
@@ -278,7 +278,7 @@ licensed under the MIT License.
 
 ## Notes
 
-- API uses Postgres when `DATABASE_URL` is set; tests use the memory store.
+- API, Gateway, and Worker require `DATABASE_URL` and use the same Postgres Store. Tests run that Store against migrated PGlite; concurrency and driver-compatibility suites continue to use real Postgres through `EVELAND_POSTGRES_TEST_URL`.
 - The control plane is invite-only and uses Better Auth for users, credential accounts, and sessions. Team roles and seven-day invitations use its Organization plugin behind Eveland-owned endpoints, which enforce the last-admin rule and block public sign-up and direct organization mutations. Invitation links use opaque 256-bit identifiers. Public Agent traffic remains on the separate Gateway authentication boundary.
 - `packages/db/src/schema.ts` and `packages/db/drizzle/` are the Postgres model and migration targets. Use `pnpm --filter @eveland/api db:migrate` for real databases; `db:push` is only a disposable-development convenience.
 - Project deletion is asynchronous and requires the worker. A deletion request persists a visible `Deleting…` state, blocks new project mutations, waits for already-running project jobs, then stops every live Deployment and removes database records plus platform-managed source/build/observer/sandbox data. Failures retain a retryable `Delete failed` state; source paths outside `EVELAND_DATA_DIR` are never removed.

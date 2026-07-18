@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import {
   allocateAvailableHostPort,
   cleanupExpiredSourcePreflights,
@@ -24,7 +25,7 @@ import { createFixtureEveProject } from "./process.test-support.js";
 
 describe("processNextJob", () => {
   test("fails a build_deploy job when the deployment port never becomes reachable", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Unhealthy Agent",
@@ -76,7 +77,7 @@ describe("processNextJob", () => {
   test("stops the newly started process (not the old deployment) when the health check fails after a successful start", async () => {
     let capturedProcessName: string | null = null;
     const stopCalls: string[] = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "New Process Cleanup Agent",
@@ -146,7 +147,7 @@ describe("processNextJob", () => {
     const calls: string[] = [];
     const secretValue = "sk-runtime-diagnostic-secret";
     const appSecretKey = "eveland-test-secret-key-00000000";
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Diagnostic Agent",
@@ -230,7 +231,7 @@ describe("processNextJob", () => {
 
   test("does not attempt to stop the new process when startProcess itself fails (nothing was started)", async () => {
     let stopCalled = false;
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Start Fail Agent",
@@ -284,7 +285,7 @@ describe("processNextJob", () => {
   });
 
   test("keeps the original health-check error when diagnostics and cleanup both fail", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Double Fail Agent",
@@ -356,7 +357,7 @@ describe("processNextJob", () => {
 
   test("injects a platform-owned Postgres world and runtime URL even when the agent does not configure either", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Durable Agent",
@@ -435,7 +436,7 @@ describe("processNextJob", () => {
   test("keeps the platform workflow database URL reserved when a project defines the same secret", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Override Agent",
@@ -504,7 +505,7 @@ describe("processNextJob", () => {
   test("injects the shared Agent environment as a fallback for Project Secrets", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Shared Environment Runtime Agent",
@@ -597,7 +598,7 @@ describe("processNextJob", () => {
 
   test("blocks a production deploy when the platform durable world has no database URL", async () => {
     let buildCalled = false;
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Local Agent",
@@ -655,7 +656,7 @@ describe("processNextJob", () => {
 
   test("keeps Eve's local world in development when the platform database URL is absent", async () => {
     let buildCalled = false;
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Dev Local Agent",
@@ -713,7 +714,7 @@ describe("processNextJob", () => {
 
   test("fails a deployment before build when the project declares an unsupported Eve version", async () => {
     let buildCalled = false;
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject("0.22.6");
     const project = await store.createProject({
       name: "Old Eve Agent",
@@ -766,7 +767,7 @@ describe("processNextJob", () => {
 
   test("deploys in production without requiring the platform world in the agent's package.json", async () => {
     let buildCalled = false;
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Missing Dep Agent",

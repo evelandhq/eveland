@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { DeploymentRecord } from "@eveland/core/contracts";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
-import { createMemoryStore } from "@eveland/db";
+import { createPgliteTestStore } from "@eveland/db/test";
 import { processNextJob } from "../jobs/process.js";
 import { resolveRuntimeKind } from "../runtime/select.js";
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
@@ -341,7 +341,7 @@ const sourceTempRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-agent-sandb
 const syncedSourcePath = path.join(sourceTempRoot, "source");
 await cp(FIXTURE_SOURCE_PATH, syncedSourcePath, { recursive: true });
 
-const store = createMemoryStore();
+const { store, close } = await createPgliteTestStore();
 const project = await store.createProject({ name: "Agent Sandbox E2E", importKind: "zip", sourcePath: syncedSourcePath });
 
 // So the deployed unit can run a real turn (step C) with no model
@@ -522,4 +522,5 @@ try {
   const projectCacheDir = resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id);
   await rm(projectCacheDir, { recursive: true, force: true });
   await rm(sourceTempRoot, { recursive: true, force: true });
+  await close();
 }

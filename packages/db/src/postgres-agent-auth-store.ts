@@ -21,26 +21,36 @@ import type {
   PostgresDomain,
   PostgresStoreContext,
 } from "./postgres-store-support.js";
-import { agentAuthCredentialWhere } from "./postgres-store-support.js";
+import {
+  agentAuthCredentialWhere,
+  isUniqueConstraint,
+} from "./postgres-store-support.js";
 
 export function createPostgresAgentAuthStore({
   db,
 }: PostgresStoreContext): PostgresDomain {
   return {
     async createAgentConnection(input) {
-      const [row] = await db
-        .insert(agentConnections)
-        .values({
-          id: input.id ?? createId("acon"),
-          projectId: input.target.projectId,
-          targetKind: input.target.kind,
-          method: input.method,
-          configEncrypted: input.configEncrypted,
-          securityRevision: 1,
-        })
-        .returning();
-      if (!row) throw new Error("Failed to create Agent Connection.");
-      return agentConnectionRowToAgentConnection(row);
+      try {
+        const [row] = await db
+          .insert(agentConnections)
+          .values({
+            id: input.id ?? createId("acon"),
+            projectId: input.target.projectId,
+            targetKind: input.target.kind,
+            method: input.method,
+            configEncrypted: input.configEncrypted,
+            securityRevision: 1,
+          })
+          .returning();
+        if (!row) throw new Error("Failed to create Agent Connection.");
+        return agentConnectionRowToAgentConnection(row);
+      } catch (error) {
+        if (isUniqueConstraint(error, "agent_connections_project_idx")) {
+          throw new Error("An Agent Connection already exists for this Project.");
+        }
+        throw error;
+      }
     },
 
     async getAgentConnection(agentConnectionId) {

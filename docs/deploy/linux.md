@@ -661,7 +661,7 @@ retried before dispatch and should not appear as a terminal ScheduleRun failure.
 
 `infra/lima/eveland.yaml` and `infra/integration/run.sh` provision an Ubuntu
 24.04 Lima VM and run `apps/worker/src/integration/systemd-smoke.ts` end to end
-through the real job pipeline (`createMemoryStore` + `processNextJob`) against
+through the real job pipeline (the PGlite-backed SQL Store + `processNextJob`) against
 the real systemd adapter: import a fixture project, build it under bwrap,
 start it as a transient unit, poll health, fetch the running service, then
 tear the unit down.

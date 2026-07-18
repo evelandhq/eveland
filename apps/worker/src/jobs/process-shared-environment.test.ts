@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import { composeDeploymentEnv } from "./process-support.js";
 
@@ -7,7 +7,7 @@ const appSecretKey = "eveland-test-secret-key-00000000";
 
 describe("shared Agent environment compatibility", () => {
   test("keeps an existing runtime Profile binding effective until it is replaced", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Legacy Runtime Profile Agent", importKind: "zip" });
     const legacy = await store.savePlatformSecretProfile({
       name: "Legacy runtime credentials",

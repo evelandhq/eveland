@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { createWorkerTelemetry } from "./worker-telemetry.js";
 
 describe("worker telemetry", () => {
   test("surfaces host metric failures without retrying on every job poll", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     let now = new Date("2026-07-18T10:00:00.000Z");
     let attempts = 0;
     const telemetry = createWorkerTelemetry(store, {
@@ -31,7 +31,7 @@ describe("worker telemetry", () => {
   });
 
   test("publishes every heartbeat while sampling and pruning metrics on bounded cadences", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     let now = new Date("2026-07-18T10:00:00.000Z");
     let collections = 0;
     const telemetry = createWorkerTelemetry(store, {

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "./store.js";
+import { createTestStore } from "./vitest-store.js";
 
 describe("Agent Connection store", () => {
   test("creates one managed Agent Connection per Project", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "protected-agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
 
     const connection = await store.createAgentConnection({
@@ -28,7 +28,7 @@ describe("Agent Connection store", () => {
   });
 
   test("keeps the revision for a semantic no-op and increments it for a security change", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "revision-agent", importKind: "zip" });
     const connection = await store.createAgentConnection({
       target: { kind: "managed-project", projectId: project.id },
@@ -64,7 +64,7 @@ describe("Agent Connection store", () => {
   });
 
   test("isolates principal credentials and fences replacement by revision and rotation", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "delegated-agent", importKind: "zip" });
     const connection = await store.createAgentConnection({
       target: { kind: "managed-project", projectId: project.id },
@@ -105,7 +105,7 @@ describe("Agent Connection store", () => {
   });
 
   test("deleting a Project cascades its Connection and credentials", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "deleted-agent", importKind: "zip" });
     const connection = await store.createAgentConnection({
       target: { kind: "managed-project", projectId: project.id },
@@ -128,7 +128,7 @@ describe("Agent Connection store", () => {
   });
 
   test("cleans expired transactions and stale security revisions", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "cleanup-agent-auth", importKind: "zip" });
     const connection = await store.createAgentConnection({
       target: { kind: "managed-project", projectId: project.id },

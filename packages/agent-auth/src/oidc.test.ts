@@ -1,4 +1,4 @@
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { describe, expect, test } from "vitest";
 import { createOidcAuthorizationCodeProvider, type OidcProtocol } from "./oidc.js";
 
@@ -364,7 +364,7 @@ function protocol(overrides: Partial<OidcProtocol> = {}): OidcProtocol {
 }
 
 async function fixture(name: string) {
-  const store = createMemoryStore();
+  const store = createTestStore();
   const project = await store.createProject({ name, importKind: "zip" });
   const connection = await store.createAgentConnection({
     id: `acon_${name.replaceAll("-", "_")}`,

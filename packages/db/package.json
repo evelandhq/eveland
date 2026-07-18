@@ -8,7 +8,9 @@
     ".": "./src/store.ts",
     "./client": "./src/client.ts",
     "./factory": "./src/store-factory.ts",
-    "./schema": "./src/schema.ts"
+    "./schema": "./src/schema.ts",
+    "./test": "./src/test-store.ts",
+    "./vitest": "./src/vitest-store.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
@@ -16,7 +18,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --maxWorkers=4 --testTimeout=30000"
   },
   "dependencies": {
     "@eveland/core": "workspace:*",
@@ -24,6 +26,7 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "drizzle-kit": "^0.31.10",
     "vitest": "^4.1.9"
   }

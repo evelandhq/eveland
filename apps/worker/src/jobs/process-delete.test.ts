@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import {
   allocateAvailableHostPort,
   cleanupExpiredSourcePreflights,
@@ -25,7 +26,7 @@ import { createFixtureEveProject } from "./process.test-support.js";
 describe("processNextJob", () => {
   test("delete_project stops the deployment through its recorded runtimeKind adapter, logging before stopping, then deletes the project last", async () => {
     const calls: string[] = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
       name: "Delete Agent",
@@ -110,7 +111,7 @@ describe("processNextJob", () => {
 
   test("delete_project drops the project's workflow database before the project row is removed", async () => {
     const calls: string[] = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Drop World Agent",
       importKind: "zip",
@@ -142,7 +143,7 @@ describe("processNextJob", () => {
   });
 
   test("delete_project keeps the project when dropping its workflow database fails", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Drop Fail Agent",
       importKind: "zip",
@@ -182,7 +183,7 @@ describe("processNextJob", () => {
       await writeFile(path.join(managedSource, "package.json"), "{}");
       await writeFile(path.join(managedUpload, "source.zip"), "archive");
       await writeFile(path.join(externalSource, "keep.txt"), "keep");
-      const store = createMemoryStore();
+      const store = createTestStore();
       const project = await store.createProject({
         name: "Deep Delete Agent",
         importKind: "zip",
@@ -293,7 +294,7 @@ describe("processNextJob", () => {
       await mkdir(sourcePath, { recursive: true });
       await writeFile(path.join(sourcePath, "package.json"), "{}");
       await writeFile(path.join(uploadDir, "source.zip"), "archive");
-      const store = createMemoryStore();
+      const store = createTestStore();
       const project = await store.createProject({
         name: "Pending Delete Agent",
         importKind: "zip",
@@ -314,7 +315,7 @@ describe("processNextJob", () => {
 
   test("delete_project with no current deployment deletes the project without stopping or logging anything", async () => {
     const calls: string[] = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "No Deployment Delete Agent",
       importKind: "zip",
@@ -343,7 +344,7 @@ describe("processNextJob", () => {
   });
 
   test("delete_project failure keeps the project and records a retryable deletion error", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Retryable Delete Agent",
       importKind: "zip",
@@ -370,7 +371,7 @@ describe("processNextJob", () => {
 
   test("delete_project is idempotent: a re-run against an already-gone project returns silently", async () => {
     const calls: string[] = [];
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Already Gone Agent",
       importKind: "zip",

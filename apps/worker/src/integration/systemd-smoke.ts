@@ -1,4 +1,4 @@
-import { createMemoryStore } from "@eveland/db";
+import { createPgliteTestStore } from "@eveland/db/test";
 import { execa } from "execa";
 import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -41,7 +41,7 @@ await writeFile(
   JSON.stringify({ name: "eveland-smoke", version: "0.0.0", dependencies: { eve: "0.24.6" } }, null, 2),
 );
 
-const store = createMemoryStore();
+const { store, close } = await createPgliteTestStore();
 const project = await store.createProject({ name: "Systemd Smoke", importKind: "zip", sourcePath });
 
 try {
@@ -216,4 +216,5 @@ try {
   // onto a shared or production host, where it would nuke every eveland deployment.
   await execa("systemctl", ["stop", "eveland-*"], { reject: false });
   await execa("systemctl", ["reset-failed", "eveland-*"], { reject: false });
+  await close();
 }

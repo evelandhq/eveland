@@ -7,7 +7,7 @@ import { createApp } from "../../apps/api/src/app.js";
 import { createApiActivationClient } from "../../apps/gateway/src/activation-client.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
-import { createMemoryStore } from "../../packages/db/src/store.js";
+import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { createCollectorRuntime } from "../../packages/session-collector/src/runner.js";
 import { processNextJob, resolveObserverOutboxDirs, type ProcessJobOptions } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
@@ -24,7 +24,7 @@ const priorNodeEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = "test";
 process.env.EVELAND_HEALTH_TIMEOUT_MS ??= "30000";
 
-const store = createMemoryStore();
+const { store, close } = await createPgliteTestStore();
 const runtime = createRuntimeAdapterFromEnv();
 let jobOptions: ProcessJobOptions;
 let deploymentName: string | null = null;
@@ -173,6 +173,7 @@ try {
   if (apiServer) await new Promise<void>((resolve) => apiServer!.close(() => resolve()));
   if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = priorNodeEnv;
+  await close();
 }
 
 async function stopAfterIdle(

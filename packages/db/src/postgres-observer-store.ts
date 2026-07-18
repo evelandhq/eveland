@@ -6,7 +6,7 @@ import {
   type ObserverEnvelopeV1,
 } from "@eveland/core/observer";
 import type { SessionStatus, SessionTrigger } from "@eveland/core/contracts";
-import type { Database } from "./client.js";
+import type { StoreDatabase } from "./client.js";
 import {
   sessionEventRowToSessionEvent,
   sessionNodeRowToSessionNode,
@@ -23,7 +23,7 @@ import {
 } from "./schema.js";
 
 export async function ingestPostgresObserverEnvelope(
-  database: Database,
+  database: StoreDatabase,
   envelope: ObserverEnvelopeV1,
 ) {
   const { db } = database;

@@ -3,7 +3,7 @@ import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
-import { createStoreFromEnv } from "../../packages/db/src/store-factory.js";
+import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { createCollectorRuntime } from "../../packages/session-collector/src/runner.js";
 import { processNextJob, resolveObserverOutboxDirs } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
@@ -11,7 +11,7 @@ import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/selec
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const FIXTURE_SOURCE_PATH = fileURLToPath(new URL("../../apps/worker/src/integration/fixtures/observer-e2e", import.meta.url));
 async function main(): Promise<void> {
-  const { store, close } = createStoreFromEnv();
+  const { store, close } = await createPgliteTestStore();
   const runtime = createRuntimeAdapterFromEnv();
   const project = await store.createProject({ name: `Observer E2E ${Date.now()}`, importKind: "zip", sourcePath: FIXTURE_SOURCE_PATH });
   await store.upsertSecret(project.id, "EVE_MOCK_AUTHORED_MODELS", JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)));

@@ -9,13 +9,14 @@ import { createBuildInfo } from "@eveland/core/build-info";
 import { createScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 import { decryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 
 import { createScheduleRunFixture, createZipArchiveFixture } from "./app.test-support.js";
 
 describe("api app", () => {
   test("creates, renews, and releases a service-authenticated runtime activation", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Wake API Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -79,7 +80,7 @@ describe("api app", () => {
   });
 
   test("releases only the request lease when a cold activation is aborted", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Aborted Wake API Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -131,7 +132,7 @@ describe("api app", () => {
   });
 
   test("redeems a schedule dispatch credential once and attaches completed Sessions", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { project, schedule, deployment, run } = await createScheduleRunFixture(store);
     await store.claimScheduleRunActivation(run.id);
     const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
@@ -173,7 +174,7 @@ describe("api app", () => {
   });
 
   test("stores the handler-reported error when a dispatch completes failed", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { schedule, deployment, run } = await createScheduleRunFixture(store);
     await store.claimScheduleRunActivation(run.id);
     await store.redeemScheduleRunDispatch(run.id, deployment.id);
@@ -209,7 +210,7 @@ describe("api app", () => {
   });
 
   test("keeps the generic error when a failed dispatch completes without one", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { schedule, deployment, run } = await createScheduleRunFixture(store);
     await store.claimScheduleRunActivation(run.id);
     await store.redeemScheduleRunDispatch(run.id, deployment.id);
@@ -244,7 +245,7 @@ describe("api app", () => {
   });
 
   test("creates a manual ScheduleRun through the control-plane path", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { project, schedule, deployment } = await createScheduleRunFixture(store, false);
     const response = await createApp(store).request(`/projects/${project.id}/schedules/${schedule.id}/runs`, { method: "POST" });
 
@@ -258,7 +259,7 @@ describe("api app", () => {
   });
 
   test("serves filtered paginated schedule runs, details, and linked Sessions", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const { project, schedule, deployment, run } = await createScheduleRunFixture(store);
     await store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: ["eve_api_history"] });
     const app = createApp(store);
@@ -290,7 +291,7 @@ describe("api app", () => {
       revision: "6bb1d53f51ab",
       channel: "stable",
     });
-    const app = createApp(createMemoryStore(), { buildInfo });
+    const app = createApp(createTestStore(), { buildInfo });
     const response = await app.request("/health");
 
     expect(response.status).toBe(200);
@@ -298,7 +299,7 @@ describe("api app", () => {
   });
 
   test("reports collector degradation separately from API liveness", async () => {
-    const app = createApp(createMemoryStore(), {
+    const app = createApp(createTestStore(), {
       collectorHealth: () => ({
         status: "degraded",
         lastProcessedAt: null,

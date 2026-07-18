@@ -12,7 +12,8 @@ import {
   type EncryptedSecret,
 } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
-import { createMemoryStore, type Store } from "@eveland/db";
+import type { Store } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 
 import {
   createScheduleRunFixture,
@@ -21,7 +22,7 @@ import {
 
 describe("api app", () => {
   test("derives a Git project name, reports availability, and rejects an exact-name conflict", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store);
 
     const availableResponse = await app.request(
@@ -89,7 +90,7 @@ describe("api app", () => {
   });
 
   test("preflights source before atomically creating a Project from the validated snapshot", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store, {
       appSecretKey: "eveland-test-secret-key-00000000",
     });
@@ -181,7 +182,7 @@ describe("api app", () => {
   });
 
   test("rejects duplicate initial environment variable keys before consuming a source preflight", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store);
 
     const response = await app.request("/projects", {
@@ -211,7 +212,7 @@ describe("api app", () => {
   });
 
   test("encrypts a supplied GitLab PAT for the import job without saving it before import succeeds", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const app = createApp(store, {
       appSecretKey: "eveland-test-secret-key-00000000",
     });
@@ -246,7 +247,7 @@ describe("api app", () => {
   });
 
   test("reuses the current user's saved GitLab PAT for another repository on the same host", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     await store.upsertGitCredential(
       "user_local_admin",
       "gitlab.example.com:8443",
@@ -281,7 +282,7 @@ describe("api app", () => {
   });
 
   test("lists and removes only the current user's saved Git credentials without returning tokens", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const credential = await store.upsertGitCredential(
       "user_local_admin",
       "gitlab.example.com",
@@ -320,7 +321,7 @@ describe("api app", () => {
   });
 
   test("rejects a manually edited project name that is not already URL-friendly", async () => {
-    const response = await createApp(createMemoryStore()).request("/projects", {
+    const response = await createApp(createTestStore()).request("/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -337,7 +338,7 @@ describe("api app", () => {
   });
 
   test("returns stable and immutable preview Agent endpoints without exposing a raw port", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Endpoint Agent",
       importKind: "zip",
@@ -382,7 +383,7 @@ describe("api app", () => {
   });
 
   test("atomically promotes, rolls traffic weights, creates aliases, and invalidates Gateway cache", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const invalidated: string[][] = [];
     const project = await store.createProject({
       name: "Traffic Agent",
@@ -496,7 +497,7 @@ describe("api app", () => {
   });
 
   test("drains a zero-weight deployment without treating its immutable preview as mutable traffic", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Drain Agent",
       importKind: "zip",
@@ -566,7 +567,7 @@ describe("api app", () => {
   });
 
   test("groups experiment metrics by deployment, experiment, and variant", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({
       name: "Metrics Agent",
       importKind: "zip",
@@ -715,7 +716,7 @@ describe("api app", () => {
   });
 
   test("creates a zip project from an uploaded archive and stores the extracted source path", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
     const archivePath = await createZipArchiveFixture();
     const archive = new File([await readFile(archivePath)], "agent.zip", {
@@ -753,7 +754,7 @@ describe("api app", () => {
   });
 
   test("queues a Zip source preflight without creating a Project", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const dataDir = await mkdtemp(
       path.join(os.tmpdir(), "eveland-api-preflight-"),
     );
@@ -790,7 +791,7 @@ describe("api app", () => {
   });
 
   test("uses the only top-level directory in a zip archive as the source root", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
     const archivePath = await createZipArchiveFixture({
       wrappedDirectory: "helloworld",
@@ -825,7 +826,7 @@ describe("api app", () => {
     form.set("name", "Zip Agent");
     form.set("archive", archive);
 
-    const response = await createApp(createMemoryStore()).request("/projects", {
+    const response = await createApp(createTestStore()).request("/projects", {
       method: "POST",
       body: form,
     });

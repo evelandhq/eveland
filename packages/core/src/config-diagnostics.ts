@@ -58,13 +58,12 @@ const definitions: ConfigurationDefinition[] = [
     warning: (_env, value) => value === "unknown",
     emptyUsesFallback: true,
   },
-  { ...entry("STORE_DRIVER", ["api", "gateway", "worker"], "Selects Postgres or the test-only in-memory store.", "postgres"), emptyUsesFallback: true },
   {
     name: "DATABASE_URL",
     components: ["api", "gateway", "worker"],
     sensitivity: "url",
     purpose: "Connects the component to the Eveland Postgres database.",
-    required: (env) => env.STORE_DRIVER !== "memory",
+    required: true,
   },
   entry("DATABASE_POOL_SIZE", ["api", "gateway", "worker"], "Limits Postgres connections opened by this process.", "10"),
   {

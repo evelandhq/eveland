@@ -19,7 +19,6 @@ production" means the process throws or a deploy is blocked when it is missing.
 | --- | --- | --- | --- |
 | `DATABASE_URL` | eveland's own control-plane Postgres (projects, deployments, sessions, secrets, logs, …). | — (required) | DB (`packages/db/src/client.ts`) |
 | `DATABASE_POOL_SIZE` | Max connections in the pg pool. | `10` | `packages/db/src/client.ts` |
-| `STORE_DRIVER` | Set to `memory` for the in-memory store (ephemeral/dev); anything else uses Postgres. | Postgres | `packages/db/src/store-factory.ts` |
 | `WORKFLOW_POSTGRES_URL` | Platform-owned workflow Postgres **base** URL. The worker forces `@workflow/world-postgres` in prepared Releases and fails fast without this URL in production. Each project gets its own derived database (`eveland_wf_<project>_<digest>`), created and bootstrapped before any process starts, so runtimes never share a workflow queue; the base URL's role therefore needs `CREATEDB`. Reserved: Project Secrets cannot override it. | — | worker (`apps/worker/src/jobs/process-support.ts`, `apps/worker/src/runtime/workflow-world-bootstrap.ts`) |
 | `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | Optional worker-reachable address for the same workflow database. Used only for startup schema bootstrap when the deployment URL is container-specific. | Matching `DATABASE_URL` when `WORKFLOW_POSTGRES_URL` uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | worker (`apps/worker/src/runtime/workflow-world-bootstrap.ts`) |
 
@@ -132,7 +131,7 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 Read only by test or integration harnesses; not part of runtime configuration:
 
 - `EVELAND_POSTGRES_TEST_URL` — Postgres integration tests.
-- `STORE_DRIVER=memory` — in-memory store for tests.
+- PGlite-backed tests require no environment variable; they run the production SQL Store against a fresh migrated database.
 - `E2E_CHECK_MODE` — agent-sandbox end-to-end check.
 - `SMOKE_SECRET` — bwrap / systemd smoke tests.
 - `EVE_EXAMPLE_MODEL`, `EVE_EXAMPLE_REAL_LLM` — example-agent tests.

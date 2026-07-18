@@ -1,37 +1,46 @@
-import { describe, expect, test } from "vitest";
-import { memoryAdapter } from "better-auth/adapters/memory";
-import { createMemoryStore } from "@eveland/db";
+import { describe, expect, onTestFinished, test } from "vitest";
+import {
+  authAccounts,
+  authSessions,
+  authVerifications,
+  invitations,
+  teamMemberships,
+  teams,
+  users,
+} from "@eveland/db/schema";
+import { createPgliteTestStore } from "@eveland/db/test";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createApp } from "./app.js";
 import { createBetterAuthRuntime } from "./auth.js";
 
-function createAuthDatabase() {
-  return {
-    user: [],
-    session: [],
-    account: [],
-    verification: [],
-    organization: [],
-    member: [],
-    invitation: [],
-  };
-}
-
 async function createAuthApp() {
-  const store = createMemoryStore();
+  const database = await createPgliteTestStore();
+  onTestFinished(() => database.close());
   const auth = createBetterAuthRuntime({
-    database: memoryAdapter(createAuthDatabase()),
+    database: drizzleAdapter(database.db, {
+      provider: "pg",
+      schema: {
+        user: users,
+        session: authSessions,
+        account: authAccounts,
+        verification: authVerifications,
+        organization: teams,
+        member: teamMemberships,
+        invitation: invitations,
+      },
+    }),
     baseURL: "http://localhost:4000",
     webOrigin: "http://localhost:3000",
     secret: "test-secret-with-at-least-thirty-two-characters",
   });
   await auth.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
   return {
-    app: createApp(store, {
+    app: createApp(database.store, {
       auth,
       webOrigin: "http://localhost:3000",
       configurationDiagnostics: async () => ({ components: [] }),
     }),
-    store,
+    store: database.store,
   };
 }
 

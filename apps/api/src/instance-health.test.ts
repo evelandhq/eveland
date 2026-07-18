@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { collectInstanceHealth, probeGatewayHealth } from "./instance-health.js";
 
 describe("instance health diagnostics", () => {
@@ -24,7 +24,7 @@ describe("instance health diagnostics", () => {
   });
 
   test("combines component reachability, host capacity, collector state, and workload", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     await store.upsertWorkerHeartbeat({
       workerId: "worker-1",
       startedAt: "2026-07-18T08:00:00.000Z",
@@ -80,7 +80,7 @@ describe("instance health diagnostics", () => {
   });
 
   test("reports stale workers and unreachable Gateway without guessing healthy", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     await store.upsertWorkerHeartbeat({
       workerId: "worker-1",
       startedAt: "2026-07-18T08:00:00.000Z",

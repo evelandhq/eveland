@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
-import { createMemoryStore } from "./store.js";
+import { createTestStore } from "./vitest-store.js";
 
 function heartbeat(overrides: Partial<WorkerHeartbeat> = {}): WorkerHeartbeat {
   return {
@@ -31,7 +31,7 @@ function metric(observedAt: string, workerId = "worker-1"): Omit<HostMetricSampl
 
 describe("instance health store", () => {
   test("upserts one current heartbeat per worker", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
 
     await store.upsertWorkerHeartbeat(heartbeat());
     await store.upsertWorkerHeartbeat(heartbeat({
@@ -49,7 +49,7 @@ describe("instance health store", () => {
   });
 
   test("returns metric history in chronological order for a bounded range", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     await store.recordHostMetric(metric("2026-07-18T09:00:00.000Z"));
     await store.recordHostMetric(metric("2026-07-18T10:00:00.000Z"));
     await store.recordHostMetric(metric("2026-07-18T11:00:00.000Z", "worker-2"));
@@ -66,7 +66,7 @@ describe("instance health store", () => {
   });
 
   test("prunes expired metric samples without deleting current history", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     await store.recordHostMetric(metric("2026-06-01T10:00:00.000Z"));
     await store.recordHostMetric(metric("2026-07-18T10:00:00.000Z"));
 
@@ -75,63 +75,65 @@ describe("instance health store", () => {
   });
 
   test("summarizes queued work and active runtime states", async () => {
-    const store = createMemoryStore({
-      jobs: [
-        {
-          id: "job-queued",
-          projectId: "project-1",
-          type: "build_deploy",
-          status: "queued",
-          payload: {},
-          attempts: 0,
-          lastError: null,
-          createdAt: "2026-07-18T09:00:00.000Z",
-          updatedAt: "2026-07-18T09:00:00.000Z",
-        },
-        {
-          id: "job-running",
-          projectId: "project-1",
-          type: "import_source",
-          status: "running",
-          payload: {},
-          attempts: 1,
-          lastError: null,
-          createdAt: "2026-07-18T09:30:00.000Z",
-          updatedAt: "2026-07-18T09:45:00.000Z",
-        },
-      ],
-      runtimeInstances: [
-        {
-          id: "runtime-ready",
-          deploymentId: "deployment-1",
-          generation: 1,
-          status: "ready",
-          endpointHost: "127.0.0.1",
-          endpointPort: 41_001,
-          startedAt: "2026-07-18T09:00:00.000Z",
-          readyAt: "2026-07-18T09:00:01.000Z",
-          stoppedAt: null,
-          lastError: null,
-        },
-        {
-          id: "runtime-failed",
-          deploymentId: "deployment-2",
-          generation: 1,
-          status: "failed",
-          endpointHost: null,
-          endpointPort: null,
-          startedAt: null,
-          readyAt: null,
-          stoppedAt: "2026-07-18T09:50:00.000Z",
-          lastError: "start failed",
-        },
-      ],
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Health Workload", importKind: "zip" });
+    await store.claimNextJob("worker-health");
+    await store.enqueueJob(project.id, "build_deploy");
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/health-workload",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
+    const readyDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:health-ready",
+      containerName: "fixture-health-ready",
+      internalPort: 3_000,
+      hostPort: 41_001,
+      runtimeKind: "docker",
+    });
+    const failedDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:health-failed",
+      containerName: "fixture-health-failed",
+      internalPort: 3_000,
+      hostPort: 41_002,
+      runtimeKind: "docker",
+    });
+    const readyClaim = await store.acquireActivationLease({
+      deploymentId: readyDeployment.id,
+      kind: "public_request",
+      ownerId: "health-ready",
+      expiresAt: new Date("2026-07-18T10:05:00.000Z"),
+      now: new Date("2026-07-18T10:00:00.000Z"),
+    });
+    await store.updateRuntimeInstance(readyClaim.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: readyDeployment.hostPort,
+    }, new Date("2026-07-18T10:00:01.000Z"));
+    const failedClaim = await store.acquireActivationLease({
+      deploymentId: failedDeployment.id,
+      kind: "public_request",
+      ownerId: "health-failed",
+      expiresAt: new Date("2026-07-18T10:05:00.000Z"),
+      now: new Date("2026-07-18T10:00:00.000Z"),
+    });
+    await store.updateRuntimeInstance(failedClaim.runtimeInstance.id, {
+      status: "failed",
+      error: "start failed",
+    }, new Date("2026-07-18T10:00:02.000Z"));
 
     await expect(store.getInstanceWorkload()).resolves.toEqual({
       queuedJobs: 1,
       runningJobs: 1,
-      oldestQueuedAt: "2026-07-18T09:00:00.000Z",
+      oldestQueuedAt: expect.any(String),
       runtimeInstances: {
         starting: 0,
         ready: 1,

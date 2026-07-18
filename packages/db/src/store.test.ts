@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryStore } from "./store.js";
+import { createTestStore } from "./vitest-store.js";
 
-describe("memory store project creation", () => {
+describe("SQL Store project creation", () => {
   test("reserves an exact slug and carries the initial auto-deploy intent into the import job", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
 
     const project = await store.createProject({
       name: "first-deploy",
@@ -27,7 +27,7 @@ describe("memory store project creation", () => {
   });
 
   test("checks exact project slug availability", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
 
     await expect(store.isProjectSlugAvailable("available-agent")).resolves.toBe(true);
     await store.createProject({ name: "available-agent", importKind: "zip" });
@@ -35,9 +35,9 @@ describe("memory store project creation", () => {
   });
 });
 
-describe("memory store Git credentials", () => {
+describe("SQL Store Git credentials", () => {
   test("keeps one encrypted credential per user and normalized host", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
 
     const created = await store.upsertGitCredential("user_one", "gitlab.example.com", "encrypted-one");
     await store.upsertGitCredential("user_two", "gitlab.example.com", "encrypted-two");
@@ -59,9 +59,9 @@ describe("memory store Git credentials", () => {
   });
 });
 
-describe("memory store jobs", () => {
+describe("SQL Store jobs", () => {
   test("lists a project's jobs newest first", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Visible Jobs Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
     const initialImport = await store.claimNextJob("worker-a");
     await store.completeJob(initialImport!.id);
@@ -75,7 +75,7 @@ describe("memory store jobs", () => {
   });
 
   test("filters project jobs before applying the result limit", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Filtered Jobs Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
     const importJob = await store.claimNextJob("worker-a");
     await store.completeJob(importJob!.id);
@@ -87,7 +87,7 @@ describe("memory store jobs", () => {
   });
 
   test("marks a project as deleting and replaces queued work with one deletion job", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const pendingSourcePath = "/data/uploads/zip-pending/source";
     const project = await store.createProject({ name: "Delete Agent", importKind: "zip", sourcePath: pendingSourcePath });
     await store.enqueueJob(project.id, "build_deploy");
@@ -111,7 +111,7 @@ describe("memory store jobs", () => {
   });
 
   test("rejects a duplicate deletion request without enqueueing another job", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Delete Once Agent", importKind: "zip" });
 
     await store.requestProjectDeletion(project.id);
@@ -123,7 +123,7 @@ describe("memory store jobs", () => {
   });
 
   test("records deletion failure details and clears them when deletion is retried", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Retry Delete Agent", importKind: "zip" });
     await store.requestProjectDeletion(project.id);
 
@@ -141,7 +141,7 @@ describe("memory store jobs", () => {
   });
 
   test("waits for running project work before claiming its deletion job", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Busy Delete Agent", importKind: "zip" });
     const running = await store.claimNextJob("worker-a");
     await store.requestProjectDeletion(project.id);
@@ -155,7 +155,7 @@ describe("memory store jobs", () => {
   });
 
   test("claims queued jobs once and tracks completion", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Worker Agent", importKind: "zip" });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -171,7 +171,7 @@ describe("memory store jobs", () => {
   });
 
   test("recovers a running job after its lease becomes stale", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Recover Job Agent", importKind: "zip" });
     const startedAt = new Date("2026-07-17T00:00:00.000Z");
     const firstClaim = await store.claimNextJob("worker-a", startedAt);
@@ -186,7 +186,7 @@ describe("memory store jobs", () => {
   });
 
   test("keeps a running job leased when its current attempt heartbeats", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     await store.createProject({ name: "Heartbeat Job Agent", importKind: "zip" });
     const job = await store.claimNextJob("worker-a", new Date("2026-07-17T00:00:00.000Z"));
 
@@ -195,7 +195,7 @@ describe("memory store jobs", () => {
   });
 
   test("rejects completion from an attempt that lost its lease", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Fenced Job Agent", importKind: "zip" });
     const first = await store.claimNextJob("worker-a", new Date("2026-07-17T00:00:00.000Z"));
     const firstAttempt = first!.attempts;
@@ -210,7 +210,7 @@ describe("memory store jobs", () => {
   });
 
   test("rejects failure from an attempt that lost its lease", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Fenced Failure Agent", importKind: "zip" });
     const first = await store.claimNextJob("worker-a", new Date("2026-07-17T00:00:00.000Z"));
     const firstAttempt = first!.attempts;
@@ -224,7 +224,7 @@ describe("memory store jobs", () => {
   });
 
   test("records failure details on a claimed job", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Fail Agent", importKind: "zip" });
     const job = await store.claimNextJob("worker-a");
 
@@ -235,7 +235,7 @@ describe("memory store jobs", () => {
   });
 
   test("updates project state and appends logs for worker processors", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Import Agent", importKind: "zip" });
 
     const updated = await store.updateProjectState(project.id, { status: "imported" });
@@ -246,7 +246,7 @@ describe("memory store jobs", () => {
   });
 
   test("records current source revision, source files, and schedules", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Source Agent", importKind: "git" });
 
     const revision = await store.recordSourceRevision({
@@ -278,7 +278,7 @@ describe("memory store jobs", () => {
   });
 
   test("advances current source without replacing an existing deployment", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Resync Agent", importKind: "git" });
     const initialRevision = await store.recordSourceRevision({
       projectId: project.id,
@@ -327,7 +327,7 @@ describe("memory store jobs", () => {
   });
 
   test("records the current release and deployment for a project", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Deploy Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -365,7 +365,7 @@ describe("memory store jobs", () => {
   });
 
   test("round-trips runtimeKind through recordDeployment for the systemd adapter", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Systemd Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -392,7 +392,7 @@ describe("memory store jobs", () => {
   });
 
   test("resolves Eve version from the deployment's immutable source revision", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Versioned Agent", importKind: "zip" });
     const oldRevision = await store.recordSourceRevision({
       projectId: project.id,
@@ -432,7 +432,7 @@ describe("memory store jobs", () => {
   });
 
   test("getRelease returns the release by id and null when absent", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Release Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -463,7 +463,7 @@ describe("memory store jobs", () => {
   });
 
   test("getSourceRevision returns the revision by id and null when absent", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Revision Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -484,7 +484,7 @@ describe("memory store jobs", () => {
   });
 
   test("deleteProject cascades to the project's source revision, source files, session events, and usage events", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Deletable Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -527,7 +527,7 @@ describe("memory store jobs", () => {
   });
 
   test("records a playground session timeline in event order", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Session Agent", importKind: "zip" });
 
     const session = await store.createSession({
@@ -562,7 +562,7 @@ describe("memory store jobs", () => {
   });
 
   test("records a model step and updates the session token totals", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Usage Agent", importKind: "zip" });
     const session = await store.createSession({
       projectId: project.id,
@@ -601,7 +601,7 @@ describe("memory store jobs", () => {
   });
 
   test("does not count the same completed model step twice", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Replay Agent", importKind: "zip" });
     const session = await store.createSession({ projectId: project.id, trigger: "playground" });
     const step = {
@@ -627,7 +627,7 @@ describe("memory store jobs", () => {
   });
 
   test("tracks completed steps whose provider omitted token usage", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Missing Usage Agent", importKind: "zip" });
     const session = await store.createSession({ projectId: project.id, trigger: "playground" });
 

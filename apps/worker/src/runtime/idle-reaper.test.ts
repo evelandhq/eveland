@@ -1,11 +1,11 @@
-import { createMemoryStore } from "@eveland/db";
+import { createTestStore } from "@eveland/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { reapIdleDeployments } from "./idle-reaper.js";
 import type { RuntimeAdapter } from "./types.js";
 
 describe("reapIdleDeployments", () => {
   test("keeps a scheduler target warm when its next run is inside the prewarm window", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Warm Scheduler Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -73,7 +73,7 @@ describe("reapIdleDeployments", () => {
   });
 
   test("stops a ready process only after its final lease idle deadline", async () => {
-    const store = createMemoryStore();
+    const store = createTestStore();
     const project = await store.createProject({ name: "Idle Reaper Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
