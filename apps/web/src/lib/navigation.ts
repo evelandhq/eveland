@@ -7,6 +7,7 @@ import {
   FileTextIcon,
   FolderIcon,
   HistoryIcon,
+  HeartPulseIcon,
   InfoIcon,
   LayoutGridIcon,
   LogsIcon,
@@ -38,6 +39,7 @@ export const settingsNavigationGroups = [
     items: [
       { href: '/settings/members', label: 'Members', icon: UsersIcon },
       { href: '/settings/shared-agent-environment', label: 'Shared agent environment', icon: LockKeyholeIcon },
+      { href: '/settings/health', label: 'Instance health', icon: HeartPulseIcon },
       { href: '/settings/about', label: 'About', icon: InfoIcon },
     ],
   },

@@ -57,6 +57,11 @@ import type {
 import type { ModelStepUsage } from "@eveland/core/eve";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { EveVersionInfo } from "@eveland/core/source";
+import type {
+  HostMetricSample,
+  InstanceWorkload,
+  WorkerHeartbeat,
+} from "@eveland/core/instance-health";
 
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
@@ -478,6 +483,15 @@ export interface LogStore {
   listLogs(projectId: string, type?: LogRecord["type"]): Promise<LogRecord[]>;
 }
 
+export interface InstanceHealthStore {
+  upsertWorkerHeartbeat(heartbeat: WorkerHeartbeat): Promise<WorkerHeartbeat>;
+  listWorkerHeartbeats(): Promise<WorkerHeartbeat[]>;
+  recordHostMetric(sample: Omit<HostMetricSample, "id">): Promise<HostMetricSample>;
+  listHostMetrics(input: { workerId?: string; since?: Date; limit: number }): Promise<HostMetricSample[]>;
+  pruneHostMetrics(before: Date): Promise<number>;
+  getInstanceWorkload(): Promise<InstanceWorkload>;
+}
+
 export type Store = ProjectStore &
   SourceStore &
   GitCredentialStore &
@@ -489,4 +503,5 @@ export type Store = ProjectStore &
   SessionStore &
   ScheduleStore &
   RuntimeStore &
+  InstanceHealthStore &
   LogStore;

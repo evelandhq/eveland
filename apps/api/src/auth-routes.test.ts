@@ -121,6 +121,22 @@ describe("control-plane auth routes", () => {
     await expect(memberResponse.json()).resolves.toEqual({ error: "Admin access required" });
   });
 
+  test("allows only administrators to read instance health diagnostics", async () => {
+    const { app } = await createAuthApp();
+    const { cookie: adminCookie } = await signIn(app);
+    const issued = await invite(app, adminCookie, "health-member@example.com");
+    const accepted = await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: issued.body.invitation.id, name: "Member", password: "member-password" }),
+    });
+    const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+
+    expect((await app.request("/system/health")).status).toBe(401);
+    expect((await app.request("/system/health", { headers: { cookie: adminCookie } })).status).toBe(200);
+    expect((await app.request("/system/health", { headers: { cookie: memberCookie } })).status).toBe(403);
+  });
+
   test("allows only administrators to manage the shared Agent environment", async () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);

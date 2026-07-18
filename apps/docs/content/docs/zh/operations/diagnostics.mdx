@@ -11,6 +11,9 @@ description: 在实际拥有故障的组件、Job、Runtime 或 Session Surface 
 - Worker 输出 Startup Identity，并写入已脱敏的 Configuration Snapshot。
 - Collector Degradation 独立于控制面 Health，因为排队的 Observer Envelope 可以恢复。
 - **Settings → About** 比较 Web/API Identity，并向管理员显示 Allowlisted Masked Configuration。
+- **Settings → Instance health** 使用持续 Worker Heartbeat、Gateway Probe 与 Postgres 查询展示组件可用性，并显示 Worker 宿主机的 CPU、内存、数据文件系统和 Workload 趋势。旧的 Worker Configuration Snapshot 不能作为在线证据。
+
+Instance Health 默认每分钟保留一份宿主机样本，并提供 24 小时与 7 天视图。磁盘增长至少有一天有效历史后才显示预计耗尽时间；历史不足时明确显示无法预测。整台服务器断电后无法自行上报，仍应由外部监控轮询 API 与 Gateway 的 Public `/health`。
 
 ## 选择正确证据
 

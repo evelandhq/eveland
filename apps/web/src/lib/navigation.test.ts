@@ -48,6 +48,7 @@ describe("sidebar navigation", () => {
         items: [
           { href: "/settings/members", label: "Members" },
           { href: "/settings/shared-agent-environment", label: "Shared agent environment" },
+          { href: "/settings/health", label: "Instance health" },
           { href: "/settings/about", label: "About" },
         ],
       },

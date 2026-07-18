@@ -77,6 +77,15 @@ describe("configuration diagnostics", () => {
     ]));
   });
 
+  test("reports host telemetry sampling and retention defaults", () => {
+    const snapshot = createConfigurationSnapshot("worker", {});
+
+    expect(snapshot.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "EVELAND_HOST_METRIC_INTERVAL_MS", value: "60000" }),
+      expect.objectContaining({ name: "EVELAND_HOST_METRIC_RETENTION_MS", value: "2592000000" }),
+    ]));
+  });
+
   test("does not replace an explicitly empty secret with a development fallback", () => {
     const snapshot = createConfigurationSnapshot("api", { APP_SECRET_KEY: "" });
 

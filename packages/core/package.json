@@ -11,6 +11,7 @@
     "./contracts": "./src/contracts.ts",
     "./eve": "./src/eve.ts",
     "./ids": "./src/ids.ts",
+    "./instance-health": "./src/instance-health.ts",
     "./observer": "./src/observer.ts",
     "./routing": "./src/routing.ts",
     "./schedules": "./src/schedules.ts",

@@ -1,0 +1,100 @@
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { createId } from "@eveland/core/ids";
+import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
+import { hostMetricSamples, jobs, runtimeInstances, workerHeartbeats } from "./schema.js";
+import type { InstanceHealthStore } from "./store-domains.js";
+import type { PostgresDomain, PostgresStoreContext } from "./postgres-store-support.js";
+
+export function createPostgresInstanceHealthStore(
+  context: PostgresStoreContext,
+): PostgresDomain & Partial<InstanceHealthStore> {
+  const { db } = context;
+  return {
+    async upsertWorkerHeartbeat(heartbeat) {
+      const [row] = await db.insert(workerHeartbeats).values(toHeartbeatRow(heartbeat)).onConflictDoUpdate({
+        target: workerHeartbeats.workerId,
+        set: toHeartbeatRow(heartbeat),
+      }).returning();
+      if (!row) throw new Error("Failed to publish Worker heartbeat.");
+      return heartbeatRowToRecord(row);
+    },
+
+    async listWorkerHeartbeats() {
+      const rows = await db.select().from(workerHeartbeats).orderBy(desc(workerHeartbeats.observedAt));
+      return rows.map(heartbeatRowToRecord);
+    },
+
+    async recordHostMetric(sample) {
+      const [row] = await db.insert(hostMetricSamples).values({
+        ...sample,
+        id: createId("metric"),
+        observedAt: new Date(sample.observedAt),
+      }).returning();
+      if (!row) throw new Error("Failed to record host metric sample.");
+      return metricRowToRecord(row);
+    },
+
+    async listHostMetrics(input) {
+      if (!Number.isInteger(input.limit) || input.limit < 1) {
+        throw new Error("Host metric list limit must be positive.");
+      }
+      const predicates = [
+        ...(input.workerId ? [eq(hostMetricSamples.workerId, input.workerId)] : []),
+        ...(input.since ? [gte(hostMetricSamples.observedAt, input.since)] : []),
+      ];
+      const rows = await db.select().from(hostMetricSamples)
+        .where(predicates.length ? and(...predicates) : undefined)
+        .orderBy(desc(hostMetricSamples.observedAt))
+        .limit(input.limit);
+      return rows.reverse().map(metricRowToRecord);
+    },
+
+    async pruneHostMetrics(before) {
+      const rows = await db.delete(hostMetricSamples).where(lt(hostMetricSamples.observedAt, before)).returning({ id: hostMetricSamples.id });
+      return rows.length;
+    },
+
+    async getInstanceWorkload() {
+      const [jobGroups, runtimeGroups] = await Promise.all([
+        db.select({
+          status: jobs.status,
+          count: sql<number>`count(*)::int`,
+          oldest: sql<Date | null>`min(${jobs.createdAt})`,
+        }).from(jobs).where(inArray(jobs.status, ["queued", "running"])).groupBy(jobs.status).orderBy(asc(jobs.status)),
+        db.select({ status: runtimeInstances.status, count: sql<number>`count(*)::int` })
+          .from(runtimeInstances).groupBy(runtimeInstances.status),
+      ]);
+      const runtimeCounts = { starting: 0, ready: 0, draining: 0, stopped: 0, failed: 0 };
+      for (const group of runtimeGroups) {
+        if (group.status in runtimeCounts) runtimeCounts[group.status as keyof typeof runtimeCounts] = group.count;
+      }
+      const queued = jobGroups.find((group) => group.status === "queued");
+      return {
+        queuedJobs: queued?.count ?? 0,
+        runningJobs: jobGroups.find((group) => group.status === "running")?.count ?? 0,
+        oldestQueuedAt: queued?.oldest?.toISOString() ?? null,
+        runtimeInstances: runtimeCounts,
+      };
+    },
+  };
+}
+
+function toHeartbeatRow(heartbeat: WorkerHeartbeat) {
+  return {
+    ...heartbeat,
+    startedAt: new Date(heartbeat.startedAt),
+    observedAt: new Date(heartbeat.observedAt),
+  };
+}
+
+function heartbeatRowToRecord(row: typeof workerHeartbeats.$inferSelect): WorkerHeartbeat {
+  return {
+    ...row,
+    startedAt: row.startedAt.toISOString(),
+    observedAt: row.observedAt.toISOString(),
+  };
+}
+
+function metricRowToRecord(row: typeof hostMetricSamples.$inferSelect): HostMetricSample {
+  return { ...row, observedAt: row.observedAt.toISOString() };
+}

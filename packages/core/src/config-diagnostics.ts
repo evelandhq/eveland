@@ -238,6 +238,8 @@ const definitions: ConfigurationDefinition[] = [
   entry("EVELAND_GIT_CLONE_MAX_ATTEMPTS", ["worker"], "Maximum attempts for transient Git clone failures.", "3"),
   entry("EVELAND_GIT_CLONE_RETRY_DELAY_MS", ["worker"], "Initial exponential backoff delay for Git clone retries.", "1000"),
   entry("EVELAND_HEALTH_TIMEOUT_MS", ["worker"], "Time allowed for a Deployment to become healthy.", "15000"),
+  entry("EVELAND_HOST_METRIC_INTERVAL_MS", ["worker"], "Cadence for persisted host CPU, memory, and filesystem samples.", "60000"),
+  entry("EVELAND_HOST_METRIC_RETENTION_MS", ["worker"], "Retention window for persisted host metric samples.", "2592000000"),
   entry("EVELAND_SCHEDULER_PREWARM_MS", ["worker"], "How far before nextRunAt a scheduler target is kept warm or proactively activated.", "60000"),
   entry("EVELAND_ACTIVATION_IDLE_TTL_MS", ["worker"], "Idle time after the final lease before a ready RuntimeInstance is stopped.", "300000"),
   entry("EVELAND_ACTIVATION_REAPER_BATCH_SIZE", ["worker"], "Maximum idle RuntimeInstances claimed in one reaper tick.", "25"),
@@ -257,7 +259,7 @@ const definitions: ConfigurationDefinition[] = [
   {
     name: "WORKER_ID",
     components: ["worker"],
-    purpose: "Optional stable identity used when claiming jobs.",
+    purpose: "Stable identity used for job claims, heartbeat, and host metric history.",
     fallback: () => derivedValue("worker-<pid>"),
   },
 ];

@@ -466,6 +466,36 @@ export const runtimeInstances = pgTable(
   ],
 );
 
+export const workerHeartbeats = pgTable("worker_heartbeats", {
+  workerId: text("worker_id").primaryKey(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+  intervalMs: integer("interval_ms").notNull(),
+  lastTickDurationMs: integer("last_tick_duration_ms").notNull(),
+  lastError: text("last_error"),
+});
+
+export const hostMetricSamples = pgTable(
+  "host_metric_samples",
+  {
+    id: text("id").primaryKey(),
+    workerId: text("worker_id").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    cpuPercent: doublePrecision("cpu_percent"),
+    load1: doublePrecision("load_1").notNull(),
+    memoryTotalBytes: bigint("memory_total_bytes", { mode: "number" }).notNull(),
+    memoryAvailableBytes: bigint("memory_available_bytes", { mode: "number" }).notNull(),
+    diskTotalBytes: bigint("disk_total_bytes", { mode: "number" }).notNull(),
+    diskAvailableBytes: bigint("disk_available_bytes", { mode: "number" }).notNull(),
+    diskInodesTotal: bigint("disk_inodes_total", { mode: "number" }),
+    diskInodesAvailable: bigint("disk_inodes_available", { mode: "number" }),
+  },
+  (table) => [
+    index("host_metric_samples_worker_observed_idx").on(table.workerId, table.observedAt),
+    index("host_metric_samples_observed_idx").on(table.observedAt),
+  ],
+);
+
 export const activationLeases = pgTable(
   "activation_leases",
   {
