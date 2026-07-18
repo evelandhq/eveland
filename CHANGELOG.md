@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.6.0](https://github.com/evelandhq/eveland/compare/v0.5.0...v0.6.0) (2026-07-18)
+
+
+### Features
+
+* add instance health monitoring ([ae16cf2](https://github.com/evelandhq/eveland/commit/ae16cf2173c0a5ca65e44948a842184c5ac8c064))
+* replace secret profiles with shared agent environment ([#95](https://github.com/evelandhq/eveland/issues/95)) ([5f723af](https://github.com/evelandhq/eveland/commit/5f723af4fe6943a0a0851221081ce650500aa93a))
+
+
+### Bug Fixes
+
+* make shared agent environment global ([#100](https://github.com/evelandhq/eveland/issues/100)) ([e7010a9](https://github.com/evelandhq/eveland/commit/e7010a9c379d74f9f15ad2fca9c8af8f4f02e825))
+
 ## [0.5.0](https://github.com/evelandhq/eveland/compare/v0.4.0...v0.5.0) (2026-07-18)
 
 
