@@ -59,53 +59,27 @@ export type SecretRecord = {
 
 export type PublicSecret = Omit<SecretRecord, "encryptedValue">;
 
-export type PlatformSecretProfileEntryKind = "variable" | "secret";
+export type SharedAgentEnvironmentEntryKind = "variable" | "secret";
 
-export type PlatformSecretProfileEntry = {
+export type SharedAgentEnvironmentEntry = {
   key: string;
-  kind: PlatformSecretProfileEntryKind;
+  kind: SharedAgentEnvironmentEntryKind;
   configured: true;
 };
 
-export type PlatformSecretProfile = {
-  id: string;
-  name: string;
+export type SharedAgentEnvironment = {
   revision: number;
-  entries: PlatformSecretProfileEntry[];
+  entries: SharedAgentEnvironmentEntry[];
   createdAt: string;
   updatedAt: string;
 };
 
-export type PlatformSecretProfileRecord = Omit<PlatformSecretProfile, "entries"> & {
+export type SharedAgentEnvironmentRecord = Omit<SharedAgentEnvironment, "entries"> & {
   entries: Array<{
     key: string;
-    kind: PlatformSecretProfileEntryKind;
+    kind: SharedAgentEnvironmentEntryKind;
     encryptedValue: string;
   }>;
-};
-
-export const SHARED_AGENT_ENVIRONMENT_PROFILE_ID = "sp_sharedagentenvironment";
-export const SHARED_AGENT_ENVIRONMENT_PROFILE_NAME = "__eveland_internal_shared_agent_environment__";
-
-export type SharedAgentEnvironment = Omit<PlatformSecretProfile, "id" | "name">;
-
-export type SharedAgentEnvironmentRecord = Omit<
-  PlatformSecretProfileRecord,
-  "id" | "name"
->;
-
-export type PlatformSecretConsumer = "agent-runtime" | "agent-connection";
-
-export type PlatformSecretProfileBinding = {
-  id: string;
-  profileId: string;
-  profileName: string;
-  profileRevision: number;
-  projectId: string;
-  deploymentId: string | null;
-  consumer: PlatformSecretConsumer;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type GitCredentialRecord = {

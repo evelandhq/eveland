@@ -55,10 +55,10 @@ describe("Agent Auth form", () => {
     };
 
     expect(serializeAgentAuthConfig(referencedDescriptor, { name: "Agent", token: "" }, {
-      tokenRef: { kind: "platform-secret", key: "ACCESS_TOKEN" },
+      tokenRef: { kind: "project-secret", key: "ACCESS_TOKEN" },
     })).toEqual({
       name: "Agent",
-      tokenRef: { kind: "platform-secret", key: "ACCESS_TOKEN" },
+      tokenRef: { kind: "project-secret", key: "ACCESS_TOKEN" },
       mode: "safe",
     });
   });

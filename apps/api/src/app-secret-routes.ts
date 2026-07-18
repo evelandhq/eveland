@@ -1,25 +1,8 @@
+import type { SharedAgentEnvironmentRecord } from "@eveland/core/contracts";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
+import { secretSchema, sharedAgentEnvironmentSchema } from "./app-schemas.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
-import {
-  platformSecretBindingSchema,
-  platformSecretConsumerSchema,
-  platformSecretProfileSchema,
-  secretSchema,
-  sharedAgentEnvironmentSchema,
-} from "./app-schemas.js";
-import type {
-  PlatformSecretProfileBinding,
-  SharedAgentEnvironmentRecord,
-} from "@eveland/core/contracts";
-import { SHARED_AGENT_ENVIRONMENT_PROFILE_ID } from "@eveland/core/contracts";
-
-type PlatformSecretRestart = (
-  bindings: PlatformSecretProfileBinding[],
-  reason:
-    | "platform_secret_binding_changed"
-    | "platform_secret_profile_changed",
-) => Promise<unknown>;
 
 export function registerSecretRoutes(input: {
   app: ApiApp;
@@ -27,7 +10,6 @@ export function registerSecretRoutes(input: {
   options: Pick<AppOptions, "auth">;
   appSecretKey: string;
   enqueueLiveDeploymentRestarts(projectId: string): Promise<unknown>;
-  enqueuePlatformSecretRestarts: PlatformSecretRestart;
 }): void {
   const {
     app,
@@ -35,8 +17,8 @@ export function registerSecretRoutes(input: {
     options,
     appSecretKey,
     enqueueLiveDeploymentRestarts,
-    enqueuePlatformSecretRestarts,
   } = input;
+
   app.get("/projects/:projectId/secrets", async (c) => {
     return c.json({
       secrets: await store.listSecrets(c.req.param("projectId")),
@@ -122,206 +104,6 @@ export function registerSecretRoutes(input: {
       : await enqueueAllLiveDeploymentRestarts(store);
     return c.json({ environment, jobs });
   });
-
-  app.get("/platform/secret-profiles", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin")
-      return c.json({ error: "Admin access required" }, 403);
-    return c.json({
-      profiles: (await store.listPlatformSecretProfiles()).filter(
-        (profile) => profile.id !== SHARED_AGENT_ENVIRONMENT_PROFILE_ID,
-      ),
-    });
-  });
-
-  app.post("/platform/secret-profiles", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin")
-      return c.json({ error: "Admin access required" }, 403);
-    const parsed = platformSecretProfileSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
-    if (!parsed.success)
-      return c.json(
-        {
-          error: "Invalid Platform Secret Profile",
-          issues: parsed.error.issues,
-        },
-        400,
-      );
-    if (parsed.data.entries.some((entry) => entry.value === undefined)) {
-      return c.json(
-        { error: "Every new Platform Secret Profile entry requires a value." },
-        400,
-      );
-    }
-    const profile = await store.savePlatformSecretProfile({
-      name: parsed.data.name,
-      entries: parsed.data.entries.map((entry) => ({
-        key: entry.key,
-        kind: entry.kind,
-        encryptedValue: JSON.stringify(
-          encryptSecretValue(entry.value!, appSecretKey),
-        ),
-      })),
-    });
-    return c.json({ profile }, 201);
-  });
-
-  app.put("/platform/secret-profiles/:profileId", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin")
-      return c.json({ error: "Admin access required" }, 403);
-    if (c.req.param("profileId") === SHARED_AGENT_ENVIRONMENT_PROFILE_ID)
-      return c.json({ error: "Platform Secret Profile not found" }, 404);
-    const parsed = platformSecretProfileSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
-    if (!parsed.success)
-      return c.json(
-        {
-          error: "Invalid Platform Secret Profile",
-          issues: parsed.error.issues,
-        },
-        400,
-      );
-    const existing = await store.getPlatformSecretProfileRecord(
-      c.req.param("profileId"),
-    );
-    if (!existing)
-      return c.json({ error: "Platform Secret Profile not found" }, 404);
-    const previousRevision = existing.revision;
-    const entries = parsed.data.entries.map((entry) => {
-      const previous = existing.entries.find(
-        (candidate) =>
-          candidate.key === entry.key && candidate.kind === entry.kind,
-      );
-      if (entry.value === undefined && !previous) return null;
-      return {
-        key: entry.key,
-        kind: entry.kind,
-        encryptedValue:
-          entry.value === undefined
-            ? previous!.encryptedValue
-            : JSON.stringify(encryptSecretValue(entry.value, appSecretKey)),
-      };
-    });
-    if (entries.some((entry) => entry === null)) {
-      return c.json(
-        {
-          error:
-            "A value is required for every new or changed Platform Secret Profile entry.",
-        },
-        400,
-      );
-    }
-    const profile = await store.savePlatformSecretProfile({
-      id: existing.id,
-      name: parsed.data.name,
-      entries: entries.filter(
-        (entry): entry is NonNullable<typeof entry> => entry !== null,
-      ),
-    });
-    const jobs =
-      profile.revision === previousRevision
-        ? []
-        : await enqueuePlatformSecretRestarts(
-            await store.listPlatformSecretProfileBindings(profile.id),
-            "platform_secret_profile_changed",
-          );
-    return c.json({ profile, jobs });
-  });
-
-  app.delete("/platform/secret-profiles/:profileId", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin")
-      return c.json({ error: "Admin access required" }, 403);
-    const profileId = c.req.param("profileId");
-    if (profileId === SHARED_AGENT_ENVIRONMENT_PROFILE_ID)
-      return c.json({ error: "Platform Secret Profile not found" }, 404);
-    const bindings = await store.listPlatformSecretProfileBindings(profileId);
-    const deleted = await store.deletePlatformSecretProfile(profileId);
-    const jobs = deleted
-      ? await enqueuePlatformSecretRestarts(
-          bindings,
-          "platform_secret_profile_changed",
-        )
-      : [];
-    return c.json({ deleted, jobs });
-  });
-
-  app.get("/projects/:projectId/platform-secret-bindings", async (c) => {
-    const project = await store.getProject(c.req.param("projectId"));
-    if (!project) return c.json({ error: "Project not found" }, 404);
-    return c.json({
-      bindings: await store.listProjectPlatformSecretBindings(project.id),
-    });
-  });
-
-  app.put(
-    "/projects/:projectId/platform-secret-bindings/:consumer",
-    async (c) => {
-      if (options.auth && c.get("principal").role !== "admin")
-        return c.json({ error: "Admin access required" }, 403);
-      const consumer = platformSecretConsumerSchema.safeParse(
-        c.req.param("consumer"),
-      );
-      const parsed = platformSecretBindingSchema.safeParse(
-        await c.req.json().catch(() => null),
-      );
-      if (!consumer.success || !parsed.success) {
-        return c.json(
-          { error: "Invalid Platform Secret Profile binding" },
-          400,
-        );
-      }
-      const projectId = c.req.param("projectId");
-      const previous = (
-        await store.listProjectPlatformSecretBindings(projectId)
-      ).find(
-        (binding) =>
-          binding.consumer === consumer.data &&
-          binding.deploymentId === parsed.data.deploymentId,
-      );
-      try {
-        const binding = await store.bindPlatformSecretProfile({
-          profileId: parsed.data.profileId,
-          projectId,
-          deploymentId: parsed.data.deploymentId,
-          consumer: consumer.data,
-        });
-        const changed = !previous || previous.profileId !== binding.profileId;
-        const jobs = changed
-          ? await enqueuePlatformSecretRestarts(
-              [binding],
-              "platform_secret_binding_changed",
-            )
-          : [];
-        return c.json({ binding, jobs });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return c.json(
-          { error: message },
-          message.includes("not found") ? 404 : 409,
-        );
-      }
-    },
-  );
-
-  app.delete(
-    "/projects/:projectId/platform-secret-bindings/:bindingId",
-    async (c) => {
-      if (options.auth && c.get("principal").role !== "admin")
-        return c.json({ error: "Admin access required" }, 403);
-      const binding = await store.deletePlatformSecretProfileBinding(
-        c.req.param("projectId"),
-        c.req.param("bindingId"),
-      );
-      const jobs = binding
-        ? await enqueuePlatformSecretRestarts(
-            [binding],
-            "platform_secret_binding_changed",
-          )
-        : [];
-      return c.json({ deleted: binding !== null, jobs });
-    },
-  );
 }
 
 async function enqueueAllLiveDeploymentRestarts(store: Store) {

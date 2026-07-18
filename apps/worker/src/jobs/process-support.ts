@@ -1,7 +1,4 @@
-import type {
-  PlatformSecretProfileRecord,
-  SharedAgentEnvironmentRecord,
-} from "@eveland/core/contracts";
+import type { SharedAgentEnvironmentRecord } from "@eveland/core/contracts";
 import { resolveSchedulerRuntimeSecret } from "@eveland/core/server/scheduler-dispatch";
 import {
   decryptSecretValue,
@@ -234,19 +231,10 @@ export async function composeDeploymentEnv(
   const appSecretKey =
     options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
   const secrets = await readRuntimeSecrets(store, projectId, appSecretKey);
-  const [sharedEnvironmentRecord, legacyProfileRecords] = await Promise.all([
-    store.getSharedAgentEnvironmentRecord(),
-    store.resolvePlatformSecretProfileRecords({
-      projectId,
-      deploymentId,
-      consumer: "agent-runtime",
-    }),
-  ]);
-  const sharedEnvironment = {
-    ...readSharedAgentEnvironmentValues(sharedEnvironmentRecord, appSecretKey),
-    ...readSharedAgentEnvironmentValues(legacyProfileRecords.project, appSecretKey),
-    ...readSharedAgentEnvironmentValues(legacyProfileRecords.deployment, appSecretKey),
-  };
+  const sharedEnvironment = readSharedAgentEnvironmentValues(
+    await store.getSharedAgentEnvironmentRecord(),
+    appSecretKey,
+  );
   // Project secrets are runtime input, but the workflow database is
   // platform-owned and bootstrapped before this worker accepts jobs. Keep its
   // URL reserved so a project cannot silently redirect the injected world to
@@ -279,7 +267,7 @@ export async function composeDeploymentEnv(
 }
 
 export function readSharedAgentEnvironmentValues(
-  environment: SharedAgentEnvironmentRecord | PlatformSecretProfileRecord | null,
+  environment: SharedAgentEnvironmentRecord | null,
   appSecretKey: string,
 ): Record<string, string> {
   return Object.fromEntries(

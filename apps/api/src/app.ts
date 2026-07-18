@@ -116,18 +116,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     projectId: string,
     reference: AgentAuthSecretReference,
   ): Promise<string> => {
-    let encryptedValue: string | undefined;
-    if (reference.kind === "project-secret") {
-      encryptedValue = (await store.listSecretRecords(projectId))
-        .find((secret) => secret.key === reference.key)?.encryptedValue;
-    } else {
-      const profiles = await store.resolvePlatformSecretProfileRecords({
-        projectId,
-        deploymentId: null,
-        consumer: "agent-connection",
-      });
-      encryptedValue = profiles.project?.entries.find((entry) => entry.key === reference.key)?.encryptedValue;
-    }
+    const encryptedValue = (await store.listSecretRecords(projectId))
+      .find((secret) => secret.key === reference.key)?.encryptedValue;
     if (!encryptedValue) throw new Error("The configured Agent Auth secret reference is unavailable.");
     try {
       return decryptSecretValue(JSON.parse(encryptedValue) as EncryptedSecret, appSecretKey);
@@ -233,30 +223,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       ),
     );
   };
-  const enqueuePlatformSecretRestarts = async (
-    bindings: Array<Awaited<ReturnType<Store["listPlatformSecretProfileBindings"]>>[number]>,
-    reason:
-      | "platform_secret_binding_changed"
-      | "platform_secret_profile_changed",
-  ) => {
-    const targets = new Map<string, { projectId: string; deploymentId: string }>();
-    for (const binding of bindings) {
-      if (binding.consumer !== "agent-runtime") continue;
-      const live = (await store.listDeployments(binding.projectId)).filter(
-        (deployment) => deployment.status === "running" || deployment.status === "draining",
-      );
-      for (const deployment of live) {
-        if (binding.deploymentId && binding.deploymentId !== deployment.id) continue;
-        targets.set(`${binding.projectId}:${deployment.id}`, { projectId: binding.projectId, deploymentId: deployment.id });
-      }
-    }
-    return Promise.all([...targets.values()].map((target) => store.enqueueJob(
-      target.projectId,
-      "restart_deployment",
-      { deploymentId: target.deploymentId, reason },
-    )));
-  };
-
   app.use(
     "*",
     cors({
@@ -475,27 +441,13 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const projectId = c.req.param("projectId");
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
-    const [projectSecrets, profiles] = await Promise.all([
-      store.listSecrets(projectId),
-      store.resolvePlatformSecretProfileRecords({
-        projectId,
-        deploymentId: null,
-        consumer: "agent-connection",
-      }),
-    ]);
-    const references = [
-      ...(profiles.project?.entries ?? []).map((entry) => ({
-        kind: "platform-secret" as const,
-        key: entry.key,
-        label: `${profiles.project!.name} · ${entry.key}`,
-        revision: profiles.project!.revision,
-      })),
-      ...projectSecrets.map((secret) => ({
+    const references = (await store.listSecrets(projectId))
+      .map((secret) => ({
         kind: "project-secret" as const,
         key: secret.key,
         label: `Project Secret · ${secret.key}`,
-      })),
-    ].sort((left, right) => left.label.localeCompare(right.label));
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label));
     return c.json({ references });
   });
 
@@ -775,7 +727,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     options,
     appSecretKey,
     enqueueLiveDeploymentRestarts,
-    enqueuePlatformSecretRestarts,
   });
   registerQueryRoutes(app, store);
 

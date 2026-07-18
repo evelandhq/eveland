@@ -331,8 +331,7 @@ Connection 只保存 token Secret reference/configured 状态；平台不从 Age
 通用 `oidc` 方法只使用协议级配置：HTTPS issuer、client id、scope、可选 audience 及其
 `resource`/`audience` 参数模式、显式 token endpoint client authentication、附加 authorization
 parameters，以及 `eve-jwt` 或 `userinfo` access-token verification。confidential client secret
-通过 Project Secret 引用，不能进入 Connection browser payload。迁移前已经保存的 Platform Secret
-reference 只保留兼容解析，不能从新的 Shared Agent Environment 创建。`eve-jwt` 必须绑定已配置的
+通过 Project Secret 引用，不能进入 Connection browser payload。`eve-jwt` 必须绑定已配置的
 issuer/audience；`userinfo` 必须让 UserInfo `sub` 与已验证 ID Token `sub` 一致。Provider 名称不能
 改变 scope、prompt、client authentication 或 verification 行为。
 
@@ -565,11 +564,8 @@ Entry 语义变化才递增内部 revision。更新或清空共享环境时，AP
 `running`/`draining` Deployment 排定向 restart；没有 live Deployment 时从下一次启动生效。
 Shared Agent Environment 只属于 Agent runtime，不得作为 Agent Connection credential。新的 Basic、Bearer、
 Vercel OIDC 和 confidential OIDC 配置通过 Project Secret reference 延迟解析；引用缺失、删除或无法解密必须
-fail closed，不得回退到旧值或 inline copy。迁移前已经保存的 named Platform Secret Profile、runtime binding
-和 `agent-connection` reference 继续兼容读取，直到管理员用全局共享环境或 Project Secret 替换；历史 runtime
-Profile 值在全局共享环境之后、Project Secret 之前叠加。旧设置
-地址重定向到 Shared Agent Environment。新的受支持 UI/API 不再创建 named Profile；旧 Profile API 暂时只作
-deprecated 迁移窗口，不应承载新配置，也不得为内部 Shared Agent Environment singleton 创建 binding。
+fail closed，不得回退到旧值或 inline copy。系统不提供 named Profile、runtime binding、Platform Secret
+reference 或对应的兼容 API。Shared Agent Environment 使用独立 singleton 存储，不继承 Profile 数据模型。
 
 ---
 

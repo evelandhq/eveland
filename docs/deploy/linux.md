@@ -202,8 +202,8 @@ runtime diagnostics, logs, Source Revisions, Releases, observer events, or brows
 For generic OIDC, register `${WEB_ORIGIN}/agent-auth/oidc/callback` as an exact redirect URI. The callback page is
 owned by Web and completes through the authenticated API; API encrypts one-time ten-minute transactions and
 principal-scoped access/refresh tokens with `APP_SECRET_KEY`. A confidential client's Connection stores only a
-Project Secret or explicitly bound `agent-connection` Platform Secret reference, so create or bind that Secret
-before saving a `client_secret_basic` or `client_secret_post` Connection. API resolves the current referenced value
+Project Secret reference, so create that Secret before saving a `client_secret_basic` or `client_secret_post`
+Connection. API resolves the current referenced value
 again for preflight, callback, verification, and refresh; rotating the Secret does not copy it into Connection config.
 
 Production network policy must allow API egress only to approved OIDC discovery, authorization metadata, JWKS,
@@ -274,11 +274,9 @@ Changing or clearing the shared environment queues `restart_deployment` jobs for
 `running`/`draining` Deployment so an old process cannot retain stale or deleted values.
 With no live target, the next deploy, restart, cold activation, or schedule activation reads
 the latest revision. Agent Connection credentials are separate and new configuration uses
-Project Secret references resolved per request. Existing named Profile runtime bindings
-remain readable as compatibility overlays until replaced, but no supported API creates a
-binding for the Shared Agent Environment singleton. Existing Agent Connection references
-also remain readable during migration. Existing
-API/worker `APP_SECRET_KEY` values must continue to match; worker preflight and Compose
+Project Secret references resolved per request. There are no named Profile, runtime binding,
+or Platform Secret reference compatibility paths. API/worker `APP_SECRET_KEY` values must
+continue to match; worker preflight and Compose
 topology otherwise require no new setting.
 
 GitLab PAT imports use the same `APP_SECRET_KEY` on API and worker. The database stores only

@@ -517,7 +517,7 @@ function requiredString(value: unknown, message: string): string {
 
 function secretReference(value: unknown): AgentAuthSecretReference {
   const candidate = record(value, "Agent Auth secret reference must be an object.");
-  if (candidate.kind !== "project-secret" && candidate.kind !== "platform-secret") {
+  if (candidate.kind !== "project-secret") {
     throw new Error("Agent Auth secret reference kind is invalid.");
   }
   const key = requiredString(candidate.key, "Agent Auth secret reference key is required.");

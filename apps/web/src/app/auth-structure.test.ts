@@ -48,10 +48,12 @@ describe("team management web surfaces", () => {
     const environmentPageUrl = new URL("./settings/shared-agent-environment/page.tsx", import.meta.url);
     const environmentSettingsUrl = new URL("../components/shared-agent-environment-settings.tsx", import.meta.url);
     const bindingSettingsUrl = new URL("../components/shared-agent-environment-bindings.tsx", import.meta.url);
+    const legacyProfilePageUrl = new URL("./settings/secret-profiles/page.tsx", import.meta.url);
 
     expect(existsSync(fileURLToPath(environmentPageUrl))).toBe(true);
     expect(existsSync(fileURLToPath(environmentSettingsUrl))).toBe(true);
     expect(existsSync(fileURLToPath(bindingSettingsUrl))).toBe(false);
+    expect(existsSync(fileURLToPath(legacyProfilePageUrl))).toBe(false);
     if (
       !existsSync(fileURLToPath(environmentPageUrl)) ||
       !existsSync(fileURLToPath(environmentSettingsUrl))
