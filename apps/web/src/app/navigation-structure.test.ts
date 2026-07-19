@@ -8,6 +8,12 @@ function source(relativePath: string): string {
 }
 
 describe("web application shell", () => {
+  test("keeps the anchor reset in the base layer so button link colors can override it", () => {
+    const globals = source("./globals.css")
+
+    expect(globals.indexOf("a {")).toBeGreaterThan(globals.indexOf("@layer base"))
+  })
+
   test("uses an app shell that can remove workspace chrome for focused routes", () => {
     const layout = source("./layout.tsx")
     const appShellUrl = new URL("../components/app-shell.tsx", import.meta.url)
