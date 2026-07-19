@@ -100,7 +100,7 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
         <Settings2Icon data-icon="inline-start" />
         Connection
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Agent Connection</DialogTitle>
           <DialogDescription>
