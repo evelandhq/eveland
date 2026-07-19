@@ -282,6 +282,13 @@ describe("web application shell", () => {
     expect(nextConfig).toContain('source: "/api/eveland/:path*"')
   })
 
+  test("keeps the Playground Agent Connection dialog scrollable within the viewport", () => {
+    const connectionSettings = source("../components/agent-connection-settings.tsx")
+
+    expect(connectionSettings).toContain("max-h-[calc(100svh-2rem)]")
+    expect(connectionSettings).toContain("overflow-y-auto")
+  })
+
   test("shows the deployed Eve version across project, source, and Playground surfaces", () => {
     const projectOverview = source("./projects/[projectId]/page.tsx")
     const sourcePage = source("./projects/[projectId]/source/page.tsx")
