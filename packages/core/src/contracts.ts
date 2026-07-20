@@ -334,6 +334,65 @@ export type ModelUsageEvent = {
   createdAt: string;
 };
 
+export type UsageRange = "24h" | "7d" | "30d";
+
+export type UsageTotals = {
+  sessions: number;
+  runningSessions: number;
+  waitingSessions: number;
+  completedSessions: number;
+  failedSessions: number;
+  modelSteps: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number | null;
+  reportedSteps: number;
+  missingSteps: number;
+  costReportedSteps: number;
+};
+
+export type UsageSeriesPoint = UsageTotals & {
+  bucketStart: string;
+};
+
+export type ProjectUsageBreakdown = UsageTotals & {
+  projectId: string;
+  projectName: string;
+};
+
+export type ModelUsageBreakdown = UsageTotals & {
+  modelId: string | null;
+};
+
+export type AgentModelUsageBreakdown = UsageTotals & {
+  projectId: string;
+  projectName: string;
+  agentId: string | null;
+  agentName: string | null;
+  modelId: string | null;
+};
+
+export type UsageRecentSession = Session & {
+  projectName: string;
+};
+
+export type UsageAnalytics = {
+  range: UsageRange;
+  from: string;
+  to: string;
+  bucket: "hour" | "day";
+  modelId: string | null;
+  summary: UsageTotals;
+  previousSummary: UsageTotals;
+  series: UsageSeriesPoint[];
+  projects: ProjectUsageBreakdown[];
+  models: ModelUsageBreakdown[];
+  agentModels: AgentModelUsageBreakdown[];
+  recentSessions: UsageRecentSession[];
+};
+
 export type SessionEvent = {
   id: string;
   sessionId: string;

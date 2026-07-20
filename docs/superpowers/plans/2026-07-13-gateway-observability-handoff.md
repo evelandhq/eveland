@@ -669,6 +669,13 @@ session.failed                 -> failed
 
 按 SessionNode 保存 step usage，root Session 汇总所有 local child nodes。Unique key 至少包含 `(sessionNodeId, turnId, stepIndex)`。Remote child 只有在映射到受管 Deployment 后才纳入精确 aggregate；否则记录 coverage gap。
 
+控制面 Usage Explorer 在此 projection 之上按完整时间范围做服务端聚合，不读取分页 Session
+列表充当总量。Workspace 与 Project scope 共享 24 小时、7 天、30 天趋势及上一周期语义，
+支持 Project、Model、Eve Agent × Model 归因和单 Model 曲线。Usage coverage 与 Cost
+coverage 分开报告；成本只累计 provider/Gateway 实际返回值，不估算缺失值。root Session
+包含多个 node 或 Model 时，Model 归因保持在 step/node 边界，不把单一 Model 标签提升为整条
+Session 的身份。
+
 ### 6.7 Collector health
 
 API liveness 与 Collector health 分开：

@@ -237,6 +237,11 @@ export const sessionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+export const usageAnalyticsQuerySchema = z.object({
+  range: z.enum(["24h", "7d", "30d"]).default("7d"),
+  modelId: z.string().min(1).max(512).optional(),
+});
+
 export const targetsArraySchema = z
   .array(
     z.object({

@@ -424,6 +424,32 @@ message
 
 ---
 
+### Usage (/usage 与 /projects/proj_xxxxxxxxxx/usage)
+
+Usage 是面向开发者与管理员的 Agent traffic 和模型消耗分析页面，不替代
+`/settings/health` 的组件、宿主机和容量诊断。Workspace `/usage` 聚合全部 Project，
+Project Usage 固定为单一 Project；两者复用相同的时间范围、指标定义、趋势图、Model
+归因和 Session 下钻。
+
+页面支持最近 24 小时、7 天和 30 天，并展示当前周期与上一等长周期。统计必须在服务端对
+完整时间范围聚合，不能把分页 Session 列表的第一页呈现为 Total。至少展示：
+
+* Session 数、running Session、terminal Session 完成率与失败数
+* Model step 数，以及 Input / Output / Cache read / Cache write tokens
+* Provider 或 Gateway 实际报告的成本；不得按公开价目表估算缺失成本
+* Usage coverage 与 Cost coverage；两者必须分别计算和呈现
+* Sessions、Model steps、Tokens 与 Cost 的时间曲线
+* Workspace 的 Project 归因、Model 归因，以及 Eve Agent × LLM Model 归因
+* 可下钻的最近 Session
+
+Model 筛选把主趋势图切换为单 Model 视角。此时 Session 数表示在所选时间桶内实际使用该
+Model 的 distinct root Sessions，Token、Cost 和 step 数按 model usage event 的时间归入桶。
+一个 root Session 可以包含多个 Eve agent / subagent 和多个 Model，因此不能给整个 Session
+强行标记唯一 Model。无法从受观测 SessionNode 解析 Model 的 step 保留为 `Unknown model`，
+不能丢弃或猜测。
+
+---
+
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
 Eveland 是生产 Schedule 的唯一调度器。与全局 Agent 版本门槛一致，当前 Release adapter 支持整个

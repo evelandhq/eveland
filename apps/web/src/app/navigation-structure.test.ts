@@ -101,13 +101,21 @@ describe("web application shell", () => {
     const deploymentsUrl = new URL("./deployments/page.tsx", import.meta.url)
     const usageUrl = new URL("./usage/page.tsx", import.meta.url)
     const projectUsageUrl = new URL("./projects/[projectId]/usage/page.tsx", import.meta.url)
+    const usageExplorerUrl = new URL("../components/usage/usage-explorer.tsx", import.meta.url)
 
     expect(existsSync(fileURLToPath(deploymentsUrl))).toBe(true)
     expect(existsSync(fileURLToPath(usageUrl))).toBe(true)
     expect(existsSync(fileURLToPath(projectUsageUrl))).toBe(true)
+    expect(existsSync(fileURLToPath(usageExplorerUrl))).toBe(true)
     expect(source("./deployments/page.tsx")).toContain("getDeploymentOverview")
-    expect(source("./usage/page.tsx")).toContain("summarizeTokenUsage")
-    expect(source("./projects/[projectId]/usage/page.tsx")).toContain("summarizeTokenUsage")
+    expect(source("./usage/page.tsx")).toContain("getUsageAnalytics")
+    expect(source("./usage/page.tsx")).toContain("<UsageExplorer")
+    expect(source("./projects/[projectId]/usage/page.tsx")).toContain(
+      "getProjectUsageAnalytics",
+    )
+    expect(source("./projects/[projectId]/usage/page.tsx")).toContain(
+      "<UsageExplorer",
+    )
   })
 
   test("uses shadcn project cards with complete card composition", () => {

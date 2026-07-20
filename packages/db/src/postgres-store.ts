@@ -13,6 +13,7 @@ import { createPostgresScheduleStore } from "./postgres-schedule-store.js";
 import { createPostgresSecretStore } from "./postgres-secret-store.js";
 import { createPostgresSessionQueryStore } from "./postgres-session-query-store.js";
 import { createPostgresSessionStore } from "./postgres-session-store.js";
+import { createPostgresUsageStore } from "./postgres-usage-store.js";
 import {
   agentRoutes,
   deployments,
@@ -222,6 +223,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
     ...createPostgresJobSourceStore(context),
     ...createPostgresDeploymentRoutingStore(context),
     ...createPostgresSessionStore(context),
+    ...createPostgresUsageStore(context),
     ...createPostgresScheduleStore(context),
     ...createPostgresRuntimeStore(context),
     ...createPostgresInstanceHealthStore(context),
