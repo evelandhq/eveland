@@ -119,7 +119,9 @@ export async function processJob(
       // A re-sync can opt into deploying the freshly imported source in one step;
       // enqueued only after a successful import so a failed pull never deploys.
       if (job.payload.deployAfterImport === true) {
-        await store.enqueueJob(job.projectId, "build_deploy");
+        await store.enqueueJob(job.projectId, "build_deploy", {
+          promoteAfterDeploy: job.payload.promoteAfterDeploy === true,
+        });
         await store.appendLog({
           projectId: job.projectId,
           type: "build",
@@ -283,6 +285,18 @@ export async function processJob(
             .split(",")[0]!
             .trim(),
         );
+        if (job.payload.promoteAfterDeploy === true) {
+          await store.promoteDeployment(
+            project.id,
+            deployment.id,
+          );
+          await store.appendLog({
+            projectId: project.id,
+            deploymentId: deployment.id,
+            type: "deploy",
+            line: `Promoted deployment ${deployment.deploymentKey} to the stable route.`,
+          });
+        }
         await invalidateGatewayRouteCache(
           process.env,
           materializedRoutes,

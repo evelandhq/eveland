@@ -115,6 +115,19 @@ describe("web application shell", () => {
     expect(projectNav).toContain("<SidebarMenuButton")
   })
 
+  test("makes promoted Git sync primary and preview sync secondary", () => {
+    const actions = source("../components/deployment-actions.tsx")
+
+    expect(actions).toContain("Sync, deploy & promote")
+    expect(actions).toContain("Sync & create preview")
+    expect(actions).toContain('run("sync-promote")')
+    expect(actions).toContain('run("sync-preview")')
+    expect(actions).toContain('promote: deploy && action === "sync-promote"')
+    expect(actions).toMatch(
+      /variant="outline"[\s\S]*Sync & create preview/,
+    )
+  })
+
   test("provides populated global deployment and usage pages plus project usage", () => {
     const deploymentsUrl = new URL("./deployments/page.tsx", import.meta.url)
     const usageUrl = new URL("./usage/page.tsx", import.meta.url)

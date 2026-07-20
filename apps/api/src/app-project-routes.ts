@@ -14,6 +14,7 @@ import {
   createProjectSchema,
   projectNameSchema,
   routeTargetsSchema,
+  syncSourceSchema,
 } from "./app-schemas.js";
 import {
   createZipProjectFromUpload,
@@ -21,7 +22,6 @@ import {
   extractZipUpload,
   invalidateGateway,
   isMultipartRequest,
-  readSyncDeployFlag,
 } from "./app-support.js";
 
 type CreateGitCredentialInput = {
@@ -596,7 +596,18 @@ export function registerProjectRoutes(input: {
       );
     }
 
-    const deploy = await readSyncDeployFlag(c);
+    const syncOptions = syncSourceSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
+    if (!syncOptions.success) {
+      return c.json(
+        {
+          error: "Invalid source sync options",
+          detail: syncOptions.error.flatten(),
+        },
+        400,
+      );
+    }
     const host = normalizeGitHttpHost(project.gitUrl);
     const storedCredential = host
       ? await store.getGitCredential(currentUserId(c), host)
@@ -604,7 +615,8 @@ export function registerProjectRoutes(input: {
     const job = await store.enqueueJob(projectId, "import_source", {
       importKind: "git",
       gitUrl: project.gitUrl,
-      deployAfterImport: deploy,
+      deployAfterImport: syncOptions.data.deploy,
+      promoteAfterDeploy: syncOptions.data.promote,
       ...(storedCredential
         ? {
             gitCredential: {

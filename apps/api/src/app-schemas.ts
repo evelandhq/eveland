@@ -78,6 +78,16 @@ export const createGitSourcePreflightSchema = z.object({
   gitlabPat: z.string().min(1).max(1024).optional(),
 });
 
+export const syncSourceSchema = z
+  .object({
+    deploy: z.boolean().default(false),
+    promote: z.boolean().default(false),
+  })
+  .refine((input) => !input.promote || input.deploy, {
+    message: "A synced source must be deployed before it can be promoted.",
+    path: ["promote"],
+  });
+
 export const secretSchema = environmentVariableSchema;
 
 export const sharedAgentEnvironmentEntrySchema = z.object({

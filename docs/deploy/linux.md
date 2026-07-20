@@ -484,7 +484,7 @@ removes that authored backend definition and writes the generated module in its 
 `bootstrap()` and `onSession()` are not run because Eveland owns the deployment backend.
 An `agent/sandbox/workspace/**` seed tree is preserved in the prepared Release; Eve compiles
 those files and initializes them under `/workspace/**` for each new Session. Templates are
-revision-scoped, so a later Sync & Deploy creates new Sessions from the updated seed content.
+revision-scoped, so Sessions created against a later Deployment use its updated seed content.
 Existing durable Sessions remain keyed only by Eve's session key and keep their current
 workspace files; deployment never overwrites their runtime state.
 The build log carries a line so this is never a silent surprise:
