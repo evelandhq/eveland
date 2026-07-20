@@ -8,6 +8,15 @@ import { formatTokenCount } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ scheduleRunId: string }>;
+}) {
+  const { scheduleRunId } = await params;
+  return { title: `Schedule run ${scheduleRunId}` };
+}
+
 export default async function ScheduleRunPage({ params }: {
   params: Promise<{ projectId: string; scheduleRunId: string }>;
 }) {

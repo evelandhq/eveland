@@ -8,6 +8,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Schedules",
+};
 
 export default async function SchedulesPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;

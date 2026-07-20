@@ -3,6 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getCurrentMember, getSharedAgentEnvironment } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Shared Agent environment",
+};
 
 export default async function SharedAgentEnvironmentSettingsPage() {
   const member = await getCurrentMember();

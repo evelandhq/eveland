@@ -6,6 +6,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { getLogs } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Logs",
+};
 
 const LOG_FILTERS = [
   { value: "all", label: "All" },

@@ -2,6 +2,9 @@ import { ProfileSettingsForm } from "@/components/profile-settings-form"
 import { getCurrentMember } from "@/lib/server-api"
 
 export const dynamic = "force-dynamic"
+export const metadata = {
+  title: "Profile",
+}
 
 export default async function ProfileSettingsPage() {
   const member = await getCurrentMember()

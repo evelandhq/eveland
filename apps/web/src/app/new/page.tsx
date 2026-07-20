@@ -4,6 +4,10 @@ import { NewProjectFlow } from "@/components/new-project-flow";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+export const metadata = {
+  title: "New project",
+};
+
 export default function NewProjectPage() {
   return (
     <div className="min-h-svh bg-background">
