@@ -88,6 +88,18 @@ describe("web application shell", () => {
       expect(capacityProgress).toContain("<Progress")
       expect(capacityProgress).toContain("<ProgressValue")
     }
+
+    const capacityTrendUrl = new URL("../components/capacity-trend.tsx", import.meta.url)
+    expect(existsSync(fileURLToPath(capacityTrendUrl))).toBe(true)
+    if (existsSync(fileURLToPath(capacityTrendUrl))) {
+      const capacityTrend = source("../components/capacity-trend.tsx")
+      expect(capacityTrend).toContain('"use client"')
+      expect(capacityTrend).toContain("<ChartContainer")
+      expect(capacityTrend).toContain("<LineChart")
+      expect(capacityTrend).toContain("<ChartTooltip")
+      expect(capacityTrend).not.toContain("<svg")
+      expect(capacityTrend).not.toContain("<polyline")
+    }
   })
 
   test("renders project navigation as a shadcn sidebar menu", () => {
