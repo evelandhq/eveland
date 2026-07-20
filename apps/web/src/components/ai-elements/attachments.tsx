@@ -209,7 +209,7 @@ export const Attachment = ({
             "flex h-8 cursor-pointer select-none items-center gap-1.5",
             "rounded-md border border-border px-1.5",
             "font-medium text-sm transition-all",
-            "hover:bg-accent hover:text-accent-foreground",
+            "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
           ],
           variant === "list" && [
             "flex w-full items-center gap-3 rounded-lg border p-3",
@@ -240,8 +240,10 @@ export const AttachmentPreview = ({
 }: AttachmentPreviewProps) => {
   const { data, mediaCategory, variant } = useAttachmentContext();
 
+  const iconSize = variant === "inline" ? "size-3" : "size-4";
+
   const renderIcon = (Icon: typeof ImageIcon) => (
-    <Icon className="text-muted-foreground" />
+    <Icon className={cn(iconSize, "text-muted-foreground")} />
   );
 
   const renderContent = () => {
@@ -262,9 +264,8 @@ export const AttachmentPreview = ({
       className={cn(
         "flex shrink-0 items-center justify-center overflow-hidden",
         variant === "grid" && "size-full bg-muted",
-        variant === "inline" && "size-5 rounded bg-background [&_svg]:size-3",
-        variant === "list" && "size-12 rounded bg-muted [&_svg]:size-4",
-        variant === "grid" && "[&_svg]:size-4",
+        variant === "inline" && "size-5 rounded bg-background",
+        variant === "list" && "size-12 rounded bg-muted",
         className
       )}
       {...props}
@@ -380,7 +381,7 @@ export type AttachmentHoverCardTriggerProps = ComponentProps<
 
 export const AttachmentHoverCardTrigger = (
   props: AttachmentHoverCardTriggerProps
-) => <HoverCardTrigger {...props} />;
+) => <HoverCardTrigger closeDelay={0} delay={0} {...props} />;
 
 export type AttachmentHoverCardContentProps = ComponentProps<
   typeof HoverCardContent

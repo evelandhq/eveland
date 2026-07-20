@@ -6,6 +6,9 @@ allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
+overrides:
+  "react-jsx-parser>@types/react": 19.2.17
+  "react-jsx-parser>@types/react-dom": 19.2.3
 # The workspace defaults to Eve 0.25.1 and the compatibility matrix also pins
 # Eve 0.24.6. Imported Agents may use either verified minor. Waive the release-age
 # cooldown only for this explicitly reviewed package.
