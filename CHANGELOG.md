@@ -4,6 +4,24 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.8.0](https://github.com/evelandhq/eveland/compare/v0.7.0...v0.8.0) (2026-07-20)
+
+
+### Features
+
+* add distinct page titles ([#111](https://github.com/evelandhq/eveland/issues/111)) ([dbed9e7](https://github.com/evelandhq/eveland/commit/dbed9e747a49d04c00b401cc108283f84220293a))
+* add usage analytics explorer ([#108](https://github.com/evelandhq/eveland/issues/108)) ([ffa544e](https://github.com/evelandhq/eveland/commit/ffa544e70be465d82626482d4c417c623ac33fc0))
+* expand web AI elements ([#114](https://github.com/evelandhq/eveland/issues/114)) ([5736749](https://github.com/evelandhq/eveland/commit/5736749c2c5927f0583f3daee0f18594e98d0c7a))
+* promote synced deployments by default ([562b14f](https://github.com/evelandhq/eveland/commit/562b14fb9739a56422f9a60426eab184a8cd2e6b))
+* redesign environment variable editors ([#107](https://github.com/evelandhq/eveland/issues/107)) ([dcd8abd](https://github.com/evelandhq/eveland/commit/dcd8abd4d5c628c41cf7511470b6e05410590473))
+* support Eve skills in sandbox runtime ([#115](https://github.com/evelandhq/eveland/issues/115)) ([723bedf](https://github.com/evelandhq/eveland/commit/723bedf6697767bca6f33068343a63a2dfdcbbe2))
+
+
+### Bug Fixes
+
+* improve health chart readability ([#113](https://github.com/evelandhq/eveland/issues/113)) ([ddd4221](https://github.com/evelandhq/eveland/commit/ddd4221ff2b39e4d0a331c16e4e94f94129da5e9))
+* remove sessions from workspace usage ([#110](https://github.com/evelandhq/eveland/issues/110)) ([ee84192](https://github.com/evelandhq/eveland/commit/ee84192c2316245890c2721bc8ea98ca503d8537))
+
 ## [0.7.0](https://github.com/evelandhq/eveland/compare/v0.6.0...v0.7.0) (2026-07-20)
 
 
