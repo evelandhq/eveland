@@ -12,6 +12,8 @@ import {
   CopyIcon,
   EyeIcon,
   EyeOffIcon,
+  LockKeyholeIcon,
+  PencilIcon,
   PlusIcon,
   RocketIcon,
   TerminalIcon,
@@ -28,10 +30,20 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getGitCredentials } from "@/lib/client-api";
 import type { AgentEndpoints, Job, LogLine, Project } from "@/lib/api";
 import { getNewProjectProgress, validateNewProjectEnvironmentVariables } from "@/lib/new-project";
@@ -56,6 +68,7 @@ const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no
 
 type Availability = "idle" | "checking" | "available" | "unavailable" | "error";
 type EnvironmentVariableDraft = { id: number; key: string; value: string; visible: boolean };
+type EnvironmentVariableDraftErrors = { key?: string; value?: string };
 
 export function NewProjectFlow() {
   const [step, setStep] = useState<Step>("source");
@@ -70,6 +83,10 @@ export function NewProjectFlow() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [environmentVariables, setEnvironmentVariables] = useState<EnvironmentVariableDraft[]>([]);
+  const [environmentDialogOpen, setEnvironmentDialogOpen] = useState(false);
+  const [editingEnvironmentVariableId, setEditingEnvironmentVariableId] = useState<number | null>(null);
+  const [environmentDraft, setEnvironmentDraft] = useState<EnvironmentVariableDraft | null>(null);
+  const [environmentDraftErrors, setEnvironmentDraftErrors] = useState<EnvironmentVariableDraftErrors>({});
   const [pending, setPending] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -280,16 +297,22 @@ export function NewProjectFlow() {
 
   function addEnvironmentVariable() {
     setEnvironmentOpen(true);
-    setEnvironmentVariables((current) => [
-      ...current,
-      { id: nextEnvironmentVariableId.current++, key: "", value: "", visible: false },
-    ]);
+    setEditingEnvironmentVariableId(null);
+    setEnvironmentDraft({ id: nextEnvironmentVariableId.current++, key: "", value: "", visible: false });
+    setEnvironmentDraftErrors({});
+    setEnvironmentDialogOpen(true);
   }
 
-  function setEnvironmentVariable(id: number, patch: Partial<EnvironmentVariableDraft>) {
-    setEnvironmentVariables((current) => current.map((variable) =>
-      variable.id === id ? { ...variable, ...patch } : variable,
-    ));
+  function editEnvironmentVariable(variable: EnvironmentVariableDraft) {
+    setEditingEnvironmentVariableId(variable.id);
+    setEnvironmentDraft({ ...variable, visible: false });
+    setEnvironmentDraftErrors({});
+    setEnvironmentDialogOpen(true);
+  }
+
+  function updateEnvironmentDraft(patch: Partial<EnvironmentVariableDraft>) {
+    setEnvironmentDraft((current) => current ? { ...current, ...patch } : current);
+    setEnvironmentDraftErrors({});
   }
 
   function removeEnvironmentVariable(id: number) {
@@ -298,11 +321,28 @@ export function NewProjectFlow() {
 
   function setEnvironmentVariablesOpen(open: boolean) {
     setEnvironmentOpen(open);
-    if (open) {
-      setEnvironmentVariables((current) => current.length > 0
-        ? current
-        : [{ id: nextEnvironmentVariableId.current++, key: "", value: "", visible: false }]);
+  }
+
+  function submitEnvironmentVariable(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!environmentDraft) return;
+    const nextVariables = editingEnvironmentVariableId === null
+      ? [...environmentVariables, environmentDraft]
+      : environmentVariables.map((variable) =>
+          variable.id === editingEnvironmentVariableId ? environmentDraft : variable);
+    const validation = validateNewProjectEnvironmentVariables(nextVariables);
+    const draftErrors = validation.errors.get(environmentDraft.id) ?? {};
+    if (!environmentDraft.key.trim() && !environmentDraft.value) {
+      setEnvironmentDraftErrors({ key: "Enter a variable name.", value: "Enter a value." });
+      return;
     }
+    if (draftErrors.key || draftErrors.value) {
+      setEnvironmentDraftErrors(draftErrors);
+      return;
+    }
+    setEnvironmentVariables(nextVariables);
+    setEnvironmentDialogOpen(false);
   }
 
   return (
@@ -510,85 +550,12 @@ export function NewProjectFlow() {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="border-t outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-top-2">
                   <div className="flex flex-col gap-5 p-5">
-                    <p className="text-sm text-muted-foreground">
-                      Add provider keys such as <code className="font-mono text-foreground">OPENAI_API_KEY</code>. Values are encrypted before they are stored.
-                    </p>
-
-                    <AnimatePresence initial={false}>
-                      {environmentVariables.map((variable, index) => {
-                        const errors = environmentValidation.errors.get(variable.id);
-                        return (
-                          <motion.div
-                            key={variable.id}
-                            layout
-                            initial={{ opacity: 0, y: -6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, height: 0, marginTop: -8 }}
-                            className="grid gap-4 border-b pb-5 last:border-b-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
-                          >
-                            <Field data-invalid={Boolean(errors?.key) || undefined}>
-                              <FieldLabel htmlFor={`environment-key-${variable.id}`}>Key {index + 1}</FieldLabel>
-                              <Input
-                                id={`environment-key-${variable.id}`}
-                                value={variable.key}
-                                onChange={(event) => setEnvironmentVariable(variable.id, { key: event.target.value })}
-                                aria-invalid={Boolean(errors?.key)}
-                                autoCapitalize="characters"
-                                autoComplete="off"
-                                spellCheck={false}
-                                className="font-mono"
-                                placeholder="OPENAI_API_KEY"
-                              />
-                              {errors?.key ? <FieldError>{errors.key}</FieldError> : null}
-                            </Field>
-
-                            <Field data-invalid={Boolean(errors?.value) || undefined}>
-                              <FieldLabel htmlFor={`environment-value-${variable.id}`}>Value</FieldLabel>
-                              <div className="relative">
-                                <Input
-                                  id={`environment-value-${variable.id}`}
-                                  type={variable.visible ? "text" : "password"}
-                                  value={variable.value}
-                                  onChange={(event) => setEnvironmentVariable(variable.id, { value: event.target.value })}
-                                  aria-invalid={Boolean(errors?.value)}
-                                  autoComplete="new-password"
-                                  className="pr-10"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
-                                  aria-label={variable.visible ? "Hide value" : "Show value"}
-                                  onClick={() => setEnvironmentVariable(variable.id, { visible: !variable.visible })}
-                                >
-                                  {variable.visible ? <EyeOffIcon /> : <EyeIcon />}
-                                </Button>
-                              </div>
-                              {errors?.value ? <FieldError>{errors.value}</FieldError> : null}
-                            </Field>
-
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              className="self-end text-muted-foreground hover:text-destructive sm:mb-0.5"
-                              aria-label="Remove variable"
-                              title="Remove variable"
-                              onClick={() => removeEnvironmentVariable(variable.id)}
-                            >
-                              <Trash2Icon />
-                            </Button>
-                          </motion.div>
-                        );
-                      })}
-                    </AnimatePresence>
-
-                    <div className="flex items-center justify-between gap-4">
-                      <p className="text-xs text-muted-foreground">Available to preview and stable deployments.</p>
+                    <div className="flex items-start justify-between gap-4">
+                      <p className="text-sm text-muted-foreground">
+                        Add provider keys such as <code className="font-mono text-foreground">OPENAI_API_KEY</code>. Values are encrypted before they are stored.
+                      </p>
                       <Button
                         type="button"
-                        variant="outline"
                         size="sm"
                         disabled={environmentVariables.length >= 50}
                         onClick={addEnvironmentVariable}
@@ -597,9 +564,144 @@ export function NewProjectFlow() {
                         Add variable
                       </Button>
                     </div>
+
+                    <div className="overflow-hidden rounded-lg border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-28">Type</TableHead>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Value</TableHead>
+                            <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {environmentVariables.length === 0 ? (
+                            <TableRow className="hover:bg-transparent">
+                              <TableCell colSpan={4}>
+                                <Empty className="border-0 py-9">
+                                  <EmptyHeader>
+                                    <EmptyMedia variant="icon"><LockKeyholeIcon /></EmptyMedia>
+                                    <EmptyTitle>No environment variables</EmptyTitle>
+                                    <EmptyDescription>Add only the secrets or runtime configuration this project needs.</EmptyDescription>
+                                  </EmptyHeader>
+                                </Empty>
+                              </TableCell>
+                            </TableRow>
+                          ) : environmentVariables.map((variable) => (
+                            <TableRow key={variable.id}>
+                              <TableCell><Badge variant="secondary">Secret</Badge></TableCell>
+                              <TableCell className="font-mono text-xs font-medium">{variable.key}</TableCell>
+                              <TableCell>
+                                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                                  <LockKeyholeIcon className="size-4" />
+                                  ••••••••
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={`Edit variable ${variable.key}`}
+                                    title="Edit variable"
+                                    onClick={() => editEnvironmentVariable(variable)}
+                                  >
+                                    <PencilIcon />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={`Remove variable ${variable.key}`}
+                                    title="Remove variable"
+                                    onClick={() => removeEnvironmentVariable(variable.id)}
+                                  >
+                                    <Trash2Icon />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Available to preview and stable deployments.</p>
                   </div>
                 </CollapsibleContent>
               </Collapsible>
+
+              <Dialog
+                open={environmentDialogOpen}
+                onOpenChange={(open) => {
+                  setEnvironmentDialogOpen(open);
+                  if (!open) setEnvironmentDraftErrors({});
+                }}
+              >
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{editingEnvironmentVariableId === null ? "Add variable" : "Edit variable"}</DialogTitle>
+                    <DialogDescription>
+                      Values are held only for this setup flow and encrypted when the project is created.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {environmentDraft ? (
+                    <form className="flex flex-col gap-6" onSubmit={submitEnvironmentVariable}>
+                      <FieldGroup>
+                        <Field data-invalid={Boolean(environmentDraftErrors.key) || undefined}>
+                          <FieldLabel htmlFor={`environment-key-${environmentDraft.id}`}>Name</FieldLabel>
+                          <Input
+                            id={`environment-key-${environmentDraft.id}`}
+                            value={environmentDraft.key}
+                            onChange={(event) => updateEnvironmentDraft({ key: event.target.value.toUpperCase() })}
+                            aria-invalid={Boolean(environmentDraftErrors.key)}
+                            autoCapitalize="characters"
+                            autoComplete="off"
+                            spellCheck={false}
+                            className="font-mono"
+                            placeholder="OPENAI_API_KEY"
+                          />
+                          <FieldDescription>Use uppercase letters, numbers, and underscores.</FieldDescription>
+                          {environmentDraftErrors.key ? <FieldError>{environmentDraftErrors.key}</FieldError> : null}
+                        </Field>
+
+                        <Field data-invalid={Boolean(environmentDraftErrors.value) || undefined}>
+                          <FieldLabel htmlFor={`environment-value-${environmentDraft.id}`}>Value</FieldLabel>
+                          <div className="relative">
+                            <Input
+                              id={`environment-value-${environmentDraft.id}`}
+                              type={environmentDraft.visible ? "text" : "password"}
+                              value={environmentDraft.value}
+                              onChange={(event) => updateEnvironmentDraft({ value: event.target.value })}
+                              aria-invalid={Boolean(environmentDraftErrors.value)}
+                              autoComplete="new-password"
+                              className="pr-10"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
+                              aria-label={environmentDraft.visible ? "Hide value" : "Show value"}
+                              onClick={() => updateEnvironmentDraft({ visible: !environmentDraft.visible })}
+                            >
+                              {environmentDraft.visible ? <EyeOffIcon /> : <EyeIcon />}
+                            </Button>
+                          </div>
+                          {environmentDraftErrors.value ? <FieldError>{environmentDraftErrors.value}</FieldError> : null}
+                        </Field>
+                      </FieldGroup>
+                      <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setEnvironmentDialogOpen(false)}>Cancel</Button>
+                        <Button type="submit">
+                          {editingEnvironmentVariableId === null ? "Add variable" : "Save changes"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  ) : null}
+                </DialogContent>
+              </Dialog>
 
               {createError ? (
                 <Alert variant="destructive">

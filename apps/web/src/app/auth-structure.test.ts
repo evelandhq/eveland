@@ -59,9 +59,14 @@ describe("team management web surfaces", () => {
     expect(environmentPage).toContain("every Agent Deployment");
     const environmentSettings = source("../components/shared-agent-environment-settings.tsx");
     expect(environmentSettings).toContain("<Card");
+    expect(environmentSettings).toContain("<Table");
+    expect(environmentSettings).toContain("<Dialog");
+    expect(environmentSettings).toContain("<AlertDialog");
     expect(environmentSettings).toContain("<FieldGroup");
     expect(environmentSettings).toContain("saveSharedAgentEnvironment");
-    expect(environmentSettings).toContain("<Field key={index}>");
+    expect(environmentSettings).toContain("Add entry");
+    expect(environmentSettings).toContain("Edit entry");
+    expect(environmentSettings).toContain("Configured");
   });
 
   test("composes the settings pages from profile forms and the existing member controls", () => {
