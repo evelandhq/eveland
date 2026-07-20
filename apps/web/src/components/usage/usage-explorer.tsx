@@ -464,7 +464,9 @@ export function UsageExplorer({
           ) : null}
 
           <AgentModelTable rows={analytics.agentModels} showProject={scope.type === "workspace"} />
-          <RecentSessionsTable analytics={analytics} scope={scope} />
+          {scope.type === "project" ? (
+            <RecentSessionsTable analytics={analytics} />
+          ) : null}
         </>
       )}
     </div>
@@ -724,10 +726,8 @@ function UsageSignals({
 
 function RecentSessionsTable({
   analytics,
-  scope,
 }: {
   analytics: UsageAnalytics
-  scope: UsageScope
 }) {
   return (
     <section className="min-w-0" aria-labelledby="recent-sessions-heading">
@@ -738,7 +738,6 @@ function RecentSessionsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Session</TableHead>
-              {scope.type === "workspace" ? <TableHead>Project</TableHead> : null}
               <TableHead>Trigger</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Tokens</TableHead>
@@ -752,7 +751,6 @@ function RecentSessionsTable({
                 <TableCell>
                   <Link href={`/projects/${session.projectId}/sessions/${session.id}`} className="font-mono font-medium hover:underline">{session.id}</Link>
                 </TableCell>
-                {scope.type === "workspace" ? <TableCell>{session.projectName}</TableCell> : null}
                 <TableCell className="text-muted-foreground">{session.trigger}</TableCell>
                 <TableCell><StatusBadge status={session.status} /></TableCell>
                 <TableCell className="text-right font-mono">{session.usage.status === "none" || session.usage.status === "missing" ? "—" : formatTokenCount(session.usage.inputTokens + session.usage.outputTokens)}</TableCell>
