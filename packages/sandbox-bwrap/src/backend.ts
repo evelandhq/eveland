@@ -12,6 +12,8 @@ import { createNodeProcessRunner, describeMissingPrereqs, isBwrapAvailable } fro
 import type { BwrapSession } from "./session.js";
 import { createBwrapSession } from "./session.js";
 
+const EVE_MODEL_SKILL_ROOT = "$HOME/.agents/skills";
+
 /**
  * Stable backend name. Participates in eve's template/session cache-key
  * derivation and persisted reconnect state — never change it.
@@ -61,12 +63,20 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
     return createBwrapSession({ id, workspaceDir, appRoot, runner, options });
   }
 
+  function resolveSeedPath(seedPath: string): string {
+    if (seedPath === EVE_MODEL_SKILL_ROOT || seedPath.startsWith(`${EVE_MODEL_SKILL_ROOT}/`)) {
+      return `${WORKSPACE_ROOT}/.agents/skills${seedPath.slice(EVE_MODEL_SKILL_ROOT.length)}`;
+    }
+    return seedPath;
+  }
+
   async function writeSeedFiles(session: BwrapSession, seedFiles: ReadonlyArray<SandboxSeedFile>): Promise<void> {
     for (const seed of seedFiles) {
+      const seedPath = resolveSeedPath(seed.path);
       if (typeof seed.content === "string") {
-        await session.writeTextFile({ path: seed.path, content: seed.content });
+        await session.writeTextFile({ path: seedPath, content: seed.content });
       } else {
-        await session.writeBinaryFile({ path: seed.path, content: seed.content });
+        await session.writeBinaryFile({ path: seedPath, content: seed.content });
       }
     }
   }

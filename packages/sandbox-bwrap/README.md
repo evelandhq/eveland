@@ -71,7 +71,8 @@ the handle is shut down. The session's workspace directory is not touched by
 ## How it works
 
 - **prewarm** (build time): runs the authored `bootstrap` inside bwrap against a
-  staging directory, writes seed files, then atomically renames it into
+  staging directory, resolves Eve's `$HOME/.agents/skills/**` seed paths to
+  `/workspace/.agents/skills/**`, writes seed files, then atomically renames it into
   `<cacheDir>/templates/<hash>` (`<cacheDir>` defaults to
   `<appRoot>/.eve/sandbox-cache/bwrap` when the `cacheDir` option is not set). Idempotent
   per template key + options hash; `templateRevision` participates in that hash.

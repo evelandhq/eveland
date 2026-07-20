@@ -28,7 +28,7 @@ describe("Eve observer hook compatibility matrix", () => {
   });
 
   test.each(compatibilityMatrix)(
-    "Eve $version exposes directory-form hook slots and reports the known file/remote gap",
+    "Eve $version discovers packaged skills and exposes directory-form hook slots",
     async ({ fixtureName, packageName }) => {
       const fixtureDir = await prepareFixture(fixtureName, packageName);
       try {
@@ -40,6 +40,7 @@ describe("Eve observer hook compatibility matrix", () => {
         };
         const manifest = JSON.parse(await readFile(info.artifacts.discoveryManifest, "utf8")) as {
           hooks: Array<{ logicalPath: string }>;
+          skills: Array<{ name: string; logicalPath: string; sourceKind: string }>;
           subagents: Array<{
             subagentId: string;
             manifest: { hooks: Array<{ logicalPath: string }> };
@@ -47,6 +48,13 @@ describe("Eve observer hook compatibility matrix", () => {
         };
 
         expect(manifest.hooks.map((hook) => hook.logicalPath)).toContain("hooks/root-observer.ts");
+        expect(manifest.skills).toContainEqual(
+          expect.objectContaining({
+            name: "compatibility",
+            logicalPath: "skills/compatibility/SKILL.md",
+            sourceKind: "skill-package",
+          }),
+        );
         expect(manifest.subagents.map((subagent) => subagent.subagentId)).toEqual([
           "directory-child",
           "file-child",
@@ -60,11 +68,31 @@ describe("Eve observer hook compatibility matrix", () => {
         expect(manifest.subagents.find((subagent) => subagent.subagentId === "file-child")?.manifest.hooks ?? []).toEqual([]);
         expect(manifest.subagents.find((subagent) => subagent.subagentId === "remote-child")?.manifest.hooks ?? []).toEqual([]);
 
+        const compileDir = path.join(path.dirname(info.artifacts.discoveryManifest), "../compile");
         const compiledManifest = JSON.parse(
-          await readFile(path.join(path.dirname(info.artifacts.discoveryManifest), "../compile/compiled-agent-manifest.json"), "utf8"),
-        ) as { remoteAgents: Array<{ name: string; url: string; path: string }> };
+          await readFile(path.join(compileDir, "compiled-agent-manifest.json"), "utf8"),
+        ) as {
+          remoteAgents: Array<{ name: string; url: string; path: string }>;
+          skills: Array<{ name: string; sourceKind: string }>;
+          workspaceResourceRoot: { logicalPath: string };
+        };
         expect(compiledManifest.remoteAgents).toContainEqual(
           expect.objectContaining({ name: "remote-child", url: "https://remote.example.com", path: "/eve/v1/session" }),
+        );
+        expect(compiledManifest.skills).toContainEqual(
+          expect.objectContaining({ name: "compatibility", sourceKind: "skill-package" }),
+        );
+        const skillRoot = path.join(
+          compileDir,
+          compiledManifest.workspaceResourceRoot.logicalPath,
+          "skills",
+          "compatibility",
+        );
+        await expect(readFile(path.join(skillRoot, "SKILL.md"), "utf8")).resolves.toContain(
+          "Follow the packaged compatibility checklist",
+        );
+        await expect(readFile(path.join(skillRoot, "references/checklist.md"), "utf8")).resolves.toContain(
+          "Confirm the packaged reference",
         );
       } finally {
         await rm(fixtureDir, { recursive: true, force: true });

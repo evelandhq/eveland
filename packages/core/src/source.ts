@@ -81,7 +81,7 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
       summary.tools.push(file.path);
     }
 
-    if (isUnder(file.path, `${root}skills/`) && /\.(md|mdx|ts|tsx)$/.test(file.path)) {
+    if (isSkillPath(file.path, root)) {
       summary.skills.push(file.path);
     }
 
@@ -176,6 +176,20 @@ function isInstructionPath(filePath: string, root: string): boolean {
 
 function isUnder(filePath: string, directory: string): boolean {
   return directory ? filePath.startsWith(directory) : false;
+}
+
+function isSkillPath(filePath: string, root: string): boolean {
+  const prefix = `${root}skills/`;
+  if (!filePath.startsWith(prefix)) {
+    return false;
+  }
+
+  const relativePath = filePath.slice(prefix.length);
+  if (relativePath.includes("/")) {
+    return /^[^/]+\/SKILL\.md$/.test(relativePath);
+  }
+
+  return !/\.d\.[cm]?ts$/.test(relativePath) && /\.(md|[cm]?[jt]s)$/.test(relativePath);
 }
 
 function getSubagentId(filePath: string, root: string): string | null {

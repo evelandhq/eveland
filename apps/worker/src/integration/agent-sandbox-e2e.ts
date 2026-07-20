@@ -205,7 +205,7 @@ async function runHttpTurnOnce(input: {
 }): Promise<HttpTurnOutcome> {
   const markerName = "http-turn-marker.txt";
   const message =
-    `Use the bash tool to run the command ` +
+    `Use the sandbox-probe skill, then use the bash tool to run the command ` +
     `\`test "$(cat eveland-seed.txt)" = ${JSON.stringify(input.expectedSeedContent)} && ` +
     `echo http-turn-ran > ${markerName}\`.`;
 
@@ -245,6 +245,7 @@ async function runHttpTurnOnce(input: {
     let consumedUpTo = 0;
     let sawCompletion = false;
     let sawFailure = false;
+    let sawSkillLoad = false;
     const reader = streamResponse.body.getReader();
     const decoder = new TextDecoder();
     for (;;) {
@@ -257,7 +258,10 @@ async function runHttpTurnOnce(input: {
         consumedUpTo = newlineIndex + 1;
         if (!line.trim()) continue;
         try {
-          const event = JSON.parse(line) as { type?: unknown };
+          const event = JSON.parse(line) as {
+            type?: unknown;
+            data?: { actions?: Array<{ kind?: unknown; toolName?: unknown }> };
+          };
           // This is a conversational (not task-mode) session: it never emits
           // `session.completed` after a turn, only `turn.completed` followed
           // by `session.waiting` for the next user message (confirmed live
@@ -265,6 +269,12 @@ async function runHttpTurnOnce(input: {
           // is misleading here). Treat either turn-level signal as done.
           if (event.type === "turn.completed" || event.type === "session.completed") sawCompletion = true;
           if (event.type === "turn.failed") sawFailure = true;
+          if (
+            event.type === "actions.requested" &&
+            event.data?.actions?.some((action) => action.kind === "tool-call" && action.toolName === "load_skill")
+          ) {
+            sawSkillLoad = true;
+          }
         } catch {
           // non-JSON line; ignore for event detection but it stays in `raw` for diagnostics
         }
@@ -280,6 +290,12 @@ async function runHttpTurnOnce(input: {
     }
     if (!sawCompletion) {
       return { kind: "transient", detail: `stream ended without turn.completed within timeout:\n${raw}` };
+    }
+    if (!sawSkillLoad) {
+      return {
+        kind: "fatal",
+        detail: `turn.completed observed without a load_skill action for sandbox-probe:\n${raw}`,
+      };
     }
 
     const after = await findSessionMarkers(input.cacheDir, markerName);
