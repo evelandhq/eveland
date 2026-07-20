@@ -35,6 +35,9 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
+export const metadata = {
+  title: "Projects",
+};
 
 const projectSourceIconByKind = {
   github: SiGithub,

@@ -5,6 +5,10 @@ type PlaygroundPageProps = {
   params: Promise<{ projectId: string }>
 }
 
+export const metadata = {
+  title: "Playground",
+}
+
 export default async function PlaygroundPage({ params }: PlaygroundPageProps) {
   const { projectId } = await params
   const eveVersion = await getEveVersion(projectId)

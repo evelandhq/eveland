@@ -2,6 +2,9 @@ import { getSecrets } from "@/lib/server-api";
 import { SecretForm } from "@/components/secret-form";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Secrets",
+};
 
 export default async function SecretsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;

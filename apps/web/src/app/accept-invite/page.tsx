@@ -3,6 +3,10 @@ import { AcceptInvitationForm } from "@/components/accept-invitation-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+export const metadata = {
+  title: "Accept invitation",
+};
+
 export default async function AcceptInvitePage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
   const token = (await searchParams).token;
   return (

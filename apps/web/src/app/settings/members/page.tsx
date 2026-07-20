@@ -14,6 +14,9 @@ import {
 import { getCurrentMember, getInvitations, getMembers } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Members",
+};
 
 export default async function MembersSettingsPage() {
   const current = await getCurrentMember();

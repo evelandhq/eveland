@@ -9,6 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatTokenCount, summarizeTokenUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Sessions",
+};
 
 const sessionTriggers = new Set(["playground", "api", "webhook", "channel", "direct_http"]);
 

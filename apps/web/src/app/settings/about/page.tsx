@@ -26,6 +26,9 @@ import { Separator } from "@/components/ui/separator"
 import { getApiBuildInfo, getCurrentMember, getSystemConfigurationDiagnostics } from "@/lib/server-api"
 
 export const dynamic = "force-dynamic"
+export const metadata = {
+  title: "About",
+}
 
 export default async function AboutSettingsPage() {
   const webBuild = createBuildInfoFromEnv("web", process.env)

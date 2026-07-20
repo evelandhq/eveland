@@ -3,6 +3,9 @@ import { getProjects, getProjectUsageAnalytics } from "@/lib/server-api"
 import { parseUsageFilters } from "@/lib/usage"
 
 export const dynamic = "force-dynamic"
+export const metadata = {
+  title: "Usage",
+}
 
 export default async function ProjectUsagePage({
   params,
