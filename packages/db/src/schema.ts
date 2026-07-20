@@ -264,11 +264,15 @@ export const secrets = pgTable(
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull().references(() => projects.id),
     key: text("key").notNull(),
+    kind: text("kind").notNull().default("secret"),
     encryptedValue: text("encrypted_value").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex("secrets_project_key_idx").on(table.projectId, table.key)],
+  (table) => [
+    check("secrets_kind_check", sql`${table.kind} in ('variable', 'secret')`),
+    uniqueIndex("secrets_project_key_idx").on(table.projectId, table.key),
+  ],
 );
 
 export const sharedAgentEnvironment = pgTable(

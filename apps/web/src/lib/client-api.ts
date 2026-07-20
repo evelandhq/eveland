@@ -1,5 +1,5 @@
 import type { FileUIPart, UserContent } from "ai";
-import type { Job, ScheduleRun } from "./api";
+import type { Job, PublicSecret, ScheduleRun } from "./api";
 import type {
   PublicGitCredential,
   SharedAgentEnvironment,
@@ -144,6 +144,36 @@ export async function saveSharedAgentEnvironment(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ entries }),
   });
+}
+
+export async function createProjectEnvironmentEntry(
+  projectId: string,
+  input: { key: string; kind: "variable" | "secret"; value: string },
+): Promise<{ secret: PublicSecret; jobs: Job[] }> {
+  return clientRequest(`/projects/${projectId}/secrets`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateProjectEnvironmentEntry(
+  projectId: string,
+  secretId: string,
+  input: { key: string; kind: "variable" | "secret"; value?: string },
+): Promise<{ secret: PublicSecret; jobs: Job[] }> {
+  return clientRequest(`/projects/${projectId}/secrets/${secretId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteProjectEnvironmentEntry(
+  projectId: string,
+  secretId: string,
+): Promise<{ deleted: boolean; jobs: Job[] }> {
+  return clientRequest(`/projects/${projectId}/secrets/${secretId}`, { method: "DELETE" });
 }
 
 export async function inviteMember(email: string): Promise<{ invitation: Invitation; inviteUrl: string }> {

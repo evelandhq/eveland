@@ -37,6 +37,7 @@ describe("api app", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           key: "OPENAI_API_KEY",
+          kind: "variable",
           value: "sk-test-123456",
         }),
       },
@@ -44,13 +45,45 @@ describe("api app", () => {
 
     expect(secretResponse.status).toBe(201);
     const body = await secretResponse.json();
-    expect(body.secret).toMatchObject({ key: "OPENAI_API_KEY" });
+    expect(body.secret).toMatchObject({ key: "OPENAI_API_KEY", kind: "variable" });
     expect(JSON.stringify(body)).not.toContain("sk-test-123456");
 
     const listResponse = await app.request(`/projects/${project.id}/secrets`);
     expect(JSON.stringify(await listResponse.json())).not.toContain(
       "sk-test-123456",
     );
+  });
+
+  test("edits a project environment entry without returning or replacing an omitted value", async () => {
+    const store = createTestStore();
+    const appSecretKey = "eveland-test-secret-key-00000000";
+    const app = createApp(store, { appSecretKey });
+    const createProject = await app.request("/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "editable-secret-agent", importKind: "zip" }),
+    });
+    const { project } = await createProject.json();
+    const createdResponse = await app.request(`/projects/${project.id}/secrets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: "MODEL_NAME", kind: "variable", value: "gpt-5" }),
+    });
+    const created = (await createdResponse.json()) as { secret: { id: string } };
+
+    const response = await app.request(`/projects/${project.id}/secrets/${created.secret.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: "DEFAULT_MODEL", kind: "secret" }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.secret).toMatchObject({ id: created.secret.id, key: "DEFAULT_MODEL", kind: "secret" });
+    expect(JSON.stringify(body)).not.toContain("gpt-5");
+    const [record] = await store.listSecretRecords(project.id);
+    expect(record).toMatchObject({ id: created.secret.id, key: "DEFAULT_MODEL", kind: "secret" });
+    expect(decryptSecretValue(JSON.parse(record!.encryptedValue) as EncryptedSecret, appSecretKey)).toBe("gpt-5");
   });
 
   test("queues a targeted restart for every live deployment after saving a secret", async () => {

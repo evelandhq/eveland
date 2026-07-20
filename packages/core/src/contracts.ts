@@ -48,10 +48,13 @@ export type Project = {
   updatedAt: string;
 };
 
+export type EnvironmentEntryKind = "variable" | "secret";
+
 export type SecretRecord = {
   id: string;
   projectId: string;
   key: string;
+  kind: EnvironmentEntryKind;
   encryptedValue: string;
   createdAt: string;
   updatedAt: string;
@@ -59,7 +62,7 @@ export type SecretRecord = {
 
 export type PublicSecret = Omit<SecretRecord, "encryptedValue">;
 
-export type SharedAgentEnvironmentEntryKind = "variable" | "secret";
+export type SharedAgentEnvironmentEntryKind = EnvironmentEntryKind;
 
 export type SharedAgentEnvironmentEntry = {
   key: string;

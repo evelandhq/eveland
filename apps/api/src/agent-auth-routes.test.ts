@@ -392,6 +392,12 @@ describe("Agent Auth control-plane routes", () => {
       runtimeKind: "docker",
     });
     await store.upsertSecret(project.id, "PROJECT_TOKEN", JSON.stringify(encryptSecretValue("project-token-v1", appSecretKey)));
+    await store.upsertSecret(
+      project.id,
+      "MODEL_NAME",
+      JSON.stringify(encryptSecretValue("gpt-5", appSecretKey)),
+      "variable",
+    );
     const catalogApp = createApp(store, { appSecretKey });
     const catalogResponse = await catalogApp.request(`/projects/${project.id}/agent-auth/secret-references`);
     expect(catalogResponse.status).toBe(200);

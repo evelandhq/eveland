@@ -442,6 +442,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
     const references = (await store.listSecrets(projectId))
+      .filter((secret) => secret.kind === "secret")
       .map((secret) => ({
         kind: "project-secret" as const,
         key: secret.key,

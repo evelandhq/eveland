@@ -207,9 +207,11 @@ Web 从 URL 最后一个 path segment
 去掉 `.git` 后猜测 Project 名称，例如 `evelandhq/sample-office-assistant` 得到
 `sample-office-assistant`；Zip 使用文件名按相同规则猜测。第二步展示来源摘要并允许用户
 编辑名称。名称格式和可用性在当前屏幕内校验；只有名称合法且可用时 `Deploy` 才可点击。
-命名屏幕同时提供可选的 Environment Variables 折叠区，以表格列出最多 50 组不重复的 Key/Value；
-新增和编辑在弹框中完成，表格中的 Value 只显示掩码。Key 遵循大写字母、数字和下划线格式，
-Value 在弹框中默认以密码输入显示并可临时显隐。部分填写、格式错误或重复 Key 必须在弹框中修正后
+命名屏幕同时提供可选的 Environment Variables 折叠区，以 Type、Name、Value 表格列出最多 50 组
+不重复的运行时条目；Type 明确区分 `variable` 与 `secret`，新增和编辑在弹框中完成，表格中的 Value
+只显示已配置状态。Name 遵循大写字母、数字和下划线格式，Secret Value 在弹框中默认以密码输入显示并
+可临时显隐，Variable Value 使用普通文本输入。两种 Value 都加密保存且保存后不返回浏览器。部分填写、
+格式错误或重复 Name 必须在弹框中修正后
 才能加入表格并 Deploy。API 使用
 `APP_SECRET_KEY` 加密 Value，并在同一数据库事务中创建 Project、保存初始 Secrets、排入 initial
 import job 和消费 Preflight，确保 worker 看见首次导入/部署任务时所需的 LLM Key 已经可用；任何
@@ -550,30 +552,31 @@ sandbox
 
 ---
 
-### Secrets (/projects/proj_xxxxxxxxxx/secrets)
+### Variables and Secrets (/projects/proj_xxxxxxxxxx/secrets)
 
-用于配置项目运行需要的外部 Key。
+用于配置项目运行需要的运行时变量与外部 Key。页面与新建项目、Shared Agent Environment 使用统一的
+Type、Name、Value 表格和弹框交互；Type 区分 `variable` 与 `secret`，两种 Value 都加密保存且保存后
+只显示已配置状态，不向浏览器返回原值。
 
 支持：
 
-* 新增 Secret
-* 修改 Secret
-* 删除 Secret
-* 查看变量名
-* 不显示变量值
+* 新增 Variable 或 Secret
+* 修改条目的 Type、Name，并可选择轮换 Value
+* 删除条目（明确确认）
+* 查看 Type、Name 和 Value 已配置状态
 
 新建项目的命名屏幕也可在首次 Deploy 前写入同一组 Project Secrets；这些初始 Secrets 必须与
 Project 和 initial import job 原子提交，不能先排队部署再通过后续请求补写。
 
-新增、修改或删除 Secret 后，API 为该 Project 的每个 `running` 或
-`draining` Deployment 排入带明确 Deployment ID 的重启任务。Project Secret
+新增、修改或删除运行时条目后，API 为该 Project 的每个 `running` 或
+`draining` Deployment 排入带明确 Deployment ID 的重启任务。Project Variable/Secret
 是运行时配置，不能原地修改已启动进程的环境；重启继续使用原 Release，并在
-新进程启动时重新解密和注入完整 Secret 集合。刷新范围不能只依赖过渡字段
+新进程启动时重新解密和注入完整配置集合。刷新范围不能只依赖过渡字段
 `projects.currentDeploymentId`，因为 stable、preview 或 A/B target 可能同时运行。
-Secrets 页面必须明确提示是否已排入重启；没有 live Deployment 时，Secret 从
+Secrets 页面必须明确提示是否已排入重启；没有 live Deployment 时，条目从
 下一次 deploy 开始生效。
 
-Secret 仅在运行时注入容器，不进入：
+Project Variable/Secret 仅在运行时注入容器，不进入：
 
 * Git Repo
 * Zip

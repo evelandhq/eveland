@@ -228,6 +228,7 @@ export function registerProjectRoutes(input: {
           userId: currentUserId(c),
           secrets: environmentVariables.map((variable) => ({
             key: variable.key,
+            kind: variable.kind,
             encryptedValue: JSON.stringify(
               encryptSecretValue(variable.value, appSecretKey),
             ),

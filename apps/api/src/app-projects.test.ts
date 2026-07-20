@@ -146,8 +146,8 @@ describe("api app", () => {
         preflightId: queued.preflight.id,
         deployAfterImport: true,
         environmentVariables: [
-          { key: "OPENAI_API_KEY", value: "sk-first-deploy" },
-          { key: "MODEL_NAME", value: "gpt-5" },
+          { key: "OPENAI_API_KEY", kind: "secret", value: "sk-first-deploy" },
+          { key: "MODEL_NAME", kind: "variable", value: "gpt-5" },
         ],
       }),
     });
@@ -161,6 +161,7 @@ describe("api app", () => {
       "OPENAI_API_KEY",
       "MODEL_NAME",
     ]);
+    expect(secretRecords.map((secret) => secret.kind)).toEqual(["secret", "variable"]);
     expect(
       secretRecords.map((secret) =>
         decryptSecretValue(

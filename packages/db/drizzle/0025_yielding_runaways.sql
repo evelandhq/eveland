@@ -1,0 +1,2 @@
+ALTER TABLE "secrets" ADD COLUMN "kind" text DEFAULT 'secret' NOT NULL;--> statement-breakpoint
+ALTER TABLE "secrets" ADD CONSTRAINT "secrets_kind_check" CHECK ("secrets"."kind" in ('variable', 'secret'));

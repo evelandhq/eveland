@@ -96,7 +96,9 @@ export type CreateProjectFromSourcePreflightResult =
   | { outcome: "not_ready" }
   | { outcome: "consumed" };
 
-export type InitialProjectSecret = Pick<SecretRecord, "key" | "encryptedValue">;
+export type InitialProjectSecret = Pick<SecretRecord, "key" | "encryptedValue"> & {
+  kind?: SecretRecord["kind"];
+};
 
 export type SaveSharedAgentEnvironmentInput = {
   entries: Array<{
@@ -235,7 +237,17 @@ export interface AgentAuthStore {
 
 export interface SecretStore {
   listSecrets(projectId: string): Promise<PublicSecret[]>;
-  upsertSecret(projectId: string, key: string, value: string): Promise<PublicSecret>;
+  upsertSecret(
+    projectId: string,
+    key: string,
+    value: string,
+    kind?: SecretRecord["kind"],
+  ): Promise<PublicSecret>;
+  updateSecret(
+    projectId: string,
+    secretId: string,
+    input: { key: string; kind: SecretRecord["kind"]; encryptedValue?: string },
+  ): Promise<PublicSecret | null>;
   deleteSecret(projectId: string, secretId: string): Promise<boolean>;
   listSecretRecords(projectId: string): Promise<SecretRecord[]>;
   saveSharedAgentEnvironment(input: SaveSharedAgentEnvironmentInput): Promise<SharedAgentEnvironment>;
