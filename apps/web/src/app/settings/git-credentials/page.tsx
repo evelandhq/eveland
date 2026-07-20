@@ -1,6 +1,10 @@
 import { GitCredentialsSettings } from "@/components/git-credentials-settings";
 import { getGitCredentials } from "@/lib/server-api";
 
+export const metadata = {
+  title: "Git credentials",
+};
+
 export default async function GitCredentialsSettingsPage() {
   const credentials = await getGitCredentials();
 

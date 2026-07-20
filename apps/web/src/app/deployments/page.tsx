@@ -22,6 +22,9 @@ import {
 import { getDeploymentOverview, getProjects } from "@/lib/server-api"
 
 export const dynamic = "force-dynamic"
+export const metadata = {
+  title: "Deployments",
+}
 
 export default async function DeploymentsPage() {
   const projects = await getProjects()

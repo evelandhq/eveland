@@ -2,6 +2,15 @@ import { SessionReplay } from "@/components/session-replay"
 import { getSession, getSessionEvents, getSessionNodes, getSessionUsage } from "@/lib/server-api"
 import { formatTokenCount, formatUsd, groupModelUsageByAgent } from "@/lib/usage"
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ sessionId: string }>
+}) {
+  const { sessionId } = await params
+  return { title: `Session ${sessionId}` }
+}
+
 export default async function SessionTimelinePage({
   params,
 }: {

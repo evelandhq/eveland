@@ -13,6 +13,9 @@ import { getCurrentMember, getInstanceHealth } from "@/lib/server-api";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Instance health",
+};
 
 export default async function InstanceHealthPage({
   searchParams,

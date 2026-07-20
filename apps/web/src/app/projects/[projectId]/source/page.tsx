@@ -20,6 +20,9 @@ import { cn } from '@/lib/utils';
 import { getSourceLanguage, highlightSourceCode } from '@/lib/source-highlight';
 
 export const dynamic = 'force-dynamic';
+export const metadata = {
+  title: "Source",
+};
 
 export default async function SourcePage({
   params,
