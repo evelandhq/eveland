@@ -41,6 +41,7 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -67,8 +68,19 @@ const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.";
 
 type Availability = "idle" | "checking" | "available" | "unavailable" | "error";
-type EnvironmentVariableDraft = { id: number; key: string; value: string; visible: boolean };
+type EnvironmentVariableDraft = {
+  id: number;
+  key: string;
+  kind: "variable" | "secret";
+  value: string;
+  visible: boolean;
+};
 type EnvironmentVariableDraftErrors = { key?: string; value?: string };
+
+const environmentKindItems = [
+  { label: "Secret", value: "secret" },
+  { label: "Variable", value: "variable" },
+] as const;
 
 export function NewProjectFlow() {
   const [step, setStep] = useState<Step>("source");
@@ -270,6 +282,7 @@ export function NewProjectFlow() {
           deployAfterImport: true,
           environmentVariables: environmentValidation.variables.map((variable) => ({
             key: variable.key.trim(),
+            kind: variable.kind,
             value: variable.value,
           })),
         }),
@@ -298,7 +311,7 @@ export function NewProjectFlow() {
   function addEnvironmentVariable() {
     setEnvironmentOpen(true);
     setEditingEnvironmentVariableId(null);
-    setEnvironmentDraft({ id: nextEnvironmentVariableId.current++, key: "", value: "", visible: false });
+    setEnvironmentDraft({ id: nextEnvironmentVariableId.current++, key: "", kind: "secret", value: "", visible: false });
     setEnvironmentDraftErrors({});
     setEnvironmentDialogOpen(true);
   }
@@ -561,7 +574,7 @@ export function NewProjectFlow() {
                         onClick={addEnvironmentVariable}
                       >
                         <PlusIcon data-icon="inline-start" />
-                        Add variable
+                        Add entry
                       </Button>
                     </div>
 
@@ -590,7 +603,7 @@ export function NewProjectFlow() {
                             </TableRow>
                           ) : environmentVariables.map((variable) => (
                             <TableRow key={variable.id}>
-                              <TableCell><Badge variant="secondary">Secret</Badge></TableCell>
+                              <TableCell><Badge variant="secondary">{variable.kind === "secret" ? "Secret" : "Variable"}</Badge></TableCell>
                               <TableCell className="font-mono text-xs font-medium">{variable.key}</TableCell>
                               <TableCell>
                                 <span className="inline-flex items-center gap-2 text-muted-foreground">
@@ -604,8 +617,8 @@ export function NewProjectFlow() {
                                     type="button"
                                     variant="ghost"
                                     size="icon-sm"
-                                    aria-label={`Edit variable ${variable.key}`}
-                                    title="Edit variable"
+                                    aria-label={`Edit entry ${variable.key}`}
+                                    title="Edit entry"
                                     onClick={() => editEnvironmentVariable(variable)}
                                   >
                                     <PencilIcon />
@@ -614,8 +627,8 @@ export function NewProjectFlow() {
                                     type="button"
                                     variant="ghost"
                                     size="icon-sm"
-                                    aria-label={`Remove variable ${variable.key}`}
-                                    title="Remove variable"
+                                    aria-label={`Remove entry ${variable.key}`}
+                                    title="Remove entry"
                                     onClick={() => removeEnvironmentVariable(variable.id)}
                                   >
                                     <Trash2Icon />
@@ -641,7 +654,7 @@ export function NewProjectFlow() {
               >
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>{editingEnvironmentVariableId === null ? "Add variable" : "Edit variable"}</DialogTitle>
+                    <DialogTitle>{editingEnvironmentVariableId === null ? "Add entry" : "Edit entry"}</DialogTitle>
                     <DialogDescription>
                       Values are held only for this setup flow and encrypted when the project is created.
                     </DialogDescription>
@@ -649,6 +662,25 @@ export function NewProjectFlow() {
                   {environmentDraft ? (
                     <form className="flex flex-col gap-6" onSubmit={submitEnvironmentVariable}>
                       <FieldGroup>
+                        <Field>
+                          <FieldLabel htmlFor={`environment-kind-${environmentDraft.id}`}>Type</FieldLabel>
+                          <Select
+                            items={environmentKindItems}
+                            value={environmentDraft.kind}
+                            onValueChange={(value) => {
+                              if (value === "variable" || value === "secret") updateEnvironmentDraft({ kind: value, visible: false });
+                            }}
+                          >
+                            <SelectTrigger id={`environment-kind-${environmentDraft.id}`} className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                {environmentKindItems.map((item) => (
+                                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </Field>
                         <Field data-invalid={Boolean(environmentDraftErrors.key) || undefined}>
                           <FieldLabel htmlFor={`environment-key-${environmentDraft.id}`}>Name</FieldLabel>
                           <Input
@@ -671,23 +703,25 @@ export function NewProjectFlow() {
                           <div className="relative">
                             <Input
                               id={`environment-value-${environmentDraft.id}`}
-                              type={environmentDraft.visible ? "text" : "password"}
+                              type={environmentDraft.kind === "variable" || environmentDraft.visible ? "text" : "password"}
                               value={environmentDraft.value}
                               onChange={(event) => updateEnvironmentDraft({ value: event.target.value })}
                               aria-invalid={Boolean(environmentDraftErrors.value)}
                               autoComplete="new-password"
-                              className="pr-10"
+                              className={environmentDraft.kind === "secret" ? "pr-10" : undefined}
                             />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
-                              aria-label={environmentDraft.visible ? "Hide value" : "Show value"}
-                              onClick={() => updateEnvironmentDraft({ visible: !environmentDraft.visible })}
-                            >
-                              {environmentDraft.visible ? <EyeOffIcon /> : <EyeIcon />}
-                            </Button>
+                            {environmentDraft.kind === "secret" ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                aria-label={environmentDraft.visible ? "Hide value" : "Show value"}
+                                onClick={() => updateEnvironmentDraft({ visible: !environmentDraft.visible })}
+                              >
+                                {environmentDraft.visible ? <EyeOffIcon /> : <EyeIcon />}
+                              </Button>
+                            ) : null}
                           </div>
                           {environmentDraftErrors.value ? <FieldError>{environmentDraftErrors.value}</FieldError> : null}
                         </Field>
@@ -695,7 +729,7 @@ export function NewProjectFlow() {
                       <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setEnvironmentDialogOpen(false)}>Cancel</Button>
                         <Button type="submit">
-                          {editingEnvironmentVariableId === null ? "Add variable" : "Save changes"}
+                          {editingEnvironmentVariableId === null ? "Add entry" : "Save changes"}
                         </Button>
                       </DialogFooter>
                     </form>

@@ -21,6 +21,7 @@ export type PublicSecret = {
   id: string;
   projectId: string;
   key: string;
+  kind: "variable" | "secret";
   createdAt: string;
   updatedAt: string;
 };

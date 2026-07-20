@@ -209,6 +209,7 @@ export function secretRowToPublicSecret(row: {
   id: string;
   projectId: string;
   key: string;
+  kind: string;
   createdAt: Date;
   updatedAt: Date;
 }): PublicSecret {
@@ -216,6 +217,7 @@ export function secretRowToPublicSecret(row: {
     id: row.id,
     projectId: row.projectId,
     key: row.key,
+    kind: row.kind as PublicSecret["kind"],
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };
@@ -225,6 +227,7 @@ export function secretRowToSecretRecord(row: {
   id: string;
   projectId: string;
   key: string;
+  kind: string;
   encryptedValue: string;
   createdAt: Date;
   updatedAt: Date;
@@ -233,6 +236,7 @@ export function secretRowToSecretRecord(row: {
     id: row.id,
     projectId: row.projectId,
     key: row.key,
+    kind: row.kind as SecretRecord["kind"],
     encryptedValue: row.encryptedValue,
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),

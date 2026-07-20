@@ -2,7 +2,6 @@
 
 import { useId, useState } from "react";
 import { LockKeyholeIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import type { SharedAgentEnvironment } from "@eveland/core/contracts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -32,114 +31,125 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { saveSharedAgentEnvironment } from "@/lib/client-api";
 import {
-  validateSharedAgentEnvironmentDraft,
-  updateSharedAgentEnvironmentEntry,
-  type SharedAgentEnvironmentDraft,
-} from "@/lib/shared-agent-environment";
-
-type EnvironmentEntry = SharedAgentEnvironmentDraft["entries"][number];
+  createProjectEnvironmentEntry,
+  deleteProjectEnvironmentEntry,
+  updateProjectEnvironmentEntry,
+} from "@/lib/client-api";
+import type { PublicSecret } from "@/lib/api";
+import {
+  validateProjectEnvironmentEntry,
+  type ProjectEnvironmentEntryDraft,
+} from "@/lib/project-secrets";
 
 const kindItems = [
   { label: "Secret", value: "secret" },
   { label: "Variable", value: "variable" },
 ] as const;
 
-const emptyEntry = (): EnvironmentEntry => ({
+const emptyEntry = (): ProjectEnvironmentEntryDraft => ({
   key: "",
   kind: "secret",
   value: "",
   configured: false,
 });
 
-export function SharedAgentEnvironmentSettings({
-  initialEnvironment,
+function restartNotice(action: string, jobs: unknown[]): string {
+  return jobs.length > 0
+    ? `${action} ${jobs.length} live deployment restart${jobs.length === 1 ? "" : "s"} queued.`
+    : `${action} It will apply the next time this project starts.`;
+}
+
+export function ProjectSecretsSettings({
+  projectId,
+  initialEntries,
 }: {
-  initialEnvironment: SharedAgentEnvironment | null;
+  projectId: string;
+  initialEntries: PublicSecret[];
 }) {
-  const keyId = useId();
   const kindId = useId();
+  const keyId = useId();
   const valueId = useId();
-  const [environment, setEnvironment] = useState(initialEnvironment);
-  const [entries, setEntries] = useState<EnvironmentEntry[]>(
-    initialEnvironment?.entries.map((entry) => ({ ...entry, value: "" })) ?? [],
-  );
+  const [entries, setEntries] = useState(initialEntries);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [entryDraft, setEntryDraft] = useState<EnvironmentEntry>(emptyEntry);
-  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
+  const [editingEntry, setEditingEntry] = useState<PublicSecret | null>(null);
+  const [draft, setDraft] = useState<ProjectEnvironmentEntryDraft>(emptyEntry);
+  const [deleteEntry, setDeleteEntry] = useState<PublicSecret | null>(null);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   function openAddDialog() {
-    setEditingIndex(null);
-    setEntryDraft(emptyEntry());
+    setEditingEntry(null);
+    setDraft(emptyEntry());
     setDialogError(null);
     setDialogOpen(true);
   }
 
-  function openEditDialog(index: number) {
-    setEditingIndex(index);
-    setEntryDraft({ ...entries[index]! });
+  function openEditDialog(entry: PublicSecret) {
+    setEditingEntry(entry);
+    setDraft({ key: entry.key, kind: entry.kind, value: "", configured: true });
     setDialogError(null);
     setDialogOpen(true);
   }
 
-  function updateDraft(patch: Partial<EnvironmentEntry>) {
-    setEntryDraft((current) => updateSharedAgentEnvironmentEntry(current, patch));
-    setDialogError(null);
-  }
-
-  async function persistEntries(nextEntries: EnvironmentEntry[]): Promise<{ ok: true } | { ok: false; error: string }> {
-    const validated = validateSharedAgentEnvironmentDraft({ entries: nextEntries });
+  async function submitEntry(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const validated = validateProjectEnvironmentEntry(
+      draft,
+      entries.map((entry) => entry.key),
+      editingEntry?.key,
+    );
     if (!validated.ok) {
-      setError(validated.error);
-      return { ok: false, error: validated.error };
+      setDialogError(validated.error);
+      return;
+    }
+    if (!editingEntry && validated.input.value === undefined) {
+      setDialogError(`Enter a value for ${validated.input.key}.`);
+      return;
     }
 
     setPending(true);
+    setDialogError(null);
     setError(null);
     setNotice(null);
     try {
-      const result = await saveSharedAgentEnvironment(validated.input.entries);
-      setEnvironment(result.environment);
-      setEntries(result.environment.entries.map((entry) => ({ ...entry, value: "" })));
-      setNotice(result.jobs.length > 0
-        ? `Shared environment saved. ${result.jobs.length} live deployment restart${result.jobs.length === 1 ? "" : "s"} queued.`
-        : "Shared environment saved. Agent Deployments will use it the next time their process starts.");
-      return { ok: true };
+      const result = editingEntry
+        ? await updateProjectEnvironmentEntry(projectId, editingEntry.id, validated.input)
+        : await createProjectEnvironmentEntry(projectId, {
+            ...validated.input,
+            value: validated.input.value!,
+          });
+      setEntries((current) => editingEntry
+        ? current.map((entry) => entry.id === result.secret.id ? result.secret : entry)
+        : [result.secret, ...current]);
+      setNotice(restartNotice(editingEntry ? "Entry updated." : "Entry added.", result.jobs));
+      setDialogOpen(false);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Could not save the shared Agent environment.";
-      setError(message);
-      return { ok: false, error: message };
+      setDialogError(caught instanceof Error ? caught.message : "Environment entry could not be saved.");
     } finally {
       setPending(false);
     }
   }
 
-  async function submitEntry(event: React.FormEvent<HTMLFormElement>) {
+  async function removeEntry(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextEntries = editingIndex === null
-      ? [...entries, entryDraft]
-      : entries.map((entry, index) => index === editingIndex ? entryDraft : entry);
-    const validated = validateSharedAgentEnvironmentDraft({ entries: nextEntries });
-    if (!validated.ok) {
-      setDialogError(validated.error);
-      return;
+    if (!deleteEntry) return;
+    setPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await deleteProjectEnvironmentEntry(projectId, deleteEntry.id);
+      if (!result.deleted) throw new Error("Environment entry was not found.");
+      setEntries((current) => current.filter((entry) => entry.id !== deleteEntry.id));
+      setNotice(restartNotice("Entry removed.", result.jobs));
+      setDeleteEntry(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Environment entry could not be removed.");
+    } finally {
+      setPending(false);
     }
-    const result = await persistEntries(nextEntries);
-    if (result.ok) setDialogOpen(false);
-    else setDialogError(result.error);
-  }
-
-  async function deleteEntry(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (deleteIndex === null) return;
-    const result = await persistEntries(entries.filter((_, index) => index !== deleteIndex));
-    if (result.ok) setDeleteIndex(null);
   }
 
   return (
@@ -148,7 +158,7 @@ export function SharedAgentEnvironmentSettings({
         <CardHeader>
           <CardTitle>Variables and secrets</CardTitle>
           <CardDescription>
-            Shared fallback values are encrypted and applied to every Agent Deployment. Project Secrets take precedence.
+            Runtime configuration for this project. Values are encrypted and never returned after saving.
           </CardDescription>
           <CardAction>
             <Button type="button" size="sm" onClick={openAddDialog} disabled={pending || entries.length >= 50}>
@@ -160,10 +170,6 @@ export function SharedAgentEnvironmentSettings({
         <CardContent className="flex flex-col gap-4">
           {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
           {notice ? <Alert><AlertDescription>{notice}</AlertDescription></Alert> : null}
-          <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
-            <span>Values are never returned to the browser after saving.</span>
-            <span className="shrink-0 tabular-nums">{environment ? `Revision r${environment.revision}` : "Not configured"}</span>
-          </div>
           <div className="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>
@@ -181,14 +187,14 @@ export function SharedAgentEnvironmentSettings({
                       <Empty className="border-0 py-10">
                         <EmptyHeader>
                           <EmptyMedia variant="icon"><LockKeyholeIcon /></EmptyMedia>
-                          <EmptyTitle>No shared entries</EmptyTitle>
-                          <EmptyDescription>Add a variable or secret to make it available to every Agent Deployment.</EmptyDescription>
+                          <EmptyTitle>No project entries</EmptyTitle>
+                          <EmptyDescription>Add a variable or secret for this project&apos;s Agent runtime.</EmptyDescription>
                         </EmptyHeader>
                       </Empty>
                     </TableCell>
                   </TableRow>
-                ) : entries.map((entry, index) => (
-                  <TableRow key={`${entry.key}-${entry.kind}`}>
+                ) : entries.map((entry) => (
+                  <TableRow key={entry.id}>
                     <TableCell><Badge variant="secondary">{entry.kind === "secret" ? "Secret" : "Variable"}</Badge></TableCell>
                     <TableCell className="font-mono text-xs font-medium">{entry.key}</TableCell>
                     <TableCell>
@@ -206,14 +212,14 @@ export function SharedAgentEnvironmentSettings({
                           aria-label={`Edit entry ${entry.key}`}
                           title="Edit entry"
                           disabled={pending}
-                          onClick={() => openEditDialog(index)}
+                          onClick={() => openEditDialog(entry)}
                         >
                           <PencilIcon />
                         </Button>
                         <AlertDialog
-                          open={deleteIndex === index}
+                          open={deleteEntry?.id === entry.id}
                           onOpenChange={(open) => {
-                            if (!pending) setDeleteIndex(open ? index : null);
+                            if (!pending) setDeleteEntry(open ? entry : null);
                           }}
                         >
                           <AlertDialogTrigger
@@ -234,10 +240,10 @@ export function SharedAgentEnvironmentSettings({
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remove {entry.key}?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This removes the shared value and restarts live Agent Deployments so it no longer applies.
+                                This removes the runtime value and restarts live deployments so it no longer applies.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
-                            <form onSubmit={deleteEntry}>
+                            <form onSubmit={removeEntry}>
                               <AlertDialogFooter>
                                 <AlertDialogCancel type="button" disabled={pending}>Cancel</AlertDialogCancel>
                                 <AlertDialogAction type="submit" variant="destructive" disabled={pending}>
@@ -255,6 +261,9 @@ export function SharedAgentEnvironmentSettings({
               </TableBody>
             </Table>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Changes restart live deployments. With no live deployment, they apply on the next start.
+          </p>
         </CardContent>
       </Card>
 
@@ -267,11 +276,11 @@ export function SharedAgentEnvironmentSettings({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingIndex === null ? "Add entry" : "Edit entry"}</DialogTitle>
+            <DialogTitle>{editingEntry ? "Edit entry" : "Add entry"}</DialogTitle>
             <DialogDescription>
-              {editingIndex === null
-                ? "Create a shared runtime value for every Agent Deployment."
-                : "Update the entry identity or provide a new value to rotate it."}
+              {editingEntry
+                ? "Update its type or name, and optionally enter a new value."
+                : "Add runtime configuration for this project's Agent."}
             </DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-6" onSubmit={submitEntry}>
@@ -281,9 +290,9 @@ export function SharedAgentEnvironmentSettings({
                 <FieldLabel htmlFor={kindId}>Type</FieldLabel>
                 <Select
                   items={kindItems}
-                  value={entryDraft.kind}
+                  value={draft.kind}
                   onValueChange={(value) => {
-                    if (value === "variable" || value === "secret") updateDraft({ kind: value });
+                    if (value === "variable" || value === "secret") setDraft((current) => ({ ...current, kind: value }));
                   }}
                   disabled={pending}
                 >
@@ -299,8 +308,8 @@ export function SharedAgentEnvironmentSettings({
                 <FieldLabel htmlFor={keyId}>Name</FieldLabel>
                 <Input
                   id={keyId}
-                  value={entryDraft.key}
-                  onChange={(event) => updateDraft({ key: event.target.value.toUpperCase() })}
+                  value={draft.key}
+                  onChange={(event) => setDraft((current) => ({ ...current, key: event.target.value.toUpperCase() }))}
                   placeholder="OPENAI_API_KEY"
                   autoCapitalize="characters"
                   autoComplete="off"
@@ -314,14 +323,14 @@ export function SharedAgentEnvironmentSettings({
                 <FieldLabel htmlFor={valueId}>Value</FieldLabel>
                 <Input
                   id={valueId}
-                  type={entryDraft.kind === "secret" ? "password" : "text"}
+                  type={draft.kind === "secret" ? "password" : "text"}
                   autoComplete="new-password"
-                  value={entryDraft.value}
-                  onChange={(event) => updateDraft({ value: event.target.value })}
-                  placeholder={entryDraft.configured ? "Leave blank to keep the current value" : "Enter a value"}
+                  value={draft.value}
+                  onChange={(event) => setDraft((current) => ({ ...current, value: event.target.value }))}
+                  placeholder={draft.configured ? "Leave blank to keep the current value" : "Enter a value"}
                   disabled={pending}
                 />
-                {entryDraft.configured ? (
+                {draft.configured ? (
                   <FieldDescription>Configured; the current value is not available to this browser.</FieldDescription>
                 ) : null}
               </Field>
@@ -330,7 +339,7 @@ export function SharedAgentEnvironmentSettings({
               <Button type="button" variant="outline" disabled={pending} onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={pending}>
                 {pending ? <Spinner data-icon="inline-start" /> : null}
-                {pending ? "Saving…" : editingIndex === null ? "Add entry" : "Save changes"}
+                {pending ? "Saving…" : editingEntry ? "Save changes" : "Add entry"}
               </Button>
             </DialogFooter>
           </form>

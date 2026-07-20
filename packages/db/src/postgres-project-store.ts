@@ -341,6 +341,7 @@ export function createPostgresProjectStore({
               id: createId("secret"),
               projectId: projectRow.id,
               key: secret.key,
+              kind: secret.kind ?? "secret",
               encryptedValue: secret.encryptedValue,
             })),
           );

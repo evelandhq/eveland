@@ -1,7 +1,7 @@
 import type { SharedAgentEnvironmentRecord } from "@eveland/core/contracts";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
-import { secretSchema, sharedAgentEnvironmentSchema } from "./app-schemas.js";
+import { secretSchema, sharedAgentEnvironmentSchema, updateSecretSchema } from "./app-schemas.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 
 export function registerSecretRoutes(input: {
@@ -39,9 +39,31 @@ export function registerSecretRoutes(input: {
       projectId,
       parsed.data.key,
       JSON.stringify(encrypted),
+      parsed.data.kind,
     );
     const jobs = await enqueueLiveDeploymentRestarts(projectId);
     return c.json({ secret, jobs }, 201);
+  });
+
+  app.put("/projects/:projectId/secrets/:secretId", async (c) => {
+    const parsed = updateSecretSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid environment entry input", issues: parsed.error.issues },
+        400,
+      );
+    }
+    const projectId = c.req.param("projectId");
+    const secret = await store.updateSecret(projectId, c.req.param("secretId"), {
+      key: parsed.data.key,
+      kind: parsed.data.kind,
+      ...(parsed.data.value !== undefined
+        ? { encryptedValue: JSON.stringify(encryptSecretValue(parsed.data.value, appSecretKey)) }
+        : {}),
+    });
+    if (!secret) return c.json({ error: "Environment entry not found" }, 404);
+    const jobs = await enqueueLiveDeploymentRestarts(projectId);
+    return c.json({ secret, jobs });
   });
 
   app.delete("/projects/:projectId/secrets/:secretId", async (c) => {

@@ -176,6 +176,13 @@
       "when": 1784516020007,
       "tag": "0024_eminent_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784531248809,
+      "tag": "0025_yielding_runaways",
+      "breakpoints": true
     }
   ]
 }

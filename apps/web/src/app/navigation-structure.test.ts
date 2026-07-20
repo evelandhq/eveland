@@ -242,10 +242,10 @@ describe("web application shell", () => {
     expect(forms).toContain("<Table")
     expect(forms).toContain("<Dialog")
     expect(forms).toContain("environmentVariables")
-    expect(forms).toContain("Add variable")
-    expect(forms).toContain("Edit variable")
-    expect(forms).toContain("Remove variable")
-    expect(forms).toContain('type={environmentDraft.visible ? "text" : "password"}')
+    expect(forms).toContain("Add entry")
+    expect(forms).toContain("Edit entry")
+    expect(forms).toContain("Remove entry")
+    expect(forms).toContain('environmentDraft.kind === "variable" || environmentDraft.visible')
     expect(forms).toContain("event.stopPropagation()")
     expect(forms).toContain("deployAfterImport")
     expect(forms).toContain("getNewProjectProgress")
@@ -297,12 +297,12 @@ describe("web application shell", () => {
     expect(projectOverview).toContain("Stable · {stableTarget.weight / 100}% traffic")
   })
 
-  test("explains when saving a secret queued live deployment restarts", () => {
-    const secretForm = source("../components/secret-form.tsx")
+  test("explains when saving an environment entry queued live deployment restarts", () => {
+    const secretForm = source("../components/project-secrets-settings.tsx")
 
-    expect(secretForm).toContain("result.jobs.length > 0")
-    expect(secretForm).toContain("Restarting live deployments")
-    expect(secretForm).toContain("used by the next deployment")
+    expect(secretForm).toContain("jobs.length > 0")
+    expect(secretForm).toContain("live deployment restart")
+    expect(secretForm).toContain("next time this project starts")
   })
 
   test("subscribes to mobile media-query changes", () => {

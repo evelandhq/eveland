@@ -129,6 +129,33 @@ describe("team management web surfaces", () => {
     expect(existsSync(fileURLToPath(newProjectFormUrl))).toBe(true);
     if (!existsSync(fileURLToPath(newProjectFormUrl))) return;
     expect(source("../components/new-project-flow.tsx")).toContain('credentials: "include"');
-    expect(source("../components/secret-form.tsx")).toContain('credentials: "include"');
+    expect(source("../lib/client-api.ts")).toContain('credentials: "include"');
+  });
+
+  test("manages project variables and secrets with the shared table and dialog pattern", () => {
+    const page = source("./projects/[projectId]/secrets/page.tsx");
+    const settingsUrl = new URL("../components/project-secrets-settings.tsx", import.meta.url);
+    expect(existsSync(fileURLToPath(settingsUrl))).toBe(true);
+    if (!existsSync(fileURLToPath(settingsUrl))) return;
+
+    const settings = source("../components/project-secrets-settings.tsx");
+    expect(page).toContain("<ProjectSecretsSettings");
+    expect(settings).toContain("<Table");
+    expect(settings).toContain("<Dialog");
+    expect(settings).toContain("<AlertDialog");
+    expect(settings).toContain("Type");
+    expect(settings).toContain("Name");
+    expect(settings).toContain("Value");
+    expect(settings).toContain("Add entry");
+    expect(settings).toContain("Edit entry");
+  });
+
+  test("uses the same typed entry model during new-project setup", () => {
+    const newProjectForm = source("../components/new-project-flow.tsx");
+
+    expect(newProjectForm).toContain('kind: "variable" | "secret"');
+    expect(newProjectForm).toContain("<Select");
+    expect(newProjectForm).toContain('variable.kind === "secret" ? "Secret" : "Variable"');
+    expect(newProjectForm).toContain("kind: variable.kind");
   });
 });

@@ -45,6 +45,7 @@ export const environmentVariableSchema = z.object({
       /^[A-Z][A-Z0-9_]*$/,
       "Use uppercase letters, numbers, and underscores, starting with a letter.",
     ),
+  kind: z.enum(["variable", "secret"]).default("secret"),
   value: z.string().min(1).max(65_536),
 });
 
@@ -89,6 +90,10 @@ export const syncSourceSchema = z
   });
 
 export const secretSchema = environmentVariableSchema;
+
+export const updateSecretSchema = environmentVariableSchema.extend({
+  value: z.string().min(1).max(65_536).optional(),
+});
 
 export const sharedAgentEnvironmentEntrySchema = z.object({
   key: z

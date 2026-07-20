@@ -22,7 +22,7 @@ export function createPostgresSecretStore({ db }: PostgresStoreContext): Postgre
       return rows.map(secretRowToPublicSecret);
     },
 
-    async upsertSecret(projectId, key, value) {
+    async upsertSecret(projectId, key, value, kind = "secret") {
       const now = new Date();
       const [row] = await db
         .insert(secrets)
@@ -30,12 +30,14 @@ export function createPostgresSecretStore({ db }: PostgresStoreContext): Postgre
           id: createId("secret"),
           projectId,
           key,
+          kind,
           encryptedValue: value,
         })
         .onConflictDoUpdate({
           target: [secrets.projectId, secrets.key],
           set: {
             encryptedValue: value,
+            kind,
             updatedAt: now,
           },
         })
@@ -43,6 +45,22 @@ export function createPostgresSecretStore({ db }: PostgresStoreContext): Postgre
 
       if (!row) throw new Error("Failed to upsert secret.");
       return secretRowToPublicSecret(row);
+    },
+
+    async updateSecret(projectId, secretId, input) {
+      const [row] = await db
+        .update(secrets)
+        .set({
+          key: input.key,
+          kind: input.kind,
+          ...(input.encryptedValue !== undefined
+            ? { encryptedValue: input.encryptedValue }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(secrets.projectId, projectId), eq(secrets.id, secretId)))
+        .returning();
+      return row ? secretRowToPublicSecret(row) : null;
     },
 
     async deleteSecret(projectId, secretId) {
