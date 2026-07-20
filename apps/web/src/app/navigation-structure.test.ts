@@ -116,6 +116,9 @@ describe("web application shell", () => {
     expect(source("./projects/[projectId]/usage/page.tsx")).toContain(
       "<UsageExplorer",
     )
+    expect(source("../components/usage/usage-explorer.tsx")).toContain(
+      'scope.type === "project" ? (\n            <RecentSessionsTable',
+    )
   })
 
   test("uses shadcn project cards with complete card composition", () => {
