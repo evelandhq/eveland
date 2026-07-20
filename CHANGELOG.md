@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.7.0](https://github.com/evelandhq/eveland/compare/v0.6.0...v0.7.0) (2026-07-20)
+
+
+### Features
+
+* refine project card source display ([#106](https://github.com/evelandhq/eveland/issues/106)) ([ac39f62](https://github.com/evelandhq/eveland/commit/ac39f62eadfddf7b8ef2becd4f47941ecbd4dc75))
+
+
+### Bug Fixes
+
+* include project .npmrc in build dependency install ([#104](https://github.com/evelandhq/eveland/issues/104)) ([e34f62d](https://github.com/evelandhq/eveland/commit/e34f62d83f9324a8d9577dd9c270af827e4e4aa1))
+* make agent connection dialog scrollable ([#102](https://github.com/evelandhq/eveland/issues/102)) ([924a89b](https://github.com/evelandhq/eveland/commit/924a89b54276fa84e15c2f7f9104006fe913346d))
+* preserve link button foreground colors ([#105](https://github.com/evelandhq/eveland/issues/105)) ([380c789](https://github.com/evelandhq/eveland/commit/380c789d1869f89e5854b9f45cf02e1d5a51338c))
+
 ## [0.6.0](https://github.com/evelandhq/eveland/compare/v0.5.0...v0.6.0) (2026-07-18)
 
 
