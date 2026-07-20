@@ -65,6 +65,10 @@ must be the browser-visible API origin (for example `https://api.example.com` in
 All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
 
 New projects start at `/new`, a focused full-screen flow for GitHub/GitLab URLs or Zip uploads. Before a Project exists, a user-scoped Source Preflight shallow-clones or safely extracts the source and has the worker verify the real Eve layout and supported Eve version. The naming step includes optional, repeatable environment variables for LLM keys and other runtime configuration; their values are encrypted and committed atomically with the Project and initial import job so the first deployment cannot start without them. The validated snapshot is then consumed with the exact public project name and reused for the first deployment without another clone or upload. Unused snapshots expire after one hour by default. The screen streams persisted progress logs, permits leaving for Project detail, and exposes the stable Agent URL when complete.
+Authored Eve skills remain owned by Eve: `eve build` compiles flat Markdown, module-backed,
+and packaged `agent/skills/` entries into Release workspace resources. Eveland's injected
+sandbox materializes those resources under each Session's `$HOME/.agents/skills/`, so Eve's
+built-in `load_skill` can load them without mapping the runtime back to the mutable source tree.
 The public docs process is independent of that control-plane path. Use
 `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
 `pnpm dev:docs` in separate terminals when isolated logs are more useful.

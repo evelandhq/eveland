@@ -239,6 +239,14 @@ Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一
 * 识别项目配置、agent、tools、skills、schedules
 * 创建 Source Revision
 
+`agent/skills/` 由 Eve 原生发现、编译和按需加载。Eveland 不把 runtime 的
+`$HOME/.agents/skills` 映射回可变 Source tree，也不自行解释 `defineSkill`；Release 中的
+`eve build` 先生成各 root/directory-form subagent 独立的 workspace resources，平台注入的
+sandbox backend 再把 Eve 提供的 skill seed materialize 到该 Session 的
+`$HOME/.agents/skills/<skill>/`。Markdown、module-backed 与含 `SKILL.md`、`references/`、
+`assets/`、`scripts/` 的 packaged skill 均保留；Skill 脚本只能通过 Agent 已有工具并在同一
+sandbox 权限边界内运行，不能因此获得额外宿主机权限或 Secret。
+
 Release 构建必须尊重导入项目提交的包管理器锁文件：存在 `pnpm-lock.yaml` 时使用平台固定的
 pnpm 版本执行 frozen install，存在 `package-lock.json` 时使用 `npm ci`，没有锁文件时才回退
 到 `npm install`。pnpm frozen install 仍校验 lockfile 与 package integrity，但不得因为平台

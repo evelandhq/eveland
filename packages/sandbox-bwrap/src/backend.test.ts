@@ -22,6 +22,34 @@ async function makeBackend() {
 }
 
 describe("prewarm", () => {
+  test("materializes Eve skill seeds under the sandbox HOME", async () => {
+    const { backend, runtimeContext } = await makeBackend();
+    await backend.prewarm({
+      templateKey: "skills",
+      runtimeContext,
+      seedFiles: [
+        {
+          path: "$HOME/.agents/skills/research/SKILL.md",
+          content: "Use this research procedure.",
+        },
+        {
+          path: "$HOME/.agents/skills/research/assets/example.bin",
+          content: Buffer.from([0, 1, 2, 255]),
+        },
+      ],
+    });
+
+    const handle = await backend.create({ templateKey: "skills", sessionKey: "skills-session", runtimeContext });
+
+    expect(await handle.session.readTextFile({ path: "/workspace/.agents/skills/research/SKILL.md" })).toBe(
+      "Use this research procedure.",
+    );
+    expect(await handle.session.readTextFile({ path: "/workspace/$HOME/.agents/skills/research/SKILL.md" })).toBeNull();
+    expect(await handle.session.readBinaryFile({ path: "/workspace/.agents/skills/research/assets/example.bin" })).toEqual(
+      new Uint8Array([0, 1, 2, 255]),
+    );
+  });
+
   test("captures a template once and reuses it after", async () => {
     const { backend, runtimeContext, appRoot } = await makeBackend();
     const first = await backend.prewarm({

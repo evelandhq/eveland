@@ -33,6 +33,33 @@ describe("inspectEveProject", () => {
     expect(result.envVars).toEqual(["ANTHROPIC_API_KEY", "DEFAULT_MODEL", "LINEAR_API_TOKEN", "OPENAI_API_KEY"]);
   });
 
+  test("uses Eve's authored skill extensions in the source summary", () => {
+    const result = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.25.1" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      ...["md", "ts", "cts", "mts", "js", "cjs", "mjs"].map((extension) => ({
+        path: `agent/skills/research.${extension}`,
+        content: "skill",
+      })),
+      { path: "agent/skills/not-a-skill.mdx", content: "unsupported" },
+      { path: "agent/skills/not-a-skill.tsx", content: "unsupported" },
+      { path: "agent/skills/not-a-skill.d.ts", content: "unsupported" },
+      { path: "agent/skills/packaged/SKILL.md", content: "packaged skill" },
+      { path: "agent/skills/packaged/references/checklist.md", content: "supporting resource" },
+    ]);
+
+    expect(result.summary.skills).toEqual([
+      "agent/skills/packaged/SKILL.md",
+      "agent/skills/research.cjs",
+      "agent/skills/research.cts",
+      "agent/skills/research.js",
+      "agent/skills/research.md",
+      "agent/skills/research.mjs",
+      "agent/skills/research.mts",
+      "agent/skills/research.ts",
+    ]);
+  });
+
   test("rejects directories without root instructions", () => {
     const result = inspectEveProject([{ path: "agent/tools/get_weather.ts", content: "" }]);
 
