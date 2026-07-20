@@ -1,32 +1,44 @@
 "use client"
 
-import { Line, LineChart, XAxis, YAxis } from "recharts"
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
+import {
+  capacityTimelineScale,
+  formatCapacityTimelineTick,
+  formatCapacityTooltipTimestamp,
+} from "@/lib/instance-health"
 
 export function CapacityTrend({
   label,
   value,
-  values,
+  points,
   hours,
   detail,
 }: {
   label: string
   value: string
-  values: number[]
+  points: Array<{
+    observedAt: string
+    value: number
+  }>
   hours: number
   detail?: string
 }) {
-  const chartData = values.map((metric, index) => ({
-    sample: index + 1,
-    metric,
+  const chartData = points.map((point) => ({
+    ...point,
+    timestamp: Date.parse(point.observedAt),
   }))
+  const timelineScale = capacityTimelineScale(
+    points.map((point) => point.observedAt),
+    hours,
+  )
   const chartConfig = {
-    metric: {
+    value: {
       label,
       color: "var(--chart-1)",
     },
@@ -38,7 +50,7 @@ export function CapacityTrend({
         <div>
           <p className="text-sm font-medium">{label}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Last {hours === 168 ? "7 days" : `${hours} hours`}
+            Last {hours === 168 ? "7 days" : `${hours} hours`} · UTC
           </p>
         </div>
         <div className="text-right">
@@ -46,28 +58,67 @@ export function CapacityTrend({
           {detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
         </div>
       </figcaption>
-      {chartData.length >= 2 ? (
+      {points.length >= 2 && timelineScale ? (
         <ChartContainer
           config={chartConfig}
-          className="h-16 w-full"
-          initialDimension={{ width: 240, height: 64 }}
+          className="h-44 w-full"
+          initialDimension={{ width: 320, height: 176 }}
           aria-label={`${label} trend`}
         >
           <LineChart
             accessibilityLayer
             data={chartData}
-            margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
+            margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
           >
-            <XAxis dataKey="sample" hide />
-            <YAxis hide domain={["dataMin", "dataMax"]} />
+            <CartesianGrid vertical={false} />
+            <XAxis
+              dataKey="timestamp"
+              type="number"
+              scale="time"
+              domain={timelineScale.domain}
+              ticks={timelineScale.ticks}
+              axisLine={false}
+              tickLine={false}
+              tickMargin={8}
+              minTickGap={28}
+              interval="preserveStartEnd"
+              tickFormatter={(timestamp: number) =>
+                formatCapacityTimelineTick(new Date(timestamp).toISOString(), hours)
+              }
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tickMargin={6}
+              width={48}
+              domain={[0, 100]}
+              ticks={[0, 50, 100]}
+              tickFormatter={formatPercentTick}
+            />
             <ChartTooltip
-              cursor={false}
-              content={<ChartTooltipContent hideLabel indicator="line" />}
+              cursor={{ stroke: "var(--border)", strokeDasharray: "3 3" }}
+              content={
+                <ChartTooltipContent
+                  indicator="line"
+                  labelFormatter={(_label, payload) => {
+                    const observedAt = payload[0]?.payload?.observedAt
+                    return observedAt ? formatCapacityTooltipTimestamp(observedAt) : ""
+                  }}
+                  formatter={(metricValue) => (
+                    <>
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="ml-auto font-mono font-medium tabular-nums">
+                        {Number(metricValue).toLocaleString()}%
+                      </span>
+                    </>
+                  )}
+                />
+              }
             />
             <Line
-              dataKey="metric"
+              dataKey="value"
               type="monotone"
-              stroke="var(--color-metric)"
+              stroke="var(--color-value)"
               strokeWidth={2}
               dot={false}
             />
@@ -80,4 +131,8 @@ export function CapacityTrend({
       )}
     </figure>
   )
+}
+
+function formatPercentTick(value: number): string {
+  return `${value}%`
 }
