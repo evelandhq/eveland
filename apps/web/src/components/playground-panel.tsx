@@ -9,8 +9,13 @@ import type {
   EveDynamicToolPart,
   EveMessage,
   EveMessageInputRequest,
-  EveMessagePart,
 } from "eve/react";
+import {
+  AgentActivity,
+  AgentActivityReasoning,
+  AgentActivityTool,
+  type AgentActivityToolStatus,
+} from "@/components/agent-activity";
 import {
   ArrowUpRightIcon,
   CheckCircle2Icon,
@@ -55,8 +60,6 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
-import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -77,6 +80,11 @@ import {
   interactionFromClientError,
   type PendingPlaygroundMessage,
 } from "@/lib/playground-route-auth";
+import {
+  groupPlaygroundParts,
+  type PlaygroundActivityPart,
+  type PlaygroundDisplayItem,
+} from "@/lib/playground-activity";
 
 type PlaygroundPanelProps = {
   projectId: string;
@@ -256,15 +264,17 @@ function PlaygroundMessage({
   isBusy: boolean;
   onInputResponse: (response: { requestId: string; optionId?: string; text?: string }) => Promise<void>;
 }) {
+  const displayItems = groupPlaygroundParts(message.parts, message.metadata?.status);
+
   return (
     <Message from={message.role}>
       <MessageContent>
-        {message.parts.map((part, index) => (
-          <PlaygroundMessagePart
+        {displayItems.map((item, index) => (
+          <PlaygroundDisplayItemView
+            item={item}
             isBusy={isBusy}
-            key={`${message.id}:${part.type}:${index}`}
+            key={playgroundDisplayItemKey(message.id, item, index)}
             onInputResponse={onInputResponse}
-            part={part}
           />
         ))}
       </MessageContent>
@@ -272,45 +282,62 @@ function PlaygroundMessage({
   );
 }
 
-function PlaygroundMessagePart({
+function PlaygroundDisplayItemView({
+  item,
+  isBusy,
+  onInputResponse,
+}: {
+  item: PlaygroundDisplayItem;
+  isBusy: boolean;
+  onInputResponse: (response: { requestId: string; optionId?: string; text?: string }) => Promise<void>;
+}) {
+  if (item.kind === "activity") {
+    return (
+      <AgentActivity count={item.parts.length} status={item.status}>
+        {item.parts.map((part, index) => (
+          <PlaygroundActivityPartView
+            isBusy={isBusy}
+            key={playgroundActivityPartKey(part, index)}
+            onInputResponse={onInputResponse}
+            part={part}
+          />
+        ))}
+      </AgentActivity>
+    );
+  }
+
+  const { part } = item;
+  if (part.type === "text") {
+    return <MessageResponse isAnimating={part.state === "streaming"}>{part.text}</MessageResponse>;
+  }
+  const attachment = {
+    type: "file" as const,
+    id: `${part.filename ?? part.mediaType}:${part.size ?? 0}`,
+    filename: part.filename,
+    mediaType: part.mediaType,
+    url: part.url ?? "",
+  };
+  return (
+    <Attachments variant="inline">
+      <Attachment data={attachment}>
+        <AttachmentPreview />
+        <AttachmentInfo showMediaType />
+      </Attachment>
+    </Attachments>
+  );
+}
+
+function PlaygroundActivityPartView({
   part,
   isBusy,
   onInputResponse,
 }: {
-  part: EveMessagePart;
+  part: PlaygroundActivityPart;
   isBusy: boolean;
   onInputResponse: (response: { requestId: string; optionId?: string; text?: string }) => Promise<void>;
 }) {
-  if (part.type === "step-start") {
-    return null;
-  }
-  if (part.type === "text") {
-    return <MessageResponse isAnimating={part.state === "streaming"}>{part.text}</MessageResponse>;
-  }
   if (part.type === "reasoning") {
-    return (
-      <Reasoning isStreaming={part.state === "streaming"}>
-        <ReasoningTrigger />
-        <ReasoningContent>{part.text}</ReasoningContent>
-      </Reasoning>
-    );
-  }
-  if (part.type === "file") {
-    const attachment = {
-      type: "file" as const,
-      id: `${part.filename ?? part.mediaType}:${part.size ?? 0}`,
-      filename: part.filename,
-      mediaType: part.mediaType,
-      url: part.url ?? "",
-    };
-    return (
-      <Attachments variant="inline">
-        <Attachment data={attachment}>
-          <AttachmentPreview />
-          <AttachmentInfo showMediaType />
-        </Attachment>
-      </Attachments>
-    );
+    return <AgentActivityReasoning isStreaming={part.state === "streaming"} text={part.text} />;
   }
   if (part.type === "authorization") {
     return <AuthorizationPrompt part={part} />;
@@ -329,6 +356,7 @@ function PlaygroundTool({
 }) {
   const request = part.toolMetadata?.eve?.inputRequest;
   const response = part.toolMetadata?.eve?.inputResponse;
+  const action = part.toolMetadata?.eve;
   const selectedOption = request?.options?.find((option) => option.id === response?.optionId);
   const respondedApproval =
     part.state === "approval-responded" && response
@@ -346,32 +374,42 @@ function PlaygroundTool({
   const errorText = part.state === "output-error" ? part.errorText : undefined;
 
   return (
-    <Tool defaultOpen={part.state === "approval-requested"}>
-      <ToolHeader state={part.state} toolName={part.toolName} type="dynamic-tool" />
-      <ToolContent className="flex flex-col gap-4">
-        {request ? (
-          <Confirmation approval={respondedApproval} state={part.state}>
-            <ConfirmationTitle>{request.prompt}</ConfirmationTitle>
-            <ConfirmationRequest>
-              <HitlResponseForm disabled={isBusy} onRespond={onInputResponse} request={request} />
-            </ConfirmationRequest>
-            <ConfirmationAccepted>
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2Icon /> {selectedOption?.label ?? response?.text ?? "Response submitted"}
-              </p>
-            </ConfirmationAccepted>
-            <ConfirmationRejected>
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <XCircleIcon /> {selectedOption?.label ?? "Request declined"}
-              </p>
-            </ConfirmationRejected>
-          </Confirmation>
-        ) : null}
-        <ToolInput input={part.input} />
-        <ToolOutput errorText={errorText} output={output} />
-      </ToolContent>
-    </Tool>
+    <AgentActivityTool
+      errorText={errorText}
+      input={part.input}
+      kind={action?.kind === "subagent-call" ? "subagent" : "tool"}
+      name={action?.name ?? part.toolName}
+      openOnAttention={part.state === "approval-requested"}
+      output={output}
+      status={playgroundToolStatus(part)}
+    >
+      {request ? (
+        <Confirmation approval={respondedApproval} state={part.state}>
+          <ConfirmationTitle>{request.prompt}</ConfirmationTitle>
+          <ConfirmationRequest>
+            <HitlResponseForm disabled={isBusy} onRespond={onInputResponse} request={request} />
+          </ConfirmationRequest>
+          <ConfirmationAccepted>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CheckCircle2Icon /> {selectedOption?.label ?? response?.text ?? "Response submitted"}
+            </p>
+          </ConfirmationAccepted>
+          <ConfirmationRejected>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <XCircleIcon /> {selectedOption?.label ?? "Request declined"}
+            </p>
+          </ConfirmationRejected>
+        </Confirmation>
+      ) : null}
+    </AgentActivityTool>
   );
+}
+
+function playgroundToolStatus(part: EveDynamicToolPart): AgentActivityToolStatus {
+  if (part.state === "output-available") return "completed";
+  if (part.state === "output-error") return "failed";
+  if (part.state === "output-denied") return "cancelled";
+  return "pending";
 }
 
 function HitlResponseForm({
@@ -474,6 +512,20 @@ function AuthorizationPrompt({ part }: { part: EveAuthorizationPart }) {
       </AlertDescription>
     </Alert>
   );
+}
+
+function playgroundDisplayItemKey(messageId: string, item: PlaygroundDisplayItem, index: number): string {
+  if (item.kind === "part") {
+    return `${messageId}:${item.part.type}:${index}`;
+  }
+  const firstPart = item.parts[0];
+  return `${messageId}:activity:${index}:${firstPart ? playgroundActivityPartKey(firstPart, 0) : "empty"}`;
+}
+
+function playgroundActivityPartKey(part: PlaygroundActivityPart, index: number): string {
+  if (part.type === "dynamic-tool") return part.toolCallId;
+  if (part.type === "authorization") return `authorization:${part.turnId}:${part.stepIndex}:${part.name}`;
+  return `reasoning:${part.stepIndex ?? index}`;
 }
 
 function ComposerAttachments() {

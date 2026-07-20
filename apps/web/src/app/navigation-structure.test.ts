@@ -331,8 +331,8 @@ describe("web application shell", () => {
     expect(playground).toContain("preserveCompletedSessions: true")
     expect(playground).toContain("<Conversation")
     expect(playground).toContain("<MessageResponse")
-    expect(playground).toContain("<Reasoning")
-    expect(playground).toContain("<Tool")
+    expect(playground).toContain("<AgentActivityReasoning")
+    expect(playground).toContain("<AgentActivityTool")
     expect(playground).toContain("<Confirmation")
     expect(playground).toContain("<PromptInput")
     expect(playground).toContain("PromptInputActionAddAttachments")
@@ -369,14 +369,38 @@ describe("web application shell", () => {
   test("renders session replay as a chat conversation with a raw event toggle", () => {
     const page = source("./projects/[projectId]/sessions/[sessionId]/page.tsx")
     const replay = source("../components/session-replay.tsx")
+    const activity = source("../components/agent-activity.tsx")
 
     expect(page).toContain("<SessionReplay")
     expect(replay).toContain("buildSessionTranscript")
+    expect(replay).toContain("groupTranscriptItems")
+    expect(replay).toContain("<AgentActivity")
+    expect(replay).toContain("<AgentActivityTool")
+    expect(replay).toContain("<SubagentTask")
+    expect(activity).toContain("Working")
     expect(replay).toContain("<MessageResponse")
-    expect(replay).toContain("<Reasoning")
-    expect(replay).toContain("<Tool")
-    expect(replay).toContain("<ToolHeader")
     expect(replay).toContain('setView("raw")')
     expect(replay).toContain("<RawView")
+  })
+
+  test("groups Playground reasoning and tools with the shared activity components", () => {
+    const playground = source("../components/playground-panel.tsx")
+    const replay = source("../components/session-replay.tsx")
+
+    expect(playground).toContain("groupPlaygroundParts")
+    expect(playground).toContain("<AgentActivity")
+    expect(playground).toContain("<AgentActivityTool")
+    expect(playground).toContain("<AgentActivityReasoning")
+    expect(playground).not.toContain("<Tool defaultOpen")
+    expect(replay).toContain('from "@/components/agent-activity"')
+    expect(playground).toContain('from "@/components/agent-activity"')
+  })
+
+  test("keeps shared activity details visually quieter than the conversation", () => {
+    const activity = source("../components/agent-activity.tsx")
+
+    expect(activity).toContain('<ReasoningContent className="mt-2 text-xs leading-relaxed">')
+    expect(activity).toContain("[&_code]:text-xs")
+    expect(activity).toContain("[&_pre]:text-xs")
   })
 })

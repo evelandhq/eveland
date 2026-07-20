@@ -12,6 +12,8 @@ export type TranscriptSourceNode = {
   agentId: string | null;
   agentName: string | null;
   status?: string | null;
+  resolutionStatus?: string | null;
+  remoteUrl?: string | null;
 };
 
 export type TranscriptUsage = {
@@ -42,6 +44,16 @@ export type TranscriptItem =
   | { kind: "tool"; call: TranscriptToolCall }
   | { kind: "system"; label: string; text: string | null; eventAt: string };
 
+export type TranscriptActivityItem = Extract<TranscriptItem, { kind: "reasoning" | "tool" | "system" }>;
+
+export type TranscriptDisplayItem =
+  | Extract<TranscriptItem, { kind: "user" | "assistant" }>
+  | {
+      kind: "activity";
+      status: "completed" | "failed" | "cancelled" | "running";
+      items: TranscriptActivityItem[];
+    };
+
 export type TranscriptTurn = {
   turnId: string | null;
   startedAt: string;
@@ -58,6 +70,8 @@ export type TranscriptNode = {
   agentName: string | null;
   nodeId: string | null;
   status: string | null;
+  resolutionStatus: string | null;
+  remoteUrl: string | null;
   turns: TranscriptTurn[];
 };
 
@@ -84,6 +98,8 @@ export function buildSessionTranscript(
       agentName: node.agentName,
       nodeId: node.nodeId,
       status: node.status ?? null,
+      resolutionStatus: node.resolutionStatus ?? null,
+      remoteUrl: node.remoteUrl ?? null,
       turns: buildTranscriptTurns(nodeEvents),
     });
   }
@@ -96,6 +112,8 @@ export function buildSessionTranscript(
       agentName: null,
       nodeId: null,
       status: null,
+      resolutionStatus: null,
+      remoteUrl: null,
       turns: buildTranscriptTurns(events),
     };
   }
@@ -302,6 +320,65 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
   }
 
   return turns;
+}
+
+export function groupTranscriptItems(turn: TranscriptTurn): TranscriptDisplayItem[] {
+  const displayItems: TranscriptDisplayItem[] = [];
+  let activityItems: TranscriptActivityItem[] = [];
+
+  const flushActivity = (trailing = false) => {
+    if (activityItems.length === 0) return;
+    displayItems.push({
+      kind: "activity",
+      status: activityStatus(activityItems, turn.status, trailing),
+      items: activityItems,
+    });
+    activityItems = [];
+  };
+
+  for (const item of turn.items) {
+    if (item.kind === "user" || item.kind === "assistant") {
+      flushActivity();
+      displayItems.push(item);
+    } else {
+      activityItems.push(item);
+    }
+  }
+  flushActivity(true);
+
+  return displayItems;
+}
+
+function activityStatus(
+  items: TranscriptActivityItem[],
+  turnStatus: TranscriptTurn["status"],
+  trailing: boolean,
+): Extract<TranscriptDisplayItem, { kind: "activity" }>["status"] {
+  if (
+    items.some(
+      (item) =>
+        (item.kind === "tool" && item.call.status === "failed") ||
+        (item.kind === "system" && item.label.toLowerCase().includes("failed")),
+    )
+  ) {
+    return "failed";
+  }
+  if (
+    items.some(
+      (item) =>
+        (item.kind === "tool" && item.call.status === "cancelled") ||
+        (item.kind === "system" && item.label.toLowerCase().includes("cancelled")),
+    )
+  ) {
+    return "cancelled";
+  }
+  if (items.some((item) => item.kind === "tool" && item.call.status === "pending")) {
+    return "running";
+  }
+  if (turnStatus === "incomplete" && trailing) {
+    return "running";
+  }
+  return "completed";
 }
 
 export function turnToolCalls(turn: TranscriptTurn): TranscriptToolCall[] {
