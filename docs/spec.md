@@ -207,9 +207,10 @@ Web 从 URL 最后一个 path segment
 去掉 `.git` 后猜测 Project 名称，例如 `evelandhq/sample-office-assistant` 得到
 `sample-office-assistant`；Zip 使用文件名按相同规则猜测。第二步展示来源摘要并允许用户
 编辑名称。名称格式和可用性在当前屏幕内校验；只有名称合法且可用时 `Deploy` 才可点击。
-命名屏幕同时提供可选的 Environment Variables 折叠区，可添加最多 50 组不重复的 Key/Value；
-Key 遵循大写字母、数字和下划线格式，Value 默认以密码输入显示并可临时显隐。完全空白的可选行
-不影响部署，部分填写、格式错误或重复 Key 必须在当前屏幕修正后才能 Deploy。API 使用
+命名屏幕同时提供可选的 Environment Variables 折叠区，以表格列出最多 50 组不重复的 Key/Value；
+新增和编辑在弹框中完成，表格中的 Value 只显示掩码。Key 遵循大写字母、数字和下划线格式，
+Value 在弹框中默认以密码输入显示并可临时显隐。部分填写、格式错误或重复 Key 必须在弹框中修正后
+才能加入表格并 Deploy。API 使用
 `APP_SECRET_KEY` 加密 Value，并在同一数据库事务中创建 Project、保存初始 Secrets、排入 initial
 import job 和消费 Preflight，确保 worker 看见首次导入/部署任务时所需的 LLM Key 已经可用；任何
 一步失败都整体回滚，响应和日志不得返回明文 Value。
@@ -552,6 +553,7 @@ Secret 仅在运行时注入容器，不进入：
 它不是用户可命名、创建或选择的 Profile 集合。Entry 明确区分 `variable` 与 `secret`，但两者的 Value 都使用
 `APP_SECRET_KEY` 加密；API/Web 只返回 key、kind、configured 状态和单调 revision，不能返回密文、明文、
 长度或可恢复片段。只有 Admin 可以查看或维护共享环境。
+Web 以 Type、Name、Value 状态和行级操作组成的表格展示 Entry；新增和编辑使用弹框，删除需要明确确认。
 
 共享环境自动应用到所有 Project 的每个 Agent Deployment，不存在 Project/Deployment binding。确定性优先级为
 Shared Agent Environment < Project Secret < Eveland 保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。
