@@ -60,6 +60,7 @@ MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持�
 * 用户、密码账户与 Session 使用 Better Auth；团队成员与邀请使用 Organization plugin
 * 不内置生产默认密码；`BETTER_AUTH_SECRET` 必须独立配置且至少 32 个字符
 * 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
+* 已有有效成员 Session 时访问 `/login`，直接跳转到 `/projects`
 
 除健康检查和邀请接受外，所有控制面 API 都要求有效成员 Session。公开 Agent Gateway 流量使用独立认证边界。
 API 与 Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `version`、Git
