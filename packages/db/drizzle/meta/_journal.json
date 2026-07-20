@@ -169,6 +169,13 @@
       "when": 1784387884785,
       "tag": "0023_free_sheva_callister",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784516020007,
+      "tag": "0024_eminent_shadow_king",
+      "breakpoints": true
     }
   ]
 }

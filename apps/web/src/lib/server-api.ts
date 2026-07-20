@@ -6,6 +6,8 @@ import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagno
 import type {
   PublicGitCredential,
   SharedAgentEnvironment,
+  UsageAnalytics,
+  UsageRange,
 } from "@eveland/core/contracts";
 import type {
   AgentEndpoints,
@@ -51,6 +53,13 @@ export const getSessions = (projectId: string, filters: Record<string, string | 
   apiGet<{ sessions: Session[]; nextCursor: string | null }>(`/projects/${projectId}/sessions${queryString(filters)}`).then((data) => data.sessions);
 export const getSessionsPage = (projectId: string, filters: Record<string, string | undefined> = {}) =>
   apiGet<{ sessions: Session[]; nextCursor: string | null }>(`/projects/${projectId}/sessions${queryString(filters)}`);
+export const getUsageAnalytics = (filters: { range: UsageRange; modelId?: string }) =>
+  apiGet<{ usage: UsageAnalytics }>(`/usage${queryString(filters)}`).then((data) => data.usage);
+export const getProjectUsageAnalytics = (
+  projectId: string,
+  filters: { range: UsageRange; modelId?: string },
+) =>
+  apiGet<{ usage: UsageAnalytics }>(`/projects/${projectId}/usage${queryString(filters)}`).then((data) => data.usage);
 export const getSession = (sessionId: string) => apiGet<{ session: Session }>(`/sessions/${sessionId}`).then((data) => data.session);
 export const getSessionEvents = (sessionId: string) => apiGet<{ events: SessionEvent[] }>(`/sessions/${sessionId}/events`).then((data) => data.events);
 export const getSessionUsage = (sessionId: string) => apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`).then((data) => data.usage);

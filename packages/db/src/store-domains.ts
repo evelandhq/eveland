@@ -48,6 +48,8 @@ import type {
   SourcePreflight,
   SourcePreflightRecord,
   SourceRevision,
+  UsageAnalytics,
+  UsageRange,
 } from "@eveland/core/contracts";
 import type { ModelStepUsage } from "@eveland/core/eve";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
@@ -338,6 +340,15 @@ export interface SessionStore {
   listModelUsageEvents(sessionId: string): Promise<ModelUsageEvent[]>;
 }
 
+export interface UsageStore {
+  getUsageAnalytics(input: {
+    range: UsageRange;
+    projectId?: string;
+    modelId?: string;
+    now?: Date;
+  }): Promise<UsageAnalytics>;
+}
+
 export interface ScheduleStore {
   listSchedules(projectId: string): Promise<ScheduleRecord[]>;
   recordScheduleVersions(input: {
@@ -452,6 +463,7 @@ export type Store = ProjectStore &
   DeploymentStore &
   RoutingStore &
   SessionStore &
+  UsageStore &
   ScheduleStore &
   RuntimeStore &
   InstanceHealthStore &

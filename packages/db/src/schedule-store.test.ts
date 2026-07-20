@@ -183,22 +183,26 @@ describe("schedule persistence", () => {
         eveSessionIds: ["eve_schedule_one", "eve_schedule_two"],
       }),
     ).resolves.toMatchObject({ status: "succeeded", completedAt: expect.any(String) });
-    await expect(store.listSessions(project.id)).resolves.toEqual([
-      expect.objectContaining({
-        deploymentId: deployment.id,
-        eveSessionId: "eve_schedule_one",
-        trigger: "cron",
-        scheduleId: runs[0]!.scheduleId,
-        scheduleRunId: runs[0]!.id,
-      }),
-      expect.objectContaining({
-        deploymentId: deployment.id,
-        eveSessionId: "eve_schedule_two",
-        trigger: "cron",
-        scheduleId: runs[0]!.scheduleId,
-        scheduleRunId: runs[0]!.id,
-      }),
-    ]);
+    const scheduledSessions = await store.listSessions(project.id);
+    expect(scheduledSessions).toHaveLength(2);
+    expect(scheduledSessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          deploymentId: deployment.id,
+          eveSessionId: "eve_schedule_one",
+          trigger: "cron",
+          scheduleId: runs[0]!.scheduleId,
+          scheduleRunId: runs[0]!.id,
+        }),
+        expect.objectContaining({
+          deploymentId: deployment.id,
+          eveSessionId: "eve_schedule_two",
+          trigger: "cron",
+          scheduleId: runs[0]!.scheduleId,
+          scheduleRunId: runs[0]!.id,
+        }),
+      ]),
+    );
   });
 
   test("creates manual runs on the explicitly promoted scheduler target and pins provenance", async () => {

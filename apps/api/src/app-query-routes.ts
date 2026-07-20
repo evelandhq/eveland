@@ -4,10 +4,36 @@ import type { ApiApp } from "./app-types.js";
 import {
   scheduleRunListQuerySchema,
   sessionListQuerySchema,
+  usageAnalyticsQuerySchema,
 } from "./app-schemas.js";
 import { resolveProjectEveVersion } from "./app-support.js";
 
 export function registerQueryRoutes(app: ApiApp, store: Store): void {
+  app.get("/usage", async (c) => {
+    const parsed = usageAnalyticsQuerySchema.safeParse(c.req.query());
+    if (!parsed.success)
+      return c.json(
+        { error: "Invalid usage filters", issues: parsed.error.issues },
+        400,
+      );
+    return c.json({ usage: await store.getUsageAnalytics(parsed.data) });
+  });
+
+  app.get("/projects/:projectId/usage", async (c) => {
+    const projectId = c.req.param("projectId");
+    if (!(await store.getProject(projectId)))
+      return c.json({ error: "Project not found" }, 404);
+    const parsed = usageAnalyticsQuerySchema.safeParse(c.req.query());
+    if (!parsed.success)
+      return c.json(
+        { error: "Invalid usage filters", issues: parsed.error.issues },
+        400,
+      );
+    return c.json({
+      usage: await store.getUsageAnalytics({ ...parsed.data, projectId }),
+    });
+  });
+
   app.get("/projects/:projectId/schedules", async (c) => {
     return c.json({
       schedules: await store.listProjectScheduleSummaries(

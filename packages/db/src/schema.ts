@@ -584,7 +584,10 @@ export const sessions = pgTable(
     usageReportedSteps: integer("usage_reported_steps").notNull().default(0),
     usageMissingSteps: integer("usage_missing_steps").notNull().default(0),
   },
-  (table) => [index("sessions_schedule_run_idx").on(table.scheduleRunId)],
+  (table) => [
+    index("sessions_schedule_run_idx").on(table.scheduleRunId),
+    index("sessions_project_started_idx").on(table.projectId, table.startedAt),
+  ],
 );
 
 export const sessionNodes = pgTable(
@@ -610,7 +613,10 @@ export const sessionNodes = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex("session_nodes_project_eve_idx").on(table.projectId, table.eveSessionId)],
+  (table) => [
+    uniqueIndex("session_nodes_project_eve_idx").on(table.projectId, table.eveSessionId),
+    index("session_nodes_project_model_idx").on(table.projectId, table.modelId),
+  ],
 );
 
 export const modelUsageEvents = pgTable(
@@ -636,6 +642,7 @@ export const modelUsageEvents = pgTable(
   (table) => [
     uniqueIndex("model_usage_session_eve_turn_step_idx").on(table.sessionId, table.eveSessionId, table.turnId, table.stepIndex),
     uniqueIndex("model_usage_node_turn_step_idx").on(table.sessionNodeId, table.turnId, table.stepIndex),
+    index("model_usage_created_idx").on(table.createdAt),
   ],
 );
 
