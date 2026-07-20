@@ -70,6 +70,9 @@ export const getSourceRevision = (projectId: string) => apiGet<{ revision: Sourc
 export const getSourceFiles = (projectId: string) => apiGet<{ files: SourceFile[] }>(`/projects/${projectId}/source/files`).then((data) => data.files);
 export const getSourceFile = (projectId: string, filePath: string) => apiGet<{ file: SourceFile | null }>(`/projects/${projectId}/source/file?path=${encodeURIComponent(filePath)}`).then((data) => data.file);
 export const getCurrentMember = () => apiGet<{ member: CurrentMember }>("/auth/session").then((data) => data.member);
+export const getCurrentMemberOrNull = () =>
+  apiGet<{ member: CurrentMember }>("/auth/session", { unauthorized: "return-null" })
+    .then((data) => data?.member ?? null);
 export const getMembers = () => apiGet<{ members: Member[] }>("/members").then((data) => data.members);
 export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invitations").then((data) => data.invitations);
 export const getApiBuildInfo = () => apiGet<{ ok: true } & EvelandBuildInfo>("/health");
@@ -107,13 +110,23 @@ async function apiGetOptional<T>(path: string): Promise<T | null> {
   return response.json() as Promise<T>;
 }
 
-async function apiGet<T>(path: string): Promise<T> {
+type UnauthorizedBehavior = "redirect" | "return-null";
+
+async function apiGet<T>(path: string, options?: { unauthorized?: "redirect" }): Promise<T>;
+async function apiGet<T>(path: string, options: { unauthorized: "return-null" }): Promise<T | null>;
+async function apiGet<T>(
+  path: string,
+  options: { unauthorized?: UnauthorizedBehavior } = {},
+): Promise<T | null> {
   const cookieStore = await cookies();
   const response = await fetch(`${apiBaseUrl}${path}`, {
     cache: "no-store",
     headers: { cookie: cookieStore.toString() },
   });
-  if (response.status === 401) redirect("/login");
+  if (response.status === 401) {
+    if (options.unauthorized === "return-null") return null;
+    redirect("/login");
+  }
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error ?? `API request failed with ${response.status}`);
