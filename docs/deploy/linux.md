@@ -105,11 +105,29 @@ pnpm install --frozen-lockfile
 pnpm --filter @eveland/api db:migrate
 ```
 
+The host worker runs as root from its own checkout at `/opt/eveland` (see
+`infra/systemd/eveland-worker.service`); apply the same tag and
+`pnpm install --frozen-lockfile` there, then rebuild the vendored sandbox
+backend — **mandatory on every upgrade**:
+
+```bash
+# worker checkout (/opt/eveland), root-owned → sudo
+pnpm --filter @eveland/sandbox-bwrap build
+```
+
+`@eveland/sandbox-bwrap` is the only package whose compiled `dist/` is vendored
+into every agent Release, and `pnpm install` never rebuilds it (no
+`prepare`/`postinstall` hook). A tag checkout refreshes the source but leaves a
+stale `dist/`; preflight only checks the backend is *built*, not current, so the
+stale artifact passes silently and every later Release vendors it. The fix
+reaches an agent only through a **new Release** — rebuild affected agents after.
+
 Set `EVELAND_RELEASE_CHANNEL=stable` and `EVELAND_REVISION` to the output of
 `git rev-parse --short=12 HEAD` in both the Compose `.env` and
-`/etc/eveland/eveland-worker.env`. Restart API, Gateway, Web, and Worker from
-that same checkout. An instance intentionally testing `main` uses
-`EVELAND_RELEASE_CHANNEL=edge` and its exact revision instead.
+`/etc/eveland/eveland-worker.env`. Restart API, Gateway, and Web from the
+control-plane checkout and the Worker from `/opt/eveland`. An instance
+intentionally testing `main` uses `EVELAND_RELEASE_CHANNEL=edge` and its exact
+revision instead.
 
 The authenticated Web Settings > About page compares Web and API build
 identity; API and Gateway also expose it through their existing public
@@ -149,7 +167,10 @@ as a directory, the vendored sandbox backend being built (`pnpm --filter
 data dir. It reports
 every failing check at once instead of stopping at the first — the same
 one-complete-punch-list approach as the sandbox self-check under "Agent exec
-sandbox" below.
+sandbox" below. The vendored-backend check is existence-only — it confirms
+`packages/sandbox-bwrap/dist` is present, not that it was built from the current
+source — so a stale `dist/` after an upgrade passes silently (see "Installing and
+upgrading Eveland").
 `apps/worker/src/integration/preflight-check.ts` runs this same check
 standalone and prints `PREFLIGHT OK` on success; `infra/integration/run.sh`
 runs it against the Lima VM as part of the integration smoke test.
