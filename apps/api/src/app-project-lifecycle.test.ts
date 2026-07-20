@@ -21,7 +21,7 @@ import {
 } from "./app.test-support.js";
 
 describe("api app", () => {
-  test("syncs the latest git source by enqueuing an import_source job with a deploy chained", async () => {
+  test("syncs the latest git source with deployment and promotion chained", async () => {
     const store = createTestStore();
     const app = createApp(store);
     const createResponse = await app.request("/projects", {
@@ -40,7 +40,7 @@ describe("api app", () => {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deploy: true }),
+        body: JSON.stringify({ deploy: true, promote: true }),
       },
     );
 
@@ -52,8 +52,62 @@ describe("api app", () => {
         payload: expect.objectContaining({
           gitUrl: "https://example.com/weather.git",
           deployAfterImport: true,
+          promoteAfterDeploy: true,
         }),
       }),
+    });
+  });
+
+  test("syncs the latest git source into a preview without promotion", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Preview Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/preview.git",
+    });
+    const app = createApp(store);
+
+    const syncResponse = await app.request(
+      `/projects/${project.id}/sync-source`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deploy: true, promote: false }),
+      },
+    );
+
+    expect(syncResponse.status).toBe(202);
+    await expect(syncResponse.json()).resolves.toMatchObject({
+      job: expect.objectContaining({
+        type: "import_source",
+        payload: expect.objectContaining({
+          deployAfterImport: true,
+          promoteAfterDeploy: false,
+        }),
+      }),
+    });
+  });
+
+  test("rejects promotion when the synced source is not being deployed", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Invalid Promotion Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/invalid-promotion.git",
+    });
+
+    const response = await createApp(store).request(
+      `/projects/${project.id}/sync-source`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deploy: false, promote: true }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid source sync options",
     });
   });
 

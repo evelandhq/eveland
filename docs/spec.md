@@ -294,8 +294,9 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 
 主要操作：
 
-* Sync & deploy（仅 Git 项目）：重新从 GitHub 拉取最新代码，成功后自动部署
-* Deploy current / Deploy latest source：用当前已记录的 Source Revision 重新构建部署
+* Sync, deploy & promote（仅 Git 项目，主操作）：重新拉取最新代码，成功构建并通过健康检查后，部署并将该 Deployment 原子切换为 stable target
+* Sync & create preview（仅 Git 项目，次操作）：重新拉取最新代码并创建可并发测试的 preview，不改变 stable target
+* Deploy latest source（Zip 项目）：用当前已记录的 Source Revision 重新构建部署
 * Restart deployment
 * Open Playground
 * 查看日志
@@ -653,7 +654,7 @@ http://<deploymentKey>--<projectSlug>.agent.localhost:4080
 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个
 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
-Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation、cancel 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。
+底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 的主操作 `Sync, deploy & promote` 在新 Deployment 通过健康检查并创建 preview route 后，显式 promote 该次任务创建的确切 Deployment；次操作 `Sync & create preview` 保留底层默认行为。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation、cancel 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。
 
 cron、public request、turn 和 stream 在访问进程前获取有期限的 ActivationLease。同一
 dormant Deployment 的并发唤醒只允许一个 starter；API 只持久化/等待状态，不获得
@@ -718,8 +719,8 @@ Release 目录之外；redeploy 或 restart 不得丢失同一 Eve Session 的 `
 Release 准备可以替换用户编写的 Sandbox backend、`bootstrap()` 与 `onSession()`，
 但必须保留 `agent/sandbox/workspace/**`；这些 authored seeds 继续由 Eve 编译并在
 每个新 Session 初始化到 `/workspace/**`，不能因为平台选择 backend 而从 Release 删除。
-workspace template 必须按不可变 Release 隔离：Sync & Deploy 更新 seed 后，新建 Session
-必须使用新 Release 的内容；已有 durable Session 的 `/workspace` 不得被 deploy 覆盖。
+workspace template 必须按不可变 Release 隔离：同步部署更新 seed 后，针对新 Release 创建的
+Session 必须使用其新内容；已有 durable Session 的 `/workspace` 不得被 deploy 覆盖。
 Release 构建完成后必须用实际运行权限写入并执行一个 Node 24 TypeScript probe；
 同时验证平台提供的 Sandbox 命令基线：`bash`、Node 24、`npm`、`pnpm`、`rg`、
 GNU `grep`/`find`、`git`、`curl`、`jq`、Python 3 与 `pip`、`unzip`、`zstd`。

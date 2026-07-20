@@ -24,8 +24,8 @@ a deployment backend themselves. If a project shipped its own sandbox module, th
 replaces that definition and reports it in the build log; authored `bootstrap()` and
 `onSession()` behavior is not used. The sibling `agent/sandbox/workspace/**` tree is preserved,
 so Eve still seeds those files into each Session's `/workspace`. Each Eveland Release supplies a
-distinct template revision, so new Sessions see updated seeds after Sync & Deploy while existing
-durable Session workspaces remain untouched. The systemd runtime invokes
+distinct template revision, so Sessions created against a new Deployment see its updated seeds
+while existing durable Session workspaces remain untouched. The systemd runtime invokes
 bwrap as its unprivileged deployment user. The local Docker runtime installs bwrap inside the Agent
 image and grants the outer container only the capabilities nested bwrap requires; the
 Agent container still receives no Docker socket. Local `eve dev` is untouched — it never runs

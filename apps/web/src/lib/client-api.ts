@@ -254,11 +254,17 @@ export async function updateRouteTargets(
   });
 }
 
-export async function syncSource(projectId: string, options: { deploy?: boolean } = {}): Promise<Job> {
+export async function syncSource(
+  projectId: string,
+  options: { deploy?: boolean; promote?: boolean } = {},
+): Promise<Job> {
   const data = await clientRequest<{ job: Job }>(`/projects/${projectId}/sync-source`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ deploy: options.deploy ?? false }),
+    body: JSON.stringify({
+      deploy: options.deploy ?? false,
+      promote: options.promote ?? false,
+    }),
   });
   return data.job;
 }

@@ -441,7 +441,7 @@ try {
 
   // --- Sync and deploy ---------------------------------------------------
   // Update the imported source's authored workspace, then exercise the same
-  // two-job import_source -> build_deploy chain as the Sync & Deploy action.
+  // two-job import_source -> build_deploy chain used by the sync actions.
   await writeFile(
     path.join(syncedSourcePath, "agent", "sandbox", "workspace", "eveland-seed.txt"),
     `${UPDATED_SEED_CONTENT}\n`,

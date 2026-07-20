@@ -802,6 +802,7 @@ session_bindings
 - `projects.currentDeploymentId` 只是过渡兼容字段，最终 production project route 才是权威；
 - build+deploy 不再默认停止旧 Deployment；新 Deployment 首先是 preview target；
 - promote/rollback/traffic split 通过 route target transaction 完成。
+- 当前 Web 为 Git Project 提供两个显式同步意图：主操作 `Sync, deploy & promote` 在该次 build 的新 Deployment 健康且 preview route 创建后，promote 该确切 target；次操作 `Sync & create preview` 不改变 stable route。这个产品默认不改变裸 `build_deploy` 的 preview-first 语义，也不能通过查询“最新 Deployment”来选择 promote target。
 - Project Secrets 是可变运行时凭据，不属于 Release 内容；Secret 新增、替换或删除后必须为每个 `running` / `draining` Deployment 排入带 `deploymentId` 的 restart，不能只刷新 `projects.currentDeploymentId`，否则 stable、preview 或 A/B target 会继续持有旧进程环境。
 - Scheduler scale-to-zero 使用持久化 `nextRunAt`：进入 `EVELAND_SCHEDULER_PREWARM_MS` 窗口的 target 保持 warm，已停止的 target 提前排入 coalesced activation；non-terminal ScheduleRun 提供硬性回收保护，`draining` 在 dispatch credential 兑换前有界重试。
 
@@ -1101,8 +1102,8 @@ core/db 边界落地
 - Release 注入平台 backend 时保留 `agent/sandbox/workspace/**`，目录形式生成
   `agent/sandbox/sandbox.js`；只替换 authored `bootstrap()`/`onSession()`，不能删除
   Eve 应在新 Session 中初始化到 `/workspace/**` 的 seed files；
-- bwrap template 按不可变 Release revision 隔离，Sync & Deploy 后新 Session 使用更新的
-  seeds；session cache 仍按 durable Eve session key 复用，已有 `/workspace` 不被覆盖；
+- bwrap template 按不可变 Release revision 隔离，针对新 Deployment 创建的 Session 使用该
+  Release 更新后的 seeds；session cache 仍按 durable Eve session key 复用，已有 `/workspace` 不被覆盖；
 - Docker 与 systemd build self-check 都必须在真实 bwrap 中写入并用 Node 24
   执行带类型标注的 `.ts` probe，不能用 `/eve/v1/health` 代替。
 

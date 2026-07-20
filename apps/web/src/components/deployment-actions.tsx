@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LoaderCircleIcon, RefreshCwIcon, RocketIcon } from "lucide-react";
+import { RefreshCwIcon, RocketIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { enqueueBuildDeploy, syncSource } from "@/lib/client-api";
 import { getProjectImportNotice, type Job } from "@/lib/api";
 
-type PendingAction = "sync" | "deploy";
+type PendingAction = "sync-promote" | "sync-preview" | "deploy";
 
 export function DeploymentActions({
   projectId,
@@ -38,9 +39,15 @@ export function DeploymentActions({
     setError(null);
 
     try {
-      await (action === "sync"
-        ? syncSource(projectId, { deploy: importNotice?.active === false ? canDeploy : true })
-        : enqueueBuildDeploy(projectId));
+      if (action === "deploy") {
+        await enqueueBuildDeploy(projectId);
+      } else {
+        const deploy = importNotice?.active === false ? canDeploy : true;
+        await syncSource(projectId, {
+          deploy,
+          promote: deploy && action === "sync-promote",
+        });
+      }
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Request failed");
@@ -51,26 +58,52 @@ export function DeploymentActions({
 
   const busy = pending !== null || importNotice?.active === true;
   const retryingImport = importNotice?.active === false;
+  const importActive = importNotice?.active === true;
 
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">
         {importKind === "git" ? (
-          <Button type="button" onClick={() => run("sync")} disabled={!canSync || busy} title="Pull the latest commit from GitHub, then deploy it">
-            <RefreshCwIcon data-icon="inline-start" className={pending === "sync" || importNotice?.active ? "animate-spin" : undefined} />
-            {retryingImport ? (canDeploy ? "Retry sync & deploy" : "Retry import") : importNotice?.active ? "Fetching…" : "Sync & deploy"}
+          <>
+            {!retryingImport || canDeploy ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => run("sync-preview")}
+                disabled={!canSync || busy}
+                title="Pull the latest commit and create a preview without changing production"
+              >
+                {pending === "sync-preview" ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
+                {retryingImport ? "Retry sync & create preview" : "Sync & create preview"}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              onClick={() => run("sync-promote")}
+              disabled={!canSync || busy}
+              title="Pull the latest commit, deploy it, and promote it to production"
+            >
+              {pending === "sync-promote" || importActive ? <Spinner data-icon="inline-start" /> : <RocketIcon data-icon="inline-start" />}
+              {retryingImport
+                ? canDeploy
+                  ? "Retry sync, deploy & promote"
+                  : "Retry import"
+                : importActive
+                  ? "Fetching…"
+                  : "Sync, deploy & promote"}
+            </Button>
+          </>
+        ) : (
+          <Button
+            type="button"
+            onClick={() => run("deploy")}
+            disabled={!canDeploy || busy}
+            title="Rebuild and deploy the latest source revision"
+          >
+            {pending === "deploy" ? <Spinner data-icon="inline-start" /> : <RocketIcon data-icon="inline-start" />}
+            Deploy latest
           </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant={importKind === "git" ? "outline" : "default"}
-          onClick={() => run("deploy")}
-          disabled={!canDeploy || busy}
-          title="Rebuild and deploy the current source revision"
-        >
-          {pending === "deploy" ? <LoaderCircleIcon data-icon="inline-start" className="animate-spin" /> : <RocketIcon data-icon="inline-start" />}
-          {importKind === "git" ? "Deploy current" : "Deploy latest"}
-        </Button>
+        )}
       </div>
       {importNotice ? (
         <div className={`max-w-80 text-right text-xs ${retryingImport ? "text-destructive" : "text-muted-foreground"}`}>

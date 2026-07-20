@@ -101,7 +101,7 @@ describe("web api helpers", () => {
     await expect(enqueueBuildDeploy("missing")).rejects.toThrow("Project not found");
   });
 
-  test("syncs source and asks the API to deploy the latest commit", async () => {
+  test("syncs source and asks the API to deploy and promote the latest commit", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response(JSON.stringify({ job: { id: "job_sync", type: "import_source", status: "queued" } }), {
         status: 202,
@@ -110,7 +110,7 @@ describe("web api helpers", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(syncSource("proj_123", { deploy: true })).resolves.toMatchObject({
+    await expect(syncSource("proj_123", { deploy: true, promote: true })).resolves.toMatchObject({
       id: "job_sync",
       type: "import_source",
       status: "queued",
@@ -119,7 +119,27 @@ describe("web api helpers", () => {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ deploy: true }),
+      body: JSON.stringify({ deploy: true, promote: true }),
+    });
+  });
+
+  test("syncs source into a preview without promotion", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ job: { id: "job_preview", type: "import_source", status: "queued" } }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(syncSource("proj_123", { deploy: true, promote: false })).resolves.toMatchObject({
+      id: "job_preview",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/sync-source", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deploy: true, promote: false }),
     });
   });
 

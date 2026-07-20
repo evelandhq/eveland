@@ -281,21 +281,6 @@ export function agentAuthFailureStatus(
   return 503;
 }
 
-// The sync body is optional; only `{ "deploy": true }` opts into an automatic
-// deploy of the freshly synced source, otherwise the sync just refreshes it.
-export async function readSyncDeployFlag(c: Context): Promise<boolean> {
-  try {
-    const body = (await c.req.json()) as unknown;
-    return (
-      typeof body === "object" &&
-      body !== null &&
-      (body as { deploy?: unknown }).deploy === true
-    );
-  } catch {
-    return false;
-  }
-}
-
 export async function createZipProjectFromUpload(
   c: Context,
   store: Store,

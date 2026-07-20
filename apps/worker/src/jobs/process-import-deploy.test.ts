@@ -148,7 +148,7 @@ describe("processNextJob", () => {
     expect(completeJob).toHaveBeenCalledWith(expect.any(String), 1);
   });
 
-  test("chains a build_deploy job after a deploy-flagged import", async () => {
+  test("chains promotion intent into the build_deploy job", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
@@ -162,12 +162,17 @@ describe("processNextJob", () => {
       importKind: "zip",
       sourcePath,
       deployAfterImport: true,
+      promoteAfterDeploy: true,
     });
 
     await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
 
     const chained = await store.claimNextJob("worker-b");
-    expect(chained).toMatchObject({ type: "build_deploy", status: "running" });
+    expect(chained).toMatchObject({
+      type: "build_deploy",
+      status: "running",
+      payload: { promoteAfterDeploy: true },
+    });
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
       expect.objectContaining({
         line: expect.stringContaining("Queued deploy of the latest source"),
@@ -484,6 +489,84 @@ describe("processNextJob", () => {
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
       { runtimeKind: "docker" },
     );
+  });
+
+  test("promotes the exact deployment created by a promote-enabled build", async () => {
+    const stoppedProcesses: string[] = [];
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Promoted Sync Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/promoted.git",
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const production = await store.recordDeployment({
+      releaseId: "rel_production",
+      deploymentId: "dep_production",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_production",
+      containerName: "eveland-production-container",
+      internalPort: 3000,
+      hostPort: 41080,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(
+      project.id,
+      production.id,
+      "agent.localhost",
+    );
+    await store.enqueueJob(project.id, "build_deploy", {
+      promoteAfterDeploy: true,
+    });
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            return { releaseRef: "eveland/proj:rel_promoted", log: "" };
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            stoppedProcesses.push(processName);
+          },
+        },
+        allocateHostPort: () => Promise.resolve(41081),
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    const deployments = await store.listDeployments(project.id);
+    const promoted = deployments.find(
+      (deployment) => deployment.id !== production.id,
+    );
+    expect(promoted).toBeDefined();
+    await expect(store.findProjectRoute(project.id)).resolves.toMatchObject({
+      targets: [
+        expect.objectContaining({
+          deploymentId: promoted!.id,
+          weight: 10_000,
+        }),
+      ],
+    });
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
+      { id: promoted!.id },
+    );
+    expect(stoppedProcesses).not.toContain(production.containerName);
   });
 
   test("deploys across runtime kinds without touching the old runtime process", async () => {
