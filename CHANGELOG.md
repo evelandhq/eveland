@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.9.0](https://github.com/evelandhq/eveland/compare/v0.8.0...v0.9.0) (2026-07-20)
+
+
+### Features
+
+* group agent activity in session views ([554022a](https://github.com/evelandhq/eveland/commit/554022af8f3705235d3051e05126d03eca116d9e))
+* unify environment entry management ([#117](https://github.com/evelandhq/eveland/issues/117)) ([732500c](https://github.com/evelandhq/eveland/commit/732500c227aae2055daa22d1e02e80a258557c12))
+
 ## [0.8.0](https://github.com/evelandhq/eveland/compare/v0.7.0...v0.8.0) (2026-07-20)
 
 
