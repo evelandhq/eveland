@@ -1,6 +1,12 @@
 import Link from 'next/link';
-import { AlertTriangleIcon, ArrowUpRightIcon, FolderPlusIcon, PlusIcon } from 'lucide-react';
-import { DeleteProjectAction } from '@/components/delete-project-action';
+import { SiGit, SiGithub, SiGitlab } from '@icons-pack/react-simple-icons';
+import {
+  AlertTriangleIcon,
+  ArrowUpRightIcon,
+  FolderArchiveIcon,
+  FolderPlusIcon,
+  PlusIcon,
+} from 'lucide-react';
 import { ProjectDeletionPoller } from '@/components/project-deletion-poller';
 import { StatusBadge } from '@/components/status-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -24,10 +30,18 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty';
 import { getCollectorHealth, getProjects } from '@/lib/server-api';
+import { describeProjectSource } from '@/lib/project-source';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
+
+const projectSourceIconByKind = {
+  github: SiGithub,
+  gitlab: SiGitlab,
+  git: SiGit,
+  zip: FolderArchiveIcon,
+};
 
 export default async function ProjectsPage() {
   const [projects, collector] = await Promise.all([getProjects(), getCollectorHealth()]);
@@ -91,6 +105,11 @@ export default async function ProjectsPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {projects.map((project) => {
               const deleting = project.deletionStatus === 'deleting';
+              const projectStatus = project.deletionStatus === 'failed'
+                ? 'delete_failed'
+                : project.deploymentStatus;
+              const source = describeProjectSource(project.importKind, project.gitUrl);
+              const ProjectSourceIcon = projectSourceIconByKind[source.kind];
               return (
               <Card key={project.id} size="sm" className="h-full" aria-busy={deleting}>
                 <CardHeader>
@@ -103,8 +122,11 @@ export default async function ProjectsPage() {
                       </Link>
                     )}
                   </CardTitle>
-                  <CardDescription className="truncate">
-                    {project.gitUrl ?? `${project.importKind.toUpperCase()} import`}
+                  <CardDescription className="flex min-w-0 items-center gap-1.5">
+                    <ProjectSourceIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                    <span className="truncate" title={project.gitUrl ?? source.label}>
+                      {source.label}
+                    </span>
                   </CardDescription>
                   <CardAction>
                     {deleting ? (
@@ -113,7 +135,10 @@ export default async function ProjectsPage() {
                         Deleting…
                       </Badge>
                     ) : (
-                      <StatusBadge status={project.deletionStatus === 'failed' ? 'delete_failed' : project.deploymentStatus} />
+                      <StatusBadge
+                        status={projectStatus}
+                        variant={projectStatus === 'running' ? 'secondary' : undefined}
+                      />
                     )}
                   </CardAction>
                 </CardHeader>
@@ -138,28 +163,18 @@ export default async function ProjectsPage() {
                     Updated {new Date(project.updatedAt).toLocaleString()}
                   </span>
 
-                  <div className="flex items-center gap-1">
-                    {!deleting ? (
-                      <DeleteProjectAction
-                        projectId={project.id}
-                        projectName={project.name}
-                        deletionStatus={project.deletionStatus}
-                        appearance="card"
-                      />
-                    ) : null}
-                    {!deleting ? (
-                      <Link
-                        href={`/projects/${project.id}`}
-                        aria-label={`Open ${project.name}`}
-                        className={cn(
-                          buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
-                          'text-foreground',
-                        )}
-                      >
-                        <ArrowUpRightIcon />
-                      </Link>
-                    ) : null}
-                  </div>
+                  {!deleting ? (
+                    <Link
+                      href={`/projects/${project.id}`}
+                      aria-label={`Open ${project.name}`}
+                      className={cn(
+                        buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+                        'text-foreground',
+                      )}
+                    >
+                      <ArrowUpRightIcon />
+                    </Link>
+                  ) : null}
                 </CardFooter>
               </Card>
               );

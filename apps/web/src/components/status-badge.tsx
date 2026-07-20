@@ -20,11 +20,17 @@ const variantByStatus: Record<string, "default" | "secondary" | "destructive" | 
   stopped: "outline",
 };
 
-export function StatusBadge({ status }: { status: string | null }) {
+export function StatusBadge({
+  status,
+  variant,
+}: {
+  status: string | null;
+  variant?: "default" | "secondary" | "destructive" | "outline";
+}) {
   const value = status ?? "none";
 
   return (
-    <Badge variant={variantByStatus[value] ?? "secondary"}>
+    <Badge variant={variant ?? variantByStatus[value] ?? "secondary"}>
       {value.replaceAll("_", " ")}
     </Badge>
   );
