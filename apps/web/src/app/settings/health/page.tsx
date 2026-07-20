@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { AlertTriangleIcon, CheckCircle2Icon, ShieldCheckIcon } from "lucide-react";
 import type { InstanceHealthStatus } from "@eveland/core/instance-health";
-import { CapacityProgress } from "@/components/capacity-progress";
 import { CapacityTrend } from "@/components/capacity-trend";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -38,9 +37,18 @@ export default async function InstanceHealthPage({
   const report = await getInstanceHealth(historyHours);
   const latest = report.metrics.at(-1) ?? null;
   const componentRisks = report.components.filter((component) => component.status !== "healthy");
-  const diskValues = report.metrics.map((metric) => percentUsed(metric.diskTotalBytes, metric.diskAvailableBytes));
-  const memoryValues = report.metrics.map((metric) => percentUsed(metric.memoryTotalBytes, metric.memoryAvailableBytes));
-  const cpuValues = report.metrics.flatMap((metric) => metric.cpuPercent === null ? [] : [metric.cpuPercent]);
+  const diskPoints = report.metrics.map((metric) => ({
+    observedAt: metric.observedAt,
+    value: percentUsed(metric.diskTotalBytes, metric.diskAvailableBytes),
+  }));
+  const memoryPoints = report.metrics.map((metric) => ({
+    observedAt: metric.observedAt,
+    value: percentUsed(metric.memoryTotalBytes, metric.memoryAvailableBytes),
+  }));
+  const cpuPoints = report.metrics.flatMap((metric) => metric.cpuPercent === null ? [] : [{
+    observedAt: metric.observedAt,
+    value: metric.cpuPercent,
+  }]);
 
   return (
     <div className="flex max-w-5xl flex-col gap-6">
@@ -127,20 +135,15 @@ export default async function InstanceHealthPage({
           <h3 id="capacity-heading" className="text-sm font-semibold">Capacity</h3>
           <p className="mt-1 text-xs text-muted-foreground">Filesystem, memory, and CPU measurements published by the Worker host.</p>
         </div>
-        <div className="grid gap-5 sm:grid-cols-3">
-          <CapacityProgress label="Data filesystem" value={report.capacity.disk.usedPercent ?? 0} displayValue={percentLabel(report.capacity.disk.usedPercent)} />
-          <CapacityProgress label="Host memory" value={report.capacity.memory.usedPercent ?? 0} displayValue={percentLabel(report.capacity.memory.usedPercent)} />
-          <CapacityProgress label="Host CPU" value={report.capacity.cpu.percent ?? 0} displayValue={report.capacity.cpu.percent === null ? "Collecting" : `${report.capacity.cpu.percent}%`} />
-        </div>
-        <div className="grid divide-y border-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          <div className="sm:pr-5">
-            <CapacityTrend label="Disk used" value={percentLabel(report.capacity.disk.usedPercent)} values={diskValues} hours={historyHours} detail={`${formatBytes(report.capacity.disk.availableBytes)} available`} />
+        <div className="grid divide-y border-y lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+          <div className="lg:pr-5">
+            <CapacityTrend label="Disk used" value={percentLabel(report.capacity.disk.usedPercent)} points={diskPoints} hours={historyHours} detail={`${formatBytes(report.capacity.disk.availableBytes)} available`} />
           </div>
-          <div className="sm:px-5">
-            <CapacityTrend label="Memory used" value={percentLabel(report.capacity.memory.usedPercent)} values={memoryValues} hours={historyHours} detail={`${formatBytes(report.capacity.memory.availableBytes)} available`} />
+          <div className="lg:px-5">
+            <CapacityTrend label="Memory used" value={percentLabel(report.capacity.memory.usedPercent)} points={memoryPoints} hours={historyHours} detail={`${formatBytes(report.capacity.memory.availableBytes)} available`} />
           </div>
-          <div className="sm:pl-5">
-            <CapacityTrend label="CPU" value={percentLabel(report.capacity.cpu.percent)} values={cpuValues} hours={historyHours} detail={`Load ${report.capacity.cpu.load1?.toFixed(2) ?? "—"}`} />
+          <div className="lg:pl-5">
+            <CapacityTrend label="CPU" value={percentLabel(report.capacity.cpu.percent)} points={cpuPoints} hours={historyHours} detail={`Load ${report.capacity.cpu.load1?.toFixed(2) ?? "—"}`} />
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
