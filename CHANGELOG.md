@@ -4,6 +4,21 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.10.0](https://github.com/evelandhq/eveland/compare/v0.9.0...v0.10.0) (2026-07-21)
+
+
+### Features
+
+* improve project log browsing ([#125](https://github.com/evelandhq/eveland/issues/125)) ([5d26dc4](https://github.com/evelandhq/eveland/commit/5d26dc4cabfd611514b55b3eba292b1f9d1293c2))
+* show Eve version alerts on project cards ([#123](https://github.com/evelandhq/eveland/issues/123)) ([eb77461](https://github.com/evelandhq/eveland/commit/eb774619fd2a6da64097c79414ff3edbfb583c47))
+* support Eve 0.26 ([019a898](https://github.com/evelandhq/eveland/commit/019a898b599552f18d042584ff8f23c257600841))
+
+
+### Bug Fixes
+
+* redirect authenticated users from login ([23543cc](https://github.com/evelandhq/eveland/commit/23543cc7034c9620484268fb21dbac067662d9ed))
+* show upcoming project schedules ([a6bc304](https://github.com/evelandhq/eveland/commit/a6bc3047616790f8d2ef93d0216a14da035a6d6c))
+
 ## [0.9.0](https://github.com/evelandhq/eveland/compare/v0.8.0...v0.9.0) (2026-07-20)
 
 
