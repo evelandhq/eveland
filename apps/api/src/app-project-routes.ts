@@ -22,6 +22,7 @@ import {
   extractZipUpload,
   invalidateGateway,
   isMultipartRequest,
+  resolveProjectEveVersion,
 } from "./app-support.js";
 
 type CreateGitCredentialInput = {
@@ -73,9 +74,17 @@ export function registerProjectRoutes(input: {
   app.use("/projects/:projectId", rejectProjectMutationsWhileDeleting);
   app.use("/projects/:projectId/*", rejectProjectMutationsWhileDeleting);
 
-  app.get("/projects", async (c) =>
-    c.json({ projects: await store.listProjects() }),
-  );
+  app.get("/projects", async (c) => {
+    const projects = await store.listProjects();
+    return c.json({
+      projects: await Promise.all(
+        projects.map(async (project) => ({
+          ...project,
+          eveVersion: await resolveProjectEveVersion(store, project.id),
+        })),
+      ),
+    });
+  });
 
   app.get("/projects/name-availability", async (c) => {
     const parsed = projectNameSchema.safeParse(c.req.query("name"));

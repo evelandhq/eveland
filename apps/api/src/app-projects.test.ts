@@ -21,6 +21,41 @@ import {
 } from "./app.test-support.js";
 
 describe("api app", () => {
+  test("includes the current Eve version status in project list summaries", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Version Summary Agent",
+      importKind: "zip",
+    });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/version-summary-agent",
+      summary: { eveVersion: "0.25.1" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+
+    const response = await createApp(store).request("/projects");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      projects: [
+        expect.objectContaining({
+          id: project.id,
+          eveVersion: {
+            version: "0.25.1",
+            expected: "0.24.x, 0.25.x, or 0.26.x",
+            supportedRanges: ["0.24.x", "0.25.x", "0.26.x"],
+            supported: true,
+            sourceRevisionId: revision.id,
+          },
+        }),
+      ],
+    });
+  });
+
   test("derives a Git project name, reports availability, and rejects an exact-name conflict", async () => {
     const store = createTestStore();
     const app = createApp(store);

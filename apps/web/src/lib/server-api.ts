@@ -33,7 +33,9 @@ import type { CurrentMember, Invitation, Member } from "./client-api";
 
 const apiBaseUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export const getProjects = () => apiGet<{ projects: Project[] }>("/projects").then((data) => data.projects);
+export type ProjectListItem = Project & { eveVersion: EveVersionInfo };
+
+export const getProjects = () => apiGet<{ projects: ProjectListItem[] }>("/projects").then((data) => data.projects);
 export const getProject = (projectId: string) => apiGet<{ project: Project | null }>(`/projects/${projectId}`).then((data) => data.project);
 export const getProjectJobs = (projectId: string) => apiGet<{ jobs: Job[] }>(`/projects/${projectId}/jobs`).then((data) => data.jobs);
 export const getAgentEndpoints = (projectId: string) =>

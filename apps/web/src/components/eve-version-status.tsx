@@ -1,6 +1,14 @@
-import { CircleCheckIcon, TriangleAlertIcon } from "lucide-react";
+"use client";
+
+import { CircleCheckIcon, InfoIcon, TriangleAlertIcon } from "lucide-react";
 import type { EveVersionInfo } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export type EveVersionStatusKind = "current" | "upgrade" | "unsupported";
@@ -13,6 +21,52 @@ export function getEveVersionStatus(eveVersion: EveVersionInfo): EveVersionStatu
   return latestMinor && declaredMinor === latestMinor ? "current" : "upgrade";
 }
 
+function getEveVersionMessage(eveVersion: EveVersionInfo, status: EveVersionStatusKind): string {
+  const latestRange = eveVersion.supportedRanges.at(-1) ?? "the latest supported version";
+  return status === "current"
+    ? "Latest supported version"
+    : status === "upgrade"
+      ? `A newer supported Eve version is available. Upgrade to Eve ${latestRange} as soon as possible.`
+      : `Unsupported Eve version. Upgrade to Eve ${eveVersion.expected}.`;
+}
+
+export function EveVersionCardStatus({ eveVersion }: { eveVersion: EveVersionInfo }) {
+  const status = getEveVersionStatus(eveVersion);
+  const message = getEveVersionMessage(eveVersion, status);
+
+  return (
+    <div className="flex min-w-0 items-center gap-0.5">
+      <span
+        className={cn(
+          "truncate text-xs font-medium",
+          status === "current" ? "text-foreground" : "text-destructive",
+        )}
+      >
+        {eveVersion.version ?? "Unknown"}
+      </span>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Eve version details: ${message}`}
+              className={cn(
+                "-my-1 text-muted-foreground",
+                status !== "current" && "text-destructive",
+              )}
+            />
+          }
+        >
+          <InfoIcon />
+        </TooltipTrigger>
+        <TooltipContent>{message}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 export function EveVersionStatus({
   className,
   eveVersion,
@@ -23,12 +77,7 @@ export function EveVersionStatus({
   showMessage?: boolean;
 }) {
   const status = getEveVersionStatus(eveVersion);
-  const latestRange = eveVersion.supportedRanges.at(-1) ?? "the latest supported version";
-  const message = status === "current"
-    ? "Latest supported version"
-    : status === "upgrade"
-      ? `A newer supported Eve version is available. Upgrade to Eve ${latestRange} as soon as possible.`
-      : `Unsupported Eve version. Upgrade to Eve ${eveVersion.expected}.`;
+  const message = getEveVersionMessage(eveVersion, status);
 
   return (
     <div className={cn("flex min-w-0 flex-wrap items-center gap-2", className)}>

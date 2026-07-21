@@ -377,6 +377,22 @@ describe("web application shell", () => {
     expect(playground).toContain("Upgrade the project's eve dependency")
   })
 
+  test("shows Eve version upgrade status first in each project card", () => {
+    const projectsPage = source("./projects/page.tsx")
+    const eveVersionStatus = source("../components/eve-version-status.tsx")
+    const serverApi = source("../lib/server-api.ts")
+
+    expect(serverApi).toContain("ProjectListItem")
+    expect(projectsPage).toContain("project.eveVersion")
+    expect(projectsPage.indexOf("Eve version")).toBeLessThan(projectsPage.indexOf("Latest session"))
+    expect(projectsPage).toContain("<EveVersionCardStatus")
+    expect(eveVersionStatus).toContain("InfoIcon")
+    expect(eveVersionStatus).toContain("<Tooltip")
+    expect(eveVersionStatus).toContain("<TooltipTrigger")
+    expect(eveVersionStatus).toContain('status === "current" ? "text-foreground" : "text-destructive"')
+    expect(eveVersionStatus).toContain("A newer supported Eve version is available")
+  })
+
   test("renders session replay as a chat conversation with a raw event toggle", () => {
     const page = source("./projects/[projectId]/sessions/[sessionId]/page.tsx")
     const replay = source("../components/session-replay.tsx")
