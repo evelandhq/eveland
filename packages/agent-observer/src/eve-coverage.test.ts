@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -8,17 +8,19 @@ import { describe, expect, test } from "vitest";
 const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
   { version: "0.24.6", fixtureName: "eve-0.24-hooks", packageName: "eve-0-24" },
-  { version: "0.25.1", fixtureName: "eve-0.25-hooks", packageName: "eve" },
+  { version: "0.25.3", fixtureName: "eve-0.25-hooks", packageName: "eve-0-25" },
+  { version: "0.26.2", fixtureName: "eve-0.25-hooks", packageName: "eve" },
 ] as const;
 
 describe("Eve observer hook compatibility matrix", () => {
-  test("pins the previous Eve minor for the compatibility matrix", async () => {
+  test("pins the two previous Eve minors for the compatibility matrix", async () => {
     const packageJson = JSON.parse(
       await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
     ) as { devDependencies: Record<string, string> };
 
     expect(packageJson.devDependencies["eve-0-24"]).toBe("npm:eve@0.24.6");
-    expect(packageJson.devDependencies.eve).toBe("0.25.1");
+    expect(packageJson.devDependencies["eve-0-25"]).toBe("npm:eve@0.25.3");
+    expect(packageJson.devDependencies.eve).toBe("0.26.2");
   });
 
   test.each(compatibilityMatrix)("runs observer coverage against Eve $version", async ({ packageName, version }) => {
@@ -119,6 +121,12 @@ async function prepareFixture(fixtureName: string, packageName: string): Promise
       return ![".eve", ".workflow-data", "node_modules"].includes(topLevelEntry);
     },
   });
+  const version = compatibilityMatrix.find((entry) => entry.packageName === packageName)?.version;
+  if (version === undefined) throw new Error(`Unknown Eve fixture package ${packageName}.`);
+  await writeFile(
+    path.join(fixtureDir, "package.json"),
+    `${JSON.stringify({ name: "eveland-eve-hooks-fixture", private: true, type: "module", dependencies: { eve: version } }, null, 2)}\n`,
+  );
   await mkdir(path.join(fixtureDir, "node_modules"));
   await symlink(evePackage(packageName), path.join(fixtureDir, "node_modules/eve"), "dir");
   return fixtureDir;

@@ -69,7 +69,7 @@ describe("Agent Auth provider registry", () => {
     });
   });
 
-  test("mirrors Eve 0.25.1 Vercel OIDC client headers", async () => {
+  test("mirrors Eve 0.26.2 Vercel OIDC client headers", async () => {
     const registry = registryWithOidc();
 
     await expect(resolve(registry, "vercel-oidc", { token: "vercel-oidc-token" })).resolves.toEqual({

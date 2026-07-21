@@ -29,7 +29,7 @@ export default async function SchedulesPage({ params }: { params: Promise<{ proj
           <Empty>
             <EmptyHeader>
               <EmptyTitle>No schedules discovered</EmptyTitle>
-              <EmptyDescription>Deploy an Eve 0.24.x or 0.25.x project with definitions under agent/schedules.</EmptyDescription>
+              <EmptyDescription>Deploy an Eve 0.24.x, 0.25.x, or 0.26.x project with definitions under agent/schedules.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (

@@ -18,6 +18,7 @@ import {
 import { getEveVersion, getSourceFile, getSourceFiles } from '@/lib/server-api';
 import { cn } from '@/lib/utils';
 import { getSourceLanguage, highlightSourceCode } from '@/lib/source-highlight';
+import { EveVersionStatus } from '@/components/eve-version-status';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -65,7 +66,7 @@ export default async function SourcePage({
         </CardContent>
         <CardFooter className="flex-col items-start border-t text-xs text-muted-foreground">
           <span>{files.length} indexed {files.length === 1 ? 'file' : 'files'}</span>
-          <span>Eve {eveVersion.version ?? 'Unknown'} · requires {eveVersion.expected}</span>
+          <EveVersionStatus className="items-start" eveVersion={eveVersion} />
         </CardFooter>
       </Card>
 

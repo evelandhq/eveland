@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { access, cp, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +9,8 @@ import { describe, expect, test } from "vitest";
 const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
   { version: "0.24.6", fixtureName: "eve-0.24-schedules", packageName: "eve-0-24" },
-  { version: "0.25.1", fixtureName: "eve-0.25-schedules", packageName: "eve" },
+  { version: "0.25.3", fixtureName: "eve-0.25-schedules", packageName: "eve-0-25" },
+  { version: "0.26.2", fixtureName: "eve-0.25-schedules", packageName: "eve" },
 ] as const;
 
 describe("Eve schedule compatibility matrix", () => {
@@ -101,6 +102,10 @@ async function prepareFixture(entry: (typeof compatibilityMatrix)[number]): Prom
       return ![".eve", ".workflow-data", "node_modules"].includes(topLevelEntry);
     },
   });
+  await writeFile(
+    path.join(fixtureDir, "package.json"),
+    `${JSON.stringify({ name: "eveland-eve-schedules-fixture", private: true, type: "module", dependencies: { eve: entry.version } }, null, 2)}\n`,
+  );
   await mkdir(path.join(fixtureDir, "node_modules"));
   await symlink(evePackage(entry.packageName), path.join(fixtureDir, "node_modules/eve"), "dir");
   return { fixtureDir, sourceFixtureDir };

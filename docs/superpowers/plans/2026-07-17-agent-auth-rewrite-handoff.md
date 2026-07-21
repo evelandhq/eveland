@@ -550,3 +550,12 @@ Eve 0.24.x 与 0.25.x，仓库默认锁定 0.25.1 并以 0.24.6 做上一 minor 
 `eve/channels/auth` 的 Vercel OIDC wire behavior 与 Eveland 使用的 Client credential header
 约定未变，因此 generic Agent Auth 架构和独立 `vercel-oidc` provider 不需要协议分叉；相关
 依赖、描述、测试与公开文档已改为 0.25.1。未来 minor 仍须重新核对 auth source，不能只改文案。
+
+## 17. 2026-07-21 Eve 0.26 compatibility update
+
+本文件前文的 0.24.6/0.25.1 描述继续作为历史基线。Eveland 当前采用最近三个已验证 minor
+的滑动窗口：Eve 0.24.x、0.25.x 与 0.26.x，精确验证 patch 为 0.24.6、0.25.3 与 0.26.2。对
+`eve@0.25.3..eve@0.26.2` 的源码核对确认 `eve/channels/auth` 未变，Vercel OIDC 仍发送同一
+token 到 `Authorization: Bearer` 与 `x-vercel-trusted-oidc-idp-token`；Agent Auth 不需要协议
+分叉。Eve Client 的 `maxReconnectAttempts` 移除只影响 durable stream 重连配置，Eveland 未使用
+该选项。相关依赖、测试描述与部署文档现在以 0.26.2 为当前基线。
