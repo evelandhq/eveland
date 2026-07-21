@@ -21,6 +21,24 @@ import {
 } from "./app.test-support.js";
 
 describe("api app", () => {
+  test("includes the next scheduled run in project list summaries", async () => {
+    const store = createTestStore();
+    const { project, schedule } = await createScheduleRunFixture(store, false);
+    const persistedSchedule = await store.getProjectSchedule(schedule.id);
+
+    const response = await createApp(store).request("/projects");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      projects: [
+        expect.objectContaining({
+          id: project.id,
+          nextScheduleAt: persistedSchedule?.nextRunAt,
+        }),
+      ],
+    });
+  });
+
   test("includes the current Eve version status in project list summaries", async () => {
     const store = createTestStore();
     const project = await store.createProject({

@@ -183,6 +183,13 @@
       "when": 1784531248809,
       "tag": "0025_yielding_runaways",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784643286285,
+      "tag": "0026_unusual_scorpion",
+      "breakpoints": true
     }
   ]
 }
