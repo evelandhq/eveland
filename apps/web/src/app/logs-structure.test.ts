@@ -7,18 +7,20 @@ function source(relativePath: string): string {
 }
 
 describe("project logs surface", () => {
-  test("matches the deployment terminal while keeping mixed project logs easy to scan", () => {
+  test("renders an interactive, searchable project log viewer", () => {
     const logs = source("./projects/[projectId]/logs/page.tsx");
+    const viewer = source("../components/project-log-viewer.tsx");
 
-    expect(logs).toContain("Project log stream");
-    expect(logs).toContain("bg-foreground text-background");
-    expect(logs).toContain("TerminalIcon");
-    expect(logs).toContain("LOG_FILTERS");
-    expect(logs).toContain("searchParams");
-    expect(logs).toContain("aria-label=\"Filter project logs\"");
-    expect(logs).toContain("<time");
-    expect(logs).toContain("toLocaleTimeString");
-    expect(logs).toContain("whitespace-pre-wrap break-words");
-    expect(logs).toContain("<Empty");
+    expect(logs).toContain("ProjectLogViewer");
+    expect(logs).not.toContain("searchParams");
+    expect(viewer).toContain('"use client"');
+    expect(viewer).toContain("Search logs");
+    expect(viewer).toContain("aria-label=\"Filter project logs\"");
+    expect(viewer).toContain("selectProjectLogs");
+    expect(viewer).toContain("ToggleGroup");
+    expect(viewer).toContain("ScrollArea");
+    expect(viewer).toContain("CollapsibleTrigger");
+    expect(viewer).toContain("Newest first");
+    expect(viewer).toContain("Show full log");
   });
 });

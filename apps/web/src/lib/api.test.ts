@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { enqueueBuildDeploy, syncSource } from "./client-api";
-import { getProjectImportNotice, type Job } from "./api";
+import { getProjectImportNotice, selectProjectLogs, type Job, type LogLine } from "./api";
 
 describe("web api helpers", () => {
   afterEach(() => {
@@ -45,6 +45,43 @@ describe("web api helpers", () => {
       title: "Repository fetch failed",
       detail: "Repository fetch timed out after 120000ms.",
     });
+  });
+
+  test("selects project logs by type and search text with newest entries first", () => {
+    const logs: LogLine[] = [
+      {
+        id: "log_old",
+        projectId: "proj_123",
+        deploymentId: null,
+        type: "build",
+        line: "Installing dependencies",
+        createdAt: "2026-07-21T10:00:00.000Z",
+      },
+      {
+        id: "log_new",
+        projectId: "proj_123",
+        deploymentId: "dep_123",
+        type: "runtime",
+        line: "Runtime READY on port 41000",
+        createdAt: "2026-07-21T10:02:00.000Z",
+      },
+      {
+        id: "log_middle",
+        projectId: "proj_123",
+        deploymentId: "dep_123",
+        type: "runtime",
+        line: "Runtime stopped",
+        createdAt: "2026-07-21T10:01:00.000Z",
+      },
+    ];
+
+    expect(selectProjectLogs(logs, { type: "runtime", query: "ready", order: "desc" })).toEqual([logs[1]]);
+    expect(selectProjectLogs(logs, { type: "all", query: "", order: "asc" }).map((log) => log.id)).toEqual([
+      "log_old",
+      "log_middle",
+      "log_new",
+    ]);
+    expect(logs.map((log) => log.id)).toEqual(["log_old", "log_new", "log_middle"]);
   });
 
   test("maps a queued import job to an active notice", () => {

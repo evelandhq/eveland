@@ -288,6 +288,25 @@ export type LogLine = {
   createdAt: string;
 };
 
+export type ProjectLogFilter = "all" | LogLine["type"];
+export type ProjectLogOrder = "asc" | "desc";
+
+export function selectProjectLogs(
+  logs: LogLine[],
+  options: { type: ProjectLogFilter; query: string; order: ProjectLogOrder },
+): LogLine[] {
+  const query = options.query.trim().toLocaleLowerCase();
+  const selected = logs.filter((log) => {
+    if (options.type !== "all" && log.type !== options.type) return false;
+    return query.length === 0 || log.line.toLocaleLowerCase().includes(query);
+  });
+
+  return selected.sort((left, right) => {
+    const delta = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+    return options.order === "asc" ? delta : -delta;
+  });
+}
+
 export type SourceRevision = {
   id: string;
   projectId: string;
