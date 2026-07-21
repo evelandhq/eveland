@@ -1261,7 +1261,7 @@ route 或公开 Agent auth/streaming 边界。
 首次创建在命名之前增加独立的 Source Preflight，不以 Draft Project 模拟临时生命周期：
 
 - `source_preflights` 是用户隔离的短期队列；Git 使用 shallow clone，Zip 使用安全解压后的
-  快照，worker 在没有 Project 的情况下扫描真实文件树、Eve layout 与当前受支持的双 minor 依赖；
+  快照，worker 在没有 Project 的情况下扫描真实文件树、Eve layout 与当前受支持的版本窗口；
 - Preflight 使用 heartbeat、stale recovery 与 attempt fencing；公开 API 永不返回 sourcePath、
   commit、worker lease 或加密 Git credential；
 - Project 与 initial import job 通过数据库事务精确占用 slug 并消费 completed Preflight；冲突
@@ -1313,3 +1313,31 @@ types 没有发生需要 adapter 分叉的变化。兼容矩阵同时运行 0.24
 schedule discovery/dev dispatch、scheduler adapter build/start 与 sandbox public type checks；Linux
 basic systemd smoke 使用 0.24.6，其余完整 observer/Gateway/schedule/sandbox 链路使用 0.25.1。
 后续 Eve minor 仍必须重复源码核对与真实 fixture 验证，不能因为 npm 发布而自动扩宽窗口。
+
+---
+
+## 27. 2026-07-21 follow-up：Eve 0.26 compatibility window
+
+为避免 Eveland 升级直接中断仍在线的 0.24 Agent，本节将前一节的双 minor 策略调整为最近三个
+已完整验证 minor 的滑动窗口：当前支持 Eve 0.24.x、0.25.x 与 0.26.x，精确矩阵 patch 为
+0.24.6、0.25.3 与 0.26.2。默认开发、Web Client、Agent Auth 与完整 Linux fixture 使用
+0.26.2，basic systemd smoke 使用窗口最旧端的 0.24.6。三个 minor 共享 import、build、restart、
+cold activation、Playground、Gateway 与 scheduler adapter 的 fail-closed 门禁。
+
+升级判断覆盖 0.25.2、0.25.3、0.26.0、0.26.1、0.26.2 的 release notes，并直接核对
+`eve@0.25.3..eve@0.26.2` 源码：
+
+- 唯一影响 Eveland 直接使用 API 的 minor 变化是 Eve Client 移除 `maxReconnectAttempts`，改为
+  从最后 absolute cursor 内部重连 durable stream；Eveland 从未设置该选项，因此无需兼容分支，
+  Playground 直接继承新重连行为；
+- canonical session/continuation/cancel/stream route、`eve/channels/auth` 的 Vercel OIDC
+  header、Hook、Schedule、Channel 与 `SandboxBackend` 公共定义未变；
+- dynamic tool auth、sandbox bridge 并发、semantic errors、静态 Skill 无 sandbox 读取及 `eve info`
+  的 subagent/schedule 输出属于兼容增强，不改变 Observer/Collector、scheduler adapter 或 runtime
+  privilege 边界。
+
+真实发布包矩阵覆盖 0.24.6/0.25.3/0.26.2 observer hook 与 packaged skill discovery、schedule
+discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox public type
+compatibility。UI 只把最新支持线 0.26.x 显示为绿色；0.24.x/0.25.x 保持可运行，但以红色提醒
+尽快升级；窗口外版本为红色并继续阻断。后续 0.27 仍需重复 release/source/fixture 验证，进入后
+窗口移动为 0.25.x/0.26.x/0.27.x。

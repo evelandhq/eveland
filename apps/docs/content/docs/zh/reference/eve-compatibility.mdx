@@ -3,7 +3,11 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近两个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.24.x` 与 `0.25.x`，验证版本为 `0.24.6` 与 `0.25.1`。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.24.x`、`0.25.x` 与 `0.26.x`，验证版本为 `0.24.6`、`0.25.3` 与 `0.26.2`。
+
+UI 仅将最新支持线 `0.26.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
+
+Eve 0.26 将 Durable Stream 重连移入 Client，并移除了 `maxReconnectAttempts` 选项。Eveland 原本没有配置该选项；Playground 现在直接获得 Eve 0.26 的基于 Cursor 的自动重连。经验证窗口内的 canonical session、continuation、cancel、stream 路由、Vercel OIDC Header、Observer Hook Event、Schedule/Channel 定义和 `SandboxBackend` 契约保持兼容。
 
 仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；进入时会有意识地移除较旧 Minor。
 

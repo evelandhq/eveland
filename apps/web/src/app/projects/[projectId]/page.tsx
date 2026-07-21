@@ -3,6 +3,7 @@ import { BadgeCheckIcon } from "lucide-react";
 import { getAgentEndpoints, getDeploymentOverview, getEveVersion, getLogs, getProject, getProjectJobs, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
+import { EveVersionStatus } from "@/components/eve-version-status";
 import { ProjectDangerZone } from "@/components/project-danger-zone";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +71,9 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
             <div key={label} className="bg-card p-4 last:col-span-2">
               <dt className="text-xs text-muted-foreground">{label}</dt>
               <dd className="mt-2 break-all font-medium">
-                {label.endsWith("endpoint") && value !== "None" ? (
+                {label === "Eve Agent" ? (
+                  <EveVersionStatus eveVersion={eveVersion} />
+                ) : label.endsWith("endpoint") && value !== "None" ? (
                   <a href={value} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
                     {value}
                   </a>

@@ -11,26 +11,28 @@ import { injectSchedulerAdapter } from "./adapter.js";
 const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
   { version: "0.24.6", packageName: "eve-0-24" },
-  { version: "0.25.1", packageName: "eve" },
+  { version: "0.25.3", packageName: "eve-0-25" },
+  { version: "0.26.2", packageName: "eve" },
 ] as const;
 const eveBin = eveBinFor("eve");
 
 describe("injectSchedulerAdapter", () => {
-  test("pins both exact Eve patches used by the compatibility matrix", async () => {
+  test("pins all exact Eve patches used by the compatibility matrix", async () => {
     const packageJson = JSON.parse(
       await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
     ) as { devDependencies: Record<string, string> };
 
     expect(packageJson.devDependencies["eve-0-24"]).toBe("npm:eve@0.24.6");
-    expect(packageJson.devDependencies.eve).toBe("0.25.1");
+    expect(packageJson.devDependencies["eve-0-25"]).toBe("npm:eve@0.25.3");
+    expect(packageJson.devDependencies.eve).toBe("0.26.2");
   });
 
-  test("fails closed outside the latest two verified Eve minors", async () => {
-    for (const eveVersion of ["0.23.9", "0.26.0", "~0.26.0", ">=0.24.0", "*", "latest"]) {
+  test("fails closed outside the latest three verified Eve minors", async () => {
+    for (const eveVersion of ["0.23.9", "0.27.0", "~0.27.0", ">=0.24.0", "*", "latest"]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
-        new RegExp(`supports Eve 0\\.24\\.x or 0\\.25\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+        new RegExp(`supports Eve 0\\.24\\.x, 0\\.25\\.x, or 0\\.26\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
       );
     }
   });
@@ -38,7 +40,8 @@ describe("injectSchedulerAdapter", () => {
   test("accepts every dependency form that stays inside either verified Eve minor", async () => {
     for (const eveVersion of [
       "0.24.0", "0.24.6", "~0.24.2", "^0.24.0", "0.24", "0.24.x", "0.24.*",
-      "0.25.0", "0.25.1", "~0.25.0", "^0.25.0", "0.25", "0.25.x", "0.25.*",
+      "0.25.0", "0.25.3", "~0.25.2", "^0.25.0", "0.25", "0.25.x", "0.25.*",
+      "0.26.0", "0.26.2", "~0.26.1", "^0.26.0", "0.26", "0.26.x", "0.26.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 

@@ -61,7 +61,6 @@ import {
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import {
@@ -85,6 +84,7 @@ import {
   type PlaygroundActivityPart,
   type PlaygroundDisplayItem,
 } from "@/lib/playground-activity";
+import { EveVersionStatus, getEveVersionStatus } from "@/components/eve-version-status";
 
 type PlaygroundPanelProps = {
   projectId: string;
@@ -118,6 +118,9 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   const versionError = eveVersion.supported
     ? null
     : `Detected Eve ${eveVersion.version ?? "Unknown"}; Eveland requires ${eveVersion.expected}. Upgrade the project's eve dependency before deploying.`;
+  const versionUpgradeWarning = getEveVersionStatus(eveVersion) === "upgrade"
+    ? `A newer supported Eve version is available. Upgrade to Eve ${eveVersion.supportedRanges.at(-1)} as soon as possible.`
+    : null;
   const routeAuthRedirect = versionError ? null : interactionFromClientError(agent.error);
   const error = routeAuthRedirect ? null : versionError ?? composerError ?? agent.error?.message ?? null;
 
@@ -144,10 +147,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
     <div className="flex h-[calc(100svh-8.5rem)] min-h-[36rem] flex-col overflow-hidden">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-1 pt-3 text-xs text-muted-foreground sm:px-6">
         <span>Eve Agent</span>
-        <Badge variant={eveVersion.supported ? "secondary" : "destructive"}>
-          {eveVersion.version ?? "Unknown"}
-        </Badge>
-        <span>Requires {eveVersion.expected}</span>
+        <EveVersionStatus eveVersion={eveVersion} showMessage={false} />
         <div className="ml-auto">
           <AgentConnectionSettings projectId={projectId} />
         </div>
@@ -191,6 +191,11 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           <Alert className="mb-2" variant="destructive">
             <AlertTitle>{versionError ? "Eve upgrade required" : "Playground request failed"}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : versionUpgradeWarning ? (
+          <Alert className="mb-2" variant="destructive">
+            <AlertTitle>Eve upgrade recommended</AlertTitle>
+            <AlertDescription>{versionUpgradeWarning}</AlertDescription>
           </Alert>
         ) : null}
         {!error && agent.status === "submitted" ? (

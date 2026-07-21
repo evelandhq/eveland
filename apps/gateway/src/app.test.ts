@@ -114,8 +114,8 @@ describe("Gateway", () => {
     });
     repo.getDeploymentEveVersion = vi.fn(async () => ({
       version: "0.22.6",
-      expected: "0.24.x or 0.25.x" as const,
-      supportedRanges: ["0.24.x", "0.25.x"] as const,
+      expected: "0.24.x, 0.25.x, or 0.26.x" as const,
+      supportedRanges: ["0.24.x", "0.25.x", "0.26.x"] as const,
       supported: false,
       sourceRevisionId: "src_old",
     }));
@@ -144,11 +144,11 @@ describe("Gateway", () => {
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toEqual({
         error: "Unsupported Eve version",
-        detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.24.x or 0.25.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+        detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.24.x, 0.25.x, or 0.26.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
         eveVersion: {
           version: "0.22.6",
-          expected: "0.24.x or 0.25.x",
-          supportedRanges: ["0.24.x", "0.25.x"],
+          expected: "0.24.x, 0.25.x, or 0.26.x",
+          supportedRanges: ["0.24.x", "0.25.x", "0.26.x"],
           supported: false,
           sourceRevisionId: "src_old",
         },

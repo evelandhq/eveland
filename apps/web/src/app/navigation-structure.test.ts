@@ -349,19 +349,30 @@ describe("web application shell", () => {
   })
 
   test("shows the deployed Eve version across project, source, and Playground surfaces", () => {
+    const eveVersionStatusUrl = new URL("../components/eve-version-status.tsx", import.meta.url)
     const projectOverview = source("./projects/[projectId]/page.tsx")
     const sourcePage = source("./projects/[projectId]/source/page.tsx")
     const playgroundPage = source("./projects/[projectId]/playground/page.tsx")
     const playground = source("../components/playground-panel.tsx")
     const serverApi = source("../lib/server-api.ts")
 
+    expect(existsSync(fileURLToPath(eveVersionStatusUrl))).toBe(true)
+    if (!existsSync(fileURLToPath(eveVersionStatusUrl))) return
+    const eveVersionStatus = source("../components/eve-version-status.tsx")
+
+    expect(eveVersionStatus).toContain('status === "current"')
+    expect(eveVersionStatus).toContain("border-emerald-500/30")
+    expect(eveVersionStatus).toContain('variant="destructive"')
+    expect(eveVersionStatus).toContain("Upgrade to Eve")
     expect(serverApi).toContain("export const getEveVersion")
     expect(projectOverview).toContain("getEveVersion(projectId)")
-    expect(projectOverview).toContain('["Eve Agent", eveVersion.version')
+    expect(projectOverview).toContain("<EveVersionStatus")
     expect(sourcePage).toContain("getEveVersion(projectId)")
-    expect(sourcePage).toContain("requires {eveVersion.expected}")
+    expect(sourcePage).toContain("<EveVersionStatus")
     expect(playgroundPage).toContain("getEveVersion(projectId)")
     expect(playgroundPage).toContain("eveVersion={eveVersion}")
+    expect(playground).toContain("<EveVersionStatus")
+    expect(playground).toContain("A newer supported Eve version is available")
     expect(playground).toContain("Eve upgrade required")
     expect(playground).toContain("Upgrade the project's eve dependency")
   })
