@@ -3,7 +3,17 @@ import {
   createId,
   slugifyProjectName,
 } from "@eveland/core/ids";
-import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import {
   gitCredentialRowToPublic,
   gitCredentialRowToRecord,
@@ -63,8 +73,22 @@ export function createPostgresProjectStore({
   return {
     async listProjects() {
       const rows = await db
-        .select()
+        .select({
+          ...getTableColumns(projects),
+          nextScheduleAt:
+            sql<Date | null>`min(${projectSchedules.nextRunAt})`.mapWith(
+              projectSchedules.nextRunAt,
+            ),
+        })
         .from(projects)
+        .leftJoin(
+          projectSchedules,
+          and(
+            eq(projectSchedules.projectId, projects.id),
+            eq(projectSchedules.enabled, true),
+          ),
+        )
+        .groupBy(projects.id)
         .orderBy(desc(projects.updatedAt));
       return rows.map(projectRowToProject);
     },

@@ -132,7 +132,6 @@ export const projects = pgTable(
     releaseId: text("release_id"),
     deploymentId: text("deployment_id"),
     latestSessionStatus: text("latest_session_status"),
-    nextScheduleAt: timestamp("next_schedule_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

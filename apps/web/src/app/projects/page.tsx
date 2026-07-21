@@ -8,6 +8,7 @@ import {
   PlusIcon,
 } from 'lucide-react';
 import { ProjectDeletionPoller } from '@/components/project-deletion-poller';
+import { CompactDateTime } from '@/components/compact-date-time';
 import { EveVersionCardStatus } from '@/components/eve-version-status';
 import { StatusBadge } from '@/components/status-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -32,6 +33,7 @@ import {
 } from '@/components/ui/empty';
 import { getCollectorHealth, getProjects } from '@/lib/server-api';
 import { describeProjectSource } from '@/lib/project-source';
+import { formatCompactDateTime } from '@/lib/date-time';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
@@ -49,6 +51,7 @@ const projectSourceIconByKind = {
 
 export default async function ProjectsPage() {
   const [projects, collector] = await Promise.all([getProjects(), getCollectorHealth()]);
+  const renderedAt = new Date();
 
   return (
     <div className="min-h-[calc(100svh-3rem)] bg-background">
@@ -162,8 +165,13 @@ export default async function ProjectsPage() {
                     </div>
                     <div>
                       <dt className="text-xs text-muted-foreground">Next schedule</dt>
-                      <dd className="mt-2 truncate text-xs font-medium">
-                        {project.nextScheduleAt ?? 'None'}
+                      <dd className="mt-2 whitespace-nowrap text-xs font-medium">
+                        {project.nextScheduleAt ? (
+                          <CompactDateTime
+                            value={project.nextScheduleAt}
+                            fallback={formatCompactDateTime(project.nextScheduleAt, renderedAt)}
+                          />
+                        ) : 'None'}
                       </dd>
                     </div>
                   </dl>

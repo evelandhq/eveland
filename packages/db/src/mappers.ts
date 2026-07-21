@@ -112,7 +112,7 @@ export type ProjectRow = {
   releaseId: string | null;
   deploymentId: string | null;
   latestSessionStatus: string | null;
-  nextScheduleAt: Date | null;
+  nextScheduleAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -132,7 +132,7 @@ export function projectRowToProject(row: ProjectRow): Project {
     releaseId: row.releaseId,
     deploymentId: row.deploymentId,
     latestSessionStatus: row.latestSessionStatus as SessionStatus | null,
-    nextScheduleAt: timestampToIso(row.nextScheduleAt),
+    nextScheduleAt: timestampToIso(row.nextScheduleAt ?? null),
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };

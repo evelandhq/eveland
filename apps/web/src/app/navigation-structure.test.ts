@@ -168,6 +168,7 @@ describe("web application shell", () => {
     expect(projects).toContain("SiGitlab")
     expect(projects).toContain("SiGit")
     expect(projects).toContain("FolderArchiveIcon")
+    expect(projects).toContain("<CompactDateTime")
     expect(statusBadge).toContain("<Badge")
     expect(statusBadge).toContain("variant ??")
   })
