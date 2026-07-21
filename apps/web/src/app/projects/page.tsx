@@ -8,6 +8,7 @@ import {
   PlusIcon,
 } from 'lucide-react';
 import { ProjectDeletionPoller } from '@/components/project-deletion-poller';
+import { EveVersionCardStatus } from '@/components/eve-version-status';
 import { StatusBadge } from '@/components/status-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -146,7 +147,13 @@ export default async function ProjectsPage() {
                   </CardAction>
                 </CardHeader>
                 <CardContent>
-                  <dl className="grid grid-cols-2 gap-4">
+                  <dl className="grid grid-cols-3 gap-3">
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">Eve version</dt>
+                      <dd className="mt-2">
+                        <EveVersionCardStatus eveVersion={project.eveVersion} />
+                      </dd>
+                    </div>
                     <div>
                       <dt className="text-xs text-muted-foreground">Latest session</dt>
                       <dd className="mt-2">
