@@ -68,7 +68,7 @@ describe("injectObserverHooks", () => {
     expect(generatedObserverModule).not.toContain("@eveland/");
   });
 
-  test("collects Eve 0.26.2 turn.cancelled events while still filtering deltas", async () => {
+  test("collects Eve 0.27.0 turn.cancelled events while still filtering deltas", async () => {
     const releaseDir = await createRelease();
     const outboxDir = await mkdtemp(path.join(packageRoot, ".observer-outbox-test-"));
     temporaryDirectories.push(outboxDir);

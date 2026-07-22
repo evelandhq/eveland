@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { httpBasic, routeAuth } from "eve/channels/auth";
 import { describe, expect, test } from "vitest";
 import {
   createAgentAuthRegistry,
@@ -7,6 +10,14 @@ import {
 } from "./registry.js";
 
 describe("Agent Auth provider registry", () => {
+  test("pins the Eve release whose client authentication behavior is mirrored", async () => {
+    const packageJson = JSON.parse(
+      await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
+    ) as { dependencies: Record<string, string> };
+
+    expect(packageJson.dependencies.eve).toBe("0.27.0");
+  });
+
   test("keeps provider keys, descriptors, and credential scopes consistent", () => {
     const registry = registryWithOidc();
 
@@ -69,7 +80,7 @@ describe("Agent Auth provider registry", () => {
     });
   });
 
-  test("mirrors Eve 0.26.2 Vercel OIDC client headers", async () => {
+  test("mirrors Eve 0.27.0 Vercel OIDC client headers", async () => {
     const registry = registryWithOidc();
 
     await expect(resolve(registry, "vercel-oidc", { token: "vercel-oidc-token" })).resolves.toEqual({
@@ -80,6 +91,32 @@ describe("Agent Auth provider registry", () => {
         ["x-vercel-trusted-oidc-idp-token", "vercel-oidc-token"],
       ],
     });
+  });
+
+  test("interoperates with Eve 0.27 HTTP Basic normalization and challenge metadata", async () => {
+    const registry = registryWithOidc();
+    const credential = await resolve(registry, "basic", {
+      username: "ali\u0301ce",
+      password: "se\u0301cret",
+    });
+    const authorized = await routeAuth(
+      new Request("https://agent.example/eve/v1/session", {
+        headers: Object.fromEntries(credential.headers),
+      }),
+      httpBasic({ username: "alíce", password: "sécret" }),
+    );
+
+    expect(authorized).not.toBeInstanceOf(Response);
+
+    const challenge = await routeAuth(
+      new Request("https://agent.example/eve/v1/session"),
+      httpBasic({ username: "alice", password: "secret" }),
+    );
+    expect(challenge).toBeInstanceOf(Response);
+    expect((challenge as Response).status).toBe(401);
+    expect((challenge as Response).headers.get("www-authenticate")).toBe(
+      'Basic realm="eve", charset="UTF-8"',
+    );
   });
 
   test("rejects dangerous custom headers and redacts every configured secret", () => {

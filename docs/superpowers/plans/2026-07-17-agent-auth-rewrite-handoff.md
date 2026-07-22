@@ -559,3 +559,17 @@ Eve 0.24.x 与 0.25.x，仓库默认锁定 0.25.1 并以 0.24.6 做上一 minor 
 token 到 `Authorization: Bearer` 与 `x-vercel-trusted-oidc-idp-token`；Agent Auth 不需要协议
 分叉。Eve Client 的 `maxReconnectAttempts` 移除只影响 durable stream 重连配置，Eveland 未使用
 该选项。相关依赖、测试描述与部署文档现在以 0.26.2 为当前基线。
+
+## 18. 2026-07-22 Eve 0.27 compatibility update
+
+本文件前文的 0.24.6/0.25.1/0.26.2 描述继续作为历史基线。Eveland 当前兼容窗口移动到
+Eve 0.25.x、0.26.x 与 0.27.x，精确验证 patch 为 0.25.3、0.26.2 与 0.27.0。对
+`eve@0.26.2..eve@0.27.0` 的 release notes、源码和发布包核对确认 Eve Client 的
+`ClientAuth.vercelOidc` wire behavior 未变，仍将同一 token 发送到 `Authorization: Bearer` 与
+`x-vercel-trusted-oidc-idp-token`，因此 Eveland 的独立 `vercel-oidc` provider 不需要协议分叉。
+
+Eve 0.27 的认证变化发生在 Agent 入站 Route Auth：内置策略现在声明实际可接受的
+`WWW-Authenticate` challenge，HTTP Basic 默认声明 `realm="eve"` 与 `charset="UTF-8"`，并在
+Unicode NFC 规范化后比较用户名和密码。Eveland 继续要求用户显式选择 Connection method，不根据
+401 challenge 猜测 credential acquisition；现有 Basic 客户端按 UTF-8 发送 credential，与该变化
+兼容。默认依赖、测试描述与部署文档现在以 0.27.0 为当前基线。

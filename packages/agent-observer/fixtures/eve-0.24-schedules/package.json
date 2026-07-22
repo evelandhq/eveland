@@ -1,8 +1,0 @@
-{
-  "name": "eve-0.24-schedules-fixture",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "eve": "0.24.6"
-  }
-}
