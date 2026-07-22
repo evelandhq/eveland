@@ -217,6 +217,9 @@ describe("Agent Auth control-plane routes", () => {
     const authorization = new URL(start.headers.get("location")!);
     const state = authorization.searchParams.get("state");
     expect(state).toBeTruthy();
+    expect(authorization.searchParams.get("redirect_uri")).toBe(
+      "https://eveland.example/auth/agent/oidc/callback",
+    );
 
     const callback = await app.request("/agent-auth/callback/oidc", {
       method: "POST",
@@ -515,7 +518,10 @@ function mockOidcProtocol(overrides: Partial<OidcProtocol> = {}): OidcProtocol {
   return {
     async preflight() {},
     async buildAuthorizationUrl(_config, _secret, transaction) {
-      return new URL(`https://idp.example/authorize?state=${transaction.state}`);
+      const authorizationUrl = new URL("https://idp.example/authorize");
+      authorizationUrl.searchParams.set("state", transaction.state);
+      authorizationUrl.searchParams.set("redirect_uri", transaction.redirectUri);
+      return authorizationUrl;
     },
     async exchangeAuthorizationCode() {
       return {

@@ -51,7 +51,14 @@ MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持�
 
 ## 4. 页面结构
 
-### 登录 (/login)
+### 认证页面 (/auth/*)
+
+登录、CLI Device Authorization、邀请接受和 Agent OIDC callback 分别位于
+`/auth/login`、`/auth/device`、`/auth/accept-invite` 与 `/auth/agent/oidc/callback`。
+整个 `/auth/*` 路由树使用独立的全屏 Layout，不渲染 Workspace Sidebar；旧的 `/login`、
+`/device`、`/accept-invite` 与 `/agent-auth/oidc/callback` 仅作为保留 query 的兼容跳转入口。
+
+#### 登录 (/auth/login)
 
 控制面使用邮箱和密码登录。首次启动时平台幂等创建默认 Admin：
 
@@ -60,9 +67,9 @@ MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持�
 * 用户、密码账户与 Session 使用 Better Auth；团队成员与邀请使用 Organization plugin
 * 不内置生产默认密码；`BETTER_AUTH_SECRET` 必须独立配置且至少 32 个字符
 * 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
-* 已有有效成员 Session 时访问 `/login`，直接跳转到 `/projects`
+* 已有有效成员 Session 时访问 `/auth/login`，直接跳转到 `/projects`
 * CLI 登录使用 RFC 8628 OAuth Device Authorization；只接受固定 public client
-  `eveland-cli`，十分钟内由已登录的 Team member 在 Web `/device` 核对 user code 并批准或拒绝
+  `eveland-cli`，十分钟内由已登录的 Team member 在 Web `/auth/device` 核对 user code 并批准或拒绝
 * Device code 一次性消费；批准后换取与浏览器 Session 同期限的 Better Auth Bearer Session。
   API 对 Bearer 请求继续逐次检查 Team membership，移除成员或撤销其 Session 必须同时令 CLI 失效
 

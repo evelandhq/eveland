@@ -23,6 +23,7 @@ describe("web application shell", () => {
 
     expect(layout).toContain("<AppShell")
     expect(appShell).toContain('pathname === "/new"')
+    expect(appShell).toContain('pathname.startsWith("/auth")')
     expect(appShell).toContain("<SidebarProvider")
     expect(appShell).toContain("<AppSidebar")
     expect(appShell).toContain("<SidebarInset")

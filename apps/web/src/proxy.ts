@@ -1,6 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const publicPaths = new Set(["/login", "/accept-invite"]);
+const publicPaths = new Set([
+  "/auth/login",
+  "/auth/device",
+  "/auth/accept-invite",
+  "/login",
+  "/device",
+  "/accept-invite",
+]);
 
 export function proxy(request: NextRequest) {
   const isPublic = publicPaths.has(request.nextUrl.pathname);
@@ -9,8 +16,8 @@ export function proxy(request: NextRequest) {
   const hasSession =
     request.cookies.has("eveland_session") || request.cookies.has("__Secure-eveland_session");
   if (!isPublic && !hasSession) {
-    const login = new URL("/login", request.url);
-    login.searchParams.set("next", request.nextUrl.pathname);
+    const login = new URL("/auth/login", request.url);
+    login.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(login);
   }
   return NextResponse.next();

@@ -210,7 +210,7 @@ The CLI talks to the same public API origin as Web. Keep `/api/auth/device/*`,
 `/source-preflights`, and authenticated `/projects/*` routes reachable through
 the control-plane ingress; they do not belong on the public Agent wildcard
 route. `WEB_ORIGIN` must be the browser-reachable Web origin because Device
-Authorization returns `${WEB_ORIGIN}/device` for code verification. Apply the
+Authorization returns `${WEB_ORIGIN}/auth/device` for code verification. Apply the
 database migrations before enabling the CLI so `auth_device_codes` and
 `deployment_operations` exist.
 
@@ -239,7 +239,7 @@ Changing a normalized Connection method/config increments its security revision;
 Connection password, token, and custom Header values must never be copied into Compose files, systemd env files,
 runtime diagnostics, logs, Source Revisions, Releases, observer events, or browser payloads.
 
-For generic OIDC, register `${WEB_ORIGIN}/agent-auth/oidc/callback` as an exact redirect URI. The callback page is
+For generic OIDC, register `${WEB_ORIGIN}/auth/agent/oidc/callback` as an exact redirect URI. The callback page is
 owned by Web and completes through the authenticated API; API encrypts one-time ten-minute transactions and
 principal-scoped access/refresh tokens with `APP_SECRET_KEY`. A confidential client's Connection stores only a
 Project Secret reference, so create that Secret before saving a `client_secret_basic` or `client_secret_post`

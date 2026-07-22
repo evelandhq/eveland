@@ -7,10 +7,13 @@ function source(relativePath: string): string {
 }
 
 describe("team management web surfaces", () => {
-  test("provides login, invitation acceptance, settings, and auth proxy surfaces", () => {
+  test("groups browser authentication surfaces under one focused auth layout", () => {
     for (const path of [
-      "./login/page.tsx",
-      "./accept-invite/page.tsx",
+      "./auth/layout.tsx",
+      "./auth/login/page.tsx",
+      "./auth/device/page.tsx",
+      "./auth/accept-invite/page.tsx",
+      "./auth/agent/oidc/callback/page.tsx",
       "./settings/layout.tsx",
       "./settings/profile/page.tsx",
       "./settings/git-credentials/page.tsx",
@@ -19,6 +22,22 @@ describe("team management web surfaces", () => {
     ]) {
       expect(existsSync(fileURLToPath(new URL(path, import.meta.url)))).toBe(true);
     }
+
+    const authLayout = source("./auth/layout.tsx");
+    const appShell = source("../components/app-shell.tsx");
+    const proxy = source("../proxy.ts");
+    const serverApi = source("../lib/server-api.ts");
+
+    expect(authLayout).toContain("min-h-svh");
+    expect(appShell).toContain('pathname.startsWith("/auth")');
+    expect(proxy).toContain('new URL("/auth/login"');
+    expect(serverApi).toContain('redirect("/auth/login")');
+    expect(source("./login/page.tsx")).toContain('"/auth/login"');
+    expect(source("./device/page.tsx")).toContain('"/auth/device"');
+    expect(source("./accept-invite/page.tsx")).toContain('"/auth/accept-invite"');
+    expect(source("./agent-auth/oidc/callback/page.tsx")).toContain(
+      "`/auth/agent/oidc/callback${suffix}`",
+    );
   });
 
   test("offers GitLab PAT import and personal host credential management", () => {

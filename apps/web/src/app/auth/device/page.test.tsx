@@ -43,7 +43,7 @@ describe("device authorization page", () => {
     });
 
     expect(auth.redirect).toHaveBeenCalledWith(
-      "/login?next=%2Fdevice%3Fuser_code%3DABCD-1234",
+      "/auth/login?next=%2Fauth%2Fdevice%3Fuser_code%3DABCD-1234",
     );
   });
 

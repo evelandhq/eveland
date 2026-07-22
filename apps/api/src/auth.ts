@@ -80,7 +80,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       deviceAuthorization({
         expiresIn: "10m",
         interval: "5s",
-        verificationUri: `${options.webOrigin}/device`,
+        verificationUri: `${options.webOrigin}/auth/device`,
         validateClient: (clientId) => clientId === "eveland-cli",
       }),
       bearer(),

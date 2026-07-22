@@ -131,9 +131,9 @@ describe("control-plane auth routes", () => {
     expect(codes).toMatchObject({
       device_code: expect.any(String),
       user_code: expect.any(String),
-      verification_uri: "http://localhost:3000/device",
+      verification_uri: "http://localhost:3000/auth/device",
       verification_uri_complete: expect.stringContaining(
-        "http://localhost:3000/device?user_code=",
+        "http://localhost:3000/auth/device?user_code=",
       ),
       expires_in: 600,
       interval: 5,
@@ -315,7 +315,7 @@ describe("control-plane auth routes", () => {
     expect(issued.response.status).toBe(201);
     expect(issued.body).toMatchObject({
       invitation: { role: "member", status: "pending" },
-      inviteUrl: expect.stringMatching(/^http:\/\/localhost:3000\/accept-invite\?token=invitation_/),
+      inviteUrl: expect.stringMatching(/^http:\/\/localhost:3000\/auth\/accept-invite\?token=invitation_/),
     });
     expect(JSON.stringify(issued.body)).not.toContain("password");
 

@@ -103,7 +103,7 @@ async function apiGetOptional<T>(path: string): Promise<T | null> {
     cache: "no-store",
     headers: { cookie: cookieStore.toString() },
   });
-  if (response.status === 401) redirect("/login");
+  if (response.status === 401) redirect("/auth/login");
   if (response.status === 404) return null;
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { error?: string };
@@ -127,7 +127,7 @@ async function apiGet<T>(
   });
   if (response.status === 401) {
     if (options.unauthorized === "return-null") return null;
-    redirect("/login");
+    redirect("/auth/login");
   }
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as { error?: string };

@@ -128,7 +128,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const oidcRegistration = createOidcAgentAuthProvider({
     store,
     appSecretKey,
-    callbackUrl: options.oidcCallbackUrl ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
+    callbackUrl: options.oidcCallbackUrl ?? `${webOrigin.replace(/\/$/, "")}/auth/agent/oidc/callback`,
     resolveClientSecret: async (config, connection) => {
       if (!config.clientSecretRef) return undefined;
       return resolveAgentAuthSecret(connection.target.projectId, config.clientSecretRef);
@@ -346,7 +346,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         return c.json(
           {
             invitation: publicInvitation(issued.invitation),
-            inviteUrl: `${webOrigin}/accept-invite?token=${encodeURIComponent(issued.token)}`,
+            inviteUrl: `${webOrigin}/auth/accept-invite?token=${encodeURIComponent(issued.token)}`,
           },
           201,
         );
@@ -360,7 +360,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         const issued = await options.auth!.reissueInvitation(c.req.raw, c.req.param("invitationId"));
         return c.json({
           invitation: publicInvitation(issued.invitation),
-          inviteUrl: `${webOrigin}/accept-invite?token=${encodeURIComponent(issued.token)}`,
+          inviteUrl: `${webOrigin}/auth/accept-invite?token=${encodeURIComponent(issued.token)}`,
         });
       } catch (error) {
         return authErrorResponse(c, error);

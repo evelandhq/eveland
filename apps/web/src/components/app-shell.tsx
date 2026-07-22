@@ -7,7 +7,13 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const focusedRoute = pathname === "/new" || pathname === "/login" || pathname.startsWith("/accept-invite");
+  const focusedRoute =
+    pathname === "/new" ||
+    pathname.startsWith("/auth") ||
+    pathname === "/login" ||
+    pathname === "/device" ||
+    pathname.startsWith("/accept-invite") ||
+    pathname.startsWith("/agent-auth");
 
   if (focusedRoute) return children;
 

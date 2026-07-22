@@ -7,10 +7,10 @@ function source(relativePath: string): string {
 }
 
 const titledPages = [
-  ["./accept-invite/page.tsx", "Accept invitation"],
-  ["./agent-auth/oidc/callback/layout.tsx", "Agent authorization"],
+  ["./auth/accept-invite/page.tsx", "Accept invitation"],
+  ["./auth/agent/oidc/callback/layout.tsx", "Agent authorization"],
   ["./deployments/page.tsx", "Deployments"],
-  ["./login/page.tsx", "Sign in"],
+  ["./auth/login/page.tsx", "Sign in"],
   ["./new/page.tsx", "New project"],
   ["./projects/page.tsx", "Projects"],
   ["./usage/page.tsx", "Usage"],

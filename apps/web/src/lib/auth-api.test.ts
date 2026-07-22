@@ -146,7 +146,7 @@ describe("browser auth API", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        new Response(JSON.stringify({ invitation: { id: "invite_1" }, inviteUrl: "http://localhost:3000/accept-invite?token=token" }), {
+        new Response(JSON.stringify({ invitation: { id: "invite_1" }, inviteUrl: "http://localhost:3000/auth/accept-invite?token=token" }), {
           status: 201,
           headers: { "content-type": "application/json" },
         }),
@@ -154,7 +154,7 @@ describe("browser auth API", () => {
     );
 
     await expect(inviteMember("member@example.com")).resolves.toMatchObject({
-      inviteUrl: "http://localhost:3000/accept-invite?token=token",
+      inviteUrl: "http://localhost:3000/auth/accept-invite?token=token",
     });
   });
 

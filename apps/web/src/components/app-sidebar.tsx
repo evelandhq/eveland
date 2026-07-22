@@ -43,7 +43,7 @@ export function AppSidebar() {
   const [member, setMember] = useState<CurrentMember | null>(null)
 
   useEffect(() => {
-    if (pathname === "/login" || pathname.startsWith("/accept-invite")) return
+    if (pathname.startsWith("/auth")) return
     let cancelled = false
     void getCurrentMember().then((current) => {
       if (!cancelled) setMember(current)
@@ -59,7 +59,7 @@ export function AppSidebar() {
     }
   }, [pathname])
 
-  if (pathname === "/login" || pathname.startsWith("/accept-invite")) return null
+  if (pathname.startsWith("/auth")) return null
 
   const memberLabel = member?.name ?? member?.email ?? "Account"
   const memberInitials = memberLabel.slice(0, 2).toUpperCase()
@@ -187,7 +187,7 @@ export function AppSidebar() {
                   <DropdownMenuItem
                     onClick={async () => {
                       await signOut()
-                      window.location.assign("/login")
+                      window.location.assign("/auth/login")
                     }}
                   >
                     <LogOutIcon />
