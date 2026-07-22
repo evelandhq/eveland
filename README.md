@@ -92,8 +92,7 @@ the linked project ID and API URL, and `eveland link` adds `.eveland/` to
 Browser authentication surfaces live under `/auth/*` and use a focused layout
 without the Workspace Sidebar. Device verification uses `/auth/device`; login,
 invitation acceptance, and the Agent OIDC callback use `/auth/login`,
-`/auth/accept-invite`, and `/auth/agent/oidc/callback` respectively. Legacy
-paths remain query-preserving redirects.
+`/auth/accept-invite`, and `/auth/agent/oidc/callback` respectively.
 
 Snapshot filtering uses `.evelandignore` when present, otherwise reuses
 `.vercelignore`, then falls back to `.gitignore`. Platform exclusions such as

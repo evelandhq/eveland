@@ -55,8 +55,7 @@ MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持�
 
 登录、CLI Device Authorization、邀请接受和 Agent OIDC callback 分别位于
 `/auth/login`、`/auth/device`、`/auth/accept-invite` 与 `/auth/agent/oidc/callback`。
-整个 `/auth/*` 路由树使用独立的全屏 Layout，不渲染 Workspace Sidebar；旧的 `/login`、
-`/device`、`/accept-invite` 与 `/agent-auth/oidc/callback` 仅作为保留 query 的兼容跳转入口。
+整个 `/auth/*` 路由树使用独立的全屏 Layout，不渲染 Workspace Sidebar。
 
 #### 登录 (/auth/login)
 

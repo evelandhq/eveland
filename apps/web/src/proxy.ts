@@ -4,9 +4,6 @@ const publicPaths = new Set([
   "/auth/login",
   "/auth/device",
   "/auth/accept-invite",
-  "/login",
-  "/device",
-  "/accept-invite",
 ]);
 
 export function proxy(request: NextRequest) {

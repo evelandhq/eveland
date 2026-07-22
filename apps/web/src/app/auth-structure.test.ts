@@ -32,12 +32,6 @@ describe("team management web surfaces", () => {
     expect(appShell).toContain('pathname.startsWith("/auth")');
     expect(proxy).toContain('new URL("/auth/login"');
     expect(serverApi).toContain('redirect("/auth/login")');
-    expect(source("./login/page.tsx")).toContain('"/auth/login"');
-    expect(source("./device/page.tsx")).toContain('"/auth/device"');
-    expect(source("./accept-invite/page.tsx")).toContain('"/auth/accept-invite"');
-    expect(source("./agent-auth/oidc/callback/page.tsx")).toContain(
-      "`/auth/agent/oidc/callback${suffix}`",
-    );
   });
 
   test("offers GitLab PAT import and personal host credential management", () => {

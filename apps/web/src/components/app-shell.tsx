@@ -9,11 +9,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const focusedRoute =
     pathname === "/new" ||
-    pathname.startsWith("/auth") ||
-    pathname === "/login" ||
-    pathname === "/device" ||
-    pathname.startsWith("/accept-invite") ||
-    pathname.startsWith("/agent-auth");
+    pathname.startsWith("/auth");
 
   if (focusedRoute) return children;
 
