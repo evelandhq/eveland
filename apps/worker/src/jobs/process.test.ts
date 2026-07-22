@@ -167,6 +167,199 @@ describe("processNextJob", () => {
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "running" });
   });
 
+  test("starts a prebuilt Release from persisted SourceRevision files when its source directory is gone", async () => {
+    const store = createTestStore();
+    const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-persisted-activation-source-"));
+    await rm(missingSourcePath, { recursive: true, force: true });
+    const project = await store.createProject({ name: "Persisted Wake", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: missingSourcePath,
+      summary: { eveVersion: "^0.26.0" },
+      envVars: [],
+      files: [
+        {
+          path: "package.json",
+          content: JSON.stringify({
+            dependencies: { eve: "^0.26.0" },
+            scripts: { start: "eve start" },
+          }),
+        },
+        { path: "package-lock.json", content: "{}" },
+      ],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:persisted-wake",
+      containerName: "fixture-persisted-wake",
+      internalPort: 3000,
+      hostPort: 41997,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_persisted_wake",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: deployment.id,
+      runtimeInstanceId: claim.runtimeInstance.id,
+    });
+    const ensureProcess = vi.fn(async () => ({ internalPort: 3000, log: "started" }));
+
+    await expect(processNextJob(store, "wake-worker", {
+      runtime: {
+        name: "docker",
+        async buildRelease() { throw new Error("not used"); },
+        async startProcess() { return { internalPort: 3000, log: "started" }; },
+        ensureProcess,
+        async stopProcess() {},
+      },
+      waitForDeployment: async () => {},
+    })).resolves.toBe(true);
+
+    expect(ensureProcess).toHaveBeenCalledTimes(1);
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "ready",
+      endpointPort: deployment.hostPort,
+    });
+  });
+
+  test("records activation preparation failures on the RuntimeInstance", async () => {
+    const store = createTestStore();
+    const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-missing-activation-source-"));
+    await rm(missingSourcePath, { recursive: true, force: true });
+    const project = await store.createProject({ name: "Failed Wake", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: missingSourcePath,
+      summary: { eveVersion: "^0.26.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:failed-wake",
+      containerName: "fixture-failed-wake",
+      internalPort: 3000,
+      hostPort: 41993,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_failed_wake",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: deployment.id,
+      runtimeInstanceId: claim.runtimeInstance.id,
+    });
+
+    await expect(processNextJob(store, "wake-worker", {
+      runtime: {
+        name: "docker",
+        async buildRelease() { throw new Error("not used"); },
+        async startProcess() { throw new Error("must not start"); },
+        async stopProcess() {},
+      },
+    })).resolves.toBe(true);
+
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "failed",
+      lastError: expect.stringContaining(`Source directory for revision ${revision.id} is missing`),
+    });
+  });
+
+  test("does not fail the Project when an old Deployment activation fails", async () => {
+    const store = createTestStore();
+    const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-missing-old-source-"));
+    await rm(missingSourcePath, { recursive: true, force: true });
+    const currentSourcePath = await createFixtureEveProject("0.26.2");
+    const project = await store.createProject({ name: "Old Wake", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const oldRevision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: missingSourcePath,
+      summary: { eveVersion: "^0.26.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const oldDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: oldRevision.id,
+      imageTag: "fixture:old-wake",
+      containerName: "fixture-old-wake",
+      internalPort: 3000,
+      hostPort: 41995,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, oldDeployment.id, "agent.localhost");
+    await store.updateDeploymentStatus(oldDeployment.id, "stopped");
+    const currentRevision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: currentSourcePath,
+      summary: { eveVersion: "0.26.2" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const currentDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: currentRevision.id,
+      imageTag: "fixture:current-wake",
+      containerName: "fixture-current-wake",
+      internalPort: 3000,
+      hostPort: 41996,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, currentDeployment.id, "agent.localhost");
+    await store.promoteDeployment(project.id, currentDeployment.id);
+    const claim = await store.acquireActivationLease({
+      deploymentId: oldDeployment.id,
+      kind: "public_request",
+      ownerId: "req_old_wake",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: oldDeployment.id,
+      runtimeInstanceId: claim.runtimeInstance.id,
+    });
+
+    await expect(processNextJob(store, "wake-worker", {
+      runtime: {
+        name: "docker",
+        async buildRelease() { throw new Error("not used"); },
+        async startProcess() { throw new Error("must not start"); },
+        async stopProcess() {},
+      },
+    })).resolves.toBe(true);
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "deployed",
+      deploymentStatus: "running",
+      deploymentId: currentDeployment.id,
+    });
+    await rm(currentSourcePath, { recursive: true, force: true });
+  });
+
   test("dispatches a ScheduleRun once to its pinned Deployment and preserves returned Sessions", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
@@ -326,6 +519,26 @@ describe("processNextJob", () => {
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     }
+  });
+
+  test("does not reuse a retained Deployment host port that is currently idle", async () => {
+    const server = net.createServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (typeof address === "string" || !address) {
+      throw new Error("Expected TCP address.");
+    }
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+
+    const port = await allocateAvailableHostPort(
+      address.port,
+      address.port + 10,
+      new Set([address.port]),
+    );
+    expect(port).toBeGreaterThan(address.port);
+    expect(port).toBeLessThanOrEqual(address.port + 10);
   });
 
 });

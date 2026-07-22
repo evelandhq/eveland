@@ -336,18 +336,24 @@ export function readGitCredentialPayload(
 
 export async function resolveRuntimeCommandContext(
   sourcePath: string,
+  persistedFiles: Array<{ path: string; content: string }> = [],
 ): Promise<RuntimeCommandContext> {
-  const packageJson = await readPackageJson(sourcePath);
+  const packageJson =
+    (await readPackageJson(sourcePath)) ??
+    parsePackageJson(
+      persistedFiles.find((file) => file.path === "package.json")?.content,
+    );
   const eveVersion = declaredEveVersion(packageJson);
   if (!isSupportedEveDependency(eveVersion)) {
     throw new Error(unsupportedEveVersionMessage(eveVersion));
   }
-  const hasPnpmLockfile = await fileExists(
-    path.join(sourcePath, "pnpm-lock.yaml"),
-  );
-  const hasNpmLockfile = await fileExists(
-    path.join(sourcePath, "package-lock.json"),
-  );
+  const persistedPaths = new Set(persistedFiles.map((file) => file.path));
+  const hasPnpmLockfile =
+    persistedPaths.has("pnpm-lock.yaml") ||
+    (await fileExists(path.join(sourcePath, "pnpm-lock.yaml")));
+  const hasNpmLockfile =
+    persistedPaths.has("package-lock.json") ||
+    (await fileExists(path.join(sourcePath, "package-lock.json")));
   return {
     isEveProject: true,
     ...(hasPnpmLockfile
@@ -387,6 +393,15 @@ export async function readPackageJson(
 ): Promise<PackageJson | null> {
   try {
     const raw = await readFile(path.join(sourcePath, "package.json"), "utf8");
+    return parsePackageJson(raw);
+  } catch {
+    return null;
+  }
+}
+
+function parsePackageJson(raw: string | undefined): PackageJson | null {
+  if (!raw) return null;
+  try {
     const parsed = JSON.parse(raw) as PackageJson;
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
@@ -397,8 +412,10 @@ export async function readPackageJson(
 export async function allocateAvailableHostPort(
   startPort = Number(process.env.EVELAND_DEPLOYMENT_PORT ?? 41000),
   endPort = startPort + 100,
+  reservedPorts: ReadonlySet<number> = new Set(),
 ): Promise<number> {
   for (let port = startPort; port <= endPort; port += 1) {
+    if (reservedPorts.has(port)) continue;
     if (await isTcpPortAvailable("127.0.0.1", port)) {
       return port;
     }

@@ -57,6 +57,18 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
     await clearTemporaryGitCredential(store, job);
     const failed = await store.failJob(job.id, message, job.attempts);
     if (!failed) return true;
+    if (job.type === "ensure_deployment_running") {
+      const runtimeInstanceId =
+        typeof job.payload.runtimeInstanceId === "string"
+          ? job.payload.runtimeInstanceId
+          : null;
+      if (runtimeInstanceId) {
+        await store.updateRuntimeInstance(runtimeInstanceId, {
+          status: "failed",
+          error: message,
+        });
+      }
+    }
     // A failed import never touches the running container, so it must not report a
     // live deployment as failed; only deploy/restart jobs change deployment status.
     if (job.type === "delete_project") {
@@ -69,6 +81,15 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
           ? { status: "failed", deploymentStatus: production.status }
           : { status: "failed", deploymentStatus: "failed" },
       );
+    } else if (job.type === "ensure_deployment_running") {
+      const targetDeploymentId =
+        typeof job.payload.deploymentId === "string"
+          ? job.payload.deploymentId
+          : null;
+      const production = await store.getCurrentDeployment(job.projectId);
+      if (production?.id === targetDeploymentId) {
+        await store.updateProjectState(job.projectId, { status: "failed" });
+      }
     } else if (job.type !== "archive_deployment") {
       await store.updateProjectState(
         job.projectId,
