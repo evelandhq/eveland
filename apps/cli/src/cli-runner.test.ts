@@ -59,8 +59,8 @@ describe("eveland command", () => {
         root,
         "--project",
         "proj_cli",
-        "--api-url",
-        "https://api.example.com",
+        "--url",
+        "https://eveland.example.com",
       ],
       {
         cwd: root,
@@ -76,6 +76,59 @@ describe("eveland command", () => {
     expect(stdout.join("")).toBe("https://agent.example.com\n");
     expect(stderr.join("")).toContain("Deploying to production");
     expect(operationInput).toMatchObject({ target: "production" });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://eveland.example.com/api/eveland/source-preflights",
+    );
+  });
+
+  test("logs in through the instance's same-origin API mount", async () => {
+    const stdout: string[] = [];
+    const requests: string[] = [];
+    const credentials = {
+      get: vi.fn(async () => null),
+      set: vi.fn(async () => {}),
+      delete: vi.fn(async () => {}),
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const value = String(url);
+      requests.push(value);
+      if (value.endsWith("/api/auth/device/code")) {
+        return json({
+          device_code: "device-code",
+          user_code: "ABCD1234",
+          verification_uri: "https://eveland.example.com/auth/device",
+          verification_uri_complete: "https://eveland.example.com/auth/device?user_code=ABCD1234",
+          expires_in: 600,
+          interval: 5,
+        });
+      }
+      if (value.endsWith("/api/auth/device/token")) {
+        return json({ access_token: "session-token", token_type: "Bearer", expires_in: 2592000 });
+      }
+      throw new Error(`Unexpected request ${value}`);
+    });
+
+    await expect(runCli([
+      "login",
+      "--url",
+      "https://eveland.example.com/",
+      "--no-open",
+    ], {
+      fetch: fetchMock,
+      credentials,
+      stdout: (value) => stdout.push(value),
+      stderr: () => {},
+    })).resolves.toBe(0);
+
+    expect(requests).toEqual([
+      "https://eveland.example.com/api/eveland/api/auth/device/code",
+      "https://eveland.example.com/api/eveland/api/auth/device/token",
+    ]);
+    expect(credentials.set).toHaveBeenCalledWith(
+      "https://eveland.example.com",
+      expect.objectContaining({ token: "session-token" }),
+    );
+    expect(stdout.join("")).toBe("Logged in to https://eveland.example.com\n");
   });
 
   test("requires --preview to avoid production promotion", async () => {
@@ -97,7 +150,7 @@ describe("eveland command", () => {
 
     await runCli(["deploy", root, "--preview", "--project", "proj_cli"], {
       cwd: root,
-      env: { EVELAND_TOKEN: "ci-token", EVELAND_API_URL: "https://api.example.com" },
+      env: { EVELAND_TOKEN: "ci-token", EVELAND_URL: "https://eveland.example.com" },
       fetch: fetchMock,
       sleep: async () => {},
       stdout: () => {},

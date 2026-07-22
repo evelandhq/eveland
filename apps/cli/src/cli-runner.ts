@@ -13,7 +13,12 @@ import {
   type CredentialStore,
 } from "./credentials.js";
 import { getGitMetadata } from "./git-metadata.js";
-import { linkProject, resolveProjectConfig } from "./project-config.js";
+import {
+  apiUrlForInstance,
+  linkProject,
+  normalizeInstanceUrl,
+  resolveProjectConfig,
+} from "./project-config.js";
 import { collectProjectFiles } from "./snapshot.js";
 
 const version = "0.10.0";
@@ -59,7 +64,8 @@ export async function runCli(
 
     switch (parsed.command) {
       case "login": {
-        const apiUrl = resolveApiUrl(parsed, env);
+        const instanceUrl = resolveInstanceUrl(parsed, env);
+        const apiUrl = apiUrlForInstance(instanceUrl);
         const device = await beginDeviceLogin(apiUrl, fetchImpl);
         stderr(`Open ${device.verification_uri_complete}\n`);
         stderr(`Confirm device code: ${formatUserCode(device.user_code)}\n`);
@@ -75,35 +81,35 @@ export async function runCli(
           sleep: dependencies.sleep,
         });
         const now = dependencies.now?.() ?? Date.now();
-        await credentials.set(apiUrl, {
+        await credentials.set(instanceUrl, {
           token: token.access_token,
           expiresAt: new Date(now + token.expires_in * 1_000).toISOString(),
         });
-        stdout(`Logged in to ${apiUrl}\n`);
+        stdout(`Logged in to ${instanceUrl}\n`);
         return 0;
       }
       case "logout": {
-        const apiUrl = resolveApiUrl(parsed, env);
-        await credentials.delete(apiUrl);
-        stdout(`Logged out of ${apiUrl}\n`);
+        const instanceUrl = resolveInstanceUrl(parsed, env);
+        await credentials.delete(instanceUrl);
+        stdout(`Logged out of ${instanceUrl}\n`);
         return 0;
       }
       case "link": {
         const projectId = optionString(parsed, "project") ?? env.EVELAND_PROJECT_ID;
         if (!projectId) throw new Error("`eveland link` requires --project <project-id>.");
-        const apiUrl = resolveApiUrl(parsed, env);
-        await linkProject(cwd, { projectId, apiUrl });
-        stdout(`Linked ${projectId} (${apiUrl})\n`);
+        const instanceUrl = resolveInstanceUrl(parsed, env);
+        await linkProject(cwd, { projectId, instanceUrl });
+        stdout(`Linked ${projectId} (${instanceUrl})\n`);
         return 0;
       }
       case "deploy": {
         const root = path.resolve(cwd, parsed.positionals[0] ?? ".");
         const config = await resolveProjectConfig(root, {
           projectId: optionString(parsed, "project"),
-          apiUrl: optionString(parsed, "api-url"),
+          instanceUrl: optionString(parsed, "url"),
           env,
         });
-        const token = await resolveToken(config.apiUrl, {
+        const token = await resolveToken(config.instanceUrl, {
           explicitToken: optionString(parsed, "token"),
           env,
           store: credentials,
@@ -118,7 +124,7 @@ export async function runCli(
         const archive = createZipArchive(snapshot.files);
         let previousStatus = "";
         const result = await deployProject({
-          apiUrl: config.apiUrl,
+          apiUrl: apiUrlForInstance(config.instanceUrl),
           projectId: config.projectId,
           token,
           archive,
@@ -155,17 +161,17 @@ export async function runCli(
         const root = path.resolve(cwd, parsed.positionals[1] ?? ".");
         const config = await resolveProjectConfig(root, {
           projectId: optionString(parsed, "project"),
-          apiUrl: optionString(parsed, "api-url"),
+          instanceUrl: optionString(parsed, "url"),
           env,
         });
-        const token = await resolveToken(config.apiUrl, {
+        const token = await resolveToken(config.instanceUrl, {
           explicitToken: optionString(parsed, "token"),
           env,
           store: credentials,
         });
         stderr(`Promoting ${deployment} to production\n`);
         const result = await promoteProjectDeployment({
-          apiUrl: config.apiUrl,
+          apiUrl: apiUrlForInstance(config.instanceUrl),
           projectId: config.projectId,
           deployment,
           token,
@@ -196,7 +202,7 @@ function parseArguments(argv: readonly string[]): ParsedArguments {
     return { command: "version", positionals, options };
   }
   const command = first ?? "help";
-  const valueOptions = new Set(["project", "api-url", "token"]);
+  const valueOptions = new Set(["project", "url", "token"]);
   for (let index = 1; index < argv.length; index += 1) {
     const argument = argv[index]!;
     if (!argument.startsWith("--")) {
@@ -223,9 +229,9 @@ function optionString(parsed: ParsedArguments, name: string): string | undefined
   return typeof value === "string" ? value : undefined;
 }
 
-function resolveApiUrl(parsed: ParsedArguments, env: NodeJS.ProcessEnv): string {
-  const value = optionString(parsed, "api-url") ?? env.EVELAND_API_URL ?? "http://localhost:4000";
-  return new URL(value).toString().replace(/\/$/, "");
+function resolveInstanceUrl(parsed: ParsedArguments, env: NodeJS.ProcessEnv): string {
+  const value = optionString(parsed, "url") ?? env.EVELAND_URL ?? "http://localhost:3000";
+  return normalizeInstanceUrl(value);
 }
 
 function formatUserCode(value: string): string {
@@ -246,5 +252,5 @@ function statusLabel(status: string): string {
 }
 
 function helpText(): string {
-  return `Eveland CLI ${version}\n\nUsage:\n  eveland login [--api-url URL]\n  eveland logout [--api-url URL]\n  eveland link --project PROJECT_ID [--api-url URL]\n  eveland deploy [path] [--preview] [--project PROJECT_ID] [--json]\n  eveland promote <deployment-id-or-preview-url> [path] [--project PROJECT_ID] [--json]\n\nDeployments target production by default. Use --preview for an immutable preview only.\n`;
+  return `Eveland CLI ${version}\n\nUsage:\n  eveland login [--url INSTANCE_URL]\n  eveland logout [--url INSTANCE_URL]\n  eveland link --project PROJECT_ID [--url INSTANCE_URL]\n  eveland deploy [path] [--preview] [--project PROJECT_ID] [--url INSTANCE_URL] [--json]\n  eveland promote <deployment-id-or-preview-url> [path] [--project PROJECT_ID] [--url INSTANCE_URL] [--json]\n\nDeployments target production by default. Use --preview for an immutable preview only.\n`;
 }

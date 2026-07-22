@@ -341,8 +341,10 @@ Deployment 后，直接 promote 这次 Operation 创建的确切 Deployment 到 
 `eveland deploy --preview` 才不改变 stable route。`eveland promote` 必须接收完整 `dep_...` ID
 或可唯一解析 deployment key 的 preview URL，不提供含糊的隐式 latest。Promote 不重新 build。
 
-Project 解析优先级为 `--project`、`EVELAND_PROJECT_ID`、`.eveland/project.json`；API origin
-同理优先使用 `--api-url`、`EVELAND_API_URL`、link metadata。link 文件不得保存 token，且
+Project 解析优先级为 `--project`、`EVELAND_PROJECT_ID`、`.eveland/project.json`；instance URL
+同理优先使用 `--url`、`EVELAND_URL`、link metadata，默认本地 instance 为 `http://localhost:3000`。
+CLI 固定经 instance 同源的 `/api/eveland` mount 访问内部控制面，用户不提供也不需要知道 API
+内部地址。link 文件不得保存 token，且
 `.eveland/` 加入 `.gitignore`。快照 ignore 只选用最高优先级的一个文件：`.evelandignore`、
 `.vercelignore`、`.gitignore`。`.git`、`.eveland`、`node_modules`、`.env*`（保留
 `.env.example`）、credential 文件和逃逸项目根目录的 symlink 属于不可 negate 的平台排除。

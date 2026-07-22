@@ -9,14 +9,14 @@ export type StoredCredential = {
 };
 
 export interface CredentialStore {
-  get(apiUrl: string): Promise<StoredCredential | null>;
-  set(apiUrl: string, credential: StoredCredential): Promise<void>;
-  delete(apiUrl: string): Promise<void>;
+  get(instanceUrl: string): Promise<StoredCredential | null>;
+  set(instanceUrl: string, credential: StoredCredential): Promise<void>;
+  delete(instanceUrl: string): Promise<void>;
 }
 
 type AuthFile = {
   version: 1;
-  sessions: Record<string, StoredCredential & { apiUrl: string }>;
+  sessions: Record<string, StoredCredential & { instanceUrl: string }>;
 };
 
 export class FileCredentialStore implements CredentialStore {
@@ -26,10 +26,10 @@ export class FileCredentialStore implements CredentialStore {
     this.filePath = path.join(configDir, "auth.json");
   }
 
-  async get(apiUrl: string): Promise<StoredCredential | null> {
-    const normalized = normalizeApiUrl(apiUrl);
+  async get(instanceUrl: string): Promise<StoredCredential | null> {
+    const normalized = normalizeInstanceUrl(instanceUrl);
     const session = (await this.read()).sessions[credentialKey(normalized)];
-    if (!session || session.apiUrl !== normalized) return null;
+    if (!session || session.instanceUrl !== normalized) return null;
     if (Date.parse(session.expiresAt) <= Date.now()) {
       await this.delete(normalized);
       return null;
@@ -37,15 +37,15 @@ export class FileCredentialStore implements CredentialStore {
     return { token: session.token, expiresAt: session.expiresAt };
   }
 
-  async set(apiUrl: string, credential: StoredCredential): Promise<void> {
-    const normalized = normalizeApiUrl(apiUrl);
+  async set(instanceUrl: string, credential: StoredCredential): Promise<void> {
+    const normalized = normalizeInstanceUrl(instanceUrl);
     const data = await this.read();
-    data.sessions[credentialKey(normalized)] = { ...credential, apiUrl: normalized };
+    data.sessions[credentialKey(normalized)] = { ...credential, instanceUrl: normalized };
     await this.write(data);
   }
 
-  async delete(apiUrl: string): Promise<void> {
-    const normalized = normalizeApiUrl(apiUrl);
+  async delete(instanceUrl: string): Promise<void> {
+    const normalized = normalizeInstanceUrl(instanceUrl);
     const data = await this.read();
     delete data.sessions[credentialKey(normalized)];
     await this.write(data);
@@ -89,7 +89,7 @@ export class FileCredentialStore implements CredentialStore {
 }
 
 export async function resolveToken(
-  apiUrl: string,
+  instanceUrl: string,
   options: {
     explicitToken?: string;
     env?: NodeJS.ProcessEnv;
@@ -99,9 +99,9 @@ export async function resolveToken(
   const env = options.env ?? process.env;
   const token = options.explicitToken?.trim() || env.EVELAND_TOKEN?.trim();
   if (token) return token;
-  const credential = await (options.store ?? new FileCredentialStore()).get(apiUrl);
+  const credential = await (options.store ?? new FileCredentialStore()).get(instanceUrl);
   if (credential) return credential.token;
-  throw new Error(`Not logged in to ${normalizeApiUrl(apiUrl)}. Run \`eveland login --api-url ${normalizeApiUrl(apiUrl)}\`.`);
+  throw new Error(`Not logged in to ${normalizeInstanceUrl(instanceUrl)}. Run \`eveland login --url ${normalizeInstanceUrl(instanceUrl)}\`.`);
 }
 
 function defaultConfigDir(): string {
@@ -110,10 +110,10 @@ function defaultConfigDir(): string {
     : path.join(os.homedir(), ".config", "eveland");
 }
 
-function credentialKey(apiUrl: string): string {
-  return createHash("sha256").update(apiUrl).digest("base64url");
+function credentialKey(instanceUrl: string): string {
+  return createHash("sha256").update(instanceUrl).digest("base64url");
 }
 
-function normalizeApiUrl(value: string): string {
+function normalizeInstanceUrl(value: string): string {
   return new URL(value).toString().replace(/\/$/, "");
 }

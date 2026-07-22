@@ -72,8 +72,8 @@ checkout with `pnpm --filter @eveland/cli build`; the package's published bin is
 `eveland` (during development, use `node apps/cli/dist/cli.js`).
 
 ```bash
-eveland login --api-url https://api.eveland.example
-eveland link --project proj_xxxxxxxxxx --api-url https://api.eveland.example
+eveland login --url https://eveland.example
+eveland link --project proj_xxxxxxxxxx --url https://eveland.example
 
 eveland deploy             # production is the default
 eveland deploy --preview   # immutable preview only
@@ -85,8 +85,11 @@ Login uses OAuth Device Authorization: the CLI prints and opens the Web-owned
 verification page, the signed-in team member approves the matching code, and
 the CLI exchanges it for a 30-day Better Auth Bearer session. Sessions are kept
 outside the project in an owner-only `auth.json`; `--token` and `EVELAND_TOKEN`
-take precedence for non-interactive use. `.eveland/project.json` contains only
-the linked project ID and API URL, and `eveland link` adds `.eveland/` to
+take precedence for non-interactive use. The CLI needs only the browser-visible
+instance URL and reaches the internal control plane through its same-origin
+`/api/eveland` mount; users never configure an internal API address.
+`.eveland/project.json` contains only the linked project ID and instance URL,
+and `eveland link` adds `.eveland/` to
 `.gitignore`.
 
 Browser authentication surfaces live under `/auth/*` and use a focused layout

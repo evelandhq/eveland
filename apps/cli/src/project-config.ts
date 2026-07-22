@@ -3,7 +3,7 @@ import path from "node:path";
 
 export type LinkedProject = {
   projectId: string;
-  apiUrl: string;
+  instanceUrl: string;
 };
 
 export type ResolvedProjectConfig = LinkedProject & {
@@ -14,7 +14,7 @@ export async function resolveProjectConfig(
   root: string,
   options: {
     projectId?: string;
-    apiUrl?: string;
+    instanceUrl?: string;
     env?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<ResolvedProjectConfig> {
@@ -29,13 +29,13 @@ export async function resolveProjectConfig(
       "No Eveland project is linked. Run `eveland link --project <project-id>` or pass --project.",
     );
   }
-  const apiUrl = normalizeApiUrl(
-    options.apiUrl?.trim() ||
-      env.EVELAND_API_URL?.trim() ||
-      linked?.apiUrl ||
-      "http://localhost:4000",
+  const instanceUrl = normalizeInstanceUrl(
+    options.instanceUrl?.trim() ||
+      env.EVELAND_URL?.trim() ||
+      linked?.instanceUrl ||
+      "http://localhost:3000",
   );
-  return { projectId, apiUrl, linked: linked !== null };
+  return { projectId, instanceUrl, linked: linked !== null };
 }
 
 export async function linkProject(root: string, input: LinkedProject): Promise<void> {
@@ -46,7 +46,7 @@ export async function linkProject(root: string, input: LinkedProject): Promise<v
     path.join(directory, "project.json"),
     `${JSON.stringify({
       projectId: input.projectId.trim(),
-      apiUrl: normalizeApiUrl(input.apiUrl),
+      instanceUrl: normalizeInstanceUrl(input.instanceUrl),
     }, null, 2)}\n`,
     { mode: 0o600 },
   );
@@ -58,19 +58,23 @@ async function readLinkedProject(root: string): Promise<LinkedProject | null> {
     const raw = JSON.parse(
       await readFile(path.join(path.resolve(root), ".eveland", "project.json"), "utf8"),
     ) as Partial<LinkedProject>;
-    if (typeof raw.projectId !== "string" || typeof raw.apiUrl !== "string") {
-      throw new Error("Invalid .eveland/project.json: projectId and apiUrl are required.");
+    if (typeof raw.projectId !== "string" || typeof raw.instanceUrl !== "string") {
+      throw new Error("Invalid .eveland/project.json: projectId and instanceUrl are required.");
     }
-    return { projectId: raw.projectId, apiUrl: normalizeApiUrl(raw.apiUrl) };
+    return { projectId: raw.projectId, instanceUrl: normalizeInstanceUrl(raw.instanceUrl) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
 }
 
-function normalizeApiUrl(value: string): string {
+export function normalizeInstanceUrl(value: string): string {
   const url = new URL(value);
   return url.toString().replace(/\/$/, "");
+}
+
+export function apiUrlForInstance(instanceUrl: string): string {
+  return `${normalizeInstanceUrl(instanceUrl)}/api/eveland`;
 }
 
 async function ensureGitIgnored(root: string): Promise<void> {

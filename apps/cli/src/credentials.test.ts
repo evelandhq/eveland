@@ -9,12 +9,12 @@ describe("CLI credentials", () => {
     const configDir = await mkdtemp(path.join(os.tmpdir(), "eveland-cli-auth-"));
     const store = new FileCredentialStore(configDir);
 
-    await store.set("https://api.example.com", {
+    await store.set("https://eveland.example.com", {
       token: "device-session-token",
       expiresAt: "2030-01-01T00:00:00.000Z",
     });
 
-    await expect(store.get("https://api.example.com")).resolves.toEqual({
+    await expect(store.get("https://eveland.example.com")).resolves.toEqual({
       token: "device-session-token",
       expiresAt: "2030-01-01T00:00:00.000Z",
     });
@@ -24,17 +24,17 @@ describe("CLI credentials", () => {
   test("uses an explicit CI token before the stored human session", async () => {
     const configDir = await mkdtemp(path.join(os.tmpdir(), "eveland-cli-token-"));
     const store = new FileCredentialStore(configDir);
-    await store.set("https://api.example.com", {
+    await store.set("https://eveland.example.com", {
       token: "human-session",
       expiresAt: "2030-01-01T00:00:00.000Z",
     });
 
-    await expect(resolveToken("https://api.example.com", {
+    await expect(resolveToken("https://eveland.example.com", {
       explicitToken: "flag-token",
       env: { EVELAND_TOKEN: "env-token" },
       store,
     })).resolves.toBe("flag-token");
-    await expect(resolveToken("https://api.example.com", {
+    await expect(resolveToken("https://eveland.example.com", {
       env: { EVELAND_TOKEN: "env-token" },
       store,
     })).resolves.toBe("env-token");

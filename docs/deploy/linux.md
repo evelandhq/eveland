@@ -206,10 +206,13 @@ runs it against the Lima VM as part of the integration smoke test.
 
 ### CLI control-plane access
 
-The CLI talks to the same public API origin as Web. Keep `/api/auth/device/*`,
-`/source-preflights`, and authenticated `/projects/*` routes reachable through
-the control-plane ingress; they do not belong on the public Agent wildcard
-route. `WEB_ORIGIN` must be the browser-reachable Web origin because Device
+The CLI accepts the browser-visible Eveland instance URL and reaches the
+internal control plane through the Web-owned, same-origin `/api/eveland/*`
+mount. Keep that mount routed to API and preserve Authorization and streaming
+request bodies; it does not belong on the public Agent wildcard route. API
+remains responsible for authenticating the rewritten `/api/auth/device/*`,
+`/source-preflights`, and `/projects/*` requests. `WEB_ORIGIN` must be the
+browser-reachable Web origin because Device
 Authorization returns `${WEB_ORIGIN}/auth/device` for code verification. Apply the
 database migrations before enabling the CLI so `auth_device_codes` and
 `deployment_operations` exist.

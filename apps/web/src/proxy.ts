@@ -7,6 +7,12 @@ const publicPaths = new Set([
 ]);
 
 export function proxy(request: NextRequest) {
+  if (
+    request.nextUrl.pathname === "/api/eveland" ||
+    request.nextUrl.pathname.startsWith("/api/eveland/")
+  ) {
+    return NextResponse.next();
+  }
   const isPublic = publicPaths.has(request.nextUrl.pathname);
   // Better Auth prefixes the cookie with `__Secure-` when useSecureCookies is on
   // (an https baseURL), so the deployed cookie is `__Secure-eveland_session`.
