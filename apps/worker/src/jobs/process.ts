@@ -57,6 +57,12 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
     await clearTemporaryGitCredential(store, job);
     const failed = await store.failJob(job.id, message, job.attempts);
     if (!failed) return true;
+    if (typeof job.payload.operationId === "string") {
+      await store.updateDeploymentOperation(job.payload.operationId, {
+        status: "failed",
+        error: message,
+      });
+    }
     // A failed import never touches the running container, so it must not report a
     // live deployment as failed; only deploy/restart jobs change deployment status.
     if (job.type === "delete_project") {

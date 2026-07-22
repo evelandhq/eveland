@@ -114,6 +114,30 @@ export const authVerifications = pgTable(
   (table) => [index("auth_verifications_identifier_idx").on(table.identifier)],
 );
 
+export const authDeviceCodes = pgTable(
+  "auth_device_codes",
+  {
+    id: text("id").primaryKey(),
+    deviceCode: text("device_code").notNull().unique(),
+    userCode: text("user_code").notNull().unique(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull().default("pending"),
+    lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+    pollingInterval: integer("polling_interval"),
+    clientId: text("client_id"),
+    scope: text("scope"),
+  },
+  (table) => [
+    check(
+      "auth_device_codes_status_check",
+      sql`${table.status} in ('pending', 'approved', 'denied')`,
+    ),
+    index("auth_device_codes_expires_idx").on(table.expiresAt),
+    index("auth_device_codes_user_idx").on(table.userId),
+  ],
+);
+
 export const projects = pgTable(
   "projects",
   {
@@ -354,6 +378,36 @@ export const deployments = pgTable(
   (table) => [
     uniqueIndex("deployments_project_key_idx").on(table.projectId, table.deploymentKey),
     check("deployments_key_check", sql`${table.deploymentKey} ~ '^[a-z0-9]{8}$'`),
+  ],
+);
+
+export const deploymentOperations = pgTable(
+  "deployment_operations",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    requestedByUserId: text("requested_by_user_id").notNull().references(() => users.id),
+    target: text("target").notNull(),
+    status: text("status").notNull(),
+    sourceDigest: text("source_digest").notNull(),
+    gitMetadata: jsonb("git_metadata"),
+    sourceRevisionId: text("source_revision_id").references(() => sourceRevisions.id),
+    releaseId: text("release_id").references(() => releases.id),
+    deploymentId: text("deployment_id").references(() => deployments.id),
+    previewHostname: text("preview_hostname"),
+    productionHostname: text("production_hostname"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("deployment_operations_target_check", sql`${table.target} in ('production', 'preview')`),
+    check(
+      "deployment_operations_status_check",
+      sql`${table.status} in ('importing', 'building', 'deploying', 'promoting', 'ready', 'failed')`,
+    ),
+    index("deployment_operations_project_created_idx").on(table.projectId, table.createdAt),
+    index("deployment_operations_status_idx").on(table.status),
   ],
 );
 

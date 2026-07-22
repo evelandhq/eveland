@@ -5,6 +5,7 @@ import type { StoreDatabase } from "./client.js";
 import { agentRouteRowToAgentRoute, jobRowToJob } from "./mappers.js";
 import { createPostgresAgentAuthStore } from "./postgres-agent-auth-store.js";
 import { createPostgresDeploymentRoutingStore } from "./postgres-deployment-routing-store.js";
+import { createPostgresDeploymentOperationStore } from "./postgres-deployment-operation-store.js";
 import { createPostgresJobSourceStore } from "./postgres-job-source-store.js";
 import { createPostgresInstanceHealthStore } from "./postgres-instance-health-store.js";
 import { createPostgresProjectStore } from "./postgres-project-store.js";
@@ -43,8 +44,10 @@ export function createPostgresStore(database: StoreDatabase): Store {
     projectId: string,
     deploymentId: string,
     baseDomain: string,
+    options: { initializeStable?: boolean } = {},
   ) {
     const domain = normalizeBaseDomain(baseDomain);
+    const initializeStable = options.initializeStable !== false;
     return db.transaction(async (tx) => {
       const [project] = await tx
         .select()
@@ -86,7 +89,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
           })
           .where(eq(agentRoutes.id, stable.id))
           .returning();
-      } else {
+      } else if (initializeStable) {
         [stable] = await tx
           .insert(agentRoutes)
           .values({
@@ -99,7 +102,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
           })
           .returning();
       }
-      if (!stable)
+      if (initializeStable && !stable)
         throw new Error("Failed to materialize the stable Agent route.");
 
       const [previewMatch] = await tx
@@ -141,20 +144,22 @@ export function createPostgresStore(database: StoreDatabase): Store {
       if (!preview)
         throw new Error("Failed to materialize the deployment preview route.");
 
-      const [existingStableTarget] = await tx
-        .select()
-        .from(routeTargets)
-        .where(eq(routeTargets.routeId, stable.id))
-        .limit(1);
-      if (!existingStableTarget) {
-        await tx
-          .insert(routeTargets)
-          .values({
-            routeId: stable.id,
-            deploymentId,
-            weight: 10_000,
-            variantName: null,
-          });
+      if (stable) {
+        const [existingStableTarget] = await tx
+          .select()
+          .from(routeTargets)
+          .where(eq(routeTargets.routeId, stable.id))
+          .limit(1);
+        if (!existingStableTarget && initializeStable) {
+          await tx
+            .insert(routeTargets)
+            .values({
+              routeId: stable.id,
+              deploymentId,
+              weight: 10_000,
+              variantName: null,
+            });
+        }
       }
       await tx
         .insert(routeTargets)
@@ -169,7 +174,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
           set: { weight: 10_000, variantName: null },
         });
       return [
-        agentRouteRowToAgentRoute(stable),
+        ...(stable ? [agentRouteRowToAgentRoute(stable)] : []),
         agentRouteRowToAgentRoute(preview),
       ];
     });
@@ -221,6 +226,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
     ...createPostgresAgentAuthStore(context),
     ...createPostgresSecretStore(context),
     ...createPostgresJobSourceStore(context),
+    ...createPostgresDeploymentOperationStore(context),
     ...createPostgresDeploymentRoutingStore(context),
     ...createPostgresSessionStore(context),
     ...createPostgresUsageStore(context),

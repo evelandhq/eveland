@@ -8,7 +8,7 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { signIn } from "@/lib/client-api";
 
-export function LoginForm() {
+export function LoginForm({ redirectTo = "/projects" }: { redirectTo?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -20,7 +20,7 @@ export function LoginForm() {
     setError(null);
     try {
       await signIn(String(form.get("email") ?? ""), String(form.get("password") ?? ""));
-      router.push("/projects");
+      router.push(redirectTo.startsWith("/") && !redirectTo.startsWith("//") ? redirectTo : "/projects");
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Sign in failed");

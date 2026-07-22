@@ -204,6 +204,25 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_ACTIVATION_RENEW_INTERVAL_MS` | `60000` | Gateway renewal interval while an upstream response stream is still active. |
 | `EVELAND_SCHEDULER_RUNTIME_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Authenticates the injected private Scheduler Channel and its API callback; keep it independent from Gateway and Better Auth secrets. |
 
+### CLI control-plane access
+
+The CLI talks to the same public API origin as Web. Keep `/api/auth/device/*`,
+`/source-preflights`, and authenticated `/projects/*` routes reachable through
+the control-plane ingress; they do not belong on the public Agent wildcard
+route. `WEB_ORIGIN` must be the browser-reachable Web origin because Device
+Authorization returns `${WEB_ORIGIN}/device` for code verification. Apply the
+database migrations before enabling the CLI so `auth_device_codes` and
+`deployment_operations` exist.
+
+Human CLI login is a ten-minute OAuth Device Authorization exchange for a
+30-day Better Auth Bearer session. It does not weaken the Team-member check and
+does not create an Agent credential. Operators should use an injected
+`EVELAND_TOKEN`/`--token` for non-interactive jobs and must never place it in a
+source tree, `.eveland/project.json`, Compose file, log, or deployment archive.
+The CLI hard-excludes its `.eveland` link directory and common environment and
+credential files, but that boundary is defense in depth rather than a reason to
+store secrets in project files.
+
 ### Agent Connection credential boundary
 
 Playground route-auth credentials are not control-plane cookies and are not Gateway configuration.

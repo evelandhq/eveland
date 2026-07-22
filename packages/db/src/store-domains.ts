@@ -8,6 +8,9 @@ import type {
   AgentRoute,
   CursorPage,
   DeploymentRecord,
+  DeploymentOperation,
+  DeploymentOperationStatus,
+  DeploymentOperationTarget,
   DeploymentStatus,
   GitCredentialRecord,
   Job,
@@ -48,6 +51,7 @@ import type {
   SourcePreflight,
   SourcePreflightRecord,
   SourceRevision,
+  SourceRevisionKind,
   UsageAnalytics,
   UsageRange,
 } from "@eveland/core/contracts";
@@ -92,6 +96,12 @@ export type CreateSourcePreflightInput = {
 
 export type CreateProjectFromSourcePreflightResult =
   | { outcome: "created"; project: Project }
+  | { outcome: "not_found" }
+  | { outcome: "not_ready" }
+  | { outcome: "consumed" };
+
+export type CreateDeploymentOperationResult =
+  | { outcome: "created"; operation: DeploymentOperation }
   | { outcome: "not_found" }
   | { outcome: "not_ready" }
   | { outcome: "consumed" };
@@ -154,7 +164,7 @@ export interface SourceStore {
   expireSourcePreflights(now?: Date, limit?: number): Promise<string[]>;
   recordSourceRevision(input: {
     projectId: string;
-    kind: ProjectImportKind;
+    kind: SourceRevisionKind;
     commitSha?: string | null;
     sourcePath: string;
     summary: Record<string, unknown>;
@@ -167,6 +177,34 @@ export interface SourceStore {
   getSourceRevision(revisionId: string): Promise<SourceRevision | null>;
   listSourceFiles(projectId: string): Promise<SourceFileRecord[]>;
   getSourceFile(projectId: string, filePath: string): Promise<SourceFileRecord | null>;
+}
+
+export interface DeploymentOperationStore {
+  createDeploymentOperationFromSourcePreflight(input: {
+    projectId: string;
+    requestedByUserId: string;
+    sourcePreflightId: string;
+    target: DeploymentOperationTarget;
+    sourceDigest: string;
+    git?: {
+      commitSha: string | null;
+      branch: string | null;
+      dirty: boolean;
+    };
+  }): Promise<CreateDeploymentOperationResult>;
+  getDeploymentOperation(operationId: string): Promise<DeploymentOperation | null>;
+  updateDeploymentOperation(
+    operationId: string,
+    input: {
+      status?: DeploymentOperationStatus;
+      sourceRevisionId?: string | null;
+      releaseId?: string | null;
+      deploymentId?: string | null;
+      previewHostname?: string | null;
+      productionHostname?: string | null;
+      error?: string | null;
+    },
+  ): Promise<DeploymentOperation | null>;
 }
 
 export interface GitCredentialStore {
@@ -283,6 +321,7 @@ export interface DeploymentStore {
     internalPort: number;
     hostPort: number;
     runtimeKind: RuntimeKind;
+    initializeProject?: boolean;
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   listDeployments(projectId: string): Promise<DeploymentRecord[]>;
@@ -295,13 +334,22 @@ export interface DeploymentStore {
 }
 
 export interface RoutingStore {
-  ensureDeploymentRoutes(projectId: string, deploymentId: string, baseDomain: string): Promise<AgentRoute[]>;
+  ensureDeploymentRoutes(
+    projectId: string,
+    deploymentId: string,
+    baseDomain: string,
+    options?: { initializeStable?: boolean },
+  ): Promise<AgentRoute[]>;
   reconcileAgentRoutes(baseDomain: string): Promise<void>;
   findRouteByHostname(hostname: string): Promise<ResolvedAgentRoute | null>;
   findProjectRoute(projectId: string): Promise<ResolvedAgentRoute | null>;
   listProjectRoutes(projectId: string): Promise<ResolvedAgentRoute[]>;
   updateRouteTargets(routeId: string, targets: Array<Omit<RouteTarget, "routeId">>): Promise<ResolvedAgentRoute>;
-  promoteDeployment(projectId: string, deploymentId: string): Promise<ResolvedAgentRoute>;
+  promoteDeployment(
+    projectId: string,
+    deploymentId: string,
+    options?: { baseDomain?: string },
+  ): Promise<ResolvedAgentRoute>;
   ensureAliasRoute(
     projectId: string,
     alias: string,
@@ -468,6 +516,7 @@ export interface InstanceHealthStore {
 
 export type Store = ProjectStore &
   SourceStore &
+  DeploymentOperationStore &
   GitCredentialStore &
   AgentAuthStore &
   SecretStore &

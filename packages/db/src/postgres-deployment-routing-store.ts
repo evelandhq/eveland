@@ -90,21 +90,23 @@ export function createPostgresDeploymentRoutingStore({
         }
       });
 
-      await db
-        .update(projects)
-        .set({
-          status: "deployed",
-          deploymentStatus: "running",
-          releaseId: releaseRow.id,
-          deploymentId: deploymentRow.id,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(projects.id, input.projectId),
-            isNull(projects.deploymentId),
-          ),
-        );
+      if (input.initializeProject !== false) {
+        await db
+          .update(projects)
+          .set({
+            status: "deployed",
+            deploymentStatus: "running",
+            releaseId: releaseRow.id,
+            deploymentId: deploymentRow.id,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(projects.id, input.projectId),
+              isNull(projects.deploymentId),
+            ),
+          );
+      }
 
       return deploymentRowToDeployment(deploymentRow);
     },
@@ -362,9 +364,9 @@ export function createPostgresDeploymentRoutingStore({
       return (await this.findRouteByHostname(route.hostname))!;
     },
 
-    async promoteDeployment(projectId, deploymentId) {
+    async promoteDeployment(projectId, deploymentId, options = {}) {
       const hostname = await db.transaction(async (tx) => {
-        const [route] = await tx
+        let [route] = await tx
           .select()
           .from(agentRoutes)
           .where(
@@ -374,6 +376,25 @@ export function createPostgresDeploymentRoutingStore({
             ),
           )
           .limit(1);
+        if (!route && options.baseDomain) {
+          const [project] = await tx
+            .select({ slug: projects.slug })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1);
+          if (!project) throw new Error("Project not found.");
+          [route] = await tx
+            .insert(agentRoutes)
+            .values({
+              id: createId("route"),
+              projectId,
+              hostname: `${project.slug}.${normalizeBaseDomain(options.baseDomain)}`,
+              kind: "project",
+              enabled: true,
+              policyRevision: 1,
+            })
+            .returning();
+        }
         const [deployment] = await tx
           .select()
           .from(deployments)

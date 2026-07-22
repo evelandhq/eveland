@@ -6,6 +6,15 @@ export type SessionStatus = "running" | "waiting" | "completed" | "failed" | "wa
 export type SessionTrigger = "playground" | "cron" | "manual" | "webhook" | "channel" | "api" | "direct_http";
 export type RuntimeKind = "docker" | "systemd";
 export type TeamRole = "admin" | "member";
+export type SourceRevisionKind = ProjectImportKind | "local";
+export type DeploymentOperationTarget = "production" | "preview";
+export type DeploymentOperationStatus =
+  | "importing"
+  | "building"
+  | "deploying"
+  | "promoting"
+  | "ready"
+  | "failed";
 
 export type TeamMember = {
   userId: string;
@@ -183,12 +192,34 @@ export type SourceFileNode = {
 export type SourceRevision = {
   id: string;
   projectId: string;
-  kind: ProjectImportKind;
+  kind: SourceRevisionKind;
   commitSha: string | null;
   sourcePath: string;
   summary: Record<string, unknown>;
   envVars: string[];
   createdAt: string;
+};
+
+export type DeploymentOperation = {
+  id: string;
+  projectId: string;
+  requestedByUserId: string;
+  target: DeploymentOperationTarget;
+  status: DeploymentOperationStatus;
+  sourceDigest: string;
+  git: {
+    commitSha: string | null;
+    branch: string | null;
+    dirty: boolean | null;
+  } | null;
+  sourceRevisionId: string | null;
+  releaseId: string | null;
+  deploymentId: string | null;
+  previewHostname: string | null;
+  productionHostname: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ReleaseRecord = {

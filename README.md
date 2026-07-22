@@ -64,6 +64,38 @@ must be the browser-visible API origin (for example `https://api.example.com` in
 
 All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
 
+## CLI deployments
+
+`apps/cli` provides the `eveland` executable for deploying the local working
+directory, including tracked, untracked, and uncommitted files. Build it from a
+checkout with `pnpm --filter @eveland/cli build`; the package's published bin is
+`eveland` (during development, use `node apps/cli/dist/cli.js`).
+
+```bash
+eveland login --api-url https://api.eveland.example
+eveland link --project proj_xxxxxxxxxx --api-url https://api.eveland.example
+
+eveland deploy             # production is the default
+eveland deploy --preview   # immutable preview only
+eveland promote dep_xxxxxxxxxx
+eveland promote https://abc12345--my-agent.agents.example.com
+```
+
+Login uses OAuth Device Authorization: the CLI prints and opens the Web-owned
+verification page, the signed-in team member approves the matching code, and
+the CLI exchanges it for a 30-day Better Auth Bearer session. Sessions are kept
+outside the project in an owner-only `auth.json`; `--token` and `EVELAND_TOKEN`
+take precedence for non-interactive use. `.eveland/project.json` contains only
+the linked project ID and API URL, and `eveland link` adds `.eveland/` to
+`.gitignore`.
+
+Snapshot filtering uses `.evelandignore` when present, otherwise reuses
+`.vercelignore`, then falls back to `.gitignore`. Platform exclusions such as
+`.git`, `.eveland`, `node_modules`, `.env*` (except `.env.example`), credential
+files, and symlinks escaping the project root cannot be re-included. Progress
+goes to stderr; a successful deploy or promote writes only the effective Agent
+URL to stdout. Use `--json` for the operation, Deployment, digest, and URL.
+
 New projects start at `/new`, a focused full-screen flow for GitHub/GitLab URLs or Zip uploads. Before a Project exists, a user-scoped Source Preflight shallow-clones or safely extracts the source and has the worker verify the real Eve layout and supported Eve version. The naming step includes optional, repeatable environment variables for LLM keys and other runtime configuration; their values are encrypted and committed atomically with the Project and initial import job so the first deployment cannot start without them. The validated snapshot is then consumed with the exact public project name and reused for the first deployment without another clone or upload. Unused snapshots expire after one hour by default. The screen streams persisted progress logs, permits leaving for Project detail, and exposes the stable Agent URL when complete.
 Authored Eve skills remain owned by Eve: `eve build` compiles flat Markdown, module-backed,
 and packaged `agent/skills/` entries into Release workspace resources. Eveland's injected
@@ -283,7 +315,7 @@ licensed under the MIT License.
 ## Notes
 
 - API, Gateway, and Worker require `DATABASE_URL` and use the same Postgres Store. Tests run that Store against migrated PGlite; concurrency and driver-compatibility suites continue to use real Postgres through `EVELAND_POSTGRES_TEST_URL`.
-- The control plane is invite-only and uses Better Auth for users, credential accounts, and sessions. Team roles and seven-day invitations use its Organization plugin behind Eveland-owned endpoints, which enforce the last-admin rule and block public sign-up and direct organization mutations. Invitation links use opaque 256-bit identifiers. Public Agent traffic remains on the separate Gateway authentication boundary.
+- The control plane is invite-only and uses Better Auth for users, credential accounts, browser sessions, OAuth Device Authorization, and CLI Bearer sessions. Team roles and seven-day invitations use its Organization plugin behind Eveland-owned endpoints, which enforce the last-admin rule and block public sign-up and direct organization mutations. Device authorization accepts only the `eveland-cli` client and still checks current Team membership on every control-plane request. Invitation links use opaque 256-bit identifiers. Public Agent traffic remains on the separate Gateway authentication boundary.
 - `packages/db/src/schema.ts` and `packages/db/drizzle/` are the Postgres model and migration targets. Use `pnpm --filter @eveland/api db:migrate` for real databases; `db:push` is only a disposable-development convenience.
 - Project deletion is asynchronous and requires the worker. A deletion request persists a visible `Deleting…` state, blocks new project mutations, waits for already-running project jobs, then stops every live Deployment and removes database records plus platform-managed source/build/observer/sandbox data. Failures retain a retryable `Delete failed` state; source paths outside `EVELAND_DATA_DIR` are never removed.
 - Token accounting uses Eve's `step.completed.data.usage` values. Injected hooks write envelopes to `$EVELAND_DATA_DIR/observer`; the API's embedded collector validates and projects them exactly once. Input, output, cache-read, cache-write, and optional gateway cost are attributed to the Eve session node that consumed them. Missing provider usage stays explicitly marked instead of being estimated.
@@ -294,7 +326,7 @@ licensed under the MIT License.
 - Playground accepts up to four image, PDF, text, or code attachments per turn, limited to 5 MiB each and 10 MiB total; archives and executables are rejected. It does not collect or project usage. Observer envelopes discover direct private-port, Playground, schedule, and child sessions independently, then merge more-specific provenance by `(projectId, eveSessionId)`.
 - Canonical Playground create, continue, cancel, and stream calls use Gateway's service-authenticated `/internal/projects/:projectId/playground/eve/*` path and stream responses without buffering. Traefik must expose only wildcard Agent hosts and exclude `/internal`; `infra/traefik/agents.yml` is the single-box example.
 - Playground Agent route auth is configured explicitly through its Connection dialog. `local-dev` alone uses a loopback Host; `none`, Basic, Bearer, Vercel OIDC, custom headers, and generic OIDC use the canonical Project Host. Secret-bearing configuration selects a Project Secret instead of copying the value into Connection config. Vercel OIDC mirrors Eve 0.27.0 by sending its short-lived token as both Bearer authorization and the trusted deployment header. Eve 0.27 adds standards-compliant route challenges, including Basic realm/UTF-8 metadata, but Eveland still never infers a Connection method from a 401 challenge. Generic OIDC uses discovery, Authorization Code + PKCE, state/nonce, a Web-owned callback, encrypted principal-scoped tokens, explicit JWT/UserInfo verification, refresh-token rotation, singleflight, and Postgres fencing. Register `${WEB_ORIGIN}/agent-auth/oidc/callback` at the IdP. The first pending turn resumes exactly once after callback, a 401 gets at most one refresh/retry, and a 403 never refreshes. Web receives only redacted state, and API resolves the current reference plus security revision for every initial, continuation, cancel, and stream/reconnect request. Eveland never infers a method from Agent source, provider name, or challenge, and the control-plane member id remains only a credential-isolation key rather than the Agent caller.
-- Bare build/deploy creates a concurrent immutable preview and never stops or reuses the current production process. For Git projects, the primary `Sync, deploy & promote` action explicitly promotes the exact Deployment created by that healthy build, while the secondary `Sync & create preview` action leaves production unchanged. Promote, rollback, and one/two-target traffic policies are atomic route updates followed by Gateway cache invalidation; existing Eve session continuation, cancel, and stream requests remain pinned by `SessionBinding` even after their target leaves production traffic.
+- Bare internal build/deploy creates a concurrent immutable preview and never stops or reuses the current production process. The CLI deliberately makes `eveland deploy` production-first and requires `--preview` to retain preview-only behavior; each local upload is an immutable `local` Source Revision pinned into its exact build job, so a concurrent import cannot change what gets built. For Git projects, the Web primary `Sync, deploy & promote` action explicitly promotes the exact Deployment created by that healthy build, while the secondary `Sync & create preview` action leaves production unchanged. Promote, rollback, and one/two-target traffic policies are atomic route updates followed by Gateway cache invalidation; existing Eve session continuation, cancel, and stream requests remain pinned by `SessionBinding` even after their target leaves production traffic.
 - Route weights use 10,000 basis points, must total 10,000, and support at most two targets. Each multi-target policy revision becomes an experiment ID persisted with the deployment and variant binding, so the deployment page compares success/failure, latency, tokens, and cost without mixing revisions. Named aliases share the wildcard domain. Retention keeps at least the newest three release artifacts and refuses to archive mutable route targets or deployments with active session bindings.
 - Eve 0.25.x, 0.26.x, and 0.27.x give directory-form subagents an independent hook slot, so they are fully observed. File-form subagents have no hook slot and their parent stream exposes only control events; they are a documented coverage gap until Eve exposes a public observation surface. Remote calls retain the reported URL as an unresolved relationship and are never followed by the collector.
 - Docker and systemd Eve Releases both receive the injected bwrap backend and the same platform-owned command baseline. The release self-check exercises file writes, Node 24 TypeScript execution, every baseline command, and Eve's real `rg`/GNU-grep search paths rather than trusting `/eve/v1/health`, which does not initialize Eve's sandbox.

@@ -1,6 +1,7 @@
 import { describe, expect, onTestFinished, test } from "vitest";
 import {
   authAccounts,
+  authDeviceCodes,
   authSessions,
   authVerifications,
   invitations,
@@ -27,6 +28,7 @@ async function createAuthApp() {
         organization: teams,
         member: teamMemberships,
         invitation: invitations,
+        deviceCode: authDeviceCodes,
       },
     }),
     baseURL: "http://localhost:4000",
@@ -107,6 +109,84 @@ describe("control-plane auth routes", () => {
     await expect(session.json()).resolves.toEqual({
       member: expect.objectContaining({ email: "admin@example.com", role: "admin" }),
     });
+  });
+
+  test("authorizes the CLI through OAuth device flow and accepts its bearer session", async () => {
+    const { app } = await createAuthApp();
+    const issued = await app.request("/api/auth/device/code", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ client_id: "eveland-cli" }),
+    });
+
+    expect(issued.status).toBe(200);
+    const codes = await issued.json() as {
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      verification_uri_complete: string;
+      expires_in: number;
+      interval: number;
+    };
+    expect(codes).toMatchObject({
+      device_code: expect.any(String),
+      user_code: expect.any(String),
+      verification_uri: "http://localhost:3000/device",
+      verification_uri_complete: expect.stringContaining(
+        "http://localhost:3000/device?user_code=",
+      ),
+      expires_in: 600,
+      interval: 5,
+    });
+
+    const { cookie } = await signIn(app);
+    const verified = await app.request(
+      `/api/auth/device?user_code=${encodeURIComponent(codes.user_code)}`,
+      { headers: { cookie } },
+    );
+    expect(verified.status).toBe(200);
+    const approved = await app.request("/api/auth/device/approve", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ userCode: codes.user_code }),
+    });
+    expect(approved.status).toBe(200);
+
+    const exchanged = await app.request("/api/auth/device/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        device_code: codes.device_code,
+        client_id: "eveland-cli",
+      }),
+    });
+    expect(exchanged.status).toBe(200);
+    const token = await exchanged.json() as {
+      access_token: string;
+      token_type: string;
+      expires_in: number;
+    };
+    expect(token).toMatchObject({
+      access_token: expect.any(String),
+      token_type: "Bearer",
+      expires_in: expect.any(Number),
+    });
+
+    const session = await app.request("/auth/session", {
+      headers: { authorization: `Bearer ${token.access_token}` },
+    });
+    expect(session.status).toBe(200);
+    await expect(session.json()).resolves.toEqual({
+      member: expect.objectContaining({ email: "admin@example.com", role: "admin" }),
+    });
+
+    const invalidClient = await app.request("/api/auth/device/code", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ client_id: "untrusted-cli" }),
+    });
+    expect(invalidClient.status).toBe(400);
   });
 
   test("allows only administrators to read system configuration diagnostics", async () => {

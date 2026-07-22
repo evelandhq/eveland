@@ -10,6 +10,7 @@ import type { ApiApp, AppOptions } from "./app-types.js";
 import {
   aliasSchema,
   createGitSourcePreflightSchema,
+  createDeploymentOperationSchema,
   createProjectFromPreflightSchema,
   createProjectSchema,
   projectNameSchema,
@@ -465,6 +466,11 @@ export function registerProjectRoutes(input: {
       const route = await store.promoteDeployment(
         c.req.param("projectId"),
         c.req.param("deploymentId"),
+        {
+          baseDomain: (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost")
+            .split(",")[0]!
+            .trim(),
+        },
       );
       await invalidateGateway(options, [route.hostname]);
       return c.json({ route });
@@ -591,6 +597,45 @@ export function registerProjectRoutes(input: {
     }
     const job = await store.enqueueJob(projectId, "build_deploy");
     return c.json({ job }, 202);
+  });
+
+  app.post("/projects/:projectId/deployment-operations", async (c) => {
+    const parsed = createDeploymentOperationSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid deployment operation", issues: parsed.error.issues },
+        400,
+      );
+    }
+    const project = await store.getProject(c.req.param("projectId"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const result = await store.createDeploymentOperationFromSourcePreflight({
+      projectId: project.id,
+      requestedByUserId: currentUserId(c),
+      sourcePreflightId: parsed.data.sourcePreflightId,
+      target: parsed.data.target,
+      sourceDigest: parsed.data.sourceDigest,
+      ...(parsed.data.git ? { git: parsed.data.git } : {}),
+    });
+    if (result.outcome === "not_found")
+      return c.json({ error: "Source preflight not found" }, 404);
+    if (result.outcome === "not_ready")
+      return c.json({ error: "Source preflight is not ready" }, 409);
+    if (result.outcome === "consumed")
+      return c.json({ error: "Source preflight has already been used" }, 409);
+    return c.json({ operation: result.operation }, 202);
+  });
+
+  app.get("/projects/:projectId/deployment-operations/:operationId", async (c) => {
+    const operation = await store.getDeploymentOperation(
+      c.req.param("operationId"),
+    );
+    if (!operation || operation.projectId !== c.req.param("projectId")) {
+      return c.json({ error: "Deployment operation not found" }, 404);
+    }
+    return c.json({ operation });
   });
 
   app.post("/projects/:projectId/sync-source", async (c) => {

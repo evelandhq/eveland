@@ -180,6 +180,236 @@ describe("processNextJob", () => {
     );
   });
 
+  test("pins a local deployment operation to the source revision created by its import", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Local CLI Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/local-cli.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    const preflight = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const claimed = await store.claimNextSourcePreflight("fixture-preflight");
+    await store.completeSourcePreflight(claimed!.id, claimed!.attempts, {
+      sourcePath,
+      commitSha: null,
+      summary: { eveVersion: "0.25.1" },
+    });
+    const created = await store.createDeploymentOperationFromSourcePreflight({
+      projectId: project.id,
+      requestedByUserId: "user_local_admin",
+      sourcePreflightId: preflight.id,
+      target: "production",
+      sourceDigest: "sha256:local-cli-source",
+    });
+    expect(created.outcome).toBe("created");
+    if (created.outcome !== "created") throw new Error("Expected deployment operation.");
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+
+    const operation = await store.getDeploymentOperation(created.operation.id);
+    expect(operation).toMatchObject({
+      status: "building",
+      sourceRevisionId: expect.stringMatching(/^src_/),
+    });
+    await expect(store.getSourceRevision(operation!.sourceRevisionId!)).resolves.toMatchObject({
+      projectId: project.id,
+      kind: "local",
+      sourcePath,
+    });
+    await expect(store.claimNextJob("worker-b")).resolves.toMatchObject({
+      type: "build_deploy",
+      payload: {
+        operationId: created.operation.id,
+        sourceRevisionId: operation!.sourceRevisionId,
+        promoteAfterDeploy: true,
+      },
+    });
+  });
+
+  test("completes a production deployment operation with its exact deployment routes", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "CLI Production Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/cli-production.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    const preflight = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const claimed = await store.claimNextSourcePreflight("fixture-preflight");
+    await store.completeSourcePreflight(claimed!.id, claimed!.attempts, {
+      sourcePath,
+      commitSha: null,
+      summary: {},
+    });
+    const created = await store.createDeploymentOperationFromSourcePreflight({
+      projectId: project.id,
+      requestedByUserId: "user_local_admin",
+      sourcePreflightId: preflight.id,
+      target: "production",
+      sourceDigest: "sha256:production-source",
+    });
+    if (created.outcome !== "created") throw new Error("Expected deployment operation.");
+
+    await processNextJob(store, "worker-import");
+    await processNextJob(store, "worker-build", {
+      workflowPostgresUrl: "",
+      runtime: {
+        name: "docker",
+        async buildRelease() {
+          return { releaseRef: "eveland/cli-production:rel", log: "build ok" };
+        },
+        async startProcess() {
+          return { internalPort: 3000, log: "started" };
+        },
+        async stopProcess() {},
+      },
+      allocateHostPort() {
+        return 41073;
+      },
+      async waitForDeployment() {},
+    });
+
+    const operation = await store.getDeploymentOperation(created.operation.id);
+    expect(operation).toMatchObject({
+      status: "ready",
+      sourceRevisionId: expect.stringMatching(/^src_/),
+      releaseId: expect.stringMatching(/^rel_/),
+      deploymentId: expect.stringMatching(/^dep_/),
+      previewHostname: expect.stringMatching(/^.+--cli-production-agent\.agent\.localhost$/),
+      productionHostname: "cli-production-agent.agent.localhost",
+      error: null,
+    });
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({
+      id: operation!.deploymentId,
+    });
+  });
+
+  test("keeps the first CLI preview off the production route", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "First Preview Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/first-preview.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    const preflight = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const claimed = await store.claimNextSourcePreflight("fixture-preflight");
+    await store.completeSourcePreflight(claimed!.id, claimed!.attempts, {
+      sourcePath,
+      commitSha: null,
+      summary: {},
+    });
+    const created = await store.createDeploymentOperationFromSourcePreflight({
+      projectId: project.id,
+      requestedByUserId: "user_local_admin",
+      sourcePreflightId: preflight.id,
+      target: "preview",
+      sourceDigest: "sha256:first-preview",
+    });
+    if (created.outcome !== "created") throw new Error("Expected deployment operation.");
+
+    await processNextJob(store, "worker-import");
+    await processNextJob(store, "worker-build", {
+      workflowPostgresUrl: "",
+      runtime: {
+        name: "docker",
+        async buildRelease() {
+          return { releaseRef: "eveland/first-preview:rel", log: "build ok" };
+        },
+        async startProcess() {
+          return { internalPort: 3000, log: "started" };
+        },
+        async stopProcess() {},
+      },
+      allocateHostPort() {
+        return 41074;
+      },
+      async waitForDeployment() {},
+    });
+
+    await expect(store.getCurrentDeployment(project.id)).resolves.toBeNull();
+    await expect(store.listProjectRoutes(project.id)).resolves.toEqual([
+      expect.objectContaining({ kind: "deployment" }),
+    ]);
+    const operation = await store.getDeploymentOperation(created.operation.id);
+    expect(operation).toMatchObject({
+      status: "ready",
+      previewHostname: expect.stringContaining("--first-preview-agent."),
+      productionHostname: null,
+    });
+    await store.promoteDeployment(project.id, operation!.deploymentId!, {
+      baseDomain: "agent.localhost",
+    });
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({
+      id: operation!.deploymentId,
+    });
+  });
+
+  test("marks a deployment operation failed when its worker job fails", async () => {
+    const store = createTestStore();
+    const invalidSourcePath = await mkdtemp(
+      path.join(os.tmpdir(), "eveland-invalid-cli-source-"),
+    );
+    const project = await store.createProject({
+      name: "Failed CLI Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/failed-cli.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    const preflight = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath: invalidSourcePath,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const claimed = await store.claimNextSourcePreflight("fixture-preflight");
+    await store.completeSourcePreflight(claimed!.id, claimed!.attempts, {
+      sourcePath: invalidSourcePath,
+      commitSha: null,
+      summary: {},
+    });
+    const created = await store.createDeploymentOperationFromSourcePreflight({
+      projectId: project.id,
+      requestedByUserId: "user_local_admin",
+      sourcePreflightId: preflight.id,
+      target: "preview",
+      sourceDigest: "sha256:invalid-source",
+    });
+    if (created.outcome !== "created") throw new Error("Expected deployment operation.");
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+
+    await expect(
+      store.getDeploymentOperation(created.operation.id),
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("Invalid eve project"),
+    });
+  });
+
   test("a failed re-sync import leaves an already-running deployment's status untouched", async () => {
     const store = createTestStore();
     const badSource = await mkdtemp(path.join(os.tmpdir(), "eveland-empty-"));
@@ -358,6 +588,68 @@ describe("processNextJob", () => {
         }),
       }),
     ]);
+  });
+
+  test("builds the source revision pinned by the deployment operation instead of a newer revision", async () => {
+    const store = createTestStore();
+    const pinnedSourcePath = await createFixtureEveProject();
+    const newerSourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Pinned Revision Agent",
+      importKind: "zip",
+      sourcePath: pinnedSourcePath,
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    const pinnedRevision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "local",
+      sourcePath: pinnedSourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "local",
+      sourcePath: newerSourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy", {
+      sourceRevisionId: pinnedRevision.id,
+    });
+
+    let builtSourcePath: string | undefined;
+    await expect(
+      processNextJob(store, "worker-a", {
+        workflowPostgresUrl: "",
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            builtSourcePath = input.sourcePath;
+            return { releaseRef: "eveland/pinned:rel", log: "build ok" };
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {},
+        },
+        allocateHostPort() {
+          return 41072;
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(builtSourcePath).toBe(pinnedSourcePath);
+    const deployment = await store.getCurrentDeployment(project.id);
+    await expect(store.getRelease(deployment!.releaseId)).resolves.toMatchObject({
+      sourceRevisionId: pinnedRevision.id,
+    });
   });
 
   test("selects pnpm when the imported source has a pnpm lockfile", async () => {

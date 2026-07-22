@@ -7,6 +7,7 @@ import { createApp } from "./app.js";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import {
   authAccounts,
+  authDeviceCodes,
   authSessions,
   authVerifications,
   invitations,
@@ -33,6 +34,7 @@ const authDatabase = drizzleAdapter(storeFactory.database.db, {
     organization: teams,
     member: teamMemberships,
     invitation: invitations,
+    deviceCode: authDeviceCodes,
   },
 });
 const auth = createBetterAuthRuntime({ database: authDatabase, ...betterAuthConfig });

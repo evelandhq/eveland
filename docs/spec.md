@@ -61,6 +61,10 @@ MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持�
 * 不内置生产默认密码；`BETTER_AUTH_SECRET` 必须独立配置且至少 32 个字符
 * 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
 * 已有有效成员 Session 时访问 `/login`，直接跳转到 `/projects`
+* CLI 登录使用 RFC 8628 OAuth Device Authorization；只接受固定 public client
+  `eveland-cli`，十分钟内由已登录的 Team member 在 Web `/device` 核对 user code 并批准或拒绝
+* Device code 一次性消费；批准后换取与浏览器 Session 同期限的 Better Auth Bearer Session。
+  API 对 Bearer 请求继续逐次检查 Team membership，移除成员或撤销其 Session 必须同时令 CLI 失效
 
 除健康检查和邀请接受外，所有控制面 API 都要求有效成员 Session。公开 Agent Gateway 流量使用独立认证边界。
 API 与 Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `version`、Git
@@ -315,6 +319,32 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 * Restart deployment
 * Open Playground
 * 查看日志
+
+### CLI 本地部署
+
+`eveland deploy [path]` 对指定目录（默认当前目录）的实时文件系统建立快照，因此包含尚未
+push 的 commit、未 commit 修改和 untracked 文件，不从远程 Git 仓库重新拉取。CLI 先上传 Zip
+并完成用户隔离的 Source Preflight，再在一个 `DeploymentOperation` 中原子消费该快照；import
+建立不可变 `local` Source Revision，并把其 ID 固定写入后续 `build_deploy` job。即使同一 Project
+同时产生更新的 Source Revision，这次 build 也不得改为读取“最新” revision。Operation 持久化
+importing、building、deploying、promoting、ready 或 failed 状态，以及最终 Release、Deployment、
+preview/stable hostname 和脱敏错误。
+
+CLI 的产品默认值与底层 preview primitive 有意不同：`eveland deploy` 创建并健康检查并发
+Deployment 后，直接 promote 这次 Operation 创建的确切 Deployment 到 Production；只有显式
+`eveland deploy --preview` 才不改变 stable route。`eveland promote` 必须接收完整 `dep_...` ID
+或可唯一解析 deployment key 的 preview URL，不提供含糊的隐式 latest。Promote 不重新 build。
+
+Project 解析优先级为 `--project`、`EVELAND_PROJECT_ID`、`.eveland/project.json`；API origin
+同理优先使用 `--api-url`、`EVELAND_API_URL`、link metadata。link 文件不得保存 token，且
+`.eveland/` 加入 `.gitignore`。快照 ignore 只选用最高优先级的一个文件：`.evelandignore`、
+`.vercelignore`、`.gitignore`。`.git`、`.eveland`、`node_modules`、`.env*`（保留
+`.env.example`）、credential 文件和逃逸项目根目录的 symlink 属于不可 negate 的平台排除。
+
+人类运行 `eveland login` 完成上述 Device Authorization；Session 保存在项目目录之外、权限仅
+owner 可读的 CLI auth 文件中。命令行 `--token` 高于 `EVELAND_TOKEN`，两者都高于保存的
+human Session，供自动化注入凭据。部署进度和错误只写 stderr；非 `--json` 成功时 stdout
+只写最终有效 URL，`--json` 返回 project、target、source digest、Operation、Deployment 和 URL。
 
 ---
 

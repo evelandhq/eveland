@@ -14,7 +14,12 @@ import type { AgentAuthCredentialKey, Store } from "./store-domains.js";
 export type PostgresStoreContext = {
   database: StoreDatabase;
   db: StoreDatabase["db"];
-  ensureDeploymentRoutes(projectId: string, deploymentId: string, baseDomain: string): Promise<AgentRoute[]>;
+  ensureDeploymentRoutes(
+    projectId: string,
+    deploymentId: string,
+    baseDomain: string,
+    options?: { initializeStable?: boolean },
+  ): Promise<AgentRoute[]>;
   ensureDefaultOwner(): Promise<void>;
   createJob(projectId: string, type: JobType, payload: Record<string, unknown>): Promise<Job>;
 };

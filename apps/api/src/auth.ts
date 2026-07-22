@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
-import { admin, organization } from "better-auth/plugins";
+import {
+  admin,
+  bearer,
+  deviceAuthorization,
+  organization,
+} from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements, memberAc } from "better-auth/plugins/organization/access";
 import { createId } from "@eveland/core/ids";
@@ -72,6 +77,13 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
         roles: { admin: organizationAdminRole, member: organizationMemberRole },
       }),
       admin(),
+      deviceAuthorization({
+        expiresIn: "10m",
+        interval: "5s",
+        verificationUri: `${options.webOrigin}/device`,
+        validateClient: (clientId) => clientId === "eveland-cli",
+      }),
+      bearer(),
     ],
   });
 

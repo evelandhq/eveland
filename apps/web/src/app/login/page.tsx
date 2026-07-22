@@ -9,8 +9,13 @@ export const metadata = {
   title: "Sign in",
 };
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ next?: string }>;
+} = {}) {
   if (await getCurrentMemberOrNull()) redirect("/projects");
+  const redirectTo = (await searchParams)?.next;
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-5 py-10">
@@ -23,7 +28,7 @@ export default async function LoginPage() {
           <CardDescription>Manage your team’s eve projects and runtime.</CardDescription>
         </CardHeader>
         <CardContent>
-          <LoginForm />
+          <LoginForm redirectTo={redirectTo} />
         </CardContent>
       </Card>
     </main>

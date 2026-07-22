@@ -89,6 +89,19 @@ export const syncSourceSchema = z
     path: ["promote"],
   });
 
+export const createDeploymentOperationSchema = z.object({
+  sourcePreflightId: z.string().regex(/^pre_[0-9A-Za-z]+$/),
+  target: z.enum(["production", "preview"]),
+  sourceDigest: z.string().min(1).max(128),
+  git: z
+    .object({
+      commitSha: z.string().min(1).max(128).nullable().default(null),
+      branch: z.string().min(1).max(512).nullable().default(null),
+      dirty: z.boolean(),
+    })
+    .optional(),
+});
+
 export const secretSchema = environmentVariableSchema;
 
 export const updateSecretSchema = environmentVariableSchema.extend({

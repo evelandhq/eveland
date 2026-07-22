@@ -1,0 +1,26 @@
+{
+  "name": "@eveland/cli",
+  "version": "0.10.0",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "eveland": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "vitest": "^4.1.9"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "ignore": "^5.3.2",
+    "open": "^11.0.0"
+  }
+}

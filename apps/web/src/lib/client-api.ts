@@ -110,6 +110,31 @@ export async function getCurrentMember(): Promise<CurrentMember> {
   return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then((data) => data.member);
 }
 
+export async function verifyDeviceCode(
+  userCode: string,
+): Promise<{ user_code: string; status: "pending" | "approved" | "denied" }> {
+  return clientRequest(
+    `/api/auth/device?user_code=${encodeURIComponent(userCode)}`,
+    { method: "GET" },
+  );
+}
+
+export async function approveDeviceCode(userCode: string): Promise<void> {
+  await clientRequest("/api/auth/device/approve", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userCode }),
+  });
+}
+
+export async function denyDeviceCode(userCode: string): Promise<void> {
+  await clientRequest("/api/auth/device/deny", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userCode }),
+  });
+}
+
 export async function updateProfile(input: { name: string; image: string | null }): Promise<CurrentMember> {
   const data = await clientRequest<{ member: CurrentMember }>("/profile", {
     method: "PATCH",

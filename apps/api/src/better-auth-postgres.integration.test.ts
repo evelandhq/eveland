@@ -1,6 +1,7 @@
 import { createDatabase } from "@eveland/db/client";
 import {
   authAccounts,
+  authDeviceCodes,
   authSessions,
   authVerifications,
   invitations,
@@ -31,6 +32,7 @@ describe.skipIf(!database)("Better Auth Postgres integration", () => {
           organization: teams,
           member: teamMemberships,
           invitation: invitations,
+          deviceCode: authDeviceCodes,
         },
       }),
       baseURL: "http://localhost:4000",

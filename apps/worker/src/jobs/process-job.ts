@@ -94,15 +94,27 @@ export async function processJob(
         throw new Error("Source import missing sourcePath.");
       }
 
+      const scanKind = job.payload.importKind === "zip" ? "zip" : project.importKind;
       const scan = await scanEveSource({
-        kind: project.importKind,
+        kind: scanKind,
         sourcePath,
         commitSha,
       });
-      await store.recordSourceRevision({
+      const revision = await store.recordSourceRevision({
         projectId: job.projectId,
         ...scan,
+        kind: job.payload.sourceRevisionKind === "local" ? "local" : scan.kind,
       });
+      const operationId =
+        typeof job.payload.operationId === "string"
+          ? job.payload.operationId
+          : null;
+      if (operationId) {
+        await store.updateDeploymentOperation(operationId, {
+          status: "building",
+          sourceRevisionId: revision.id,
+        });
+      }
       if (gitCredential?.persistAfterImport) {
         await store.upsertGitCredential(
           gitCredential.userId,
@@ -121,6 +133,12 @@ export async function processJob(
       if (job.payload.deployAfterImport === true) {
         await store.enqueueJob(job.projectId, "build_deploy", {
           promoteAfterDeploy: job.payload.promoteAfterDeploy === true,
+          ...(operationId
+            ? {
+                operationId,
+                sourceRevisionId: revision.id,
+              }
+            : {}),
         });
         await store.appendLog({
           projectId: job.projectId,
@@ -131,15 +149,42 @@ export async function processJob(
       return;
     }
     case "build_deploy": {
+      const operationId =
+        typeof job.payload.operationId === "string"
+          ? job.payload.operationId
+          : null;
+      const deploymentOperation = operationId
+        ? await store.getDeploymentOperation(operationId)
+        : null;
+      if (
+        operationId &&
+        (!deploymentOperation || deploymentOperation.projectId !== job.projectId)
+      ) {
+        throw new Error(`Deployment operation ${operationId} not found.`);
+      }
+      const initializeProduction = deploymentOperation?.target !== "preview";
       const project = await store.getProject(job.projectId);
       if (!project) {
         throw new Error(`Project ${job.projectId} not found.`);
       }
 
-      const revision = await store.getCurrentSourceRevision(job.projectId);
+      const requestedSourceRevisionId =
+        typeof job.payload.sourceRevisionId === "string"
+          ? job.payload.sourceRevisionId
+          : null;
+      const revision = requestedSourceRevisionId
+        ? await store.getSourceRevision(requestedSourceRevisionId)
+        : await store.getCurrentSourceRevision(job.projectId);
       if (!revision) {
         throw new Error(
-          `Project ${job.projectId} has no source revision to deploy.`,
+          requestedSourceRevisionId
+            ? `Source revision ${requestedSourceRevisionId} not found.`
+            : `Project ${job.projectId} has no source revision to deploy.`,
+        );
+      }
+      if (revision.projectId !== job.projectId) {
+        throw new Error(
+          `Source revision ${revision.id} does not belong to project ${job.projectId}.`,
         );
       }
 
@@ -230,6 +275,11 @@ export async function processJob(
           ),
         });
       }
+      if (operationId) {
+        await store.updateDeploymentOperation(operationId, {
+          status: "deploying",
+        });
+      }
 
       const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
       const observerOutbox = resolveObserverOutboxDirs(
@@ -274,8 +324,13 @@ export async function processJob(
           internalPort: started.internalPort,
           hostPort,
           runtimeKind: runtime.name,
+          initializeProject: initializeProduction,
         });
-        if (!previousDeployment && build.schedulerDefinitions?.length) {
+        if (
+          initializeProduction &&
+          !previousDeployment &&
+          build.schedulerDefinitions?.length
+        ) {
           await store.setProjectSchedulerTarget(project.id, deployment.id);
         }
         const materializedRoutes = await store.ensureDeploymentRoutes(
@@ -284,8 +339,15 @@ export async function processJob(
           (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost")
             .split(",")[0]!
             .trim(),
+          { initializeStable: initializeProduction },
         );
         if (job.payload.promoteAfterDeploy === true) {
+          if (operationId) {
+            await store.updateDeploymentOperation(operationId, {
+              status: "promoting",
+              deploymentId: deployment.id,
+            });
+          }
           await store.promoteDeployment(
             project.id,
             deployment.id,
@@ -312,6 +374,24 @@ export async function processJob(
           status: "deployed",
           deploymentStatus: "running",
         });
+        if (operationId) {
+          const previewRoute = materializedRoutes.find(
+            (route) => route.kind === "deployment",
+          );
+          const productionRoute = materializedRoutes.find(
+            (route) => route.kind === "project",
+          );
+          await store.updateDeploymentOperation(operationId, {
+            status: "ready",
+            releaseId,
+            deploymentId: deployment.id,
+            previewHostname: previewRoute?.hostname ?? null,
+            productionHostname:
+              job.payload.promoteAfterDeploy === true
+                ? productionRoute?.hostname ?? null
+                : null,
+          });
+        }
         await store.appendLog({
           projectId: job.projectId,
           deploymentId: deployment.id,

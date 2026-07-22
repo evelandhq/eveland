@@ -45,6 +45,44 @@ describe("browser auth API", () => {
     });
   });
 
+  test("verifies and approves a CLI device code through credentialed requests", async () => {
+    const deviceApi = authApi as typeof authApi & {
+      verifyDeviceCode?: (userCode: string) => Promise<{ status: string }>;
+      approveDeviceCode?: (userCode: string) => Promise<void>;
+    };
+    expect(deviceApi.verifyDeviceCode).toBeTypeOf("function");
+    expect(deviceApi.approveDeviceCode).toBeTypeOf("function");
+    if (!deviceApi.verifyDeviceCode || !deviceApi.approveDeviceCode) return;
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ status: "pending", success: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deviceApi.verifyDeviceCode("ABCD-1234")).resolves.toMatchObject({
+      status: "pending",
+    });
+    await expect(deviceApi.approveDeviceCode("ABCD-1234")).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:4000/api/auth/device?user_code=ABCD-1234",
+      { method: "GET", credentials: "include" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:4000/api/auth/device/approve",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userCode: "ABCD-1234" }),
+      },
+    );
+  });
+
   test("loads the current member for the persistent account menu", async () => {
     const getCurrentMember = (authApi as typeof authApi & {
       getCurrentMember?: () => Promise<unknown>;

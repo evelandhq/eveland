@@ -21,6 +21,90 @@ import {
 } from "./app.test-support.js";
 
 describe("api app", () => {
+  test("creates a production deployment operation from a completed local source upload", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Local Upload Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/local-upload.git",
+    });
+    const preflight = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath: "/tmp/eveland-local-upload",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const claimed = await store.claimNextSourcePreflight("worker-a");
+    await store.completeSourcePreflight(claimed!.id, claimed!.attempts, {
+      sourcePath: "/tmp/eveland-local-upload",
+      commitSha: null,
+      summary: { eveVersion: "0.26.2" },
+    });
+
+    const response = await createApp(store).request(
+      `/projects/${project.id}/deployment-operations`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sourcePreflightId: preflight.id,
+          target: "production",
+          sourceDigest: "sha256:local-source",
+          git: {
+            commitSha: "abc1234",
+            branch: "feature/local-cli",
+            dirty: true,
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(202);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      operation: {
+        id: expect.stringMatching(/^dop_/),
+        projectId: project.id,
+        requestedByUserId: "user_local_admin",
+        target: "production",
+        status: "importing",
+        sourceDigest: "sha256:local-source",
+        sourceRevisionId: null,
+        releaseId: null,
+        deploymentId: null,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("/tmp/eveland-local-upload");
+
+    const operationJob = (
+      await store.listProjectJobs(project.id, { type: "import_source" })
+    ).find((job) => job.payload.operationId === body.operation.id);
+    expect(operationJob).toMatchObject({
+      payload: {
+        operationId: body.operation.id,
+        importKind: "zip",
+        sourcePath: "/tmp/eveland-local-upload",
+        sourceRevisionKind: "local",
+        deployAfterImport: true,
+        promoteAfterDeploy: true,
+      },
+    });
+
+    const duplicate = await createApp(store).request(
+      `/projects/${project.id}/deployment-operations`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sourcePreflightId: preflight.id,
+          target: "preview",
+          sourceDigest: "sha256:local-source",
+        }),
+      },
+    );
+    expect(duplicate.status).toBe(409);
+  });
+
   test("syncs the latest git source with deployment and promotion chained", async () => {
     const store = createTestStore();
     const app = createApp(store);

@@ -1,5 +1,6 @@
 import {
   authAccounts,
+  authDeviceCodes,
   authSessions,
   authVerifications,
   invitations,
@@ -26,6 +27,7 @@ async function createTestRuntime() {
         organization: teams,
         member: teamMemberships,
         invitation: invitations,
+        deviceCode: authDeviceCodes,
       },
     }),
     baseURL: "http://localhost:4000",
