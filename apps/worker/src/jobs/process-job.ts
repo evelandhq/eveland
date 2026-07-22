@@ -175,9 +175,13 @@ export async function processJob(
       // A Deployment is an immutable previewable version. Never recycle a port
       // from the production target: old and new versions must be able to run
       // concurrently until an explicit promote/drain decision is made.
-      const hostPort = await (
-        options.allocateHostPort ?? allocateAvailableHostPort
-      )();
+      const hostPort = options.allocateHostPort
+        ? await options.allocateHostPort()
+        : await allocateAvailableHostPort(
+            undefined,
+            undefined,
+            new Set(await store.listReservedDeploymentHostPorts()),
+          );
       const { env, secretValues } = await composeDeploymentEnv(
         store,
         project.id,

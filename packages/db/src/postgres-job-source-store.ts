@@ -395,6 +395,15 @@ export function createPostgresJobSourceStore({
       return revision ? sourceRevisionRowToSourceRevision(revision) : null;
     },
 
+    async listSourceRevisionFiles(revisionId) {
+      const rows = await db
+        .select()
+        .from(sourceFiles)
+        .where(eq(sourceFiles.revisionId, revisionId))
+        .orderBy(sourceFiles.path);
+      return rows.map(sourceFileRowToSourceFile);
+    },
+
     async listSourceFiles(projectId) {
       const revision = await this.getCurrentSourceRevision(projectId);
       if (!revision) {

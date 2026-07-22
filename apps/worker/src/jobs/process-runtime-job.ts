@@ -354,6 +354,19 @@ export async function processRuntimeJob(
       const revision = await store.getSourceRevision(release.sourceRevisionId);
       if (!revision)
         throw new Error("Deployment activation SourceRevision is missing.");
+      let persistedSourceFiles: Awaited<
+        ReturnType<Store["listSourceRevisionFiles"]>
+      > = [];
+      try {
+        await access(revision.sourcePath);
+      } catch {
+        persistedSourceFiles = await store.listSourceRevisionFiles(revision.id);
+        if (!persistedSourceFiles.some((file) => file.path === "package.json")) {
+          throw new Error(
+            `Source directory for revision ${revision.id} is missing: ${revision.sourcePath}. Re-import the source and deploy instead.`,
+          );
+        }
+      }
       const runtime =
         options.runtime ??
         (options.runtimeForKind ?? createRuntimeAdapterForKind)(
@@ -367,6 +380,7 @@ export async function processRuntimeJob(
       );
       const commandContext = await resolveRuntimeCommandContext(
         revision.sourcePath,
+        persistedSourceFiles,
       );
       const sandboxCache = resolveSandboxCacheDirs(process.env, job.projectId);
       const observerOutbox = resolveObserverOutboxDirs(

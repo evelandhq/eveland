@@ -165,6 +165,7 @@ export interface SourceStore {
   listSourceRevisions(projectId: string): Promise<SourceRevision[]>;
   getCurrentSourceRevision(projectId: string): Promise<SourceRevision | null>;
   getSourceRevision(revisionId: string): Promise<SourceRevision | null>;
+  listSourceRevisionFiles(revisionId: string): Promise<SourceFileRecord[]>;
   listSourceFiles(projectId: string): Promise<SourceFileRecord[]>;
   getSourceFile(projectId: string, filePath: string): Promise<SourceFileRecord | null>;
 }
@@ -286,6 +287,7 @@ export interface DeploymentStore {
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   listDeployments(projectId: string): Promise<DeploymentRecord[]>;
+  listReservedDeploymentHostPorts(): Promise<number[]>;
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
   getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
   getDeploymentByContainerName(containerName: string): Promise<DeploymentRecord | null>;

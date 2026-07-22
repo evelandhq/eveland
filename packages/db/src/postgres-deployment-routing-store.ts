@@ -6,7 +6,7 @@ import {
   createEveVersionInfo,
   readDeclaredEveVersion,
 } from "@eveland/core/source";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import {
   agentRouteRowToAgentRoute,
   deploymentRowToDeployment,
@@ -134,6 +134,14 @@ export function createPostgresDeploymentRoutingStore({
         .where(eq(deployments.projectId, projectId))
         .orderBy(desc(deployments.createdAt), desc(deployments.id));
       return rows.map(deploymentRowToDeployment);
+    },
+
+    async listReservedDeploymentHostPorts() {
+      const rows = await db
+        .selectDistinct({ hostPort: deployments.hostPort })
+        .from(deployments)
+        .where(ne(deployments.status, "archived"));
+      return rows.map((row) => row.hostPort);
     },
 
     async getDeployment(deploymentId) {

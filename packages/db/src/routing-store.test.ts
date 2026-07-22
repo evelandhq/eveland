@@ -62,6 +62,27 @@ describe("routing repository", () => {
     });
   });
 
+  test("reserves host ports until their Deployment is archived", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Port Reservation Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/port-reservation", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const retained = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "retained", containerName: "retained", internalPort: 3000,
+      hostPort: 41090, runtimeKind: "docker",
+    });
+    const archived = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "archived", containerName: "archived", internalPort: 3000,
+      hostPort: 41091, runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(retained.id, "stopped");
+    await store.updateDeploymentStatus(archived.id, "archived");
+
+    await expect(store.listReservedDeploymentHostPorts()).resolves.toContain(41090);
+    await expect(store.listReservedDeploymentHostPorts()).resolves.not.toContain(41091);
+  });
+
   test("creates named aliases and reports retention protection from routes and active sessions", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Retention Agent", importKind: "zip" });
