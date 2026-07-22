@@ -231,23 +231,8 @@ export function createPlaygroundMessage(text: string, files: readonly FileUIPart
   ];
 }
 
-export async function cancelPlaygroundTurn(
-  session: { cancel(): Promise<unknown> },
-  abortStream: () => void,
-): Promise<void> {
-  try {
-    await session.cancel();
-  } catch (error) {
-    if (isHttpError(error, 404)) {
-      abortStream();
-      return;
-    }
-    throw error;
-  }
-}
-
-function isHttpError(error: unknown, status: number): boolean {
-  return typeof error === "object" && error !== null && "status" in error && error.status === status;
+export async function cancelPlaygroundTurn(session: { cancel(): Promise<unknown> }): Promise<void> {
+  await session.cancel();
 }
 
 export async function enqueueBuildDeploy(projectId: string): Promise<Job> {

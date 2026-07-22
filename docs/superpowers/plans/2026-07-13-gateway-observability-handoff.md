@@ -1341,3 +1341,30 @@ discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 
 compatibility。UI 只把最新支持线 0.26.x 显示为绿色；0.24.x/0.25.x 保持可运行，但以红色提醒
 尽快升级；窗口外版本为红色并继续阻断。后续 0.27 仍需重复 release/source/fixture 验证，进入后
 窗口移动为 0.25.x/0.26.x/0.27.x。
+
+---
+
+## 28. 2026-07-22 follow-up：Eve 0.27 compatibility window
+
+Eve 0.27.0 已完成 release notes、`eve@0.26.2..eve@0.27.0` 源码和实际发布包核对，三 minor
+滑动窗口因此移动到 Eve 0.25.x、0.26.x 与 0.27.x；精确矩阵 patch 为 0.25.3、0.26.2 与
+0.27.0。默认开发、Web Client、Agent Auth 和完整 Linux fixture 使用 0.27.0，basic systemd
+smoke 使用窗口最旧端的 0.25.3。0.24.x 退出 import、build、restart、cold activation、
+Playground、Gateway 与 scheduler adapter 的共享 fail-closed 门禁；旧 0.24 cancel-route 404
+本地中止兼容路径随之删除。
+
+源码核对得到以下兼容结论：
+
+- Client session/continuation/cancel/stream 实现与类型、Vercel OIDC client headers、Eve Channel、
+  Hook、Schedule 与 `SandboxBackend` 公共定义在 0.26.2 和 0.27.0 发布包中保持一致；
+- Eve 0.27 的 Route Auth 会按实际策略声明 `WWW-Authenticate`，HTTP Basic 增加 realm/UTF-8
+  challenge 并对 credential 做 Unicode NFC 规范化；Eveland 不根据 challenge 推断 Connection，
+  现有 UTF-8 Basic 客户端无需分叉；
+- Nuxt stable services、compaction checkpoint/full-fidelity context 和 Bedrock prompt-cache 修复属于
+  Eve host/runtime 内部增强，不改变 Eveland 的 standalone Release、Observer/Collector、scheduler
+  adapter 或 privilege boundary。
+
+真实发布包矩阵覆盖 0.25.3/0.26.2/0.27.0 observer hook 与 packaged skill discovery、schedule
+discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox public type
+compatibility。UI 只把最新支持线 0.27.x 显示为绿色；0.25.x/0.26.x 保持可运行但提醒升级，窗口外
+版本继续阻断。

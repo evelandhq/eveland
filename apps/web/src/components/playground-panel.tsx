@@ -244,7 +244,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               disabled={!eveVersion.supported}
               onStop={() => {
                 setComposerError(null);
-                void cancelPlaygroundTurn(session, agent.stop).catch((cancelError) => {
+                void cancelPlaygroundTurn(session).catch((cancelError) => {
                   setComposerError(toErrorMessage(cancelError));
                 });
               }}

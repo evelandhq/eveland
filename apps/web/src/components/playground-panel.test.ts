@@ -25,22 +25,16 @@ describe("Playground message composition", () => {
     ]);
   });
 
-  test("requests server cancellation and falls back to aborting the stream for Eve versions without the cancel route", async () => {
+  test("requests server cancellation and surfaces failures", async () => {
     const cancelPlaygroundTurn = (ClientApi as Record<string, unknown>).cancelPlaygroundTurn;
     expect(cancelPlaygroundTurn).toBeTypeOf("function");
     if (typeof cancelPlaygroundTurn !== "function") return;
 
-    const stop = vi.fn();
     const cancel = vi.fn(async () => ({ sessionId: "eve_1", status: "accepted" as const }));
-    await cancelPlaygroundTurn({ cancel }, stop);
+    await cancelPlaygroundTurn({ cancel });
     expect(cancel).toHaveBeenCalledOnce();
-    expect(stop).not.toHaveBeenCalled();
-
-    const missingRoute = Object.assign(new Error("Not found"), { status: 404 });
-    await cancelPlaygroundTurn({ cancel: vi.fn(async () => Promise.reject(missingRoute)) }, stop);
-    expect(stop).toHaveBeenCalledOnce();
 
     const serverFailure = Object.assign(new Error("Unavailable"), { status: 503 });
-    await expect(cancelPlaygroundTurn({ cancel: vi.fn(async () => Promise.reject(serverFailure)) }, stop)).rejects.toBe(serverFailure);
+    await expect(cancelPlaygroundTurn({ cancel: vi.fn(async () => Promise.reject(serverFailure)) })).rejects.toBe(serverFailure);
   });
 });

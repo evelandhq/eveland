@@ -7,9 +7,9 @@ import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
-  { version: "0.24.6", fixtureName: "eve-0.24-hooks", packageName: "eve-0-24" },
   { version: "0.25.3", fixtureName: "eve-0.25-hooks", packageName: "eve-0-25" },
-  { version: "0.26.2", fixtureName: "eve-0.25-hooks", packageName: "eve" },
+  { version: "0.26.2", fixtureName: "eve-0.25-hooks", packageName: "eve-0-26" },
+  { version: "0.27.0", fixtureName: "eve-0.25-hooks", packageName: "eve" },
 ] as const;
 
 describe("Eve observer hook compatibility matrix", () => {
@@ -18,9 +18,9 @@ describe("Eve observer hook compatibility matrix", () => {
       await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
     ) as { devDependencies: Record<string, string> };
 
-    expect(packageJson.devDependencies["eve-0-24"]).toBe("npm:eve@0.24.6");
     expect(packageJson.devDependencies["eve-0-25"]).toBe("npm:eve@0.25.3");
-    expect(packageJson.devDependencies.eve).toBe("0.26.2");
+    expect(packageJson.devDependencies["eve-0-26"]).toBe("npm:eve@0.26.2");
+    expect(packageJson.devDependencies.eve).toBe("0.27.0");
   });
 
   test.each(compatibilityMatrix)("runs observer coverage against Eve $version", async ({ packageName, version }) => {
