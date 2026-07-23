@@ -89,6 +89,9 @@ describe("team management web surfaces", () => {
     expect(settings).toContain("Recent metrics");
     expect(settings).toContain("Collector delivery");
     expect(settings).toContain("Queue utilization");
+    expect(settings).toContain("Platform operations");
+    expect(settings).toContain("P95 latency");
+    expect(settings).toContain("initialActivity.platform.operations");
     expect(settings).toContain("initialActivity.delivery.destinations");
     expect(settings).toContain("saveObservabilitySettings");
     expect(settings).toContain("External destinations");

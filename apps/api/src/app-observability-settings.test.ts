@@ -103,6 +103,8 @@ describe("observability settings", () => {
 
   test("lists recent Built-in spans, logs, and metrics for the monitoring UI", async () => {
     const store = createTestStore();
+    const spanStartedAt = new Date(Date.now() - 60_000);
+    const spanEndedAt = new Date(spanStartedAt.getTime() + 125);
     await store.ingestOtlpSpans([
       {
         traceId: "trace_1",
@@ -110,13 +112,13 @@ describe("observability settings", () => {
         parentSpanId: null,
         name: "GET /projects",
         kind: 2,
-        startedAt: "2026-07-23T12:00:00.000Z",
-        endedAt: "2026-07-23T12:00:00.125Z",
+        startedAt: spanStartedAt.toISOString(),
+        endedAt: spanEndedAt.toISOString(),
         durationMs: 125,
         statusCode: 1,
         statusMessage: null,
-        scopeName: "test",
-        attributes: {},
+        scopeName: "@opentelemetry/instrumentation-http",
+        attributes: { "http.request.method": "GET" },
         resource: {
           serviceName: "eveland-api",
           domain: "platform",
@@ -198,6 +200,22 @@ describe("observability settings", () => {
           value: { asDouble: 600 },
         }),
       ],
+      platform: {
+        windowStart: expect.any(String),
+        windowEnd: expect.any(String),
+        operations: [
+          {
+            serviceName: "eveland-api",
+            kind: "request",
+            spanCount: 1,
+            errorCount: 0,
+            errorRate: 0,
+            averageDurationMs: 125,
+            p95DurationMs: 125,
+            lastSeenAt: spanStartedAt.toISOString(),
+          },
+        ],
+      },
       delivery: {
         generatedAt: expect.any(String),
         destinations: [

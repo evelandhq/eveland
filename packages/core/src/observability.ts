@@ -379,10 +379,27 @@ export type BuiltInOtlpMetricPoint = OtlpMetricPointProjection & {
   id: string;
   receivedAt: string;
 };
+export type PlatformOperationKind = "request" | "job" | "background";
+export type BuiltInPlatformOperationSummary = {
+  serviceName: string;
+  kind: PlatformOperationKind;
+  spanCount: number;
+  errorCount: number;
+  errorRate: number;
+  averageDurationMs: number;
+  p95DurationMs: number;
+  lastSeenAt: string;
+};
+export type BuiltInPlatformSummary = {
+  windowStart: string;
+  windowEnd: string;
+  operations: BuiltInPlatformOperationSummary[];
+};
 export type BuiltInOtlpActivity = {
   spans: BuiltInOtlpSpan[];
   logs: BuiltInOtlpLogRecord[];
   metrics: BuiltInOtlpMetricPoint[];
+  platform: BuiltInPlatformSummary;
   delivery: CollectorDeliveryDiagnostics;
 };
 export type SessionOtlpTelemetry = {

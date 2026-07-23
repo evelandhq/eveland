@@ -357,6 +357,86 @@ export function ObservabilitySettings({
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Platform operations</CardTitle>
+          <CardDescription>
+            Request, job, and background operation latency from standard
+            Platform and Runtime spans over the last 24 hours.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {initialActivity.platform.operations.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No Platform or Runtime operations have been observed in this
+              window.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-3xl text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr>
+                    <th className="pb-2 text-left font-medium">Component</th>
+                    <th className="pb-2 text-left font-medium">Kind</th>
+                    <th className="pb-2 text-right font-medium">Spans</th>
+                    <th className="pb-2 text-right font-medium">Errors</th>
+                    <th className="pb-2 text-right font-medium">Error rate</th>
+                    <th className="pb-2 text-right font-medium">
+                      Average latency
+                    </th>
+                    <th className="pb-2 text-right font-medium">P95 latency</th>
+                    <th className="pb-2 text-right font-medium">Last seen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {initialActivity.platform.operations.map((operation) => (
+                    <tr
+                      key={`${operation.serviceName}:${operation.kind}`}
+                      className="border-t border-border"
+                    >
+                      <td className="py-3 font-medium">
+                        {operation.serviceName}
+                      </td>
+                      <td className="py-3">
+                        <Badge variant="outline">{operation.kind}</Badge>
+                      </td>
+                      <td className="py-3 text-right font-mono">
+                        {operation.spanCount.toLocaleString()}
+                      </td>
+                      <td className="py-3 text-right">
+                        <Badge
+                          variant={
+                            operation.errorCount > 0
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {operation.errorCount.toLocaleString()}
+                        </Badge>
+                      </td>
+                      <td className="py-3 text-right font-mono">
+                        {formatPercentage(operation.errorRate)}
+                      </td>
+                      <td className="py-3 text-right font-mono">
+                        {formatDuration(operation.averageDurationMs)}
+                      </td>
+                      <td className="py-3 text-right font-mono">
+                        {formatDuration(operation.p95DurationMs)}
+                      </td>
+                      <td className="py-3 text-right text-xs text-muted-foreground">
+                        <time dateTime={operation.lastSeenAt}>
+                          {new Date(operation.lastSeenAt).toLocaleString()}
+                        </time>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 xl:grid-cols-3">
         <Card>
           <CardHeader>
@@ -819,6 +899,10 @@ function formatDuration(durationMs: number): string {
   return durationMs < 1_000
     ? `${Math.round(durationMs * 100) / 100} ms`
     : `${Math.round(durationMs / 10) / 100} s`;
+}
+
+function formatPercentage(ratio: number): string {
+  return `${Math.round(ratio * 1_000) / 10}%`;
 }
 
 function bodySummary(body: unknown): string {

@@ -58,6 +58,7 @@ import type {
   BuiltInOtlpLogRecord,
   BuiltInOtlpMetricPoint,
   BuiltInOtlpSpan,
+  BuiltInPlatformOperationSummary,
   OtlpLogRecordProjection,
   OtlpMetricPointProjection,
   OtlpSpanProjection,
@@ -736,6 +737,10 @@ export interface ObservabilityStore {
     traceIds?: string[];
     limit: number;
   }): Promise<BuiltInOtlpSpan[]>;
+  summarizeOtlpSpanOperations(input: {
+    since: Date;
+    until: Date;
+  }): Promise<BuiltInPlatformOperationSummary[]>;
   ingestOtlpLogRecords(
     records: OtlpLogRecordProjection[],
   ): Promise<{ inserted: number }>;

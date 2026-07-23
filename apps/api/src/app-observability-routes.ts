@@ -49,6 +49,7 @@ const deleteDestinationSchema = z
 const activityQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(200).default(50),
+    hours: z.coerce.number().int().min(1).max(168).default(24),
     domain: z.enum(TELEMETRY_DOMAINS).optional(),
     serviceName: z.string().trim().min(1).max(200).optional(),
     projectId: z.string().trim().min(1).max(200).optional(),
@@ -85,8 +86,19 @@ export function registerObservabilityRoutes(input: {
         400,
       );
     }
-    const query = parsed.data;
-    const [spans, logs, metrics, collectorMetrics, policy] =
+    const { hours, ...query } = parsed.data;
+    const windowEnd = new Date();
+    const windowStart = new Date(
+      windowEnd.getTime() - hours * 60 * 60 * 1_000,
+    );
+    const [
+      spans,
+      logs,
+      metrics,
+      collectorMetrics,
+      policy,
+      operations,
+    ] =
       await Promise.all([
         store.listOtlpSpans(query),
         store.listOtlpLogRecords(query),
@@ -96,6 +108,10 @@ export function registerObservabilityRoutes(input: {
           limit: 2_000,
         }),
         store.getObservabilityPolicy(DEFAULT_TEAM_ID),
+        store.summarizeOtlpSpanOperations({
+          since: windowStart,
+          until: windowEnd,
+        }),
       ]);
     const delivery = summarizeCollectorDelivery(
       collectorMetrics,
@@ -113,10 +129,20 @@ export function registerObservabilityRoutes(input: {
             label: destinationLabel(destination.kind),
             exporterId: collectorExporterComponentId(destination.id),
             supportedSignals: destination.supportedSignals,
-          })),
+        })),
       ],
     );
-    return c.json({ spans, logs, metrics, delivery });
+    return c.json({
+      spans,
+      logs,
+      metrics,
+      delivery,
+      platform: {
+        windowStart: windowStart.toISOString(),
+        windowEnd: windowEnd.toISOString(),
+        operations,
+      },
+    });
   });
 
   app.put("/system/observability", async (c) => {

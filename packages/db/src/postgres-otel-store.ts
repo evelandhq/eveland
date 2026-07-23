@@ -4,7 +4,16 @@ import type {
   TelemetryDomain,
 } from "@eveland/core/observability";
 import { createId } from "@eveland/core/ids";
-import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lt,
+  ne,
+  sql,
+} from "drizzle-orm";
 import {
   modelUsageEvents,
   otlpBatches,
@@ -180,6 +189,58 @@ export function createPostgresOtlpStore(
         payload: asRecord(row.payload),
         receivedAt: row.receivedAt.toISOString(),
       }));
+    },
+
+    async summarizeOtlpSpanOperations(input) {
+      const operationKind = sql<"request" | "job" | "background">`
+        case
+          when ${otlpSpans.name} like 'eveland.job %'
+            or ${otlpSpans.attributes} ? 'eveland.job.type'
+            then 'job'
+          when ${otlpSpans.scopeName} = '@opentelemetry/instrumentation-http'
+            or ${otlpSpans.attributes} ? 'http.request.method'
+            or ${otlpSpans.attributes} ? 'http.method'
+            then 'request'
+          else 'background'
+        end
+      `;
+      const rows = await db
+        .select({
+          serviceName: otlpSpans.serviceName,
+          kind: operationKind,
+          spanCount: sql<number>`count(*)::integer`,
+          errorCount:
+            sql<number>`count(*) filter (where ${otlpSpans.statusCode} = 2)::integer`,
+          averageDurationMs:
+            sql<number>`avg(${otlpSpans.durationMs})::double precision`,
+          p95DurationMs:
+            sql<number>`percentile_cont(0.95) within group (order by ${otlpSpans.durationMs})::double precision`,
+          lastSeenAt: sql<Date>`max(${otlpSpans.startedAt})`,
+        })
+        .from(otlpSpans)
+        .where(
+          and(
+            inArray(otlpSpans.domain, ["platform", "runtime"]),
+            gte(otlpSpans.startedAt, input.since),
+            lt(otlpSpans.startedAt, input.until),
+          ),
+        )
+        .groupBy(otlpSpans.serviceName, operationKind)
+        .orderBy(otlpSpans.serviceName, operationKind);
+      return rows.map((row) => {
+        const spanCount = Number(row.spanCount);
+        const errorCount = Number(row.errorCount);
+        return {
+          serviceName: row.serviceName,
+          kind: row.kind,
+          spanCount,
+          errorCount,
+          errorRate: spanCount > 0 ? errorCount / spanCount : 0,
+          averageDurationMs: Number(row.averageDurationMs),
+          p95DurationMs: Number(row.p95DurationMs),
+          lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+        };
+      });
     },
 
     async ingestOtlpLogRecords(records) {

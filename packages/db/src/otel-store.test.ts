@@ -37,6 +37,89 @@ describe("Built-in OTLP store", () => {
     ).resolves.toEqual([]);
   });
 
+  test("summarizes platform request and job latency without Agent spans", async () => {
+    const store = createTestStore();
+    const firstRequest = {
+      ...spanProjection(),
+      durationMs: 100,
+      endedAt: "2026-07-23T12:00:00.100Z",
+    };
+    const failedRequest = {
+      ...spanProjection(),
+      traceId: "trace_2",
+      spanId: "span_2",
+      startedAt: "2026-07-23T12:01:00.000Z",
+      endedAt: "2026-07-23T12:01:00.300Z",
+      durationMs: 300,
+      statusCode: 2,
+      payload: { traceId: "trace_2", spanId: "span_2" },
+    };
+    const failedJob = {
+      ...spanProjection(),
+      traceId: "trace_3",
+      spanId: "span_3",
+      name: "eveland.job build_deploy",
+      startedAt: "2026-07-23T12:02:00.000Z",
+      endedAt: "2026-07-23T12:02:01.000Z",
+      durationMs: 1_000,
+      statusCode: 2,
+      attributes: { "eveland.job.type": "build_deploy" },
+      resource: {
+        ...spanProjection().resource,
+        serviceName: "eveland-worker",
+        domain: "runtime" as const,
+      },
+      payload: { traceId: "trace_3", spanId: "span_3" },
+    };
+    const agentSpan = {
+      ...spanProjection(),
+      traceId: "trace_4",
+      spanId: "span_4",
+      resource: {
+        ...spanProjection().resource,
+        serviceName: "eveland-agent",
+        domain: "agent" as const,
+      },
+      payload: { traceId: "trace_4", spanId: "span_4" },
+    };
+    await store.ingestOtlpSpans([
+      firstRequest,
+      failedRequest,
+      failedJob,
+      agentSpan,
+    ]);
+
+    await expect(
+      store.summarizeOtlpSpanOperations({
+        since: new Date("2026-07-23T00:00:00.000Z"),
+        until: new Date("2026-07-24T00:00:00.000Z"),
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        {
+          serviceName: "eveland-api",
+          kind: "request",
+          spanCount: 2,
+          errorCount: 1,
+          errorRate: 0.5,
+          averageDurationMs: 200,
+          p95DurationMs: 290,
+          lastSeenAt: "2026-07-23T12:01:00.000Z",
+        },
+        {
+          serviceName: "eveland-worker",
+          kind: "job",
+          spanCount: 1,
+          errorCount: 1,
+          errorRate: 1,
+          averageDurationMs: 1_000,
+          p95DurationMs: 1_000,
+          lastSeenAt: "2026-07-23T12:02:00.000Z",
+        },
+      ]),
+    );
+  });
+
   test("indexes LogRecords idempotently and supports activity filters", async () => {
     const store = createTestStore();
     const logRecord = logProjection();
