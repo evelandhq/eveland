@@ -49,6 +49,7 @@ const activityQuerySchema = z
     domain: z.enum(TELEMETRY_DOMAINS).optional(),
     serviceName: z.string().trim().min(1).max(200).optional(),
     projectId: z.string().trim().min(1).max(200).optional(),
+    name: z.string().trim().min(1).max(500).optional(),
   })
   .strict();
 
@@ -82,11 +83,12 @@ export function registerObservabilityRoutes(input: {
       );
     }
     const query = parsed.data;
-    const [spans, logs] = await Promise.all([
+    const [spans, logs, metrics] = await Promise.all([
       store.listOtlpSpans(query),
       store.listOtlpLogRecords(query),
+      store.listOtlpMetricPoints(query),
     ]);
-    return c.json({ spans, logs });
+    return c.json({ spans, logs, metrics });
   });
 
   app.put("/system/observability", async (c) => {

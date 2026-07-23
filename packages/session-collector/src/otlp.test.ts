@@ -3,6 +3,7 @@ import {
   projectAgentEventsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
   projectOtlpLogRecords,
+  projectOtlpMetricPoints,
   projectOtlpSpans,
 } from "./otlp.js";
 
@@ -340,6 +341,199 @@ describe("OTLP Instance Health projection", () => {
         },
       ],
     });
+  });
+});
+
+describe("OTLP metric point indexing projection", () => {
+  test("indexes standard number, histogram, exponential histogram, and summary points", () => {
+    const points = projectOtlpMetricPoints({
+      resourceMetrics: [
+        {
+          resource: {
+            attributes: [
+              attribute("service.name", "eveland-worker"),
+              attribute("eveland.telemetry.domain", "capacity"),
+              attribute("eveland.project.id", "proj_1"),
+            ],
+          },
+          scopeMetrics: [
+            {
+              scope: { name: "@eveland/platform-observability" },
+              metrics: [
+                {
+                  name: "system.memory.usage",
+                  description: "Memory usage by state.",
+                  unit: "By",
+                  gauge: {
+                    dataPoints: [
+                      point(600, { "system.memory.state": "used" }),
+                    ],
+                  },
+                },
+                {
+                  name: "eveland.jobs.completed",
+                  unit: "{job}",
+                  sum: {
+                    aggregationTemporality: 2,
+                    isMonotonic: true,
+                    dataPoints: [
+                      {
+                        asInt: "12",
+                        startTimeUnixNano: "1784807940000000000",
+                        timeUnixNano: "1784808000000000000",
+                        attributes: [],
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "eveland.worker.tick.duration",
+                  unit: "ms",
+                  histogram: {
+                    aggregationTemporality: 2,
+                    dataPoints: [
+                      {
+                        count: "3",
+                        sum: 75,
+                        min: 10,
+                        max: 40,
+                        bucketCounts: ["1", "2"],
+                        explicitBounds: [25],
+                        startTimeUnixNano: "1784807940000000000",
+                        timeUnixNano: "1784808000000000000",
+                        attributes: [],
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "eveland.request.size",
+                  unit: "By",
+                  exponentialHistogram: {
+                    aggregationTemporality: 1,
+                    dataPoints: [
+                      {
+                        count: "4",
+                        sum: 1024,
+                        scale: 2,
+                        zeroCount: "1",
+                        positive: {
+                          offset: 1,
+                          bucketCounts: ["1", "2"],
+                        },
+                        startTimeUnixNano: "1784807940000000000",
+                        timeUnixNano: "1784808000000000000",
+                        attributes: [],
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: "eveland.request.quantiles",
+                  unit: "ms",
+                  summary: {
+                    dataPoints: [
+                      {
+                        count: "2",
+                        sum: 30,
+                        quantileValues: [
+                          { quantile: 0.5, value: 10 },
+                          { quantile: 0.99, value: 20 },
+                        ],
+                        startTimeUnixNano: "1784807940000000000",
+                        timeUnixNano: "1784808000000000000",
+                        attributes: [],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(points).toHaveLength(5);
+    expect(points).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "system.memory.usage",
+          description: "Memory usage by state.",
+          unit: "By",
+          dataType: "gauge",
+          timestamp: "2026-07-23T12:00:00.000Z",
+          startTimestamp: "2026-07-23T11:59:00.000Z",
+          value: { asDouble: 600 },
+          attributes: { "system.memory.state": "used" },
+          scopeName: "@eveland/platform-observability",
+          resource: expect.objectContaining({
+            serviceName: "eveland-worker",
+            domain: "capacity",
+            projectId: "proj_1",
+          }),
+        }),
+        expect.objectContaining({
+          name: "eveland.jobs.completed",
+          dataType: "sum",
+          aggregationTemporality: 2,
+          monotonic: true,
+          value: { asInt: 12 },
+        }),
+        expect.objectContaining({
+          name: "eveland.worker.tick.duration",
+          dataType: "histogram",
+          aggregationTemporality: 2,
+          value: {
+            count: 3,
+            sum: 75,
+            min: 10,
+            max: 40,
+            bucketCounts: [1, 2],
+            explicitBounds: [25],
+          },
+        }),
+        expect.objectContaining({
+          name: "eveland.request.size",
+          dataType: "exponential_histogram",
+          value: expect.objectContaining({
+            count: 4,
+            scale: 2,
+            zeroCount: 1,
+            positive: { offset: 1, bucketCounts: [1, 2] },
+          }),
+        }),
+        expect.objectContaining({
+          name: "eveland.request.quantiles",
+          dataType: "summary",
+          value: {
+            count: 2,
+            sum: 30,
+            quantileValues: [
+              { quantile: 0.5, value: 10 },
+              { quantile: 0.99, value: 20 },
+            ],
+          },
+        }),
+      ]),
+    );
+  });
+
+  test("does not index metrics without an Eveland telemetry domain", () => {
+    expect(
+      projectOtlpMetricPoints({
+        resourceMetrics: [
+          {
+            resource: {
+              attributes: [
+                attribute("service.name", "user-agent"),
+              ],
+            },
+            scopeMetrics: [],
+          },
+        ],
+      }),
+    ).toEqual([]);
   });
 });
 

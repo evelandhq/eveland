@@ -346,6 +346,27 @@ export type OtlpLogRecordProjection = {
   resource: OtlpResourceProjection;
   payload: Record<string, unknown>;
 };
+export type OtlpMetricDataType =
+  | "gauge"
+  | "sum"
+  | "histogram"
+  | "exponential_histogram"
+  | "summary";
+export type OtlpMetricPointProjection = {
+  name: string;
+  description: string | null;
+  unit: string | null;
+  dataType: OtlpMetricDataType;
+  aggregationTemporality: number | null;
+  monotonic: boolean | null;
+  startTimestamp: string | null;
+  timestamp: string;
+  scopeName: string | null;
+  attributes: Record<string, unknown>;
+  value: Record<string, unknown>;
+  resource: OtlpResourceProjection;
+  payload: Record<string, unknown>;
+};
 export type BuiltInOtlpSpan = OtlpSpanProjection & {
   id: string;
   receivedAt: string;
@@ -354,9 +375,14 @@ export type BuiltInOtlpLogRecord = OtlpLogRecordProjection & {
   id: string;
   receivedAt: string;
 };
+export type BuiltInOtlpMetricPoint = OtlpMetricPointProjection & {
+  id: string;
+  receivedAt: string;
+};
 export type BuiltInOtlpActivity = {
   spans: BuiltInOtlpSpan[];
   logs: BuiltInOtlpLogRecord[];
+  metrics: BuiltInOtlpMetricPoint[];
 };
 export type ExternalDestinationHealth = {
   destinationId: string;

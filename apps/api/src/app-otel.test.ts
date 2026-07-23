@@ -168,6 +168,9 @@ describe("Built-in OTLP ingest", () => {
         diskTotalBytes: 1000,
       }),
     ]);
+    await expect(
+      store.listOtlpMetricPoints({ limit: 20 }),
+    ).resolves.toHaveLength(11);
   });
 });
 
@@ -265,6 +268,7 @@ function workerMetricBatch() {
         resource: {
           attributes: [
             attribute("service.name", "eveland-worker"),
+            attribute("eveland.telemetry.domain", "capacity"),
             attribute("service.instance.id", "worker_1"),
           ],
         },

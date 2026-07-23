@@ -56,8 +56,10 @@ import type { AgentCatalogRecord } from "@eveland/core/catalog";
 import type {
   AgentEventObservation,
   BuiltInOtlpLogRecord,
+  BuiltInOtlpMetricPoint,
   BuiltInOtlpSpan,
   OtlpLogRecordProjection,
+  OtlpMetricPointProjection,
   OtlpSpanProjection,
   TelemetryDomain,
 } from "@eveland/core/observability";
@@ -741,6 +743,16 @@ export interface ObservabilityStore {
     projectId?: string;
     limit: number;
   }): Promise<BuiltInOtlpLogRecord[]>;
+  ingestOtlpMetricPoints(
+    points: OtlpMetricPointProjection[],
+  ): Promise<{ inserted: number }>;
+  listOtlpMetricPoints(input: {
+    domain?: TelemetryDomain;
+    serviceName?: string;
+    projectId?: string;
+    name?: string;
+    limit: number;
+  }): Promise<BuiltInOtlpMetricPoint[]>;
   pruneOtlpTelemetry(input: {
     tracesBefore: Date;
     logsBefore: Date;

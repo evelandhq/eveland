@@ -9,6 +9,7 @@ import {
   modelUsageEvents,
   otlpBatches,
   otlpLogRecords,
+  otlpMetricPoints,
   otlpSpans,
   sessionEvents,
   sessionNodes,
@@ -253,6 +254,108 @@ export function createPostgresOtlpStore(
       }));
     },
 
+    async ingestOtlpMetricPoints(points) {
+      if (points.length === 0) return { inserted: 0 };
+      const inserted = await db
+        .insert(otlpMetricPoints)
+        .values(
+          points.map((point) => ({
+            id: createId("otmp"),
+            fingerprint: createHash("sha256")
+              .update(
+                stableJson({
+                  resource: point.resource,
+                  scopeName: point.scopeName,
+                  name: point.name,
+                  dataType: point.dataType,
+                  attributes: point.attributes,
+                  timestamp: point.timestamp,
+                }),
+              )
+              .digest("hex"),
+            serviceName: point.resource.serviceName,
+            domain: point.resource.domain,
+            projectId: point.resource.projectId,
+            deploymentId: point.resource.deploymentId,
+            name: point.name,
+            description: point.description,
+            unit: point.unit,
+            dataType: point.dataType,
+            aggregationTemporality: point.aggregationTemporality,
+            monotonic: point.monotonic,
+            startTimestamp: point.startTimestamp
+              ? new Date(point.startTimestamp)
+              : null,
+            timestamp: new Date(point.timestamp),
+            scopeName: point.scopeName,
+            attributes: point.attributes,
+            value: point.value,
+            resourceAttributes: point.resource.attributes,
+            payload: point.payload,
+          })),
+        )
+        .onConflictDoNothing({
+          target: otlpMetricPoints.fingerprint,
+        })
+        .returning({ id: otlpMetricPoints.id });
+      return { inserted: inserted.length };
+    },
+
+    async listOtlpMetricPoints(input) {
+      const conditions = [sql`true`];
+      if (input.domain) {
+        conditions.push(eq(otlpMetricPoints.domain, input.domain));
+      }
+      if (input.serviceName) {
+        conditions.push(
+          eq(otlpMetricPoints.serviceName, input.serviceName),
+        );
+      }
+      if (input.projectId) {
+        conditions.push(
+          eq(otlpMetricPoints.projectId, input.projectId),
+        );
+      }
+      if (input.name) {
+        conditions.push(eq(otlpMetricPoints.name, input.name));
+      }
+      const rows = await db
+        .select()
+        .from(otlpMetricPoints)
+        .where(and(...conditions))
+        .orderBy(desc(otlpMetricPoints.timestamp))
+        .limit(clampActivityLimit(input.limit));
+      return rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        unit: row.unit,
+        dataType: row.dataType as
+          | "gauge"
+          | "sum"
+          | "histogram"
+          | "exponential_histogram"
+          | "summary",
+        aggregationTemporality: row.aggregationTemporality,
+        monotonic: row.monotonic,
+        startTimestamp:
+          row.startTimestamp?.toISOString() ?? null,
+        timestamp: row.timestamp.toISOString(),
+        scopeName: row.scopeName,
+        attributes: asRecord(row.attributes),
+        value: asRecord(row.value),
+        resource: {
+          serviceName: row.serviceName,
+          domain: row.domain as TelemetryDomain,
+          projectId: row.projectId,
+          deploymentId: row.deploymentId,
+          attributes: asRecord(row.resourceAttributes),
+        },
+        payload: asRecord(row.payload),
+        receivedAt: row.receivedAt.toISOString(),
+      }));
+    },
+
     async pruneOtlpTelemetry(input) {
       const cutoffs = {
         traces: input.tracesBefore,
@@ -273,7 +376,7 @@ export function createPostgresOtlpStore(
           return [signal, rows.length] as const;
         }),
       );
-      const [spans, logs] = await Promise.all([
+      const [spans, logs, metrics] = await Promise.all([
         db
           .delete(otlpSpans)
           .where(lt(otlpSpans.startedAt, input.tracesBefore))
@@ -282,6 +385,10 @@ export function createPostgresOtlpStore(
           .delete(otlpLogRecords)
           .where(lt(otlpLogRecords.timestamp, input.logsBefore))
           .returning({ id: otlpLogRecords.id }),
+        db
+          .delete(otlpMetricPoints)
+          .where(lt(otlpMetricPoints.timestamp, input.metricsBefore))
+          .returning({ id: otlpMetricPoints.id }),
       ]);
       const counts = Object.fromEntries(rawCounts) as Record<
         ObservabilitySignal,
@@ -290,7 +397,7 @@ export function createPostgresOtlpStore(
       return {
         traces: counts.traces + spans.length,
         logs: counts.logs + logs.length,
-        metrics: counts.metrics,
+        metrics: counts.metrics + metrics.length,
       };
     },
 
@@ -354,4 +461,23 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function clampActivityLimit(value: number): number {
   return Math.max(1, Math.min(1_000, value));
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(sortJson(value));
+}
+
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (
+    typeof value !== "object" ||
+    value === null
+  ) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, sortJson(child)]),
+  );
 }

@@ -7,6 +7,7 @@ import {
   projectAgentEventsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
   projectOtlpLogRecords,
+  projectOtlpMetricPoints,
   projectOtlpSpans,
 } from "@eveland/session-collector";
 import { runWithPlatformTracingSuppressed } from "@eveland/platform-observability";
@@ -76,6 +77,9 @@ export function registerOtlpRoutes(input: {
         }
       }
       if (signal === "metrics") {
+        await store.ingestOtlpMetricPoints(
+          projectOtlpMetricPoints(payload),
+        );
         const projection =
           projectInstanceTelemetryFromOtlpMetrics(payload);
         await Promise.all([

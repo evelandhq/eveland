@@ -666,6 +666,66 @@ export const otlpLogRecords = pgTable(
   ],
 );
 
+export const otlpMetricPoints = pgTable(
+  "otlp_metric_points",
+  {
+    id: text("id").primaryKey(),
+    fingerprint: text("fingerprint").notNull(),
+    serviceName: text("service_name").notNull(),
+    domain: text("domain").notNull(),
+    projectId: text("project_id"),
+    deploymentId: text("deployment_id"),
+    name: text("name").notNull(),
+    description: text("description"),
+    unit: text("unit"),
+    dataType: text("data_type").notNull(),
+    aggregationTemporality: integer("aggregation_temporality"),
+    monotonic: boolean("monotonic"),
+    startTimestamp: timestamp("start_timestamp", {
+      withTimezone: true,
+    }),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    scopeName: text("scope_name"),
+    attributes: jsonb("attributes").notNull(),
+    value: jsonb("value").notNull(),
+    resourceAttributes: jsonb("resource_attributes").notNull(),
+    payload: jsonb("payload").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "otlp_metric_points_domain_check",
+      sql`${table.domain} in ('agent', 'platform', 'runtime', 'capacity')`,
+    ),
+    check(
+      "otlp_metric_points_data_type_check",
+      sql`${table.dataType} in ('gauge', 'sum', 'histogram', 'exponential_histogram', 'summary')`,
+    ),
+    uniqueIndex("otlp_metric_points_fingerprint_idx").on(
+      table.fingerprint,
+    ),
+    index("otlp_metric_points_timestamp_idx").on(table.timestamp),
+    index("otlp_metric_points_name_timestamp_idx").on(
+      table.name,
+      table.timestamp,
+    ),
+    index("otlp_metric_points_domain_timestamp_idx").on(
+      table.domain,
+      table.timestamp,
+    ),
+    index("otlp_metric_points_service_timestamp_idx").on(
+      table.serviceName,
+      table.timestamp,
+    ),
+    index("otlp_metric_points_project_timestamp_idx").on(
+      table.projectId,
+      table.timestamp,
+    ),
+  ],
+);
+
 export const jobs = pgTable("jobs", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id),

@@ -3,6 +3,8 @@ import {
   agentEventObservationSchema,
   type AgentEventObservation,
   type OtlpLogRecordProjection,
+  type OtlpMetricDataType,
+  type OtlpMetricPointProjection,
   type OtlpResourceProjection,
   type OtlpSpanProjection,
 } from "@eveland/core/observability";
@@ -113,6 +115,56 @@ export function projectOtlpLogRecords(
     }
   }
   return logs;
+}
+
+export function projectOtlpMetricPoints(
+  payload: Record<string, unknown>,
+): OtlpMetricPointProjection[] {
+  const points: OtlpMetricPointProjection[] = [];
+  for (const resourceMetrics of arrayOfRecords(payload.resourceMetrics)) {
+    const resource = resourceProjection(resourceMetrics.resource);
+    if (!resource) continue;
+
+    for (const scopeMetrics of arrayOfRecords(resourceMetrics.scopeMetrics)) {
+      const scopeName =
+        stringValue(recordValue(scopeMetrics.scope)?.name) ?? null;
+      for (const metric of arrayOfRecords(scopeMetrics.metrics)) {
+        const name = stringValue(metric.name);
+        const data = metricData(metric);
+        if (!name || !data) continue;
+        for (const point of arrayOfRecords(data.value.dataPoints)) {
+          const timestamp = unixNanoToIso(
+            stringValue(point.timeUnixNano),
+          );
+          const value = metricPointValue(data.type, point);
+          if (!timestamp || !value) continue;
+          points.push({
+            name,
+            description: stringValue(metric.description) ?? null,
+            unit: stringValue(metric.unit) ?? null,
+            dataType: data.type,
+            aggregationTemporality:
+              finiteInteger(data.value.aggregationTemporality) ?? null,
+            monotonic:
+              typeof data.value.isMonotonic === "boolean"
+                ? data.value.isMonotonic
+                : null,
+            startTimestamp:
+              unixNanoToIso(
+                stringValue(point.startTimeUnixNano),
+              ) ?? null,
+            timestamp,
+            scopeName,
+            attributes: attributesFrom(point.attributes),
+            value,
+            resource,
+            payload: point,
+          });
+        }
+      }
+    }
+  }
+  return points;
 }
 
 export function projectAgentEventsFromOtlpLogs(
@@ -351,6 +403,143 @@ function metricDataPoints(
     if (data) return arrayOfRecords(data.dataPoints);
   }
   return [];
+}
+
+function metricData(
+  metric: Record<string, unknown>,
+):
+  | {
+      type: OtlpMetricDataType;
+      value: Record<string, unknown>;
+    }
+  | undefined {
+  const kinds = [
+    ["gauge", "gauge"],
+    ["sum", "sum"],
+    ["histogram", "histogram"],
+    ["exponentialHistogram", "exponential_histogram"],
+    ["summary", "summary"],
+  ] as const;
+  for (const [field, type] of kinds) {
+    const value = recordValue(metric[field]);
+    if (value) return { type, value };
+  }
+  return undefined;
+}
+
+function metricPointValue(
+  type: OtlpMetricDataType,
+  point: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (type === "gauge" || type === "sum") {
+    if ("asDouble" in point) {
+      const asDouble = finiteNumber(point.asDouble);
+      return asDouble === undefined ? undefined : { asDouble };
+    }
+    const asInt = numericJsonValue(point.asInt);
+    return asInt === undefined ? undefined : { asInt };
+  }
+
+  const count = numericJsonValue(point.count);
+  if (count === undefined) return undefined;
+  if (type === "summary") {
+    return compactRecord({
+      count,
+      sum: finiteNumber(point.sum),
+      quantileValues: arrayOfRecords(point.quantileValues).flatMap(
+        (quantileValue) => {
+          const quantile = finiteNumber(quantileValue.quantile);
+          const value = finiteNumber(quantileValue.value);
+          return quantile === undefined || value === undefined
+            ? []
+            : [{ quantile, value }];
+        },
+      ),
+    });
+  }
+  if (type === "exponential_histogram") {
+    return compactRecord({
+      count,
+      sum: finiteNumber(point.sum),
+      min: finiteNumber(point.min),
+      max: finiteNumber(point.max),
+      scale: finiteInteger(point.scale),
+      zeroCount: numericJsonValue(point.zeroCount),
+      positive: exponentialBuckets(point.positive),
+      negative: exponentialBuckets(point.negative),
+      zeroThreshold: finiteNumber(point.zeroThreshold),
+    });
+  }
+  return compactRecord({
+    count,
+    sum: finiteNumber(point.sum),
+    min: finiteNumber(point.min),
+    max: finiteNumber(point.max),
+    bucketCounts: numericJsonArray(point.bucketCounts),
+    explicitBounds: finiteNumberArray(point.explicitBounds),
+  });
+}
+
+function exponentialBuckets(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  const buckets = recordValue(value);
+  if (!buckets) return undefined;
+  const offset = finiteInteger(buckets.offset);
+  const bucketCounts = numericJsonArray(buckets.bucketCounts);
+  return offset === undefined || !bucketCounts
+    ? undefined
+    : { offset, bucketCounts };
+}
+
+function compactRecord(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, child]) => child !== undefined),
+  );
+}
+
+function numericJsonArray(value: unknown): Array<number | string> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.map(numericJsonValue);
+  return values.every(
+    (item): item is number | string => item !== undefined,
+  )
+    ? values
+    : undefined;
+}
+
+function finiteNumberArray(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.map(finiteNumber);
+  return values.every((item): item is number => item !== undefined)
+    ? values
+    : undefined;
+}
+
+function numericJsonValue(value: unknown): number | string | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value !== "string" || !/^-?\d+$/.test(value)) {
+    return undefined;
+  }
+  try {
+    const integer = BigInt(value);
+    return integer >= BigInt(Number.MIN_SAFE_INTEGER) &&
+      integer <= BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(integer)
+      : value;
+  } catch {
+    return undefined;
+  }
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  const parsed =
+    typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function latestMetricTime(

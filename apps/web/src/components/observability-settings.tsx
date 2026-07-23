@@ -246,7 +246,7 @@ export function ObservabilitySettings({
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Recent spans</CardTitle>
@@ -358,6 +358,66 @@ export function ObservabilitySettings({
                         className="text-xs text-muted-foreground"
                       >
                         {new Date(log.timestamp).toLocaleString()}
+                      </time>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent metrics</CardTitle>
+            <CardDescription>
+              Latest standard Metric Points across Eveland services and
+              telemetry domains.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {initialActivity.metrics.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No Eveland metrics have been received yet.
+              </p>
+            ) : (
+              <div className="divide-y">
+                {initialActivity.metrics.map((metric) => (
+                  <div
+                    key={metric.id}
+                    className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span
+                        className="min-w-0 truncate text-sm font-medium"
+                        title={metric.name}
+                      >
+                        {metric.name}
+                      </span>
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                        {metricValueSummary(metric)}
+                      </span>
+                    </div>
+                    {attributeSummary(metric.attributes) ? (
+                      <p className="truncate font-mono text-xs text-muted-foreground">
+                        {attributeSummary(metric.attributes)}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline">
+                        {metric.resource.serviceName}
+                      </Badge>
+                      <Badge variant="outline">
+                        {metric.resource.domain}
+                      </Badge>
+                      <Badge variant="outline">
+                        {metric.dataType}
+                      </Badge>
+                      <time
+                        dateTime={metric.timestamp}
+                        className="text-xs text-muted-foreground"
+                      >
+                        {new Date(metric.timestamp).toLocaleString()}
                       </time>
                     </div>
                   </div>
@@ -654,6 +714,45 @@ function bodySummary(body: unknown): string {
   const value =
     typeof body === "string" ? body : JSON.stringify(body) ?? "";
   return value.length > 240 ? `${value.slice(0, 237)}...` : value;
+}
+
+function metricValueSummary(
+  metric: BuiltInOtlpActivity["metrics"][number],
+): string {
+  const direct = metric.value.asDouble ?? metric.value.asInt;
+  if (typeof direct === "number" || typeof direct === "string") {
+    return `${formatMetricNumber(direct)}${metric.unit ? ` ${metric.unit}` : ""}`;
+  }
+  const count = metric.value.count;
+  const sum = metric.value.sum;
+  if (
+    typeof count === "number" &&
+    count > 0 &&
+    typeof sum === "number"
+  ) {
+    return `avg ${formatMetricNumber(sum / count)}${metric.unit ? ` ${metric.unit}` : ""}`;
+  }
+  if (typeof count === "number" || typeof count === "string") {
+    return `count ${formatMetricNumber(count)}`;
+  }
+  return metric.dataType;
+}
+
+function formatMetricNumber(value: number | string): string {
+  return typeof value === "number"
+    ? value.toLocaleString(undefined, {
+        maximumFractionDigits: 2,
+      })
+    : value;
+}
+
+function attributeSummary(
+  attributes: Record<string, unknown>,
+): string {
+  return Object.entries(attributes)
+    .slice(0, 3)
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join(" · ");
 }
 
 function CaptureSwitch({

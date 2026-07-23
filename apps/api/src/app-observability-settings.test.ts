@@ -101,7 +101,7 @@ describe("observability settings", () => {
     });
   });
 
-  test("lists recent Built-in spans and logs for the monitoring UI", async () => {
+  test("lists recent Built-in spans, logs, and metrics for the monitoring UI", async () => {
     const store = createTestStore();
     await store.ingestOtlpSpans([
       {
@@ -149,6 +149,29 @@ describe("observability settings", () => {
         payload: {},
       },
     ]);
+    await store.ingestOtlpMetricPoints([
+      {
+        name: "system.memory.usage",
+        description: "Memory usage by state.",
+        unit: "By",
+        dataType: "gauge",
+        aggregationTemporality: null,
+        monotonic: null,
+        startTimestamp: null,
+        timestamp: "2026-07-23T12:00:00.000Z",
+        scopeName: "test",
+        attributes: { "system.memory.state": "used" },
+        value: { asDouble: 600 },
+        resource: {
+          serviceName: "eveland-worker",
+          domain: "capacity",
+          projectId: null,
+          deploymentId: null,
+          attributes: {},
+        },
+        payload: {},
+      },
+    ]);
     const app = createApp(store);
 
     const response = await app.request(
@@ -167,6 +190,12 @@ describe("observability settings", () => {
         expect.objectContaining({
           eventName: "eveland.runtime.log",
           body: "Deployment ready.",
+        }),
+      ],
+      metrics: [
+        expect.objectContaining({
+          name: "system.memory.usage",
+          value: { asDouble: 600 },
         }),
       ],
     });

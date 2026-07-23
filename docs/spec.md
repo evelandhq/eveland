@@ -229,9 +229,9 @@ Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：�
 
 Eveland 的监控以 OpenTelemetry/OTLP 为唯一传输标准。Built-in 是平台内置且始终启用的
 Destination，不提供配置或关闭入口；它接收 Eveland 的 traces、logs、metrics，并将标准
-OTLP 投影为可按 domain、service、Project 查询的 Span/LogRecord，以及 Sessions、Usage、
+OTLP 投影为可按 domain、service、Project 查询的 Span、LogRecord、Metric Point，以及 Sessions、Usage、
 Instance Health 与平台诊断所需的读模型。Observability 页面直接读取 Built-in backend
-展示最近的 Eveland spans/logs，不查询 Agent 进程或外部监控产品。
+展示最近的 Eveland spans/logs/metrics，不查询 Agent 进程或外部监控产品。
 
 Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
 

@@ -66,6 +66,54 @@ describe("Built-in OTLP store", () => {
     ]);
   });
 
+  test("indexes Metric Points idempotently and supports activity filters", async () => {
+    const store = createTestStore();
+    const metric = metricProjection();
+
+    await expect(
+      store.ingestOtlpMetricPoints([metric]),
+    ).resolves.toEqual({ inserted: 1 });
+    await expect(
+      store.ingestOtlpMetricPoints([metric]),
+    ).resolves.toEqual({ inserted: 0 });
+    await expect(
+      store.ingestOtlpMetricPoints([
+        {
+          ...metric,
+          value: { asDouble: 601 },
+          payload: { asDouble: 601 },
+        },
+      ]),
+    ).resolves.toEqual({ inserted: 0 });
+    await expect(
+      store.listOtlpMetricPoints({
+        domain: "capacity",
+        serviceName: "eveland-worker",
+        projectId: "proj_1",
+        name: "system.memory.usage",
+        limit: 10,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: expect.any(String),
+        receivedAt: expect.any(String),
+        name: "system.memory.usage",
+        dataType: "gauge",
+        value: { asDouble: 600 },
+        resource: expect.objectContaining({
+          serviceName: "eveland-worker",
+          domain: "capacity",
+        }),
+      }),
+    ]);
+    await expect(
+      store.listOtlpMetricPoints({
+        name: "system.cpu.utilization",
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+  });
+
   test("persists standard signal batches and deduplicates Collector retries", async () => {
     const store = createTestStore();
     const payload = {
@@ -142,19 +190,23 @@ describe("Built-in OTLP store", () => {
     const store = createTestStore();
     await store.ingestOtlpSpans([spanProjection()]);
     await store.ingestOtlpLogRecords([logProjection()]);
+    await store.ingestOtlpMetricPoints([metricProjection()]);
 
     await expect(
       store.pruneOtlpTelemetry({
         tracesBefore: new Date("2026-07-24T00:00:00.000Z"),
         logsBefore: new Date("2026-07-24T00:00:00.000Z"),
-        metricsBefore: new Date(0),
+        metricsBefore: new Date("2026-07-24T00:00:00.000Z"),
       }),
-    ).resolves.toEqual({ traces: 1, logs: 1, metrics: 0 });
+    ).resolves.toEqual({ traces: 1, logs: 1, metrics: 1 });
     await expect(
       store.listOtlpSpans({ limit: 10 }),
     ).resolves.toEqual([]);
     await expect(
       store.listOtlpLogRecords({ limit: 10 }),
+    ).resolves.toEqual([]);
+    await expect(
+      store.listOtlpMetricPoints({ limit: 10 }),
     ).resolves.toEqual([]);
   });
 
@@ -255,5 +307,32 @@ function logProjection() {
       },
     },
     payload: { eventName: "eveland.runtime.log" },
+  };
+}
+
+function metricProjection() {
+  return {
+    name: "system.memory.usage",
+    description: "Memory usage by state.",
+    unit: "By",
+    dataType: "gauge" as const,
+    aggregationTemporality: null,
+    monotonic: null,
+    startTimestamp: "2026-07-23T11:59:00.000Z",
+    timestamp: "2026-07-23T12:00:00.000Z",
+    scopeName: "@eveland/platform-observability",
+    attributes: { "system.memory.state": "used" },
+    value: { asDouble: 600 },
+    resource: {
+      serviceName: "eveland-worker",
+      domain: "capacity" as const,
+      projectId: "proj_1",
+      deploymentId: null,
+      attributes: {
+        "service.name": "eveland-worker",
+        "eveland.telemetry.domain": "capacity",
+      },
+    },
+    payload: { asDouble: 600 },
   };
 }
