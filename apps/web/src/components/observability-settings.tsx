@@ -246,6 +246,117 @@ export function ObservabilitySettings({
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Collector delivery</CardTitle>
+          <CardDescription>
+            Standard Collector self-metrics for exporter queues and recent
+            delivery attempts. Endpoint probes and actual pipeline delivery
+            are reported independently.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {initialActivity.delivery.destinations.map((destination) => (
+            <article
+              key={destination.id}
+              className="rounded-lg border border-border p-4"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-medium">{destination.label}</h4>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">
+                    {destination.exporterId}
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    destination.status === "degraded" ||
+                    destination.status === "stale"
+                      ? "destructive"
+                      : destination.status === "healthy"
+                        ? "secondary"
+                        : "outline"
+                  }
+                >
+                  {collectorDeliveryStatusLabel(destination.status)}
+                </Badge>
+              </div>
+              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Queue size</dt>
+                  <dd className="mt-1 font-mono font-medium">
+                    {destination.queue.size === null
+                      ? "—"
+                      : destination.queue.size.toLocaleString()}
+                    {destination.queue.capacity === null
+                      ? ""
+                      : ` / ${destination.queue.capacity.toLocaleString()}`}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    Queue utilization
+                  </dt>
+                  <dd className="mt-1 font-mono font-medium">
+                    {destination.queue.utilization === null
+                      ? "—"
+                      : `${Math.round(destination.queue.utilization * 1000) / 10}%`}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    Last self-metric
+                  </dt>
+                  <dd className="mt-1 text-xs font-medium">
+                    {destination.observedAt
+                      ? new Date(destination.observedAt).toLocaleString()
+                      : "Waiting for Collector metrics"}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-muted-foreground">
+                    <tr>
+                      <th className="py-1.5 text-left font-medium">Signal</th>
+                      <th className="py-1.5 text-right font-medium">
+                        Sent
+                      </th>
+                      <th className="py-1.5 text-right font-medium">
+                        Send failed
+                      </th>
+                      <th className="py-1.5 text-right font-medium">
+                        Enqueue failed
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {destination.supportedSignals.map((signal) => (
+                      <tr key={signal} className="border-t border-border">
+                        <td className="py-2 font-medium">{signal}</td>
+                        <td className="py-2 text-right font-mono">
+                          {destination.signals[signal].sent.toLocaleString()}
+                        </td>
+                        <td className="py-2 text-right font-mono">
+                          {destination.signals[
+                            signal
+                          ].sendFailed.toLocaleString()}
+                        </td>
+                        <td className="py-2 text-right font-mono">
+                          {destination.signals[
+                            signal
+                          ].enqueueFailed.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 xl:grid-cols-3">
         <Card>
           <CardHeader>
@@ -753,6 +864,18 @@ function attributeSummary(
     .slice(0, 3)
     .map(([key, value]) => `${key}=${String(value)}`)
     .join(" · ");
+}
+
+function collectorDeliveryStatusLabel(
+  status: BuiltInOtlpActivity["delivery"]["destinations"][number]["status"],
+): string {
+  return status === "healthy"
+    ? "Delivering"
+    : status === "degraded"
+      ? "Delivery degraded"
+      : status === "stale"
+        ? "Collector metrics stale"
+        : "Waiting for Collector metrics";
 }
 
 function CaptureSwitch({

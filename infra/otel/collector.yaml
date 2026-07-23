@@ -12,6 +12,14 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  prometheus/collector_self:
+    config:
+      scrape_configs:
+        - job_name: eveland-otel-collector
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - 127.0.0.1:8888
 
 processors:
   memory_limiter:
@@ -29,6 +37,20 @@ processors:
       - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
     metric_conditions:
       - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
+  resource/collector_self:
+    attributes:
+      - key: service.name
+        value: eveland-otel-collector
+        action: upsert
+      - key: service.instance.id
+        value: ${env:HOSTNAME}
+        action: upsert
+      - key: eveland.team.id
+        value: team_local
+        action: upsert
+      - key: eveland.telemetry.domain
+        value: platform
+        action: upsert
 
 exporters:
   otlp_http/builtin:
@@ -79,3 +101,28 @@ service:
         - batch
       exporters:
         - otlp_http/builtin
+    metrics/collector_self:
+      receivers:
+        - prometheus/collector_self
+      processors:
+        - memory_limiter
+        - resource/collector_self
+        - batch
+      exporters:
+        - otlp_http/builtin
+  telemetry:
+    resource:
+      service.name: eveland-otel-collector
+      service.instance.id: ${env:HOSTNAME}
+      eveland.team.id: team_local
+      eveland.telemetry.domain: platform
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8888
+                without_type_suffix: true
+                without_units: true

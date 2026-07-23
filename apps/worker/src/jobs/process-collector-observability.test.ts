@@ -27,6 +27,26 @@ afterEach(async () => {
 });
 
 describe("managed OpenTelemetry Collector configuration", () => {
+  test("keeps the Compose seed aligned with the default managed config", async () => {
+    const seed = parse(
+      await readFile(
+        path.resolve(
+          import.meta.dirname,
+          "../../../../infra/otel/collector.yaml",
+        ),
+        "utf8",
+      ),
+    );
+    const managed = parse(
+      renderCollectorConfig({
+        policy: createDefaultObservabilityPolicy(1),
+        appSecretKey,
+      }),
+    );
+
+    expect(seed).toEqual(managed);
+  });
+
   test("keeps Built-in enabled when no external destination is configured", () => {
     const config = parse(
       renderCollectorConfig({
@@ -64,6 +84,58 @@ describe("managed OpenTelemetry Collector configuration", () => {
           "batch",
         ],
         exporters: ["otlp_http/builtin"],
+      },
+      "metrics/collector_self": {
+        receivers: ["prometheus/collector_self"],
+        processors: [
+          "memory_limiter",
+          "resource/collector_self",
+          "batch",
+        ],
+        exporters: ["otlp_http/builtin"],
+      },
+    });
+    expect(config.receivers["prometheus/collector_self"]).toMatchObject({
+      config: {
+        scrape_configs: [
+          expect.objectContaining({
+            job_name: "eveland-otel-collector",
+            static_configs: [{ targets: ["127.0.0.1:8888"] }],
+          }),
+        ],
+      },
+    });
+    expect(config.processors["resource/collector_self"]).toMatchObject({
+      attributes: expect.arrayContaining([
+        {
+          key: "service.name",
+          value: "eveland-otel-collector",
+          action: "upsert",
+        },
+        {
+          key: "eveland.telemetry.domain",
+          value: "platform",
+          action: "upsert",
+        },
+      ]),
+    });
+    expect(config.service.telemetry).toMatchObject({
+      metrics: {
+        level: "detailed",
+        readers: [
+          {
+            pull: {
+              exporter: {
+                prometheus: {
+                  host: "127.0.0.1",
+                  port: 8888,
+                  without_type_suffix: true,
+                  without_units: true,
+                },
+              },
+            },
+          },
+        ],
       },
     });
     expect(
@@ -215,6 +287,26 @@ describe("managed OpenTelemetry Collector configuration", () => {
     expect(config.service.pipelines).toHaveProperty(
       "metrics/custom_destination_custom",
     );
+    expect(config.service.pipelines).toMatchObject({
+      "metrics/collector_self_elastic_destination_elastic": {
+        receivers: ["prometheus/collector_self"],
+        processors: [
+          "memory_limiter",
+          "resource/collector_self",
+          "batch",
+        ],
+        exporters: ["otlp_http/destination_elastic"],
+      },
+      "metrics/collector_self_custom_destination_custom": {
+        receivers: ["prometheus/collector_self"],
+        processors: [
+          "memory_limiter",
+          "resource/collector_self",
+          "batch",
+        ],
+        exporters: ["otlp_http/destination_custom"],
+      },
+    });
   });
 
   test("validates and applies a policy revision once without restarting Agents", async () => {

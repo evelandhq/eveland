@@ -89,8 +89,10 @@ endpoint. The Worker writes revisioned Collector configuration below
 `/var/lib/eveland/otel`, validates it with the pinned official Collector image,
 and restarts only the Collector container when an admin changes an external
 destination. Each exporter has an independent persistent queue below the
-Collector volume. Agent Deployments are not restarted by an observability
-settings change.
+Collector volume. Collector detailed self-metrics stay on its loopback
+Prometheus endpoint, are re-ingested as standard platform-domain OTel metrics,
+and drive Built-in delivery diagnostics and Collector freshness health.
+Agent Deployments are not restarted by an observability settings change.
 Gateway listens on host port 4080 and is the only process Traefik forwards wildcard Agent
 hosts to. Agent processes remain on `127.0.0.1:41xxx`; never add those dynamic ports to
 Traefik or firewall rules. Start from `infra/traefik/agents.yml`, replace the example domain,

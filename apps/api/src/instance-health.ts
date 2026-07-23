@@ -1,4 +1,5 @@
 import type { Store } from "@eveland/db";
+import { COLLECTOR_SELF_SERVICE_NAME } from "@eveland/core/observability";
 import {
   analyzeHostCapacity,
   summarizeWorkerHealth,
@@ -19,26 +20,40 @@ export async function collectInstanceHealth(
 ): Promise<InstanceHealthReport> {
   const now = options.now?.() ?? new Date();
   const since = new Date(now.getTime() - options.historyHours * 3_600_000);
-  const [heartbeats, metrics, workload, gateway, otlpBatches] = await Promise.all([
-    store.listWorkerHeartbeats(),
-    store.listHostMetrics({ since, limit: Math.min(10_100, options.historyHours * 60 + 100) }),
-    store.getInstanceWorkload(),
-    options.gatewayHealth(),
-    store.listOtlpBatches({ limit: 1 }),
-  ]);
+  const [heartbeats, metrics, workload, gateway, collectorMetrics] =
+    await Promise.all([
+      store.listWorkerHeartbeats(),
+      store.listHostMetrics({
+        since,
+        limit: Math.min(10_100, options.historyHours * 60 + 100),
+      }),
+      store.getInstanceWorkload(),
+      options.gatewayHealth(),
+      store.listOtlpMetricPoints({
+        serviceName: COLLECTOR_SELF_SERVICE_NAME,
+        limit: 1,
+      }),
+    ]);
   const worker = summarizeWorkerHealth(heartbeats[0] ?? null, now);
-  const latestBatch = otlpBatches[0];
-  const collectorObservation: ComponentObservation = latestBatch
-    ? {
-        status: "healthy",
-        message: "Built-in OTLP ingestion has received telemetry.",
-        observedAt: latestBatch.receivedAt,
-      }
-    : {
-        status: "warning",
-        message: "Built-in OTLP ingestion has not received telemetry.",
-        observedAt: null,
-      };
+  const latestCollectorMetric = collectorMetrics[0];
+  const collectorObservation: ComponentObservation =
+    !latestCollectorMetric
+      ? {
+          status: "warning",
+          message: "Collector self-metrics have not been received.",
+          observedAt: null,
+        }
+      : now.getTime() - Date.parse(latestCollectorMetric.timestamp) > 90_000
+        ? {
+            status: "unavailable",
+            message: "Collector self-metrics are stale.",
+            observedAt: latestCollectorMetric.timestamp,
+          }
+        : {
+            status: "healthy",
+            message: "Collector self-metrics are current.",
+            observedAt: latestCollectorMetric.timestamp,
+          };
   const components: InstanceComponentHealth[] = [
     { key: "api", label: "API", status: "healthy", message: "Control-plane API is serving this report.", observedAt: now.toISOString() },
     { key: "postgres", label: "Postgres", status: "healthy", message: "Health and workload queries succeeded.", observedAt: now.toISOString() },

@@ -1,7 +1,10 @@
 import {
+  COLLECTOR_SELF_SERVICE_NAME,
   TELEMETRY_DOMAINS,
   agentCapturePolicySchema,
+  collectorExporterComponentId,
   externalDestinationConfigSchema,
+  summarizeCollectorDelivery,
   toPublicObservabilityPolicy,
   type ExternalDestinationConfig,
   type ExternalObservabilityDestination,
@@ -83,12 +86,37 @@ export function registerObservabilityRoutes(input: {
       );
     }
     const query = parsed.data;
-    const [spans, logs, metrics] = await Promise.all([
-      store.listOtlpSpans(query),
-      store.listOtlpLogRecords(query),
-      store.listOtlpMetricPoints(query),
-    ]);
-    return c.json({ spans, logs, metrics });
+    const [spans, logs, metrics, collectorMetrics, policy] =
+      await Promise.all([
+        store.listOtlpSpans(query),
+        store.listOtlpLogRecords(query),
+        store.listOtlpMetricPoints(query),
+        store.listOtlpMetricPoints({
+          serviceName: COLLECTOR_SELF_SERVICE_NAME,
+          limit: 2_000,
+        }),
+        store.getObservabilityPolicy(DEFAULT_TEAM_ID),
+      ]);
+    const delivery = summarizeCollectorDelivery(
+      collectorMetrics,
+      [
+        {
+          id: "builtin",
+          label: "Built-in",
+          exporterId: "otlp_http/builtin",
+          supportedSignals: ["traces", "logs", "metrics"],
+        },
+        ...policy.externalDestinations
+          .filter((destination) => destination.enabled)
+          .map((destination) => ({
+            id: destination.id,
+            label: destinationLabel(destination.kind),
+            exporterId: collectorExporterComponentId(destination.id),
+            supportedSignals: destination.supportedSignals,
+          })),
+      ],
+    );
+    return c.json({ spans, logs, metrics, delivery });
   });
 
   app.put("/system/observability", async (c) => {
@@ -309,6 +337,16 @@ export function registerObservabilityRoutes(input: {
       ? c.json(await publicPolicy(store, updated))
       : c.json({ error: "Observability policy changed; reload and try again." }, 409);
   });
+}
+
+function destinationLabel(
+  kind: ExternalObservabilityDestination["kind"],
+): string {
+  return kind === "elastic"
+    ? "Elastic"
+    : kind === "langfuse"
+      ? "Langfuse"
+      : "Custom OTLP";
 }
 
 function createDestination(

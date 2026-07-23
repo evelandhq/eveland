@@ -1,4 +1,6 @@
 import {
+  COLLECTOR_SELF_SERVICE_NAME,
+  collectorExporterComponentId,
   externalDestinationConfigSchema,
   OBSERVABILITY_SIGNALS,
   TELEMETRY_DOMAINS,
@@ -36,6 +38,7 @@ type CollectorConfig = {
   service: {
     extensions: string[];
     pipelines: Record<string, unknown>;
+    telemetry: Record<string, unknown>;
   };
 };
 
@@ -147,8 +150,8 @@ export function renderCollectorConfig(input: {
       );
     }
 
-    const componentId = collectorComponentId(destination.id);
-    const exporterId = `otlp_http/${componentId}`;
+    const exporterId = collectorExporterComponentId(destination.id);
+    const componentId = exporterId.slice(exporterId.indexOf("/") + 1);
     config.exporters[exporterId] = externalExporter(destinationConfig);
 
     const domains =
@@ -183,6 +186,19 @@ export function renderCollectorConfig(input: {
         ],
         exporters: [exporterId],
       };
+      if (signal === "metrics" && domains.includes("platform")) {
+        config.service.pipelines[
+          `metrics/collector_self_${destination.kind.replace("_otlp", "")}_${componentId}`
+        ] = {
+          receivers: ["prometheus/collector_self"],
+          processors: [
+            "memory_limiter",
+            "resource/collector_self",
+            "batch",
+          ],
+          exporters: [exporterId],
+        };
+      }
     }
   }
 
@@ -210,6 +226,19 @@ function baseCollectorConfig(): CollectorConfig {
           http: { endpoint: "0.0.0.0:4318" },
         },
       },
+      "prometheus/collector_self": {
+        config: {
+          scrape_configs: [
+            {
+              job_name: "eveland-otel-collector",
+              scrape_interval: "15s",
+              static_configs: [
+                { targets: ["127.0.0.1:8888"] },
+              ],
+            },
+          ],
+        },
+      },
     },
     processors: {
       memory_limiter: {
@@ -225,6 +254,30 @@ function baseCollectorConfig(): CollectorConfig {
         [...TELEMETRY_DOMAINS],
         [...OBSERVABILITY_SIGNALS],
       ),
+      "resource/collector_self": {
+        attributes: [
+          {
+            key: "service.name",
+            value: COLLECTOR_SELF_SERVICE_NAME,
+            action: "upsert",
+          },
+          {
+            key: "service.instance.id",
+            value: "${env:HOSTNAME}",
+            action: "upsert",
+          },
+          {
+            key: "eveland.team.id",
+            value: DEFAULT_TEAM_ID,
+            action: "upsert",
+          },
+          {
+            key: "eveland.telemetry.domain",
+            value: "platform",
+            action: "upsert",
+          },
+        ],
+      },
     },
     exporters: {
       "otlp_http/builtin": {
@@ -239,20 +292,56 @@ function baseCollectorConfig(): CollectorConfig {
     },
     service: {
       extensions: ["file_storage", "health_check"],
-      pipelines: Object.fromEntries(
-        OBSERVABILITY_SIGNALS.map((signal) => [
-          signal,
-          {
-            receivers: ["otlp"],
-            processors: [
-              "memory_limiter",
-              "filter/builtin_eveland",
-              "batch",
-            ],
-            exporters: ["otlp_http/builtin"],
-          },
-        ]),
-      ),
+      pipelines: {
+        ...Object.fromEntries(
+          OBSERVABILITY_SIGNALS.map((signal) => [
+            signal,
+            {
+              receivers: ["otlp"],
+              processors: [
+                "memory_limiter",
+                "filter/builtin_eveland",
+                "batch",
+              ],
+              exporters: ["otlp_http/builtin"],
+            },
+          ]),
+        ),
+        "metrics/collector_self": {
+          receivers: ["prometheus/collector_self"],
+          processors: [
+            "memory_limiter",
+            "resource/collector_self",
+            "batch",
+          ],
+          exporters: ["otlp_http/builtin"],
+        },
+      },
+      telemetry: {
+        resource: {
+          "service.name": COLLECTOR_SELF_SERVICE_NAME,
+          "service.instance.id": "${env:HOSTNAME}",
+          "eveland.team.id": DEFAULT_TEAM_ID,
+          "eveland.telemetry.domain": "platform",
+        },
+        metrics: {
+          level: "detailed",
+          readers: [
+            {
+              pull: {
+                exporter: {
+                  prometheus: {
+                    host: "127.0.0.1",
+                    port: 8888,
+                    without_type_suffix: true,
+                    without_units: true,
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
     },
   };
 }
@@ -364,10 +453,6 @@ function langfuseTransform() {
       },
     ],
   };
-}
-
-function collectorComponentId(destinationId: string): string {
-  return destinationId.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
 async function validateCollectorConfig(

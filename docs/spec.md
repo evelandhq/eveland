@@ -244,6 +244,10 @@ Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destinatio
   或其他目标
 * Worker 每五分钟使用不含业务数据的标准 OTLP 请求独立探测外部 Destination；Settings 展示
   pending、healthy、degraded 或 paused，不把某个外部目标故障解释为 Built-in 故障
+* Collector 使用自身的 detailed internal metrics 暴露 receiver/exporter data flow、发送失败与
+  persistent queue size/capacity；这些指标经标准 OTel metrics pipeline 进入 Built-in，
+  Observability 页面按 exporter 展示实际 delivery 状态，不能用 endpoint probe 代替
+  pipeline delivery
 
 系统设置中的外部凭据使用 `APP_SECRET_KEY` 加密，保存后不返回浏览器。Worker 将 revisioned
 设置渲染为官方 OpenTelemetry Collector 配置，先使用同版本 Collector 校验，再原子应用并只
@@ -266,7 +270,8 @@ Built-in retention 不是可配置项。raw traces、logs、metrics 与 capacity
 Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“当前是否可用”与
 “是否正在接近容量风险”分开呈现，并至少展示：
 
-* API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间
+* API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间；Collector
+  状态来自其定期 self-metrics，任意历史 OTLP batch 不能继续证明 Collector 在线
 * Worker 持续 heartbeat；启动时配置 snapshot 不能替代在线状态
 * Worker 宿主机的 CPU、load、可用内存、`EVELAND_DATA_DIR` 所在文件系统容量与 inode
 * queued/running Job 数量、最老 queued Job，以及 RuntimeInstance 状态分布

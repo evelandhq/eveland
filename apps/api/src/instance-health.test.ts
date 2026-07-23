@@ -45,10 +45,9 @@ describe("instance health diagnostics", () => {
       diskInodesTotal: 10_000,
       diskInodesAvailable: 8_000,
     });
-    await store.ingestOtlpBatch({
-      signal: "metrics",
-      payload: { resourceMetrics: [] },
-    });
+    await store.ingestOtlpMetricPoints([
+      collectorSelfMetric("2026-07-18T09:59:45.000Z"),
+    ]);
 
     const report = await collectInstanceHealth(store, {
       now: () => new Date("2026-07-18T10:00:00.000Z"),
@@ -100,4 +99,57 @@ describe("instance health diagnostics", () => {
       expect.objectContaining({ key: "worker", status: "unavailable" }),
     ]));
   });
+
+  test("marks stale Collector self-metrics unavailable even when other telemetry was received", async () => {
+    const store = createTestStore();
+    await store.ingestOtlpBatch({
+      signal: "traces",
+      payload: { resourceSpans: [] },
+    });
+    await store.ingestOtlpMetricPoints([
+      collectorSelfMetric("2026-07-18T09:55:00.000Z"),
+    ]);
+
+    const report = await collectInstanceHealth(store, {
+      now: () => new Date("2026-07-18T10:00:00.000Z"),
+      historyHours: 24,
+      gatewayHealth: async () => ({
+        status: "healthy",
+        message: "Gateway diagnostics are reachable.",
+        observedAt: "2026-07-18T10:00:00.000Z",
+      }),
+    });
+
+    expect(report.components).toContainEqual(
+      expect.objectContaining({
+        key: "collector",
+        status: "unavailable",
+        observedAt: "2026-07-18T09:55:00.000Z",
+      }),
+    );
+  });
 });
+
+function collectorSelfMetric(timestamp: string) {
+  return {
+    name: "otelcol_process_uptime",
+    description: "Collector uptime.",
+    unit: "s",
+    dataType: "sum" as const,
+    aggregationTemporality: 2,
+    monotonic: true,
+    startTimestamp: "2026-07-18T09:00:00.000Z",
+    timestamp,
+    scopeName: "go.opentelemetry.io/collector/service",
+    attributes: {},
+    value: { asDouble: 3_600 },
+    resource: {
+      serviceName: "eveland-otel-collector",
+      domain: "platform" as const,
+      projectId: null,
+      deploymentId: null,
+      attributes: {},
+    },
+    payload: {},
+  };
+}

@@ -87,6 +87,9 @@ describe("team management web surfaces", () => {
     expect(settings).toContain("Recent spans");
     expect(settings).toContain("Recent logs");
     expect(settings).toContain("Recent metrics");
+    expect(settings).toContain("Collector delivery");
+    expect(settings).toContain("Queue utilization");
+    expect(settings).toContain("initialActivity.delivery.destinations");
     expect(settings).toContain("saveObservabilitySettings");
     expect(settings).toContain("External destinations");
     expect(settings).toContain("createObservabilityDestination");

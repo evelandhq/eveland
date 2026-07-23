@@ -198,6 +198,88 @@ describe("observability settings", () => {
           value: { asDouble: 600 },
         }),
       ],
+      delivery: {
+        generatedAt: expect.any(String),
+        destinations: [
+          expect.objectContaining({
+            id: "builtin",
+            label: "Built-in",
+            exporterId: "otlp_http/builtin",
+            status: "waiting",
+          }),
+        ],
+      },
+    });
+  });
+
+  test("reports Collector delivery and queue diagnostics for configured exporters", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+    const created = await app.request(
+      "/system/observability/destinations",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          config: {
+            kind: "elastic",
+            endpoint: "https://elastic.example.com:4318",
+            authorization: {
+              type: "api_key",
+              value: "elastic-secret",
+            },
+          },
+        }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const policy = await store.getObservabilityPolicy(DEFAULT_TEAM_ID);
+    const destinationId = policy.externalDestinations[0]!.id;
+    await store.ingestOtlpMetricPoints([
+      collectorMetric(
+        "otelcol_exporter_queue_size",
+        0,
+        "otlp_http/builtin",
+      ),
+      collectorMetric(
+        "otelcol_exporter_queue_capacity",
+        10_000,
+        "otlp_http/builtin",
+      ),
+      collectorMetric(
+        "otelcol_exporter_queue_size",
+        9_000,
+        `otlp_http/${destinationId}`,
+      ),
+      collectorMetric(
+        "otelcol_exporter_queue_capacity",
+        10_000,
+        `otlp_http/${destinationId}`,
+      ),
+    ]);
+
+    const response = await app.request(
+      "/system/observability/activity?limit=10",
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      delivery: {
+        destinations: [
+          { id: "builtin", status: "healthy" },
+          {
+            id: destinationId,
+            label: "Elastic",
+            status: "degraded",
+            queue: {
+              size: 9_000,
+              capacity: 10_000,
+              utilization: 0.9,
+            },
+          },
+        ],
+      },
     });
   });
 
@@ -296,3 +378,32 @@ describe("observability settings", () => {
     });
   });
 });
+
+function collectorMetric(
+  name: string,
+  value: number,
+  exporterId: string,
+) {
+  const timestamp = new Date().toISOString();
+  return {
+    name,
+    description: null,
+    unit: "{batch}",
+    dataType: "gauge" as const,
+    aggregationTemporality: null,
+    monotonic: null,
+    startTimestamp: null,
+    timestamp,
+    scopeName: "go.opentelemetry.io/collector/exporter/exporterhelper",
+    attributes: { "otelcol.component.id": exporterId },
+    value: { asDouble: value },
+    resource: {
+      serviceName: "eveland-otel-collector",
+      domain: "platform" as const,
+      projectId: null,
+      deploymentId: null,
+      attributes: {},
+    },
+    payload: {},
+  };
+}

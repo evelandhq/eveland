@@ -383,6 +383,7 @@ export type BuiltInOtlpActivity = {
   spans: BuiltInOtlpSpan[];
   logs: BuiltInOtlpLogRecord[];
   metrics: BuiltInOtlpMetricPoint[];
+  delivery: CollectorDeliveryDiagnostics;
 };
 export type SessionOtlpTelemetry = {
   sessionId: string;
@@ -391,6 +392,250 @@ export type SessionOtlpTelemetry = {
   spans: BuiltInOtlpSpan[];
   logs: BuiltInOtlpLogRecord[];
 };
+export const COLLECTOR_SELF_SERVICE_NAME = "eveland-otel-collector";
+export type CollectorDeliveryTarget = {
+  id: string;
+  label: string;
+  exporterId: string;
+  supportedSignals: readonly ObservabilitySignal[];
+};
+export type CollectorSignalDelivery = {
+  sent: number;
+  sendFailed: number;
+  enqueueFailed: number;
+};
+export type CollectorDestinationDelivery = CollectorDeliveryTarget & {
+  status: "waiting" | "healthy" | "degraded" | "stale";
+  observedAt: string | null;
+  queue: {
+    size: number | null;
+    capacity: number | null;
+    utilization: number | null;
+  };
+  signals: Record<ObservabilitySignal, CollectorSignalDelivery>;
+};
+export type CollectorDeliveryDiagnostics = {
+  generatedAt: string;
+  destinations: CollectorDestinationDelivery[];
+};
+
+export function collectorExporterComponentId(
+  destinationId: string,
+): string {
+  return `otlp_http/${destinationId.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+}
+
+export function summarizeCollectorDelivery(
+  points: BuiltInOtlpMetricPoint[],
+  targets: readonly CollectorDeliveryTarget[],
+  now = new Date(),
+): CollectorDeliveryDiagnostics {
+  return {
+    generatedAt: now.toISOString(),
+    destinations: targets.map((target) =>
+      summarizeCollectorDestination(points, target, now),
+    ),
+  };
+}
+
+function summarizeCollectorDestination(
+  points: BuiltInOtlpMetricPoint[],
+  target: CollectorDeliveryTarget,
+  now: Date,
+): CollectorDestinationDelivery {
+  const relevant = points.filter(
+    (point) =>
+      collectorMetricKind(point.name) !== null &&
+      matchesCollectorExporter(point, target.exporterId),
+  );
+  const emptySignals = () => ({
+    traces: { sent: 0, sendFailed: 0, enqueueFailed: 0 },
+    logs: { sent: 0, sendFailed: 0, enqueueFailed: 0 },
+    metrics: { sent: 0, sendFailed: 0, enqueueFailed: 0 },
+  });
+  if (relevant.length === 0) {
+    return {
+      ...target,
+      status: "waiting",
+      observedAt: null,
+      queue: { size: null, capacity: null, utilization: null },
+      signals: emptySignals(),
+    };
+  }
+
+  const observedAt = relevant.reduce(
+    (latest, point) =>
+      point.timestamp > latest ? point.timestamp : latest,
+    relevant[0]!.timestamp,
+  );
+  const series = groupCollectorMetricSeries(relevant);
+  const signals = emptySignals();
+  for (const entries of series.values()) {
+    const latest = entries[0];
+    if (!latest) continue;
+    const kind = collectorMetricKind(latest.name);
+    if (!kind || kind.type === "queue") continue;
+    const previous = entries[1];
+    const latestValue = metricPointNumber(latest);
+    const previousValue = previous
+      ? metricPointNumber(previous)
+      : null;
+    if (latestValue === null) continue;
+    const delta =
+      previousValue === null
+        ? 0
+        : latestValue >= previousValue
+          ? latestValue - previousValue
+          : latestValue;
+    signals[kind.signal][kind.counter] += delta;
+  }
+
+  const size = sumLatestCollectorGauge(
+    series,
+    "otelcol_exporter_queue_size",
+  );
+  const capacity = sumLatestCollectorGauge(
+    series,
+    "otelcol_exporter_queue_capacity",
+  );
+  const utilization =
+    size !== null && capacity !== null && capacity > 0
+      ? Math.round((size / capacity) * 1_000) / 1_000
+      : null;
+  const recentFailures = Object.values(signals).reduce(
+    (total, signal) =>
+      total + signal.sendFailed + signal.enqueueFailed,
+    0,
+  );
+  const stale =
+    now.getTime() - Date.parse(observedAt) > 90_000;
+  return {
+    ...target,
+    status: stale
+      ? "stale"
+      : recentFailures > 0 ||
+          (utilization !== null && utilization >= 0.8)
+        ? "degraded"
+        : "healthy",
+    observedAt,
+    queue: { size, capacity, utilization },
+    signals,
+  };
+}
+
+type CollectorMetricKind =
+  | { type: "queue" }
+  | {
+      type: "counter";
+      signal: ObservabilitySignal;
+      counter: keyof CollectorSignalDelivery;
+    };
+
+function collectorMetricKind(name: string): CollectorMetricKind | null {
+  if (
+    name === "otelcol_exporter_queue_size" ||
+    name === "otelcol_exporter_queue_capacity"
+  ) {
+    return { type: "queue" };
+  }
+  const signal = name.endsWith("_spans")
+    ? "traces"
+    : name.endsWith("_log_records")
+      ? "logs"
+      : name.endsWith("_metric_points")
+        ? "metrics"
+        : null;
+  if (!signal) return null;
+  if (name.includes("_enqueue_failed_")) {
+    return { type: "counter", signal, counter: "enqueueFailed" };
+  }
+  if (name.includes("_send_failed_")) {
+    return { type: "counter", signal, counter: "sendFailed" };
+  }
+  if (name.includes("_sent_")) {
+    return { type: "counter", signal, counter: "sent" };
+  }
+  return null;
+}
+
+function matchesCollectorExporter(
+  point: BuiltInOtlpMetricPoint,
+  exporterId: string,
+): boolean {
+  const attributes = point.attributes;
+  const candidate = [
+    attributes["otelcol.component.id"],
+    attributes["otelcol_component_id"],
+    attributes["component.id"],
+    attributes.exporter,
+  ].find((value): value is string => typeof value === "string");
+  if (!candidate) return false;
+  const normalized = candidate.replace(/^otlphttp\//, "otlp_http/");
+  return (
+    normalized === exporterId ||
+    normalized === exporterId.slice(exporterId.indexOf("/") + 1)
+  );
+}
+
+function groupCollectorMetricSeries(
+  points: BuiltInOtlpMetricPoint[],
+): Map<string, BuiltInOtlpMetricPoint[]> {
+  const grouped = new Map<string, BuiltInOtlpMetricPoint[]>();
+  for (const point of points) {
+    const key = `${point.name}:${stableAttributes(point.attributes)}`;
+    const entries = grouped.get(key) ?? [];
+    entries.push(point);
+    grouped.set(key, entries);
+  }
+  for (const entries of grouped.values()) {
+    entries.sort(
+      (left, right) =>
+        right.timestamp.localeCompare(left.timestamp) ||
+        right.id.localeCompare(left.id),
+    );
+  }
+  return grouped;
+}
+
+function stableAttributes(
+  attributes: Record<string, unknown>,
+): string {
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(attributes).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ),
+  );
+}
+
+function sumLatestCollectorGauge(
+  series: Map<string, BuiltInOtlpMetricPoint[]>,
+  name: string,
+): number | null {
+  let total = 0;
+  let found = false;
+  for (const entries of series.values()) {
+    if (entries[0]?.name !== name) continue;
+    const value = metricPointNumber(entries[0]);
+    if (value === null) continue;
+    total += value;
+    found = true;
+  }
+  return found ? total : null;
+}
+
+function metricPointNumber(
+  point: BuiltInOtlpMetricPoint,
+): number | null {
+  const raw = point.value.asDouble ?? point.value.asInt;
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === "string") {
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }
+  return null;
+}
 export type ExternalDestinationHealth = {
   destinationId: string;
   status: "pending" | "healthy" | "degraded" | "paused";
