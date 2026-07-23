@@ -106,6 +106,7 @@ describe("private Agent telemetry runtime", () => {
             inputTokens: 120,
             outputTokens: 30,
             cacheReadTokens: 10,
+            cacheWriteTokens: 4,
             costUsd: 0.012,
           },
         },
@@ -146,6 +147,8 @@ describe("private Agent telemetry runtime", () => {
       "gen_ai.request.model": "openai/gpt-5",
       "gen_ai.usage.input_tokens": 120,
       "gen_ai.usage.output_tokens": 30,
+      "gen_ai.usage.cache_read.input_tokens": 10,
+      "gen_ai.usage.cache_creation.input_tokens": 4,
       "eveland.gen_ai.usage.cost_usd": 0.012,
       "gen_ai.output.messages": JSON.stringify([
         { content: "final answer", role: "assistant" },

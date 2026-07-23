@@ -247,7 +247,9 @@ Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destinatio
 * Session 完成与私有 Provider revision 切换最多等待两秒完成 flush/shutdown；超时或失败只
   产生限频降级告警，不能使 Eve event hook 或 Agent turn 失败
 * Elastic 固定接收 Eveland 的全部 traces、logs、metrics 和 agent/platform/runtime/capacity domain
-* Langfuse 固定只接收 Eveland 注入的 Agent traces
+* Langfuse 固定只接收 Eveland 注入的 Agent traces；Collector 按直连 OTLP v4 contract
+  将 model call 映射为 generation，将 Agent/Tool/Subagent 保持为带 operation metadata 的
+  span，并映射 input/output、model、标准 usage 与 provider-reported cost
 * Custom OTLP/HTTP 可以选择 signals、domains 与加密 Header
 * 每个外部 exporter 使用独立 retry 与持久化 sending queue；一个目标失败不能阻塞 Built-in
   或其他目标

@@ -251,8 +251,20 @@ describe("managed OpenTelemetry Collector configuration", () => {
       config.processors[
         "transform/langfuse_destination_langfuse"
       ].trace_statements[0].statements,
-    ).toContain(
-      'set(span.attributes["langfuse.session.id"], span.attributes["session.id"]) where span.attributes["session.id"] != nil',
+    ).toEqual(
+      expect.arrayContaining([
+        'set(span.attributes["langfuse.session.id"], span.attributes["session.id"]) where span.attributes["session.id"] != nil',
+        'set(span.attributes["langfuse.observation.type"], "generation") where span.attributes["gen_ai.operation.name"] == "chat"',
+        'set(span.attributes["langfuse.observation.type"], "span") where span.attributes["gen_ai.operation.name"] != "chat"',
+        'set(span.attributes["langfuse.observation.metadata.eveland.operation_type"], span.attributes["gen_ai.operation.name"]) where span.attributes["gen_ai.operation.name"] != nil',
+        'set(span.attributes["langfuse.release"], resource.attributes["eveland.release.id"]) where resource.attributes["eveland.release.id"] != nil',
+        'set(span.attributes["langfuse.observation.model.name"], span.attributes["gen_ai.request.model"]) where span.attributes["gen_ai.request.model"] != nil',
+        'set(span.attributes["langfuse.observation.input"], span.attributes["gen_ai.tool.call.arguments"]) where span.attributes["gen_ai.tool.call.arguments"] != nil',
+        'set(span.attributes["langfuse.observation.output"], span.attributes["gen_ai.tool.call.result"]) where span.attributes["gen_ai.tool.call.result"] != nil',
+        'set(span.attributes["langfuse.observation.input"], span.attributes["gen_ai.agent.input"]) where span.attributes["gen_ai.agent.input"] != nil',
+        'set(span.attributes["langfuse.observation.output"], span.attributes["gen_ai.agent.output"]) where span.attributes["gen_ai.agent.output"] != nil',
+        'set(span.attributes["langfuse.observation.cost_details"], Format("{\\"total\\":%v}", [span.attributes["eveland.gen_ai.usage.cost_usd"]])) where span.attributes["eveland.gen_ai.usage.cost_usd"] != nil',
+      ]),
     );
     expect(
       config.service.pipelines[

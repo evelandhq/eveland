@@ -674,12 +674,20 @@ function recordUsage(input: {
     });
   }
   if (cacheReadTokens !== undefined) {
+    input.span.setAttribute(
+      "gen_ai.usage.cache_read.input_tokens",
+      cacheReadTokens,
+    );
     input.cacheTokenUsage.record(cacheReadTokens, {
       ...modelAttributes,
       "eveland.cache.operation": "read",
     });
   }
   if (cacheWriteTokens !== undefined) {
+    input.span.setAttribute(
+      "gen_ai.usage.cache_creation.input_tokens",
+      cacheWriteTokens,
+    );
     input.cacheTokenUsage.record(cacheWriteTokens, {
       ...modelAttributes,
       "eveland.cache.operation": "write",
