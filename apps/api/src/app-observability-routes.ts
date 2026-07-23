@@ -1,4 +1,5 @@
 import {
+  TELEMETRY_DOMAINS,
   agentCapturePolicySchema,
   externalDestinationConfigSchema,
   toPublicObservabilityPolicy,
@@ -42,6 +43,14 @@ const deleteDestinationSchema = z
     expectedRevision: z.number().int().positive(),
   })
   .strict();
+const activityQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    domain: z.enum(TELEMETRY_DOMAINS).optional(),
+    serviceName: z.string().trim().min(1).max(200).optional(),
+    projectId: z.string().trim().min(1).max(200).optional(),
+  })
+  .strict();
 
 export function registerObservabilityRoutes(input: {
   app: ApiApp;
@@ -56,6 +65,28 @@ export function registerObservabilityRoutes(input: {
       return c.json({ error: "Admin access required" }, 403);
     }
     return c.json(await publicPolicy(store));
+  });
+
+  app.get("/system/observability/activity", async (c) => {
+    if (options.auth && c.get("principal").role !== "admin") {
+      return c.json({ error: "Admin access required" }, 403);
+    }
+    const parsed = activityQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: "Invalid observability activity query",
+          issues: parsed.error.issues,
+        },
+        400,
+      );
+    }
+    const query = parsed.data;
+    const [spans, logs] = await Promise.all([
+      store.listOtlpSpans(query),
+      store.listOtlpLogRecords(query),
+    ]);
+    return c.json({ spans, logs });
   });
 
   app.put("/system/observability", async (c) => {

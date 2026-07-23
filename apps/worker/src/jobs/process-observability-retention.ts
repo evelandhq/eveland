@@ -7,7 +7,7 @@ const dayMs = 24 * 60 * 60 * 1_000;
 
 type RetentionStore = Pick<
   Store,
-  | "pruneOtlpBatches"
+  | "pruneOtlpTelemetry"
   | "pruneDerivedAgentTelemetry"
   | "pruneHostMetrics"
 >;
@@ -44,7 +44,7 @@ export function createObservabilityRetentionReconciler(input: {
       ),
     };
     const [raw, derived, capacity] = await Promise.all([
-      input.store.pruneOtlpBatches(rawCutoffs),
+      input.store.pruneOtlpTelemetry(rawCutoffs),
       input.store.pruneDerivedAgentTelemetry(
         daysBefore(
           observedAt,

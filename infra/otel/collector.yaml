@@ -21,6 +21,14 @@ processors:
   batch:
     timeout: 1s
     send_batch_size: 1024
+  filter/builtin_eveland:
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
+    log_conditions:
+      - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
+    metric_conditions:
+      - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
 
 exporters:
   otlp_http/builtin:
@@ -49,6 +57,7 @@ service:
         - otlp
       processors:
         - memory_limiter
+        - filter/builtin_eveland
         - batch
       exporters:
         - otlp_http/builtin
@@ -57,6 +66,7 @@ service:
         - otlp
       processors:
         - memory_limiter
+        - filter/builtin_eveland
         - batch
       exporters:
         - otlp_http/builtin
@@ -65,6 +75,7 @@ service:
         - otlp
       processors:
         - memory_limiter
+        - filter/builtin_eveland
         - batch
       exporters:
         - otlp_http/builtin

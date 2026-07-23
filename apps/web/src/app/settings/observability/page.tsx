@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import {
   getCurrentMember,
+  getObservabilityActivity,
   getObservabilitySettings,
 } from "@/lib/server-api";
 
@@ -34,7 +35,10 @@ export default async function ObservabilitySettingsPage() {
     );
   }
 
-  const settings = await getObservabilitySettings();
+  const [settings, activity] = await Promise.all([
+    getObservabilitySettings(),
+    getObservabilityActivity(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -47,7 +51,10 @@ export default async function ObservabilitySettingsPage() {
           instrumentation owned by Agent source code.
         </p>
       </div>
-      <ObservabilitySettings initialSettings={settings} />
+      <ObservabilitySettings
+        initialSettings={settings}
+        initialActivity={activity}
+      />
     </div>
   );
 }

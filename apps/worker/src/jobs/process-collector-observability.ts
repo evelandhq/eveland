@@ -1,6 +1,7 @@
 import {
   externalDestinationConfigSchema,
   OBSERVABILITY_SIGNALS,
+  TELEMETRY_DOMAINS,
   type ExternalDestinationConfig,
   type ObservabilityPolicy,
   type ObservabilitySignal,
@@ -155,14 +156,12 @@ export function renderCollectorConfig(input: {
         ? (["agent"] satisfies TelemetryDomain[])
         : destination.kind === "custom_otlp"
           ? destination.domains
-          : null;
-    const filterId = domains ? `filter/${componentId}` : null;
-    if (domains && filterId) {
-      config.processors[filterId] = domainFilter(
-        domains,
-        destination.supportedSignals,
-      );
-    }
+          : [...TELEMETRY_DOMAINS];
+    const filterId = `filter/${componentId}`;
+    config.processors[filterId] = domainFilter(
+      domains,
+      destination.supportedSignals,
+    );
     const transformId =
       destination.kind === "langfuse"
         ? `transform/langfuse_${componentId}`
@@ -178,7 +177,7 @@ export function renderCollectorConfig(input: {
         receivers: ["otlp"],
         processors: [
           "memory_limiter",
-          ...(filterId ? [filterId] : []),
+          filterId,
           ...(transformId ? [transformId] : []),
           "batch",
         ],
@@ -222,6 +221,10 @@ function baseCollectorConfig(): CollectorConfig {
         timeout: "1s",
         send_batch_size: 1024,
       },
+      "filter/builtin_eveland": domainFilter(
+        [...TELEMETRY_DOMAINS],
+        [...OBSERVABILITY_SIGNALS],
+      ),
     },
     exporters: {
       "otlp_http/builtin": {
@@ -241,7 +244,11 @@ function baseCollectorConfig(): CollectorConfig {
           signal,
           {
             receivers: ["otlp"],
-            processors: ["memory_limiter", "batch"],
+            processors: [
+              "memory_limiter",
+              "filter/builtin_eveland",
+              "batch",
+            ],
             exporters: ["otlp_http/builtin"],
           },
         ]),

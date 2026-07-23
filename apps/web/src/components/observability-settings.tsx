@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import type {
   AgentCapturePolicy,
+  BuiltInOtlpActivity,
   ExternalDestinationConfig,
   ObservabilitySignal,
   PublicObservabilityPolicy,
@@ -99,8 +100,10 @@ const emptyDestination = (): DestinationDraft => ({
 
 export function ObservabilitySettings({
   initialSettings,
+  initialActivity,
 }: {
   initialSettings: PublicObservabilityPolicy;
+  initialActivity: BuiltInOtlpActivity;
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const [capture, setCapture] = useState(initialSettings.agentCapture);
@@ -242,6 +245,128 @@ export function ObservabilitySettings({
           </p>
         </CardContent>
       </Card>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent spans</CardTitle>
+            <CardDescription>
+              Latest traces received by Eveland&apos;s Built-in OTLP
+              destination.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {initialActivity.spans.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No Eveland spans have been received yet.
+              </p>
+            ) : (
+              <div className="divide-y">
+                {initialActivity.spans.map((span) => (
+                  <div
+                    key={span.id}
+                    className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {span.name}
+                      </span>
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                        {formatDuration(span.durationMs)}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline">
+                        {span.resource.serviceName}
+                      </Badge>
+                      <Badge variant="outline">
+                        {span.resource.domain}
+                      </Badge>
+                      {span.statusCode === 2 ? (
+                        <Badge variant="destructive">error</Badge>
+                      ) : null}
+                      <time
+                        dateTime={span.startedAt}
+                        className="text-xs text-muted-foreground"
+                      >
+                        {new Date(span.startedAt).toLocaleString()}
+                      </time>
+                    </div>
+                    <p
+                      className="truncate font-mono text-xs text-muted-foreground"
+                      title={span.traceId}
+                    >
+                      trace {span.traceId}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent logs</CardTitle>
+            <CardDescription>
+              Latest standard LogRecords across Eveland services and
+              runtimes.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {initialActivity.logs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No Eveland logs have been received yet.
+              </p>
+            ) : (
+              <div className="divide-y">
+                {initialActivity.logs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {log.eventName ?? bodySummary(log.body)}
+                      </span>
+                      {log.severityText ? (
+                        <Badge
+                          variant={
+                            (log.severityNumber ?? 0) >= 17
+                              ? "destructive"
+                              : "outline"
+                          }
+                        >
+                          {log.severityText}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    {log.eventName ? (
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {bodySummary(log.body)}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline">
+                        {log.resource.serviceName}
+                      </Badge>
+                      <Badge variant="outline">
+                        {log.resource.domain}
+                      </Badge>
+                      <time
+                        dateTime={log.timestamp}
+                        className="text-xs text-muted-foreground"
+                      >
+                        {new Date(log.timestamp).toLocaleString()}
+                      </time>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
@@ -517,6 +642,18 @@ export function ObservabilitySettings({
       />
     </div>
   );
+}
+
+function formatDuration(durationMs: number): string {
+  return durationMs < 1_000
+    ? `${Math.round(durationMs * 100) / 100} ms`
+    : `${Math.round(durationMs / 10) / 100} s`;
+}
+
+function bodySummary(body: unknown): string {
+  const value =
+    typeof body === "string" ? body : JSON.stringify(body) ?? "";
+  return value.length > 240 ? `${value.slice(0, 237)}...` : value;
 }
 
 function CaptureSwitch({

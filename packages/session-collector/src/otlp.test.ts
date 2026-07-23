@@ -2,7 +2,148 @@ import { describe, expect, test } from "vitest";
 import {
   projectAgentEventsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
+  projectOtlpLogRecords,
+  projectOtlpSpans,
 } from "./otlp.js";
+
+describe("OTLP trace projection", () => {
+  test("indexes standard OTLP spans with Eveland Resource provenance", () => {
+    expect(
+      projectOtlpSpans({
+        resourceSpans: [
+          {
+            resource: {
+              attributes: [
+                attribute("service.name", "eveland-api"),
+                attribute("eveland.telemetry.domain", "platform"),
+                attribute("eveland.project.id", "proj_1"),
+              ],
+            },
+            scopeSpans: [
+              {
+                scope: { name: "@opentelemetry/instrumentation-http" },
+                spans: [
+                  {
+                    traceId: "trace_1",
+                    spanId: "span_1",
+                    parentSpanId: "parent_1",
+                    name: "GET /projects",
+                    kind: 2,
+                    startTimeUnixNano: "1784808000000000000",
+                    endTimeUnixNano: "1784808000125000000",
+                    attributes: [
+                      attribute("http.request.method", "GET"),
+                    ],
+                    status: { code: 1 },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        traceId: "trace_1",
+        spanId: "span_1",
+        parentSpanId: "parent_1",
+        name: "GET /projects",
+        kind: 2,
+        startedAt: "2026-07-23T12:00:00.000Z",
+        endedAt: "2026-07-23T12:00:00.125Z",
+        durationMs: 125,
+        statusCode: 1,
+        scopeName: "@opentelemetry/instrumentation-http",
+        attributes: { "http.request.method": "GET" },
+        resource: {
+          serviceName: "eveland-api",
+          domain: "platform",
+          projectId: "proj_1",
+          deploymentId: null,
+          attributes: expect.objectContaining({
+            "service.name": "eveland-api",
+            "eveland.telemetry.domain": "platform",
+          }),
+        },
+      }),
+    ]);
+  });
+
+  test("ignores resources that are not marked as Eveland telemetry", () => {
+    expect(
+      projectOtlpSpans({
+        resourceSpans: [
+          {
+            resource: {
+              attributes: [
+                attribute("service.name", "user-agent"),
+              ],
+            },
+            scopeSpans: [],
+          },
+        ],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("OTLP log indexing projection", () => {
+  test("indexes standard LogRecords independently from Agent read models", () => {
+    expect(
+      projectOtlpLogRecords({
+        resourceLogs: [
+          {
+            resource: {
+              attributes: [
+                attribute("service.name", "eveland-worker"),
+                attribute("eveland.telemetry.domain", "runtime"),
+                attribute("eveland.deployment.id", "dep_1"),
+              ],
+            },
+            scopeLogs: [
+              {
+                scope: { name: "@eveland/platform-observability" },
+                logRecords: [
+                  {
+                    timeUnixNano: "1784808000000000000",
+                    observedTimeUnixNano: "1784808000100000000",
+                    traceId: "trace_1",
+                    spanId: "span_1",
+                    severityNumber: 9,
+                    severityText: "INFO",
+                    eventName: "eveland.runtime.log",
+                    body: { stringValue: "Deployment ready." },
+                    attributes: [
+                      attribute("eveland.log.type", "runtime"),
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        traceId: "trace_1",
+        spanId: "span_1",
+        timestamp: "2026-07-23T12:00:00.000Z",
+        observedTimestamp: "2026-07-23T12:00:00.100Z",
+        severityNumber: 9,
+        severityText: "INFO",
+        eventName: "eveland.runtime.log",
+        scopeName: "@eveland/platform-observability",
+        body: "Deployment ready.",
+        attributes: { "eveland.log.type": "runtime" },
+        resource: expect.objectContaining({
+          serviceName: "eveland-worker",
+          domain: "runtime",
+          deploymentId: "dep_1",
+        }),
+      }),
+    ]);
+  });
+});
 
 describe("OTLP Agent event projection", () => {
   test("maps standard OTLP/HTTP JSON LogRecords to Session observations", () => {

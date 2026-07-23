@@ -11,8 +11,26 @@ describe("Built-in OTLP ingest", () => {
     const payload = {
       resourceSpans: [
         {
-          resource: { attributes: [] },
-          scopeSpans: [],
+          resource: {
+            attributes: [
+              attribute("service.name", "eveland-api"),
+              attribute("eveland.telemetry.domain", "platform"),
+            ],
+          },
+          scopeSpans: [
+            {
+              scope: { name: "test" },
+              spans: [
+                {
+                  traceId: "trace_1",
+                  spanId: "span_1",
+                  name: "GET /projects",
+                  startTimeUnixNano: "1784808000000000000",
+                  endTimeUnixNano: "1784808000125000000",
+                },
+              ],
+            },
+          ],
         },
       ],
     };
@@ -35,6 +53,13 @@ describe("Built-in OTLP ingest", () => {
     expect(accepted.status).toBe(200);
     expect(await accepted.json()).toEqual({});
     await expect(store.listOtlpBatches({ signal: "traces" })).resolves.toHaveLength(1);
+    await expect(store.listOtlpSpans({ limit: 10 })).resolves.toEqual([
+      expect.objectContaining({
+        traceId: "trace_1",
+        spanId: "span_1",
+        name: "GET /projects",
+      }),
+    ]);
   });
 
   test("rejects a signal with the wrong OTLP request shape", async () => {
@@ -104,6 +129,9 @@ describe("Built-in OTLP ingest", () => {
       },
     });
     expect(await store.listSessionEvents(session!.id)).toHaveLength(2);
+    await expect(store.listOtlpLogRecords({ limit: 10 })).resolves.toHaveLength(
+      2,
+    );
   });
 
   test("projects retry-safe Instance Health read models from standard OTLP metrics", async () => {
@@ -149,6 +177,7 @@ function agentLogBatch(deploymentId: string) {
       {
         resource: {
           attributes: [
+            attribute("service.name", "eveland-agent"),
             attribute("eveland.telemetry.domain", "agent"),
             attribute("eveland.deployment.id", deploymentId),
           ],

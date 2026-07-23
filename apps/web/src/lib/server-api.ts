@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
 import type { InstanceHealthReport } from "@eveland/core/instance-health";
 import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
-import type { PublicObservabilityPolicy } from "@eveland/core/observability";
+import type {
+  BuiltInOtlpActivity,
+  PublicObservabilityPolicy,
+} from "@eveland/core/observability";
 import type {
   PublicGitCredential,
   SharedAgentEnvironment,
@@ -84,6 +87,10 @@ export const getSystemConfigurationDiagnostics = () =>
   apiGet<SystemConfigurationDiagnostics>("/system/configuration");
 export const getObservabilitySettings = () =>
   apiGet<PublicObservabilityPolicy>("/system/observability");
+export const getObservabilityActivity = (limit = 20) =>
+  apiGet<BuiltInOtlpActivity>(
+    `/system/observability/activity?limit=${encodeURIComponent(limit)}`,
+  );
 export const getInstanceHealth = (hours = 24) =>
   apiGet<InstanceHealthReport>(`/system/health?hours=${encodeURIComponent(hours)}`);
 export const getGitCredentials = () =>

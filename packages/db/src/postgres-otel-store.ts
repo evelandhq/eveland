@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
-import type { ObservabilitySignal } from "@eveland/core/observability";
+import type {
+  ObservabilitySignal,
+  TelemetryDomain,
+} from "@eveland/core/observability";
 import { createId } from "@eveland/core/ids";
 import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import {
   modelUsageEvents,
   otlpBatches,
+  otlpLogRecords,
+  otlpSpans,
   sessionEvents,
   sessionNodes,
   sessions,
@@ -86,13 +91,175 @@ export function createPostgresOtlpStore(
       }));
     },
 
-    async pruneOtlpBatches(input) {
+    async ingestOtlpSpans(spans) {
+      if (spans.length === 0) return { inserted: 0 };
+      const inserted = await db
+        .insert(otlpSpans)
+        .values(
+          spans.map((span) => ({
+            id: createId("otsp"),
+            traceId: span.traceId,
+            spanId: span.spanId,
+            parentSpanId: span.parentSpanId,
+            serviceName: span.resource.serviceName,
+            domain: span.resource.domain,
+            projectId: span.resource.projectId,
+            deploymentId: span.resource.deploymentId,
+            name: span.name,
+            kind: span.kind,
+            startedAt: new Date(span.startedAt),
+            endedAt: new Date(span.endedAt),
+            durationMs: span.durationMs,
+            statusCode: span.statusCode,
+            statusMessage: span.statusMessage,
+            scopeName: span.scopeName,
+            attributes: span.attributes,
+            resourceAttributes: span.resource.attributes,
+            payload: span.payload,
+          })),
+        )
+        .onConflictDoNothing({
+          target: [otlpSpans.traceId, otlpSpans.spanId],
+        })
+        .returning({ id: otlpSpans.id });
+      return { inserted: inserted.length };
+    },
+
+    async listOtlpSpans(input) {
+      const conditions = [sql`true`];
+      if (input.domain) {
+        conditions.push(eq(otlpSpans.domain, input.domain));
+      }
+      if (input.serviceName) {
+        conditions.push(
+          eq(otlpSpans.serviceName, input.serviceName),
+        );
+      }
+      if (input.projectId) {
+        conditions.push(eq(otlpSpans.projectId, input.projectId));
+      }
+      const rows = await db
+        .select()
+        .from(otlpSpans)
+        .where(and(...conditions))
+        .orderBy(desc(otlpSpans.startedAt))
+        .limit(clampActivityLimit(input.limit));
+      return rows.map((row) => ({
+        id: row.id,
+        traceId: row.traceId,
+        spanId: row.spanId,
+        parentSpanId: row.parentSpanId,
+        name: row.name,
+        kind: row.kind,
+        startedAt: row.startedAt.toISOString(),
+        endedAt: row.endedAt.toISOString(),
+        durationMs: row.durationMs,
+        statusCode: row.statusCode,
+        statusMessage: row.statusMessage,
+        scopeName: row.scopeName,
+        attributes: asRecord(row.attributes),
+        resource: {
+          serviceName: row.serviceName,
+          domain: row.domain as TelemetryDomain,
+          projectId: row.projectId,
+          deploymentId: row.deploymentId,
+          attributes: asRecord(row.resourceAttributes),
+        },
+        payload: asRecord(row.payload),
+        receivedAt: row.receivedAt.toISOString(),
+      }));
+    },
+
+    async ingestOtlpLogRecords(records) {
+      if (records.length === 0) return { inserted: 0 };
+      const inserted = await db
+        .insert(otlpLogRecords)
+        .values(
+          records.map((record) => ({
+            id: createId("otlg"),
+            fingerprint: createHash("sha256")
+              .update(JSON.stringify(record))
+              .digest("hex"),
+            traceId: record.traceId,
+            spanId: record.spanId,
+            serviceName: record.resource.serviceName,
+            domain: record.resource.domain,
+            projectId: record.resource.projectId,
+            deploymentId: record.resource.deploymentId,
+            timestamp: new Date(record.timestamp),
+            observedTimestamp: record.observedTimestamp
+              ? new Date(record.observedTimestamp)
+              : null,
+            severityNumber: record.severityNumber,
+            severityText: record.severityText,
+            eventName: record.eventName,
+            scopeName: record.scopeName,
+            body: record.body ?? null,
+            attributes: record.attributes,
+            resourceAttributes: record.resource.attributes,
+            payload: record.payload,
+          })),
+        )
+        .onConflictDoNothing({
+          target: otlpLogRecords.fingerprint,
+        })
+        .returning({ id: otlpLogRecords.id });
+      return { inserted: inserted.length };
+    },
+
+    async listOtlpLogRecords(input) {
+      const conditions = [sql`true`];
+      if (input.domain) {
+        conditions.push(eq(otlpLogRecords.domain, input.domain));
+      }
+      if (input.serviceName) {
+        conditions.push(
+          eq(otlpLogRecords.serviceName, input.serviceName),
+        );
+      }
+      if (input.projectId) {
+        conditions.push(
+          eq(otlpLogRecords.projectId, input.projectId),
+        );
+      }
+      const rows = await db
+        .select()
+        .from(otlpLogRecords)
+        .where(and(...conditions))
+        .orderBy(desc(otlpLogRecords.timestamp))
+        .limit(clampActivityLimit(input.limit));
+      return rows.map((row) => ({
+        id: row.id,
+        traceId: row.traceId,
+        spanId: row.spanId,
+        timestamp: row.timestamp.toISOString(),
+        observedTimestamp:
+          row.observedTimestamp?.toISOString() ?? null,
+        severityNumber: row.severityNumber,
+        severityText: row.severityText,
+        eventName: row.eventName,
+        scopeName: row.scopeName,
+        body: row.body,
+        attributes: asRecord(row.attributes),
+        resource: {
+          serviceName: row.serviceName,
+          domain: row.domain as TelemetryDomain,
+          projectId: row.projectId,
+          deploymentId: row.deploymentId,
+          attributes: asRecord(row.resourceAttributes),
+        },
+        payload: asRecord(row.payload),
+        receivedAt: row.receivedAt.toISOString(),
+      }));
+    },
+
+    async pruneOtlpTelemetry(input) {
       const cutoffs = {
         traces: input.tracesBefore,
         logs: input.logsBefore,
         metrics: input.metricsBefore,
       } as const;
-      const counts = await Promise.all(
+      const rawCounts = await Promise.all(
         (["traces", "logs", "metrics"] as const).map(async (signal) => {
           const rows = await db
             .delete(otlpBatches)
@@ -106,10 +273,25 @@ export function createPostgresOtlpStore(
           return [signal, rows.length] as const;
         }),
       );
-      return Object.fromEntries(counts) as Record<
+      const [spans, logs] = await Promise.all([
+        db
+          .delete(otlpSpans)
+          .where(lt(otlpSpans.startedAt, input.tracesBefore))
+          .returning({ id: otlpSpans.id }),
+        db
+          .delete(otlpLogRecords)
+          .where(lt(otlpLogRecords.timestamp, input.logsBefore))
+          .returning({ id: otlpLogRecords.id }),
+      ]);
+      const counts = Object.fromEntries(rawCounts) as Record<
         ObservabilitySignal,
         number
       >;
+      return {
+        traces: counts.traces + spans.length,
+        logs: counts.logs + logs.length,
+        metrics: counts.metrics,
+      };
     },
 
     async pruneDerivedAgentTelemetry(before) {
@@ -168,4 +350,8 @@ function asRecord(value: unknown): Record<string, unknown> {
     throw new Error("Invalid stored OTLP batch.");
   }
   return value as Record<string, unknown>;
+}
+
+function clampActivityLimit(value: number): number {
+  return Math.max(1, Math.min(1_000, value));
 }

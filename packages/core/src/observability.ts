@@ -309,6 +309,55 @@ export type AgentRuntimePolicy = z.infer<typeof agentRuntimePolicySchema>;
 export type AgentEventObservation = z.infer<
   typeof agentEventObservationSchema
 >;
+export type OtlpResourceProjection = {
+  serviceName: string;
+  domain: TelemetryDomain;
+  projectId: string | null;
+  deploymentId: string | null;
+  attributes: Record<string, unknown>;
+};
+export type OtlpSpanProjection = {
+  traceId: string;
+  spanId: string;
+  parentSpanId: string | null;
+  name: string;
+  kind: number | null;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  statusCode: number | null;
+  statusMessage: string | null;
+  scopeName: string | null;
+  attributes: Record<string, unknown>;
+  resource: OtlpResourceProjection;
+  payload: Record<string, unknown>;
+};
+export type OtlpLogRecordProjection = {
+  traceId: string | null;
+  spanId: string | null;
+  timestamp: string;
+  observedTimestamp: string | null;
+  severityNumber: number | null;
+  severityText: string | null;
+  eventName: string | null;
+  scopeName: string | null;
+  body: unknown;
+  attributes: Record<string, unknown>;
+  resource: OtlpResourceProjection;
+  payload: Record<string, unknown>;
+};
+export type BuiltInOtlpSpan = OtlpSpanProjection & {
+  id: string;
+  receivedAt: string;
+};
+export type BuiltInOtlpLogRecord = OtlpLogRecordProjection & {
+  id: string;
+  receivedAt: string;
+};
+export type BuiltInOtlpActivity = {
+  spans: BuiltInOtlpSpan[];
+  logs: BuiltInOtlpLogRecord[];
+};
 export type ExternalDestinationHealth = {
   destinationId: string;
   status: "pending" | "healthy" | "degraded" | "paused";

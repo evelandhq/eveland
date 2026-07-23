@@ -80,9 +80,12 @@ describe("team management web surfaces", () => {
     const page = source("./settings/observability/page.tsx");
     const settings = source("../components/observability-settings.tsx");
     expect(page).toContain("getObservabilitySettings");
+    expect(page).toContain("getObservabilityActivity");
     expect(page).toContain('member.role !== "admin"');
     expect(settings).toContain("Built-in");
     expect(settings).toContain("Always on");
+    expect(settings).toContain("Recent spans");
+    expect(settings).toContain("Recent logs");
     expect(settings).toContain("saveObservabilitySettings");
     expect(settings).toContain("External destinations");
     expect(settings).toContain("createObservabilityDestination");

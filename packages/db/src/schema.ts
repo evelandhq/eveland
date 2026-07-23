@@ -564,6 +564,108 @@ export const otlpBatches = pgTable(
   ],
 );
 
+export const otlpSpans = pgTable(
+  "otlp_spans",
+  {
+    id: text("id").primaryKey(),
+    traceId: text("trace_id").notNull(),
+    spanId: text("span_id").notNull(),
+    parentSpanId: text("parent_span_id"),
+    serviceName: text("service_name").notNull(),
+    domain: text("domain").notNull(),
+    projectId: text("project_id"),
+    deploymentId: text("deployment_id"),
+    name: text("name").notNull(),
+    kind: integer("kind"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }).notNull(),
+    durationMs: doublePrecision("duration_ms").notNull(),
+    statusCode: integer("status_code"),
+    statusMessage: text("status_message"),
+    scopeName: text("scope_name"),
+    attributes: jsonb("attributes").notNull(),
+    resourceAttributes: jsonb("resource_attributes").notNull(),
+    payload: jsonb("payload").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "otlp_spans_domain_check",
+      sql`${table.domain} in ('agent', 'platform', 'runtime', 'capacity')`,
+    ),
+    uniqueIndex("otlp_spans_trace_span_idx").on(
+      table.traceId,
+      table.spanId,
+    ),
+    index("otlp_spans_started_idx").on(table.startedAt),
+    index("otlp_spans_domain_started_idx").on(
+      table.domain,
+      table.startedAt,
+    ),
+    index("otlp_spans_service_started_idx").on(
+      table.serviceName,
+      table.startedAt,
+    ),
+    index("otlp_spans_project_started_idx").on(
+      table.projectId,
+      table.startedAt,
+    ),
+  ],
+);
+
+export const otlpLogRecords = pgTable(
+  "otlp_log_records",
+  {
+    id: text("id").primaryKey(),
+    fingerprint: text("fingerprint").notNull(),
+    traceId: text("trace_id"),
+    spanId: text("span_id"),
+    serviceName: text("service_name").notNull(),
+    domain: text("domain").notNull(),
+    projectId: text("project_id"),
+    deploymentId: text("deployment_id"),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    observedTimestamp: timestamp("observed_timestamp", {
+      withTimezone: true,
+    }),
+    severityNumber: integer("severity_number"),
+    severityText: text("severity_text"),
+    eventName: text("event_name"),
+    scopeName: text("scope_name"),
+    body: jsonb("body").notNull(),
+    attributes: jsonb("attributes").notNull(),
+    resourceAttributes: jsonb("resource_attributes").notNull(),
+    payload: jsonb("payload").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "otlp_log_records_domain_check",
+      sql`${table.domain} in ('agent', 'platform', 'runtime', 'capacity')`,
+    ),
+    uniqueIndex("otlp_log_records_fingerprint_idx").on(
+      table.fingerprint,
+    ),
+    index("otlp_log_records_timestamp_idx").on(table.timestamp),
+    index("otlp_log_records_domain_timestamp_idx").on(
+      table.domain,
+      table.timestamp,
+    ),
+    index("otlp_log_records_service_timestamp_idx").on(
+      table.serviceName,
+      table.timestamp,
+    ),
+    index("otlp_log_records_project_timestamp_idx").on(
+      table.projectId,
+      table.timestamp,
+    ),
+  ],
+);
+
 export const jobs = pgTable("jobs", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id),

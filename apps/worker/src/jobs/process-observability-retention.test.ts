@@ -5,7 +5,7 @@ import {
 
 describe("Built-in observability retention", () => {
   test("applies fixed signal, Session, and capacity windows at a bounded cadence", async () => {
-    const pruneOtlpBatches = vi.fn().mockResolvedValue({
+    const pruneOtlpTelemetry = vi.fn().mockResolvedValue({
       traces: 1,
       logs: 2,
       metrics: 3,
@@ -20,7 +20,7 @@ describe("Built-in observability retention", () => {
     let now = new Date("2026-07-23T12:00:00.000Z");
     const reconcile = createObservabilityRetentionReconciler({
       store: {
-        pruneOtlpBatches,
+        pruneOtlpTelemetry,
         pruneDerivedAgentTelemetry,
         pruneHostMetrics,
       },
@@ -29,7 +29,7 @@ describe("Built-in observability retention", () => {
 
     await expect(reconcile()).resolves.toBe(36);
     await expect(reconcile()).resolves.toBe(0);
-    expect(pruneOtlpBatches).toHaveBeenCalledWith({
+    expect(pruneOtlpTelemetry).toHaveBeenCalledWith({
       tracesBefore: new Date("2026-06-23T12:00:00.000Z"),
       logsBefore: new Date("2026-06-23T12:00:00.000Z"),
       metricsBefore: new Date("2026-06-23T12:00:00.000Z"),
@@ -43,6 +43,6 @@ describe("Built-in observability retention", () => {
 
     now = new Date("2026-07-24T12:00:00.000Z");
     await expect(reconcile()).resolves.toBe(36);
-    expect(pruneOtlpBatches).toHaveBeenCalledTimes(2);
+    expect(pruneOtlpTelemetry).toHaveBeenCalledTimes(2);
   });
 });

@@ -6,6 +6,8 @@ import type { Store } from "@eveland/db";
 import {
   projectAgentEventsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
+  projectOtlpLogRecords,
+  projectOtlpSpans,
 } from "@eveland/session-collector";
 import { runWithPlatformTracingSuppressed } from "@eveland/platform-observability";
 import type { ApiApp, AppOptions } from "./app-types.js";
@@ -57,7 +59,13 @@ export function registerOtlpRoutes(input: {
     }
     return runWithPlatformTracingSuppressed(async () => {
       await store.ingestOtlpBatch({ signal, payload });
+      if (signal === "traces") {
+        await store.ingestOtlpSpans(projectOtlpSpans(payload));
+      }
       if (signal === "logs") {
+        await store.ingestOtlpLogRecords(
+          projectOtlpLogRecords(payload),
+        );
         for (const observation of projectAgentEventsFromOtlpLogs(payload)) {
           try {
             await store.ingestAgentEvent(observation);

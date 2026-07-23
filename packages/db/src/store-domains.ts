@@ -53,7 +53,14 @@ import type {
 } from "@eveland/core/contracts";
 import type { ModelStepUsage } from "@eveland/core/eve";
 import type { AgentCatalogRecord } from "@eveland/core/catalog";
-import type { AgentEventObservation } from "@eveland/core/observability";
+import type {
+  AgentEventObservation,
+  BuiltInOtlpLogRecord,
+  BuiltInOtlpSpan,
+  OtlpLogRecordProjection,
+  OtlpSpanProjection,
+  TelemetryDomain,
+} from "@eveland/core/observability";
 import type { EveVersionInfo } from "@eveland/core/source";
 import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
 import type {
@@ -716,7 +723,25 @@ export interface ObservabilityStore {
       receivedAt: string;
     }>
   >;
-  pruneOtlpBatches(input: {
+  ingestOtlpSpans(
+    spans: OtlpSpanProjection[],
+  ): Promise<{ inserted: number }>;
+  listOtlpSpans(input: {
+    domain?: TelemetryDomain;
+    serviceName?: string;
+    projectId?: string;
+    limit: number;
+  }): Promise<BuiltInOtlpSpan[]>;
+  ingestOtlpLogRecords(
+    records: OtlpLogRecordProjection[],
+  ): Promise<{ inserted: number }>;
+  listOtlpLogRecords(input: {
+    domain?: TelemetryDomain;
+    serviceName?: string;
+    projectId?: string;
+    limit: number;
+  }): Promise<BuiltInOtlpLogRecord[]>;
+  pruneOtlpTelemetry(input: {
     tracesBefore: Date;
     logsBefore: Date;
     metricsBefore: Date;

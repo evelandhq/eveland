@@ -41,10 +41,36 @@ describe("managed OpenTelemetry Collector configuration", () => {
       compression: "none",
     });
     expect(config.service.pipelines).toMatchObject({
-      traces: { exporters: ["otlp_http/builtin"] },
-      logs: { exporters: ["otlp_http/builtin"] },
-      metrics: { exporters: ["otlp_http/builtin"] },
+      traces: {
+        processors: [
+          "memory_limiter",
+          "filter/builtin_eveland",
+          "batch",
+        ],
+        exporters: ["otlp_http/builtin"],
+      },
+      logs: {
+        processors: [
+          "memory_limiter",
+          "filter/builtin_eveland",
+          "batch",
+        ],
+        exporters: ["otlp_http/builtin"],
+      },
+      metrics: {
+        processors: [
+          "memory_limiter",
+          "filter/builtin_eveland",
+          "batch",
+        ],
+        exporters: ["otlp_http/builtin"],
+      },
     });
+    expect(
+      config.processors["filter/builtin_eveland"].trace_conditions,
+    ).toEqual([
+      'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"',
+    ]);
   });
 
   test("builds isolated exporters, filters, and pipelines for enabled destinations", () => {
@@ -172,6 +198,11 @@ describe("managed OpenTelemetry Collector configuration", () => {
     expect(config.service.pipelines).toHaveProperty(
       "traces/elastic_destination_elastic",
     );
+    expect(
+      config.service.pipelines[
+        "traces/elastic_destination_elastic"
+      ].processors,
+    ).toContain("filter/destination_elastic");
     expect(config.service.pipelines).toHaveProperty(
       "traces/langfuse_destination_langfuse",
     );

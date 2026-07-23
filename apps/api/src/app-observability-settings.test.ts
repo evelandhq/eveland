@@ -101,6 +101,77 @@ describe("observability settings", () => {
     });
   });
 
+  test("lists recent Built-in spans and logs for the monitoring UI", async () => {
+    const store = createTestStore();
+    await store.ingestOtlpSpans([
+      {
+        traceId: "trace_1",
+        spanId: "span_1",
+        parentSpanId: null,
+        name: "GET /projects",
+        kind: 2,
+        startedAt: "2026-07-23T12:00:00.000Z",
+        endedAt: "2026-07-23T12:00:00.125Z",
+        durationMs: 125,
+        statusCode: 1,
+        statusMessage: null,
+        scopeName: "test",
+        attributes: {},
+        resource: {
+          serviceName: "eveland-api",
+          domain: "platform",
+          projectId: null,
+          deploymentId: null,
+          attributes: {},
+        },
+        payload: {},
+      },
+    ]);
+    await store.ingestOtlpLogRecords([
+      {
+        traceId: "trace_1",
+        spanId: "span_1",
+        timestamp: "2026-07-23T12:00:00.000Z",
+        observedTimestamp: null,
+        severityNumber: 9,
+        severityText: "INFO",
+        eventName: "eveland.runtime.log",
+        scopeName: "test",
+        body: "Deployment ready.",
+        attributes: {},
+        resource: {
+          serviceName: "eveland-worker",
+          domain: "runtime",
+          projectId: null,
+          deploymentId: "dep_1",
+          attributes: {},
+        },
+        payload: {},
+      },
+    ]);
+    const app = createApp(store);
+
+    const response = await app.request(
+      "/system/observability/activity?limit=10",
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      spans: [
+        expect.objectContaining({
+          traceId: "trace_1",
+          name: "GET /projects",
+        }),
+      ],
+      logs: [
+        expect.objectContaining({
+          eventName: "eveland.runtime.log",
+          body: "Deployment ready.",
+        }),
+      ],
+    });
+  });
+
   test("encrypts and revision-controls external destinations", async () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });

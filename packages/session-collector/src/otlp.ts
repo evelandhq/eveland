@@ -1,6 +1,10 @@
 import {
+  TELEMETRY_DOMAINS,
   agentEventObservationSchema,
   type AgentEventObservation,
+  type OtlpLogRecordProjection,
+  type OtlpResourceProjection,
+  type OtlpSpanProjection,
 } from "@eveland/core/observability";
 import type {
   HostMetricSample,
@@ -11,6 +15,105 @@ export type InstanceTelemetryProjection = {
   heartbeats: WorkerHeartbeat[];
   hostMetrics: Array<Omit<HostMetricSample, "id">>;
 };
+
+export function projectOtlpSpans(
+  payload: Record<string, unknown>,
+): OtlpSpanProjection[] {
+  const spans: OtlpSpanProjection[] = [];
+  for (const resourceSpans of arrayOfRecords(payload.resourceSpans)) {
+    const resource = resourceProjection(resourceSpans.resource);
+    if (!resource) continue;
+
+    for (const scopeSpans of arrayOfRecords(resourceSpans.scopeSpans)) {
+      const scopeName =
+        stringValue(recordValue(scopeSpans.scope)?.name) ?? null;
+      for (const span of arrayOfRecords(scopeSpans.spans)) {
+        const traceId = stringValue(span.traceId);
+        const spanId = stringValue(span.spanId);
+        const name = stringValue(span.name);
+        const startedAt = unixNanoToIso(
+          stringValue(span.startTimeUnixNano),
+        );
+        const endedAt = unixNanoToIso(
+          stringValue(span.endTimeUnixNano),
+        );
+        const durationMs = durationBetweenUnixNano(
+          stringValue(span.startTimeUnixNano),
+          stringValue(span.endTimeUnixNano),
+        );
+        if (
+          !traceId ||
+          !spanId ||
+          !name ||
+          !startedAt ||
+          !endedAt ||
+          durationMs === undefined
+        ) {
+          continue;
+        }
+        const status = recordValue(span.status);
+        spans.push({
+          traceId,
+          spanId,
+          parentSpanId: stringValue(span.parentSpanId) ?? null,
+          name,
+          kind: finiteInteger(span.kind) ?? null,
+          startedAt,
+          endedAt,
+          durationMs,
+          statusCode: finiteInteger(status?.code) ?? null,
+          statusMessage: stringValue(status?.message) ?? null,
+          scopeName,
+          attributes: attributesFrom(span.attributes),
+          resource,
+          payload: span,
+        });
+      }
+    }
+  }
+  return spans;
+}
+
+export function projectOtlpLogRecords(
+  payload: Record<string, unknown>,
+): OtlpLogRecordProjection[] {
+  const logs: OtlpLogRecordProjection[] = [];
+  for (const resourceLogs of arrayOfRecords(payload.resourceLogs)) {
+    const resource = resourceProjection(resourceLogs.resource);
+    if (!resource) continue;
+
+    for (const scopeLogs of arrayOfRecords(resourceLogs.scopeLogs)) {
+      const scopeName =
+        stringValue(recordValue(scopeLogs.scope)?.name) ?? null;
+      for (const logRecord of arrayOfRecords(scopeLogs.logRecords)) {
+        const timestamp = unixNanoToIso(
+          stringValue(logRecord.timeUnixNano) ??
+            stringValue(logRecord.observedTimeUnixNano),
+        );
+        if (!timestamp) continue;
+        logs.push({
+          traceId: stringValue(logRecord.traceId) ?? null,
+          spanId: stringValue(logRecord.spanId) ?? null,
+          timestamp,
+          observedTimestamp:
+            unixNanoToIso(
+              stringValue(logRecord.observedTimeUnixNano),
+            ) ?? null,
+          severityNumber:
+            finiteInteger(logRecord.severityNumber) ?? null,
+          severityText: stringValue(logRecord.severityText) ?? null,
+          eventName: stringValue(logRecord.eventName) ?? null,
+          scopeName,
+          body: anyValue(logRecord.body),
+          attributes: attributesFrom(logRecord.attributes),
+          resource,
+          payload: logRecord,
+        });
+      }
+    }
+  }
+  return logs;
+}
 
 export function projectAgentEventsFromOtlpLogs(
   payload: Record<string, unknown>,
@@ -218,6 +321,28 @@ function attributesFrom(value: unknown): Record<string, unknown> {
   );
 }
 
+function resourceProjection(
+  value: unknown,
+): OtlpResourceProjection | undefined {
+  const resource = recordValue(value);
+  const attributes = attributesFrom(resource?.attributes);
+  const serviceName = stringValue(attributes["service.name"]);
+  const domain = TELEMETRY_DOMAINS.find(
+    (candidate) =>
+      candidate === attributes["eveland.telemetry.domain"],
+  );
+  if (!serviceName || !domain) return undefined;
+  return {
+    serviceName,
+    domain,
+    projectId:
+      stringValue(attributes["eveland.project.id"]) ?? null,
+    deploymentId:
+      stringValue(attributes["eveland.deployment.id"]) ?? null,
+    attributes,
+  };
+}
+
 function metricDataPoints(
   metric: Record<string, unknown>,
 ): Record<string, unknown>[] {
@@ -349,6 +474,28 @@ function unixNanoToIso(value: string | undefined): string | undefined {
   }
 }
 
+function durationBetweenUnixNano(
+  start: string | undefined,
+  end: string | undefined,
+): number | undefined {
+  if (
+    !start ||
+    !end ||
+    !/^\d+$/.test(start) ||
+    !/^\d+$/.test(end)
+  ) {
+    return undefined;
+  }
+  try {
+    const duration = BigInt(end) - BigInt(start);
+    if (duration < 0n) return undefined;
+    const milliseconds = Number(duration) / 1_000_000;
+    return Number.isFinite(milliseconds) ? milliseconds : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function arrayOfRecords(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
     ? value.flatMap((item) => {
@@ -378,4 +525,10 @@ function nonNegativeInteger(value: unknown): number | undefined {
     value >= 0
     ? value
     : undefined;
+}
+
+function finiteInteger(value: unknown): number | undefined {
+  const parsed =
+    typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
