@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { createTestStore } from "@eveland/db/vitest";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { Root } from "protobufjs";
 import { createApp } from "./app.js";
 
 describe("Built-in OTLP ingest", () => {
@@ -73,6 +76,91 @@ describe("Built-in OTLP ingest", () => {
         "content-type": "application/json",
       },
       body: JSON.stringify({ resourceSpans: [] }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("accepts standard OTLP/HTTP protobuf for every supported signal", async () => {
+    const cases = [
+      {
+        signal: "traces",
+        payload: protobufTraceBatch(),
+        verify: async (store: ReturnType<typeof createTestStore>) => {
+          await expect(store.listOtlpSpans({ limit: 10 })).resolves.toEqual([
+            expect.objectContaining({
+              traceId: "AQIDBAUGBwgJCgsMDQ4PEA==",
+              spanId: "AQIDBAUGBwg=",
+              name: "GET /projects",
+            }),
+          ]);
+        },
+      },
+      {
+        signal: "logs",
+        payload: platformLogBatch(),
+        verify: async (store: ReturnType<typeof createTestStore>) => {
+          await expect(
+            store.listOtlpLogRecords({ limit: 10 }),
+          ).resolves.toEqual([
+            expect.objectContaining({
+              body: "worker ready",
+              severityText: "INFO",
+            }),
+          ]);
+        },
+      },
+      {
+        signal: "metrics",
+        payload: workerMetricBatch(),
+        verify: async (store: ReturnType<typeof createTestStore>) => {
+          await expect(
+            store.listOtlpMetricPoints({ limit: 20 }),
+          ).resolves.toHaveLength(11);
+        },
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const store = createTestStore();
+      const app = createApp(store, {
+        otlpServiceToken: "collector-service-token",
+      });
+      const response = await app.request(
+        `/internal/otel/v1/${testCase.signal}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer collector-service-token",
+            "content-type": "application/x-protobuf",
+          },
+          body: encodeOtlpRequest(testCase.signal, testCase.payload),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "application/x-protobuf",
+      );
+      expect(new Uint8Array(await response.arrayBuffer())).toHaveLength(0);
+      await expect(
+        store.listOtlpBatches({ signal: testCase.signal }),
+      ).resolves.toHaveLength(1);
+      await testCase.verify(store);
+    }
+  });
+
+  test("rejects malformed OTLP/HTTP protobuf", async () => {
+    const app = createApp(createTestStore(), {
+      otlpServiceToken: "collector-service-token",
+    });
+    const response = await app.request("/internal/otel/v1/traces", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer collector-service-token",
+        "content-type": "application/x-protobuf",
+      },
+      body: new Uint8Array([10, 5, 1]).buffer,
     });
 
     expect(response.status).toBe(400);
@@ -221,6 +309,63 @@ function agentLogBatch(deploymentId: string) {
   };
 }
 
+function protobufTraceBatch() {
+  return {
+    resourceSpans: [
+      {
+        resource: {
+          attributes: [
+            attribute("service.name", "eveland-api"),
+            attribute("eveland.telemetry.domain", "platform"),
+          ],
+        },
+        scopeSpans: [
+          {
+            scope: { name: "test" },
+            spans: [
+              {
+                traceId: "AQIDBAUGBwgJCgsMDQ4PEA==",
+                spanId: "AQIDBAUGBwg=",
+                name: "GET /projects",
+                startTimeUnixNano: "1784808000000000000",
+                endTimeUnixNano: "1784808000125000000",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function platformLogBatch() {
+  return {
+    resourceLogs: [
+      {
+        resource: {
+          attributes: [
+            attribute("service.name", "eveland-worker"),
+            attribute("eveland.telemetry.domain", "platform"),
+          ],
+        },
+        scopeLogs: [
+          {
+            scope: { name: "test" },
+            logRecords: [
+              {
+                timeUnixNano: "1784808000000000000",
+                severityNumber: 9,
+                severityText: "INFO",
+                body: { stringValue: "worker ready" },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function logRecord(eventId: string, event: unknown) {
   return {
     timeUnixNano: "1784808000000000000",
@@ -354,4 +499,49 @@ function metricPoint(
           : { stringValue: child },
     })),
   };
+}
+
+const otlpProtoRootDirectory = fileURLToPath(
+  new URL(
+    "../../../packages/session-collector/proto/",
+    import.meta.url,
+  ),
+);
+const otlpProtoRoot = new Root();
+otlpProtoRoot.resolvePath = (_origin, target) =>
+  resolve(otlpProtoRootDirectory, target);
+otlpProtoRoot.loadSync([
+  resolve(
+    otlpProtoRootDirectory,
+    "opentelemetry/proto/collector/trace/v1/trace_service.proto",
+  ),
+  resolve(
+    otlpProtoRootDirectory,
+    "opentelemetry/proto/collector/logs/v1/logs_service.proto",
+  ),
+  resolve(
+    otlpProtoRootDirectory,
+    "opentelemetry/proto/collector/metrics/v1/metrics_service.proto",
+  ),
+]);
+
+const protobufRequestTypes = {
+  traces: otlpProtoRoot.lookupType(
+    "opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest",
+  ),
+  logs: otlpProtoRoot.lookupType(
+    "opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest",
+  ),
+  metrics: otlpProtoRoot.lookupType(
+    "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
+  ),
+};
+
+function encodeOtlpRequest(
+  signal: keyof typeof protobufRequestTypes,
+  payload: object,
+): ArrayBuffer {
+  const type = protobufRequestTypes[signal];
+  const bytes = type.encode(type.fromObject(payload)).finish();
+  return Uint8Array.from(bytes).buffer;
 }

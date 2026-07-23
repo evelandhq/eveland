@@ -26,6 +26,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "protobufjs": "^7.6.5",
     "vitest": "^4.1.9"
   }
 }

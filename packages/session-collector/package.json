@@ -13,7 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*"
+    "@eveland/core": "workspace:*",
+    "protobufjs": "^7.6.5"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

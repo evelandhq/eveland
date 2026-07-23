@@ -4,6 +4,8 @@ import {
 } from "@eveland/core/observability";
 import type { Store } from "@eveland/db";
 import {
+  decodeOtlpProtobufRequest,
+  encodeOtlpProtobufSuccess,
   projectAgentEventsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
   projectOtlpLogRecords,
@@ -15,6 +17,8 @@ import type { ApiApp, AppOptions } from "./app-types.js";
 import { isServiceRequest } from "./app-support.js";
 
 const maxOtlpRequestBytes = 16 * 1024 * 1024;
+const otlpJsonContentType = "application/json";
+const otlpProtobufContentType = "application/x-protobuf";
 const signalFields = {
   traces: "resourceSpans",
   logs: "resourceLogs",
@@ -36,11 +40,19 @@ export function registerOtlpRoutes(input: {
     }
     const signal = parseSignal(c.req.param("signal"));
     if (!signal) return c.json({ error: "Not found" }, 404);
+    const contentType = c.req
+      .header("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase();
     if (
-      c.req.header("content-type")?.split(";", 1)[0]?.trim() !==
-      "application/json"
+      contentType !== otlpJsonContentType &&
+      contentType !== otlpProtobufContentType
     ) {
-      return c.json({ error: "OTLP/HTTP JSON is required" }, 415);
+      return c.json(
+        { error: "OTLP/HTTP JSON or protobuf is required" },
+        415,
+      );
     }
     const contentLength = Number(c.req.header("content-length") ?? 0);
     if (
@@ -54,7 +66,10 @@ export function registerOtlpRoutes(input: {
     if (bytes.byteLength > maxOtlpRequestBytes) {
       return c.json({ error: "OTLP request is too large" }, 413);
     }
-    const payload = parsePayload(bytes);
+    const payload =
+      contentType === otlpProtobufContentType
+        ? decodeOtlpProtobufRequest(signal, bytes)
+        : parseJsonPayload(bytes);
     if (!payload || !matchesSignal(payload, signal)) {
       return c.json({ error: "Invalid OTLP request" }, 400);
     }
@@ -91,6 +106,12 @@ export function registerOtlpRoutes(input: {
           ),
         ]);
       }
+      if (contentType === otlpProtobufContentType) {
+        const response = encodeOtlpProtobufSuccess(signal);
+        return c.body(response.buffer as ArrayBuffer, 200, {
+          "content-type": otlpProtobufContentType,
+        });
+      }
       return c.json({});
     });
   });
@@ -102,7 +123,9 @@ function parseSignal(value: string): ObservabilitySignal | null {
     : null;
 }
 
-function parsePayload(bytes: Uint8Array): Record<string, unknown> | null {
+function parseJsonPayload(
+  bytes: Uint8Array,
+): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
     return typeof parsed === "object" &&

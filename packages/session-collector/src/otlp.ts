@@ -13,6 +13,11 @@ import type {
   WorkerHeartbeat,
 } from "@eveland/core/instance-health";
 
+export {
+  decodeOtlpProtobufRequest,
+  encodeOtlpProtobufSuccess,
+} from "./otlp-protobuf.js";
+
 export type InstanceTelemetryProjection = {
   heartbeats: WorkerHeartbeat[];
   hostMetrics: Array<Omit<HostMetricSample, "id">>;

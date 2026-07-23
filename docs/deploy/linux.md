@@ -85,7 +85,9 @@ whichever side later serves or deploys it — a mismatched mount would leave
 one side unable to find files the other wrote.
 The managed Collector receives Eveland-owned OTLP on loopback ports 4317/4318.
 Built-in always exports to the API's service-authenticated `/internal/otel`
-endpoint. The Worker writes revisioned Collector configuration below
+endpoint, which accepts standard OTLP/HTTP JSON and protobuf for traces, logs,
+and metrics; the managed exporter uses protobuf by default. The Worker writes
+revisioned Collector configuration below
 `/var/lib/eveland/otel`, validates it with the pinned official Collector image,
 and restarts only the Collector container when an admin changes an external
 destination. Each exporter has an independent persistent queue below the

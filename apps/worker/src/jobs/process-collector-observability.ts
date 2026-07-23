@@ -282,7 +282,6 @@ function baseCollectorConfig(): CollectorConfig {
     exporters: {
       "otlp_http/builtin": {
         endpoint: "${env:EVELAND_BUILTIN_OTLP_ENDPOINT}",
-        encoding: "json",
         compression: "none",
         headers: {
           authorization: "Bearer ${env:EVELAND_OTLP_SERVICE_TOKEN}",

@@ -58,6 +58,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      protobufjs:
+        specifier: ^7.6.5
+        version: 7.6.5
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
@@ -549,6 +552,9 @@ importers:
       '@eveland/core':
         specifier: workspace:*
         version: link:../core
+      protobufjs:
+        specifier: ^7.6.5
+        version: 7.6.5
     devDependencies:
       vitest:
         specifier: ^4.1.9

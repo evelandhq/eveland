@@ -57,9 +57,11 @@ describe("managed OpenTelemetry Collector configuration", () => {
 
     expect(config.exporters["otlp_http/builtin"]).toMatchObject({
       endpoint: "${env:EVELAND_BUILTIN_OTLP_ENDPOINT}",
-      encoding: "json",
       compression: "none",
     });
+    expect(config.exporters["otlp_http/builtin"]).not.toHaveProperty(
+      "encoding",
+    );
     expect(config.service.pipelines).toMatchObject({
       traces: {
         processors: [

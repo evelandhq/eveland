@@ -232,6 +232,10 @@ Destination，不提供配置或关闭入口；它接收 Eveland 的 traces、lo
 OTLP 投影为可按 domain、service、Project 查询的 Span、LogRecord、Metric Point，以及 Sessions、Usage、
 Instance Health 与平台诊断所需的读模型。Observability 页面直接读取 Built-in backend
 展示最近的 Eveland spans/logs/metrics，不查询 Agent 进程或外部监控产品。
+Built-in 的 service-authenticated OTLP/HTTP 入口必须对 traces、logs、metrics 同时接受标准
+`application/json` 与 `application/x-protobuf`，并按请求编码返回对应的标准空 success
+response；Managed Collector 默认以 protobuf 向 Built-in 发送，不得定义 Eveland 私有
+envelope。
 
 Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
 
