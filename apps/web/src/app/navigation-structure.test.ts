@@ -573,9 +573,15 @@ describe("web application shell", () => {
   test("renders session replay as a chat conversation with a raw event toggle", () => {
     const page = source("./projects/[projectId]/sessions/[sessionId]/page.tsx")
     const replay = source("../components/session-replay.tsx")
+    const trace = source("../components/session-trace-view.tsx")
     const activity = source("../components/agent-activity.tsx")
 
     expect(page).toContain("<SessionReplay")
+    expect(page).toContain("getSessionTelemetry(sessionId)")
+    expect(page).toContain("<SessionTraceView")
+    expect(trace).toContain("buildSessionTraceRows")
+    expect(trace).toContain("OpenTelemetry trace")
+    expect(trace).toContain("Trace-correlated logs")
     expect(replay).toContain("buildSessionTranscript")
     expect(replay).toContain("groupTranscriptItems")
     expect(replay).toContain("<AgentActivity")

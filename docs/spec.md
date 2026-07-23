@@ -559,6 +559,12 @@ message
 → final response / failure
 ```
 
+同一详情页还从 Built-in backend 读取该 Session 全部 SessionNode 的 Eveland 私有 Agent
+spans，按 `traceId`/`parentSpanId` 还原 OpenTelemetry span tree，并将具有相同
+trace/span context 的 Agent 或平台 LogRecord 展示在对应 span 下。只有 Session/trace
+相关但没有匹配 span 的记录进入独立 Session logs 区域；用户源码 instrumentation 发送到
+其自有 backend 的数据不由 Eveland 读取或合并。
+
 同时按实际执行的 Eve agent / subagent 展示：
 
 * 模型调用步数

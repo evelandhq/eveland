@@ -1,5 +1,6 @@
 import { SessionReplay } from "@/components/session-replay"
-import { getSession, getSessionEvents, getSessionNodes, getSessionUsage } from "@/lib/server-api"
+import { SessionTraceView } from "@/components/session-trace-view"
+import { getSession, getSessionEvents, getSessionNodes, getSessionTelemetry, getSessionUsage } from "@/lib/server-api"
 import { formatTokenCount, formatUsd, groupModelUsageByAgent } from "@/lib/usage"
 
 export async function generateMetadata({
@@ -17,11 +18,12 @@ export default async function SessionTimelinePage({
   params: Promise<{ projectId: string; sessionId: string }>
 }) {
   const { projectId, sessionId } = await params
-  const [events, session, usageEvents, nodes] = await Promise.all([
+  const [events, session, usageEvents, nodes, telemetry] = await Promise.all([
     getSessionEvents(sessionId),
     getSession(sessionId),
     getSessionUsage(sessionId),
     getSessionNodes(sessionId),
+    getSessionTelemetry(sessionId),
   ])
   const usage = session.usage
   const agentUsage = groupModelUsageByAgent(usageEvents)
@@ -111,6 +113,7 @@ export default async function SessionTimelinePage({
           </div>
         </div>
       ) : null}
+      <SessionTraceView telemetry={telemetry} />
       <SessionReplay events={events} nodes={nodes} />
     </section>
   )

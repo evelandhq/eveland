@@ -384,6 +384,13 @@ export type BuiltInOtlpActivity = {
   logs: BuiltInOtlpLogRecord[];
   metrics: BuiltInOtlpMetricPoint[];
 };
+export type SessionOtlpTelemetry = {
+  sessionId: string;
+  eveSessionIds: string[];
+  traceIds: string[];
+  spans: BuiltInOtlpSpan[];
+  logs: BuiltInOtlpLogRecord[];
+};
 export type ExternalDestinationHealth = {
   destinationId: string;
   status: "pending" | "healthy" | "degraded" | "paused";

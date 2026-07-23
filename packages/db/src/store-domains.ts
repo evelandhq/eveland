@@ -732,6 +732,8 @@ export interface ObservabilityStore {
     domain?: TelemetryDomain;
     serviceName?: string;
     projectId?: string;
+    eveSessionIds?: string[];
+    traceIds?: string[];
     limit: number;
   }): Promise<BuiltInOtlpSpan[]>;
   ingestOtlpLogRecords(
@@ -741,6 +743,8 @@ export interface ObservabilityStore {
     domain?: TelemetryDomain;
     serviceName?: string;
     projectId?: string;
+    eveSessionIds?: string[];
+    traceIds?: string[];
     limit: number;
   }): Promise<BuiltInOtlpLogRecord[]>;
   ingestOtlpMetricPoints(

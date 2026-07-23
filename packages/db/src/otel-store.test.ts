@@ -114,6 +114,52 @@ describe("Built-in OTLP store", () => {
     ).resolves.toEqual([]);
   });
 
+  test("filters Agent spans and logs by Eve Session and trace correlation", async () => {
+    const store = createTestStore();
+    const firstSpan = {
+      ...spanProjection(),
+      attributes: { "eveland.eve.session.id": "eve_session_1" },
+    };
+    const secondSpan = {
+      ...spanProjection(),
+      traceId: "trace_2",
+      spanId: "span_2",
+      attributes: { "eveland.eve.session.id": "eve_session_2" },
+      payload: { traceId: "trace_2", spanId: "span_2" },
+    };
+    const firstLog = {
+      ...logProjection(),
+      attributes: { "eveland.eve.session.id": "eve_session_1" },
+    };
+    const secondLog = {
+      ...logProjection(),
+      traceId: "trace_2",
+      spanId: "span_2",
+      timestamp: "2026-07-23T12:00:01.000Z",
+      attributes: { "eveland.eve.session.id": "eve_session_2" },
+      payload: { eventName: "eveland.runtime.log.2" },
+    };
+    await store.ingestOtlpSpans([firstSpan, secondSpan]);
+    await store.ingestOtlpLogRecords([firstLog, secondLog]);
+
+    await expect(
+      store.listOtlpSpans({
+        eveSessionIds: ["eve_session_1"],
+        limit: 10,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ traceId: "trace_1" }),
+    ]);
+    await expect(
+      store.listOtlpLogRecords({
+        traceIds: ["trace_1"],
+        limit: 10,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ traceId: "trace_1" }),
+    ]);
+  });
+
   test("persists standard signal batches and deduplicates Collector retries", async () => {
     const store = createTestStore();
     const payload = {

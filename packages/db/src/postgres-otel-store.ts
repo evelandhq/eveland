@@ -139,6 +139,17 @@ export function createPostgresOtlpStore(
       if (input.projectId) {
         conditions.push(eq(otlpSpans.projectId, input.projectId));
       }
+      if (input.eveSessionIds?.length) {
+        conditions.push(
+          inArray(
+            sql<string>`${otlpSpans.attributes} ->> 'eveland.eve.session.id'`,
+            input.eveSessionIds,
+          ),
+        );
+      }
+      if (input.traceIds?.length) {
+        conditions.push(inArray(otlpSpans.traceId, input.traceIds));
+      }
       const rows = await db
         .select()
         .from(otlpSpans)
@@ -222,6 +233,17 @@ export function createPostgresOtlpStore(
         conditions.push(
           eq(otlpLogRecords.projectId, input.projectId),
         );
+      }
+      if (input.eveSessionIds?.length) {
+        conditions.push(
+          inArray(
+            sql<string>`${otlpLogRecords.attributes} ->> 'eveland.eve.session.id'`,
+            input.eveSessionIds,
+          ),
+        );
+      }
+      if (input.traceIds?.length) {
+        conditions.push(inArray(otlpLogRecords.traceId, input.traceIds));
       }
       const rows = await db
         .select()

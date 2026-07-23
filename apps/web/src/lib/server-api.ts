@@ -6,6 +6,7 @@ import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagno
 import type {
   BuiltInOtlpActivity,
   PublicObservabilityPolicy,
+  SessionOtlpTelemetry,
 } from "@eveland/core/observability";
 import type {
   PublicGitCredential,
@@ -72,6 +73,9 @@ export const getSession = (sessionId: string) => apiGet<{ session: Session }>(`/
 export const getSessionEvents = (sessionId: string) => apiGet<{ events: SessionEvent[] }>(`/sessions/${sessionId}/events`).then((data) => data.events);
 export const getSessionUsage = (sessionId: string) => apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`).then((data) => data.usage);
 export const getSessionNodes = (sessionId: string) => apiGet<{ nodes: SessionNode[] }>(`/sessions/${sessionId}/nodes`).then((data) => data.nodes);
+export const getSessionTelemetry = (sessionId: string) =>
+  apiGet<{ telemetry: SessionOtlpTelemetry }>(`/sessions/${sessionId}/telemetry`)
+    .then((data) => data.telemetry);
 export const getLogs = (projectId: string) => apiGet<{ logs: LogLine[] }>(`/projects/${projectId}/logs`).then((data) => data.logs);
 export const getSourceRevision = (projectId: string) => apiGet<{ revision: SourceRevision | null }>(`/projects/${projectId}/source/revision`).then((data) => data.revision);
 export const getSourceFiles = (projectId: string) => apiGet<{ files: SourceFile[] }>(`/projects/${projectId}/source/files`).then((data) => data.files);
