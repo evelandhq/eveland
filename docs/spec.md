@@ -239,7 +239,9 @@ Built-in 的 service-authenticated OTLP/HTTP 入口必须对 traces、logs、met
 `application/json` 与 `application/x-protobuf`，并按请求编码返回对应的标准 success
 response；同一批次中缺少必要 Eveland Resource 或 signal 字段的 item 通过标准
 `partial_success` 拒绝计数反馈，其余 item 继续入库。Managed Collector 默认以 protobuf
-向 Built-in 发送，不得定义 Eveland 私有 envelope。
+向 Built-in 发送；protobuf bytes 形式的 Trace/Span ID 必须规范化为与 OTLP/JSON 相同的
+小写十六进制表示，以保持跨编码幂等与 trace/log correlation。不得定义 Eveland 私有
+envelope。
 
 Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
 

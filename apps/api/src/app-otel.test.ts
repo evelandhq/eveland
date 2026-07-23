@@ -122,8 +122,8 @@ describe("Built-in OTLP ingest", () => {
         verify: async (store: ReturnType<typeof createTestStore>) => {
           await expect(store.listOtlpSpans({ limit: 10 })).resolves.toEqual([
             expect.objectContaining({
-              traceId: "AQIDBAUGBwgJCgsMDQ4PEA==",
-              spanId: "AQIDBAUGBwg=",
+              traceId: "0102030405060708090a0b0c0d0e0f10",
+              spanId: "0102030405060708",
               name: "GET /projects",
             }),
           ]);
@@ -139,6 +139,8 @@ describe("Built-in OTLP ingest", () => {
             expect.objectContaining({
               body: "worker ready",
               severityText: "INFO",
+              traceId: "0102030405060708090a0b0c0d0e0f10",
+              spanId: "0102030405060708",
             }),
           ]);
         },
@@ -426,6 +428,8 @@ function platformLogBatch() {
             logRecords: [
               {
                 timeUnixNano: "1784808000000000000",
+                traceId: "AQIDBAUGBwgJCgsMDQ4PEA==",
+                spanId: "AQIDBAUGBwg=",
                 severityNumber: 9,
                 severityText: "INFO",
                 body: { stringValue: "worker ready" },
