@@ -494,6 +494,29 @@ export const sharedAgentEnvironment = pgTable(
   ],
 );
 
+export const observabilityPolicies = pgTable(
+  "observability_policies",
+  {
+    teamId: text("team_id")
+      .primaryKey()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull(),
+    document: jsonb("document").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "observability_policies_revision_check",
+      sql`${table.revision} > 0`,
+    ),
+  ],
+);
+
 export const jobs = pgTable("jobs", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id),

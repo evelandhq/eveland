@@ -43,6 +43,7 @@ import {
   stopStartedProcessOnFailure,
 } from "./process-support.js";
 import type { ProcessJobOptions } from "./process-types.js";
+import { prepareDeploymentObservability } from "./process-observability.js";
 
 export async function processRuntimeJob(
   store: Store,
@@ -142,6 +143,15 @@ export async function processRuntimeJob(
       );
       await mkdir(sandboxCache.workerDir, { recursive: true });
       await mkdir(observerOutbox.workerDir, { recursive: true });
+      const observability = await prepareDeploymentObservability({
+        store,
+        env: process.env,
+        projectId: project.id,
+        releaseId: release.id,
+        deploymentId: deployment.id,
+        runtimeKind: adapter.name,
+        nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+      });
       // Tracks whether the restart's own startProcess (above stop notwithstanding)
       // actually came up, so a startProcess failure -- nothing running under this
       // name -- doesn't trigger a pointless (or misleading) extra stop call.
@@ -161,6 +171,10 @@ export async function processRuntimeJob(
             adapter.name === "docker"
               ? observerOutbox.hostDir
               : observerOutbox.workerDir,
+          observabilityPolicyDir:
+            adapter.name === "docker"
+              ? observability.hostDir
+              : observability.workerDir,
         });
         restarted = true;
         await (options.waitForDeployment ?? waitForHttpHealth)({
@@ -418,6 +432,15 @@ export async function processRuntimeJob(
       );
       await mkdir(sandboxCache.workerDir, { recursive: true });
       await mkdir(observerOutbox.workerDir, { recursive: true });
+      const observability = await prepareDeploymentObservability({
+        store,
+        env: process.env,
+        projectId: job.projectId,
+        releaseId: release.id,
+        deploymentId: deployment.id,
+        runtimeKind: runtime.name,
+        nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+      });
       await startRuntimeInstance(
         store,
         {
@@ -437,6 +460,10 @@ export async function processRuntimeJob(
               runtime.name === "docker"
                 ? observerOutbox.hostDir
                 : observerOutbox.workerDir,
+            observabilityPolicyDir:
+              runtime.name === "docker"
+                ? observability.hostDir
+                : observability.workerDir,
           },
         },
         runtimeInstance.id,
@@ -562,6 +589,15 @@ export async function processRuntimeJob(
           type: "runtime",
           line: `ScheduleRun ${run.id} activating ${schedule.key} on Deployment ${deployment.id} (Release ${release.id}, runtime=${deployment.runtimeKind}).`,
         });
+        const observability = await prepareDeploymentObservability({
+          store,
+          env: process.env,
+          projectId: job.projectId,
+          releaseId: release.id,
+          deploymentId: deployment.id,
+          runtimeKind: runtime.name,
+          nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+        });
         const activation = await ensureDeploymentActive(
           store,
           {
@@ -583,6 +619,10 @@ export async function processRuntimeJob(
                 runtime.name === "docker"
                   ? observerOutbox.hostDir
                   : observerOutbox.workerDir,
+              observabilityPolicyDir:
+                runtime.name === "docker"
+                  ? observability.hostDir
+                  : observability.workerDir,
             },
           },
           {

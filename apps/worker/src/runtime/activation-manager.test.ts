@@ -77,6 +77,7 @@ describe("ensureDeploymentActive", () => {
         commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
         sandboxCacheDir: "/tmp/cache",
         observerOutboxDir: "/tmp/outbox",
+        observabilityPolicyDir: "/tmp/observability",
       },
     }, {
       drainRetryMs: 1,
@@ -127,6 +128,7 @@ describe("ensureDeploymentActive", () => {
       commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
       sandboxCacheDir: "/tmp/cache",
       observerOutboxDir: "/tmp/outbox",
+      observabilityPolicyDir: "/tmp/observability",
     } satisfies ProcessStartInput;
 
     const activations = await Promise.all([
@@ -200,6 +202,7 @@ describe("ensureDeploymentActive", () => {
       commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
       sandboxCacheDir: "/tmp/cache",
       observerOutboxDir: "/tmp/outbox",
+      observabilityPolicyDir: "/tmp/observability",
     } satisfies ProcessStartInput;
 
     const first = ensureDeploymentActive(store, {

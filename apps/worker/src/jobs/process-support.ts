@@ -96,6 +96,7 @@ export async function removeManagedProjectFiles(
     path.join(root, "sources", projectId),
     path.join(root, "builds", projectId),
     path.join(root, "observer", safeProjectId),
+    path.join(root, "observability", safeProjectId),
     path.join(root, "sandbox", safeProjectId),
   ]);
   const allowedSourceRoots = [

@@ -115,6 +115,8 @@ describe("buildDockerRunArgs", () => {
       sandboxEnabled: true,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
       observerOutboxDir: "/host/eveland/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/host/eveland/observability/proj_123/dep_456",
       env: { OPENAI_API_KEY: "sk-test-123456" },
       command: "npm run start",
     });
@@ -143,6 +145,8 @@ describe("buildDockerRunArgs", () => {
       "--volume",
       "/host/eveland/observer/proj_123/dep_456:/var/lib/eveland-observer",
       "--volume",
+      "/host/eveland/observability/proj_123/dep_456:/run/eveland/observability:ro",
+      "--volume",
       "/host/eveland/sandbox/proj_123:/var/lib/eveland-sandbox",
       "--env",
       "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer",
@@ -169,6 +173,8 @@ describe("buildDockerRunArgs", () => {
       sandboxEnabled: false,
       sandboxCacheDir: "/host/eveland/sandbox/plain",
       observerOutboxDir: "/host/eveland/observer/plain/dep_1",
+      observabilityPolicyDir:
+        "/host/eveland/observability/plain/dep_1",
       env: {},
       command: "npm start",
     });
@@ -190,6 +196,8 @@ describe("buildDockerRunArgs", () => {
       sandboxEnabled: true,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
       observerOutboxDir: "/host/eveland/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/host/eveland/observability/proj_123/dep_456",
       env: { EVELAND_SANDBOX_TEMPLATE_REVISION: "project-controlled" },
       command: "npm run start",
     });
@@ -433,6 +441,8 @@ describe("createDockerAdapter", () => {
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir,
       observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.internalPort).toBe(3000);
@@ -461,6 +471,8 @@ describe("createDockerAdapter", () => {
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.log).toContain("Reused ready Docker process");

@@ -17,6 +17,7 @@ import {
   reconcileIdentityDeploymentConfiguration,
   resolveIdentityDeploymentConfiguration,
 } from "./runtime/identity-config-reconciler.js";
+import { createDeploymentObservabilityReconciler } from "./jobs/process-observability.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
@@ -28,6 +29,12 @@ const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
+const reconcileDeploymentObservability =
+  createDeploymentObservabilityReconciler({
+    store: storeFactory.store,
+    env: process.env,
+    nodeEnv: process.env.NODE_ENV,
+  });
 
 // A misconfigured systemd host would otherwise only surface on the first
 // deployment attempt; fail fast here with the complete list of what's missing.
@@ -111,6 +118,7 @@ async function tick() {
       reconcileRuntimeInstances(storeFactory.store, {
         limit: Number(process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100),
       }),
+      reconcileDeploymentObservability(),
       storeFactory.store.recoverStaleJobs(
         new Date(),
         Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),

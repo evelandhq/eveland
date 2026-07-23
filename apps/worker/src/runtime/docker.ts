@@ -9,6 +9,7 @@ import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
+import { AGENT_OBSERVABILITY_MOUNT_DIR } from "./observability-policy.js";
 
 export type DockerBuildInput = {
   contextDir: string;
@@ -24,6 +25,7 @@ export type DockerRunInput = {
   sandboxEnabled: boolean;
   sandboxCacheDir: string;
   observerOutboxDir: string;
+  observabilityPolicyDir: string;
   env: Record<string, string>;
   command: string;
 };
@@ -69,6 +71,8 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     `127.0.0.1:${input.hostPort}:${input.internalPort}`,
     "--volume",
     `${input.observerOutboxDir}:/var/lib/eveland-observer`,
+    "--volume",
+    `${input.observabilityPolicyDir}:${AGENT_OBSERVABILITY_MOUNT_DIR}:ro`,
   );
 
   if (input.sandboxEnabled) {
@@ -314,6 +318,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         sandboxEnabled: input.commandContext.isEveProject,
         sandboxCacheDir: input.sandboxCacheDir,
         observerOutboxDir: input.observerOutboxDir,
+        observabilityPolicyDir: input.observabilityPolicyDir,
         env: input.env,
         command: buildDockerStartCommand(input.commandContext, config.internalPort),
       });

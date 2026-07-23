@@ -15,6 +15,7 @@ import { getGitCommitSha, importGitSource } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
 
 import { processRuntimeJob } from "./process-runtime-job.js";
+import { prepareDeploymentObservability } from "./process-observability.js";
 import {
   allocateAvailableHostPort,
   composeDeploymentEnv,
@@ -249,6 +250,15 @@ export async function processJob(
       );
       await mkdir(sandboxCache.workerDir, { recursive: true });
       await mkdir(observerOutbox.workerDir, { recursive: true });
+      const observability = await prepareDeploymentObservability({
+        store,
+        env: process.env,
+        projectId: project.id,
+        releaseId,
+        deploymentId,
+        runtimeKind: runtime.name,
+        nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+      });
       // Only the process started by this job is its cleanup responsibility.
       let startedProcess: string | null = null;
       let deploymentRecorded = false;
@@ -267,6 +277,10 @@ export async function processJob(
             runtime.name === "docker"
               ? observerOutbox.hostDir
               : observerOutbox.workerDir,
+          observabilityPolicyDir:
+            runtime.name === "docker"
+              ? observability.hostDir
+              : observability.workerDir,
         });
         startedProcess = processName;
         await (options.waitForDeployment ?? waitForHttpHealth)({

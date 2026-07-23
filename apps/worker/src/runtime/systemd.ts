@@ -9,6 +9,7 @@ import { verifyObserverOutbox } from "./observer-verify.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
+import { AGENT_OBSERVABILITY_MOUNT_DIR } from "./observability-policy.js";
 
 export type SystemdStartInput = {
   unitName: string;
@@ -20,6 +21,7 @@ export type SystemdStartInput = {
   cpuQuota: string;
   sandboxCacheDir: string;
   observerOutboxDir: string;
+  observabilityPolicyDir: string;
   command: string;
 };
 
@@ -71,6 +73,7 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     // `systemctl show -p ReadWritePaths`, which reported "ReadWritePaths=/tmp /var/tmp".
     `--property=ReadWritePaths=${input.sandboxCacheDir}`,
     `--property=ReadWritePaths=${input.observerOutboxDir}`,
+    `--property=BindReadOnlyPaths=${input.observabilityPolicyDir}:${AGENT_OBSERVABILITY_MOUNT_DIR}`,
     "--property=PrivateTmp=yes",
     "--property=NoNewPrivileges=yes",
     "sh",
@@ -387,6 +390,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
           cpuQuota: config.cpuQuota,
           sandboxCacheDir: input.sandboxCacheDir,
           observerOutboxDir: input.observerOutboxDir,
+          observabilityPolicyDir: input.observabilityPolicyDir,
           command: buildSystemdStartCommand(input.commandContext, input.port),
         }),
         { all: true },

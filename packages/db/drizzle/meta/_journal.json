@@ -239,6 +239,13 @@
       "when": 1785227418869,
       "tag": "0033_puzzling_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1785234148764,
+      "tag": "0034_next_thor",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import { createPostgresDeploymentRoutingStore } from "./postgres-deployment-rout
 import { createPostgresJobSourceStore } from "./postgres-job-source-store.js";
 import { createPostgresInstanceHealthStore } from "./postgres-instance-health-store.js";
 import { createPostgresIdentityStore } from "./postgres-identity-store.js";
+import { createPostgresObservabilityStore } from "./postgres-observability-store.js";
 import { createPostgresProjectStore } from "./postgres-project-store.js";
 import { createPostgresRuntimeStore } from "./postgres-runtime-store.js";
 import { createPostgresScheduleStore } from "./postgres-schedule-store.js";
@@ -231,6 +232,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
     ...createPostgresScheduleStore(context),
     ...createPostgresRuntimeStore(context),
     ...createPostgresInstanceHealthStore(context),
+    ...createPostgresObservabilityStore(context),
     ...createPostgresSessionQueryStore(context),
   } as Store;
 }

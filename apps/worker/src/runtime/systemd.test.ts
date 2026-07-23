@@ -67,6 +67,8 @@ describe("buildSystemdRunArgs", () => {
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
       command: "npx eve start --host 127.0.0.1 --port 41000",
     });
 
@@ -90,6 +92,7 @@ describe("buildSystemdRunArgs", () => {
       "--property=ReadWritePaths=/data/builds/proj_123/rel_789",
       "--property=ReadWritePaths=/var/lib/eveland-data/sandbox/proj_123",
       "--property=ReadWritePaths=/var/lib/eveland-data/observer/proj_123/dep_456",
+      "--property=BindReadOnlyPaths=/var/lib/eveland-data/observability/proj_123/dep_456:/run/eveland/observability",
       "--property=PrivateTmp=yes",
       "--property=NoNewPrivileges=yes",
       "sh",
@@ -114,6 +117,7 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/p",
       observerOutboxDir: "/var/lib/eveland-data/observer/p/d",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/p/d",
       command: "npx eve start",
     });
 
@@ -333,6 +337,8 @@ describe("createSystemdAdapter startProcess", () => {
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(writeFile).toHaveBeenCalledWith(
@@ -355,6 +361,8 @@ describe("createSystemdAdapter startProcess", () => {
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.log).toContain("Reused ready systemd process");

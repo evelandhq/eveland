@@ -73,6 +73,11 @@ import type {
   IdentitySigningKey,
   IdentitySigningKeyStatus,
 } from "@eveland/core/identity";
+import type {
+  AgentCapturePolicy,
+  ExternalObservabilityDestination,
+  ObservabilityPolicy,
+} from "@eveland/core/observability";
 
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
@@ -676,6 +681,16 @@ export interface InstanceHealthStore {
   getInstanceWorkload(): Promise<InstanceWorkload>;
 }
 
+export interface ObservabilityStore {
+  getObservabilityPolicy(teamId: string): Promise<ObservabilityPolicy>;
+  saveObservabilityPolicy(input: {
+    teamId: string;
+    expectedRevision: number;
+    agentCapture: AgentCapturePolicy;
+    externalDestinations: ExternalObservabilityDestination[];
+  }): Promise<ObservabilityPolicy | null>;
+}
+
 export type Store = ProjectStore &
   CatalogStore &
   SourceStore &
@@ -691,4 +706,5 @@ export type Store = ProjectStore &
   ScheduleStore &
   RuntimeStore &
   InstanceHealthStore &
+  ObservabilityStore &
   LogStore;
