@@ -2,7 +2,10 @@ import { Buffer } from "node:buffer";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ObservabilitySignal } from "@eveland/core/observability";
-import { Root, type Type } from "protobufjs";
+import protobufjs from "protobufjs";
+import type { Type } from "protobufjs";
+
+const { Root } = protobufjs;
 
 const protoRootDirectory = fileURLToPath(
   new URL("../proto/", import.meta.url),
