@@ -14,6 +14,7 @@
     "./ids": "./src/ids.ts",
     "./instance-health": "./src/instance-health.ts",
     "./identity": "./src/identity.ts",
+    "./observability": "./src/observability.ts",
     "./observer": "./src/observer.ts",
     "./routing": "./src/routing.ts",
     "./schedules": "./src/schedules.ts",

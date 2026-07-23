@@ -35,6 +35,24 @@ describe("injectObserverHooks", () => {
     await expect(readFile(path.join(releaseDir, "agent/hooks/eveland-observer.js"), "utf8")).resolves.toBe("authored");
   });
 
+  test("does not modify user instrumentation or authored hooks", async () => {
+    const releaseDir = await createRelease();
+    const instrumentation = [
+      'import { NodeSDK } from "@opentelemetry/sdk-node";',
+      "const sdk = new NodeSDK();",
+      "sdk.start();",
+      "",
+    ].join("\n");
+    const authoredHook = 'export default { events: { "*": () => undefined } };\n';
+    await write("instrumentation.ts", instrumentation, releaseDir);
+    await write("agent/hooks/user-observer.ts", authoredHook, releaseDir);
+
+    await injectObserverHooks({ releaseDir });
+
+    await expect(readFile(path.join(releaseDir, "instrumentation.ts"), "utf8")).resolves.toBe(instrumentation);
+    await expect(readFile(path.join(releaseDir, "agent/hooks/user-observer.ts"), "utf8")).resolves.toBe(authoredHook);
+  });
+
   test("generated observer catches outbox failures so Eve event handling stays available", async () => {
     const releaseDir = await createRelease();
     const result = await injectObserverHooks({ releaseDir });
