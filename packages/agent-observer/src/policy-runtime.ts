@@ -19,6 +19,7 @@ export type PolicyManagedAgentTelemetry = {
 export function createPolicyManagedAgentTelemetry(input: {
   loadPolicy: () => Promise<unknown>;
   refreshIntervalMillis?: number;
+  operationTimeoutMillis?: number;
   now?: () => number;
   createRuntime?: (input: {
     policy: RuntimeAgentPolicy;
@@ -26,6 +27,10 @@ export function createPolicyManagedAgentTelemetry(input: {
   warn?: (error: unknown) => void;
 }): PolicyManagedAgentTelemetry {
   const refreshIntervalMillis = input.refreshIntervalMillis ?? 5_000;
+  const operationTimeoutMillis = Math.max(
+    1,
+    input.operationTimeoutMillis ?? 2_000,
+  );
   const now = input.now ?? Date.now;
   const createRuntime =
     input.createRuntime ??
@@ -49,8 +54,8 @@ export function createPolicyManagedAgentTelemetry(input: {
     context: AgentTelemetryHookContext,
   ): Promise<void> {
     if (stopped) return;
-    await refreshIfDue();
     try {
+      await refreshIfDue();
       await active?.runtime.capture(event, context);
     } catch (error) {
       input.warn?.(error);
@@ -71,6 +76,7 @@ export function createPolicyManagedAgentTelemetry(input: {
   }
 
   async function reload(): Promise<void> {
+    let policy: RuntimeAgentPolicy;
     try {
       const parsed = agentRuntimePolicySchema.safeParse(
         await input.loadPolicy(),
@@ -82,33 +88,47 @@ export function createPolicyManagedAgentTelemetry(input: {
             .join("; ")}`,
         );
       }
-      const policy = parsed.data;
-      if (!policy.capture.enabled) {
-        await disable();
-        return;
-      }
-      if (active?.policy.revision === policy.revision) return;
-
-      const nextRuntime = createRuntime({ policy });
-      const previous = active;
-      active = { policy, runtime: nextRuntime };
-      await previous?.runtime.shutdown();
+      policy = parsed.data;
     } catch (error) {
       await disable();
       input.warn?.(error);
+      return;
     }
+    if (!policy.capture.enabled) {
+      await disable();
+      return;
+    }
+    if (active?.policy.revision === policy.revision) return;
+
+    let nextRuntime: PrivateAgentTelemetryRuntime;
+    try {
+      nextRuntime = createRuntime({ policy });
+    } catch (error) {
+      await disable();
+      input.warn?.(error);
+      return;
+    }
+    const previous = active;
+    active = { policy, runtime: nextRuntime };
+    await stopRuntime(previous?.runtime);
   }
 
   async function disable(): Promise<void> {
     const previous = active;
     active = undefined;
-    await previous?.runtime.shutdown();
+    await stopRuntime(previous?.runtime);
   }
 
   async function forceFlush(): Promise<void> {
     if (stopped) return;
     try {
-      await active?.runtime.forceFlush();
+      if (active) {
+        await runBounded(
+          active.runtime.forceFlush(),
+          operationTimeoutMillis,
+          "forceFlush",
+        );
+      }
     } catch (error) {
       input.warn?.(error);
     }
@@ -121,4 +141,46 @@ export function createPolicyManagedAgentTelemetry(input: {
   }
 
   return { capture, forceFlush, shutdown };
+
+  async function stopRuntime(
+    runtime: PrivateAgentTelemetryRuntime | undefined,
+  ): Promise<void> {
+    if (!runtime) return;
+    try {
+      await runBounded(
+        runtime.shutdown(),
+        operationTimeoutMillis,
+        "shutdown",
+      );
+    } catch (error) {
+      input.warn?.(error);
+    }
+  }
+}
+
+function runBounded<T>(
+  operation: Promise<T>,
+  timeoutMillis: number,
+  name: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `Eveland private Provider ${name} exceeded ${timeoutMillis} ms.`,
+        ),
+      );
+    }, timeoutMillis);
+    timer.unref?.();
+    void operation.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
