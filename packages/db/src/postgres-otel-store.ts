@@ -492,10 +492,7 @@ export function createPostgresOtlpStore(
           .where(
             and(
               ne(sessions.status, "running"),
-              lt(
-                sql<Date>`coalesce(${sessions.completedAt}, ${sessions.startedAt})`,
-                before,
-              ),
+              sql`coalesce(${sessions.completedAt}, ${sessions.startedAt}) < ${before.toISOString()}::timestamptz`,
             ),
           );
         const sessionIds = expired.map((row) => row.id);

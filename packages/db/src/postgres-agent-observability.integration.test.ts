@@ -11,6 +11,21 @@ afterAll(async () => {
 });
 
 describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
+  test("binds the derived-telemetry retention cutoff as timestamptz", async () => {
+    const store = createPostgresStore(database!);
+
+    await expect(
+      store.pruneDerivedAgentTelemetry(
+        new Date("2000-01-01T00:00:00.000Z"),
+      ),
+    ).resolves.toEqual({
+      sessions: 0,
+      nodes: 0,
+      events: 0,
+      usageEvents: 0,
+    });
+  });
+
   test("merges provenance, child lineage, and replay-safe usage on the real schema", async () => {
     const store = createPostgresStore(database!);
     const project = await store.createProject({ name: `Observer integration ${Date.now()}`, importKind: "zip" });
