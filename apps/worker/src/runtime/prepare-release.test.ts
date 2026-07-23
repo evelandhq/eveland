@@ -25,7 +25,13 @@ test("copies source into a prepared release and injects observers without modify
     "agent/hooks/eveland-observer.js",
     "agent/subagents/child/hooks/eveland-observer.js",
   ]);
-  await expect(readFile(path.join(buildDir, result.injectedFiles[0]!), "utf8")).resolves.toContain("defineHook");
+  expect(result.runtimeFile).toBe(".eveland/observability/runtime.mjs");
+  await expect(
+    readFile(path.join(buildDir, result.injectedFiles[0]!), "utf8"),
+  ).resolves.toContain("../../.eveland/observability/runtime.mjs");
+  await expect(
+    readFile(path.join(buildDir, result.runtimeFile!), "utf8"),
+  ).resolves.toContain("OTLPTraceExporter");
   await expect(readFile(path.join(sourcePath, "agent/hooks/__eveland_observer.js"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 });
 

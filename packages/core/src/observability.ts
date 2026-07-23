@@ -3,6 +3,8 @@ import { z } from "zod";
 export const OBSERVABILITY_SIGNALS = ["traces", "logs", "metrics"] as const;
 export const TELEMETRY_DOMAINS = ["agent", "platform", "runtime", "capacity"] as const;
 export const EXTERNAL_DESTINATION_KINDS = ["elastic", "langfuse", "custom_otlp"] as const;
+export const AGENT_RUNTIME_POLICY_PATH =
+  "/run/eveland/observability/agent-policy.json";
 
 export type ObservabilitySignal = (typeof OBSERVABILITY_SIGNALS)[number];
 export type TelemetryDomain = (typeof TELEMETRY_DOMAINS)[number];

@@ -653,6 +653,21 @@ Langfuse 不接收：
 - 用户 instrumentation spans。
 
 必要的 Langfuse attributes 在 Collector transform 中添加，同时保留标准 GenAI attributes。
+Collector 必须按 Langfuse v4 observation-centric OTLP contract 转换：
+
+- `/api/public/otel/v1/traces` 使用 OTLP/HTTP；
+- 添加 `x-langfuse-ingestion-version: 4`，认证只保存在 Collector；
+- `invoke_agent`、model 和 tool span 分别映射为 `agent`、`generation` 和 `tool`；
+- 将 root Agent span 的 `gen_ai.input.messages` / `gen_ai.output.messages` 映射到
+  `langfuse.observation.input` / `langfuse.observation.output`；
+- 每个需要聚合的 span 都携带 `session.id`、environment、release 和必要 metadata；
+- model、provider-reported usage 和 cost 映射到对应 observation，而不是创建第二份
+  Langfuse 专用 trace。
+
+参考 Langfuse 官方
+[OTel attribute mapping](https://langfuse.com/integrations/native/opentelemetry#attribute-mapping)
+和
+[v4 custom ingestion contract](https://langfuse.com/integrations/native/opentelemetry/migration-to-v4)。
 
 ### 13.4 Custom OTLP
 

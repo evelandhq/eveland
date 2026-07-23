@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  AGENT_RUNTIME_POLICY_PATH,
   BUILT_IN_DESTINATION_CAPABILITY,
   createAgentRuntimePolicy,
   createDefaultObservabilityPolicy,
@@ -146,6 +147,9 @@ describe("Agent runtime policy", () => {
   };
 
   test("contains capture, internal OTLP, and deployment provenance only", () => {
+    expect(AGENT_RUNTIME_POLICY_PATH).toBe(
+      "/run/eveland/observability/agent-policy.json",
+    );
     const runtimePolicy = createAgentRuntimePolicy({
       policy: observabilityPolicy,
       otlpEndpoint: "http://127.0.0.1:4318",
