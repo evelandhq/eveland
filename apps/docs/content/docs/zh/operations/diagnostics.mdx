@@ -9,7 +9,7 @@ description: 在实际拥有故障的组件、Job、Runtime 或 Session Surface 
 
 - API 与 Gateway Public `/health` 返回产品版本、Revision、Channel 与 Component。
 - Worker 输出 Startup Identity，并写入已脱敏的 Configuration Snapshot。
-- Collector Degradation 独立于控制面 Health，因为排队的 Observer Envelope 可以恢复。
+- Built-in OTLP Receive Health 独立于控制面 Health；Collector Exporter Queue 会分别重试。
 - **Settings → About** 比较 Web/API Identity，并向管理员显示 Allowlisted Masked Configuration。
 - **Settings → Instance health** 使用持续 Worker Heartbeat、Gateway Probe 与 Postgres 查询展示组件可用性，并显示 Worker 宿主机的 CPU、内存、数据文件系统和 Workload 趋势。旧的 Worker Configuration Snapshot 不能作为在线证据。
 

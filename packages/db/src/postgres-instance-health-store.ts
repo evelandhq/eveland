@@ -29,6 +29,21 @@ export function createPostgresInstanceHealthStore(
         ...sample,
         id: createId("metric"),
         observedAt: new Date(sample.observedAt),
+      }).onConflictDoUpdate({
+        target: [
+          hostMetricSamples.workerId,
+          hostMetricSamples.observedAt,
+        ],
+        set: {
+          cpuPercent: sample.cpuPercent,
+          load1: sample.load1,
+          memoryTotalBytes: sample.memoryTotalBytes,
+          memoryAvailableBytes: sample.memoryAvailableBytes,
+          diskTotalBytes: sample.diskTotalBytes,
+          diskAvailableBytes: sample.diskAvailableBytes,
+          diskInodesTotal: sample.diskInodesTotal,
+          diskInodesAvailable: sample.diskInodesAvailable,
+        },
       }).returning();
       if (!row) throw new Error("Failed to record host metric sample.");
       return metricRowToRecord(row);

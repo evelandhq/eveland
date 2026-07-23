@@ -745,11 +745,11 @@ OTel store 保存标准 telemetry；read model 是 Eveland UI 的查询优化，
 Built-in 使用 Eveland 定义的默认 retention policy，System settings 不提供 Built-in
 retention 配置。默认策略分别覆盖：
 
-- raw traces；
-- raw logs；
-- raw metrics；
-- derived Session/Usage；
-- capacity samples。
+- raw traces：30 天；
+- raw logs：30 天；
+- raw metrics：30 天；
+- derived Session/Usage：90 天；
+- capacity samples：30 天。
 
 Retention 清理不影响外部 Elastic/Langfuse 已接收的数据。
 

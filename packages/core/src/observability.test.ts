@@ -1,14 +1,27 @@
 import { describe, expect, test } from "vitest";
 import {
   AGENT_RUNTIME_POLICY_PATH,
+  BUILT_IN_OBSERVABILITY_RETENTION_DAYS,
   BUILT_IN_DESTINATION_CAPABILITY,
   createAgentRuntimePolicy,
   createDefaultObservabilityPolicy,
+  externalDestinationConfigSchema,
   observabilityPolicySchema,
+  toPublicObservabilityPolicy,
   type ObservabilityPolicy,
 } from "./observability.js";
 
 describe("observability policy", () => {
+  test("defines non-configurable Built-in retention windows", () => {
+    expect(BUILT_IN_OBSERVABILITY_RETENTION_DAYS).toEqual({
+      traces: 30,
+      logs: 30,
+      metrics: 30,
+      sessions: 90,
+      capacity: 30,
+    });
+  });
+
   test("keeps Built-in mandatory and outside configurable destinations", () => {
     const policy = createDefaultObservabilityPolicy(1);
 
@@ -125,6 +138,105 @@ describe("observability policy", () => {
       observabilityPolicySchema.safeParse({
         ...policy,
         externalDestinations: [{ ...custom, domains: [] }],
+      }).success,
+    ).toBe(false);
+  });
+
+  test("exposes Built-in capabilities without leaking destination credentials", () => {
+    const policy: ObservabilityPolicy = {
+      ...createDefaultObservabilityPolicy(4),
+      externalDestinations: [
+        {
+          id: "destination_langfuse",
+          kind: "langfuse",
+          enabled: true,
+          supportedSignals: ["traces"],
+          filterProfile: "agent_genai",
+          encryptedConfig: "ciphertext",
+          securityRevision: 3,
+        },
+      ],
+    };
+
+    const publicPolicy = toPublicObservabilityPolicy(policy);
+
+    expect(publicPolicy.builtIn).toEqual({
+      ...BUILT_IN_DESTINATION_CAPABILITY,
+      health: {
+        status: "waiting",
+        lastReceivedAt: null,
+      },
+    });
+    expect(publicPolicy.externalDestinations).toEqual([
+      {
+        id: "destination_langfuse",
+        kind: "langfuse",
+        enabled: true,
+        supportedSignals: ["traces"],
+        filterProfile: "agent_genai",
+        securityRevision: 3,
+        configured: true,
+        health: {
+          destinationId: "destination_langfuse",
+          status: "pending",
+          checkedAt: null,
+          lastSuccessAt: null,
+          lastError: null,
+        },
+      },
+    ]);
+    expect(JSON.stringify(publicPolicy)).not.toContain("ciphertext");
+  });
+
+  test("validates external destination credentials and OTLP capabilities", () => {
+    expect(
+      externalDestinationConfigSchema.parse({
+        kind: "elastic",
+        endpoint: "https://elastic.example.com:8200",
+        authorization: {
+          type: "api_key",
+          value: "elastic-api-key",
+        },
+      }),
+    ).toMatchObject({ kind: "elastic" });
+    expect(
+      externalDestinationConfigSchema.parse({
+        kind: "langfuse",
+        tracesEndpoint:
+          "https://langfuse.example.com/api/public/otel/v1/traces",
+        publicKey: "pk-lf",
+        secretKey: "sk-lf",
+      }),
+    ).toMatchObject({ kind: "langfuse" });
+    expect(
+      externalDestinationConfigSchema.safeParse({
+        kind: "custom_otlp",
+        endpoint: "https://otel.example.com",
+        supportedSignals: [],
+        domains: ["agent"],
+        headers: {},
+      }).success,
+    ).toBe(false);
+    expect(
+      externalDestinationConfigSchema.safeParse({
+        kind: "elastic",
+        endpoint: "https://user:secret@elastic.example.com",
+        authorization: {
+          type: "bearer",
+          value: "token",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      externalDestinationConfigSchema.safeParse({
+        kind: "custom_otlp",
+        endpoint: "https://otel.example.com",
+        supportedSignals: ["traces"],
+        domains: ["agent"],
+        headers: {
+          authorization: "Bearer token",
+          host: "metadata.internal",
+        },
       }).success,
     ).toBe(false);
   });

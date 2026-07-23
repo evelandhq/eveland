@@ -77,12 +77,13 @@ describe("configuration diagnostics", () => {
     ]));
   });
 
-  test("reports host telemetry sampling and retention defaults", () => {
+  test("reports OpenTelemetry emission and Collector control defaults", () => {
     const snapshot = createConfigurationSnapshot("worker", {});
 
     expect(snapshot.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "EVELAND_HOST_METRIC_INTERVAL_MS", value: "60000" }),
-      expect.objectContaining({ name: "EVELAND_HOST_METRIC_RETENTION_MS", value: "2592000000" }),
+      expect.objectContaining({ name: "EVELAND_OTEL_COLLECTOR_CONTAINER", value: "eveland-otel-collector" }),
+      expect.objectContaining({ name: "EVELAND_OTEL_COLLECTOR_IMAGE", value: "otel/opentelemetry-collector-contrib:0.149.0" }),
     ]));
   });
 

@@ -8,7 +8,6 @@ import {
   processNextJob,
   processNextSourcePreflight,
   runWithJobHeartbeat,
-  resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
   type ScheduleDispatchInput,
 } from "./process.js";
@@ -22,6 +21,11 @@ import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { DeploymentRecord } from "@eveland/core/contracts";
 import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 import { createFixtureEveProject } from "./process.test-support.js";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 
 describe("processNextJob", () => {
   test("validates an Eve source before a Project exists", async () => {
@@ -161,10 +165,15 @@ describe("processNextJob", () => {
       ensureProcess,
       async stopProcess() {},
     };
+    const spanExporter = new InMemorySpanExporter();
+    const tracerProvider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(spanExporter)],
+    });
 
     await expect(processNextJob(store, "wake-worker", {
       runtime,
       waitForDeployment: async () => {},
+      tracer: tracerProvider.getTracer("worker-job-test"),
     })).resolves.toBe(true);
 
     expect(ensureProcess).toHaveBeenCalledTimes(1);
@@ -173,6 +182,18 @@ describe("processNextJob", () => {
       endpointPort: deployment.hostPort,
     });
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "running" });
+    expect(spanExporter.getFinishedSpans()).toEqual([
+      expect.objectContaining({
+        name: "eveland.job ensure_deployment_running",
+        attributes: expect.objectContaining({
+          "eveland.job.id": expect.any(String),
+          "eveland.job.type": "ensure_deployment_running",
+          "eveland.project.id": project.id,
+          "eveland.telemetry.domain": "runtime",
+        }),
+      }),
+    ]);
+    await tracerProvider.shutdown();
   });
 
   test("starts a prebuilt Release from persisted SourceRevision files when its source directory is gone", async () => {
@@ -549,19 +570,6 @@ describe("processNextJob", () => {
       JSON.stringify({ hostname: "p-one.agent.localhost" }),
       JSON.stringify({ hostname: "d-one--p-one.agent.localhost" }),
     ]);
-  });
-
-  test("maps the worker-visible observer outbox to its Docker-host path", () => {
-    expect(
-      resolveObserverOutboxDirs(
-        { EVELAND_DATA_DIR: "/workspace/.eveland-data", EVELAND_HOST_DATA_DIR: "/host/eveland/.eveland-data" },
-        "proj_123",
-        "dep_456",
-      ),
-    ).toEqual({
-      workerDir: "/workspace/.eveland-data/observer/proj_123/dep_456",
-      hostDir: "/host/eveland/.eveland-data/observer/proj_123/dep_456",
-    });
   });
 
   test("maps the durable sandbox cache to worker-visible and Docker-host paths", () => {

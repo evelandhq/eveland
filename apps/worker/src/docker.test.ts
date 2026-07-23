@@ -114,7 +114,6 @@ describe("buildDockerRunArgs", () => {
       hostPort: 43123,
       sandboxEnabled: true,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
-      observerOutboxDir: "/host/eveland/observer/proj_123/dep_456",
       observabilityPolicyDir:
         "/host/eveland/observability/proj_123/dep_456",
       env: { OPENAI_API_KEY: "sk-test-123456" },
@@ -143,13 +142,9 @@ describe("buildDockerRunArgs", () => {
       "--publish",
       "127.0.0.1:43123:3000",
       "--volume",
-      "/host/eveland/observer/proj_123/dep_456:/var/lib/eveland-observer",
-      "--volume",
       "/host/eveland/observability/proj_123/dep_456:/run/eveland/observability:ro",
       "--volume",
       "/host/eveland/sandbox/proj_123:/var/lib/eveland-sandbox",
-      "--env",
-      "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer",
       "--env",
       "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
       "--env",
@@ -172,7 +167,6 @@ describe("buildDockerRunArgs", () => {
       hostPort: 43124,
       sandboxEnabled: false,
       sandboxCacheDir: "/host/eveland/sandbox/plain",
-      observerOutboxDir: "/host/eveland/observer/plain/dep_1",
       observabilityPolicyDir:
         "/host/eveland/observability/plain/dep_1",
       env: {},
@@ -195,7 +189,6 @@ describe("buildDockerRunArgs", () => {
       hostPort: 43125,
       sandboxEnabled: true,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
-      observerOutboxDir: "/host/eveland/observer/proj_123/dep_456",
       observabilityPolicyDir:
         "/host/eveland/observability/proj_123/dep_456",
       env: { EVELAND_SANDBOX_TEMPLATE_REVISION: "project-controlled" },
@@ -440,7 +433,6 @@ describe("createDockerAdapter", () => {
       env: { OPENAI_API_KEY: "sk-test-123456" },
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir,
-      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
@@ -470,7 +462,6 @@ describe("createDockerAdapter", () => {
       env: {},
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
     });

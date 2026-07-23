@@ -23,7 +23,7 @@ describe("instance health diagnostics", () => {
     });
   });
 
-  test("combines component reachability, host capacity, collector state, and workload", async () => {
+  test("combines component reachability, OTLP ingestion, host capacity, and workload", async () => {
     const store = createTestStore();
     await store.upsertWorkerHeartbeat({
       workerId: "worker-1",
@@ -45,6 +45,10 @@ describe("instance health diagnostics", () => {
       diskInodesTotal: 10_000,
       diskInodesAvailable: 8_000,
     });
+    await store.ingestOtlpBatch({
+      signal: "metrics",
+      payload: { resourceMetrics: [] },
+    });
 
     const report = await collectInstanceHealth(store, {
       now: () => new Date("2026-07-18T10:00:00.000Z"),
@@ -54,25 +58,15 @@ describe("instance health diagnostics", () => {
         message: "Gateway internal diagnostics are reachable.",
         observedAt: "2026-07-18T10:00:00.000Z",
       }),
-      collectorHealth: () => ({
-        status: "degraded",
-        lastProcessedAt: null,
-        backlogEvents: 12,
-        backlogBytes: 4_096,
-        oldestEventAge: 60_000,
-        quarantinedEvents: 0,
-        lastError: "backlog growing",
-        mode: "embedded",
-      }),
     });
 
-    expect(report.status).toBe("warning");
+    expect(report.status).toBe("healthy");
     expect(report.components).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "api", status: "healthy" }),
       expect.objectContaining({ key: "postgres", status: "healthy" }),
       expect.objectContaining({ key: "gateway", status: "healthy" }),
       expect.objectContaining({ key: "worker", status: "healthy" }),
-      expect.objectContaining({ key: "collector", status: "warning" }),
+      expect.objectContaining({ key: "collector", status: "healthy" }),
     ]));
     expect(report.capacity.overall).toBe("healthy");
     expect(report.metrics).toHaveLength(1);
@@ -98,7 +92,6 @@ describe("instance health diagnostics", () => {
         message: "Gateway diagnostics are unavailable.",
         observedAt: null,
       }),
-      collectorHealth: () => null,
     });
 
     expect(report.status).toBe("unavailable");

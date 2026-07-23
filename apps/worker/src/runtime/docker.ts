@@ -24,7 +24,6 @@ export type DockerRunInput = {
   hostPort: number;
   sandboxEnabled: boolean;
   sandboxCacheDir: string;
-  observerOutboxDir: string;
   observabilityPolicyDir: string;
   env: Record<string, string>;
   command: string;
@@ -70,8 +69,6 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     "--publish",
     `127.0.0.1:${input.hostPort}:${input.internalPort}`,
     "--volume",
-    `${input.observerOutboxDir}:/var/lib/eveland-observer`,
-    "--volume",
     `${input.observabilityPolicyDir}:${AGENT_OBSERVABILITY_MOUNT_DIR}:ro`,
   );
 
@@ -81,8 +78,6 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
       `${input.sandboxCacheDir}:/var/lib/eveland-sandbox`,
     );
   }
-
-  args.push("--env", "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer");
 
   if (input.sandboxEnabled) {
     args.push(
@@ -317,7 +312,6 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         hostPort: input.port,
         sandboxEnabled: input.commandContext.isEveProject,
         sandboxCacheDir: input.sandboxCacheDir,
-        observerOutboxDir: input.observerOutboxDir,
         observabilityPolicyDir: input.observabilityPolicyDir,
         env: input.env,
         command: buildDockerStartCommand(input.commandContext, config.internalPort),

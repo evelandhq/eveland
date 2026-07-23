@@ -18,6 +18,7 @@
     "@eveland/core": "workspace:*",
     "@eveland/db": "workspace:*",
     "@eveland/identity-broker": "workspace:*",
+    "@eveland/platform-observability": "workspace:*",
     "@eveland/session-collector": "workspace:*",
     "@hono/node-server": "^2.0.6",
     "better-auth": "^1.6.23",

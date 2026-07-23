@@ -53,7 +53,7 @@ import type {
 } from "@eveland/core/contracts";
 import type { ModelStepUsage } from "@eveland/core/eve";
 import type { AgentCatalogRecord } from "@eveland/core/catalog";
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import type { AgentEventObservation } from "@eveland/core/observability";
 import type { EveVersionInfo } from "@eveland/core/source";
 import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
 import type {
@@ -76,6 +76,8 @@ import type {
 import type {
   AgentCapturePolicy,
   ExternalObservabilityDestination,
+  ExternalDestinationHealth,
+  ObservabilitySignal,
   ObservabilityPolicy,
 } from "@eveland/core/observability";
 
@@ -550,8 +552,8 @@ export interface SessionStore {
   ): Promise<CursorPage<Session>>;
   listSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   listSessionNodes(sessionId: string): Promise<SessionNode[]>;
-  ingestObserverEnvelope(
-    envelope: ObserverEnvelopeV1,
+  ingestAgentEvent(
+    observation: AgentEventObservation,
   ): Promise<{ session: Session; node: SessionNode; event: SessionEvent; duplicate: boolean }>;
   listModelUsageEvents(sessionId: string): Promise<ModelUsageEvent[]>;
   failRunningSessionsForRuntimeInstance(
@@ -689,6 +691,42 @@ export interface ObservabilityStore {
     agentCapture: AgentCapturePolicy;
     externalDestinations: ExternalObservabilityDestination[];
   }): Promise<ObservabilityPolicy | null>;
+  listExternalObservabilityDestinationHealth(): Promise<
+    ExternalDestinationHealth[]
+  >;
+  upsertExternalObservabilityDestinationHealth(
+    health: ExternalDestinationHealth,
+  ): Promise<ExternalDestinationHealth>;
+  ingestOtlpBatch(input: {
+    signal: ObservabilitySignal;
+    payload: Record<string, unknown>;
+  }): Promise<{
+    id: string;
+    accepted: true;
+    duplicate: boolean;
+  }>;
+  listOtlpBatches(input?: {
+    signal?: ObservabilitySignal;
+    limit?: number;
+  }): Promise<
+    Array<{
+      id: string;
+      signal: ObservabilitySignal;
+      payload: Record<string, unknown>;
+      receivedAt: string;
+    }>
+  >;
+  pruneOtlpBatches(input: {
+    tracesBefore: Date;
+    logsBefore: Date;
+    metricsBefore: Date;
+  }): Promise<Record<ObservabilitySignal, number>>;
+  pruneDerivedAgentTelemetry(before: Date): Promise<{
+    sessions: number;
+    nodes: number;
+    events: number;
+    usageEvents: number;
+  }>;
 }
 
 export type Store = ProjectStore &

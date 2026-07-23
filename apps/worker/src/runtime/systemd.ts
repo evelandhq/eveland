@@ -5,7 +5,6 @@ import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
-import { verifyObserverOutbox } from "./observer-verify.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
@@ -20,7 +19,6 @@ export type SystemdStartInput = {
   memoryMax: string;
   cpuQuota: string;
   sandboxCacheDir: string;
-  observerOutboxDir: string;
   observabilityPolicyDir: string;
   command: string;
 };
@@ -62,7 +60,6 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     `--property=Environment=PORT=${input.port}`,
     `--property=Environment=EVELAND_SANDBOX_CACHE_DIR=${input.sandboxCacheDir}`,
     `--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=${input.releaseDir}`,
-    `--property=Environment=EVELAND_OBSERVER_OUTBOX_DIR=${input.observerOutboxDir}`,
     `--property=MemoryMax=${input.memoryMax}`,
     `--property=CPUQuota=${input.cpuQuota}`,
     "--property=ProtectSystem=strict",
@@ -72,7 +69,6 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     // --property=ReadWritePaths=/tmp --property=ReadWritePaths=/var/tmp` followed by
     // `systemctl show -p ReadWritePaths`, which reported "ReadWritePaths=/tmp /var/tmp".
     `--property=ReadWritePaths=${input.sandboxCacheDir}`,
-    `--property=ReadWritePaths=${input.observerOutboxDir}`,
     `--property=BindReadOnlyPaths=${input.observabilityPolicyDir}:${AGENT_OBSERVABILITY_MOUNT_DIR}`,
     "--property=PrivateTmp=yes",
     "--property=NoNewPrivileges=yes",
@@ -370,9 +366,6 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
       await mkdir(envDir, { recursive: true });
-      await mkdir(input.observerOutboxDir, { recursive: true });
-      await execa("chown", ["-R", `${config.user}:`, input.observerOutboxDir]);
-      await verifyObserverOutbox({ user: config.user, outboxDir: input.observerOutboxDir });
       const envFilePath = path.join(envDir, `${input.processName}.env`);
       const deploymentEnv = { ...input.env };
       delete deploymentEnv.EVELAND_SANDBOX_TEMPLATE_REVISION;
@@ -389,7 +382,6 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
           memoryMax: config.memoryMax,
           cpuQuota: config.cpuQuota,
           sandboxCacheDir: input.sandboxCacheDir,
-          observerOutboxDir: input.observerOutboxDir,
           observabilityPolicyDir: input.observabilityPolicyDir,
           command: buildSystemdStartCommand(input.commandContext, input.port),
         }),

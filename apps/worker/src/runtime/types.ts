@@ -40,8 +40,6 @@ export type ProcessStartInput = {
    * sandbox-visible EVELAND_SANDBOX_CACHE_DIR.
    */
   sandboxCacheDir: string;
-  /** Deployment-scoped durable observer outbox directory visible to the runtime. */
-  observerOutboxDir: string;
   /** Platform-owned directory mounted read-only at the fixed Agent policy path. */
   observabilityPolicyDir: string;
 };

@@ -1,13 +1,13 @@
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import type { AgentEventObservation } from "@eveland/core/observability";
 import { describe, expect, test } from "vitest";
 import { createTestStore } from "./vitest-store.js";
 
-describe("observer ingestion repository", () => {
+describe("Agent observability ingestion repository", () => {
   test("discovers a direct private-port session and projects provider usage once", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    await store.ingestObserverEnvelope(envelope(deploymentId, { observerEventId: "started", event: { type: "session.started", data: {} } }));
+    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "started", event: { type: "session.started", data: {} } }));
     const completedStep = envelope(deploymentId, {
-      observerEventId: "step",
+      telemetryEventId: "step",
       sourceSequence: 2,
       event: {
         type: "step.completed",
@@ -15,8 +15,8 @@ describe("observer ingestion repository", () => {
       },
     });
 
-    await store.ingestObserverEnvelope(completedStep);
-    const replay = await store.ingestObserverEnvelope(completedStep);
+    await store.ingestAgentEvent(completedStep);
+    const replay = await store.ingestAgentEvent(completedStep);
 
     expect(replay.duplicate).toBe(true);
     const [session] = await store.listSessions(projectId);
@@ -40,14 +40,14 @@ describe("observer ingestion repository", () => {
       endpointPort: 41000,
     });
 
-    const ingested = await store.ingestObserverEnvelope(
+    const ingested = await store.ingestAgentEvent(
       envelope(deploymentId, {
         runtimeInstanceId: activation.runtimeInstance.id,
       }),
     );
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deploymentId, {
-        observerEventId: "legacy-envelope",
+        telemetryEventId: "legacy-envelope",
         sourceSequence: 2,
         event: { type: "turn.started", data: {} },
       }),
@@ -71,12 +71,12 @@ describe("observer ingestion repository", () => {
 
   test("turn.completed is not terminal and session.waiting is the durable turn boundary", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    await store.ingestObserverEnvelope(envelope(deploymentId, { event: { type: "turn.completed", data: {} } }));
+    await store.ingestAgentEvent(envelope(deploymentId, { event: { type: "turn.completed", data: {} } }));
     let [session] = await store.listSessions(projectId);
     expect(session?.status).toBe("running");
 
-    await store.ingestObserverEnvelope(
-      envelope(deploymentId, { observerEventId: "waiting", sourceSequence: 2, event: { type: "session.waiting", data: {} } }),
+    await store.ingestAgentEvent(
+      envelope(deploymentId, { telemetryEventId: "waiting", sourceSequence: 2, event: { type: "session.waiting", data: {} } }),
     );
     [session] = await store.listSessions(projectId);
     expect(session?.status).toBe("waiting");
@@ -128,9 +128,9 @@ describe("observer ingestion repository", () => {
       eveSessionIds: ["eve_root"],
     });
 
-    await store.ingestObserverEnvelope(envelope(deploymentId));
-    await store.ingestObserverEnvelope(envelope(deploymentId, {
-      observerEventId: "waiting",
+    await store.ingestAgentEvent(envelope(deploymentId));
+    await store.ingestAgentEvent(envelope(deploymentId, {
+      telemetryEventId: "waiting",
       sourceSequence: 2,
       event: { type: "session.waiting", data: {} },
     }));
@@ -192,9 +192,9 @@ describe("observer ingestion repository", () => {
       eveSessionIds: ["eve_topic_product", "eve_topic_customer"],
     });
 
-    await store.ingestObserverEnvelope(envelope(deploymentId, {
+    await store.ingestAgentEvent(envelope(deploymentId, {
       eveSessionId: "eve_topic_product",
-      observerEventId: "product-completed",
+      telemetryEventId: "product-completed",
       event: { type: "turn.completed", data: { turnId: "turn_product" } },
     }));
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
@@ -202,9 +202,9 @@ describe("observer ingestion repository", () => {
       completedAt: null,
     });
 
-    await store.ingestObserverEnvelope(envelope(deploymentId, {
+    await store.ingestAgentEvent(envelope(deploymentId, {
       eveSessionId: "eve_topic_customer",
-      observerEventId: "customer-completed",
+      telemetryEventId: "customer-completed",
       event: { type: "turn.completed", data: { turnId: "turn_customer" } },
     }));
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
@@ -250,9 +250,9 @@ describe("observer ingestion repository", () => {
     await store.claimScheduleRunActivation(run.id);
     await store.redeemScheduleRunDispatch(run.id, deploymentId);
 
-    await store.ingestObserverEnvelope(envelope(deploymentId, {
+    await store.ingestAgentEvent(envelope(deploymentId, {
       eveSessionId: "eve_fast_topic",
-      observerEventId: "fast-completed",
+      telemetryEventId: "fast-completed",
       event: { type: "turn.completed", data: { turnId: "turn_fast" } },
     }));
 
@@ -268,11 +268,11 @@ describe("observer ingestion repository", () => {
   test("projects an unresolved HITL request as waiting for approval", async () => {
     const { store, projectId, deploymentId } = await createStore();
 
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deploymentId, { event: { type: "input.requested", data: { requestId: "approval_1", prompt: "Allow deploy?" } } }),
     );
-    await store.ingestObserverEnvelope(
-      envelope(deploymentId, { observerEventId: "waiting", sourceSequence: 2, event: { type: "session.waiting", data: {} } }),
+    await store.ingestAgentEvent(
+      envelope(deploymentId, { telemetryEventId: "waiting", sourceSequence: 2, event: { type: "session.waiting", data: {} } }),
     );
 
     const [session] = await store.listSessions(projectId);
@@ -284,7 +284,7 @@ describe("observer ingestion repository", () => {
 
   test("records a remote subagent URL as unresolved until its own stream is observed", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deploymentId, {
         event: {
           type: "subagent.called",
@@ -304,9 +304,9 @@ describe("observer ingestion repository", () => {
       resolutionStatus: "unresolved",
     });
 
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deploymentId, {
-        observerEventId: "remote-started",
+        telemetryEventId: "remote-started",
         eveSessionId: "eve_remote",
         parentEveSessionId: "eve_root",
         event: { type: "session.started", data: {} },
@@ -323,18 +323,18 @@ describe("observer ingestion repository", () => {
 
   test("links child-before-parent delivery into one root session tree", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deploymentId, {
-        observerEventId: "child",
+        telemetryEventId: "child",
         eveSessionId: "eve_child",
         parentEveSessionId: "eve_parent",
         agent: { id: null, name: "researcher", nodeId: "subagents/researcher" },
         event: { type: "session.started", data: {} },
       }),
     );
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deploymentId, {
-        observerEventId: "parent-started",
+        telemetryEventId: "parent-started",
         eveSessionId: "eve_parent",
         event: { type: "session.started", data: {} },
       }),
@@ -350,15 +350,15 @@ describe("observer ingestion repository", () => {
     });
   });
 
-  test("rejects an envelope whose deployment cannot be mapped to a project", async () => {
+  test("rejects telemetry whose deployment cannot be mapped to a project", async () => {
     const { store, deploymentId } = await createStore();
-    await expect(store.ingestObserverEnvelope(envelope(deploymentId, { deploymentId: "attacker-project" }))).rejects.toMatchObject({
-      code: "OBSERVER_ENVELOPE_REJECTED",
+    await expect(store.ingestAgentEvent(envelope(deploymentId, { deploymentId: "attacker-project" }))).rejects.toMatchObject({
+      code: "UNMANAGED_TELEMETRY_RESOURCE",
       message: expect.stringMatching(/not managed/),
     });
   });
 
-  test("merges observer data into a pre-existing Playground session without weakening provenance", async () => {
+  test("merges Agent telemetry into a pre-existing Playground session without weakening provenance", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const gatewaySession = await store.createSession({
       projectId,
@@ -367,7 +367,7 @@ describe("observer ingestion repository", () => {
       trigger: "playground",
     });
 
-    const ingested = await store.ingestObserverEnvelope(envelope(deploymentId));
+    const ingested = await store.ingestAgentEvent(envelope(deploymentId));
 
     expect(ingested.session.id).toBe(gatewaySession.id);
     await expect(store.listSessions(projectId)).resolves.toEqual([
@@ -375,11 +375,11 @@ describe("observer ingestion repository", () => {
     ]);
   });
 
-  test("merges an observer-first session when the Playground learns the Eve session id", async () => {
+  test("merges a telemetry-first session when the Playground learns the Eve session id", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const gatewaySession = await store.createSession({ projectId, deploymentId, trigger: "playground" });
     await store.appendSessionEvent(gatewaySession.id, "message", { role: "user" });
-    const observed = await store.ingestObserverEnvelope(envelope(deploymentId));
+    const observed = await store.ingestAgentEvent(envelope(deploymentId));
     expect(observed.session.id).not.toBe(gatewaySession.id);
 
     const completed = await store.completeSession(gatewaySession.id, { status: "completed", eveSessionId: "eve_root" });
@@ -415,11 +415,10 @@ async function createStore() {
   return { store, projectId: project.id, deploymentId: deployment.id };
 }
 
-function envelope(deploymentId: string, overrides: Partial<ObserverEnvelopeV1> = {}): ObserverEnvelopeV1 {
+function envelope(deploymentId: string, overrides: Partial<AgentEventObservation> = {}): AgentEventObservation {
   return {
-    schemaVersion: 1,
-    observerEventId: "evt_1",
-    eventFingerprint: `fingerprint_${overrides.observerEventId ?? "evt_1"}`,
+    telemetryEventId: "evt_1",
+    eventFingerprint: `fingerprint_${overrides.telemetryEventId ?? "evt_1"}`,
     deploymentId,
     eveSessionId: "eve_root",
     parentEveSessionId: null,

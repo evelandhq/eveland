@@ -63,7 +63,7 @@ describe("injectObserverHooks", () => {
     await expect(readFile(path.join(releaseDir, "agent/hooks/user-observer.ts"), "utf8")).resolves.toBe(authoredHook);
   });
 
-  test("bundles a self-contained private OTel runtime and does not use the legacy outbox protocol", async () => {
+  test("bundles a self-contained private OTel runtime controlled only by its runtime policy", async () => {
     const releaseDir = await createRelease();
     const result = await injectObserverHooks({ releaseDir });
     const runtime = await readFile(
@@ -76,7 +76,6 @@ describe("injectObserverHooks", () => {
       "/run/eveland/observability/agent-policy.json",
     );
     expect(runtime).toContain('from "eve/hooks"');
-    expect(runtime).not.toContain("EVELAND_OBSERVER_OUTBOX_DIR");
     expect(runtime).not.toContain("EVELAND_TELEMETRY_ENABLED");
     expect(runtime).not.toContain('from "@eveland/');
   });

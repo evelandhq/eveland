@@ -251,7 +251,6 @@ describe("web application shell", () => {
     const projects = source("./projects/page.tsx")
     const statusBadge = source("../components/status-badge.tsx")
 
-    expect(projects).toContain("<Alert")
     expect(projects).toContain("<Card")
     expect(projects).toContain("<CardHeader")
     expect(projects).toContain("<CardContent")

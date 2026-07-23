@@ -5,8 +5,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/runner.ts",
-    "./health": "./src/health.ts"
+    ".": "./src/otlp.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
@@ -14,8 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*",
-    "@eveland/db": "workspace:*"
+    "@eveland/core": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

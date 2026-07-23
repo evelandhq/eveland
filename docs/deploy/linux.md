@@ -14,7 +14,7 @@
   worker preflight treats the complete set as a deployment contract:
 
   ```bash
-  sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
+  sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl docker.io findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
   ```
 - `bubblewrap` from the distro package (`apt-get install bubblewrap`). Ubuntu's
   packaged bubblewrap ships **no** AppArmor profile, and Ubuntu sets
@@ -65,7 +65,7 @@ deployed independently to Cloudflare Workers at `https://eveland.ai`; see the
 public docs deployment section in the root README. The services below are the
 self-hosted control plane and Agent data plane.
 
-- **API, Gateway, Web, Postgres** run in Docker Compose. The API and Gateway have no Docker
+- **API, Gateway, Web, Postgres, and OpenTelemetry Collector** run in Docker Compose. The API and Gateway have no Docker
   socket or host-controller privilege. Gateway also has no `/var/lib/eveland` mount, and the
   development Compose stack masks `/workspace/.eveland-data` from it:
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. The
@@ -83,10 +83,14 @@ bind-mounts it at that same absolute path, matching the host worker's
 `sourcePath` is written by whichever side imports the project and read by
 whichever side later serves or deploys it — a mismatched mount would leave
 one side unable to find files the other wrote.
-The observer outbox lives below `/var/lib/eveland/observer`. Each deployment can
-write only its own directory; the API starts the collector in embedded mode and
-reads the shared root. Collector degradation is reported separately at
-`GET /internal/collector/health` and does not make the control-plane `/health` fail.
+The managed Collector receives Eveland-owned OTLP on loopback ports 4317/4318.
+Built-in always exports to the API's service-authenticated `/internal/otel`
+endpoint. The Worker writes revisioned Collector configuration below
+`/var/lib/eveland/otel`, validates it with the pinned official Collector image,
+and restarts only the Collector container when an admin changes an external
+destination. Each exporter has an independent persistent queue below the
+Collector volume. Agent Deployments are not restarted by an observability
+settings change.
 Gateway listens on host port 4080 and is the only process Traefik forwards wildcard Agent
 hosts to. Agent processes remain on `127.0.0.1:41xxx`; never add those dynamic ports to
 Traefik or firewall rules. Start from `infra/traefik/agents.yml`, replace the example domain,
@@ -156,7 +160,7 @@ or `NODE_ENV=production` with `EVELAND_RUNTIME` unset — the worker refuses to
 start until every host
 prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
 systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path,
-`systemd-run`, `systemctl`, and `runuser`, plus the complete platform sandbox
+`systemd-run`, `systemctl`, `runuser`, and `docker`, plus the complete platform sandbox
 toolchain (`bash`, `node`, `npm`, `pnpm`, `rg`, GNU `grep`/`find`, `git`, `curl`,
 `jq`, `python`/`python3`, `pip`/`pip3`, `unzip`, and `zstd`) on `PATH`
 unconditionally, plus `bwrap` unless `EVELAND_BUILD_SANDBOX=none`, the app user
@@ -187,12 +191,13 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_MEMORY_MAX` | `2G` | systemd `MemoryMax` per deployment. |
 | `EVELAND_CPU_QUOTA` | `200%` | systemd `CPUQuota` per deployment. |
 | `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
-| `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland`. |
+| `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files, Agent observability policies, and managed Collector configuration. Use an absolute path, e.g. `/var/lib/eveland`. |
 | `EVELAND_HOST_DATA_DIR` | `EVELAND_DATA_DIR` | Host-daemon view of the same data directory. Set this only when a containerized worker drives Docker through `/var/run/docker.sock`; native systemd workers use the same path on both sides. |
-| `EVELAND_OBSERVER_ROOT` | `$EVELAND_DATA_DIR/observer` | API collector root shared with deployment observer outboxes. |
-| `EVELAND_COLLECTOR_MODE` | `embedded` | `embedded` starts collection with the API; `disabled` is for controlled maintenance and leaves envelopes queued on disk. |
-| `EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS` | `100` | Maximum distinct Eve sessions projected in one collector round. |
-| `EVELAND_COLLECTOR_MAX_BACKLOG_BYTES` | `1073741824` | Total queued observer bytes that trigger degraded health and an operator-visible alarm. |
+| `EVELAND_OTLP_ENDPOINT` | `http://127.0.0.1:4318` | Internal OTLP/HTTP receiver for Eveland-owned platform and injected Agent telemetry. This topology value is not the admin capture switch. |
+| `EVELAND_OTEL_METRIC_INTERVAL_MS` | `60000` | Platform SDK metric export interval. |
+| `EVELAND_HOST_METRIC_INTERVAL_MS` | `60000` | Worker cadence for standard host CPU, memory, filesystem, workload, and heartbeat metrics. |
+| `EVELAND_OTEL_COLLECTOR_CONTAINER` | `eveland-otel-collector` | Collector container restarted after a generated configuration passes validation. |
+| `EVELAND_OTEL_COLLECTOR_IMAGE` | `otel/opentelemetry-collector-contrib:0.149.0` | Official image used to validate generated configuration; keep it aligned with Compose. |
 | `EVELAND_AGENT_BASE_DOMAINS` | `agent.localhost` | Comma-separated Host suffix allowlist used by Gateway; the first value is the canonical domain materialized into routes. Production normally uses one value such as `agents.example.com`. |
 | `EVELAND_GATEWAY_INTERNAL_URL` | `http://127.0.0.1:4080` | Private API/worker control URL for Playground and route-cache invalidation. |
 | `EVELAND_GATEWAY_SERVICE_TOKEN` | *(unset)* | Required shared secret for API/Gateway `/internal/*` calls, including runtime activation; use a long random value and configure it identically on API, worker, and Gateway. |
@@ -220,7 +225,7 @@ explicit envelope. `local-dev` is the only method that selects loopback authorit
 OIDC, generic OIDC, and custom headers use the canonical Project hostname so Eve cannot mistake a public-style request for local development.
 Changing a normalized Connection method/config increments its security revision; unchanged re-saves do not.
 Connection password, token, and custom Header values must never be copied into Compose files, systemd env files,
-runtime diagnostics, logs, Source Revisions, Releases, observer events, or browser payloads.
+runtime diagnostics, logs, Source Revisions, Releases, OTLP signals, or browser payloads.
 
 For generic OIDC, register `${WEB_ORIGIN}/agent-auth/oidc/callback` as an exact redirect URI. The callback page is
 owned by Web and completes through the authenticated API; API encrypts one-time ten-minute transactions and
@@ -319,7 +324,7 @@ Deployment. At process start the worker resolves Shared Agent Environment < Proj
 < Eveland-reserved precedence, writes the final values only to the Docker process
 environment or the systemd adapter's root-owned `0600` `EnvironmentFile`, and adds every
 decrypted shared value to runtime/build diagnostic masking. Values never enter a Release,
-build layer, observer event, API response, Web payload, or worker configuration snapshot.
+build layer, OTLP signal, API response, Web payload, or worker configuration snapshot.
 
 Changing or clearing the shared environment queues `restart_deployment` jobs for every
 `running`/`draining` Deployment so an old process cannot retain stale or deleted values.
@@ -444,7 +449,7 @@ same Project is still running.
 
 The job stops every `running` or `draining` Deployment first, resolving each
 adapter from the Deployment's recorded `runtimeKind`, then removes its runtime
-Release and the Project's platform-managed source, build, observer outbox, and
+Release and the Project's platform-managed source, build, Agent observability policy, and
 sandbox directories. Only paths contained by `EVELAND_DATA_DIR` are eligible;
 an externally supplied source path is never recursively removed. Database
 records are deleted last. If a stop, Release removal, filesystem cleanup, or
@@ -493,15 +498,16 @@ does not inject a world and Eve keeps its local development world.
 ## How a deployment runs
 
 - Build: source is copied to `$EVELAND_DATA_DIR/builds/<project>/<release>`, then
-  Eveland injects its reserved observer hook and, when configured, the platform workflow-world
+  Eveland injects its reserved private OpenTelemetry hook and, when configured, the platform workflow-world
   wrapper into the copied release (never the imported source). The project install, pinned
   package-manager-aware world install, and `npx eve build` run as the unprivileged build user (`EVELAND_BUILD_USER`)
   inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
   PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`
   with `User=eveland-app`, `ProtectSystem=strict`,
-  `ReadWritePaths=<releaseDir>`, `ReadWritePaths=<observerOutboxDir>`, and a further `ReadWritePaths=<sandboxCacheDir>` for the
-  project's `EVELAND_SANDBOX_CACHE_DIR` subdirectory, `PrivateTmp`, `NoNewPrivileges`,
+  `ReadWritePaths=<releaseDir>`, `ReadWritePaths=<sandboxCacheDir>`, and a read-only bind of the
+  Deployment's Agent observability policy at the fixed runtime path. The unit also uses
+  `PrivateTmp`, `NoNewPrivileges`,
   `MemoryMax`, `CPUQuota`, `Restart=on-failure`. The app binds `127.0.0.1:<hostPort>`;
   secrets arrive via a root-owned 0600 `EnvironmentFile`.
 - Health: the worker polls `http://127.0.0.1:<hostPort>/eve/v1/health` until any
@@ -737,7 +743,7 @@ host: `limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager |
 
 The same script also runs real Eve 0.25.x, 0.26.x, and 0.27.x compatibility fixtures through the
 systemd adapter. It proves a dormant scheduler target wakes for one due cron,
-executes the authored TypeScript definition once, projects two Sessions and
+executes the authored TypeScript definition once, exports standard OTLP logs, projects two Sessions and
 provider usage, observes no duplicate from the neutralized native tick, stops
 after idle TTL, and wakes the bound Deployment for a later public continuation.
 Success prints `SCHEDULE SCALE TO ZERO E2E OK`.

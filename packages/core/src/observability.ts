@@ -16,6 +16,14 @@ export const BUILT_IN_DESTINATION_CAPABILITY = {
   domains: TELEMETRY_DOMAINS,
 } as const;
 
+export const BUILT_IN_OBSERVABILITY_RETENTION_DAYS = {
+  traces: 30,
+  logs: 30,
+  metrics: 30,
+  sessions: 90,
+  capacity: 30,
+} as const;
+
 export const EXTERNAL_DESTINATION_CAPABILITIES = {
   elastic: {
     signals: OBSERVABILITY_SIGNALS,
@@ -73,6 +81,85 @@ const uniqueNonEmptyDomainsSchema = z
       });
     }
   });
+
+const externalHttpUrlSchema = z.url().superRefine((endpoint, context) => {
+  const parsed = new URL(endpoint);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    context.addIssue({
+      code: "custom",
+      message: "Destination endpoint must use HTTP or HTTPS.",
+    });
+  }
+  if (parsed.username || parsed.password) {
+    context.addIssue({
+      code: "custom",
+      message: "Destination endpoint must not contain credentials.",
+    });
+  }
+});
+
+const reservedDestinationHeaders = new Set([
+  "connection",
+  "content-length",
+  "cookie",
+  "forwarded",
+  "host",
+  "proxy-authorization",
+  "set-cookie",
+  "transfer-encoding",
+]);
+const destinationHeadersSchema = z
+  .record(
+    z.string().regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/),
+    z.string().max(4096),
+  )
+  .superRefine((headers, context) => {
+    for (const name of Object.keys(headers)) {
+      const normalized = name.toLowerCase();
+      if (
+        reservedDestinationHeaders.has(normalized) ||
+        normalized.startsWith("x-forwarded-")
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: [name],
+          message: `Header ${name} is reserved and cannot be forwarded.`,
+        });
+      }
+    }
+  });
+
+export const externalDestinationConfigSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("elastic"),
+      endpoint: externalHttpUrlSchema,
+      authorization: z
+        .object({
+          type: z.enum(["bearer", "api_key"]),
+          value: z.string().min(1).max(4096),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("langfuse"),
+      tracesEndpoint: externalHttpUrlSchema,
+      publicKey: z.string().min(1).max(1024),
+      secretKey: z.string().min(1).max(4096),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("custom_otlp"),
+      endpoint: externalHttpUrlSchema,
+      supportedSignals: uniqueNonEmptySignalsSchema,
+      domains: uniqueNonEmptyDomainsSchema,
+      headers: destinationHeadersSchema,
+    })
+    .strict(),
+]);
 
 const elasticDestinationSchema = z
   .object({
@@ -188,12 +275,75 @@ export const agentRuntimePolicySchema = z
   })
   .strict();
 
+export const agentEventObservationSchema = z
+  .object({
+    telemetryEventId: z.string().min(1),
+    eventFingerprint: z.string().min(1),
+    deploymentId: z.string().min(1),
+    runtimeInstanceId: z.string().min(1).nullable().optional(),
+    eveSessionId: z.string().min(1),
+    parentEveSessionId: z.string().min(1).nullable(),
+    sourceSequence: z.number().int().nonnegative().nullable(),
+    agent: z
+      .object({
+        id: z.string().nullable(),
+        name: z.string().nullable(),
+        nodeId: z.string().nullable(),
+      })
+      .strict(),
+    channelKind: z.string().nullable(),
+    eventAt: z.iso.datetime(),
+    event: z.unknown(),
+  })
+  .strict();
+
 export type ExternalObservabilityDestination = z.infer<
   typeof externalObservabilityDestinationSchema
+>;
+export type ExternalDestinationConfig = z.infer<
+  typeof externalDestinationConfigSchema
 >;
 export type AgentCapturePolicy = z.infer<typeof agentCapturePolicySchema>;
 export type ObservabilityPolicy = z.infer<typeof observabilityPolicySchema>;
 export type AgentRuntimePolicy = z.infer<typeof agentRuntimePolicySchema>;
+export type AgentEventObservation = z.infer<
+  typeof agentEventObservationSchema
+>;
+export type ExternalDestinationHealth = {
+  destinationId: string;
+  status: "pending" | "healthy" | "degraded" | "paused";
+  checkedAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+};
+
+export class UnmanagedTelemetryResourceError extends Error {
+  readonly code = "UNMANAGED_TELEMETRY_RESOURCE";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "UnmanagedTelemetryResourceError";
+  }
+}
+export type PublicExternalObservabilityDestination<
+  Destination = ExternalObservabilityDestination,
+> = Destination extends ExternalObservabilityDestination
+  ? Omit<Destination, "encryptedConfig"> & {
+      configured: true;
+      health: ExternalDestinationHealth;
+    }
+  : never;
+export type PublicObservabilityPolicy = {
+  revision: number;
+  builtIn: typeof BUILT_IN_DESTINATION_CAPABILITY & {
+    health: {
+      status: "healthy" | "waiting";
+      lastReceivedAt: string | null;
+    };
+  };
+  agentCapture: AgentCapturePolicy;
+  externalDestinations: PublicExternalObservabilityDestination[];
+};
 
 export function createDefaultObservabilityPolicy(revision: number): ObservabilityPolicy {
   return observabilityPolicySchema.parse({
@@ -208,6 +358,44 @@ export function createDefaultObservabilityPolicy(revision: number): Observabilit
     },
     externalDestinations: [],
   });
+}
+
+export function toPublicObservabilityPolicy(
+  policy: ObservabilityPolicy,
+  builtInHealth: PublicObservabilityPolicy["builtIn"]["health"] = {
+    status: "waiting",
+    lastReceivedAt: null,
+  },
+  destinationHealth: ExternalDestinationHealth[] = [],
+): PublicObservabilityPolicy {
+  const healthByDestination = new Map(
+    destinationHealth.map((health) => [health.destinationId, health]),
+  );
+  return {
+    revision: policy.revision,
+    builtIn: {
+      ...BUILT_IN_DESTINATION_CAPABILITY,
+      health: builtInHealth,
+    },
+    agentCapture: policy.agentCapture,
+    externalDestinations: policy.externalDestinations.map((destination) => {
+      const { encryptedConfig: _encryptedConfig, ...publicDestination } =
+        destination;
+      return {
+        ...publicDestination,
+        configured: true,
+        health:
+          healthByDestination.get(destination.id) ??
+          ({
+            destinationId: destination.id,
+            status: destination.enabled ? "pending" : "paused",
+            checkedAt: null,
+            lastSuccessAt: null,
+            lastError: null,
+          } satisfies ExternalDestinationHealth),
+      } as PublicExternalObservabilityDestination;
+    }),
+  };
 }
 
 export function createAgentRuntimePolicy(input: {

@@ -76,7 +76,6 @@ describe("ensureDeploymentActive", () => {
         env: {},
         commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
         sandboxCacheDir: "/tmp/cache",
-        observerOutboxDir: "/tmp/outbox",
         observabilityPolicyDir: "/tmp/observability",
       },
     }, {
@@ -127,7 +126,6 @@ describe("ensureDeploymentActive", () => {
       env: {},
       commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
       sandboxCacheDir: "/tmp/cache",
-      observerOutboxDir: "/tmp/outbox",
       observabilityPolicyDir: "/tmp/observability",
     } satisfies ProcessStartInput;
 
@@ -201,7 +199,6 @@ describe("ensureDeploymentActive", () => {
       env: {},
       commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
       sandboxCacheDir: "/tmp/cache",
-      observerOutboxDir: "/tmp/outbox",
       observabilityPolicyDir: "/tmp/observability",
     } satisfies ProcessStartInput;
 
@@ -260,9 +257,8 @@ describe("ensureDeploymentActive", () => {
       endpointHost: "127.0.0.1",
       endpointPort: deployment.hostPort,
     });
-    const observed = await store.ingestObserverEnvelope({
-      schemaVersion: 1,
-      observerEventId: "evt_crashed_runtime",
+    const observed = await store.ingestAgentEvent({
+      telemetryEventId: "evt_crashed_runtime",
       eventFingerprint: "fingerprint_crashed_runtime",
       deploymentId: deployment.id,
       runtimeInstanceId: claim.runtimeInstance.id,

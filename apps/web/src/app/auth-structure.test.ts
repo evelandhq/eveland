@@ -69,6 +69,36 @@ describe("team management web surfaces", () => {
     expect(environmentSettings).toContain("Configured");
   });
 
+  test("provides administrator controls for Eveland capture and external OTLP destinations", () => {
+    const pageUrl = new URL("./settings/observability/page.tsx", import.meta.url);
+    const settingsUrl = new URL("../components/observability-settings.tsx", import.meta.url);
+
+    expect(existsSync(fileURLToPath(pageUrl))).toBe(true);
+    expect(existsSync(fileURLToPath(settingsUrl))).toBe(true);
+    if (!existsSync(fileURLToPath(pageUrl)) || !existsSync(fileURLToPath(settingsUrl))) return;
+
+    const page = source("./settings/observability/page.tsx");
+    const settings = source("../components/observability-settings.tsx");
+    expect(page).toContain("getObservabilitySettings");
+    expect(page).toContain('member.role !== "admin"');
+    expect(settings).toContain("Built-in");
+    expect(settings).toContain("Always on");
+    expect(settings).toContain("saveObservabilitySettings");
+    expect(settings).toContain("External destinations");
+    expect(settings).toContain("createObservabilityDestination");
+    expect(settings).toContain("toggleObservabilityDestination");
+    expect(settings).toContain("deleteObservabilityDestination");
+    expect(settings).toContain("Elastic");
+    expect(settings).toContain("Langfuse");
+    expect(settings).toContain("Custom OTLP");
+    expect(settings).toContain("destination.health.status");
+    expect(settings).toContain("<Dialog");
+    expect(settings).toContain("<AlertDialog");
+    expect(settings).toMatch(/User instrumentation\s+remains unchanged/);
+    expect(settings).toContain("<Switch");
+    expect(settings).toContain("<Input");
+  });
+
   test("composes the settings pages from profile forms and the existing member controls", () => {
     const requiredPaths = [
       "./settings/layout.tsx",

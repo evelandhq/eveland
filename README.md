@@ -7,11 +7,12 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/core`: dependency-free Eveland contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths. It intentionally has no root barrel so browser-safe imports cannot accidentally pull in Node-only code.
 - `packages/db`: Drizzle schema and migrations, one domain-oriented SQL Store used by production Postgres and PGlite tests, mappers, and the store factory shared by API and worker.
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
-- `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
+- `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. The injected hook owns private OpenTelemetry providers and never registers or mutates a user's global providers.
 - `packages/agent-auth`: Node-only generic Agent Connection registry plus Authorization Code + PKCE OIDC acquisition, encrypted transaction/credential state, verification, refresh, and Basic/Bearer/Vercel-OIDC/custom-header materialization.
-- `packages/identity-broker`: provider-neutral Agent-user identity finalization, separate Identity Sessions, short-lived project-audience ES256 Caller Token issuance, signing-key rotation, and public JWKS.
-- `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
-- `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Its thin app entrypoint composes focused route modules; persistence is supplied by `packages/db`.
+- `packages/identity-broker`: provider-neutral Agent-user identity finalization, separate Identity Sessions, Realm → Project authorization, short-lived ES256 Caller Token issuance, signing-key rotation, and public JWKS.
+- `packages/platform-observability`: shared OpenTelemetry SDK bootstrap for Eveland API, Gateway, and Worker signals.
+- `packages/session-collector`: standard OTLP JSON projection into Eveland's built-in Session, usage, and instance-health read models.
+- `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus the authenticated Built-in OTLP ingest endpoint. Its thin app entrypoint composes focused route modules; persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private. Pure Host/header/affinity/target rules are separated from request lifecycle orchestration.
 - `apps/worker`: Docker and systemd runtime adapters, Postgres job consumer, and domain processors for import/build/restart/schedule job state transitions, with queue fencing kept separate from concrete job execution.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4. Its account menu opens profile/password settings; System settings owns member management, an About view for build/configuration diagnostics, and an admin-only Instance Health view for component reachability, host capacity trends, workload pressure, and disk-risk forecasting.
@@ -51,7 +52,7 @@ fixtures rather than duplicating setup when adding coverage.
 corepack enable
 pnpm install --frozen-lockfile
 cp .env.example .env                  # set BETTER_AUTH_SECRET and EVELAND_ADMIN_PASSWORD
-docker compose up -d postgres          # start the database
+docker compose up -d postgres otel-collector # start the database and platform OTLP receiver
 pnpm --filter @eveland/api db:migrate  # apply versioned migrations (required on first run and after schema changes)
 pnpm dev                               # start API, Gateway, web, worker, and docs
 ```
@@ -133,9 +134,9 @@ scoped to Workers edits for the account and zone that own `eveland.ai`.
 `apps/docs/wrangler.jsonc` owns the Worker name and custom-domain binding, so
 the Cloudflare account must have an active `eveland.ai` zone before deployment.
 
-Docker Compose runs the full stack (Postgres + API + Gateway + web + worker) in **development mode**.
+Docker Compose runs the full stack (Postgres + OpenTelemetry Collector + API + Gateway + web + worker) in **development mode**.
 Only the worker receives the Docker controller socket; Gateway masks `.eveland-data` so the public
-proxy cannot read imported project sources, observer outboxes, or encrypted project secrets:
+proxy cannot read imported project sources, Collector configuration, or encrypted project secrets:
 
 ```bash
 docker compose up
@@ -144,9 +145,9 @@ docker compose up
 The service images are `node:24-alpine` with `git` / `docker-cli` / `unzip` installed at
 startup — the app shells out to them for git import, agent deploy, and zip-upload extraction.
 When the worker runs in Compose, `EVELAND_HOST_DATA_DIR` must be the host-absolute path
-to the workspace's `.eveland-data`; this lets deployment containers bind the same observer
-outbox that the API's embedded collector reads and the same durable per-project sandbox
-cache that survives a Deployment restart or redeploy.
+to the workspace's `.eveland-data`; this lets it atomically update the managed Collector
+configuration and bind the same durable per-project sandbox cache into Deployment
+containers across a restart or redeploy.
 New Git projects derive a globally unique, DNS-safe project slug from the repository name; explicit
 names use lowercase letters, numbers, and hyphens, and collisions claim `-1`, `-2`, and so on atomically.
 Public development endpoints use `http://<projectSlug>.agent.localhost:4080`; immutable previews use
@@ -202,13 +203,13 @@ Pick one mode: either everything in Compose, or only `postgres` in Compose and t
 The current production topology deliberately separates the control plane from
 the privileged runtime controller:
 
-- Postgres, API, Gateway, and web run through Docker Compose.
+- Postgres, OpenTelemetry Collector, API, Gateway, and web run through Docker Compose.
 - Worker runs directly on the host as a systemd service and starts Agent
   deployments through the systemd runtime.
 - Traefik forwards wildcard public Agent hosts to Gateway on port 4080. Agent
   processes remain private on `127.0.0.1:41xxx`.
 - API and the host worker share `/var/lib/eveland` at the same absolute path for
-  sources, releases, and observer outboxes.
+  sources, releases, Collector configuration, and runtime state.
 
 Complete the Linux host prerequisites in [`docs/deploy/linux.md`](docs/deploy/linux.md),
 then set the public origins, Agent domain, and independent Gateway secrets in a
@@ -226,6 +227,7 @@ EVELAND_IDENTITY_JWKS_URL=http://127.0.0.1:4000/.well-known/jwks.json
 EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
 EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
+EVELAND_OTLP_SERVICE_TOKEN=<independent-long-random-collector-secret>
 EVELAND_SCHEDULER_RUNTIME_SECRET=<independent-long-random-runtime-secret>
 EVELAND_SCHEDULER_DISPATCH_SECRET=<independent-long-random-dispatch-secret>
 EVELAND_SCHEDULER_REDEEM_URL=http://127.0.0.1:4000/internal/scheduler/dispatch
@@ -313,7 +315,7 @@ pnpm build
 # and proves a real HTTP turn can execute TypeScript through the bash tool.
 pnpm --filter @eveland/worker smoke:docker-sandbox
 # Requires Lima. Exercises the complete systemd/bwrap topology, including a
-# dormant Eve 0.25.x/0.26.x/0.27.x cron wake, observer usage, idle stop, and continuation wake.
+# dormant Eve 0.25.x/0.26.x/0.27.x cron wake, OTLP usage, idle stop, and continuation wake.
 bash infra/integration/run.sh
 ```
 
@@ -328,14 +330,17 @@ licensed under the MIT License.
 - API, Gateway, and Worker require `DATABASE_URL` and use the same Postgres Store. Tests run that Store against migrated PGlite; concurrency and driver-compatibility suites continue to use real Postgres through `EVELAND_POSTGRES_TEST_URL`.
 - The control plane is invite-only and uses Better Auth for users, credential accounts, and sessions. Team roles and seven-day invitations use its Organization plugin behind Eveland-owned endpoints, which enforce the last-admin rule and block public sign-up and direct organization mutations. Invitation links use opaque 256-bit identifiers. Public Agent traffic remains on the separate Gateway authentication boundary.
 - `packages/db/src/schema.ts` and `packages/db/drizzle/` are the Postgres model and migration targets. Use `pnpm --filter @eveland/api db:migrate` for real databases; `db:push` is only a disposable-development convenience.
-- Project deletion is asynchronous and requires the worker. A deletion request persists a visible `Deleting…` state, blocks new project mutations, waits for already-running project jobs, then stops every live Deployment and removes database records plus platform-managed source/build/observer/sandbox data. Failures retain a retryable `Delete failed` state; source paths outside `EVELAND_DATA_DIR` are never removed.
-- Token accounting uses Eve's `step.completed.data.usage` values. Injected hooks write envelopes to `$EVELAND_DATA_DIR/observer`; the API's embedded collector validates and projects them exactly once. Input, output, cache-read, cache-write, and optional gateway cost are attributed to the Eve session node that consumed them. Missing provider usage stays explicitly marked instead of being estimated.
+- Project deletion is asynchronous and requires the worker. A deletion request persists a visible `Deleting…` state, blocks new project mutations, waits for already-running project jobs, then stops every live Deployment and removes database records plus platform-managed source/build/observability-policy/sandbox data. Failures retain a retryable `Delete failed` state; source paths outside `EVELAND_DATA_DIR` are never removed.
+- Eveland observability is OTLP end to end. Private providers injected into prepared Eve Releases export Agent traces, logs, and metrics to the managed OpenTelemetry Collector; API, Gateway, and Worker use the platform SDK directly. Built-in is always enabled and projects standard OTLP into Eveland Sessions, usage, and instance health. Admins may additionally route every Eveland signal to Elastic, Agent traces to Langfuse, or selected signals/domains to a custom OTLP/HTTP destination. Each exporter has its own retry and persistent queue, while independent empty-OTLP probes expose destination health in System settings.
+- Built-in retention is a platform default, not an integration setting: raw traces/logs/metrics and capacity samples retain 30 days, derived Session/Usage data retains 90 days, and the Worker prunes expired records daily without touching active Sessions or data already delivered externally.
+- Agent source instrumentation is not rewritten, adopted, or globally reconfigured. User providers and exporters continue to send exactly where the Agent configured them. System capture controls affect only Eveland's injected private provider and reload without restarting Agent Deployments.
+- Token accounting uses Eve's provider-reported `step.completed.data.usage` values carried in standard OTLP LogRecords. Input, output, cache-read, cache-write, and optional gateway cost are attributed idempotently to the Eve session node that consumed them. Missing provider usage stays explicitly marked instead of being estimated.
 - `/usage` and each Project's Usage page use the same server-side analytics contract for 24-hour, 7-day, and 30-day trends. They expose complete-range Session, token, cache, and reported-cost totals; separate usage and cost coverage; Project and Model breakdowns; Eve Agent × Model attribution; single-Model curves; and recent Session drill-down. Usage totals never reuse the paginated Session-list page as an aggregate.
 - Playground is a fresh, single-conversation AI Elements UI on every page load. Follow-up turns, live reasoning, tool calls/results, HITL responses, and external-authorization prompts stay on one Eve session until the user starts a new conversation or leaves the page; both paths best-effort reset the durable Eve session before clearing browser state, and there is no session switcher. Stopping a supported Eve 0.25.x, 0.26.x, or 0.27.x turn requests cooperative server cancellation and leaves the event stream open through `turn.cancelled` and the following session boundary. Eve 0.26+ Clients follow durable streams from the last cursor across transient disconnects. Live raw reasoning and uploaded file bytes are not persisted by the Playground transport.
 - Project Settings separates General from Environment. General can update a human-facing Display name and optional capability Description without changing the immutable public slug, Project ID, Agent endpoint, routes, or runtime relationships. Environment owns Project Variables and Secrets; the former `/projects/:projectId/secrets` route redirects there.
 - Saving, editing, or deleting a Project Variable or Secret queues a targeted restart for every running or draining Deployment so stable, preview, and A/B targets cannot keep stale process environments. New-project setup and Project Settings > Environment can also paste or upload `.env` content, preview parsed values and invalid lines, classify each imported name as a Variable or Secret, and confirm new versus overwritten names before a single batch write; each live Deployment is restarted only once for that batch. Both value types are encrypted and never returned after saving. With no live Deployment, the entry is injected on the next deploy.
 - Admins maintain one encrypted, revisioned Shared Agent Environment in System settings. It is injected automatically into every Agent Deployment with precedence Shared Agent Environment < Project Secret < Eveland-reserved values, so a Project can override a shared LLM key. Effective changes restart every running or draining Deployment; API/Web expose only keys, kinds, configured state, and revision, while values stay runtime-only and participate in diagnostic masking. Agent Connection credentials remain separate and reference only Project Secrets.
-- Playground accepts up to four image, PDF, text, or code attachments per turn, limited to 5 MiB each and 10 MiB total; archives and executables are rejected. It does not collect or project usage. Observer envelopes discover direct private-port, Playground, schedule, and child sessions independently, then merge more-specific provenance by `(projectId, eveSessionId)`.
+- Playground accepts up to four image, PDF, text, or code attachments per turn, limited to 5 MiB each and 10 MiB total; archives and executables are rejected. It does not collect or project usage. Eveland-injected OTLP telemetry discovers direct private-port, Playground, schedule, and child sessions independently, then merges more-specific provenance by `(projectId, eveSessionId)`.
 - Canonical Playground create, continue, cancel, reset, and stream calls use Gateway's service-authenticated `/internal/projects/:projectId/playground/eve/*` path and stream responses without buffering. Traefik must expose only wildcard Agent hosts and exclude `/internal`; `infra/traefik/agents.yml` is the single-box example.
 - Playground Agent route auth is configured explicitly through its Connection dialog. `local-dev` alone uses a loopback Host; `none`, Basic, Bearer, Vercel OIDC, custom headers, and generic OIDC use the canonical Project Host. Secret-bearing configuration selects a Project Secret instead of copying the value into Connection config. Vercel OIDC mirrors Eve 0.27.8 by sending its short-lived token as both Bearer authorization and the trusted deployment header. Eve 0.27 adds standards-compliant route challenges, including Basic realm/UTF-8 metadata, but Eveland still never infers a Connection method from a 401 challenge. Generic OIDC uses discovery, Authorization Code + PKCE, state/nonce, a Web-owned callback, encrypted principal-scoped tokens, explicit JWT/UserInfo verification, refresh-token rotation, singleflight, and Postgres fencing. Register `${WEB_ORIGIN}/agent-auth/oidc/callback` at the IdP. The first pending turn resumes exactly once after callback, a 401 gets at most one refresh/retry, and a 403 never refreshes. Web receives only redacted state, and API resolves the current reference plus security revision for every initial, continuation, cancel, reset, and stream/reconnect request. Eveland never infers a method from Agent source, provider name, or challenge, and the control-plane member id remains only a credential-isolation key rather than the Agent caller.
 - Bare build/deploy creates a concurrent immutable preview and never stops or reuses the current production process. For Git projects, the primary `Sync, deploy & promote` action explicitly promotes the exact Deployment created by that healthy build, while the secondary `Sync & create preview` action leaves production unchanged. Promote, rollback, and one/two-target traffic policies are atomic route updates followed by Gateway cache invalidation; live Eve session continuation, cancel, reset, and stream requests remain pinned by `SessionBinding` even after their target leaves production traffic. A successful bound request refreshes the binding's idle deadline. Playground bindings expire after 24 hours idle and public API bindings after 7 days idle by default; a later request for a known expired binding receives `410 session_expired` instead of being routed to another Deployment. A successful reset releases the continuation token while preserving the historical session/deployment binding.

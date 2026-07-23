@@ -26,7 +26,7 @@ export function ProjectDangerZone({
         ) : (
           <p className="text-sm text-muted-foreground">
             Running deployments are stopped first. Source snapshots, releases, sessions, usage, routes, secrets, logs,
-            observer data, and sandbox workspaces are then removed permanently.
+            telemetry data, and sandbox workspaces are then removed permanently.
           </p>
         )}
       </CardContent>

@@ -46,6 +46,7 @@ import { registerQueryRoutes } from "./app-query-routes.js";
 import { registerSecretRoutes } from "./app-secret-routes.js";
 import type { AppOptions } from "./app-types.js";
 import { collectInstanceHealth, probeGatewayHealth } from "./instance-health.js";
+import { registerObservabilityRoutes } from "./app-observability-routes.js";
 export type { AppOptions } from "./app-types.js";
 import {
   agentAuthFailureStatus,
@@ -324,7 +325,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         return c.json(await collectInstanceHealth(store, {
           historyHours,
           gatewayHealth: options.gatewayHealth ?? (() => probeGatewayHealth(process.env)),
-          collectorHealth: () => options.collectorHealth?.() ?? null,
         }));
       } catch {
         return c.json({ error: "Instance health diagnostics unavailable" }, 503);
@@ -791,6 +791,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     appSecretKey,
     enqueueLiveDeploymentRestarts,
   });
+  registerObservabilityRoutes({ app, store, options, appSecretKey });
   registerQueryRoutes(app, store);
 
   return app;

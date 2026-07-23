@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { EvelandBuildInfo } from "@eveland/core/build-info";
 import type { InstanceHealthReport } from "@eveland/core/instance-health";
 import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
+import type { PublicObservabilityPolicy } from "@eveland/core/observability";
 import type {
   PublicGitCredential,
   SharedAgentEnvironment,
@@ -16,7 +17,6 @@ import type {
 } from "@eveland/core/identity";
 import type {
   AgentEndpoints,
-  CollectorHealth,
   DeploymentOverview,
   EveVersionInfo,
   Job,
@@ -69,7 +69,6 @@ export const getSession = (sessionId: string) => apiGet<{ session: Session }>(`/
 export const getSessionEvents = (sessionId: string) => apiGet<{ events: SessionEvent[] }>(`/sessions/${sessionId}/events`).then((data) => data.events);
 export const getSessionUsage = (sessionId: string) => apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`).then((data) => data.usage);
 export const getSessionNodes = (sessionId: string) => apiGet<{ nodes: SessionNode[] }>(`/sessions/${sessionId}/nodes`).then((data) => data.nodes);
-export const getCollectorHealth = () => apiGet<CollectorHealth>("/internal/collector/health");
 export const getLogs = (projectId: string) => apiGet<{ logs: LogLine[] }>(`/projects/${projectId}/logs`).then((data) => data.logs);
 export const getSourceRevision = (projectId: string) => apiGet<{ revision: SourceRevision | null }>(`/projects/${projectId}/source/revision`).then((data) => data.revision);
 export const getSourceFiles = (projectId: string) => apiGet<{ files: SourceFile[] }>(`/projects/${projectId}/source/files`).then((data) => data.files);
@@ -83,6 +82,8 @@ export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invi
 export const getApiBuildInfo = () => apiGet<{ ok: true } & EvelandBuildInfo>("/health");
 export const getSystemConfigurationDiagnostics = () =>
   apiGet<SystemConfigurationDiagnostics>("/system/configuration");
+export const getObservabilitySettings = () =>
+  apiGet<PublicObservabilityPolicy>("/system/observability");
 export const getInstanceHealth = (hours = 24) =>
   apiGet<InstanceHealthReport>(`/system/health?hours=${encodeURIComponent(hours)}`);
 export const getGitCredentials = () =>

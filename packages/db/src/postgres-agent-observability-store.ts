@@ -2,9 +2,9 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import {
-  ObserverEnvelopeRejectedError,
-  type ObserverEnvelopeV1,
-} from "@eveland/core/observer";
+  UnmanagedTelemetryResourceError,
+  type AgentEventObservation,
+} from "@eveland/core/observability";
 import type { SessionStatus, SessionTrigger } from "@eveland/core/contracts";
 import type { StoreDatabase } from "./client.js";
 import {
@@ -26,23 +26,23 @@ import {
   sessions,
 } from "./schema.js";
 
-export async function ingestPostgresObserverEnvelope(
+export async function ingestPostgresAgentEvent(
   database: StoreDatabase,
-  envelope: ObserverEnvelopeV1,
+  observation: AgentEventObservation,
 ) {
   const { db } = database;
   return db.transaction(async (tx) => {
     const [deployment] = await tx
       .select()
       .from(deployments)
-      .where(eq(deployments.id, envelope.deploymentId))
+      .where(eq(deployments.id, observation.deploymentId))
       .limit(1);
     if (!deployment) {
-      throw new ObserverEnvelopeRejectedError(
-        `Observer deployment ${envelope.deploymentId} is not managed by Eveland.`,
+      throw new UnmanagedTelemetryResourceError(
+        `Telemetry deployment ${observation.deploymentId} is not managed by Eveland.`,
       );
     }
-    const runtimeInstanceId = envelope.runtimeInstanceId ?? null;
+    const runtimeInstanceId = observation.runtimeInstanceId ?? null;
     if (runtimeInstanceId) {
       const [runtimeInstance] = await tx
         .select({ id: runtimeInstances.id })
@@ -50,13 +50,13 @@ export async function ingestPostgresObserverEnvelope(
         .where(
           and(
             eq(runtimeInstances.id, runtimeInstanceId),
-            eq(runtimeInstances.deploymentId, envelope.deploymentId),
+            eq(runtimeInstances.deploymentId, observation.deploymentId),
           ),
         )
         .limit(1);
       if (!runtimeInstance) {
-        throw new ObserverEnvelopeRejectedError(
-          `Observer RuntimeInstance ${runtimeInstanceId} does not belong to Deployment ${envelope.deploymentId}.`,
+        throw new UnmanagedTelemetryResourceError(
+          `Telemetry RuntimeInstance ${runtimeInstanceId} does not belong to Deployment ${observation.deploymentId}.`,
         );
       }
     }
@@ -66,7 +66,7 @@ export async function ingestPostgresObserverEnvelope(
       .where(
         and(
           eq(sessionBindings.projectId, deployment.projectId),
-          eq(sessionBindings.eveSessionId, envelope.eveSessionId),
+          eq(sessionBindings.eveSessionId, observation.eveSessionId),
         ),
       )
       .limit(1);
@@ -77,7 +77,7 @@ export async function ingestPostgresObserverEnvelope(
       .where(
         and(
           eq(sessionNodes.projectId, deployment.projectId),
-          eq(sessionNodes.eveSessionId, envelope.eveSessionId),
+          eq(sessionNodes.eveSessionId, observation.eveSessionId),
         ),
       )
       .limit(1);
@@ -87,12 +87,12 @@ export async function ingestPostgresObserverEnvelope(
       [node] = await tx
         .update(sessionNodes)
         .set({
-          lastObservedDeploymentId: envelope.deploymentId,
+          lastObservedDeploymentId: observation.deploymentId,
           lastObservedRuntimeInstanceId:
             runtimeInstanceId ?? node.lastObservedRuntimeInstanceId,
-          agentName: envelope.agent.name ?? node.agentName,
-          nodeId: envelope.agent.nodeId ?? node.nodeId,
-          channelKind: envelope.channelKind ?? node.channelKind,
+          agentName: observation.agent.name ?? node.agentName,
+          nodeId: observation.agent.nodeId ?? node.nodeId,
+          channelKind: observation.channelKind ?? node.channelKind,
           resolutionStatus: "observed",
           updatedAt: new Date(),
         })
@@ -104,8 +104,8 @@ export async function ingestPostgresObserverEnvelope(
         .where(eq(sessions.id, node!.rootSessionId))
         .limit(1);
       if (sessionRow && node!.parentNodeId === null) {
-        const discoveredTrigger = triggerFromObserverChannel(
-          envelope.channelKind,
+        const discoveredTrigger = triggerFromAgentChannel(
+          observation.channelKind,
         );
         if (
           sessionRow.trigger === "direct_http" &&
@@ -119,7 +119,7 @@ export async function ingestPostgresObserverEnvelope(
         }
       }
     } else {
-      let parent = envelope.parentEveSessionId
+      let parent = observation.parentEveSessionId
         ? (
             await tx
               .select()
@@ -127,20 +127,20 @@ export async function ingestPostgresObserverEnvelope(
               .where(
                 and(
                   eq(sessionNodes.projectId, deployment.projectId),
-                  eq(sessionNodes.eveSessionId, envelope.parentEveSessionId),
+                  eq(sessionNodes.eveSessionId, observation.parentEveSessionId),
                 ),
               )
               .limit(1)
           )[0]
         : undefined;
-      if (!parent && envelope.parentEveSessionId) {
+      if (!parent && observation.parentEveSessionId) {
         const [parentBinding] = await tx
           .select()
           .from(sessionBindings)
           .where(
             and(
               eq(sessionBindings.projectId, deployment.projectId),
-              eq(sessionBindings.eveSessionId, envelope.parentEveSessionId),
+              eq(sessionBindings.eveSessionId, observation.parentEveSessionId),
             ),
           )
           .limit(1);
@@ -150,7 +150,7 @@ export async function ingestPostgresObserverEnvelope(
           .where(
             and(
               eq(sessions.projectId, deployment.projectId),
-              eq(sessions.eveSessionId, envelope.parentEveSessionId),
+              eq(sessions.eveSessionId, observation.parentEveSessionId),
             ),
           )
           .limit(1);
@@ -161,8 +161,8 @@ export async function ingestPostgresObserverEnvelope(
               id: createId("sess"),
               projectId: deployment.projectId,
               deploymentId:
-                parentBinding?.deploymentId ?? envelope.deploymentId,
-              eveSessionId: envelope.parentEveSessionId,
+                parentBinding?.deploymentId ?? observation.deploymentId,
+              eveSessionId: observation.parentEveSessionId,
               continuationToken: null,
               rootNodeId: null,
               routeId: parentBinding?.routeId ?? null,
@@ -171,13 +171,13 @@ export async function ingestPostgresObserverEnvelope(
               trigger: parentBinding?.trigger ?? "direct_http",
               scheduleId: null,
               status: "running",
-              startedAt: new Date(envelope.eventAt),
+              startedAt: new Date(observation.eventAt),
             })
             .returning();
         }
         if (!sessionRow)
           throw new Error(
-            "Failed to create observer parent placeholder session.",
+            "Failed to create Agent telemetry parent placeholder session.",
           );
         [parent] = await tx
           .insert(sessionNodes)
@@ -185,11 +185,11 @@ export async function ingestPostgresObserverEnvelope(
             id: createId("node"),
             rootSessionId: sessionRow.id,
             projectId: deployment.projectId,
-            eveSessionId: envelope.parentEveSessionId,
+            eveSessionId: observation.parentEveSessionId,
             parentNodeId: null,
             parentEveSessionId: null,
-            startedDeploymentId: envelope.deploymentId,
-            lastObservedDeploymentId: envelope.deploymentId,
+            startedDeploymentId: observation.deploymentId,
+            lastObservedDeploymentId: observation.deploymentId,
             startedRuntimeInstanceId: runtimeInstanceId,
             lastObservedRuntimeInstanceId: runtimeInstanceId,
             resolutionStatus: "unresolved",
@@ -197,7 +197,7 @@ export async function ingestPostgresObserverEnvelope(
           })
           .returning();
         if (!parent)
-          throw new Error("Failed to create observer parent placeholder node.");
+          throw new Error("Failed to create Agent telemetry parent placeholder node.");
         [sessionRow] = await tx
           .update(sessions)
           .set({ rootNodeId: parent.id })
@@ -210,14 +210,14 @@ export async function ingestPostgresObserverEnvelope(
           .from(sessions)
           .where(eq(sessions.id, parent.rootSessionId))
           .limit(1);
-      if (!sessionRow && !envelope.parentEveSessionId) {
+      if (!sessionRow && !observation.parentEveSessionId) {
         [sessionRow] = await tx
           .select()
           .from(sessions)
           .where(
             and(
               eq(sessions.projectId, deployment.projectId),
-              eq(sessions.eveSessionId, envelope.eveSessionId),
+              eq(sessions.eveSessionId, observation.eveSessionId),
             ),
           )
           .limit(1);
@@ -228,8 +228,8 @@ export async function ingestPostgresObserverEnvelope(
           .values({
             id: createId("sess"),
             projectId: deployment.projectId,
-            deploymentId: binding?.deploymentId ?? envelope.deploymentId,
-            eveSessionId: envelope.eveSessionId,
+            deploymentId: binding?.deploymentId ?? observation.deploymentId,
+            eveSessionId: observation.eveSessionId,
             continuationToken: null,
             rootNodeId: null,
             routeId: binding?.routeId ?? null,
@@ -237,15 +237,15 @@ export async function ingestPostgresObserverEnvelope(
             variantName: binding?.variantName ?? null,
             trigger:
               binding?.trigger ??
-              triggerFromObserverChannel(envelope.channelKind),
+              triggerFromAgentChannel(observation.channelKind),
             scheduleId: null,
             status: "running",
-            startedAt: new Date(envelope.eventAt),
+            startedAt: new Date(observation.eventAt),
           })
           .returning();
       }
       if (!sessionRow)
-        throw new Error("Failed to create observer root session.");
+        throw new Error("Failed to create Agent telemetry root session.");
 
       [node] = await tx
         .insert(sessionNodes)
@@ -253,22 +253,23 @@ export async function ingestPostgresObserverEnvelope(
           id: createId("node"),
           rootSessionId: sessionRow.id,
           projectId: deployment.projectId,
-          eveSessionId: envelope.eveSessionId,
+          eveSessionId: observation.eveSessionId,
           parentNodeId: parent?.id ?? null,
-          parentEveSessionId: envelope.parentEveSessionId,
-          startedDeploymentId: envelope.deploymentId,
-          lastObservedDeploymentId: envelope.deploymentId,
+          parentEveSessionId: observation.parentEveSessionId,
+          startedDeploymentId: observation.deploymentId,
+          lastObservedDeploymentId: observation.deploymentId,
           startedRuntimeInstanceId: runtimeInstanceId,
           lastObservedRuntimeInstanceId: runtimeInstanceId,
-          agentId: envelope.agent.id,
-          agentName: envelope.agent.name,
-          nodeId: envelope.agent.nodeId,
-          channelKind: envelope.channelKind,
+          agentId: observation.agent.id,
+          agentName: observation.agent.name,
+          nodeId: observation.agent.nodeId,
+          channelKind: observation.channelKind,
           resolutionStatus: "observed",
           status: "running",
         })
         .returning();
-      if (!node) throw new Error("Failed to create observer session node.");
+      if (!node)
+        throw new Error("Failed to create Agent telemetry session node.");
       if (!parent) {
         [sessionRow] = await tx
           .update(sessions)
@@ -278,7 +279,7 @@ export async function ingestPostgresObserverEnvelope(
       }
     }
     if (!node || !sessionRow)
-      throw new Error("Failed to resolve observer session node.");
+      throw new Error("Failed to resolve Agent telemetry session node.");
 
     const [duplicate] = await tx
       .select()
@@ -287,8 +288,8 @@ export async function ingestPostgresObserverEnvelope(
         and(
           eq(sessionEvents.sessionNodeId, node.id),
           or(
-            eq(sessionEvents.observerEventId, envelope.observerEventId),
-            eq(sessionEvents.eventFingerprint, envelope.eventFingerprint),
+            eq(sessionEvents.telemetryEventId, observation.telemetryEventId),
+            eq(sessionEvents.eventFingerprint, observation.eventFingerprint),
           ),
         ),
       )
@@ -302,11 +303,11 @@ export async function ingestPostgresObserverEnvelope(
       };
     }
 
-    const eventRecord = recordValue(envelope.event);
+    const eventRecord = recordValue(observation.event);
     const type =
       typeof eventRecord?.type === "string" ? eventRecord.type : "event";
     const payload =
-      recordValue(eventRecord?.data) ?? eventRecord ?? envelope.event;
+      recordValue(eventRecord?.data) ?? eventRecord ?? observation.event;
     const [countRow] = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(sessionEvents)
@@ -317,20 +318,20 @@ export async function ingestPostgresObserverEnvelope(
         id: createId("evt"),
         sessionId: sessionRow.id,
         sessionNodeId: node.id,
-        observerEventId: envelope.observerEventId,
-        eventFingerprint: envelope.eventFingerprint,
-        observedDeploymentId: envelope.deploymentId,
+        telemetryEventId: observation.telemetryEventId,
+        eventFingerprint: observation.eventFingerprint,
+        observedDeploymentId: observation.deploymentId,
         observedRuntimeInstanceId: runtimeInstanceId,
-        sourceSequence: envelope.sourceSequence,
+        sourceSequence: observation.sourceSequence,
         index: countRow?.count ?? 0,
         type,
         payload,
-        eventAt: new Date(envelope.eventAt),
+        eventAt: new Date(observation.eventAt),
       })
       .returning();
-    if (!eventRow) throw new Error("Failed to insert observer event.");
+    if (!eventRow) throw new Error("Failed to insert Agent telemetry event.");
 
-    const projectedStatus = observerStatus(type, node.status);
+    const projectedStatus = eventStatus(type, node.status);
     const runtime =
       type === "session.started"
         ? recordValue(recordValue(payload)?.runtime)
@@ -527,8 +528,8 @@ export async function ingestPostgresObserverEnvelope(
             eveSessionId: childEveSessionId,
             parentNodeId: node!.id,
             parentEveSessionId: node!.eveSessionId,
-            startedDeploymentId: envelope.deploymentId,
-            lastObservedDeploymentId: envelope.deploymentId,
+            startedDeploymentId: observation.deploymentId,
+            lastObservedDeploymentId: observation.deploymentId,
             agentName: stringValue(subagentPayload?.name),
             channelKind: "subagent",
             remoteUrl,
@@ -547,7 +548,7 @@ export async function ingestPostgresObserverEnvelope(
           id: createId("usage"),
           sessionId: sessionRow!.id,
           sessionNodeId: node!.id,
-          eveSessionId: envelope.eveSessionId,
+          eveSessionId: observation.eveSessionId,
           agentId: node!.agentId,
           agentName: node!.agentName,
           turnId: usage.turnId,
@@ -589,7 +590,7 @@ export async function ingestPostgresObserverEnvelope(
       .where(eq(sessions.id, sessionRow!.id))
       .limit(1);
     if (!sessionRow || !node)
-      throw new Error("Observer projection lost its root session.");
+      throw new Error("Agent telemetry projection lost its root session.");
     return {
       session: sessionRowToSession(sessionRow),
       node: sessionNodeRowToSessionNode(node),
@@ -599,7 +600,7 @@ export async function ingestPostgresObserverEnvelope(
   });
 }
 
-function triggerFromObserverChannel(
+function triggerFromAgentChannel(
   channelKind: string | null,
 ): SessionTrigger {
   if (channelKind === "schedule") return "cron";
@@ -609,7 +610,7 @@ function triggerFromObserverChannel(
   return "direct_http";
 }
 
-function observerStatus(type: string, current: string): SessionStatus | null {
+function eventStatus(type: string, current: string): SessionStatus | null {
   if (type === "session.started" || type === "turn.started") return "running";
   if (type === "input.requested") return "waiting_approval";
   if (type === "session.waiting")

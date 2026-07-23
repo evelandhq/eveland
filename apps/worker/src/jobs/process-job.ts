@@ -23,7 +23,6 @@ import {
   invalidateGatewayRouteCache,
   parseEncryptedSecret,
   readGitCredentialPayload,
-  resolveObserverOutboxDirs,
   resolveRuntimeCommandContext,
   resolveSandboxCacheDirs,
   stopStartedProcessOnFailure,
@@ -243,13 +242,7 @@ export async function processJob(
       }
 
       const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
-      const observerOutbox = resolveObserverOutboxDirs(
-        process.env,
-        project.id,
-        deploymentId,
-      );
       await mkdir(sandboxCache.workerDir, { recursive: true });
-      await mkdir(observerOutbox.workerDir, { recursive: true });
       const observability = await prepareDeploymentObservability({
         store,
         env: process.env,
@@ -273,10 +266,6 @@ export async function processJob(
             runtime.name === "docker"
               ? sandboxCache.hostDir
               : sandboxCache.workerDir,
-          observerOutboxDir:
-            runtime.name === "docker"
-              ? observerOutbox.hostDir
-              : observerOutbox.workerDir,
           observabilityPolicyDir:
             runtime.name === "docker"
               ? observability.hostDir

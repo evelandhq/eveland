@@ -1,4 +1,4 @@
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import type { AgentEventObservation } from "@eveland/core/observability";
 import { afterAll, describe, expect, test } from "vitest";
 import { createDatabase } from "./client.js";
 import { createPostgresStore } from "./postgres-store.js";
@@ -10,7 +10,7 @@ afterAll(async () => {
   await database?.close();
 });
 
-describe.skipIf(!database)("Postgres observer ingestion", () => {
+describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
   test("merges provenance, child lineage, and replay-safe usage on the real schema", async () => {
     const store = createPostgresStore(database!);
     const project = await store.createProject({ name: `Observer integration ${Date.now()}`, importKind: "zip" });
@@ -40,22 +40,22 @@ describe.skipIf(!database)("Postgres observer ingestion", () => {
     });
 
     const step = envelope(deployment.id, {
-      observerEventId: "root-step",
+      telemetryEventId: "root-step",
       eventFingerprint: "root-step-fingerprint",
       event: { type: "step.completed", data: { turnId: "turn_1", stepIndex: 0, usage: { inputTokens: 12, outputTokens: 3 } } },
     });
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deployment.id, {
-        observerEventId: "child-step",
+        telemetryEventId: "child-step",
         eventFingerprint: "child-step-fingerprint",
         eveSessionId: "eve_child",
         parentEveSessionId: "eve_root",
         event: { type: "step.completed", data: { turnId: "turn_child", stepIndex: 0, usage: { inputTokens: 7, outputTokens: 2 } } },
       }),
     );
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deployment.id, {
-        observerEventId: "remote-called",
+        telemetryEventId: "remote-called",
         eventFingerprint: "remote-called-fingerprint",
         sourceSequence: 2,
         event: {
@@ -68,16 +68,16 @@ describe.skipIf(!database)("Postgres observer ingestion", () => {
         },
       }),
     );
-    await store.ingestObserverEnvelope(
+    await store.ingestAgentEvent(
       envelope(deployment.id, {
-        observerEventId: "approval",
+        telemetryEventId: "approval",
         eventFingerprint: "approval-fingerprint",
         sourceSequence: 3,
         event: { type: "input.requested", data: { requestId: "approval_1" } },
       }),
     );
-    const first = await store.ingestObserverEnvelope(step);
-    const replay = await store.ingestObserverEnvelope(step);
+    const first = await store.ingestAgentEvent(step);
+    const replay = await store.ingestAgentEvent(step);
 
     expect(first.session.id).toBe(gatewaySession.id);
     expect(replay.duplicate).toBe(true);
@@ -98,10 +98,9 @@ describe.skipIf(!database)("Postgres observer ingestion", () => {
   }, 30_000);
 });
 
-function envelope(deploymentId: string, overrides: Partial<ObserverEnvelopeV1> = {}): ObserverEnvelopeV1 {
+function envelope(deploymentId: string, overrides: Partial<AgentEventObservation> = {}): AgentEventObservation {
   return {
-    schemaVersion: 1,
-    observerEventId: "evt_1",
+    telemetryEventId: "evt_1",
     eventFingerprint: "evt_1-fingerprint",
     deploymentId,
     eveSessionId: "eve_root",

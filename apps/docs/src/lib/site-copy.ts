@@ -33,7 +33,7 @@ const copy = {
     proof: {
       label: "A deliberate production boundary",
       title: "Public traffic never becomes host control.",
-      body: "Gateway routes Agent requests without the Docker socket, source tree, decrypted secrets, or observer data. Only the host Worker can build releases and control systemd deployments.",
+      body: "Gateway routes Agent requests without the Docker socket, source tree, decrypted secrets, or telemetry policy data. Only the host Worker can build releases and control systemd deployments.",
     },
     foundations: {
       label: "Built for a team-owned platform",
@@ -77,7 +77,7 @@ const copy = {
     control: {
       label: "The runtime explains itself",
       title: "See what ran, where it ran, and what it consumed.",
-      body: "Durable observer events connect model responses, tools, subagents, errors, provider-reported usage, and Deployment provenance without making Playground the source of truth.",
+      body: "Eveland-private OpenTelemetry signals connect model responses, tools, subagents, errors, provider-reported usage, and Deployment provenance without making Playground the source of truth.",
       terminalTitle: "session / ses_8c21",
       events: [
         ["09:41:02", "message.received", "stable route"],
@@ -180,7 +180,7 @@ const copy = {
     control: {
       label: "运行时会解释自己",
       title: "看清运行了什么、在哪里运行、消耗了多少。",
-      body: "Durable Observer Event 将模型响应、Tool、Subagent、Error、Provider 报告的 Usage 与 Deployment Provenance 连接起来，而不把 Playground 当成事实来源。",
+      body: "Eveland 私有 OpenTelemetry 信号将模型响应、Tool、Subagent、Error、Provider 报告的 Usage 与 Deployment Provenance 连接起来，而不把 Playground 当成事实来源。",
       terminalTitle: "session / ses_8c21",
       events: [
         ["09:41:02", "message.received", "stable route"],

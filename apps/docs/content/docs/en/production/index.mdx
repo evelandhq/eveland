@@ -9,7 +9,7 @@ Eveland's production boundary is intentionally different from its local developm
 
 ## Control plane
 
-Web, API, Gateway, and Postgres run with the production Compose overlay. API owns authenticated team workflows and persistence. Gateway is the only public Agent data plane and has neither the Docker socket nor access to source, releases, secrets, or observer outboxes.
+Web, API, Gateway, Postgres, and the managed OpenTelemetry Collector run with the production Compose overlay. API owns authenticated team workflows and persistence. Gateway is the only public Agent data plane and has neither the Docker socket nor access to source, releases, secrets, or Collector configuration.
 
 ## Host runtime controller
 
@@ -17,7 +17,7 @@ Worker runs directly on the Linux host as a root-owned systemd service. It is th
 
 ## Shared data contract
 
-API and Worker must see the same absolute data root, normally `/var/lib/eveland`. Imported sources, prepared releases, observer outboxes, and sandbox caches are exchanged through paths stored in Postgres, so a mismatched mount breaks the deployment path.
+API and Worker must see the same absolute data root, normally `/var/lib/eveland`. Imported sources, prepared releases, Agent observability policies, managed Collector configuration, and sandbox caches use that root, so a mismatched mount breaks the deployment path.
 
 ## Resource lifecycle
 

@@ -9,7 +9,7 @@ Eveland 的生产边界刻意不同于本地开发栈。生产 Eve Deployment �
 
 ## 控制面
 
-Web、API、Gateway 与 Postgres 使用生产 Compose Overlay。API 负责需要团队认证的操作和持久化。Gateway 是唯一公开的 Agent 数据面，既不持有 Docker Socket，也不能访问 Source、Release、Secrets 或 Observer Outbox。
+Web、API、Gateway、Postgres 与托管 OpenTelemetry Collector 使用生产 Compose Overlay。API 负责需要团队认证的操作和持久化。Gateway 是唯一公开的 Agent 数据面，既不持有 Docker Socket，也不能访问 Source、Release、Secrets 或 Collector 配置。
 
 ## 宿主机运行控制器
 
@@ -17,7 +17,7 @@ Worker 作为 root 管理的 systemd Service 直接运行在 Linux 宿主机上�
 
 ## 共享数据契约
 
-API 与 Worker 必须看到相同的绝对数据根目录，通常为 `/var/lib/eveland`。导入源码、Prepared Release、Observer Outbox 与 Sandbox Cache 通过存入 Postgres 的路径衔接；挂载路径不一致会直接破坏部署链路。
+API 与 Worker 必须看到相同的绝对数据根目录，通常为 `/var/lib/eveland`。导入源码、Prepared Release、Agent Observability Policy、托管 Collector 配置与 Sandbox Cache 使用该数据根；挂载路径不一致会直接破坏部署链路。
 
 ## 资源生命周期
 

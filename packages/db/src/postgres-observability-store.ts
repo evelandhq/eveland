@@ -4,7 +4,10 @@ import {
   type ObservabilityPolicy,
 } from "@eveland/core/observability";
 import { eq } from "drizzle-orm";
-import { observabilityPolicies } from "./schema.js";
+import {
+  observabilityDestinationHealth,
+  observabilityPolicies,
+} from "./schema.js";
 import type { ObservabilityStore } from "./store-domains.js";
 import type {
   PostgresDomain,
@@ -69,6 +72,56 @@ export function createPostgresObservabilityStore(
         return updated ? policyFromRow(updated) : null;
       });
     },
+
+    async listExternalObservabilityDestinationHealth() {
+      const rows = await db
+        .select()
+        .from(observabilityDestinationHealth);
+      return rows.map(healthFromRow);
+    },
+
+    async upsertExternalObservabilityDestinationHealth(health) {
+      const values = {
+        destinationId: health.destinationId,
+        status: health.status,
+        checkedAt: health.checkedAt ? new Date(health.checkedAt) : null,
+        lastSuccessAt: health.lastSuccessAt
+          ? new Date(health.lastSuccessAt)
+          : null,
+        lastError: health.lastError,
+        updatedAt: new Date(),
+      };
+      const [row] = await db
+        .insert(observabilityDestinationHealth)
+        .values(values)
+        .onConflictDoUpdate({
+          target: observabilityDestinationHealth.destinationId,
+          set: values,
+        })
+        .returning();
+      if (!row) {
+        throw new Error(
+          "Failed to update observability destination health.",
+        );
+      }
+      return healthFromRow(row);
+    },
+  };
+}
+
+function healthFromRow(
+  row: typeof observabilityDestinationHealth.$inferSelect,
+) {
+  return {
+    destinationId: row.destinationId,
+    status: row.status as
+      | "pending"
+      | "healthy"
+      | "degraded"
+      | "paused",
+    checkedAt: row.checkedAt?.toISOString() ?? null,
+    lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
+    lastError: row.lastError,
   };
 }
 

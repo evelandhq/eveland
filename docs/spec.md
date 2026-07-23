@@ -149,7 +149,7 @@ Project 标记为 `deleting` 并创建唯一的 `delete_project` job。Projects 
 
 删除 job 必须等待同一 Project 已运行的 job 结束，再停止所有 `running` 或
 `draining` Deployment。随后按各 Deployment 记录的 `runtimeKind` 删除 Release，
-清理平台管理的 source、build、observer outbox 与 durable sandbox workspace，最后
+清理平台管理的 source、build、Agent observability policy 与 durable sandbox workspace，最后
 级联删除 routes、SessionBindings、Sessions、usage、Schedules、Secrets、日志和
 Project 数据。平台不得删除 `EVELAND_DATA_DIR` 之外的外部源码路径。外部资源清理
 无法与 Postgres 组成同一事务；失败时部分进程或 artifact 可能已经停止或移除，
@@ -225,6 +225,40 @@ Gateway configuration 只能通过现有 service-authenticated `/internal/*` 边
 Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：前者标识控制面
 软件本身，后者仍表示某个导入 Agent 的不可变构建产物与运行目标。
 
+#### Observability (/settings/observability)
+
+Eveland 的监控以 OpenTelemetry/OTLP 为唯一传输标准。Built-in 是平台内置且始终启用的
+Destination，不提供配置或关闭入口；它接收 Eveland 的 traces、logs、metrics，并将标准
+OTLP 投影为 Sessions、Usage、Instance Health 与平台诊断所需的读模型。
+
+Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
+
+* Agent capture 开关、trace sampling、input/output content 与 reasoning policy 只作用于
+  Eveland 注入的私有 provider，并由运行中的 Agent 动态加载，不重启 Deployment
+* Elastic 固定接收 Eveland 的全部 traces、logs、metrics 和 agent/platform/runtime/capacity domain
+* Langfuse 固定只接收 Eveland 注入的 Agent traces
+* Custom OTLP/HTTP 可以选择 signals、domains 与加密 Header
+* 每个外部 exporter 使用独立 retry 与持久化 sending queue；一个目标失败不能阻塞 Built-in
+  或其他目标
+* Worker 每五分钟使用不含业务数据的标准 OTLP 请求独立探测外部 Destination；Settings 展示
+  pending、healthy、degraded 或 paused，不把某个外部目标故障解释为 Built-in 故障
+
+系统设置中的外部凭据使用 `APP_SECRET_KEY` 加密，保存后不返回浏览器。Worker 将 revisioned
+设置渲染为官方 OpenTelemetry Collector 配置，先使用同版本 Collector 校验，再原子应用并只
+重启 Collector；不能为了监控设置重启 Agent Deployment。
+
+Agent 源码中的 instrumentation 是独立边界：Eveland 不修改用户监控代码，不注册或替换全局
+TracerProvider、LoggerProvider、MeterProvider，也不截获用户 exporter。Release 准备仅在
+Eve 的平台保留 hook slot 注入使用私有 provider 的 Eveland hook；用户 provider 继续按源码
+配置向用户自己的目标发送。API、Gateway、Worker 使用 Eveland 平台 SDK 产生 platform/runtime/
+capacity 信号；CPU、memory、disk、workload 与 component health 均使用标准 OTel metrics。
+Worker 还把已经脱敏并写入产品日志的 build、deploy 与 runtime lifecycle 日志通过独立
+runtime-domain LoggerProvider 发为 OTel LogRecord。
+
+Built-in retention 不是可配置项。raw traces、logs、metrics 与 capacity sample 默认保留
+30 天；Session/Usage read model 默认保留 90 天。Worker 每日清理过期数据，运行中的 Session
+不参与清理，外部 Destination 已接收的数据不受影响。
+
 #### Instance Health (/settings/health)
 
 Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“当前是否可用”与
@@ -236,9 +270,10 @@ Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“
 * queued/running Job 数量、最老 queued Job，以及 RuntimeInstance 状态分布
 * 24 小时与 7 天趋势；有足够增长历史时给出磁盘预计耗尽天数
 
-Worker 是唯一采集宿主机指标的特权组件；它把脱敏后的 heartbeat 与 metric sample 写入
-Postgres，API 只读取并聚合，Web 只读展示。默认每 60 秒采样、保留 30 天，并每日清理过期
-sample。Worker heartbeat 独立于长时间 build/deploy Job 持续发布，不能因为 Job 正在执行而
+Worker 是唯一采集宿主机指标的特权组件；它把 heartbeat 与 metric sample 作为 capacity
+domain 的标准 OTLP metrics 发送，Built-in 投影到 Postgres，API 只读取并聚合，Web 只读展示。
+默认每 60 秒采样、保留 30 天，并每日清理过期 sample。Worker heartbeat 独立于长时间
+build/deploy Job 持续发布，不能因为 Job 正在执行而
 被误判离线。`stopped` RuntimeInstance 是正常 scale-to-zero 状态，不得单独视为故障；
 Collector delayed/degraded 使实例显示降级，但不等价于 Agent Traffic 已中断。
 
@@ -469,7 +504,7 @@ token 后读取 envelope：`local-dev` 构造 loopback Host，其他方法构造
 最后写入 credential Header。Gateway 不保存、解密或刷新 provider credential；public path 的
 Authorization、Cookie、Origin、Host、abort 与 NDJSON streaming 继续透明转发。
 
-每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。用户点击 New conversation 时，Web 必须先完成 canonical session reset，再清空本地对话；离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Observer/Collector 的权威观测路径。
+每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。用户点击 New conversation 时，Web 必须先完成 canonical session reset，再清空本地对话；离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Eveland 私有 OTLP 信号的权威观测路径。
 
 平台记录该 Session 的来源：
 
@@ -738,7 +773,7 @@ Web 以 Type、Name、Value 状态和行级操作组成的表格展示 Entry；�
 Shared Agent Environment < Project Secret < Eveland 保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。
 共享值只在 deploy、restart、cold activation
 或 schedule activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、
-generated Dockerfile、observer envelope、日志或 Web payload。完整 Project/Shared Environment 值集合必须
+generated Dockerfile、OTLP signal、日志或 Web payload。完整 Project/Shared Environment 值集合必须
 参与 runtime/build diagnostic 脱敏。
 
 Entry 语义变化才递增内部 revision。更新或清空共享环境时，API 对所有 Project 的
@@ -781,7 +816,7 @@ Control API
   ├─ Source import
   ├─ Build
   ├─ Secret injection
-  ├─ Session provenance
+  ├─ Built-in OTLP ingest and Session provenance
   └─ Schedule trigger
   ↓
 Public Agent Gateway (stable/preview Host routing)
@@ -836,6 +871,7 @@ archived、或运行在非 Deployment 所属 runtimeKind 下的进程在宽限�
 * 日志收集
 * cron 触发
 * Session 来源归因
+* Eveland 私有 OpenTelemetry 信号
 * 容器重启
 
 新启动或重启的进程在 HTTP 健康检查失败时，worker 必须先采集 runtime diagnostics 再清理

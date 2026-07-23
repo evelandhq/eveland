@@ -51,10 +51,6 @@ vi.mock("./sandbox-verify.js", () => ({
   verifySandbox: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("./observer-verify.js", () => ({
-  verifyObserverOutbox: vi.fn().mockResolvedValue(undefined),
-}));
-
 describe("buildSystemdRunArgs", () => {
   test("creates a hardened transient unit bound to the release dir", () => {
     const args = buildSystemdRunArgs({
@@ -66,7 +62,6 @@ describe("buildSystemdRunArgs", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
       command: "npx eve start --host 127.0.0.1 --port 41000",
@@ -85,13 +80,11 @@ describe("buildSystemdRunArgs", () => {
       "--property=Environment=PORT=41000",
       "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/proj_123",
       "--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/data/builds/proj_123/rel_789",
-      "--property=Environment=EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-data/observer/proj_123/dep_456",
       "--property=MemoryMax=2G",
       "--property=CPUQuota=200%",
       "--property=ProtectSystem=strict",
       "--property=ReadWritePaths=/data/builds/proj_123/rel_789",
       "--property=ReadWritePaths=/var/lib/eveland-data/sandbox/proj_123",
-      "--property=ReadWritePaths=/var/lib/eveland-data/observer/proj_123/dep_456",
       "--property=BindReadOnlyPaths=/var/lib/eveland-data/observability/proj_123/dep_456:/run/eveland/observability",
       "--property=PrivateTmp=yes",
       "--property=NoNewPrivileges=yes",
@@ -116,7 +109,6 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/p",
-      observerOutboxDir: "/var/lib/eveland-data/observer/p/d",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/p/d",
       command: "npx eve start",
     });
@@ -336,7 +328,6 @@ describe("createSystemdAdapter startProcess", () => {
       },
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
@@ -360,7 +351,6 @@ describe("createSystemdAdapter startProcess", () => {
       env: {},
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
     });

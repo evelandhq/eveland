@@ -32,7 +32,9 @@ test("copies source into a prepared release and injects observers without modify
   await expect(
     readFile(path.join(buildDir, result.runtimeFile!), "utf8"),
   ).resolves.toContain("OTLPTraceExporter");
-  await expect(readFile(path.join(sourcePath, "agent/hooks/__eveland_observer.js"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(
+    readFile(path.join(sourcePath, "agent", "instructions.md"), "utf8"),
+  ).resolves.toBe("root");
 });
 
 test("injects the Eve 0.25.x scheduler adapter only into the disposable release", async () => {

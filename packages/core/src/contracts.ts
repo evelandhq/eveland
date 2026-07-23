@@ -407,7 +407,7 @@ export type SessionEvent = {
   type: string;
   payload: unknown;
   sessionNodeId: string | null;
-  observerEventId: string | null;
+  telemetryEventId: string | null;
   eventFingerprint: string | null;
   observedDeploymentId: string | null;
   observedRuntimeInstanceId: string | null;

@@ -12,6 +12,11 @@ import {
   resolveSchedulerRuntimeSecret,
 } from "@eveland/core/server/scheduler-dispatch";
 import type { Store } from "@eveland/db";
+import {
+  SpanKind,
+  SpanStatusCode,
+  trace,
+} from "@opentelemetry/api";
 import net from "node:net";
 import { access, mkdir, readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
@@ -33,7 +38,6 @@ export type { ProcessJobOptions, ScheduleDispatchInput } from "./process-types.j
 export {
   allocateAvailableHostPort,
   invalidateGatewayRouteCache,
-  resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
 } from "./process-support.js";
 
@@ -43,68 +47,104 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
     return false;
   }
 
-  try {
-    await runWithJobHeartbeat({
-      intervalMs: options.jobHeartbeatIntervalMs ?? Number(process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000),
-      heartbeat: () => store.heartbeatJob(job.id, job.attempts),
-      work: () => processJob(store, job, options),
-    });
-    await clearTemporaryGitCredential(store, job);
-    await store.completeJob(job.id, job.attempts);
-    return true;
-  } catch (error) {
-    const message = errorMessage(error);
-    await clearTemporaryGitCredential(store, job);
-    const failed = await store.failJob(job.id, message, job.attempts);
-    if (!failed) return true;
-    if (job.type === "ensure_deployment_running") {
-      const runtimeInstanceId =
-        typeof job.payload.runtimeInstanceId === "string"
-          ? job.payload.runtimeInstanceId
-          : null;
-      if (runtimeInstanceId) {
-        await store.updateRuntimeInstance(runtimeInstanceId, {
-          status: "failed",
-          error: message,
+  const tracer =
+    options.tracer ??
+    trace.getTracer("@eveland/worker-jobs");
+  return tracer.startActiveSpan(
+    `eveland.job ${job.type}`,
+    {
+      kind: SpanKind.INTERNAL,
+      attributes: {
+        "eveland.job.id": job.id,
+        "eveland.job.type": job.type,
+        "eveland.job.attempt": job.attempts,
+        "eveland.project.id": job.projectId,
+        "eveland.telemetry.domain": "runtime",
+      },
+    },
+    async (span) => {
+      try {
+        await runWithJobHeartbeat({
+          intervalMs:
+            options.jobHeartbeatIntervalMs ??
+            Number(
+              process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000,
+            ),
+          heartbeat: () => store.heartbeatJob(job.id, job.attempts),
+          work: () => processJob(store, job, options),
         });
+        await clearTemporaryGitCredential(store, job);
+        await store.completeJob(job.id, job.attempts);
+        span.setStatus({ code: SpanStatusCode.OK });
+        return true;
+      } catch (error) {
+        const message = errorMessage(error);
+        span.recordException(
+          error instanceof Error ? error : new Error(message),
+        );
+        span.setStatus({ code: SpanStatusCode.ERROR, message });
+        await clearTemporaryGitCredential(store, job);
+        const failed = await store.failJob(job.id, message, job.attempts);
+        if (!failed) return true;
+        if (job.type === "ensure_deployment_running") {
+          const runtimeInstanceId =
+            typeof job.payload.runtimeInstanceId === "string"
+              ? job.payload.runtimeInstanceId
+              : null;
+          if (runtimeInstanceId) {
+            await store.updateRuntimeInstance(runtimeInstanceId, {
+              status: "failed",
+              error: message,
+            });
+          }
+        }
+        // A failed import never touches the running container, so it must not report a
+        // live deployment as failed; only deploy/restart jobs change deployment status.
+        if (job.type === "delete_project") {
+          await store.setProjectDeletionFailed(job.projectId, message);
+        } else if (job.type === "build_deploy") {
+          const production = await store.getCurrentDeployment(job.projectId);
+          await store.updateProjectState(
+            job.projectId,
+            production &&
+              (production.status === "running" ||
+                production.status === "draining")
+              ? {
+                  status: "failed",
+                  deploymentStatus: production.status,
+                }
+              : { status: "failed", deploymentStatus: "failed" },
+          );
+        } else if (job.type === "ensure_deployment_running") {
+          const targetDeploymentId =
+            typeof job.payload.deploymentId === "string"
+              ? job.payload.deploymentId
+              : null;
+          const production = await store.getCurrentDeployment(job.projectId);
+          if (production?.id === targetDeploymentId) {
+            await store.updateProjectState(job.projectId, {
+              status: "failed",
+            });
+          }
+        } else if (job.type !== "archive_deployment") {
+          await store.updateProjectState(
+            job.projectId,
+            job.type === "restart_deployment"
+              ? { status: "failed", deploymentStatus: "failed" }
+              : { status: "failed" },
+          );
+        }
+        await store.appendLog({
+          projectId: job.projectId,
+          type: "runtime",
+          line: `Job ${job.id} failed: ${message}`,
+        });
+        return true;
+      } finally {
+        span.end();
       }
-    }
-    // A failed import never touches the running container, so it must not report a
-    // live deployment as failed; only deploy/restart jobs change deployment status.
-    if (job.type === "delete_project") {
-      await store.setProjectDeletionFailed(job.projectId, message);
-    } else if (job.type === "build_deploy") {
-      const production = await store.getCurrentDeployment(job.projectId);
-      await store.updateProjectState(
-        job.projectId,
-        production && (production.status === "running" || production.status === "draining")
-          ? { status: "failed", deploymentStatus: production.status }
-          : { status: "failed", deploymentStatus: "failed" },
-      );
-    } else if (job.type === "ensure_deployment_running") {
-      const targetDeploymentId =
-        typeof job.payload.deploymentId === "string"
-          ? job.payload.deploymentId
-          : null;
-      const production = await store.getCurrentDeployment(job.projectId);
-      if (production?.id === targetDeploymentId) {
-        await store.updateProjectState(job.projectId, { status: "failed" });
-      }
-    } else if (job.type !== "archive_deployment") {
-      await store.updateProjectState(
-        job.projectId,
-        job.type === "restart_deployment"
-          ? { status: "failed", deploymentStatus: "failed" }
-          : { status: "failed" },
-      );
-    }
-    await store.appendLog({
-      projectId: job.projectId,
-      type: "runtime",
-      line: `Job ${job.id} failed: ${message}`,
-    });
-    return true;
-  }
+    },
+  );
 }
 export async function processNextSourcePreflight(
   store: Store,

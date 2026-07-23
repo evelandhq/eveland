@@ -26,6 +26,22 @@
 # NODE_ENV=production is set only on the runtime command — setting it container-wide makes
 # `pnpm install` skip devDependencies (tsx / the next build toolchain) and the stack fails to start.
 services:
+  otel-config-init:
+    volumes:
+      - ./infra/otel/collector.yaml:/seed/collector.yaml:ro
+      - /var/lib/eveland:/var/lib/eveland
+
+  otel-collector:
+    restart: unless-stopped
+    network_mode: host
+    ports: !override []
+    environment:
+      EVELAND_BUILTIN_OTLP_ENDPOINT: http://127.0.0.1:4000/internal/otel
+      EVELAND_OTLP_SERVICE_TOKEN: "${EVELAND_OTLP_SERVICE_TOKEN:?set EVELAND_OTLP_SERVICE_TOKEN}"
+    volumes:
+      - /var/lib/eveland:/var/lib/eveland:ro
+      - eveland-otel-collector:/var/lib/otelcol
+
   postgres:
     restart: unless-stopped
 
@@ -39,10 +55,7 @@ services:
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
       WEB_ORIGIN: "${WEB_ORIGIN:-http://localhost:3000}"
       EVELAND_DATA_DIR: /var/lib/eveland
-      # Base compose hardcodes EVELAND_OBSERVER_ROOT to a /workspace path; without this
-      # override the embedded collector reads there instead of the host worker's outbox
-      # under /var/lib/eveland, so model_usage_events stays empty and token usage shows 0.
-      EVELAND_OBSERVER_ROOT: /var/lib/eveland/observer
+      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:4318
       EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:4080
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
       EVELAND_ACTIVATION_LEASE_TTL_MS: "${EVELAND_ACTIVATION_LEASE_TTL_MS:-180000}"
@@ -75,6 +88,7 @@ services:
       EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES: "${EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES:-10485760}"
       EVELAND_GATEWAY_PUBLIC_SCHEME: https
       EVELAND_API_INTERNAL_URL: http://127.0.0.1:4000
+      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:4318
       EVELAND_ACTIVATION_RENEW_INTERVAL_MS: "${EVELAND_ACTIVATION_RENEW_INTERVAL_MS:-60000}"
       EVELAND_RELEASE_CHANNEL: "${EVELAND_RELEASE_CHANNEL:-stable}"
       EVELAND_REVISION: "${EVELAND_REVISION:-unknown}"
@@ -107,10 +121,8 @@ services:
       WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland
       EVELAND_RUNTIME: docker
       EVELAND_DATA_DIR: /var/lib/eveland
-      EVELAND_OBSERVER_ROOT: /var/lib/eveland/observer
-      # Agent container bind mounts resolve on the host, so the observer outbox host path
-      # must be /var/lib/eveland here (base compose defaults it to a $PWD/.eveland-data path
-      # that the API collector never reads).
+      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:4318
+      # Agent container bind mounts resolve on the host.
       EVELAND_HOST_DATA_DIR: /var/lib/eveland
       EVELAND_AGENT_BASE_DOMAINS: "${EVELAND_AGENT_BASE_DOMAINS:?set EVELAND_AGENT_BASE_DOMAINS}"
       EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:4080
