@@ -81,6 +81,39 @@ describe("Built-in OTLP ingest", () => {
     expect(response.status).toBe(400);
   });
 
+  test("reports OTLP/HTTP JSON partial success while accepting valid spans", async () => {
+    const store = createTestStore();
+    const app = createApp(store, {
+      otlpServiceToken: "collector-service-token",
+    });
+    const payload = protobufTraceBatch();
+    payload.resourceSpans[0]!.scopeSpans[0]!.spans.push({
+      traceId: "AQIDBAUGBwgJCgsMDQ4PEA==",
+      spanId: "",
+      name: "invalid span",
+      startTimeUnixNano: "1784808000000000000",
+      endTimeUnixNano: "1784808000125000000",
+    });
+
+    const response = await app.request("/internal/otel/v1/traces", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer collector-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      partialSuccess: {
+        rejectedSpans: "1",
+        errorMessage: expect.stringContaining("required"),
+      },
+    });
+    await expect(store.listOtlpSpans({ limit: 10 })).resolves.toHaveLength(1);
+  });
+
   test("accepts standard OTLP/HTTP protobuf for every supported signal", async () => {
     const cases = [
       {
@@ -148,6 +181,45 @@ describe("Built-in OTLP ingest", () => {
       ).resolves.toHaveLength(1);
       await testCase.verify(store);
     }
+  });
+
+  test("reports OTLP/HTTP protobuf partial success while accepting valid spans", async () => {
+    const store = createTestStore();
+    const app = createApp(store, {
+      otlpServiceToken: "collector-service-token",
+    });
+    const payload = protobufTraceBatch();
+    payload.resourceSpans[0]!.scopeSpans[0]!.spans.push({
+      traceId: "AQIDBAUGBwgJCgsMDQ4PEA==",
+      spanId: "",
+      name: "invalid span",
+      startTimeUnixNano: "1784808000000000000",
+      endTimeUnixNano: "1784808000125000000",
+    });
+
+    const response = await app.request("/internal/otel/v1/traces", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer collector-service-token",
+        "content-type": "application/x-protobuf",
+      },
+      body: encodeOtlpRequest("traces", payload),
+    });
+
+    expect(response.status).toBe(200);
+    const responseType = protobufResponseTypes.traces;
+    expect(
+      responseType.toObject(
+        responseType.decode(new Uint8Array(await response.arrayBuffer())),
+        { longs: String },
+      ),
+    ).toEqual({
+      partialSuccess: {
+        rejectedSpans: "1",
+        errorMessage: expect.stringContaining("required"),
+      },
+    });
+    await expect(store.listOtlpSpans({ limit: 10 })).resolves.toHaveLength(1);
   });
 
   test("rejects malformed OTLP/HTTP protobuf", async () => {
@@ -534,6 +606,18 @@ const protobufRequestTypes = {
   ),
   metrics: otlpProtoRoot.lookupType(
     "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
+  ),
+};
+
+const protobufResponseTypes = {
+  traces: otlpProtoRoot.lookupType(
+    "opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse",
+  ),
+  logs: otlpProtoRoot.lookupType(
+    "opentelemetry.proto.collector.logs.v1.ExportLogsServiceResponse",
+  ),
+  metrics: otlpProtoRoot.lookupType(
+    "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceResponse",
   ),
 };
 

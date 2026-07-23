@@ -236,9 +236,10 @@ request/job/background 分类聚合 platform/runtime Span 的数量、错误数�
 p95 延迟；带 Project/Deployment 语义属性的 runtime-domain LogRecord 同时形成最近
 build/deploy/runtime lifecycle 时间线。页面不查询 Agent 进程或外部监控产品。
 Built-in 的 service-authenticated OTLP/HTTP 入口必须对 traces、logs、metrics 同时接受标准
-`application/json` 与 `application/x-protobuf`，并按请求编码返回对应的标准空 success
-response；Managed Collector 默认以 protobuf 向 Built-in 发送，不得定义 Eveland 私有
-envelope。
+`application/json` 与 `application/x-protobuf`，并按请求编码返回对应的标准 success
+response；同一批次中缺少必要 Eveland Resource 或 signal 字段的 item 通过标准
+`partial_success` 拒绝计数反馈，其余 item 继续入库。Managed Collector 默认以 protobuf
+向 Built-in 发送，不得定义 Eveland 私有 envelope。
 
 Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
 

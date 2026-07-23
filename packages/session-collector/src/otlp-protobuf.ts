@@ -66,10 +66,12 @@ export function decodeOtlpProtobufRequest(
   }
 }
 
-export function encodeOtlpProtobufSuccess(
+export function encodeOtlpProtobufResponse(
   signal: ObservabilitySignal,
+  response: Record<string, unknown>,
 ): Uint8Array {
-  return responseTypes[signal].encode({}).finish();
+  const type = responseTypes[signal];
+  return type.encode(type.fromObject(response)).finish();
 }
 
 function lookupType(name: string): Type {

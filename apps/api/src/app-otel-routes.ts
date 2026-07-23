@@ -4,8 +4,10 @@ import {
 } from "@eveland/core/observability";
 import type { Store } from "@eveland/db";
 import {
+  countOtlpSignalItems,
+  createOtlpPartialSuccessResponse,
   decodeOtlpProtobufRequest,
-  encodeOtlpProtobufSuccess,
+  encodeOtlpProtobufResponse,
   projectAgentEventsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
   projectOtlpLogRecords,
@@ -74,14 +76,18 @@ export function registerOtlpRoutes(input: {
       return c.json({ error: "Invalid OTLP request" }, 400);
     }
     return runWithPlatformTracingSuppressed(async () => {
+      const receivedItems = countOtlpSignalItems(signal, payload);
+      let acceptedItems = 0;
       await store.ingestOtlpBatch({ signal, payload });
       if (signal === "traces") {
-        await store.ingestOtlpSpans(projectOtlpSpans(payload));
+        const spans = projectOtlpSpans(payload);
+        acceptedItems = spans.length;
+        await store.ingestOtlpSpans(spans);
       }
       if (signal === "logs") {
-        await store.ingestOtlpLogRecords(
-          projectOtlpLogRecords(payload),
-        );
+        const logs = projectOtlpLogRecords(payload);
+        acceptedItems = logs.length;
+        await store.ingestOtlpLogRecords(logs);
         for (const observation of projectAgentEventsFromOtlpLogs(payload)) {
           try {
             await store.ingestAgentEvent(observation);
@@ -92,9 +98,9 @@ export function registerOtlpRoutes(input: {
         }
       }
       if (signal === "metrics") {
-        await store.ingestOtlpMetricPoints(
-          projectOtlpMetricPoints(payload),
-        );
+        const points = projectOtlpMetricPoints(payload);
+        acceptedItems = points.length;
+        await store.ingestOtlpMetricPoints(points);
         const projection =
           projectInstanceTelemetryFromOtlpMetrics(payload);
         await Promise.all([
@@ -106,13 +112,17 @@ export function registerOtlpRoutes(input: {
           ),
         ]);
       }
+      const response = createOtlpPartialSuccessResponse(
+        signal,
+        Math.max(0, receivedItems - acceptedItems),
+      );
       if (contentType === otlpProtobufContentType) {
-        const response = encodeOtlpProtobufSuccess(signal);
-        return c.body(response.buffer as ArrayBuffer, 200, {
+        const encoded = encodeOtlpProtobufResponse(signal, response);
+        return c.body(Uint8Array.from(encoded).buffer, 200, {
           "content-type": otlpProtobufContentType,
         });
       }
-      return c.json({});
+      return c.json(response);
     });
   });
 }
