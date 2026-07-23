@@ -233,7 +233,8 @@ OTLP 投影为可按 domain、service、Project 查询的 Span、LogRecord、Met
 Instance Health 与平台诊断所需的读模型。Observability 页面直接读取 Built-in backend
 展示最近的 Eveland spans/logs/metrics，并在默认 24 小时窗口内按 service 与
 request/job/background 分类聚合 platform/runtime Span 的数量、错误数、错误率、平均延迟与
-p95 延迟；页面不查询 Agent 进程或外部监控产品。
+p95 延迟；带 Project/Deployment 语义属性的 runtime-domain LogRecord 同时形成最近
+build/deploy/runtime lifecycle 时间线。页面不查询 Agent 进程或外部监控产品。
 Built-in 的 service-authenticated OTLP/HTTP 入口必须对 traces、logs、metrics 同时接受标准
 `application/json` 与 `application/x-protobuf`，并按请求编码返回对应的标准空 success
 response；Managed Collector 默认以 protobuf 向 Built-in 发送，不得定义 Eveland 私有

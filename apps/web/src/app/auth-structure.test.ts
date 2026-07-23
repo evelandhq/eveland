@@ -92,6 +92,8 @@ describe("team management web surfaces", () => {
     expect(settings).toContain("Platform operations");
     expect(settings).toContain("P95 latency");
     expect(settings).toContain("initialActivity.platform.operations");
+    expect(settings).toContain("Deployment lifecycle");
+    expect(settings).toContain("initialActivity.platform.deploymentLifecycle");
     expect(settings).toContain("initialActivity.delivery.destinations");
     expect(settings).toContain("saveObservabilitySettings");
     expect(settings).toContain("External destinations");

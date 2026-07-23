@@ -6,6 +6,8 @@ import {
   externalDestinationConfigSchema,
   summarizeCollectorDelivery,
   toPublicObservabilityPolicy,
+  type BuiltInDeploymentLifecycleEvent,
+  type BuiltInOtlpLogRecord,
   type ExternalDestinationConfig,
   type ExternalObservabilityDestination,
   type ObservabilityPolicy,
@@ -98,6 +100,7 @@ export function registerObservabilityRoutes(input: {
       collectorMetrics,
       policy,
       operations,
+      deploymentLogs,
     ] =
       await Promise.all([
         store.listOtlpSpans(query),
@@ -111,6 +114,10 @@ export function registerObservabilityRoutes(input: {
         store.summarizeOtlpSpanOperations({
           since: windowStart,
           until: windowEnd,
+        }),
+        store.listOtlpLogRecords({
+          domain: "runtime",
+          limit: 200,
         }),
       ]);
     const delivery = summarizeCollectorDelivery(
@@ -141,6 +148,9 @@ export function registerObservabilityRoutes(input: {
         windowStart: windowStart.toISOString(),
         windowEnd: windowEnd.toISOString(),
         operations,
+        deploymentLifecycle: deploymentLogs.flatMap(
+          deploymentLifecycleEvent,
+        ),
       },
     });
   });
@@ -373,6 +383,47 @@ function destinationLabel(
     : kind === "langfuse"
       ? "Langfuse"
       : "Custom OTLP";
+}
+
+function deploymentLifecycleEvent(
+  record: BuiltInOtlpLogRecord,
+): BuiltInDeploymentLifecycleEvent[] {
+  const deploymentId =
+    stringAttribute(record.attributes, "eveland.deployment.id") ??
+    record.resource.deploymentId;
+  const phase = stringAttribute(record.attributes, "eveland.log.type");
+  if (
+    !deploymentId ||
+    (phase !== "build" && phase !== "deploy" && phase !== "runtime")
+  ) {
+    return [];
+  }
+  const message =
+    typeof record.body === "string"
+      ? record.body
+      : JSON.stringify(record.body) ?? String(record.body);
+  return [
+    {
+      id: record.id,
+      projectId:
+        stringAttribute(record.attributes, "eveland.project.id") ??
+        record.resource.projectId,
+      deploymentId,
+      phase,
+      message,
+      severityNumber: record.severityNumber,
+      severityText: record.severityText,
+      observedAt: record.timestamp,
+    },
+  ];
+}
+
+function stringAttribute(
+  attributes: Record<string, unknown>,
+  name: string,
+): string | null {
+  const value = attributes[name];
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function createDestination(

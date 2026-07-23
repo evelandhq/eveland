@@ -437,6 +437,60 @@ export function ObservabilitySettings({
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Deployment lifecycle</CardTitle>
+          <CardDescription>
+            Recent deployment-scoped build, deploy, and runtime events
+            projected from standard OpenTelemetry LogRecords.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {initialActivity.platform.deploymentLifecycle.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No deployment lifecycle events have been received yet.
+            </p>
+          ) : (
+            <div className="divide-y">
+              {initialActivity.platform.deploymentLifecycle.map((event) => (
+                <article
+                  key={event.id}
+                  className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{event.phase}</Badge>
+                    {event.severityText ? (
+                      <Badge
+                        variant={
+                          (event.severityNumber ?? 0) >= 17
+                            ? "destructive"
+                            : "secondary"
+                        }
+                      >
+                        {event.severityText}
+                      </Badge>
+                    ) : null}
+                    <time
+                      dateTime={event.observedAt}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {new Date(event.observedAt).toLocaleString()}
+                    </time>
+                  </div>
+                  <p className="text-sm" title={event.message}>
+                    {bodySummary(event.message)}
+                  </p>
+                  <p className="truncate font-mono text-xs text-muted-foreground">
+                    {event.projectId ? `project ${event.projectId} · ` : ""}
+                    deployment {event.deploymentId}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 xl:grid-cols-3">
         <Card>
           <CardHeader>

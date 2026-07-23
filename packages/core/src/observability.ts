@@ -390,10 +390,21 @@ export type BuiltInPlatformOperationSummary = {
   p95DurationMs: number;
   lastSeenAt: string;
 };
+export type BuiltInDeploymentLifecycleEvent = {
+  id: string;
+  projectId: string | null;
+  deploymentId: string;
+  phase: "build" | "deploy" | "runtime";
+  message: string;
+  severityNumber: number | null;
+  severityText: string | null;
+  observedAt: string;
+};
 export type BuiltInPlatformSummary = {
   windowStart: string;
   windowEnd: string;
   operations: BuiltInPlatformOperationSummary[];
+  deploymentLifecycle: BuiltInDeploymentLifecycleEvent[];
 };
 export type BuiltInOtlpActivity = {
   spans: BuiltInOtlpSpan[];
