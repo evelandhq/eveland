@@ -49,6 +49,46 @@ describe("Eveland public website contract", () => {
     expect(workflow).toContain("cloudflare/wrangler-action@v3");
     expect(workflow).toContain("CLOUDFLARE_API_TOKEN");
     expect(workflow).toContain("CLOUDFLARE_ACCOUNT_ID");
+    expect(workflow).toContain("apps/docs/.next/cache");
+    expect(workflow).toContain("key: ${{ runner.os }}-next-docs-");
+  });
+
+  test("runs the three slowest test packages on independent CI runners", () => {
+    const workflow = source("../../../.github/workflows/ci.yml");
+
+    expect(workflow).toContain("strategy:");
+    expect(workflow).toContain("fail-fast: false");
+    expect(workflow).toContain("command: pnpm --filter @eveland/api test");
+    expect(workflow).toContain("command: pnpm --filter @eveland/worker test");
+    expect(workflow).toContain("command: pnpm --filter @eveland/db test");
+    expect(workflow).toContain("--filter='!@eveland/api'");
+    expect(workflow).toContain("--filter='!@eveland/worker'");
+    expect(workflow).toContain("--filter='!@eveland/db'");
+  });
+
+  test("builds only packages whose build differs from typecheck", () => {
+    const workflow = source("../../../.github/workflows/ci.yml");
+
+    expect(workflow).toContain(
+      "pnpm --filter @eveland/sandbox-bwrap --filter @eveland/docs --filter @eveland/web -r build",
+    );
+    expect(workflow).not.toContain("run: pnpm -r build");
+  });
+
+  test("restores isolated Next.js build caches for both applications", () => {
+    const workflow = source("../../../.github/workflows/ci.yml");
+
+    expect(workflow).toContain("apps/web/.next/cache");
+    expect(workflow).toContain("apps/docs/.next/cache");
+    expect(workflow).toContain("key: ${{ runner.os }}-next-web-");
+    expect(workflow).toContain("key: ${{ runner.os }}-next-docs-");
+  });
+
+  test("cancels obsolete CI runs for the same branch", () => {
+    const workflow = source("../../../.github/workflows/ci.yml");
+
+    expect(workflow).toContain("group: ${{ github.workflow }}-${{ github.ref }}");
+    expect(workflow).toContain("cancel-in-progress: true");
   });
 
   test("publishes English and Chinese locale routes", () => {
