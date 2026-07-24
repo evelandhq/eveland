@@ -66,7 +66,9 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `EVELAND_GIT_CLONE_MAX_ATTEMPTS` | Maximum attempts for transient DNS, connection, TLS, timeout, and HTTP 5xx clone failures. | `3` | worker (`source/importer.ts`) |
 | `EVELAND_GIT_CLONE_RETRY_DELAY_MS` | Initial Git retry delay; each subsequent retry doubles it. | `1000` | worker (`source/importer.ts`) |
 | `EVELAND_HEALTH_TIMEOUT_MS` | Timeout waiting for a freshly started deployment to pass its health check. On failure the worker captures masked, bounded runtime state and recent logs before cleanup. | `15000` | worker (`process.ts`) |
-| `EVELAND_RELEASE_RETENTION` | Deployments/releases retained per project by the archive policy. | `3` (minimum 3) | worker (`process.ts`) |
+| `EVELAND_RELEASE_RETENTION` | Minimum newest Deployments/releases retained per project by the automatic archive policy. Route targets and active SessionBindings remain protected independently of age. | `3` (minimum 3) | API + worker |
+| `EVELAND_RELEASE_SWEEP_INTERVAL_MS` | Interval between automatic scans that enqueue archive jobs for unprotected stopped Deployments. `0` disables the automatic sweep. | `3600000` (1 hour) | worker (`worker.ts`) |
+| `EVELAND_RELEASE_SWEEP_BATCH_SIZE` | Maximum new archive jobs enqueued by one automatic Release sweep. | `25` | worker (`runtime/release-reaper.ts`) |
 | `WORKER_ID` | Worker instance identity, used when claiming jobs. | — | `apps/worker/src/worker.ts` |
 | `WORKER_POLL_INTERVAL_MS` | Interval between worker job-queue polls. | `5000` | `apps/worker/src/worker.ts` |
 | `WORKER_JOB_HEARTBEAT_INTERVAL_MS` | Interval between running job lease renewals. Keep it comfortably below `WORKER_JOB_STALE_MS`. | `30000` | worker (`jobs/process.ts`) |

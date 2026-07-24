@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { execa } from "execa";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -323,6 +323,37 @@ describe("createDockerAdapter", () => {
       ["cp", ["-a", "/workspace/source/.", buildDir]],
       ["docker", ["build", "--file", dockerfilePath, "--tag", "eveland/proj_123:rel_456", buildDir], { all: true }],
       ["docker", buildDockerSandboxVerifyArgs("eveland/proj_123:rel_456"), { all: true, reject: false }],
+    ]);
+  });
+
+  test("removes the Docker image and build directory when post-build verification fails", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ all: "" } as never)
+      .mockResolvedValueOnce({ all: "docker build ok" } as never)
+      .mockResolvedValueOnce({
+        exitCode: 1,
+        all: "bwrap: Operation not permitted",
+      } as never)
+      .mockResolvedValueOnce({ failed: false, exitCode: 0, all: "" } as never);
+    const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    await expect(
+      adapter.buildRelease({
+        projectId: "Proj_123",
+        releaseId: "Rel_456",
+        sourcePath: "/workspace/source",
+        buildDir,
+        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      }),
+    ).rejects.toThrow(/Operation not permitted/);
+
+    await expect(access(buildDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(vi.mocked(execa).mock.calls.at(-1)).toEqual([
+      "docker",
+      ["image", "rm", "eveland/proj_123:rel_456"],
+      { all: true, reject: false },
     ]);
   });
 

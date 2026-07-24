@@ -86,6 +86,55 @@ describe("SQL Store jobs", () => {
     ]);
   });
 
+  test("enqueues at most one active archive job for a deployment", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Archive Once Agent",
+      importKind: "zip",
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/archive-once",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "archive-once:release",
+      containerName: "archive-once-release",
+      internalPort: 3000,
+      hostPort: 41910,
+      runtimeKind: "systemd",
+    });
+
+    const first = await store.enqueueDeploymentArchive(
+      project.id,
+      deployment.id,
+    );
+    const duplicate = await store.enqueueDeploymentArchive(
+      project.id,
+      deployment.id,
+    );
+
+    expect(first).toMatchObject({ created: true });
+    expect(duplicate).toMatchObject({
+      created: false,
+      job: { id: first.job.id },
+    });
+    await expect(
+      store.listProjectJobs(project.id, {
+        type: "archive_deployment",
+        limit: 10,
+      }),
+    ).resolves.toHaveLength(1);
+  });
+
   test("marks a project as deleting and replaces queued work with one deletion job", async () => {
     const store = createTestStore();
     const pendingSourcePath = "/data/uploads/zip-pending/source";

@@ -5,7 +5,8 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { processNextJob } from "../jobs/process.js";
-import { resolveRuntimeKind } from "../runtime/select.js";
+import { sweepReleaseRetention } from "../runtime/release-reaper.js";
+import { createRuntimeAdapterFromEnv, resolveRuntimeKind } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
 
 async function pathExists(target: string): Promise<boolean> {
@@ -87,6 +88,57 @@ try {
     throw new Error(`Unexpected health response after restart: ${restartResponse.status} ${await restartResponse.text()}`);
   }
   console.log("RESTART OK");
+
+  // --- automatic Release retention: create four real systemd Releases, move the
+  // stable route to the newest one, stop the oldest, sweep it, and prove both
+  // persistent state and the on-disk Release are reclaimed through the archive
+  // job pipeline. The minimum retention floor is three Releases.
+  const knownDeploymentIds = new Set([deployment.id]);
+  let newestDeployment = deployment;
+  for (let index = 0; index < 3; index += 1) {
+    await store.enqueueJob(project.id, "build_deploy");
+    if (!(await processNextJob(store, "smoke-worker"))) {
+      throw new Error(`retention build_deploy ${index + 2} did not run.`);
+    }
+    const created = (await store.listDeployments(project.id)).find(
+      (entry) => !knownDeploymentIds.has(entry.id),
+    );
+    if (!created) throw new Error(`retention build_deploy ${index + 2} did not record a new Deployment.`);
+    knownDeploymentIds.add(created.id);
+    newestDeployment = created;
+  }
+
+  await store.promoteDeployment(project.id, newestDeployment.id);
+  const runtime = createRuntimeAdapterFromEnv();
+  await runtime.stopProcess(deployment.containerName);
+  await store.updateDeploymentStatus(deployment.id, "stopped");
+
+  const oldestRelease = await store.getRelease(deployment.releaseId);
+  if (!oldestRelease) throw new Error(`Oldest Release ${deployment.releaseId} was not recorded.`);
+  if (!(await pathExists(oldestRelease.imageTag))) {
+    throw new Error(`Oldest Release artifact was missing before retention sweep: ${oldestRelease.imageTag}`);
+  }
+
+  const enqueuedArchives = await sweepReleaseRetention(store, { keepRecent: 3, limit: 25 });
+  if (enqueuedArchives !== 1) {
+    throw new Error(`Expected one automatic archive job, got ${enqueuedArchives}.`);
+  }
+  if (!(await processNextJob(store, "smoke-worker"))) {
+    throw new Error("automatic archive_deployment job did not run.");
+  }
+
+  const archivedDeployment = await store.getDeployment(deployment.id);
+  if (archivedDeployment?.status !== "archived") {
+    throw new Error(`Oldest Deployment was not archived: ${JSON.stringify(archivedDeployment)}`);
+  }
+  if (await pathExists(oldestRelease.imageTag)) {
+    throw new Error(`Oldest Release artifact still exists after retention sweep: ${oldestRelease.imageTag}`);
+  }
+  const retentionLogs = await store.listLogs(project.id, "deploy");
+  if (!retentionLogs.some((log) => log.line.includes("automatically archived by retention policy"))) {
+    throw new Error(`Automatic retention log was not recorded: ${JSON.stringify(retentionLogs.map((log) => log.line))}`);
+  }
+  console.log("RELEASE RETENTION OK");
 
   // --- delete_project: prove it stops the unit, removes its env file, and drops the project.
   // This replaces the manual `systemctl stop`/`reset-failed` teardown this script used to do

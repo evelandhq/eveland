@@ -5,7 +5,7 @@ import {
   maskKnownSecrets,
 } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { waitForHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
@@ -202,16 +202,22 @@ export async function processJob(
         line: `Building release ${releaseId} from ${revision.sourcePath}.`,
       });
 
-      const build = await runtime.buildRelease({
-        projectId: project.id,
-        releaseId,
-        sourcePath: revision.sourcePath,
-        buildDir,
-        commandContext,
-        ...(workflowPostgresUrl && commandContext.isEveProject
-          ? { workflowWorld: PLATFORM_WORKFLOW_WORLD }
-          : {}),
-      });
+      let build;
+      try {
+        build = await runtime.buildRelease({
+          projectId: project.id,
+          releaseId,
+          sourcePath: revision.sourcePath,
+          buildDir,
+          commandContext,
+          ...(workflowPostgresUrl && commandContext.isEveProject
+            ? { workflowWorld: PLATFORM_WORKFLOW_WORLD }
+            : {}),
+        });
+      } catch (error) {
+        await rm(buildDir, { recursive: true, force: true });
+        throw error;
+      }
       if (build.log.trim()) {
         await store.appendLog({
           projectId: job.projectId,
@@ -245,6 +251,7 @@ export async function processJob(
       await mkdir(observerOutbox.workerDir, { recursive: true });
       // Only the process started by this job is its cleanup responsibility.
       let startedProcess: string | null = null;
+      let deploymentRecorded = false;
       try {
         const started = await runtime.startProcess({
           processName,
@@ -279,6 +286,7 @@ export async function processJob(
           hostPort,
           runtimeKind: runtime.name,
         });
+        deploymentRecorded = true;
         if (!previousDeployment && build.schedulerDefinitions?.length) {
           await store.setProjectSchedulerTarget(project.id, deployment.id);
         }
@@ -335,6 +343,39 @@ export async function processJob(
             "deploy",
             secretValues,
           );
+        }
+        if (!deploymentRecorded) {
+          const cleanupErrors: string[] = [];
+          if (runtime.removeRelease) {
+            try {
+              await runtime.removeRelease(build.releaseRef);
+            } catch (cleanupError) {
+              cleanupErrors.push(
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : String(cleanupError),
+              );
+            }
+          }
+          try {
+            await rm(buildDir, { recursive: true, force: true });
+          } catch (cleanupError) {
+            cleanupErrors.push(
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : String(cleanupError),
+            );
+          }
+          if (cleanupErrors.length > 0) {
+            await store.appendLog({
+              projectId: job.projectId,
+              type: "deploy",
+              line: maskKnownSecrets(
+                `Cleanup after failed deploy also failed: ${cleanupErrors.join("; ")}`,
+                secretValues,
+              ),
+            });
+          }
         }
         throw error;
       }

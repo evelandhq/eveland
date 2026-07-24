@@ -1398,3 +1398,18 @@ Agent 项目即使声明 `^0.27.0`，也必须刷新 lockfile 并重新部署才
 必须一并升级。自定义 NDJSON consumer 必须忽略空行；仅当 relay/proxy 自己拥有重连策略时
 才应使用新的 reconnect opt-out。0.25.x/0.26.x 继续受支持但 UI 提醒升级，窗口外版本仍 fail
 closed。
+---
+
+## 30. 2026-07-24 follow-up：Release 自动回收
+
+`EVELAND_RELEASE_RETENTION` 不再只作为手动 Archive 的保护谓词。Worker 启动时以及每个
+`EVELAND_RELEASE_SWEEP_INTERVAL_MS` 周期扫描 Project retention state，对超过最近 N 个、
+不被 mutable route 或非终态 SessionBinding 引用、且已经 `stopped` 的 Deployment 幂等排入
+`archive_deployment`；单轮最多新增 `EVELAND_RELEASE_SWEEP_BATCH_SIZE` 个 job。按 Deployment
+行串行化的 Store 操作保证重叠 tick 或多 Worker 不会为同一 Deployment 创建重复 active job。
+
+Archive 继续按持久化的 `runtimeKind` 删除 systemd Release 或 Docker image，同时无条件删除
+`EVELAND_DATA_DIR/builds/<projectId>/<releaseId>`，因此 Docker build context 也受同一 retention
+上限约束。`build_deploy` 在 Deployment 落库前失败时同样删除 partial build directory；若 runtime
+artifact 已经创建，则先通过对应 adapter 删除。已成功落库的 Deployment 不走该失败清理路径，
+仍由正常 retention、route 与 SessionBinding 保护规则管理。

@@ -10,7 +10,7 @@ import {
   maskKnownSecrets,
 } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import {
   ensureDeploymentActive,
@@ -209,6 +209,12 @@ export async function processRuntimeJob(
       const deployment = await store.getDeployment(deploymentId);
       if (!deployment || deployment.projectId !== job.projectId)
         throw new Error("Deployment not found for archive.");
+      if (
+        job.payload.automatic === true &&
+        deployment.status !== "stopped"
+      ) {
+        return;
+      }
       const configuredRetention = Number(
         process.env.EVELAND_RELEASE_RETENTION ?? 3,
       );
@@ -237,12 +243,26 @@ export async function processRuntimeJob(
       const release = await store.getRelease(deployment.releaseId);
       if (release && adapter.removeRelease)
         await adapter.removeRelease(release.imageTag);
+      await rm(
+        path.join(
+          options.dataDir ??
+            process.env.EVELAND_DATA_DIR ??
+            ".eveland-data",
+          "builds",
+          job.projectId,
+          deployment.releaseId,
+        ),
+        { recursive: true, force: true },
+      );
       await store.updateDeploymentStatus(deployment.id, "archived");
       await store.appendLog({
         projectId: job.projectId,
         deploymentId,
         type: "deploy",
-        line: `Deployment ${deployment.deploymentKey} archived by retention policy.`,
+        line:
+          job.payload.automatic === true
+            ? `Deployment ${deployment.deploymentKey} automatically archived by retention policy.`
+            : `Deployment ${deployment.deploymentKey} archived.`,
       });
       return;
     }

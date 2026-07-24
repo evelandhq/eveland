@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { prepareReleaseTree } from "./prepare-release.js";
@@ -248,51 +248,62 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const imageTag = `eveland/${processSafeName(input.projectId)}:${processSafeName(input.releaseId)}`;
-      const observerInjection = await prepareReleaseTree({
-        sourcePath: input.sourcePath,
-        buildDir: input.buildDir,
-        workflowWorld: input.workflowWorld,
-        scheduler: input.commandContext.isEveProject,
-      });
-      const sandboxInjection = input.commandContext.isEveProject
-        ? await injectSandboxModules({ releaseDir: path.resolve(input.buildDir), backendDistDir: config.backendDistDir() })
-        : undefined;
-      if (sandboxInjection) {
-        await writeSandboxVerifyScript(path.resolve(input.buildDir));
+      try {
+        const observerInjection = await prepareReleaseTree({
+          sourcePath: input.sourcePath,
+          buildDir: input.buildDir,
+          workflowWorld: input.workflowWorld,
+          scheduler: input.commandContext.isEveProject,
+        });
+        const sandboxInjection = input.commandContext.isEveProject
+          ? await injectSandboxModules({ releaseDir: path.resolve(input.buildDir), backendDistDir: config.backendDistDir() })
+          : undefined;
+        if (sandboxInjection) {
+          await writeSandboxVerifyScript(path.resolve(input.buildDir));
+        }
+        const dockerfilePath = await writeGeneratedDockerfile(input.buildDir, input.workflowWorld);
+        const log = await dockerBuild(input.buildDir, imageTag, dockerfilePath);
+        if (sandboxInjection) {
+          await verifyDockerSandbox(imageTag);
+        }
+        return {
+          releaseRef: imageTag,
+          schedulerDefinitions: observerInjection.scheduler?.definitions,
+          log: [
+            log,
+            `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
+            observerInjection.workflowWorld
+              ? `Injected platform workflow world: ${input.workflowWorld?.packageName} (${observerInjection.workflowWorld.agentConfigPath})`
+              : undefined,
+            sandboxInjection
+              ? `Injected eve sandbox modules: ${sandboxInjection.generated.join(", ") || "none"}`
+              : undefined,
+            sandboxInjection?.generated.length === 0
+              ? "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
+                "be injected. The deployed agent will fall back to eve's default sandbox backend chain."
+              : undefined,
+            sandboxInjection?.replaced.length
+              ? `WARNING: replaced the project's authored sandbox (${sandboxInjection.replaced.join(", ")}). ` +
+                "eveland selects the sandbox backend for Docker deployments; the authored module's " +
+                "bootstrap() and onSession() are not used, while workspace seeds are preserved."
+              : undefined,
+            sandboxInjection
+              ? "Docker sandbox self-check passed: bwrap executed TypeScript with deployment-equivalent permissions."
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        };
+      } catch (error) {
+        await Promise.allSettled([
+          execa("docker", ["image", "rm", imageTag], {
+            all: true,
+            reject: false,
+          }),
+          rm(input.buildDir, { recursive: true, force: true }),
+        ]);
+        throw error;
       }
-      const dockerfilePath = await writeGeneratedDockerfile(input.buildDir, input.workflowWorld);
-      const log = await dockerBuild(input.buildDir, imageTag, dockerfilePath);
-      if (sandboxInjection) {
-        await verifyDockerSandbox(imageTag);
-      }
-      return {
-        releaseRef: imageTag,
-        schedulerDefinitions: observerInjection.scheduler?.definitions,
-        log: [
-          log,
-          `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
-          observerInjection.workflowWorld
-            ? `Injected platform workflow world: ${input.workflowWorld?.packageName} (${observerInjection.workflowWorld.agentConfigPath})`
-            : undefined,
-          sandboxInjection
-            ? `Injected eve sandbox modules: ${sandboxInjection.generated.join(", ") || "none"}`
-            : undefined,
-          sandboxInjection?.generated.length === 0
-            ? "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
-              "be injected. The deployed agent will fall back to eve's default sandbox backend chain."
-            : undefined,
-          sandboxInjection?.replaced.length
-            ? `WARNING: replaced the project's authored sandbox (${sandboxInjection.replaced.join(", ")}). ` +
-              "eveland selects the sandbox backend for Docker deployments; the authored module's " +
-              "bootstrap() and onSession() are not used, while workspace seeds are preserved."
-            : undefined,
-          sandboxInjection
-            ? "Docker sandbox self-check passed: bwrap executed TypeScript with deployment-equivalent permissions."
-            : undefined,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-      };
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
       const log = await dockerRun({

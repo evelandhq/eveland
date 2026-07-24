@@ -9,6 +9,7 @@ import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
+import { sweepReleaseRetention } from "./runtime/release-reaper.js";
 import { reconcileRuntimeInstances, recoverStartingRuntimeInstances } from "./runtime/activation-manager.js";
 import { planDueSchedules } from "./scheduler/planner.js";
 import { createWorkerTelemetry } from "./runtime/worker-telemetry.js";
@@ -16,6 +17,9 @@ import { createWorkerTelemetry } from "./runtime/worker-telemetry.js";
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
 const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_MS ?? 3_600_000);
+const releaseSweepIntervalMs = Number(
+  process.env.EVELAND_RELEASE_SWEEP_INTERVAL_MS ?? 3_600_000,
+);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
@@ -130,11 +134,29 @@ if (orphanSweepIntervalMs > 0) {
   orphanTimer = setInterval(sweepOrphans, orphanSweepIntervalMs);
 }
 
+const sweepReleases = () => {
+  sweepReleaseRetention(storeFactory.store, {
+    keepRecent: Number(process.env.EVELAND_RELEASE_RETENTION ?? 3),
+    limit: Number(process.env.EVELAND_RELEASE_SWEEP_BATCH_SIZE ?? 25),
+  }).catch((error: unknown) =>
+    console.error(
+      "Release retention sweep failed:",
+      error instanceof Error ? error.message : String(error),
+    ),
+  );
+};
+let releaseTimer: NodeJS.Timeout | undefined;
+if (releaseSweepIntervalMs > 0) {
+  sweepReleases();
+  releaseTimer = setInterval(sweepReleases, releaseSweepIntervalMs);
+}
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     clearInterval(timer);
     clearInterval(telemetryTimer);
     if (orphanTimer) clearInterval(orphanTimer);
+    if (releaseTimer) clearInterval(releaseTimer);
     void storeFactory.close().finally(() => process.exit(0));
   });
 }

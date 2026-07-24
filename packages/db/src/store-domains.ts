@@ -258,6 +258,11 @@ export interface SecretStore {
 export interface JobStore {
   enqueueJob(projectId: string, type: JobType, payload?: Record<string, unknown>): Promise<Job>;
   listProjectJobs(projectId: string, options?: { type?: JobType; limit?: number }): Promise<Job[]>;
+  enqueueDeploymentArchive(
+    projectId: string,
+    deploymentId: string,
+    options?: { automatic?: boolean },
+  ): Promise<{ job: Job; created: boolean }>;
   enqueueDeploymentActivation(
     projectId: string,
     deploymentId: string,

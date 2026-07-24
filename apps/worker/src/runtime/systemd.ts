@@ -455,9 +455,10 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       const unit = `${processName}.service`;
       await runSystemctl("stop", unit);
       await runSystemctl("reset-failed", unit);
-      // Secrets are decrypted onto disk for systemd's EnvironmentFile; delete them once the
-      // unit is stopped instead of leaving plaintext behind indefinitely. Release-dir reaping
-      // is out of scope (accepted disk hygiene debt) -- this only covers the env file.
+      // Secrets are decrypted onto disk for systemd's EnvironmentFile; delete
+      // them once the unit is stopped instead of leaving plaintext behind.
+      // Release directories are removed separately when retention archives the
+      // stopped Deployment.
       await rm(path.join(envDir, `${processName}.env`), { force: true });
     },
     async removeRelease(releaseRef: string): Promise<void> {

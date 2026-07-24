@@ -24,4 +24,50 @@ describe.skipIf(!database)("Postgres job leases", () => {
       await store.deleteProject(project.id);
     }
   });
+
+  test("serializes concurrent archive enqueue attempts per deployment", async () => {
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({
+      name: `Archive concurrency ${Date.now()}`,
+      importKind: "zip",
+    });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/archive-concurrency",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "archive-concurrency:release",
+      containerName: "archive-concurrency-release",
+      internalPort: 3000,
+      hostPort: 41920,
+      runtimeKind: "systemd",
+    });
+
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 8 }, () =>
+          store.enqueueDeploymentArchive(project.id, deployment.id, {
+            automatic: true,
+          }),
+        ),
+      );
+
+      expect(results.filter((result) => result.created)).toHaveLength(1);
+      await expect(
+        store.listProjectJobs(project.id, {
+          type: "archive_deployment",
+          limit: 10,
+        }),
+      ).resolves.toHaveLength(1);
+    } finally {
+      await store.deleteProject(project.id);
+    }
+  });
 });

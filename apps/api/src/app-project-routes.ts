@@ -520,9 +520,10 @@ export function registerProjectRoutes(input: {
           },
           409,
         );
-      const job = await store.enqueueJob(projectId, "archive_deployment", {
+      const { job } = await store.enqueueDeploymentArchive(
+        projectId,
         deploymentId,
-      });
+      );
       return c.json({ job }, 202);
     },
   );

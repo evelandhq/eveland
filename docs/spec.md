@@ -672,7 +672,7 @@ http://<deploymentKey>--<projectSlug>.agent.localhost:4080
 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个
 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
-底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 的主操作 `Sync, deploy & promote` 在新 Deployment 通过健康检查并创建 preview route 后，显式 promote 该次任务创建的确切 Deployment；次操作 `Sync & create preview` 保留底层默认行为。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation、cancel 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。
+底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 的主操作 `Sync, deploy & promote` 在新 Deployment 通过健康检查并创建 preview route 后，显式 promote 该次任务创建的确切 Deployment；次操作 `Sync & create preview` 保留底层默认行为。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation、cancel 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。Worker 周期性扫描不受保护且已经 `stopped` 的旧 Deployment，幂等排入 archive job；archive 按 Deployment 保存的 `runtimeKind` 删除 runtime artifact 和对应的 build directory。构建或启动在 Deployment 落库前失败时也必须删除已准备的 build directory 和已创建的 runtime artifact，不能留下数据库无法寻址的 Release。
 
 cron、public request、turn 和 stream 在访问进程前获取有期限的 ActivationLease。同一
 dormant Deployment 的并发唤醒只允许一个 starter；API 只持久化/等待状态，不获得
