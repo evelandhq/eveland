@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.11.0](https://github.com/evelandhq/eveland/compare/v0.10.0...v0.11.0) (2026-07-24)
+
+
+### Features
+
+* support Eve 0.27 ([#126](https://github.com/evelandhq/eveland/issues/126)) ([c646de1](https://github.com/evelandhq/eveland/commit/c646de1ae3307e061f697733fa7b880b585db2a0))
+
+
+### Bug Fixes
+
+* reclaim stale release artifacts ([84f9e09](https://github.com/evelandhq/eveland/commit/84f9e09251c66a0038f99584bf88da45ed3df9de)), closes [#130](https://github.com/evelandhq/eveland/issues/130)
+* recover retained deployments without source snapshots ([#129](https://github.com/evelandhq/eveland/issues/129)) ([365f721](https://github.com/evelandhq/eveland/commit/365f721d0475d54ad2409ccc883e8765d7c1acc1))
+
 ## [0.10.0](https://github.com/evelandhq/eveland/compare/v0.9.0...v0.10.0) (2026-07-21)
 
 
