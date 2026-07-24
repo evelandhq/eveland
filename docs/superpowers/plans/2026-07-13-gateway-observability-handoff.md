@@ -1368,3 +1368,33 @@ Playground、Gateway 与 scheduler adapter 的共享 fail-closed 门禁；旧 0.
 discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox public type
 compatibility。UI 只把最新支持线 0.27.x 显示为绿色；0.25.x/0.26.x 保持可运行但提醒升级，窗口外
 版本继续阻断。
+
+---
+
+## 29. 2026-07-24 follow-up：Eve 0.27.3 verified patch baseline
+
+Eve 0.27.1、0.27.2 与 0.27.3 已完成 release notes、`eve@0.27.0..eve@0.27.3` 源码和实际发布包
+核对。三 minor 支持窗口保持 0.25.x、0.26.x 与 0.27.x；精确矩阵 patch 更新为 0.25.3、
+0.26.2 与 0.27.3。默认开发、Web Client、Agent Auth 和完整 Linux fixture 使用 0.27.3，
+basic systemd smoke 继续使用窗口最旧端的 0.25.3。
+
+源码与发布包核对得到以下兼容结论：
+
+- 0.27.1 增加 Workflow 乐观并发保护、完整保留队列化 delivery payload，并改善整棵 turn tree
+  的预算拒绝/取消与 Slack/Teams routing；
+- 0.27.2 在 NDJSON stream 打开时先发送空白字节，并在 Client 增加显式 reconnect opt-out；
+  Eveland API monitor 已忽略空行，Gateway 保持无缓冲透传，Playground 保留默认 durable
+  reconnect，因此无需 adapter 分支；
+- 0.27.3 修复带 prefix 的 callback route、Vercel multi-agent callback、ESM bundling 与
+  Linear image input，并在 deployment 变化时刷新 dynamic tools；sandbox workspace seed 现在
+  在 bootstrap 前写入；
+- canonical session/continuation/cancel/stream protocol message、Vercel OIDC headers、Hook event
+  schema、Schedule public definitions 与 `SandboxBackend` public contract 未变。Eveland 的平台
+  backend 替换 authored `bootstrap`/`onSession`，因此 Agent 仍应通过 workspace seed 提供
+  sandbox 初始文件，不应依赖 authored bootstrap。
+
+Agent 项目即使声明 `^0.27.0`，也必须刷新 lockfile 并重新部署才能确定获得 0.27.3；Eve
+0.27.3 的 AI SDK peer 下限已提高到 `ai@^7.0.34`，项目与平台 workspace 中单独锁定的旧版本
+必须一并升级。自定义 NDJSON consumer 必须忽略空行；仅当 relay/proxy 自己拥有重连策略时
+才应使用新的 reconnect opt-out。0.25.x/0.26.x 继续受支持但 UI 提醒升级，窗口外版本仍 fail
+closed。

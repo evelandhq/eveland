@@ -30,7 +30,7 @@ import {
 registerGatewayTestCleanup();
 
 describe("Gateway", () => {
-  test("streams the first NDJSON chunk without waiting for the upstream session to finish", async () => {
+  test("forwards Eve's leading NDJSON whitespace without waiting for the first event", async () => {
     let markClosed!: () => void;
     const closed = new Promise<void>((resolve) => {
       markClosed = resolve;
@@ -38,7 +38,8 @@ describe("Gateway", () => {
     const upstream = await startUpstream((_request, response) => {
       response.once("close", markClosed);
       response.writeHead(200, { "content-type": "application/x-ndjson" });
-      response.write('{"type":"turn.started"}\n');
+      response.write("\n");
+      setTimeout(() => response.write('{"type":"turn.started"}\n'), 50);
       setTimeout(() => response.end('{"type":"turn.completed"}\n'), 250);
     });
     const app = createGatewayApp(
@@ -55,8 +56,10 @@ describe("Gateway", () => {
     const reader = response.body!.getReader();
     const first = await reader.read();
 
-    expect(new TextDecoder().decode(first.value)).toContain("turn.started");
+    expect(new TextDecoder().decode(first.value)).toBe("\n");
     expect(Date.now() - startedAt).toBeLessThan(200);
+    const second = await reader.read();
+    expect(new TextDecoder().decode(second.value)).toContain("turn.started");
     await reader.cancel();
     await expect(
       Promise.race([

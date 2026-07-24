@@ -6,7 +6,7 @@ describe("systemd integration smoke", () => {
     const smokeScript = await readFile(new URL("./systemd-smoke.ts", import.meta.url), "utf8");
 
     expect(smokeScript.match(/dependencies: \{ eve: "0\.25\.3" \}/g)).toHaveLength(1);
-    expect(smokeScript.match(/dependencies: \{ eve: "0\.27\.0" \}/g)).toHaveLength(1);
+    expect(smokeScript.match(/dependencies: \{ eve: "0\.27\.3" \}/g)).toHaveLength(1);
     expect(smokeScript).toContain("/eve/v1/health");
     expect(smokeScript).toContain('process.env.EVELAND_HEALTH_TIMEOUT_MS = "1"');
   });
