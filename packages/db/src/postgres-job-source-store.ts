@@ -54,6 +54,54 @@ export function createPostgresJobSourceStore({
       return rows.map(jobRowToJob);
     },
 
+    async enqueueDeploymentArchive(projectId, deploymentId, options = {}) {
+      return db.transaction(async (tx) => {
+        const [deployment] = await tx
+          .select({
+            id: deployments.id,
+            projectId: deployments.projectId,
+          })
+          .from(deployments)
+          .where(eq(deployments.id, deploymentId))
+          .limit(1)
+          .for("update");
+        if (!deployment || deployment.projectId !== projectId) {
+          throw new Error("Deployment archive Project is invalid.");
+        }
+        const [existing] = await tx
+          .select()
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.projectId, projectId),
+              eq(jobs.type, "archive_deployment"),
+              or(eq(jobs.status, "queued"), eq(jobs.status, "running")),
+              sql`${jobs.payload}->>'deploymentId' = ${deploymentId}`,
+            ),
+          )
+          .orderBy(desc(jobs.createdAt))
+          .limit(1);
+        if (existing) {
+          return { job: jobRowToJob(existing), created: false };
+        }
+        const [created] = await tx
+          .insert(jobs)
+          .values({
+            id: createId("job"),
+            projectId,
+            type: "archive_deployment",
+            status: "queued",
+            payload: {
+              deploymentId,
+              ...(options.automatic ? { automatic: true } : {}),
+            },
+          })
+          .returning();
+        if (!created) throw new Error("Failed to enqueue Deployment archive.");
+        return { job: jobRowToJob(created), created: true };
+      });
+    },
+
     async enqueueDeploymentActivation(
       projectId,
       deploymentId,

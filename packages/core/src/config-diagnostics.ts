@@ -143,6 +143,8 @@ const definitions: ConfigurationDefinition[] = [
   entry("EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS", ["api"], "Maximum distinct Eve sessions projected in one collector round.", "100"),
   entry("EVELAND_COLLECTOR_MAX_BACKLOG_BYTES", ["api"], "Queued observer bytes that trigger degraded collector health.", "1073741824"),
   entry("EVELAND_RELEASE_RETENTION", ["api", "worker"], "Minimum number of newest Release artifacts protected from archival.", "3"),
+  entry("EVELAND_RELEASE_SWEEP_INTERVAL_MS", ["worker"], "Interval between automatic Release retention sweeps.", "3600000"),
+  entry("EVELAND_RELEASE_SWEEP_BATCH_SIZE", ["worker"], "Maximum archive jobs enqueued by one Release retention sweep.", "25"),
   { ...entry("EVELAND_GATEWAY_PUBLIC_SCHEME", ["api", "gateway"], "Public Agent URL scheme and affinity-cookie security mode.", "http"), emptyUsesFallback: true },
   {
     name: "EVELAND_GATEWAY_PUBLIC_PORT",

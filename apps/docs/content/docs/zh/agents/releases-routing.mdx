@@ -28,4 +28,4 @@ Eve 返回 Session ID 后，Eveland 持久化它与所属 Deployment 的 Binding
 
 ## Retention
 
-Eveland 至少保护配置数量的最新 Release。可变 Route Target、活跃 SessionBinding 或其他生命周期保护可以让更旧 Release 不受年龄影响地保留。
+Eveland 至少保护配置数量的最新 Release。可变 Route Target、活跃 SessionBinding 或其他生命周期保护可以让更旧 Release 不受年龄影响地保留。旧 Deployment 的 RuntimeInstance 停止且不再受保护后，Worker 会自动归档并删除 runtime artifact 与 build directory；Deployment 落库前失败的构建会立即清理。

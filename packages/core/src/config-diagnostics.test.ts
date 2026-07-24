@@ -120,6 +120,8 @@ describe("configuration diagnostics", () => {
       expect.objectContaining({ name: "EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE", value: "25" }),
       expect.objectContaining({ name: "EVELAND_ACTIVATION_START_STALE_MS", value: "300000" }),
       expect.objectContaining({ name: "EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE", value: "100" }),
+      expect.objectContaining({ name: "EVELAND_RELEASE_SWEEP_INTERVAL_MS", value: "3600000" }),
+      expect.objectContaining({ name: "EVELAND_RELEASE_SWEEP_BATCH_SIZE", value: "25" }),
     ]));
   });
 });

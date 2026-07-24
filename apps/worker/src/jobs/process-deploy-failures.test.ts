@@ -24,6 +24,127 @@ import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler
 import { createFixtureEveProject } from "./process.test-support.js";
 
 describe("processNextJob", () => {
+  test("removes a partially prepared build directory when buildRelease fails", async () => {
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-failed-build-"));
+    vi.stubEnv("EVELAND_DATA_DIR", dataDir);
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Failed Build Cleanup Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+    let buildDir: string | null = null;
+
+    try {
+      await expect(
+        processNextJob(store, "worker-a", {
+          runtime: {
+            name: "systemd",
+            async buildRelease(input) {
+              buildDir = input.buildDir;
+              await mkdir(input.buildDir, { recursive: true });
+              await writeFile(
+                path.join(input.buildDir, "partial-artifact"),
+                "partial",
+              );
+              throw new Error("dependency install failed");
+            },
+            async startProcess() {
+              throw new Error("startProcess must not run");
+            },
+            async stopProcess() {
+              throw new Error("stopProcess must not run");
+            },
+          },
+          allocateHostPort: () => 41098,
+        }),
+      ).resolves.toBe(true);
+
+      expect(buildDir).not.toBeNull();
+      await expect(access(buildDir!)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("removes a successful build artifact when startup fails before the deployment is recorded", async () => {
+    const dataDir = await mkdtemp(
+      path.join(os.tmpdir(), "eveland-failed-start-"),
+    );
+    vi.stubEnv("EVELAND_DATA_DIR", dataDir);
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Failed Start Cleanup Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+    let buildDir: string | null = null;
+    const removedReleases: string[] = [];
+
+    try {
+      await expect(
+        processNextJob(store, "worker-a", {
+          runtime: {
+            name: "docker",
+            async buildRelease(input) {
+              buildDir = input.buildDir;
+              await mkdir(input.buildDir, { recursive: true });
+              await writeFile(
+                path.join(input.buildDir, "complete-artifact"),
+                "complete",
+              );
+              return { releaseRef: "failed-start:image", log: "" };
+            },
+            async startProcess() {
+              throw new Error("container failed to start");
+            },
+            async stopProcess() {
+              throw new Error("stopProcess must not run");
+            },
+            async removeRelease(releaseRef) {
+              removedReleases.push(releaseRef);
+            },
+          },
+          allocateHostPort: () => 41097,
+        }),
+      ).resolves.toBe(true);
+
+      expect(removedReleases).toEqual(["failed-start:image"]);
+      expect(buildDir).not.toBeNull();
+      await expect(access(buildDir!)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("fails a build_deploy job when the deployment port never becomes reachable", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();

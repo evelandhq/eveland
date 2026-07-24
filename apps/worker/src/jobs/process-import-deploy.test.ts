@@ -663,7 +663,10 @@ describe("processNextJob", () => {
     );
   });
 
-  test("archives only an unprotected artifact outside the recent-three retention window", async () => {
+  test("archives only an unprotected artifact outside the recent-three retention window and removes its build directory", async () => {
+    const dataDir = await mkdtemp(
+      path.join(os.tmpdir(), "eveland-archive-build-"),
+    );
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
@@ -705,12 +708,106 @@ describe("processNextJob", () => {
     await store.enqueueJob(project.id, "archive_deployment", {
       deploymentId: versions[0]!.id,
     });
+    const buildDir = path.join(
+      dataDir,
+      "builds",
+      project.id,
+      versions[0]!.releaseId,
+    );
+    await mkdir(buildDir, { recursive: true });
+    await writeFile(path.join(buildDir, "artifact"), "release");
+    const calls: string[] = [];
+
+    try {
+      await expect(
+        processNextJob(store, "worker-a", {
+          dataDir,
+          runtime: {
+            name: "docker",
+            async buildRelease() {
+              throw new Error("not used");
+            },
+            async startProcess() {
+              throw new Error("not used");
+            },
+            async stopProcess(name) {
+              calls.push(`stop:${name}`);
+            },
+            async removeRelease(ref) {
+              calls.push(`remove:${ref}`);
+            },
+          },
+        }),
+      ).resolves.toBe(true);
+
+      expect(calls).toEqual(["stop:process-v0", "remove:image:v0"]);
+      await expect(access(buildDir)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(store.getDeployment(versions[0]!.id)).resolves.toMatchObject({
+        status: "archived",
+      });
+      await expect(store.getDeployment(versions[1]!.id)).resolves.toMatchObject({
+        status: "running",
+      });
+      await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
+        expect.objectContaining({
+          line: `Deployment ${versions[0]!.deploymentKey} archived.`,
+        }),
+      );
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not automatically archive a deployment that became running after the sweep", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Retention Race Worker",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const versions: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      versions.push(
+        await store.recordDeployment({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          imageTag: `retention-race:v${index}`,
+          containerName: `retention-race-v${index}`,
+          internalPort: 3000,
+          hostPort: 41220 + index,
+          runtimeKind: "systemd",
+        }),
+      );
+    }
+    await store.ensureDeploymentRoutes(
+      project.id,
+      versions[3]!.id,
+      "agent.localhost",
+    );
+    await store.updateDeploymentStatus(versions[0]!.id, "stopped");
+    await store.enqueueJob(project.id, "archive_deployment", {
+      deploymentId: versions[0]!.id,
+      automatic: true,
+    });
+    await store.updateDeploymentStatus(versions[0]!.id, "running");
     const calls: string[] = [];
 
     await expect(
       processNextJob(store, "worker-a", {
         runtime: {
-          name: "docker",
+          name: "systemd",
           async buildRelease() {
             throw new Error("not used");
           },
@@ -727,11 +824,8 @@ describe("processNextJob", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(calls).toEqual(["stop:process-v0", "remove:image:v0"]);
+    expect(calls).toEqual([]);
     await expect(store.getDeployment(versions[0]!.id)).resolves.toMatchObject({
-      status: "archived",
-    });
-    await expect(store.getDeployment(versions[1]!.id)).resolves.toMatchObject({
       status: "running",
     });
   });
