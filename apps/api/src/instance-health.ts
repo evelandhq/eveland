@@ -1,5 +1,4 @@
 import type { Store } from "@eveland/db";
-import { COLLECTOR_SELF_SERVICE_NAME } from "@eveland/core/observability";
 import {
   analyzeHostCapacity,
   summarizeWorkerHealth,
@@ -20,7 +19,7 @@ export async function collectInstanceHealth(
 ): Promise<InstanceHealthReport> {
   const now = options.now?.() ?? new Date();
   const since = new Date(now.getTime() - options.historyHours * 3_600_000);
-  const [heartbeats, metrics, workload, gateway, collectorMetrics] =
+  const [heartbeats, metrics, workload, gateway, lastBatchAt] =
     await Promise.all([
       store.listWorkerHeartbeats(),
       store.listHostMetrics({
@@ -29,30 +28,29 @@ export async function collectInstanceHealth(
       }),
       store.getInstanceWorkload(),
       options.gatewayHealth(),
-      store.listOtlpMetricPoints({
-        serviceName: COLLECTOR_SELF_SERVICE_NAME,
-        limit: 1,
-      }),
+      store.latestOtlpBatchReceivedAt(),
     ]);
   const worker = summarizeWorkerHealth(heartbeats[0] ?? null, now);
-  const latestCollectorMetric = collectorMetrics[0];
+  // The Collector is the only sender to Built-in, so a recent batch is what proves it
+  // is alive. Eveland keeps no monitoring of the Collector beyond this liveness fact;
+  // its own metrics go to whichever external destination the Admin configures.
   const collectorObservation: ComponentObservation =
-    !latestCollectorMetric
+    lastBatchAt === null
       ? {
           status: "warning",
-          message: "Collector self-metrics have not been received.",
+          message: "No telemetry batch has been received yet.",
           observedAt: null,
         }
-      : now.getTime() - Date.parse(latestCollectorMetric.timestamp) > 90_000
+      : now.getTime() - Date.parse(lastBatchAt) > 90_000
         ? {
             status: "unavailable",
-            message: "Collector self-metrics are stale.",
-            observedAt: latestCollectorMetric.timestamp,
+            message: "No telemetry batch received recently.",
+            observedAt: lastBatchAt,
           }
         : {
             status: "healthy",
-            message: "Collector self-metrics are current.",
-            observedAt: latestCollectorMetric.timestamp,
+            message: "Telemetry batches are arriving.",
+            observedAt: lastBatchAt,
           };
   const components: InstanceComponentHealth[] = [
     { key: "api", label: "API", status: "healthy", message: "Control-plane API is serving this report.", observedAt: now.toISOString() },

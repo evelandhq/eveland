@@ -1,4 +1,5 @@
 import {
+  BUILT_IN_BATCH_RECEIPT_RETENTION_HOURS,
   BUILT_IN_OBSERVABILITY_RETENTION_DAYS,
 } from "@eveland/core/observability";
 import type { Store } from "@eveland/db";
@@ -29,22 +30,14 @@ export function createObservabilityRetentionReconciler(input: {
       return 0;
     }
 
-    const rawCutoffs = {
-      tracesBefore: daysBefore(
-        observedAt,
-        BUILT_IN_OBSERVABILITY_RETENTION_DAYS.traces,
-      ),
-      logsBefore: daysBefore(
-        observedAt,
-        BUILT_IN_OBSERVABILITY_RETENTION_DAYS.logs,
-      ),
-      metricsBefore: daysBefore(
-        observedAt,
-        BUILT_IN_OBSERVABILITY_RETENTION_DAYS.metrics,
+    const builtInCutoffs = {
+      receiptsBefore: new Date(
+        observedAt.getTime() -
+          BUILT_IN_BATCH_RECEIPT_RETENTION_HOURS * 60 * 60 * 1_000,
       ),
     };
-    const [raw, derived, capacity] = await Promise.all([
-      input.store.pruneOtlpTelemetry(rawCutoffs),
+    const [builtIn, derived, capacity] = await Promise.all([
+      input.store.pruneOtlpTelemetry(builtInCutoffs),
       input.store.pruneDerivedAgentTelemetry(
         daysBefore(
           observedAt,
@@ -60,7 +53,7 @@ export function createObservabilityRetentionReconciler(input: {
     ]);
     lastRunAt = observedAt.getTime();
     return (
-      Object.values(raw).reduce((total, count) => total + count, 0) +
+      Object.values(builtIn).reduce((total, count) => total + count, 0) +
       Object.values(derived).reduce((total, count) => total + count, 0) +
       capacity
     );

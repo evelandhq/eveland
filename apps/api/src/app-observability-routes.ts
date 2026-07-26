@@ -1,13 +1,7 @@
 import {
-  COLLECTOR_SELF_SERVICE_NAME,
-  TELEMETRY_DOMAINS,
   agentCapturePolicySchema,
-  collectorExporterComponentId,
   externalDestinationConfigSchema,
-  summarizeCollectorDelivery,
   toPublicObservabilityPolicy,
-  type BuiltInDeploymentLifecycleEvent,
-  type BuiltInOtlpLogRecord,
   type ExternalDestinationConfig,
   type ExternalObservabilityDestination,
   type ObservabilityPolicy,
@@ -48,16 +42,6 @@ const deleteDestinationSchema = z
     expectedRevision: z.number().int().positive(),
   })
   .strict();
-const activityQuerySchema = z
-  .object({
-    limit: z.coerce.number().int().min(1).max(200).default(50),
-    hours: z.coerce.number().int().min(1).max(168).default(24),
-    domain: z.enum(TELEMETRY_DOMAINS).optional(),
-    serviceName: z.string().trim().min(1).max(200).optional(),
-    projectId: z.string().trim().min(1).max(200).optional(),
-    name: z.string().trim().min(1).max(500).optional(),
-  })
-  .strict();
 
 export function registerObservabilityRoutes(input: {
   app: ApiApp;
@@ -72,87 +56,6 @@ export function registerObservabilityRoutes(input: {
       return c.json({ error: "Admin access required" }, 403);
     }
     return c.json(await publicPolicy(store));
-  });
-
-  app.get("/system/observability/activity", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
-    const parsed = activityQuerySchema.safeParse(c.req.query());
-    if (!parsed.success) {
-      return c.json(
-        {
-          error: "Invalid observability activity query",
-          issues: parsed.error.issues,
-        },
-        400,
-      );
-    }
-    const { hours, ...query } = parsed.data;
-    const windowEnd = new Date();
-    const windowStart = new Date(
-      windowEnd.getTime() - hours * 60 * 60 * 1_000,
-    );
-    const [
-      spans,
-      logs,
-      metrics,
-      collectorMetrics,
-      policy,
-      operations,
-      deploymentLogs,
-    ] =
-      await Promise.all([
-        store.listOtlpSpans(query),
-        store.listOtlpLogRecords(query),
-        store.listOtlpMetricPoints(query),
-        store.listOtlpMetricPoints({
-          serviceName: COLLECTOR_SELF_SERVICE_NAME,
-          limit: 2_000,
-        }),
-        store.getObservabilityPolicy(DEFAULT_TEAM_ID),
-        store.summarizeOtlpSpanOperations({
-          since: windowStart,
-          until: windowEnd,
-        }),
-        store.listOtlpLogRecords({
-          domain: "runtime",
-          limit: 200,
-        }),
-      ]);
-    const delivery = summarizeCollectorDelivery(
-      collectorMetrics,
-      [
-        {
-          id: "builtin",
-          label: "Built-in",
-          exporterId: "otlp_http/builtin",
-          supportedSignals: ["traces", "logs", "metrics"],
-        },
-        ...policy.externalDestinations
-          .filter((destination) => destination.enabled)
-          .map((destination) => ({
-            id: destination.id,
-            label: destinationLabel(destination.kind),
-            exporterId: collectorExporterComponentId(destination.id),
-            supportedSignals: destination.supportedSignals,
-        })),
-      ],
-    );
-    return c.json({
-      spans,
-      logs,
-      metrics,
-      delivery,
-      platform: {
-        windowStart: windowStart.toISOString(),
-        windowEnd: windowEnd.toISOString(),
-        operations,
-        deploymentLifecycle: deploymentLogs.flatMap(
-          deploymentLifecycleEvent,
-        ),
-      },
-    });
   });
 
   app.put("/system/observability", async (c) => {
@@ -385,47 +288,6 @@ function destinationLabel(
       : "Custom OTLP";
 }
 
-function deploymentLifecycleEvent(
-  record: BuiltInOtlpLogRecord,
-): BuiltInDeploymentLifecycleEvent[] {
-  const deploymentId =
-    stringAttribute(record.attributes, "eveland.deployment.id") ??
-    record.resource.deploymentId;
-  const phase = stringAttribute(record.attributes, "eveland.log.type");
-  if (
-    !deploymentId ||
-    (phase !== "build" && phase !== "deploy" && phase !== "runtime")
-  ) {
-    return [];
-  }
-  const message =
-    typeof record.body === "string"
-      ? record.body
-      : JSON.stringify(record.body) ?? String(record.body);
-  return [
-    {
-      id: record.id,
-      projectId:
-        stringAttribute(record.attributes, "eveland.project.id") ??
-        record.resource.projectId,
-      deploymentId,
-      phase,
-      message,
-      severityNumber: record.severityNumber,
-      severityText: record.severityText,
-      observedAt: record.timestamp,
-    },
-  ];
-}
-
-function stringAttribute(
-  attributes: Record<string, unknown>,
-  name: string,
-): string | null {
-  const value = attributes[name];
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 function createDestination(
   config: ExternalDestinationConfig,
   appSecretKey: string,
@@ -505,16 +367,15 @@ async function publicPolicy(
 ) {
   const resolvedPolicy =
     policy ?? (await store.getObservabilityPolicy(DEFAULT_TEAM_ID));
-  const [batches, destinationHealth] = await Promise.all([
-    store.listOtlpBatches({ limit: 1 }),
+  const [lastReceivedAt, destinationHealth] = await Promise.all([
+    store.latestOtlpBatchReceivedAt(),
     store.listExternalObservabilityDestinationHealth(),
   ]);
-  const [latestBatch] = batches;
   return toPublicObservabilityPolicy(
     resolvedPolicy,
     {
-      status: latestBatch ? "healthy" : "waiting",
-      lastReceivedAt: latestBatch?.receivedAt ?? null,
+      status: lastReceivedAt ? "healthy" : "waiting",
+      lastReceivedAt,
     },
     destinationHealth,
   );

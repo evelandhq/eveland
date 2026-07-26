@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vitest";
 import {
   AGENT_RUNTIME_POLICY_PATH,
+  BUILT_IN_BATCH_RECEIPT_RETENTION_HOURS,
   BUILT_IN_OBSERVABILITY_RETENTION_DAYS,
   BUILT_IN_DESTINATION_CAPABILITY,
   createAgentRuntimePolicy,
   createDefaultObservabilityPolicy,
   externalDestinationConfigSchema,
+  langfuseOtlpTracesEndpoint,
   observabilityPolicySchema,
   toPublicObservabilityPolicy,
   type ObservabilityPolicy,
@@ -14,12 +16,11 @@ import {
 describe("observability policy", () => {
   test("defines non-configurable Built-in retention windows", () => {
     expect(BUILT_IN_OBSERVABILITY_RETENTION_DAYS).toEqual({
-      traces: 30,
-      logs: 30,
-      metrics: 30,
       sessions: 90,
       capacity: 30,
     });
+    // Receipts only have to outlive the Collector's retry window, not the read models.
+    expect(BUILT_IN_BATCH_RECEIPT_RETENTION_HOURS).toBe(24);
   });
 
   test("keeps Built-in mandatory and outside configurable destinations", () => {
@@ -36,9 +37,9 @@ describe("observability policy", () => {
       agentCapture: {
         enabled: true,
         sampling: { ratio: 1 },
-        recordInputs: false,
-        recordOutputs: false,
-        includeReasoning: false,
+        recordInputs: true,
+        recordOutputs: true,
+        includeReasoning: true,
       },
       externalDestinations: [],
     });
@@ -202,12 +203,24 @@ describe("observability policy", () => {
     expect(
       externalDestinationConfigSchema.parse({
         kind: "langfuse",
-        tracesEndpoint:
-          "https://langfuse.example.com/api/public/otel/v1/traces",
+        baseUrl: "https://us.cloud.langfuse.com",
         publicKey: "pk-lf",
         secretKey: "sk-lf",
       }),
-    ).toMatchObject({ kind: "langfuse" });
+    ).toMatchObject({
+      kind: "langfuse",
+      baseUrl: "https://us.cloud.langfuse.com",
+    });
+    expect(
+      langfuseOtlpTracesEndpoint("https://us.cloud.langfuse.com"),
+    ).toBe(
+      "https://us.cloud.langfuse.com/api/public/otel/v1/traces",
+    );
+    expect(
+      langfuseOtlpTracesEndpoint("https://langfuse.example.com/"),
+    ).toBe(
+      "https://langfuse.example.com/api/public/otel/v1/traces",
+    );
     expect(
       externalDestinationConfigSchema.safeParse({
         kind: "custom_otlp",
@@ -281,9 +294,9 @@ describe("Agent runtime policy", () => {
       capture: {
         enabled: true,
         sampleRatio: 1,
-        recordInputs: false,
-        recordOutputs: false,
-        includeReasoning: false,
+        recordInputs: true,
+        recordOutputs: true,
+        includeReasoning: true,
       },
       otlp: { endpoint: "http://127.0.0.1:4318" },
       resource: {

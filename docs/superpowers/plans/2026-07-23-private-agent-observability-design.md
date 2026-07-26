@@ -297,9 +297,9 @@ Observability Controller 为每个 Deployment 生成不含 Secret 的 revisioned
   "capture": {
     "enabled": true,
     "sampleRatio": 1,
-    "recordInputs": false,
-    "recordOutputs": false,
-    "includeReasoning": false
+    "recordInputs": true,
+    "recordOutputs": true,
+    "includeReasoning": true
   },
   "otlp": {
     "endpoint": "http://127.0.0.1:4318"
@@ -643,6 +643,10 @@ output: Langfuse native OTLP/HTTP traces endpoint
 auth: Collector-owned
 queue: independent persistent queue
 ```
+
+System settings 只接收 Langfuse Base URL，例如
+`https://us.cloud.langfuse.com`。Eveland 内部派生
+`/api/public/otel/v1/traces`，不要求管理员配置 OTLP signal path。
 
 Langfuse 不接收：
 

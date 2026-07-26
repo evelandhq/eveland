@@ -31,8 +31,6 @@ processors:
     send_batch_size: 1024
   filter/builtin_eveland:
     error_mode: ignore
-    trace_conditions:
-      - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
     log_conditions:
       - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
     metric_conditions:
@@ -73,15 +71,6 @@ service:
     - file_storage
     - health_check
   pipelines:
-    traces:
-      receivers:
-        - otlp
-      processors:
-        - memory_limiter
-        - filter/builtin_eveland
-        - batch
-      exporters:
-        - otlp_http/builtin
     logs:
       receivers:
         - otlp
@@ -100,15 +89,6 @@ service:
         - batch
       exporters:
         - otlp_http/builtin
-    metrics/collector_self:
-      receivers:
-        - prometheus/collector_self
-      processors:
-        - memory_limiter
-        - resource/collector_self
-        - batch
-      exporters:
-        - otlp_http/builtin
   telemetry:
     resource:
       service.name: eveland-otel-collector
@@ -116,7 +96,7 @@ service:
       eveland.team.id: team_local
       eveland.telemetry.domain: platform
     metrics:
-      level: detailed
+      level: normal
       readers:
         - pull:
             exporter:

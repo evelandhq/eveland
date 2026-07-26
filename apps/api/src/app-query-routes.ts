@@ -150,55 +150,6 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/sessions/:sessionId/telemetry", async (c) => {
-    const sessionId = c.req.param("sessionId");
-    const session = await store.getSession(sessionId);
-    if (!session) return c.json({ error: "Session not found" }, 404);
-    const nodes = await store.listSessionNodes(sessionId);
-    const eveSessionIds = uniqueStrings([
-      session.eveSessionId,
-      ...nodes.map((node) => node.eveSessionId),
-    ]);
-    const spans =
-      eveSessionIds.length === 0
-        ? []
-        : await store.listOtlpSpans({
-            domain: "agent",
-            projectId: session.projectId,
-            eveSessionIds,
-            limit: 2_000,
-          });
-    const traceIds = uniqueStrings(
-      spans.map((span) => span.traceId),
-    );
-    const [sessionLogs, traceLogs] = await Promise.all([
-      eveSessionIds.length === 0
-        ? []
-        : store.listOtlpLogRecords({
-            domain: "agent",
-            projectId: session.projectId,
-            eveSessionIds,
-            limit: 2_000,
-          }),
-      traceIds.length === 0
-        ? []
-        : store.listOtlpLogRecords({
-            projectId: session.projectId,
-            traceIds,
-            limit: 2_000,
-          }),
-    ]);
-    return c.json({
-      telemetry: {
-        sessionId,
-        eveSessionIds,
-        traceIds,
-        spans,
-        logs: uniqueById([...sessionLogs, ...traceLogs]),
-      },
-    });
-  });
-
   app.get("/projects/:projectId/logs", async (c) => {
     const type = c.req.query("type") as LogRecord["type"] | undefined;
     return c.json({
@@ -207,12 +158,3 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
   });
 }
 
-function uniqueStrings(
-  values: Array<string | null | undefined>,
-): string[] {
-  return [...new Set(values.filter((value): value is string => !!value))];
-}
-
-function uniqueById<T extends { id: string }>(values: T[]): T[] {
-  return [...new Map(values.map((value) => [value.id, value])).values()];
-}

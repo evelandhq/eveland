@@ -17,12 +17,16 @@ export const BUILT_IN_DESTINATION_CAPABILITY = {
 } as const;
 
 export const BUILT_IN_OBSERVABILITY_RETENTION_DAYS = {
-  traces: 30,
-  logs: 30,
-  metrics: 30,
   sessions: 90,
   capacity: 30,
 } as const;
+
+/**
+ * Batch receipts only guard against the Collector redelivering from its persistent
+ * queue, so they expire far sooner than the read models. A day covers any realistic
+ * API outage; beyond that a redelivered batch is preferable to unbounded receipts.
+ */
+export const BUILT_IN_BATCH_RECEIPT_RETENTION_HOURS = 24;
 
 export const EXTERNAL_DESTINATION_CAPABILITIES = {
   elastic: {
@@ -98,6 +102,14 @@ const externalHttpUrlSchema = z.url().superRefine((endpoint, context) => {
   }
 });
 
+export function langfuseOtlpTracesEndpoint(baseUrl: string): string {
+  const endpoint = new URL(baseUrl);
+  endpoint.pathname = `${endpoint.pathname.replace(/\/+$/, "")}/api/public/otel/v1/traces`;
+  endpoint.search = "";
+  endpoint.hash = "";
+  return endpoint.toString();
+}
+
 const reservedDestinationHeaders = new Set([
   "connection",
   "content-length",
@@ -145,7 +157,7 @@ export const externalDestinationConfigSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("langfuse"),
-      tracesEndpoint: externalHttpUrlSchema,
+      baseUrl: externalHttpUrlSchema,
       publicKey: z.string().min(1).max(1024),
       secretKey: z.string().min(1).max(4096),
     })
@@ -367,303 +379,15 @@ export type OtlpMetricPointProjection = {
   resource: OtlpResourceProjection;
   payload: Record<string, unknown>;
 };
-export type BuiltInOtlpSpan = OtlpSpanProjection & {
-  id: string;
-  receivedAt: string;
-};
-export type BuiltInOtlpLogRecord = OtlpLogRecordProjection & {
-  id: string;
-  receivedAt: string;
-};
-export type BuiltInOtlpMetricPoint = OtlpMetricPointProjection & {
-  id: string;
-  receivedAt: string;
-};
-export type PlatformOperationKind = "request" | "job" | "background";
-export type BuiltInPlatformOperationSummary = {
-  serviceName: string;
-  kind: PlatformOperationKind;
-  spanCount: number;
-  errorCount: number;
-  errorRate: number;
-  averageDurationMs: number;
-  p95DurationMs: number;
-  lastSeenAt: string;
-};
-export type BuiltInDeploymentLifecycleEvent = {
-  id: string;
-  projectId: string | null;
-  deploymentId: string;
-  phase: "build" | "deploy" | "runtime";
-  message: string;
-  severityNumber: number | null;
-  severityText: string | null;
-  observedAt: string;
-};
-export type BuiltInPlatformSummary = {
-  windowStart: string;
-  windowEnd: string;
-  operations: BuiltInPlatformOperationSummary[];
-  deploymentLifecycle: BuiltInDeploymentLifecycleEvent[];
-};
-export type BuiltInOtlpActivity = {
-  spans: BuiltInOtlpSpan[];
-  logs: BuiltInOtlpLogRecord[];
-  metrics: BuiltInOtlpMetricPoint[];
-  platform: BuiltInPlatformSummary;
-  delivery: CollectorDeliveryDiagnostics;
-};
-export type SessionOtlpTelemetry = {
-  sessionId: string;
-  eveSessionIds: string[];
-  traceIds: string[];
-  spans: BuiltInOtlpSpan[];
-  logs: BuiltInOtlpLogRecord[];
-};
 export const COLLECTOR_SELF_SERVICE_NAME = "eveland-otel-collector";
-export type CollectorDeliveryTarget = {
-  id: string;
-  label: string;
-  exporterId: string;
-  supportedSignals: readonly ObservabilitySignal[];
-};
-export type CollectorSignalDelivery = {
-  sent: number;
-  sendFailed: number;
-  enqueueFailed: number;
-};
-export type CollectorDestinationDelivery = CollectorDeliveryTarget & {
-  status: "waiting" | "healthy" | "degraded" | "stale";
-  observedAt: string | null;
-  queue: {
-    size: number | null;
-    capacity: number | null;
-    utilization: number | null;
-  };
-  signals: Record<ObservabilitySignal, CollectorSignalDelivery>;
-};
-export type CollectorDeliveryDiagnostics = {
-  generatedAt: string;
-  destinations: CollectorDestinationDelivery[];
-};
 
+/** Collector component id for a destination's exporter, used in rendered pipelines. */
 export function collectorExporterComponentId(
   destinationId: string,
 ): string {
   return `otlp_http/${destinationId.replace(/[^a-zA-Z0-9_]/g, "_")}`;
 }
 
-export function summarizeCollectorDelivery(
-  points: BuiltInOtlpMetricPoint[],
-  targets: readonly CollectorDeliveryTarget[],
-  now = new Date(),
-): CollectorDeliveryDiagnostics {
-  return {
-    generatedAt: now.toISOString(),
-    destinations: targets.map((target) =>
-      summarizeCollectorDestination(points, target, now),
-    ),
-  };
-}
-
-function summarizeCollectorDestination(
-  points: BuiltInOtlpMetricPoint[],
-  target: CollectorDeliveryTarget,
-  now: Date,
-): CollectorDestinationDelivery {
-  const relevant = points.filter(
-    (point) =>
-      collectorMetricKind(point.name) !== null &&
-      matchesCollectorExporter(point, target.exporterId),
-  );
-  const emptySignals = () => ({
-    traces: { sent: 0, sendFailed: 0, enqueueFailed: 0 },
-    logs: { sent: 0, sendFailed: 0, enqueueFailed: 0 },
-    metrics: { sent: 0, sendFailed: 0, enqueueFailed: 0 },
-  });
-  if (relevant.length === 0) {
-    return {
-      ...target,
-      status: "waiting",
-      observedAt: null,
-      queue: { size: null, capacity: null, utilization: null },
-      signals: emptySignals(),
-    };
-  }
-
-  const observedAt = relevant.reduce(
-    (latest, point) =>
-      point.timestamp > latest ? point.timestamp : latest,
-    relevant[0]!.timestamp,
-  );
-  const series = groupCollectorMetricSeries(relevant);
-  const signals = emptySignals();
-  for (const entries of series.values()) {
-    const latest = entries[0];
-    if (!latest) continue;
-    const kind = collectorMetricKind(latest.name);
-    if (!kind || kind.type === "queue") continue;
-    const previous = entries[1];
-    const latestValue = metricPointNumber(latest);
-    const previousValue = previous
-      ? metricPointNumber(previous)
-      : null;
-    if (latestValue === null) continue;
-    const delta =
-      previousValue === null
-        ? 0
-        : latestValue >= previousValue
-          ? latestValue - previousValue
-          : latestValue;
-    signals[kind.signal][kind.counter] += delta;
-  }
-
-  const size = sumLatestCollectorGauge(
-    series,
-    "otelcol_exporter_queue_size",
-  );
-  const capacity = sumLatestCollectorGauge(
-    series,
-    "otelcol_exporter_queue_capacity",
-  );
-  const utilization =
-    size !== null && capacity !== null && capacity > 0
-      ? Math.round((size / capacity) * 1_000) / 1_000
-      : null;
-  const recentFailures = Object.values(signals).reduce(
-    (total, signal) =>
-      total + signal.sendFailed + signal.enqueueFailed,
-    0,
-  );
-  const stale =
-    now.getTime() - Date.parse(observedAt) > 90_000;
-  return {
-    ...target,
-    status: stale
-      ? "stale"
-      : recentFailures > 0 ||
-          (utilization !== null && utilization >= 0.8)
-        ? "degraded"
-        : "healthy",
-    observedAt,
-    queue: { size, capacity, utilization },
-    signals,
-  };
-}
-
-type CollectorMetricKind =
-  | { type: "queue" }
-  | {
-      type: "counter";
-      signal: ObservabilitySignal;
-      counter: keyof CollectorSignalDelivery;
-    };
-
-function collectorMetricKind(name: string): CollectorMetricKind | null {
-  if (
-    name === "otelcol_exporter_queue_size" ||
-    name === "otelcol_exporter_queue_capacity"
-  ) {
-    return { type: "queue" };
-  }
-  const signal = name.endsWith("_spans")
-    ? "traces"
-    : name.endsWith("_log_records")
-      ? "logs"
-      : name.endsWith("_metric_points")
-        ? "metrics"
-        : null;
-  if (!signal) return null;
-  if (name.includes("_enqueue_failed_")) {
-    return { type: "counter", signal, counter: "enqueueFailed" };
-  }
-  if (name.includes("_send_failed_")) {
-    return { type: "counter", signal, counter: "sendFailed" };
-  }
-  if (name.includes("_sent_")) {
-    return { type: "counter", signal, counter: "sent" };
-  }
-  return null;
-}
-
-function matchesCollectorExporter(
-  point: BuiltInOtlpMetricPoint,
-  exporterId: string,
-): boolean {
-  const attributes = point.attributes;
-  const candidate = [
-    attributes["otelcol.component.id"],
-    attributes["otelcol_component_id"],
-    attributes["component.id"],
-    attributes.exporter,
-  ].find((value): value is string => typeof value === "string");
-  if (!candidate) return false;
-  const normalized = candidate.replace(/^otlphttp\//, "otlp_http/");
-  return (
-    normalized === exporterId ||
-    normalized === exporterId.slice(exporterId.indexOf("/") + 1)
-  );
-}
-
-function groupCollectorMetricSeries(
-  points: BuiltInOtlpMetricPoint[],
-): Map<string, BuiltInOtlpMetricPoint[]> {
-  const grouped = new Map<string, BuiltInOtlpMetricPoint[]>();
-  for (const point of points) {
-    const key = `${point.name}:${stableAttributes(point.attributes)}`;
-    const entries = grouped.get(key) ?? [];
-    entries.push(point);
-    grouped.set(key, entries);
-  }
-  for (const entries of grouped.values()) {
-    entries.sort(
-      (left, right) =>
-        right.timestamp.localeCompare(left.timestamp) ||
-        right.id.localeCompare(left.id),
-    );
-  }
-  return grouped;
-}
-
-function stableAttributes(
-  attributes: Record<string, unknown>,
-): string {
-  return JSON.stringify(
-    Object.fromEntries(
-      Object.entries(attributes).sort(([left], [right]) =>
-        left.localeCompare(right),
-      ),
-    ),
-  );
-}
-
-function sumLatestCollectorGauge(
-  series: Map<string, BuiltInOtlpMetricPoint[]>,
-  name: string,
-): number | null {
-  let total = 0;
-  let found = false;
-  for (const entries of series.values()) {
-    if (entries[0]?.name !== name) continue;
-    const value = metricPointNumber(entries[0]);
-    if (value === null) continue;
-    total += value;
-    found = true;
-  }
-  return found ? total : null;
-}
-
-function metricPointNumber(
-  point: BuiltInOtlpMetricPoint,
-): number | null {
-  const raw = point.value.asDouble ?? point.value.asInt;
-  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
-  if (typeof raw === "string") {
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : null;
-  }
-  return null;
-}
 export type ExternalDestinationHealth = {
   destinationId: string;
   status: "pending" | "healthy" | "degraded" | "paused";
@@ -707,9 +431,9 @@ export function createDefaultObservabilityPolicy(revision: number): Observabilit
     agentCapture: {
       enabled: true,
       sampling: { ratio: 1 },
-      recordInputs: false,
-      recordOutputs: false,
-      includeReasoning: false,
+      recordInputs: true,
+      recordOutputs: true,
+      includeReasoning: true,
     },
     externalDestinations: [],
   });

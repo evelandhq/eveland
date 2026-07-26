@@ -4,7 +4,6 @@ import { useId, useState } from "react";
 import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
 import type {
   AgentCapturePolicy,
-  BuiltInOtlpActivity,
   ExternalDestinationConfig,
   ObservabilitySignal,
   PublicObservabilityPolicy,
@@ -100,10 +99,8 @@ const emptyDestination = (): DestinationDraft => ({
 
 export function ObservabilitySettings({
   initialSettings,
-  initialActivity,
 }: {
   initialSettings: PublicObservabilityPolicy;
-  initialActivity: BuiltInOtlpActivity;
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const [capture, setCapture] = useState(initialSettings.agentCapture);
@@ -245,433 +242,6 @@ export function ObservabilitySettings({
           </p>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Collector delivery</CardTitle>
-          <CardDescription>
-            Standard Collector self-metrics for exporter queues and recent
-            delivery attempts. Endpoint probes and actual pipeline delivery
-            are reported independently.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          {initialActivity.delivery.destinations.map((destination) => (
-            <article
-              key={destination.id}
-              className="rounded-lg border border-border p-4"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h4 className="font-medium">{destination.label}</h4>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground">
-                    {destination.exporterId}
-                  </p>
-                </div>
-                <Badge
-                  variant={
-                    destination.status === "degraded" ||
-                    destination.status === "stale"
-                      ? "destructive"
-                      : destination.status === "healthy"
-                        ? "secondary"
-                        : "outline"
-                  }
-                >
-                  {collectorDeliveryStatusLabel(destination.status)}
-                </Badge>
-              </div>
-              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Queue size</dt>
-                  <dd className="mt-1 font-mono font-medium">
-                    {destination.queue.size === null
-                      ? "—"
-                      : destination.queue.size.toLocaleString()}
-                    {destination.queue.capacity === null
-                      ? ""
-                      : ` / ${destination.queue.capacity.toLocaleString()}`}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">
-                    Queue utilization
-                  </dt>
-                  <dd className="mt-1 font-mono font-medium">
-                    {destination.queue.utilization === null
-                      ? "—"
-                      : `${Math.round(destination.queue.utilization * 1000) / 10}%`}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">
-                    Last self-metric
-                  </dt>
-                  <dd className="mt-1 text-xs font-medium">
-                    {destination.observedAt
-                      ? new Date(destination.observedAt).toLocaleString()
-                      : "Waiting for Collector metrics"}
-                  </dd>
-                </div>
-              </dl>
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="py-1.5 text-left font-medium">Signal</th>
-                      <th className="py-1.5 text-right font-medium">
-                        Sent
-                      </th>
-                      <th className="py-1.5 text-right font-medium">
-                        Send failed
-                      </th>
-                      <th className="py-1.5 text-right font-medium">
-                        Enqueue failed
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {destination.supportedSignals.map((signal) => (
-                      <tr key={signal} className="border-t border-border">
-                        <td className="py-2 font-medium">{signal}</td>
-                        <td className="py-2 text-right font-mono">
-                          {destination.signals[signal].sent.toLocaleString()}
-                        </td>
-                        <td className="py-2 text-right font-mono">
-                          {destination.signals[
-                            signal
-                          ].sendFailed.toLocaleString()}
-                        </td>
-                        <td className="py-2 text-right font-mono">
-                          {destination.signals[
-                            signal
-                          ].enqueueFailed.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </article>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Platform operations</CardTitle>
-          <CardDescription>
-            Request, job, and background operation latency from standard
-            Platform and Runtime spans over the last 24 hours.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {initialActivity.platform.operations.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No Platform or Runtime operations have been observed in this
-              window.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-3xl text-sm">
-                <thead className="text-xs text-muted-foreground">
-                  <tr>
-                    <th className="pb-2 text-left font-medium">Component</th>
-                    <th className="pb-2 text-left font-medium">Kind</th>
-                    <th className="pb-2 text-right font-medium">Spans</th>
-                    <th className="pb-2 text-right font-medium">Errors</th>
-                    <th className="pb-2 text-right font-medium">Error rate</th>
-                    <th className="pb-2 text-right font-medium">
-                      Average latency
-                    </th>
-                    <th className="pb-2 text-right font-medium">P95 latency</th>
-                    <th className="pb-2 text-right font-medium">Last seen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {initialActivity.platform.operations.map((operation) => (
-                    <tr
-                      key={`${operation.serviceName}:${operation.kind}`}
-                      className="border-t border-border"
-                    >
-                      <td className="py-3 font-medium">
-                        {operation.serviceName}
-                      </td>
-                      <td className="py-3">
-                        <Badge variant="outline">{operation.kind}</Badge>
-                      </td>
-                      <td className="py-3 text-right font-mono">
-                        {operation.spanCount.toLocaleString()}
-                      </td>
-                      <td className="py-3 text-right">
-                        <Badge
-                          variant={
-                            operation.errorCount > 0
-                              ? "destructive"
-                              : "secondary"
-                          }
-                        >
-                          {operation.errorCount.toLocaleString()}
-                        </Badge>
-                      </td>
-                      <td className="py-3 text-right font-mono">
-                        {formatPercentage(operation.errorRate)}
-                      </td>
-                      <td className="py-3 text-right font-mono">
-                        {formatDuration(operation.averageDurationMs)}
-                      </td>
-                      <td className="py-3 text-right font-mono">
-                        {formatDuration(operation.p95DurationMs)}
-                      </td>
-                      <td className="py-3 text-right text-xs text-muted-foreground">
-                        <time dateTime={operation.lastSeenAt}>
-                          {new Date(operation.lastSeenAt).toLocaleString()}
-                        </time>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Deployment lifecycle</CardTitle>
-          <CardDescription>
-            Recent deployment-scoped build, deploy, and runtime events
-            projected from standard OpenTelemetry LogRecords.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {initialActivity.platform.deploymentLifecycle.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No deployment lifecycle events have been received yet.
-            </p>
-          ) : (
-            <div className="divide-y">
-              {initialActivity.platform.deploymentLifecycle.map((event) => (
-                <article
-                  key={event.id}
-                  className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">{event.phase}</Badge>
-                    {event.severityText ? (
-                      <Badge
-                        variant={
-                          (event.severityNumber ?? 0) >= 17
-                            ? "destructive"
-                            : "secondary"
-                        }
-                      >
-                        {event.severityText}
-                      </Badge>
-                    ) : null}
-                    <time
-                      dateTime={event.observedAt}
-                      className="text-xs text-muted-foreground"
-                    >
-                      {new Date(event.observedAt).toLocaleString()}
-                    </time>
-                  </div>
-                  <p className="text-sm" title={event.message}>
-                    {bodySummary(event.message)}
-                  </p>
-                  <p className="truncate font-mono text-xs text-muted-foreground">
-                    {event.projectId ? `project ${event.projectId} · ` : ""}
-                    deployment {event.deploymentId}
-                  </p>
-                </article>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent spans</CardTitle>
-            <CardDescription>
-              Latest traces received by Eveland&apos;s Built-in OTLP
-              destination.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {initialActivity.spans.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No Eveland spans have been received yet.
-              </p>
-            ) : (
-              <div className="divide-y">
-                {initialActivity.spans.map((span) => (
-                  <div
-                    key={span.id}
-                    className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0 truncate text-sm font-medium">
-                        {span.name}
-                      </span>
-                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                        {formatDuration(span.durationMs)}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline">
-                        {span.resource.serviceName}
-                      </Badge>
-                      <Badge variant="outline">
-                        {span.resource.domain}
-                      </Badge>
-                      {span.statusCode === 2 ? (
-                        <Badge variant="destructive">error</Badge>
-                      ) : null}
-                      <time
-                        dateTime={span.startedAt}
-                        className="text-xs text-muted-foreground"
-                      >
-                        {new Date(span.startedAt).toLocaleString()}
-                      </time>
-                    </div>
-                    <p
-                      className="truncate font-mono text-xs text-muted-foreground"
-                      title={span.traceId}
-                    >
-                      trace {span.traceId}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent logs</CardTitle>
-            <CardDescription>
-              Latest standard LogRecords across Eveland services and
-              runtimes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {initialActivity.logs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No Eveland logs have been received yet.
-              </p>
-            ) : (
-              <div className="divide-y">
-                {initialActivity.logs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0 truncate text-sm font-medium">
-                        {log.eventName ?? bodySummary(log.body)}
-                      </span>
-                      {log.severityText ? (
-                        <Badge
-                          variant={
-                            (log.severityNumber ?? 0) >= 17
-                              ? "destructive"
-                              : "outline"
-                          }
-                        >
-                          {log.severityText}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    {log.eventName ? (
-                      <p className="line-clamp-2 text-xs text-muted-foreground">
-                        {bodySummary(log.body)}
-                      </p>
-                    ) : null}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline">
-                        {log.resource.serviceName}
-                      </Badge>
-                      <Badge variant="outline">
-                        {log.resource.domain}
-                      </Badge>
-                      <time
-                        dateTime={log.timestamp}
-                        className="text-xs text-muted-foreground"
-                      >
-                        {new Date(log.timestamp).toLocaleString()}
-                      </time>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent metrics</CardTitle>
-            <CardDescription>
-              Latest standard Metric Points across Eveland services and
-              telemetry domains.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {initialActivity.metrics.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No Eveland metrics have been received yet.
-              </p>
-            ) : (
-              <div className="divide-y">
-                {initialActivity.metrics.map((metric) => (
-                  <div
-                    key={metric.id}
-                    className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span
-                        className="min-w-0 truncate text-sm font-medium"
-                        title={metric.name}
-                      >
-                        {metric.name}
-                      </span>
-                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                        {metricValueSummary(metric)}
-                      </span>
-                    </div>
-                    {attributeSummary(metric.attributes) ? (
-                      <p className="truncate font-mono text-xs text-muted-foreground">
-                        {attributeSummary(metric.attributes)}
-                      </p>
-                    ) : null}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline">
-                        {metric.resource.serviceName}
-                      </Badge>
-                      <Badge variant="outline">
-                        {metric.resource.domain}
-                      </Badge>
-                      <Badge variant="outline">
-                        {metric.dataType}
-                      </Badge>
-                      <time
-                        dateTime={metric.timestamp}
-                        className="text-xs text-muted-foreground"
-                      >
-                        {new Date(metric.timestamp).toLocaleString()}
-                      </time>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
 
       <Card>
         <CardHeader>
@@ -949,72 +519,9 @@ export function ObservabilitySettings({
   );
 }
 
-function formatDuration(durationMs: number): string {
-  return durationMs < 1_000
-    ? `${Math.round(durationMs * 100) / 100} ms`
-    : `${Math.round(durationMs / 10) / 100} s`;
-}
 
-function formatPercentage(ratio: number): string {
-  return `${Math.round(ratio * 1_000) / 10}%`;
-}
 
-function bodySummary(body: unknown): string {
-  const value =
-    typeof body === "string" ? body : JSON.stringify(body) ?? "";
-  return value.length > 240 ? `${value.slice(0, 237)}...` : value;
-}
 
-function metricValueSummary(
-  metric: BuiltInOtlpActivity["metrics"][number],
-): string {
-  const direct = metric.value.asDouble ?? metric.value.asInt;
-  if (typeof direct === "number" || typeof direct === "string") {
-    return `${formatMetricNumber(direct)}${metric.unit ? ` ${metric.unit}` : ""}`;
-  }
-  const count = metric.value.count;
-  const sum = metric.value.sum;
-  if (
-    typeof count === "number" &&
-    count > 0 &&
-    typeof sum === "number"
-  ) {
-    return `avg ${formatMetricNumber(sum / count)}${metric.unit ? ` ${metric.unit}` : ""}`;
-  }
-  if (typeof count === "number" || typeof count === "string") {
-    return `count ${formatMetricNumber(count)}`;
-  }
-  return metric.dataType;
-}
-
-function formatMetricNumber(value: number | string): string {
-  return typeof value === "number"
-    ? value.toLocaleString(undefined, {
-        maximumFractionDigits: 2,
-      })
-    : value;
-}
-
-function attributeSummary(
-  attributes: Record<string, unknown>,
-): string {
-  return Object.entries(attributes)
-    .slice(0, 3)
-    .map(([key, value]) => `${key}=${String(value)}`)
-    .join(" · ");
-}
-
-function collectorDeliveryStatusLabel(
-  status: BuiltInOtlpActivity["delivery"]["destinations"][number]["status"],
-): string {
-  return status === "healthy"
-    ? "Delivering"
-    : status === "degraded"
-      ? "Delivery degraded"
-      : status === "stale"
-        ? "Collector metrics stale"
-        : "Waiting for Collector metrics";
-}
 
 function CaptureSwitch({
   title,
@@ -1116,7 +623,7 @@ function DestinationDialog({
             <Field>
               <FieldLabel htmlFor={endpointId}>
                 {draft.kind === "langfuse"
-                  ? "OTLP traces endpoint"
+                  ? "Langfuse base URL"
                   : "OTLP endpoint"}
               </FieldLabel>
               <Input
@@ -1125,7 +632,7 @@ function DestinationDialog({
                 value={draft.endpoint}
                 placeholder={
                   draft.kind === "langfuse"
-                    ? "https://cloud.langfuse.com/api/public/otel/v1/traces"
+                    ? "https://us.cloud.langfuse.com"
                     : "https://observability.example.com:4318"
                 }
                 onChange={(event) =>
@@ -1335,7 +842,7 @@ function destinationConfig(draft: DestinationDraft): ExternalDestinationConfig {
   if (draft.kind === "langfuse") {
     return {
       kind: "langfuse",
-      tracesEndpoint: draft.endpoint,
+      baseUrl: draft.endpoint,
       publicKey: draft.publicKey,
       secretKey: draft.secretKey,
     };

@@ -78,16 +78,18 @@ export function registerOtlpRoutes(input: {
     return runWithPlatformTracingSuppressed(async () => {
       const receivedItems = countOtlpSignalItems(signal, payload);
       let acceptedItems = 0;
+      // Built-in projects rather than stores. Every projection below still runs in
+      // full: the `partial_success` rejection count is derived from how many items
+      // pass projection, which is a protocol obligation independent of storage.
       await store.ingestOtlpBatch({ signal, payload });
       if (signal === "traces") {
-        const spans = projectOtlpSpans(payload);
-        acceptedItems = spans.length;
-        await store.ingestOtlpSpans(spans);
+        // Traces have no Built-in read model: platform spans go to external
+        // destinations only. The projection runs solely for the rejection count.
+        acceptedItems = projectOtlpSpans(payload).length;
       }
       if (signal === "logs") {
         const logs = projectOtlpLogRecords(payload);
         acceptedItems = logs.length;
-        await store.ingestOtlpLogRecords(logs);
         for (const observation of projectAgentEventsFromOtlpLogs(payload)) {
           try {
             await store.ingestAgentEvent(observation);
@@ -100,7 +102,6 @@ export function registerOtlpRoutes(input: {
       if (signal === "metrics") {
         const points = projectOtlpMetricPoints(payload);
         acceptedItems = points.length;
-        await store.ingestOtlpMetricPoints(points);
         const projection =
           projectInstanceTelemetryFromOtlpMetrics(payload);
         await Promise.all([

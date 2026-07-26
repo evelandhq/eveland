@@ -4,12 +4,8 @@ import {
 } from "./process-observability-retention.js";
 
 describe("Built-in observability retention", () => {
-  test("applies fixed signal, Session, and capacity windows at a bounded cadence", async () => {
-    const pruneOtlpTelemetry = vi.fn().mockResolvedValue({
-      traces: 1,
-      logs: 2,
-      metrics: 3,
-    });
+  test("applies receipt, Session, and capacity windows at a bounded cadence", async () => {
+    const pruneOtlpTelemetry = vi.fn().mockResolvedValue({ receipts: 3 });
     const pruneDerivedAgentTelemetry = vi.fn().mockResolvedValue({
       sessions: 4,
       events: 5,
@@ -27,12 +23,11 @@ describe("Built-in observability retention", () => {
       now: () => now,
     });
 
-    await expect(reconcile()).resolves.toBe(36);
+    await expect(reconcile()).resolves.toBe(33);
     await expect(reconcile()).resolves.toBe(0);
+    // Receipts expire on a retry-window horizon, not the read-model one.
     expect(pruneOtlpTelemetry).toHaveBeenCalledWith({
-      tracesBefore: new Date("2026-06-23T12:00:00.000Z"),
-      logsBefore: new Date("2026-06-23T12:00:00.000Z"),
-      metricsBefore: new Date("2026-06-23T12:00:00.000Z"),
+      receiptsBefore: new Date("2026-07-22T12:00:00.000Z"),
     });
     expect(pruneDerivedAgentTelemetry).toHaveBeenCalledWith(
       new Date("2026-04-24T12:00:00.000Z"),
@@ -42,7 +37,7 @@ describe("Built-in observability retention", () => {
     );
 
     now = new Date("2026-07-24T12:00:00.000Z");
-    await expect(reconcile()).resolves.toBe(36);
+    await expect(reconcile()).resolves.toBe(33);
     expect(pruneOtlpTelemetry).toHaveBeenCalledTimes(2);
   });
 });

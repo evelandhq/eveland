@@ -55,13 +55,6 @@ import type { ModelStepUsage } from "@eveland/core/eve";
 import type { AgentCatalogRecord } from "@eveland/core/catalog";
 import type {
   AgentEventObservation,
-  BuiltInOtlpLogRecord,
-  BuiltInOtlpMetricPoint,
-  BuiltInOtlpSpan,
-  BuiltInPlatformOperationSummary,
-  OtlpLogRecordProjection,
-  OtlpMetricPointProjection,
-  OtlpSpanProjection,
   TelemetryDomain,
 } from "@eveland/core/observability";
 import type { EveVersionInfo } from "@eveland/core/source";
@@ -707,6 +700,10 @@ export interface ObservabilityStore {
   upsertExternalObservabilityDestinationHealth(
     health: ExternalDestinationHealth,
   ): Promise<ExternalDestinationHealth>;
+  /**
+   * Records a batch receipt. `duplicate: true` means the Collector redelivered a
+   * batch it had already sent, and the caller must skip accumulation.
+   */
   ingestOtlpBatch(input: {
     signal: ObservabilitySignal;
     payload: Record<string, unknown>;
@@ -715,58 +712,12 @@ export interface ObservabilityStore {
     accepted: true;
     duplicate: boolean;
   }>;
-  listOtlpBatches(input?: {
+  latestOtlpBatchReceivedAt(input?: {
     signal?: ObservabilitySignal;
-    limit?: number;
-  }): Promise<
-    Array<{
-      id: string;
-      signal: ObservabilitySignal;
-      payload: Record<string, unknown>;
-      receivedAt: string;
-    }>
-  >;
-  ingestOtlpSpans(
-    spans: OtlpSpanProjection[],
-  ): Promise<{ inserted: number }>;
-  listOtlpSpans(input: {
-    domain?: TelemetryDomain;
-    serviceName?: string;
-    projectId?: string;
-    eveSessionIds?: string[];
-    traceIds?: string[];
-    limit: number;
-  }): Promise<BuiltInOtlpSpan[]>;
-  summarizeOtlpSpanOperations(input: {
-    since: Date;
-    until: Date;
-  }): Promise<BuiltInPlatformOperationSummary[]>;
-  ingestOtlpLogRecords(
-    records: OtlpLogRecordProjection[],
-  ): Promise<{ inserted: number }>;
-  listOtlpLogRecords(input: {
-    domain?: TelemetryDomain;
-    serviceName?: string;
-    projectId?: string;
-    eveSessionIds?: string[];
-    traceIds?: string[];
-    limit: number;
-  }): Promise<BuiltInOtlpLogRecord[]>;
-  ingestOtlpMetricPoints(
-    points: OtlpMetricPointProjection[],
-  ): Promise<{ inserted: number }>;
-  listOtlpMetricPoints(input: {
-    domain?: TelemetryDomain;
-    serviceName?: string;
-    projectId?: string;
-    name?: string;
-    limit: number;
-  }): Promise<BuiltInOtlpMetricPoint[]>;
+  }): Promise<string | null>;
   pruneOtlpTelemetry(input: {
-    tracesBefore: Date;
-    logsBefore: Date;
-    metricsBefore: Date;
-  }): Promise<Record<ObservabilitySignal, number>>;
+    receiptsBefore: Date;
+  }): Promise<{ receipts: number }>;
   pruneDerivedAgentTelemetry(before: Date): Promise<{
     sessions: number;
     nodes: number;

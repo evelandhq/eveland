@@ -45,9 +45,11 @@ describe("instance health diagnostics", () => {
       diskInodesTotal: 10_000,
       diskInodesAvailable: 8_000,
     });
-    await store.ingestOtlpMetricPoints([
-      collectorSelfMetric("2026-07-18T09:59:45.000Z"),
-    ]);
+    // The Collector is Built-in's only sender, so a recent batch is its liveness proof.
+    await store.ingestOtlpBatch({
+      signal: "metrics",
+      payload: { resourceMetrics: [{ fresh: true }] },
+    });
 
     const report = await collectInstanceHealth(store, {
       now: () => new Date("2026-07-18T10:00:00.000Z"),
@@ -100,15 +102,36 @@ describe("instance health diagnostics", () => {
     ]));
   });
 
-  test("marks stale Collector self-metrics unavailable even when other telemetry was received", async () => {
+  test("marks the Collector unavailable when no batch has arrived recently", async () => {
     const store = createTestStore();
+    // Receipts are stamped with defaultNow(), so staleness is produced by advancing
+    // the observer's clock past the 90s threshold rather than by backdating the row.
     await store.ingestOtlpBatch({
       signal: "traces",
       payload: { resourceSpans: [] },
     });
-    await store.ingestOtlpMetricPoints([
-      collectorSelfMetric("2026-07-18T09:55:00.000Z"),
-    ]);
+
+    const report = await collectInstanceHealth(store, {
+      now: () => new Date(Date.now() + 120_000),
+      historyHours: 24,
+      gatewayHealth: async () => ({
+        status: "healthy",
+        message: "Gateway diagnostics are reachable.",
+        observedAt: "2026-07-18T10:00:00.000Z",
+      }),
+    });
+
+    expect(report.components).toContainEqual(
+      expect.objectContaining({
+        key: "collector",
+        status: "unavailable",
+        observedAt: expect.any(String),
+      }),
+    );
+  });
+
+  test("warns when Built-in has never received a batch", async () => {
+    const store = createTestStore();
 
     const report = await collectInstanceHealth(store, {
       now: () => new Date("2026-07-18T10:00:00.000Z"),
@@ -123,33 +146,10 @@ describe("instance health diagnostics", () => {
     expect(report.components).toContainEqual(
       expect.objectContaining({
         key: "collector",
-        status: "unavailable",
-        observedAt: "2026-07-18T09:55:00.000Z",
+        status: "warning",
+        observedAt: null,
       }),
     );
   });
-});
 
-function collectorSelfMetric(timestamp: string) {
-  return {
-    name: "otelcol_process_uptime",
-    description: "Collector uptime.",
-    unit: "s",
-    dataType: "sum" as const,
-    aggregationTemporality: 2,
-    monotonic: true,
-    startTimestamp: "2026-07-18T09:00:00.000Z",
-    timestamp,
-    scopeName: "go.opentelemetry.io/collector/service",
-    attributes: {},
-    value: { asDouble: 3_600 },
-    resource: {
-      serviceName: "eveland-otel-collector",
-      domain: "platform" as const,
-      projectId: null,
-      deploymentId: null,
-      attributes: {},
-    },
-    payload: {},
-  };
-}
+});

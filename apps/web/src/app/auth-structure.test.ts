@@ -80,21 +80,17 @@ describe("team management web surfaces", () => {
     const page = source("./settings/observability/page.tsx");
     const settings = source("../components/observability-settings.tsx");
     expect(page).toContain("getObservabilitySettings");
-    expect(page).toContain("getObservabilityActivity");
     expect(page).toContain('member.role !== "admin"');
     expect(settings).toContain("Built-in");
     expect(settings).toContain("Always on");
-    expect(settings).toContain("Recent spans");
-    expect(settings).toContain("Recent logs");
-    expect(settings).toContain("Recent metrics");
-    expect(settings).toContain("Collector delivery");
-    expect(settings).toContain("Queue utilization");
-    expect(settings).toContain("Platform operations");
-    expect(settings).toContain("P95 latency");
-    expect(settings).toContain("initialActivity.platform.operations");
-    expect(settings).toContain("Deployment lifecycle");
-    expect(settings).toContain("initialActivity.platform.deploymentLifecycle");
-    expect(settings).toContain("initialActivity.delivery.destinations");
+    // This page configures monitoring and shows no observation data at all: no
+    // statistics, no timelines, not even Collector delivery counts. Everything
+    // observational belongs to whichever external destination the Admin configures.
+    expect(settings).not.toContain("Collector delivery");
+    expect(settings).not.toContain("Queue utilization");
+    expect(settings).not.toContain("Platform operations");
+    expect(settings).not.toContain("Deployment lifecycle");
+    expect(settings).not.toContain("Average latency");
     expect(settings).toContain("saveObservabilitySettings");
     expect(settings).toContain("External destinations");
     expect(settings).toContain("createObservabilityDestination");
@@ -102,6 +98,8 @@ describe("team management web surfaces", () => {
     expect(settings).toContain("deleteObservabilityDestination");
     expect(settings).toContain("Elastic");
     expect(settings).toContain("Langfuse");
+    expect(settings).toContain("Langfuse base URL");
+    expect(settings).toContain("https://us.cloud.langfuse.com");
     expect(settings).toContain("Custom OTLP");
     expect(settings).toContain("destination.health.status");
     expect(settings).toContain("<Dialog");

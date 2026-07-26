@@ -537,13 +537,18 @@ export const observabilityDestinationHealth = pgTable(
   ],
 );
 
+/**
+ * Batch receipts, not archives. The `(signal, payload_hash)` unique index is what
+ * makes rollup accumulation replay-safe: the Collector's persistent sending queue
+ * redelivers a batch after any API outage, and a second accumulation would double
+ * every counter. Retention only has to cover the Collector's retry window.
+ */
 export const otlpBatches = pgTable(
   "otlp_batches",
   {
     id: text("id").primaryKey(),
     signal: text("signal").notNull(),
     payloadHash: text("payload_hash").notNull(),
-    payload: jsonb("payload").notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -560,168 +565,6 @@ export const otlpBatches = pgTable(
     index("otlp_batches_signal_received_idx").on(
       table.signal,
       table.receivedAt,
-    ),
-  ],
-);
-
-export const otlpSpans = pgTable(
-  "otlp_spans",
-  {
-    id: text("id").primaryKey(),
-    traceId: text("trace_id").notNull(),
-    spanId: text("span_id").notNull(),
-    parentSpanId: text("parent_span_id"),
-    serviceName: text("service_name").notNull(),
-    domain: text("domain").notNull(),
-    projectId: text("project_id"),
-    deploymentId: text("deployment_id"),
-    name: text("name").notNull(),
-    kind: integer("kind"),
-    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
-    endedAt: timestamp("ended_at", { withTimezone: true }).notNull(),
-    durationMs: doublePrecision("duration_ms").notNull(),
-    statusCode: integer("status_code"),
-    statusMessage: text("status_message"),
-    scopeName: text("scope_name"),
-    attributes: jsonb("attributes").notNull(),
-    resourceAttributes: jsonb("resource_attributes").notNull(),
-    payload: jsonb("payload").notNull(),
-    receivedAt: timestamp("received_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    check(
-      "otlp_spans_domain_check",
-      sql`${table.domain} in ('agent', 'platform', 'runtime', 'capacity')`,
-    ),
-    uniqueIndex("otlp_spans_trace_span_idx").on(
-      table.traceId,
-      table.spanId,
-    ),
-    index("otlp_spans_started_idx").on(table.startedAt),
-    index("otlp_spans_domain_started_idx").on(
-      table.domain,
-      table.startedAt,
-    ),
-    index("otlp_spans_service_started_idx").on(
-      table.serviceName,
-      table.startedAt,
-    ),
-    index("otlp_spans_project_started_idx").on(
-      table.projectId,
-      table.startedAt,
-    ),
-  ],
-);
-
-export const otlpLogRecords = pgTable(
-  "otlp_log_records",
-  {
-    id: text("id").primaryKey(),
-    fingerprint: text("fingerprint").notNull(),
-    traceId: text("trace_id"),
-    spanId: text("span_id"),
-    serviceName: text("service_name").notNull(),
-    domain: text("domain").notNull(),
-    projectId: text("project_id"),
-    deploymentId: text("deployment_id"),
-    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
-    observedTimestamp: timestamp("observed_timestamp", {
-      withTimezone: true,
-    }),
-    severityNumber: integer("severity_number"),
-    severityText: text("severity_text"),
-    eventName: text("event_name"),
-    scopeName: text("scope_name"),
-    body: jsonb("body").notNull(),
-    attributes: jsonb("attributes").notNull(),
-    resourceAttributes: jsonb("resource_attributes").notNull(),
-    payload: jsonb("payload").notNull(),
-    receivedAt: timestamp("received_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    check(
-      "otlp_log_records_domain_check",
-      sql`${table.domain} in ('agent', 'platform', 'runtime', 'capacity')`,
-    ),
-    uniqueIndex("otlp_log_records_fingerprint_idx").on(
-      table.fingerprint,
-    ),
-    index("otlp_log_records_timestamp_idx").on(table.timestamp),
-    index("otlp_log_records_domain_timestamp_idx").on(
-      table.domain,
-      table.timestamp,
-    ),
-    index("otlp_log_records_service_timestamp_idx").on(
-      table.serviceName,
-      table.timestamp,
-    ),
-    index("otlp_log_records_project_timestamp_idx").on(
-      table.projectId,
-      table.timestamp,
-    ),
-  ],
-);
-
-export const otlpMetricPoints = pgTable(
-  "otlp_metric_points",
-  {
-    id: text("id").primaryKey(),
-    fingerprint: text("fingerprint").notNull(),
-    serviceName: text("service_name").notNull(),
-    domain: text("domain").notNull(),
-    projectId: text("project_id"),
-    deploymentId: text("deployment_id"),
-    name: text("name").notNull(),
-    description: text("description"),
-    unit: text("unit"),
-    dataType: text("data_type").notNull(),
-    aggregationTemporality: integer("aggregation_temporality"),
-    monotonic: boolean("monotonic"),
-    startTimestamp: timestamp("start_timestamp", {
-      withTimezone: true,
-    }),
-    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
-    scopeName: text("scope_name"),
-    attributes: jsonb("attributes").notNull(),
-    value: jsonb("value").notNull(),
-    resourceAttributes: jsonb("resource_attributes").notNull(),
-    payload: jsonb("payload").notNull(),
-    receivedAt: timestamp("received_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    check(
-      "otlp_metric_points_domain_check",
-      sql`${table.domain} in ('agent', 'platform', 'runtime', 'capacity')`,
-    ),
-    check(
-      "otlp_metric_points_data_type_check",
-      sql`${table.dataType} in ('gauge', 'sum', 'histogram', 'exponential_histogram', 'summary')`,
-    ),
-    uniqueIndex("otlp_metric_points_fingerprint_idx").on(
-      table.fingerprint,
-    ),
-    index("otlp_metric_points_timestamp_idx").on(table.timestamp),
-    index("otlp_metric_points_name_timestamp_idx").on(
-      table.name,
-      table.timestamp,
-    ),
-    index("otlp_metric_points_domain_timestamp_idx").on(
-      table.domain,
-      table.timestamp,
-    ),
-    index("otlp_metric_points_service_timestamp_idx").on(
-      table.serviceName,
-      table.timestamp,
-    ),
-    index("otlp_metric_points_project_timestamp_idx").on(
-      table.projectId,
-      table.timestamp,
     ),
   ],
 );

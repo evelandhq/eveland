@@ -62,15 +62,13 @@ describe("managed OpenTelemetry Collector configuration", () => {
     expect(config.exporters["otlp_http/builtin"]).not.toHaveProperty(
       "encoding",
     );
+    // No builtin traces pipeline: Built-in keeps no span read model, so spans go to
+    // external destinations only.
+    expect(config.service.pipelines).not.toHaveProperty("traces");
+    expect(config.processors["filter/builtin_eveland"]).not.toHaveProperty(
+      "trace_conditions",
+    );
     expect(config.service.pipelines).toMatchObject({
-      traces: {
-        processors: [
-          "memory_limiter",
-          "filter/builtin_eveland",
-          "batch",
-        ],
-        exporters: ["otlp_http/builtin"],
-      },
       logs: {
         processors: [
           "memory_limiter",
@@ -87,16 +85,15 @@ describe("managed OpenTelemetry Collector configuration", () => {
         ],
         exporters: ["otlp_http/builtin"],
       },
-      "metrics/collector_self": {
-        receivers: ["prometheus/collector_self"],
-        processors: [
-          "memory_limiter",
-          "resource/collector_self",
-          "batch",
-        ],
-        exporters: ["otlp_http/builtin"],
-      },
     });
+    // The Collector's own metrics never reach Built-in: no self-metrics pipeline
+    // exports to it. They are only forwarded to external destinations that take
+    // metrics for the platform domain.
+    expect(config.service.pipelines).not.toHaveProperty(
+      "metrics/collector_self",
+    );
+    expect(config.processors).not.toHaveProperty("filter/collector_self");
+    expect(config.service.telemetry.metrics.level).toBe("normal");
     expect(config.receivers["prometheus/collector_self"]).toMatchObject({
       config: {
         scrape_configs: [
@@ -123,7 +120,7 @@ describe("managed OpenTelemetry Collector configuration", () => {
     });
     expect(config.service.telemetry).toMatchObject({
       metrics: {
-        level: "detailed",
+        level: "normal",
         readers: [
           {
             pull: {
@@ -141,7 +138,7 @@ describe("managed OpenTelemetry Collector configuration", () => {
       },
     });
     expect(
-      config.processors["filter/builtin_eveland"].trace_conditions,
+      config.processors["filter/builtin_eveland"].log_conditions,
     ).toEqual([
       'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"',
     ]);
@@ -171,8 +168,7 @@ describe("managed OpenTelemetry Collector configuration", () => {
           securityRevision: 1,
           encryptedConfig: encrypted({
             kind: "langfuse",
-            tracesEndpoint:
-              "https://langfuse.example.com/api/public/otel/v1/traces",
+            baseUrl: "https://langfuse.example.com",
             publicKey: "pk-lf-test",
             secretKey: "sk-lf-test",
           }),
@@ -377,8 +373,7 @@ describe("managed OpenTelemetry Collector configuration", () => {
             securityRevision: 1,
             encryptedConfig: encrypted({
               kind: "langfuse",
-              tracesEndpoint:
-                "https://langfuse.example.com/api/public/otel/v1/traces",
+              baseUrl: "https://langfuse.example.com",
               publicKey: "pk-lf-validation",
               secretKey: "sk-lf-validation",
             }),

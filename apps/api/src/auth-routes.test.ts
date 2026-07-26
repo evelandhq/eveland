@@ -143,20 +143,6 @@ describe("control-plane auth routes", () => {
         })
       ).status,
     ).toBe(403);
-    expect(
-      (
-        await app.request("/system/observability/activity", {
-          headers: { cookie: adminCookie },
-        })
-      ).status,
-    ).toBe(200);
-    expect(
-      (
-        await app.request("/system/observability/activity", {
-          headers: { cookie: memberCookie },
-        })
-      ).status,
-    ).toBe(403);
   });
 
   test("allows only administrators to read instance health diagnostics", async () => {

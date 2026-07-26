@@ -1,5 +1,5 @@
 {
-  "id": "bcbcdbf1-f982-4c96-bd28-cea97e1749ca",
+  "id": "cd006f10-84f7-457d-832b-04ef244e69cd",
   "prevId": "c85bb17a-34db-4dc7-934d-d84b13697252",
   "version": "7",
   "dialect": "postgresql",
@@ -1260,7 +1260,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": false,
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2706,6 +2706,61 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.observability_destination_health": {
+      "name": "observability_destination_health",
+      "schema": "",
+      "columns": {
+        "destination_id": {
+          "name": "destination_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checked_at": {
+          "name": "checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_success_at": {
+          "name": "last_success_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "observability_destination_health_status_check": {
+          "name": "observability_destination_health_status_check",
+          "value": "\"observability_destination_health\".\"status\" in ('pending', 'healthy', 'degraded', 'paused')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.observability_policies": {
       "name": "observability_policies",
       "schema": "",
@@ -2766,6 +2821,92 @@
         "observability_policies_revision_check": {
           "name": "observability_policies_revision_check",
           "value": "\"observability_policies\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.otlp_batches": {
+      "name": "otlp_batches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "signal": {
+          "name": "signal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "otlp_batches_signal_hash_idx": {
+          "name": "otlp_batches_signal_hash_idx",
+          "columns": [
+            {
+              "expression": "signal",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payload_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "otlp_batches_signal_received_idx": {
+          "name": "otlp_batches_signal_received_idx",
+          "columns": [
+            {
+              "expression": "signal",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "received_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "otlp_batches_signal_check": {
+          "name": "otlp_batches_signal_check",
+          "value": "\"otlp_batches\".\"signal\" in ('traces', 'logs', 'metrics')"
         }
       },
       "isRLSEnabled": false
@@ -4235,8 +4376,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "observer_event_id": {
-          "name": "observer_event_id",
+        "telemetry_event_id": {
+          "name": "telemetry_event_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -4299,8 +4440,8 @@
         }
       },
       "indexes": {
-        "session_events_node_observer_idx": {
-          "name": "session_events_node_observer_idx",
+        "session_events_node_telemetry_idx": {
+          "name": "session_events_node_telemetry_idx",
           "columns": [
             {
               "expression": "session_node_id",
@@ -4309,7 +4450,7 @@
               "nulls": "last"
             },
             {
-              "expression": "observer_event_id",
+              "expression": "telemetry_event_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

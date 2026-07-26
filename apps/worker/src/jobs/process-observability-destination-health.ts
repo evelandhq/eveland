@@ -1,6 +1,7 @@
-import type {
-  ExternalDestinationConfig,
-  ObservabilitySignal,
+import {
+  langfuseOtlpTracesEndpoint,
+  type ExternalDestinationConfig,
+  type ObservabilitySignal,
 } from "@eveland/core/observability";
 import type { Store } from "@eveland/db";
 import { DEFAULT_TEAM_ID } from "@eveland/db";
@@ -136,7 +137,7 @@ function probeRequests(config: ExternalDestinationConfig): Array<{
       return [
         {
           signal: "traces",
-          url: config.tracesEndpoint,
+          url: langfuseOtlpTracesEndpoint(config.baseUrl),
           headers: {
             authorization: `Basic ${Buffer.from(
               `${config.publicKey}:${config.secretKey}`,

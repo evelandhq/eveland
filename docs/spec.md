@@ -227,41 +227,56 @@ Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：�
 
 #### Observability (/settings/observability)
 
-Eveland 的监控以 OpenTelemetry/OTLP 为唯一传输标准。Built-in 是平台内置且始终启用的
-Destination，不提供配置或关闭入口；它接收 Eveland 的 traces、logs、metrics，并将标准
-OTLP 投影为可按 domain、service、Project 查询的 Span、LogRecord、Metric Point，以及 Sessions、Usage、
-Instance Health 与平台诊断所需的读模型。Observability 页面直接读取 Built-in backend
-展示最近的 Eveland spans/logs/metrics，并在默认 24 小时窗口内按 service 与
-request/job/background 分类聚合 platform/runtime Span 的数量、错误数、错误率、平均延迟与
-p95 延迟；带 Project/Deployment 语义属性的 runtime-domain LogRecord 同时形成最近
-build/deploy/runtime lifecycle 时间线。页面不查询 Agent 进程或外部监控产品。
-Built-in 的 service-authenticated OTLP/HTTP 入口必须对 traces、logs、metrics 同时接受标准
+Eveland 的监控以 OpenTelemetry/OTLP 为唯一传输标准。这个页面的职责是让 Admin 配置外部
+监控目标与 Agent 采集策略，不承担观测数据的展示。
+
+Built-in 是平台内置且始终启用的 Destination，不提供配置或关闭入口。它的职责只是把 Eveland
+原有的运行数据——CPU、memory、disk 等宿主容量，token usage 与成本，Session 事件，组件
+心跳——改用标准 OTLP 协议收集，投影为 Sessions、Usage 与 Instance Health 必需的读模型。
+Built-in 不存储原始明细，不提供统计视图，也不引入任何原本不存在的监控项。页面因此只展示
+Built-in 的接收状态、外部 Destination 配置与 Agent capture 策略；不展示 spans/logs/metrics
+明细，不展示平台操作统计、build/deploy 时间线或投递统计，也不查询 Agent 进程或外部监控
+产品。任何 Span、LogRecord、Metric Point 级别的观测与下钻都由外部 Destination 承担，
+Eveland 不做本地兜底。
+
+Managed Collector 只向 Built-in 发送 logs 与 metrics：logs 投影 Session/Usage 读模型，
+metrics 投影 Instance Health 的容量与心跳读模型。traces 没有 Built-in 读模型，只发往外部
+Destination。
+
+Built-in 的 service-authenticated OTLP/HTTP 入口仍必须对 traces、logs、metrics 同时接受标准
 `application/json` 与 `application/x-protobuf`，并按请求编码返回对应的标准 success
 response；同一批次中缺少必要 Eveland Resource 或 signal 字段的 item 通过标准
-`partial_success` 拒绝计数反馈，其余 item 继续入库。Managed Collector 默认以 protobuf
-向 Built-in 发送；protobuf bytes 形式的 Trace/Span ID 必须规范化为与 OTLP/JSON 相同的
-小写十六进制表示，以保持跨编码幂等与 trace/log correlation。不得定义 Eveland 私有
-envelope。
+`partial_success` 拒绝计数反馈，其余 item 继续投影。拒绝计数由标准投影结果得出，与是否
+存储明细无关。Managed Collector 默认以 protobuf 向 Built-in 发送；protobuf bytes 形式的
+Trace/Span ID 必须规范化为与 OTLP/JSON 相同的小写十六进制表示，以保持跨编码幂等与
+trace/log correlation。重复投递的批次按 signal 与 payload 摘要去重。
+不得定义 Eveland 私有 envelope。
 
 Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
 
 * Agent capture 开关、trace sampling、input/output content 与 reasoning policy 只作用于
-  Eveland 注入的私有 provider，并由运行中的 Agent 动态加载，不重启 Deployment
+  Eveland 注入的私有 provider，并由运行中的 Agent 动态加载，不重启 Deployment；
+  input、output 与 reasoning content 默认开启，Admin 可以分别关闭
 * Session 完成与私有 Provider revision 切换最多等待两秒完成 flush/shutdown；超时或失败只
   产生限频降级告警，不能使 Eve event hook 或 Agent turn 失败
 * Elastic 固定接收 Eveland 的全部 traces、logs、metrics 和 agent/platform/runtime/capacity domain
 * Langfuse 固定只接收 Eveland 注入的 Agent traces；Collector 按直连 OTLP v4 contract
   将 model call 映射为 generation，将 Agent/Tool/Subagent 保持为带 operation metadata 的
-  span，并映射 input/output、model、标准 usage 与 provider-reported cost
+  span，并映射 input/output、model、标准 usage 与 provider-reported cost。管理员只配置
+  Langfuse Base URL，例如 `https://us.cloud.langfuse.com`；Eveland 生成
+  `/api/public/otel/v1/traces` signal endpoint
 * Custom OTLP/HTTP 可以选择 signals、domains 与加密 Header
 * 每个外部 exporter 使用独立 retry 与持久化 sending queue；一个目标失败不能阻塞 Built-in
   或其他目标
+* 平台自身遥测的观测完全由外部 Destination 承担。未启用 Elastic 或 Custom OTLP 时，
+  platform/runtime domain 的 trace 与 log 不在任何地方留存；Built-in 只保留 capacity 读模型
+  （Instance Health）与 Session/Usage 读模型。Langfuse 只承接 Agent traces，不能作为平台
+  自身遥测的目标
 * Worker 每五分钟使用不含业务数据的标准 OTLP 请求独立探测外部 Destination；Settings 展示
   pending、healthy、degraded 或 paused，不把某个外部目标故障解释为 Built-in 故障
-* Collector 使用自身的 detailed internal metrics 暴露 receiver/exporter data flow、发送失败与
-  persistent queue size/capacity；这些指标经标准 OTel metrics pipeline 进入 Built-in，
-  Observability 页面按 exporter 展示实际 delivery 状态，不能用 endpoint probe 代替
-  pipeline delivery
+* Collector 自身的 internal metrics 只发往接收 metrics 与 platform domain 的外部
+  Destination，不进入 Built-in。Collector 的投递量、发送失败与 queue 压力属于第三方监控
+  产品的职责；Eveland 不为它建立本地视图
 
 系统设置中的外部凭据使用 `APP_SECRET_KEY` 加密，保存后不返回浏览器。Worker 将 revisioned
 设置渲染为官方 OpenTelemetry Collector 配置，先使用同版本 Collector 校验，再原子应用并只
@@ -275,9 +290,10 @@ capacity 信号；CPU、memory、disk、workload 与 component health 均使用�
 Worker 还把已经脱敏并写入产品日志的 build、deploy 与 runtime lifecycle 日志通过独立
 runtime-domain LoggerProvider 发为 OTel LogRecord。
 
-Built-in retention 不是可配置项。raw traces、logs、metrics 与 capacity sample 默认保留
-30 天；Session/Usage read model 默认保留 90 天。Worker 每日清理过期数据，运行中的 Session
-不参与清理，外部 Destination 已接收的数据不受影响。
+Built-in retention 不是可配置项。capacity sample 默认保留 30 天；Session/Usage read model
+默认保留 90 天；批次去重收据只保留覆盖 Collector 重试窗口所需的时长。Worker 每日清理过期
+数据，运行中的 Session 不参与清理，外部 Destination 已接收的数据不受影响。Built-in 不存储
+原始 span、LogRecord 与 metric point，也不保留任何观测聚合，因此不存在明细层面的 retention。
 
 #### Instance Health (/settings/health)
 
@@ -285,7 +301,8 @@ Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“
 “是否正在接近容量风险”分开呈现，并至少展示：
 
 * API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间；Collector
-  状态来自其定期 self-metrics，任意历史 OTLP batch 不能继续证明 Collector 在线
+  状态来自最近一次 OTLP 批次的到达时间（它是 Built-in 的唯一发送方），过期的批次不能继续
+  证明 Collector 在线
 * Worker 持续 heartbeat；启动时配置 snapshot 不能替代在线状态
 * Worker 宿主机的 CPU、load、可用内存、`EVELAND_DATA_DIR` 所在文件系统容量与 inode
 * queued/running Job 数量、最老 queued Job，以及 RuntimeInstance 状态分布
@@ -578,11 +595,9 @@ message
 → final response / failure
 ```
 
-同一详情页还从 Built-in backend 读取该 Session 全部 SessionNode 的 Eveland 私有 Agent
-spans，按 `traceId`/`parentSpanId` 还原 OpenTelemetry span tree，并将具有相同
-trace/span context 的 Agent 或平台 LogRecord 展示在对应 span 下。只有 Session/trace
-相关但没有匹配 span 的记录进入独立 Session logs 区域；用户源码 instrumentation 发送到
-其自有 backend 的数据不由 Eveland 读取或合并。
+详情页不展示 span tree 与 LogRecord 明细。Built-in 不存储原始 Agent span 与 LogRecord，
+span 级别的下钻在启用接收 Agent traces 的外部 Destination 后由该 Destination 提供；
+用户源码 instrumentation 发送到其自有 backend 的数据不由 Eveland 读取或合并。
 
 同时按实际执行的 Eve agent / subagent 展示：
 

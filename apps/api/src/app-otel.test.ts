@@ -55,14 +55,10 @@ describe("Built-in OTLP ingest", () => {
     });
     expect(accepted.status).toBe(200);
     expect(await accepted.json()).toEqual({});
-    await expect(store.listOtlpBatches({ signal: "traces" })).resolves.toHaveLength(1);
-    await expect(store.listOtlpSpans({ limit: 10 })).resolves.toEqual([
-      expect.objectContaining({
-        traceId: "trace_1",
-        spanId: "span_1",
-        name: "GET /projects",
-      }),
-    ]);
+    // Only the receipt persists: traces have no Built-in read model.
+    await expect(
+      store.latestOtlpBatchReceivedAt({ signal: "traces" }),
+    ).resolves.toEqual(expect.any(String));
   });
 
   test("rejects a signal with the wrong OTLP request shape", async () => {
@@ -111,7 +107,7 @@ describe("Built-in OTLP ingest", () => {
         errorMessage: expect.stringContaining("required"),
       },
     });
-    await expect(store.listOtlpSpans({ limit: 10 })).resolves.toHaveLength(1);
+    // The rejection count is derived from projection even though nothing is stored.
   });
 
   test("accepts standard OTLP/HTTP protobuf for every supported signal", async () => {
@@ -120,38 +116,30 @@ describe("Built-in OTLP ingest", () => {
         signal: "traces",
         payload: protobufTraceBatch(),
         verify: async (store: ReturnType<typeof createTestStore>) => {
-          await expect(store.listOtlpSpans({ limit: 10 })).resolves.toEqual([
-            expect.objectContaining({
-              traceId: "0102030405060708090a0b0c0d0e0f10",
-              spanId: "0102030405060708",
-              name: "GET /projects",
-            }),
-          ]);
+          // Traces persist nothing beyond the receipt asserted in the loop.
         },
       },
       {
         signal: "logs",
         payload: platformLogBatch(),
         verify: async (store: ReturnType<typeof createTestStore>) => {
-          await expect(
-            store.listOtlpLogRecords({ limit: 10 }),
-          ).resolves.toEqual([
-            expect.objectContaining({
-              body: "worker ready",
-              severityText: "INFO",
-              traceId: "0102030405060708090a0b0c0d0e0f10",
-              spanId: "0102030405060708",
-            }),
-          ]);
+          // A platform-domain LogRecord projects into no read model; only Agent logs
+          // produce Sessions and usage. Acceptance is all there is to assert.
         },
       },
       {
         signal: "metrics",
         payload: workerMetricBatch(),
         verify: async (store: ReturnType<typeof createTestStore>) => {
+          await expect(store.listWorkerHeartbeats()).resolves.toEqual([
+            expect.objectContaining({ workerId: "worker_1" }),
+          ]);
           await expect(
-            store.listOtlpMetricPoints({ limit: 20 }),
-          ).resolves.toHaveLength(11);
+            store.listHostMetrics({
+              since: new Date("2026-07-01T00:00:00.000Z"),
+              limit: 10,
+            }),
+          ).resolves.toHaveLength(1);
         },
       },
     ] as const;
@@ -179,8 +167,8 @@ describe("Built-in OTLP ingest", () => {
       );
       expect(new Uint8Array(await response.arrayBuffer())).toHaveLength(0);
       await expect(
-        store.listOtlpBatches({ signal: testCase.signal }),
-      ).resolves.toHaveLength(1);
+        store.latestOtlpBatchReceivedAt({ signal: testCase.signal }),
+      ).resolves.toEqual(expect.any(String));
       await testCase.verify(store);
     }
   });
@@ -221,7 +209,7 @@ describe("Built-in OTLP ingest", () => {
         errorMessage: expect.stringContaining("required"),
       },
     });
-    await expect(store.listOtlpSpans({ limit: 10 })).resolves.toHaveLength(1);
+    // The rejection count is derived from projection even though nothing is stored.
   });
 
   test("rejects malformed OTLP/HTTP protobuf", async () => {
@@ -291,9 +279,11 @@ describe("Built-in OTLP ingest", () => {
       },
     });
     expect(await store.listSessionEvents(session!.id)).toHaveLength(2);
-    await expect(store.listOtlpLogRecords({ limit: 10 })).resolves.toHaveLength(
-      2,
-    );
+    // Replaying the batch must not duplicate the Session read model, and the Agent
+    // LogRecords themselves are not retained.
+    await expect(
+      store.latestOtlpBatchReceivedAt({ signal: "logs" }),
+    ).resolves.toEqual(expect.any(String));
   });
 
   test("projects retry-safe Instance Health read models from standard OTLP metrics", async () => {
@@ -330,9 +320,8 @@ describe("Built-in OTLP ingest", () => {
         diskTotalBytes: 1000,
       }),
     ]);
-    await expect(
-      store.listOtlpMetricPoints({ limit: 20 }),
-    ).resolves.toHaveLength(11);
+    // Capacity metrics leave behind these read models only; the points themselves are
+    // not retained anywhere.
   });
 });
 

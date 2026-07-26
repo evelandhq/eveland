@@ -4,14 +4,43 @@ import {
   type ObservabilityPolicy,
 } from "@eveland/core/observability";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createExternalDestinationHealthReconciler,
+  probeExternalDestination,
 } from "./process-observability-destination-health.js";
 
 const appSecretKey = "eveland-dev-secret-key-000000000";
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("external observability destination health", () => {
+  test("derives the Langfuse traces endpoint from its base URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await probeExternalDestination({
+      kind: "langfuse",
+      baseUrl: "https://us.cloud.langfuse.com",
+      publicKey: "pk-lf",
+      secretKey: "sk-lf",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://us.cloud.langfuse.com/api/public/otel/v1/traces",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: `Basic ${Buffer.from("pk-lf:sk-lf").toString("base64")}`,
+          "content-type": "application/json",
+          "x-langfuse-ingestion-version": "4",
+        }),
+      }),
+    );
+  });
+
   test("probes enabled destinations independently and marks paused destinations without network access", async () => {
     const policy: ObservabilityPolicy = {
       ...createDefaultObservabilityPolicy(3),
@@ -36,8 +65,7 @@ describe("external observability destination health", () => {
           securityRevision: 1,
           encryptedConfig: encrypted({
             kind: "langfuse",
-            tracesEndpoint:
-              "https://langfuse.example.com/api/public/otel/v1/traces",
+            baseUrl: "https://langfuse.example.com",
             publicKey: "pk-lf",
             secretKey: "sk-lf",
           }),

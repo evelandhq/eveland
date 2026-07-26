@@ -2,7 +2,7 @@ import {
   COLLECTOR_SELF_SERVICE_NAME,
   collectorExporterComponentId,
   externalDestinationConfigSchema,
-  OBSERVABILITY_SIGNALS,
+  langfuseOtlpTracesEndpoint,
   TELEMETRY_DOMAINS,
   type ExternalDestinationConfig,
   type ObservabilityPolicy,
@@ -24,6 +24,12 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { stringify } from "yaml";
+
+/**
+ * Signals Built-in still receives. Traces are excluded on purpose: no Built-in read
+ * model consumes spans, so shipping them would only buy a parse per batch.
+ */
+const BUILT_IN_SIGNALS: readonly ObservabilitySignal[] = ["logs", "metrics"];
 
 const DEFAULT_COLLECTOR_IMAGE =
   "otel/opentelemetry-collector-contrib:0.149.0";
@@ -252,7 +258,7 @@ function baseCollectorConfig(): CollectorConfig {
       },
       "filter/builtin_eveland": domainFilter(
         [...TELEMETRY_DOMAINS],
-        [...OBSERVABILITY_SIGNALS],
+        [...BUILT_IN_SIGNALS],
       ),
       "resource/collector_self": {
         attributes: [
@@ -292,8 +298,11 @@ function baseCollectorConfig(): CollectorConfig {
     service: {
       extensions: ["file_storage", "health_check"],
       pipelines: {
+        // Traces are deliberately absent: Built-in keeps no span read model, so
+        // forwarding them would cost a full parse per batch for nothing. Spans reach
+        // external destinations through their own pipelines below.
         ...Object.fromEntries(
-          OBSERVABILITY_SIGNALS.map((signal) => [
+          BUILT_IN_SIGNALS.map((signal) => [
             signal,
             {
               receivers: ["otlp"],
@@ -306,15 +315,6 @@ function baseCollectorConfig(): CollectorConfig {
             },
           ]),
         ),
-        "metrics/collector_self": {
-          receivers: ["prometheus/collector_self"],
-          processors: [
-            "memory_limiter",
-            "resource/collector_self",
-            "batch",
-          ],
-          exporters: ["otlp_http/builtin"],
-        },
       },
       telemetry: {
         resource: {
@@ -324,7 +324,10 @@ function baseCollectorConfig(): CollectorConfig {
           "eveland.telemetry.domain": "platform",
         },
         metrics: {
-          level: "detailed",
+          // `detailed` adds per-component internal metrics nothing reads. Built-in
+          // keeps only exporter delivery and queue series, so the extra cardinality
+          // is pure write amplification.
+          level: "normal",
           readers: [
             {
               pull: {
@@ -373,7 +376,7 @@ function externalExporter(config: ExternalDestinationConfig) {
       };
     case "langfuse":
       return {
-        traces_endpoint: config.tracesEndpoint,
+        traces_endpoint: langfuseOtlpTracesEndpoint(config.baseUrl),
         headers: {
           authorization: `Basic ${Buffer.from(
             `${config.publicKey}:${config.secretKey}`,
