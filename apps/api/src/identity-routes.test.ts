@@ -76,6 +76,55 @@ async function signIn(app: ReturnType<typeof createApp>) {
 }
 
 describe("Eveland Internal Identity routes", () => {
+  test("does not grant the web-chat origin CORS access to control-plane routes", async () => {
+    const { app } = await createIdentityApp();
+    const controlCookie = await signIn(app);
+
+    const response = await app.request("/auth/session", {
+      headers: {
+        cookie: controlCookie,
+        origin: chatOrigin,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("removes expired login transactions when starting a public login", async () => {
+    const { app, store } = await createIdentityApp();
+    const provider = await store.createIdentityProviderConnection({
+      type: "internal",
+      displayName: "Internal",
+      internalRealmKey: "members",
+      enabled: true,
+    });
+    const [target] = await store.listIdentityReturnTargets();
+    await store.createIdentityLoginTransaction({
+      stateHash: "sha256:expired-state",
+      providerConnectionId: provider.id,
+      providerSecurityRevision: provider.securityRevision,
+      returnTargetId: target!.id,
+      returnPath: "/agents/old",
+      nonceHash: null,
+      pkceVerifierEncrypted: null,
+      expiresAt: new Date("2020-01-01T00:00:00.000Z"),
+    });
+
+    const response = await app.request(
+      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fnew",
+      { redirect: "manual" },
+    );
+
+    expect(response.status).toBe(302);
+    await expect(
+      store.consumeIdentityLoginTransaction(
+        "sha256:expired-state",
+        new Date("2019-01-01T00:00:00.000Z"),
+      ),
+    ).resolves.toBeNull();
+  });
+
   test("lets only an admin configure one Internal provider, its Realm, and grants", async () => {
     const { app, store } = await createIdentityApp();
     const cookie = await signIn(app);

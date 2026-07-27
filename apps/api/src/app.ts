@@ -71,6 +71,11 @@ import {
 } from "./app-schemas.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
+const identityBrowserCorsPaths = new Set([
+  "/identity/session",
+  "/identity/caller-tokens",
+  "/identity/logout",
+]);
 
 export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variables: { principal: AuthPrincipal } }> {
   const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
@@ -233,10 +238,12 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   app.use(
     "*",
     cors({
-      origin: [
-        webOrigin,
-        ...identityRouteServices.allowedOrigins,
-      ],
+      origin: (origin, c) =>
+        origin === webOrigin ||
+        (identityRouteServices.allowedOrigins.has(origin) &&
+          identityBrowserCorsPaths.has(c.req.path))
+          ? origin
+          : null,
       credentials: true,
     }),
   );

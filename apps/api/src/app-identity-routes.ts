@@ -153,6 +153,8 @@ export function registerPublicIdentityRoutes(
         400,
       );
     }
+    const current = new Date();
+    await store.deleteExpiredIdentityLoginTransactions(current, 100);
     const state = randomBytes(32).toString("base64url");
     await store.createIdentityLoginTransaction({
       stateHash: hashIdentityToken(state),
@@ -162,7 +164,7 @@ export function registerPublicIdentityRoutes(
       returnPath,
       nonceHash: null,
       pkceVerifierEncrypted: null,
-      expiresAt: new Date(Date.now() + LOGIN_TRANSACTION_TTL_MS),
+      expiresAt: new Date(current.getTime() + LOGIN_TRANSACTION_TTL_MS),
     });
 
     const internalIdentity = await options.auth?.resolveInternalIdentity(c.req.raw);
