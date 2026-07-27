@@ -37,21 +37,36 @@ const runtimeDiagnosticMaxCharacters = 32_000;
 export async function dispatchScheduleToRuntime(
   input: ScheduleDispatchInput,
 ): Promise<{ sessionIds: string[] }> {
-  const response = await fetch(
-    `http://127.0.0.1:${input.hostPort}/eveland/scheduler/${encodeURIComponent(input.scheduleRunId)}`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${input.credential}`,
-        "content-type": "application/json",
-        "x-eveland-runtime-secret": input.runtimeSecret,
-      },
-      body: JSON.stringify({ scheduleKey: input.scheduleKey }),
-      signal: AbortSignal.timeout(
-        Number(process.env.EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS ?? 120_000),
-      ),
-    },
+  const timeoutMs = Number(
+    process.env.EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS ?? 120_000,
   );
+  let response: Response;
+  try {
+    response = await fetch(
+      `http://127.0.0.1:${input.hostPort}/eveland/scheduler/${encodeURIComponent(input.scheduleRunId)}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${input.credential}`,
+          "content-type": "application/json",
+          "x-eveland-runtime-secret": input.runtimeSecret,
+        },
+        body: JSON.stringify({ scheduleKey: input.scheduleKey }),
+        signal: AbortSignal.timeout(timeoutMs),
+      },
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "TimeoutError" || error.name === "AbortError")
+    ) {
+      throw new Error(
+        `Scheduler Channel timed out after ${timeoutMs}ms for ScheduleRun ${input.scheduleRunId} on Deployment ${input.deploymentId}.`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   if (!response.ok)
     throw new Error(
       `Scheduler Channel rejected dispatch with HTTP ${response.status}.`,

@@ -442,6 +442,21 @@ describe("processNextJob", () => {
       scheduleRunId: run.id,
     }));
     await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+    await expect(store.listLogs(project.id, "runtime")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          line: `ScheduleRun ${run.id} activating billing/sweep on Deployment ${deployment.id} (Release ${deployment.releaseId}, runtime=docker).`,
+        }),
+        expect.objectContaining({
+          line: `ScheduleRun ${run.id} dispatching billing/sweep to the Scheduler Channel on Deployment ${deployment.id}.`,
+        }),
+        expect.objectContaining({
+          line: expect.stringMatching(
+            new RegExp(`^ScheduleRun ${run.id} succeeded for billing/sweep with 1 Session after \\d+ms\\.$`),
+          ),
+        }),
+      ]),
+    );
 
     const unknownRun = await store.createManualScheduleRun(project.id, schedule.id);
     await expect(processNextJob(store, "schedule-worker", {
@@ -454,9 +469,18 @@ describe("processNextJob", () => {
     await expect(store.getScheduleRun(unknownRun.id)).resolves.toMatchObject({
       status: "dispatch_unknown",
       attempt: 1,
-      error: "runtime connection closed after dispatch claim",
+      error: "Scheduler Channel dispatch failed: runtime connection closed after dispatch claim",
     });
     await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+    await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
+      expect.objectContaining({
+        line: expect.stringMatching(
+          new RegExp(
+            `^ScheduleRun ${unknownRun.id} failed during Scheduler Channel dispatch after \\d+ms: runtime connection closed after dispatch claim$`,
+          ),
+        ),
+      }),
+    );
   });
 
   test("invalidates each materialized Gateway hostname when service credentials are configured", async () => {
