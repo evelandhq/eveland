@@ -102,6 +102,7 @@ export type ProjectRow = {
   slug: string;
   ownerId: string;
   name: string;
+  description: string | null;
   importKind: string;
   gitUrl: string | null;
   status: string;
@@ -122,6 +123,7 @@ export function projectRowToProject(row: ProjectRow): Project {
     id: row.id,
     slug: row.slug,
     name: row.name,
+    description: row.description,
     importKind: row.importKind as ProjectImportKind,
     gitUrl: row.gitUrl,
     status: row.status as ProjectStatus,

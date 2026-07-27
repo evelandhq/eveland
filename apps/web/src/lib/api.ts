@@ -2,6 +2,7 @@ export type Project = {
   id: string;
   slug: string;
   name: string;
+  description: string | null;
   importKind: "git" | "zip";
   gitUrl: string | null;
   status: string;

@@ -47,7 +47,7 @@ export default async function ProjectLayout({
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold">{project.name}</h1>
           <div className="truncate text-xs text-muted-foreground">
-            {project.gitUrl ?? project.id}
+            {project.description ?? project.gitUrl ?? project.id}
           </div>
         </div>
         <div className="flex items-center gap-2">

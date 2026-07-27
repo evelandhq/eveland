@@ -65,7 +65,7 @@ describe("sidebar navigation", () => {
     expect(navigation?.getProjectIdFromPathname("/usage")).toBeNull()
   })
 
-  test("adds Usage to the existing project destinations", async () => {
+  test("orders daily project destinations before management destinations", async () => {
     const navigation = await loadNavigationModule()
 
     expect(navigation).not.toBeNull()
@@ -73,11 +73,12 @@ describe("sidebar navigation", () => {
       { href: "/projects/project-123", label: "Overview" },
       { href: "/projects/project-123/playground", label: "Playground" },
       { href: "/projects/project-123/sessions", label: "Sessions" },
-      { href: "/projects/project-123/usage", label: "Usage" },
-      { href: "/projects/project-123/schedules", label: "Schedules" },
-      { href: "/projects/project-123/source", label: "Source" },
-      { href: "/projects/project-123/secrets", label: "Secrets" },
       { href: "/projects/project-123/logs", label: "Logs" },
+      { href: "/projects/project-123/schedules", label: "Schedules" },
+      { href: "/projects/project-123/usage", label: "Usage" },
+      { href: "/projects/project-123/deployments", label: "Deployments" },
+      { href: "/projects/project-123/source", label: "Source" },
+      { href: "/projects/project-123/settings", label: "Settings" },
     ])
   })
 

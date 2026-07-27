@@ -3,9 +3,6 @@ import {
   BoxIcon,
   BracesIcon,
   ChartNoAxesColumnIcon,
-  FileKeyIcon,
-  FileTextIcon,
-  FolderIcon,
   HistoryIcon,
   HeartPulseIcon,
   InfoIcon,
@@ -17,6 +14,7 @@ import {
   PlayIcon,
   RocketIcon,
   ScrollTextIcon,
+  SettingsIcon,
   ShieldUserIcon,
   UsersIcon,
 } from 'lucide-react';
@@ -51,14 +49,15 @@ export function getProjectNavigationItems(projectId: string) {
   const projectHref = `/projects/${projectId}`;
 
   return [
-    { href: projectHref, label: 'Overview', icon: ActivityIcon },
-    { href: `${projectHref}/playground`, label: 'Playground', icon: PlayIcon },
-    { href: `${projectHref}/sessions`, label: 'Sessions', icon: HistoryIcon },
-    { href: `${projectHref}/usage`, label: 'Usage', icon: ChartNoAxesColumnIcon },
-    { href: `${projectHref}/schedules`, label: 'Schedules', icon: ScrollTextIcon },
-    { href: `${projectHref}/source`, label: 'Source', icon: BracesIcon },
-    { href: `${projectHref}/secrets`, label: 'Secrets', icon: FileKeyIcon },
-    { href: `${projectHref}/logs`, label: 'Logs', icon: LogsIcon },
+    { href: projectHref, label: 'Overview', icon: ActivityIcon, section: 'daily' },
+    { href: `${projectHref}/playground`, label: 'Playground', icon: PlayIcon, section: 'daily' },
+    { href: `${projectHref}/sessions`, label: 'Sessions', icon: HistoryIcon, section: 'daily' },
+    { href: `${projectHref}/logs`, label: 'Logs', icon: LogsIcon, section: 'daily' },
+    { href: `${projectHref}/schedules`, label: 'Schedules', icon: ScrollTextIcon, section: 'daily' },
+    { href: `${projectHref}/usage`, label: 'Usage', icon: ChartNoAxesColumnIcon, section: 'daily' },
+    { href: `${projectHref}/deployments`, label: 'Deployments', icon: RocketIcon, section: 'manage' },
+    { href: `${projectHref}/source`, label: 'Source', icon: BracesIcon, section: 'manage' },
+    { href: `${projectHref}/settings`, label: 'Settings', icon: SettingsIcon, section: 'manage' },
   ] as const;
 }
 

@@ -1,0 +1,176 @@
+import { BadgeCheckIcon } from "lucide-react"
+import { DeploymentActions } from "@/components/deployment-actions"
+import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions"
+import { EveVersionStatus } from "@/components/eve-version-status"
+import { StatusBadge } from "@/components/status-badge"
+import { Badge } from "@/components/ui/badge"
+import {
+  getAgentEndpoints,
+  getDeploymentOverview,
+  getEveVersion,
+  getProject,
+  getProjectJobs,
+} from "@/lib/server-api"
+
+export const dynamic = "force-dynamic"
+export const metadata = {
+  title: "Deployments",
+}
+
+export default async function ProjectDeploymentsPage({
+  params,
+}: {
+  params: Promise<{ projectId: string }>
+}) {
+  const { projectId } = await params
+  const [project, jobs, endpoints, eveVersion, overview] = await Promise.all([
+    getProject(projectId),
+    getProjectJobs(projectId),
+    getAgentEndpoints(projectId),
+    getEveVersion(projectId),
+    getDeploymentOverview(projectId),
+  ])
+  const latestImportJob =
+    jobs.find((job) => job.type === "import_source") ?? null
+  const stableRoute =
+    overview.routes.find((route) => route.kind === "project") ?? null
+
+  return (
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Deployments</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Build releases, test previews, and control production traffic.
+          </p>
+        </div>
+        <DeploymentActions
+          projectId={projectId}
+          importKind={project?.importKind === "git" ? "git" : "zip"}
+          canSync={project?.importKind === "git" && Boolean(project?.gitUrl)}
+          canDeploy={Boolean(project?.sourceRevisionId)}
+          importJob={latestImportJob}
+        />
+      </header>
+
+      <section
+        className="overflow-hidden rounded-md border border-border"
+        aria-labelledby="production-deployment-heading"
+      >
+        <div className="border-b border-border px-4 py-3">
+          <h3 id="production-deployment-heading" className="text-sm font-semibold">
+            Production
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Current release, source revision, and canonical endpoints.
+          </p>
+        </div>
+        <dl className="grid gap-px bg-border text-sm sm:grid-cols-2 lg:grid-cols-3">
+          {(
+            [
+              ["Deployment", project?.deploymentStatus ?? "unknown"],
+              ["Eve Agent", eveVersion.version ?? "Unknown"],
+              ["Source revision", project?.sourceRevisionId ?? "None"],
+              ["Release", project?.releaseId ?? "None"],
+              ["Stable endpoint", endpoints.stable ?? "None"],
+              ["Latest preview", endpoints.previews.at(-1) ?? "None"],
+            ] satisfies Array<[string, string]>
+          ).map(([label, value]) => (
+            <div key={label} className="min-w-0 bg-background p-4">
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+              <dd className="mt-2 break-all font-medium">
+                {label === "Eve Agent" ? (
+                  <EveVersionStatus eveVersion={eveVersion} />
+                ) : label.endsWith("endpoint") || label === "Latest preview" ? (
+                  value === "None" ? (
+                    value
+                  ) : (
+                    <a
+                      href={value}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline-offset-4 hover:underline"
+                    >
+                      {value}
+                    </a>
+                  )
+                ) : (
+                  value
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section aria-labelledby="deployment-traffic-heading">
+        <div>
+          <h3 id="deployment-traffic-heading" className="text-base font-semibold">
+            Deployments &amp; traffic
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Stable marks deployments receiving production traffic; manage previews,
+            rollbacks, splits, drain, and retention.
+          </p>
+        </div>
+        <div className="mt-3 divide-y divide-border border-y border-border">
+          {overview.deployments.map((deployment) => {
+            const stableTarget =
+              stableRoute?.targets.find(
+                (target) => target.deploymentId === deployment.id,
+              ) ?? null
+            const retention = overview.retention.find(
+              (entry) => entry.deployment.id === deployment.id,
+            )
+            return (
+              <div
+                key={deployment.id}
+                className="grid gap-3 py-4 text-sm md:grid-cols-[1fr_auto] md:items-center"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono font-medium">
+                      {deployment.deploymentKey}
+                    </span>
+                    {stableTarget ? (
+                      <Badge>
+                        <BadgeCheckIcon data-icon="inline-start" />
+                        Stable · {stableTarget.weight / 100}% traffic
+                      </Badge>
+                    ) : null}
+                    <StatusBadge status={deployment.status} />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    <time dateTime={deployment.createdAt}>
+                      Deployed {new Date(deployment.createdAt).toLocaleString()}
+                    </time>
+                    {" · "}
+                    {deployment.runtimeKind}
+                    {" · "}
+                    {retention?.protected
+                      ? `protected: ${retention.reasons.join(", ")}`
+                      : "eligible for archive"}
+                  </p>
+                </div>
+                <DeploymentTrafficActions
+                  projectId={projectId}
+                  deploymentId={deployment.id}
+                  productionDeploymentId={project?.deploymentId ?? null}
+                  stableRouteId={stableRoute?.id ?? null}
+                  status={deployment.status}
+                  retentionProtected={retention?.protected ?? true}
+                />
+              </div>
+            )
+          })}
+          {overview.deployments.length === 0 ? (
+            <p className="py-6 text-sm text-muted-foreground">
+              No deployments yet.
+            </p>
+          ) : null}
+        </div>
+      </section>
+
+    </div>
+  )
+}

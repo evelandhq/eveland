@@ -1,5 +1,5 @@
 import type { FileUIPart, UserContent } from "ai";
-import type { Job, PublicSecret, ScheduleRun } from "./api";
+import type { Job, Project, PublicSecret, ScheduleRun } from "./api";
 import type {
   PublicGitCredential,
   SharedAgentEnvironment,
@@ -122,6 +122,17 @@ export async function updateProfile(input: { name: string; image: string | null 
     body: JSON.stringify(input),
   });
   return data.member;
+}
+
+export async function updateProjectMetadata(
+  projectId: string,
+  input: { name: string; description: string },
+): Promise<Project> {
+  return clientRequest<{ project: Project }>(`/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  }).then((data) => data.project);
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {

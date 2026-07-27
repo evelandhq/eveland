@@ -135,6 +135,10 @@ export interface ProjectStore {
   isProjectSlugAvailable(slug: string): Promise<boolean>;
   createProject(input: CreateProjectInput): Promise<Project>;
   getProject(projectId: string): Promise<Project | null>;
+  updateProjectMetadata(
+    projectId: string,
+    input: { name: string; description: string | null },
+  ): Promise<Project | null>;
   requestProjectDeletion(projectId: string): Promise<ProjectDeletionRequest>;
   setProjectDeletionFailed(projectId: string, error: string): Promise<Project | null>;
   deleteProject(projectId: string): Promise<boolean>;

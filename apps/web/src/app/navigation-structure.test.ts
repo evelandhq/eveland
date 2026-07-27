@@ -115,6 +115,101 @@ describe("web application shell", () => {
     expect(projectNav).toContain("<SidebarMenuButton")
   })
 
+  test("organizes project navigation around daily use with a restrained management section", () => {
+    const navigation = source("../lib/navigation.ts")
+    const projectNav = source("../components/project-nav.tsx")
+    const projectNavigation = navigation.slice(
+      navigation.indexOf("export function getProjectNavigationItems"),
+      navigation.indexOf("export function getProjectIdFromPathname"),
+    )
+
+    const labels = [
+      "'Overview'",
+      "'Playground'",
+      "'Sessions'",
+      "'Logs'",
+      "'Schedules'",
+      "'Usage'",
+      "'Deployments'",
+      "'Source'",
+      "'Settings'",
+    ]
+    for (let index = 1; index < labels.length; index += 1) {
+      expect(projectNavigation.indexOf(labels[index]!)).toBeGreaterThan(
+        projectNavigation.indexOf(labels[index - 1]!),
+      )
+    }
+    expect(projectNavigation).toContain("section: 'daily'")
+    expect(projectNavigation).toContain("section: 'manage'")
+    expect(projectNavigation).not.toContain("label: 'Secrets'")
+    expect(projectNav).toContain("<SidebarSeparator")
+  })
+
+  test("provides project deployments and two-level project settings routes", () => {
+    const projectDeploymentsUrl = new URL(
+      "./projects/[projectId]/deployments/page.tsx",
+      import.meta.url,
+    )
+    const projectSettingsLayoutUrl = new URL(
+      "./projects/[projectId]/settings/layout.tsx",
+      import.meta.url,
+    )
+    const projectGeneralSettingsUrl = new URL(
+      "./projects/[projectId]/settings/general/page.tsx",
+      import.meta.url,
+    )
+    const projectEnvironmentSettingsUrl = new URL(
+      "./projects/[projectId]/settings/environment/page.tsx",
+      import.meta.url,
+    )
+
+    expect(existsSync(fileURLToPath(projectDeploymentsUrl))).toBe(true)
+    expect(existsSync(fileURLToPath(projectSettingsLayoutUrl))).toBe(true)
+    expect(existsSync(fileURLToPath(projectGeneralSettingsUrl))).toBe(true)
+    expect(existsSync(fileURLToPath(projectEnvironmentSettingsUrl))).toBe(true)
+    if (
+      !existsSync(fileURLToPath(projectDeploymentsUrl)) ||
+      !existsSync(fileURLToPath(projectSettingsLayoutUrl)) ||
+      !existsSync(fileURLToPath(projectGeneralSettingsUrl)) ||
+      !existsSync(fileURLToPath(projectEnvironmentSettingsUrl))
+    ) {
+      return
+    }
+
+    expect(source("./projects/[projectId]/deployments/page.tsx")).toContain(
+      "Deployments &",
+    )
+    const projectSettingsLayout = source(
+      "./projects/[projectId]/settings/layout.tsx",
+    )
+    const projectSettingsNav = source("../components/project-settings-nav.tsx")
+    expect(projectSettingsLayout).toContain(
+      "md:grid-cols-[10rem_minmax(0,1fr)]",
+    )
+    expect(projectSettingsLayout).toContain("<aside")
+    expect(projectSettingsNav).toContain("flex-col")
+    expect(projectSettingsNav).toContain("General")
+    expect(projectSettingsNav).toContain("Environment")
+    expect(source("./projects/[projectId]/settings/general/page.tsx")).toContain(
+      "<ProjectGeneralSettings",
+    )
+    expect(
+      source("./projects/[projectId]/settings/environment/page.tsx"),
+    ).toContain("<ProjectSecretsSettings")
+  })
+
+  test("uses the project overview for a fixed seven-day execution summary", () => {
+    const overview = source("./projects/[projectId]/page.tsx")
+
+    expect(overview).toContain(
+      'getProjectUsageAnalytics(projectId, { range: "7d" })',
+    )
+    expect(overview).toContain("Last 7 days")
+    expect(overview).toContain("Recent Sessions")
+    expect(overview).not.toContain("Deployments &amp; traffic")
+    expect(overview).not.toContain("<DeploymentTrafficActions")
+  })
+
   test("makes promoted Git sync primary and preview sync secondary", () => {
     const actions = source("../components/deployment-actions.tsx")
 
@@ -180,7 +275,7 @@ describe("web application shell", () => {
     const deleteAction = source("../components/delete-project-action.tsx")
     const projects = source("./projects/page.tsx")
     const projectLayout = source("./projects/[projectId]/layout.tsx")
-    const projectOverview = source("./projects/[projectId]/page.tsx")
+    const projectGeneralSettings = source("./projects/[projectId]/settings/general/page.tsx")
     const clientApi = source("../lib/client-api.ts")
 
     expect(deleteAction).toContain("<AlertDialog")
@@ -195,7 +290,7 @@ describe("web application shell", () => {
     expect(projects).toContain("projectStatus === 'running' ? 'secondary'")
     expect(projectLayout).toContain("<ProjectDeletionNotice")
     expect(projectLayout).toContain("disabled={project.deletionStatus === 'deleting'}")
-    expect(projectOverview).toContain("<ProjectDangerZone")
+    expect(projectGeneralSettings).toContain("<ProjectDangerZone")
     expect(clientApi).toContain("export async function deleteProject")
   })
 
@@ -278,24 +373,25 @@ describe("web application shell", () => {
   })
 
   test("does not leave a blank grid cell in the project deployment summary", () => {
-    const projectOverview = source("./projects/[projectId]/page.tsx")
+    const projectDeployments = source("./projects/[projectId]/deployments/page.tsx")
 
-    expect(projectOverview).toContain("last:col-span-2")
+    expect(projectDeployments).toContain("lg:grid-cols-3")
+    expect(projectDeployments).not.toContain("last:col-span-2")
   })
 
   test("shows deployment timestamps in the project traffic list", () => {
-    const projectOverview = source("./projects/[projectId]/page.tsx")
+    const projectDeployments = source("./projects/[projectId]/deployments/page.tsx")
 
-    expect(projectOverview).toContain("<time dateTime={deployment.createdAt}>")
-    expect(projectOverview).toContain("Deployed {new Date(deployment.createdAt).toLocaleString()}")
+    expect(projectDeployments).toContain("<time dateTime={deployment.createdAt}>")
+    expect(projectDeployments).toContain("Deployed {new Date(deployment.createdAt).toLocaleString()}")
   })
 
   test("marks stable route targets with their production traffic weight", () => {
-    const projectOverview = source("./projects/[projectId]/page.tsx")
+    const projectDeployments = source("./projects/[projectId]/deployments/page.tsx")
 
-    expect(projectOverview).toContain("stableRoute?.targets.find((target) => target.deploymentId === deployment.id)")
-    expect(projectOverview).toContain("<BadgeCheckIcon data-icon=\"inline-start\" />")
-    expect(projectOverview).toContain("Stable · {stableTarget.weight / 100}% traffic")
+    expect(projectDeployments).toContain("stableRoute?.targets.find(")
+    expect(projectDeployments).toContain("<BadgeCheckIcon data-icon=\"inline-start\" />")
+    expect(projectDeployments).toContain("Stable · {stableTarget.weight / 100}% traffic")
   })
 
   test("explains when saving an environment entry queued live deployment restarts", () => {

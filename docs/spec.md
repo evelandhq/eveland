@@ -248,10 +248,14 @@ import job 和消费 Preflight，确保 worker 看见首次导入/部署任务�
 同一用户以后从同 host 导入或同步时自动复用已保存凭据，显式提交的新 PAT 仅在该次导入成功后替换旧值。
 SSH/SCP URL 不接受 PAT，URL 中也不允许内嵌 credentials。
 
-Project 名称同时是公开 Agent 地址中的不可变 slug：全实例唯一、最长 53 个字符，
+创建时确认的 Project 名称用于占用公开 Agent 地址中的不可变 slug：全实例唯一、最长 53 个字符，
 只允许小写字母、数字和 `-`，且不能以 `-` 开头或结尾。Web 通过只读可用性接口提供
 即时反馈；创建接口仍必须在数据库唯一性边界内精确占用用户确认的名称。并发冲突返回
 `409` 并停留在命名屏幕，不允许静默改成 `name-1`、`name-2`。
+创建后 Project 另有可修改的 Display name（最长 80 个字符）和可选纯文本 Description
+（最长 240 个字符）。Display name 用于控制面标题与列表；Description 用简短的能力语言说明
+Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使用。修改二者不得改变 slug、
+公开 Agent endpoint、Project ID、Route 或已有 Session/Deployment 关系。
 `proj_xxxxxxxxxx` 仍是控制面、数据库关系和 `/projects/:projectId` 使用的内部 ID，
 不能因为公开 slug 变得可读而替换内部主键。
 
@@ -315,16 +319,44 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 
 ### 项目首页 (/projects/proj_xxxxxxxxxx)
 
-展示当前项目运行状态：
+Overview 默认展示最近七天的执行概况，而不是承担完整的部署管理：
 
-* 当前 Deployment 状态
-* 当前 Release / Source Revision
-* Stable Agent endpoint 与当前 Deployment preview endpoint
-* Deployment 历史、每个版本的部署时间，以及 stable endpoint 当前指向的 target 与流量权重
+* Session 数、running 数、terminal Session 完成率与失败数
+* Input / Output token 总量、Usage coverage 与 Provider/Gateway 实际报告的成本
+* 按天的 Session 趋势
 * 最近 Sessions
-* 最近错误
-* 已识别的 Schedules
-* Build / Deploy 状态
+* 当前 Production 状态、Eve 版本与 Stable Agent endpoint
+* 下一次已启用 Schedule
+
+Overview 的主要操作是 Open Playground，并提供前往 Sessions 与 Usage 的下钻。完整的构建、
+预览、流量与回滚操作位于 Project Deployments。
+
+Project Sidebar 按日常观察优先排列：
+
+```text
+Overview
+Playground
+Sessions
+Logs
+Schedules
+Usage
+──────────
+Deployments
+Source
+Settings
+```
+
+Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Deployment 建立特定诊断路径。
+
+---
+
+### Deployments (/projects/proj_xxxxxxxxxx/deployments)
+
+展示和管理：
+
+* 当前 Production Deployment、Release、Source Revision 与 Stable/Preview endpoint
+* Deployment 历史、部署时间、runtime kind 与 retention protection
+* Stable endpoint 当前指向的 target 与流量权重
 
 主要操作：
 
@@ -580,7 +612,18 @@ sandbox
 
 ---
 
-### Variables and Secrets (/projects/proj_xxxxxxxxxx/secrets)
+### Project Settings (/projects/proj_xxxxxxxxxx/settings)
+
+Project Settings 使用页面内二级导航，不在主 Sidebar 展开第三层：
+
+* General：修改 Display name 与 Description；只读查看不可变 Project slug、Project ID 与 Source
+  repository；Project 删除位于 General 的 Danger zone
+* Environment：管理 Project Variables 与 Secrets
+
+旧 `/projects/proj_xxxxxxxxxx/secrets` 路径重定向到
+`/projects/proj_xxxxxxxxxx/settings/environment`。
+
+### Variables and Secrets (/projects/proj_xxxxxxxxxx/settings/environment)
 
 用于配置项目运行需要的运行时变量与外部 Key。页面与新建项目、Shared Agent Environment 使用统一的
 Type、Name、Value 表格和弹框交互；Type 区分 `variable` 与 `secret`，两种 Value 都加密保存且保存后
@@ -601,7 +644,7 @@ Project 和 initial import job 原子提交，不能先排队部署再通过后�
 是运行时配置，不能原地修改已启动进程的环境；重启继续使用原 Release，并在
 新进程启动时重新解密和注入完整配置集合。刷新范围不能只依赖过渡字段
 `projects.currentDeploymentId`，因为 stable、preview 或 A/B target 可能同时运行。
-Secrets 页面必须明确提示是否已排入重启；没有 live Deployment 时，条目从
+Environment 页面必须明确提示是否已排入重启；没有 live Deployment 时，条目从
 下一次 deploy 开始生效。
 
 Project Variable/Secret 仅在运行时注入容器，不进入：

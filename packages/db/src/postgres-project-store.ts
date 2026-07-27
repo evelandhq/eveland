@@ -441,6 +441,19 @@ export function createPostgresProjectStore({
       return row ? projectRowToProject(row) : null;
     },
 
+    async updateProjectMetadata(projectId, input) {
+      const [row] = await db
+        .update(projects)
+        .set({
+          name: input.name,
+          description: input.description,
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, projectId))
+        .returning();
+      return row ? projectRowToProject(row) : null;
+    },
+
     async listGitCredentials(userId) {
       const rows = await db
         .select()
