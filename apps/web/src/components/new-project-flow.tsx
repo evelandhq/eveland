@@ -12,6 +12,7 @@ import {
   CopyIcon,
   EyeIcon,
   EyeOffIcon,
+  FileUpIcon,
   LockKeyholeIcon,
   PencilIcon,
   PlusIcon,
@@ -47,8 +48,17 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getGitCredentials } from "@/lib/client-api";
 import type { AgentEndpoints, Job, LogLine, Project } from "@/lib/api";
-import { getNewProjectProgress, validateNewProjectEnvironmentVariables } from "@/lib/new-project";
+import {
+  getNewProjectProgress,
+  mergeImportedEnvironmentVariables,
+  type NewProjectEnvironmentVariable,
+  validateNewProjectEnvironmentVariables,
+} from "@/lib/new-project";
 import { cn } from "@/lib/utils";
+import {
+  EnvironmentImportDialog,
+  type EnvironmentImportEntry,
+} from "./environment-import-dialog";
 import {
   browserGet,
   browserGetOptional,
@@ -68,13 +78,7 @@ const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.";
 
 type Availability = "idle" | "checking" | "available" | "unavailable" | "error";
-type EnvironmentVariableDraft = {
-  id: number;
-  key: string;
-  kind: "variable" | "secret";
-  value: string;
-  visible: boolean;
-};
+type EnvironmentVariableDraft = NewProjectEnvironmentVariable;
 type EnvironmentVariableDraftErrors = { key?: string; value?: string };
 
 const environmentKindItems = [
@@ -95,6 +99,7 @@ export function NewProjectFlow() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [environmentVariables, setEnvironmentVariables] = useState<EnvironmentVariableDraft[]>([]);
+  const [environmentImportOpen, setEnvironmentImportOpen] = useState(false);
   const [environmentDialogOpen, setEnvironmentDialogOpen] = useState(false);
   const [editingEnvironmentVariableId, setEditingEnvironmentVariableId] = useState<number | null>(null);
   const [environmentDraft, setEnvironmentDraft] = useState<EnvironmentVariableDraft | null>(null);
@@ -358,6 +363,15 @@ export function NewProjectFlow() {
     setEnvironmentDialogOpen(false);
   }
 
+  function importEnvironmentVariables(imported: EnvironmentImportEntry[]) {
+    setEnvironmentVariables((current) => mergeImportedEnvironmentVariables(
+      current,
+      imported,
+      () => nextEnvironmentVariableId.current++,
+    ));
+    setEnvironmentOpen(true);
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col px-5 py-10 sm:px-8 sm:py-16">
       <StepIndicator step={step} />
@@ -567,15 +581,26 @@ export function NewProjectFlow() {
                       <p className="text-sm text-muted-foreground">
                         Add provider keys such as <code className="font-mono text-foreground">OPENAI_API_KEY</code>. Values are encrypted before they are stored.
                       </p>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={environmentVariables.length >= 50}
-                        onClick={addEnvironmentVariable}
-                      >
-                        <PlusIcon data-icon="inline-start" />
-                        Add entry
-                      </Button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEnvironmentImportOpen(true)}
+                        >
+                          <FileUpIcon data-icon="inline-start" />
+                          Import .env
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={environmentVariables.length >= 50}
+                          onClick={addEnvironmentVariable}
+                        >
+                          <PlusIcon data-icon="inline-start" />
+                          Add entry
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="overflow-hidden rounded-lg border">
@@ -736,6 +761,13 @@ export function NewProjectFlow() {
                   ) : null}
                 </DialogContent>
               </Dialog>
+
+              <EnvironmentImportDialog
+                open={environmentImportOpen}
+                onOpenChange={setEnvironmentImportOpen}
+                existingKeys={environmentVariables.map((entry) => entry.key)}
+                onImport={importEnvironmentVariables}
+              />
 
               {createError ? (
                 <Alert variant="destructive">

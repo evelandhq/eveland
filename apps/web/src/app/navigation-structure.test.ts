@@ -395,6 +395,43 @@ describe("web application shell", () => {
     expect(forms).toContain("Could not reach the Eveland API.")
   })
 
+  test("imports and previews .env entries in both project environment flows", () => {
+    const importerUrl = new URL("../components/environment-import-dialog.tsx", import.meta.url)
+    expect(existsSync(fileURLToPath(importerUrl))).toBe(true)
+    if (!existsSync(fileURLToPath(importerUrl))) return
+
+    const importer = source("../components/environment-import-dialog.tsx")
+    const settings = source("../components/project-secrets-settings.tsx")
+    const newProject = source("../components/new-project-flow.tsx")
+
+    expect(importer).toContain('accept=".env,text/plain"')
+    expect(importer).toContain("parseDotenvImport")
+    expect(importer).toContain("Review variables")
+    expect(importer).toContain("Overwrite")
+    expect(importer).toContain("New")
+    expect(importer).toContain("event.stopPropagation()")
+    expect(importer).toContain("<InputGroup")
+    expect(importer).toContain("<SelectGroup")
+    expect(settings).toContain("<EnvironmentImportDialog")
+    expect(settings).toContain("createProjectEnvironmentEntries")
+    expect(newProject).toContain("<EnvironmentImportDialog")
+    expect(newProject).toContain("mergeImportedEnvironmentVariables")
+  })
+
+  test("scrolls long .env contents inside a height-limited textarea", () => {
+    const importer = source("../components/environment-import-dialog.tsx")
+
+    expect(importer).toContain(
+      'className="max-h-[40svh] min-h-52 overflow-y-auto font-mono text-xs"',
+    )
+  })
+
+  test("shows imported environment values without preview-only quoting", () => {
+    const importer = source("../components/environment-import-dialog.tsx")
+
+    expect(importer).toContain("value={entry.value}")
+  })
+
   test("keeps links semantic when they use button styling", () => {
     const sourceRoot = fileURLToPath(new URL("../", import.meta.url))
     const violations = globSync("**/*.tsx", { cwd: sourceRoot }).filter((path) =>

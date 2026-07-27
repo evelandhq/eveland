@@ -157,8 +157,10 @@ describe("team management web surfaces", () => {
 
   test("uses the same typed entry model during new-project setup", () => {
     const newProjectForm = source("../components/new-project-flow.tsx");
+    const newProjectHelpers = source("../lib/new-project.ts");
 
-    expect(newProjectForm).toContain('kind: "variable" | "secret"');
+    expect(newProjectForm).toContain("type NewProjectEnvironmentVariable");
+    expect(newProjectHelpers).toContain('kind: "variable" | "secret"');
     expect(newProjectForm).toContain("<Select");
     expect(newProjectForm).toContain('variable.kind === "secret" ? "Secret" : "Variable"');
     expect(newProjectForm).toContain("kind: variable.kind");

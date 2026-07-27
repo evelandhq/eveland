@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { enqueueBuildDeploy, syncSource } from "./client-api";
+import {
+  createProjectEnvironmentEntries,
+  enqueueBuildDeploy,
+  syncSource,
+} from "./client-api";
 import { getProjectImportNotice, selectProjectLogs, type Job, type LogLine } from "./api";
 
 describe("web api helpers", () => {
@@ -192,6 +196,39 @@ describe("web api helpers", () => {
     );
 
     await expect(syncSource("proj_zip")).rejects.toThrow("Only git projects can sync source");
+  });
+
+  test("sends project environment entries through the batch endpoint", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({
+        secrets: [
+          { id: "secret_1", projectId: "proj_123", key: "MODEL_NAME", kind: "variable" },
+          { id: "secret_2", projectId: "proj_123", key: "OPENAI_API_KEY", kind: "secret" },
+        ],
+        jobs: [],
+      }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const entries = [
+      { key: "MODEL_NAME", kind: "variable" as const, value: "gpt-5.4" },
+      { key: "OPENAI_API_KEY", kind: "secret" as const, value: "sk-test" },
+    ];
+
+    await expect(createProjectEnvironmentEntries("proj_123", entries)).resolves.toMatchObject({
+      secrets: [
+        { key: "MODEL_NAME", kind: "variable" },
+        { key: "OPENAI_API_KEY", kind: "secret" },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/secrets/batch", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ entries }),
+    });
   });
 
   test("requests asynchronous project deletion and returns its job", async () => {

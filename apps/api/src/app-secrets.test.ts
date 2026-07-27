@@ -9,6 +9,7 @@ import { createBuildInfo } from "@eveland/core/build-info";
 import { createScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 import {
   decryptSecretValue,
+  encryptSecretValue,
   type EncryptedSecret,
 } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
@@ -158,6 +159,144 @@ describe("api app", () => {
     expect(queuedDeploymentIds).toEqual(
       expect.arrayContaining([stable.id, preview.id]),
     );
+  });
+
+  test("batch upserts project environment entries and queues each live deployment restart once", async () => {
+    const store = createTestStore();
+    const appSecretKey = "eveland-test-secret-key-00000000";
+    const project = await store.createProject({
+      name: "Batch Environment Agent",
+      importKind: "zip",
+      sourcePath: "/tmp/source",
+    });
+    const importJob = await store.claimNextJob("test-worker");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "batch-environment:preview",
+      containerName: "batch-environment-preview",
+      internalPort: 3000,
+      hostPort: 41043,
+      runtimeKind: "docker",
+    });
+    await store.upsertSecret(
+      project.id,
+      "MODEL_NAME",
+      JSON.stringify(encryptSecretValue("gpt-old", appSecretKey)),
+      "variable",
+    );
+
+    const response = await createApp(store, { appSecretKey }).request(
+      `/projects/${project.id}/secrets/batch`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          entries: [
+            { key: "MODEL_NAME", kind: "variable", value: "gpt-5.4" },
+            { key: "OPENAI_API_KEY", kind: "secret", value: "sk-batch-secret" },
+          ],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.secrets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "MODEL_NAME", kind: "variable" }),
+      expect.objectContaining({ key: "OPENAI_API_KEY", kind: "secret" }),
+    ]));
+    expect(body.jobs).toEqual([
+      expect.objectContaining({
+        type: "restart_deployment",
+        payload: expect.objectContaining({ deploymentId: deployment.id }),
+      }),
+    ]);
+    expect(JSON.stringify(body)).not.toContain("gpt-5.4");
+    expect(JSON.stringify(body)).not.toContain("sk-batch-secret");
+
+    const records = await store.listSecretRecords(project.id);
+    expect(records).toHaveLength(2);
+    expect(decryptSecretValue(
+      JSON.parse(records.find((record) => record.key === "MODEL_NAME")!.encryptedValue) as EncryptedSecret,
+      appSecretKey,
+    )).toBe("gpt-5.4");
+    expect(decryptSecretValue(
+      JSON.parse(records.find((record) => record.key === "OPENAI_API_KEY")!.encryptedValue) as EncryptedSecret,
+      appSecretKey,
+    )).toBe("sk-batch-secret");
+
+    const restart = await store.claimNextJob("test-worker");
+    expect(restart).toMatchObject({
+      type: "restart_deployment",
+      payload: expect.objectContaining({ deploymentId: deployment.id }),
+    });
+    await store.completeJob(restart!.id);
+    await expect(store.claimNextJob("test-worker")).resolves.toBeNull();
+  });
+
+  test("rejects duplicate batch names before writing any project environment entries", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Duplicate Batch Agent",
+      importKind: "zip",
+    });
+
+    const response = await createApp(store).request(
+      `/projects/${project.id}/secrets/batch`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          entries: [
+            { key: "MODEL_NAME", value: "gpt-5.4" },
+            { key: "MODEL_NAME", value: "gpt-5-mini" },
+          ],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(store.listSecrets(project.id)).resolves.toEqual([]);
+  });
+
+  test("enforces the 50-entry project environment cap across existing and imported names", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Capped Batch Agent",
+      importKind: "zip",
+    });
+    for (let index = 0; index < 50; index += 1) {
+      await store.upsertSecret(project.id, `KEY_${index}`, "encrypted-placeholder");
+    }
+
+    const response = await createApp(store).request(
+      `/projects/${project.id}/secrets/batch`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          entries: [
+            { key: "KEY_0", value: "replacement" },
+            { key: "OVER_THE_LIMIT", value: "new-value" },
+          ],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await store.listSecrets(project.id)).toHaveLength(50);
+    expect((await store.listSecrets(project.id)).some((entry) => entry.key === "OVER_THE_LIMIT")).toBe(false);
   });
 
   test("queues live deployment secret refreshes only when a secret was deleted", async () => {

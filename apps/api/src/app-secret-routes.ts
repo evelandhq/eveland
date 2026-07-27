@@ -1,7 +1,12 @@
 import type { SharedAgentEnvironmentRecord } from "@eveland/core/contracts";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
-import { secretSchema, sharedAgentEnvironmentSchema, updateSecretSchema } from "./app-schemas.js";
+import {
+  batchSecretSchema,
+  secretSchema,
+  sharedAgentEnvironmentSchema,
+  updateSecretSchema,
+} from "./app-schemas.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 
 export function registerSecretRoutes(input: {
@@ -43,6 +48,45 @@ export function registerSecretRoutes(input: {
     );
     const jobs = await enqueueLiveDeploymentRestarts(projectId);
     return c.json({ secret, jobs }, 201);
+  });
+
+  app.post("/projects/:projectId/secrets/batch", async (c) => {
+    const parsed = batchSecretSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid project environment batch", issues: parsed.error.issues },
+        400,
+      );
+    }
+
+    const projectId = c.req.param("projectId");
+    const existing = await store.listSecrets(projectId);
+    const resultingKeys = new Set(existing.map((entry) => entry.key));
+    parsed.data.entries.forEach((entry) => resultingKeys.add(entry.key));
+    if (resultingKeys.size > 50) {
+      return c.json(
+        {
+          error: "A project can have at most 50 environment entries.",
+          issues: [{
+            code: "custom",
+            path: ["entries"],
+            message: "Remove an existing entry or import fewer new names.",
+          }],
+        },
+        400,
+      );
+    }
+
+    const secrets = await store.upsertSecrets(
+      projectId,
+      parsed.data.entries.map((entry) => ({
+        key: entry.key,
+        kind: entry.kind,
+        value: JSON.stringify(encryptSecretValue(entry.value, appSecretKey)),
+      })),
+    );
+    const jobs = await enqueueLiveDeploymentRestarts(projectId);
+    return c.json({ secrets, jobs }, 201);
   });
 
   app.put("/projects/:projectId/secrets/:secretId", async (c) => {
