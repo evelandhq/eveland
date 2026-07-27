@@ -1,4 +1,4 @@
-import { codeToHtml, type BundledLanguage } from "shiki"
+import type { BundledLanguage } from "shiki"
 
 type SourceLanguage = BundledLanguage | "text"
 
@@ -31,11 +31,4 @@ export function getSourceLanguage(filePath: string): SourceLanguage {
 
   const extension = fileName.includes(".") ? fileName.split(".").at(-1) ?? "" : ""
   return languageByExtension[extension] ?? "text"
-}
-
-export async function highlightSourceCode(source: string, filePath: string): Promise<string> {
-  return codeToHtml(source, {
-    lang: getSourceLanguage(filePath),
-    theme: "github-light-default",
-  })
 }
