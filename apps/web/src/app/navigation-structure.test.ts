@@ -294,11 +294,55 @@ describe("web application shell", () => {
     expect(clientApi).toContain("export async function deleteProject")
   })
 
-  test("renders highlighted source code", () => {
+  test("renders source files with Pierre Diffs", () => {
+    const sourcePage = source("./projects/[projectId]/source/page.tsx")
+    const sourceFileTreeUrl = new URL("../components/source-file-tree.tsx", import.meta.url)
+    const sourceCodeViewUrl = new URL("../components/source-code-view.tsx", import.meta.url)
+
+    expect(sourcePage).toContain("<SourceFileTree")
+    expect(sourcePage).toContain("<SourceCodeView")
+    expect(sourcePage).not.toContain("highlightSourceCode")
+    expect(sourcePage).not.toContain("dangerouslySetInnerHTML")
+    expect(sourcePage).not.toContain("<Card")
+    expect(existsSync(fileURLToPath(sourceFileTreeUrl))).toBe(true)
+    expect(existsSync(fileURLToPath(sourceCodeViewUrl))).toBe(true)
+    if (!existsSync(fileURLToPath(sourceFileTreeUrl))) return
+
+    const sourceFileTree = source("../components/source-file-tree.tsx")
+    expect(sourceFileTree).toContain('from "@pierre/trees/react"')
+    expect(sourceFileTree).toContain("flattenEmptyDirectories: true")
+    expect(sourceFileTree).toContain("onSelectionChange")
+    expect(sourceFileTree).toContain("search: true")
+    expect(sourceFileTree).toContain("router.replace")
+
+    if (!existsSync(fileURLToPath(sourceCodeViewUrl))) return
+
+    const sourceCodeView = source("../components/source-code-view.tsx")
+    expect(sourceCodeView).toContain('from "@pierre/diffs/react"')
+    expect(sourceCodeView).toContain("<File")
+    expect(sourceCodeView).toContain("disableFileHeader: true")
+    expect(sourceCodeView).toContain("cacheKey")
+  })
+
+  test("lets the Source workspace fill the project content area without an outer frame", () => {
     const sourcePage = source("./projects/[projectId]/source/page.tsx")
 
-    expect(sourcePage).toContain("highlightSourceCode")
-    expect(sourcePage).toContain("<Card")
+    expect(sourcePage).toContain('className="grid -m-5')
+    expect(sourcePage).not.toContain("rounded-xl")
+    expect(sourcePage).not.toContain("shadow-xs")
+  })
+
+  test("keeps both Source column headers at the same fixed height", () => {
+    const sourcePage = source("./projects/[projectId]/source/page.tsx")
+
+    expect(sourcePage.match(/h-12 shrink-0/g)).toHaveLength(2)
+  })
+
+  test("stretches the Source column divider through the full workspace height", () => {
+    const sourcePage = source("./projects/[projectId]/source/page.tsx")
+
+    expect(sourcePage).toContain("lg:h-full")
+    expect(sourcePage).toContain("lg:border-r")
   })
 
   test("gives new-project creation a focused full-screen route", () => {

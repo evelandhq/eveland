@@ -1,13 +1,5 @@
-import Link from 'next/link';
 import { FileCodeIcon } from 'lucide-react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   Empty,
   EmptyDescription,
@@ -15,9 +7,10 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
-import { getEveVersion, getSourceFile, getSourceFiles } from '@/lib/server-api';
-import { cn } from '@/lib/utils';
-import { getSourceLanguage, highlightSourceCode } from '@/lib/source-highlight';
+import { SourceCodeView } from '@/components/source-code-view';
+import { SourceFileTree } from '@/components/source-file-tree';
+import { getEveVersion, getSourceFiles } from '@/lib/server-api';
+import { getSourceLanguage } from '@/lib/source-language';
 import { EveVersionStatus } from '@/components/eve-version-status';
 
 export const dynamic = 'force-dynamic';
@@ -35,62 +28,57 @@ export default async function SourcePage({
   const { projectId } = await params;
   const { path } = await searchParams;
   const [files, eveVersion] = await Promise.all([getSourceFiles(projectId), getEveVersion(projectId)]);
-  const selectedPath = path ?? files[0]?.path ?? null;
-  const selectedFile = selectedPath ? await getSourceFile(projectId, selectedPath) : null;
-  const highlightedSource = selectedFile
-    ? await highlightSourceCode(selectedFile.content, selectedFile.path)
-    : null;
+  const selectedPath = files.some((file) => file.path === path) ? path ?? null : files[0]?.path ?? null;
+  const selectedFile = files.find((file) => file.path === selectedPath) ?? null;
   const selectedLanguage = selectedFile ? getSourceLanguage(selectedFile.path) : null;
 
   return (
-    <div className="grid min-w-0 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <Card size="sm" className="h-fit lg:sticky lg:top-16">
-        <CardHeader>
-          <CardTitle>Source files</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <nav className="flex max-h-[calc(100svh-16rem)] flex-col gap-px overflow-auto text-xs">
-            {files.map((file) => (
-              <Link
-                key={file.path}
-                href={`/projects/${projectId}/source?path=${encodeURIComponent(file.path)}`}
-                className={cn(
-                  'truncate rounded-sm px-2 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground',
-                  file.path === selectedPath && 'bg-muted font-medium text-foreground',
-                )}
-              >
-                {file.path}
-              </Link>
-            ))}
-          </nav>
-        </CardContent>
-        <CardFooter className="flex-col items-start border-t text-xs text-muted-foreground">
-          <span>{files.length} indexed {files.length === 1 ? 'file' : 'files'}</span>
-          <EveVersionStatus className="items-start" eveVersion={eveVersion} />
-        </CardFooter>
-      </Card>
+    <div className="grid -m-5 min-h-[calc(100svh-6.5625rem)] min-w-0 overflow-hidden bg-background md:min-h-[calc(100svh-3.5rem)] lg:h-[calc(100svh-3.5rem)] lg:min-h-0 lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <aside className="flex min-h-80 min-w-0 flex-col border-b lg:h-full lg:min-h-0 lg:border-r lg:border-b-0">
+        <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
+          <h2 className="text-sm font-medium">Source files</h2>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {files.length} {files.length === 1 ? 'file' : 'files'}
+          </span>
+        </header>
+        <div className="min-h-0 flex-1 p-1.5">
+          <SourceFileTree
+            paths={files.map((file) => file.path)}
+            projectId={projectId}
+            selectedPath={selectedPath}
+          />
+        </div>
+        <footer className="border-t px-4 py-2.5">
+          <EveVersionStatus className="items-start" eveVersion={eveVersion} showMessage={false} />
+        </footer>
+      </aside>
 
-      <Card size="sm" className="min-w-0">
-        <CardHeader>
-          <CardTitle className="truncate">
-            <div className="flex items-center gap-2">
-              <div>{selectedFile?.path ?? 'File content'}</div>
-              <div className="text-xs text-muted-foreground">
-                {selectedFile
-                  ? `${selectedLanguage} · ${selectedFile.size.toLocaleString()} bytes`
-                  : 'Select a source file to inspect it.'}
-              </div>
+      <section className="flex min-h-[30rem] min-w-0 flex-col lg:min-h-0">
+        <header className="flex h-12 shrink-0 min-w-0 items-center justify-between gap-4 border-b px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <FileCodeIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            <h1 className="truncate font-mono text-sm font-medium">
+              {selectedFile?.path ?? 'File content'}
+            </h1>
+          </div>
+          {selectedFile ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <Badge variant="secondary">{selectedLanguage}</Badge>
+              <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">
+                {selectedFile.size.toLocaleString()} bytes
+              </span>
             </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="-mx-(--card-spacing)">
-          {highlightedSource ? (
-            <div
-              className="max-h-[calc(100svh-14rem)] overflow-auto border-y [&_.shiki]:min-h-full [&_.shiki]:min-w-max [&_.shiki]:bg-transparent! [&_.shiki]:p-4 [&_.shiki]:font-mono [&_.shiki]:text-xs [&_.shiki]:leading-6"
-              dangerouslySetInnerHTML={{ __html: highlightedSource }}
+          ) : null}
+        </header>
+        <div className="min-h-0 flex-1">
+          {selectedFile ? (
+            <SourceCodeView
+              cacheKey={selectedFile.id}
+              content={selectedFile.content}
+              path={selectedFile.path}
             />
           ) : (
-            <Empty className="min-h-80">
+            <Empty className="h-full min-h-80">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <FileCodeIcon />
@@ -100,8 +88,8 @@ export default async function SourcePage({
               </EmptyHeader>
             </Empty>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
