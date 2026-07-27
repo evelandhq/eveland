@@ -100,6 +100,24 @@ export const syncSourceSchema = z
 
 export const secretSchema = environmentVariableSchema;
 
+export const batchSecretSchema = z
+  .object({
+    entries: z.array(environmentVariableSchema).min(1).max(50),
+  })
+  .superRefine((input, context) => {
+    const keys = new Set<string>();
+    input.entries.forEach((entry, index) => {
+      if (keys.has(entry.key)) {
+        context.addIssue({
+          code: "custom",
+          path: ["entries", index, "key"],
+          message: "Project environment names must be unique.",
+        });
+      }
+      keys.add(entry.key);
+    });
+  });
+
 export const updateSecretSchema = environmentVariableSchema.extend({
   value: z.string().min(1).max(65_536).optional(),
 });

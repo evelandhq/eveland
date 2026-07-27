@@ -7,6 +7,14 @@ export type NewProjectProgress = {
 
 export type NewProjectEnvironmentVariableErrors = { key?: string; value?: string };
 
+export type NewProjectEnvironmentVariable = {
+  id: number;
+  key: string;
+  kind: "variable" | "secret";
+  value: string;
+  visible: boolean;
+};
+
 const environmentVariablePattern = /^[A-Z][A-Z0-9_]*$/;
 
 export function getNewProjectProgress(project: Project | null, jobs: Job[]): NewProjectProgress {
@@ -61,4 +69,22 @@ export function validateNewProjectEnvironmentVariables<T extends { id: number; k
   }
 
   return { variables, errors, invalid: errors.size > 0 };
+}
+
+export function mergeImportedEnvironmentVariables(
+  existing: NewProjectEnvironmentVariable[],
+  imported: Array<Pick<NewProjectEnvironmentVariable, "key" | "kind" | "value">>,
+  createId: () => number,
+): NewProjectEnvironmentVariable[] {
+  const importedByKey = new Map(imported.map((entry) => [entry.key, entry]));
+  const merged = existing.map((entry) => {
+    const replacement = importedByKey.get(entry.key);
+    if (!replacement) return { ...entry, visible: false };
+    importedByKey.delete(entry.key);
+    return { ...entry, ...replacement, visible: false };
+  });
+  importedByKey.forEach((entry) => {
+    merged.push({ id: createId(), ...entry, visible: false });
+  });
+  return merged;
 }

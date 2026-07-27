@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { LockKeyholeIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { FileUpIcon, LockKeyholeIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -31,6 +31,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  createProjectEnvironmentEntries,
   createProjectEnvironmentEntry,
   deleteProjectEnvironmentEntry,
   updateProjectEnvironmentEntry,
@@ -40,6 +41,10 @@ import {
   validateProjectEnvironmentEntry,
   type ProjectEnvironmentEntryDraft,
 } from "@/lib/project-secrets";
+import {
+  EnvironmentImportDialog,
+  type EnvironmentImportEntry,
+} from "@/components/environment-import-dialog";
 
 const kindItems = [
   { label: "Secret", value: "secret" },
@@ -71,6 +76,7 @@ export function ProjectSecretsSettings({
   const valueId = useId();
   const [entries, setEntries] = useState(initialEntries);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<PublicSecret | null>(null);
   const [draft, setDraft] = useState<ProjectEnvironmentEntryDraft>(emptyEntry);
   const [deleteEntry, setDeleteEntry] = useState<PublicSecret | null>(null);
@@ -151,6 +157,21 @@ export function ProjectSecretsSettings({
     }
   }
 
+  async function importEntries(imported: EnvironmentImportEntry[]) {
+    setError(null);
+    setNotice(null);
+    const result = await createProjectEnvironmentEntries(projectId, imported);
+    const importedKeys = new Set(result.secrets.map((entry) => entry.key));
+    setEntries((current) => [
+      ...result.secrets,
+      ...current.filter((entry) => !importedKeys.has(entry.key)),
+    ]);
+    setNotice(restartNotice(
+      `${result.secrets.length} ${result.secrets.length === 1 ? "entry" : "entries"} imported.`,
+      result.jobs,
+    ));
+  }
+
   return (
     <>
       <section
@@ -166,10 +187,16 @@ export function ProjectSecretsSettings({
               Values are encrypted and never returned after saving. Saving changes restarts live deployments; otherwise, they apply the next time this project starts.
             </p>
           </div>
-          <Button type="button" size="sm" onClick={openAddDialog} disabled={pending || entries.length >= 50}>
-            <PlusIcon data-icon="inline-start" />
-            Add entry
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => setImportDialogOpen(true)} disabled={pending}>
+              <FileUpIcon data-icon="inline-start" />
+              Import .env
+            </Button>
+            <Button type="button" size="sm" onClick={openAddDialog} disabled={pending || entries.length >= 50}>
+              <PlusIcon data-icon="inline-start" />
+              Add entry
+            </Button>
+          </div>
         </div>
         {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
         {notice ? <Alert><AlertDescription>{notice}</AlertDescription></Alert> : null}
@@ -344,6 +371,13 @@ export function ProjectSecretsSettings({
           </form>
         </DialogContent>
       </Dialog>
+
+      <EnvironmentImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        existingKeys={entries.map((entry) => entry.key)}
+        onImport={importEntries}
+      />
     </>
   );
 }

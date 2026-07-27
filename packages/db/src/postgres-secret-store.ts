@@ -47,6 +47,36 @@ export function createPostgresSecretStore({ db }: PostgresStoreContext): Postgre
       return secretRowToPublicSecret(row);
     },
 
+    async upsertSecrets(projectId, entries) {
+      return db.transaction(async (tx) => {
+        const result = [];
+        for (const entry of entries) {
+          const now = new Date();
+          const [row] = await tx
+            .insert(secrets)
+            .values({
+              id: createId("secret"),
+              projectId,
+              key: entry.key,
+              kind: entry.kind ?? "secret",
+              encryptedValue: entry.value,
+            })
+            .onConflictDoUpdate({
+              target: [secrets.projectId, secrets.key],
+              set: {
+                encryptedValue: entry.value,
+                kind: entry.kind ?? "secret",
+                updatedAt: now,
+              },
+            })
+            .returning();
+          if (!row) throw new Error("Failed to upsert project environment entry.");
+          result.push(secretRowToPublicSecret(row));
+        }
+        return result;
+      });
+    },
+
     async updateSecret(projectId, secretId, input) {
       const [row] = await db
         .update(secrets)

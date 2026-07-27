@@ -402,6 +402,14 @@ export interface SecretStore {
     value: string,
     kind?: SecretRecord["kind"],
   ): Promise<PublicSecret>;
+  upsertSecrets(
+    projectId: string,
+    entries: Array<{
+      key: string;
+      value: string;
+      kind?: SecretRecord["kind"];
+    }>,
+  ): Promise<PublicSecret[]>;
   updateSecret(
     projectId: string,
     secretId: string,

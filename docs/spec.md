@@ -232,7 +232,10 @@ Web 从 URL 最后一个 path segment
 命名屏幕同时提供可选的 Environment Variables 折叠区，以 Type、Name、Value 表格列出最多 50 组
 不重复的运行时条目；Type 明确区分 `variable` 与 `secret`，新增和编辑在弹框中完成，表格中的 Value
 只显示已配置状态。Name 遵循大写字母、数字和下划线格式，Secret Value 在弹框中默认以密码输入显示并
-可临时显隐，Variable Value 使用普通文本输入。两种 Value 都加密保存且保存后不返回浏览器。部分填写、
+可临时显隐，Variable Value 使用普通文本输入。用户也可以粘贴 `.env` 内容或上传 `.env` 文件批量导入；
+解析忽略空行与 `#` 注释、接受 `export ` 前缀并移除成对的外围引号。写入前必须预览 Type、Name、Value，
+明确标记新增和覆盖项，并逐行显示格式错误；导入项默认是 `secret`，预览中可以逐项改为 `variable`。
+两种 Value 都加密保存且保存后不返回浏览器。部分填写、
 格式错误或重复 Name 必须在弹框中修正后
 才能加入表格并 Deploy。API 使用
 `APP_SECRET_KEY` 加密 Value，并在同一数据库事务中创建 Project、保存初始 Secrets、排入 initial
@@ -632,9 +635,18 @@ Type、Name、Value 表格和弹框交互；Type 区分 `variable` 与 `secret`�
 支持：
 
 * 新增 Variable 或 Secret
+* 粘贴 `.env` 内容或上传 `.env` 文件，预览并批量新增或覆盖最多 50 个条目
 * 修改条目的 Type、Name，并可选择轮换 Value
 * 删除条目（明确确认）
 * 查看 Type、Name 和 Value 已配置状态
+
+批量导入与新建项目使用同一个浏览器端解析和预览流程。空行和整行 `#` 注释被忽略，
+允许行首 `export `，成对的单引号或双引号从 Value 外围移除；不符合
+`^[A-Z][A-Z0-9_]*$`、缺少 `=`、Value 为空、引号未闭合或同批重复的行必须显示行号与原因，
+不能静默丢弃。错误信息不得包含该行的 Value。确认前每项默认是 `secret`，可以逐项切换为
+`variable`，并显示该 Name 是新增还是覆盖。Project 设置通过单次批量 API 原子 upsert 已验证的
+条目，API 按写入后的 Name 集合执行 50 项上限，并且只在整批成功后为每个 live Deployment
+排入一次重启任务。
 
 新建项目的命名屏幕也可在首次 Deploy 前写入同一组 Project Secrets；这些初始 Secrets 必须与
 Project 和 initial import job 原子提交，不能先排队部署再通过后续请求补写。

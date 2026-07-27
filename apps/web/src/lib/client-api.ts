@@ -173,6 +173,17 @@ export async function createProjectEnvironmentEntry(
   });
 }
 
+export async function createProjectEnvironmentEntries(
+  projectId: string,
+  entries: Array<{ key: string; kind: "variable" | "secret"; value: string }>,
+): Promise<{ secrets: PublicSecret[]; jobs: Job[] }> {
+  return clientRequest(`/projects/${projectId}/secrets/batch`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ entries }),
+  });
+}
+
 export async function updateProjectEnvironmentEntry(
   projectId: string,
   secretId: string,

@@ -11,6 +11,23 @@ type NewProjectModule = {
     errors: Map<number, { key?: string; value?: string }>;
     invalid: boolean;
   };
+  mergeImportedEnvironmentVariables: (
+    existing: Array<{
+      id: number;
+      key: string;
+      kind: "variable" | "secret";
+      value: string;
+      visible: boolean;
+    }>,
+    imported: Array<{ key: string; kind: "variable" | "secret"; value: string }>,
+    createId: () => number,
+  ) => Array<{
+    id: number;
+    key: string;
+    kind: "variable" | "secret";
+    value: string;
+    visible: boolean;
+  }>;
 };
 
 async function loadModule(): Promise<NewProjectModule | null> {
@@ -96,5 +113,28 @@ describe("new project deployment progress", () => {
     expect(result.errors.get(4)?.key).toContain("uppercase");
     expect(result.errors.get(5)?.value).toBe("Enter a value or remove this variable.");
     expect(result.errors.get(6)?.key).toBe("Enter a variable name.");
+  });
+
+  test("merges imported variables by name while preserving existing row identities", async () => {
+    const module = await loadModule();
+    expect(module).not.toBeNull();
+    if (!module) return;
+    let nextId = 8;
+
+    expect(module.mergeImportedEnvironmentVariables(
+      [
+        { id: 3, key: "MODEL_NAME", kind: "variable", value: "gpt-old", visible: true },
+        { id: 7, key: "REGION", kind: "variable", value: "us-east-1", visible: false },
+      ],
+      [
+        { key: "MODEL_NAME", kind: "secret", value: "gpt-5.4" },
+        { key: "OPENAI_API_KEY", kind: "secret", value: "sk-test" },
+      ],
+      () => nextId++,
+    )).toEqual([
+      { id: 3, key: "MODEL_NAME", kind: "secret", value: "gpt-5.4", visible: false },
+      { id: 7, key: "REGION", kind: "variable", value: "us-east-1", visible: false },
+      { id: 8, key: "OPENAI_API_KEY", kind: "secret", value: "sk-test", visible: false },
+    ]);
   });
 });
