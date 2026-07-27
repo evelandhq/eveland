@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "identity_provider_connections_one_enabled_internal_idx" ON "identity_provider_connections" USING btree ("type") WHERE "identity_provider_connections"."type" = 'internal' and "identity_provider_connections"."enabled" = true;

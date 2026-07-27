@@ -187,6 +187,98 @@ export const passwordChangeSchema = z.object({
   newPassword: z.string().min(12).max(128),
 });
 
+export const createIdentityProviderSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("internal"),
+    displayName: z.string().trim().min(1).max(100),
+    internalRealmKey: z.string().trim().min(1).max(256),
+    enabled: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("oidc"),
+    displayName: z.string().trim().min(1).max(100),
+    issuer: z.url(),
+    clientId: z.string().trim().min(1).max(512),
+    clientSecret: z.string().min(1).max(8_192).optional(),
+    scopes: z.array(z.string().trim().min(1)).min(1),
+    authorizationParameters: z.record(z.string(), z.string()).default({}),
+    tokenEndpointAuthMethod: z.enum([
+      "client_secret_basic",
+      "client_secret_post",
+      "none",
+    ]),
+    externalRealmResolution: z.enum([
+      "connection",
+      "id_token_claim",
+      "userinfo_claim",
+      "provider_api",
+    ]),
+    externalRealmClaim: z.string().trim().min(1).optional(),
+    enabled: z.boolean(),
+  }),
+]);
+
+export const updateIdentityProviderSchema = z.object({
+  expectedSecurityRevision: z.number().int().positive(),
+  displayName: z.string().trim().min(1).max(100),
+  internalRealmKey: z.string().trim().min(1).max(256).optional(),
+  issuer: z.url().optional(),
+  clientId: z.string().trim().min(1).max(512).optional(),
+  clientSecret: z.string().min(1).max(8_192).nullable().optional(),
+  scopes: z.array(z.string().trim().min(1)).min(1).optional(),
+  authorizationParameters: z.record(z.string(), z.string()).optional(),
+  tokenEndpointAuthMethod: z
+    .enum(["client_secret_basic", "client_secret_post", "none"])
+    .optional(),
+  externalRealmResolution: z
+    .enum(["connection", "id_token_claim", "userinfo_claim", "provider_api"])
+    .optional(),
+  externalRealmClaim: z.string().trim().min(1).nullable().optional(),
+  enabled: z.boolean(),
+});
+
+export const createIdentityRealmSchema = z.object({
+  providerConnectionId: z.string().min(1),
+  externalRealmId: z.string().trim().min(1).max(512),
+  externalRealmKind: z.enum([
+    "internal",
+    "account",
+    "corp",
+    "workspace",
+    "enterprise",
+    "tenant",
+    "organization",
+  ]),
+  displayName: z.string().trim().min(1).max(100),
+  enabled: z.boolean(),
+});
+
+export const updateIdentityRealmSchema = z.object({
+  displayName: z.string().trim().min(1).max(100),
+  enabled: z.boolean(),
+});
+
+export const upsertIdentityReturnTargetSchema = z.object({
+  origin: z
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return (
+        (url.protocol === "http:" || url.protocol === "https:") &&
+        !url.username &&
+        !url.password &&
+        url.pathname === "/" &&
+        !url.search &&
+        !url.hash
+      );
+    }, "Return target must be an exact HTTP(S) origin."),
+  enabled: z.boolean(),
+});
+
+export const callerTokenRequestSchema = z.object({
+  projectId: z.string().min(1),
+});
+
 export const schedulerDispatchSchema = z.discriminatedUnion("phase", [
   z.object({
     phase: z.literal("claim"),

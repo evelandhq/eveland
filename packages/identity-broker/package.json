@@ -1,0 +1,23 @@
+{
+  "name": "@eveland/identity-broker",
+  "version": "0.0.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --maxWorkers=2 --testTimeout=30000"
+  },
+  "dependencies": {
+    "@eveland/core": "workspace:*",
+    "@eveland/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "vitest": "^4.1.9"
+  }
+}

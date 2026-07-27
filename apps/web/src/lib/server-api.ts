@@ -10,6 +10,11 @@ import type {
   UsageRange,
 } from "@eveland/core/contracts";
 import type {
+  IdentityProviderConnection,
+  IdentityRealm,
+  IdentityReturnTarget,
+} from "@eveland/core/identity";
+import type {
   AgentEndpoints,
   CollectorHealth,
   DeploymentOverview,
@@ -87,6 +92,28 @@ export const getGitCredentials = () =>
 export const getSharedAgentEnvironment = () =>
   apiGet<{ environment: SharedAgentEnvironment | null }>("/platform/shared-agent-environment")
     .then((data) => data.environment);
+export type PublicIdentityProvider = Omit<
+  IdentityProviderConnection,
+  "clientSecretEncrypted"
+> & { clientSecretConfigured: boolean };
+export type IdentityRealmGrant = {
+  identityRealmId: string;
+  projectId: string;
+  createdAt: string;
+};
+export const getIdentityProviders = () =>
+  apiGet<{ providers: PublicIdentityProvider[] }>("/system/identity/providers")
+    .then((data) => data.providers);
+export const getIdentityRealms = () =>
+  apiGet<{ realms: IdentityRealm[] }>("/system/identity/realms")
+    .then((data) => data.realms);
+export const getIdentityReturnTargets = () =>
+  apiGet<{ targets: IdentityReturnTarget[] }>("/system/identity/return-targets")
+    .then((data) => data.targets);
+export const getIdentityRealmGrants = (realmId: string) =>
+  apiGet<{ grants: IdentityRealmGrant[] }>(
+    `/system/identity/realms/${encodeURIComponent(realmId)}/grants`,
+  ).then((data) => data.grants);
 
 function queryString(filters: Record<string, string | undefined>): string {
   const query = new URLSearchParams();

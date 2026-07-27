@@ -32,6 +32,8 @@ services:
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
       EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
       EVELAND_COOKIE_DOMAIN: ${EVELAND_COOKIE_DOMAIN:-}
+      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-http://localhost:4000}
+      EVELAND_IDENTITY_ALLOWED_ORIGINS: ${EVELAND_IDENTITY_ALLOWED_ORIGINS:-http://localhost:3010}
       EVELAND_DATA_DIR: /workspace/.eveland-data
       EVELAND_OBSERVER_ROOT: /workspace/.eveland-data/observer
       EVELAND_COLLECTOR_MODE: embedded
@@ -123,6 +125,8 @@ services:
       EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
       EVELAND_GATEWAY_INTERNAL_URL: http://gateway:4080
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
+      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-http://localhost:4000}
+      EVELAND_IDENTITY_JWKS_URL: ${EVELAND_IDENTITY_JWKS_URL:-http://host.docker.internal:4000/.well-known/jwks.json}
       EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-scheduler-runtime-secret}
       EVELAND_SCHEDULER_DISPATCH_SECRET: ${EVELAND_SCHEDULER_DISPATCH_SECRET:-eveland-dev-scheduler-dispatch-secret}
       EVELAND_SCHEDULER_REDEEM_URL: ${EVELAND_SCHEDULER_REDEEM_URL:-http://host.docker.internal:4000/internal/scheduler/dispatch}

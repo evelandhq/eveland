@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -255,6 +255,229 @@ export const agentAuthTransactions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("agent_auth_transactions_expires_idx").on(table.expiresAt)],
+);
+
+export const identityProviderConnections = pgTable(
+  "identity_provider_connections",
+  {
+    id: text("id").primaryKey(),
+    type: text("type").notNull(),
+    displayName: text("display_name").notNull(),
+    internalRealmKey: text("internal_realm_key"),
+    issuer: text("issuer"),
+    clientId: text("client_id"),
+    clientSecretEncrypted: text("client_secret_encrypted"),
+    scopes: jsonb("scopes").notNull().default([]),
+    authorizationParameters: jsonb("authorization_parameters").notNull().default({}),
+    tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
+    externalRealmResolution: text("external_realm_resolution").notNull(),
+    externalRealmClaim: text("external_realm_claim"),
+    enabled: boolean("enabled").notNull().default(false),
+    securityRevision: integer("security_revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("identity_provider_connections_one_enabled_internal_idx")
+      .on(table.type)
+      .where(sql`${table.type} = 'internal' and ${table.enabled} = true`),
+    check("identity_provider_connections_type_check", sql`${table.type} in ('internal', 'oidc')`),
+    check("identity_provider_connections_revision_check", sql`${table.securityRevision} > 0`),
+    check(
+      "identity_provider_connections_shape_check",
+      sql`(
+        ${table.type} = 'internal'
+        and ${table.internalRealmKey} is not null
+        and ${table.issuer} is null
+        and ${table.clientId} is null
+      ) or (
+        ${table.type} = 'oidc'
+        and ${table.internalRealmKey} is null
+        and ${table.issuer} is not null
+        and ${table.clientId} is not null
+        and ${table.tokenEndpointAuthMethod} in ('client_secret_basic', 'client_secret_post', 'none')
+      )`,
+    ),
+  ],
+);
+
+export const identityRealms = pgTable(
+  "identity_realms",
+  {
+    id: text("id").primaryKey(),
+    providerConnectionId: text("provider_connection_id").notNull().references(
+      () => identityProviderConnections.id,
+      { onDelete: "cascade" },
+    ),
+    externalRealmId: text("external_realm_id").notNull(),
+    externalRealmKind: text("external_realm_kind").notNull(),
+    displayName: text("display_name").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("identity_realms_provider_external_idx").on(
+      table.providerConnectionId,
+      table.externalRealmId,
+    ),
+    index("identity_realms_provider_idx").on(table.providerConnectionId),
+    check(
+      "identity_realms_kind_check",
+      sql`${table.externalRealmKind} in ('internal', 'account', 'corp', 'workspace', 'enterprise', 'tenant', 'organization')`,
+    ),
+  ],
+);
+
+export const identityPrincipals = pgTable(
+  "identity_principals",
+  {
+    id: text("id").primaryKey(),
+    identityRealmId: text("identity_realm_id").notNull().references(
+      () => identityRealms.id,
+      { onDelete: "cascade" },
+    ),
+    externalSubject: text("external_subject").notNull(),
+    displayName: text("display_name"),
+    email: text("email"),
+    claims: jsonb("claims").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("identity_principals_realm_subject_idx").on(
+      table.identityRealmId,
+      table.externalSubject,
+    ),
+    index("identity_principals_realm_idx").on(table.identityRealmId),
+  ],
+);
+
+export const identitySessions = pgTable(
+  "identity_sessions",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").notNull().unique(),
+    identityPrincipalId: text("identity_principal_id").notNull().references(
+      () => identityPrincipals.id,
+      { onDelete: "cascade" },
+    ),
+    activeIdentityRealmId: text("active_identity_realm_id").notNull().references(
+      () => identityRealms.id,
+      { onDelete: "cascade" },
+    ),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("identity_sessions_token_idx").on(table.tokenHash),
+    index("identity_sessions_principal_idx").on(table.identityPrincipalId),
+    index("identity_sessions_expiry_idx").on(table.expiresAt),
+  ],
+);
+
+export const identityReturnTargets = pgTable(
+  "identity_return_targets",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull().unique(),
+    origin: text("origin").notNull().unique(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export const identityLoginTransactions = pgTable(
+  "identity_login_transactions",
+  {
+    stateHash: text("state_hash").primaryKey(),
+    providerConnectionId: text("provider_connection_id").notNull().references(
+      () => identityProviderConnections.id,
+      { onDelete: "cascade" },
+    ),
+    providerSecurityRevision: integer("provider_security_revision").notNull(),
+    returnTargetId: text("return_target_id").notNull().references(
+      () => identityReturnTargets.id,
+      { onDelete: "cascade" },
+    ),
+    returnPath: text("return_path").notNull(),
+    nonceHash: text("nonce_hash"),
+    pkceVerifierEncrypted: text("pkce_verifier_encrypted"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("identity_login_transactions_expiry_idx").on(table.expiresAt),
+    index("identity_login_transactions_provider_idx").on(table.providerConnectionId),
+  ],
+);
+
+export const identityRealmProjectGrants = pgTable(
+  "identity_realm_project_grants",
+  {
+    identityRealmId: text("identity_realm_id").notNull().references(
+      () => identityRealms.id,
+      { onDelete: "cascade" },
+    ),
+    projectId: text("project_id").notNull().references(
+      () => projects.id,
+      { onDelete: "cascade" },
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.identityRealmId, table.projectId] }),
+    index("identity_realm_project_grants_project_idx").on(table.projectId),
+  ],
+);
+
+export const identityOidcCredentials = pgTable(
+  "identity_oidc_credentials",
+  {
+    identityPrincipalId: text("identity_principal_id").notNull().references(
+      () => identityPrincipals.id,
+      { onDelete: "cascade" },
+    ),
+    providerConnectionId: text("provider_connection_id").notNull().references(
+      () => identityProviderConnections.id,
+      { onDelete: "cascade" },
+    ),
+    accessTokenEncrypted: text("access_token_encrypted").notNull(),
+    refreshTokenEncrypted: text("refresh_token_encrypted"),
+    scope: text("scope").notNull(),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    rotationSeq: integer("rotation_seq").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.identityPrincipalId, table.providerConnectionId] }),
+    check("identity_oidc_credentials_rotation_check", sql`${table.rotationSeq} >= 0`),
+  ],
+);
+
+export const identitySigningKeys = pgTable(
+  "identity_signing_keys",
+  {
+    id: text("id").primaryKey(),
+    algorithm: text("algorithm").notNull(),
+    publicJwk: jsonb("public_jwk").notNull(),
+    privateKeyEncrypted: text("private_key_encrypted").notNull(),
+    status: text("status").notNull(),
+    notBefore: timestamp("not_before", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("identity_signing_keys_algorithm_check", sql`${table.algorithm} = 'ES256'`),
+    check("identity_signing_keys_status_check", sql`${table.status} in ('active', 'retiring', 'retired')`),
+    uniqueIndex("identity_signing_keys_one_active_idx")
+      .on(table.status)
+      .where(sql`${table.status} = 'active'`),
+  ],
 );
 
 export const secrets = pgTable(

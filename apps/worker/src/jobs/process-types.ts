@@ -14,6 +14,8 @@ export type ProcessJobOptions = {
   schedulerDispatchSecret?: string;
   schedulerRuntimeSecret?: string;
   schedulerRedeemUrl?: string;
+  identityIssuer?: string;
+  identityJwksUrl?: string;
   jobHeartbeatIntervalMs?: number;
   dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
 };

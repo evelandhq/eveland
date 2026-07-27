@@ -9,6 +9,7 @@ import {
   HistoryIcon,
   HeartPulseIcon,
   InfoIcon,
+  FingerprintIcon,
   LayoutGridIcon,
   LogsIcon,
   KeyRoundIcon,
@@ -38,6 +39,7 @@ export const settingsNavigationGroups = [
     label: 'System',
     items: [
       { href: '/settings/members', label: 'Members', icon: UsersIcon },
+      { href: '/settings/identity', label: 'Identity', icon: FingerprintIcon },
       { href: '/settings/shared-agent-environment', label: 'Shared agent environment', icon: LockKeyholeIcon },
       { href: '/settings/health', label: 'Instance health', icon: HeartPulseIcon },
       { href: '/settings/about', label: 'About', icon: InfoIcon },

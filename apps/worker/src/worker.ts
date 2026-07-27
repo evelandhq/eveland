@@ -13,6 +13,10 @@ import { sweepReleaseRetention } from "./runtime/release-reaper.js";
 import { reconcileRuntimeInstances, recoverStartingRuntimeInstances } from "./runtime/activation-manager.js";
 import { planDueSchedules } from "./scheduler/planner.js";
 import { createWorkerTelemetry } from "./runtime/worker-telemetry.js";
+import {
+  reconcileIdentityDeploymentConfiguration,
+  resolveIdentityDeploymentConfiguration,
+} from "./runtime/identity-config-reconciler.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
@@ -31,6 +35,24 @@ try {
   await assertWorkerPreflight(process.env);
   const bootstrapLog = await bootstrapWorkflowWorld(process.env);
   if (bootstrapLog) console.log("Platform workflow-world database schema is ready.");
+  const identityConfiguration = resolveIdentityDeploymentConfiguration({
+    dataDir,
+    nodeEnv: process.env.NODE_ENV,
+    issuer: process.env.EVELAND_IDENTITY_ISSUER,
+    jwksUrl: process.env.EVELAND_IDENTITY_JWKS_URL,
+  });
+  if (identityConfiguration) {
+    const restartJobs =
+      await reconcileIdentityDeploymentConfiguration(
+        storeFactory.store,
+        identityConfiguration,
+      );
+    if (restartJobs.length > 0) {
+      console.log(
+        `Identity configuration changed; queued ${restartJobs.length} live Deployment restart${restartJobs.length === 1 ? "" : "s"}.`,
+      );
+    }
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

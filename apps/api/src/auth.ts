@@ -169,6 +169,16 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     }
   }
 
+  async function resolveInternalIdentity(request: Request) {
+    const principal = await authenticate(request);
+    if (!principal) return null;
+    return {
+      externalSubject: principal.userId,
+      displayName: principal.name,
+      email: principal.email,
+    };
+  }
+
   async function invite(request: Request, email: string, role: TeamRole = "member") {
     await requireAdmin(request);
     const invitation = await auth.api.createInvitation({
@@ -337,6 +347,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     auth,
     bootstrapDefaultAdmin,
     authenticate,
+    resolveInternalIdentity,
     invite,
     acceptInvitation,
     listMembers,

@@ -47,6 +47,16 @@ test("the root dev script builds the vendored sandbox backend before starting wo
   expect(manifest.scripts.dev).toMatch(/^pnpm --filter @eveland\/sandbox-bwrap build && /);
 });
 
+test("the Worker dev process restarts when the shared .env changes", async () => {
+  const manifest = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ) as {
+    scripts: Record<string, string>;
+  };
+
+  expect(manifest.scripts.dev).toContain("--include ../../.env");
+});
+
 describe("buildDockerBuildArgs", () => {
   test("builds with a generated Dockerfile outside the source tree", () => {
     const args = buildDockerBuildArgs({
@@ -205,7 +215,12 @@ describe("writeGeneratedDockerfile", () => {
     expect(contents).toContain("ln -sf /usr/bin/pip3 /usr/local/bin/pip");
     expect(contents).toContain("npm install --global pnpm@11.7.0");
     expect(contents).toContain("mkdir -p /workspace");
-    expect(contents).toContain("COPY package*.json pnpm-lock.yaml* .npmrc* ./");
+    expect(contents).toContain(
+      "COPY package*.json pnpm-lock.yaml* pnpm-workspace.yaml* .npmrc* ./",
+    );
+    expect(contents.indexOf("pnpm-workspace.yaml*")).toBeLessThan(
+      contents.indexOf("pnpm install --frozen-lockfile"),
+    );
     expect(contents).toContain(
       "if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile --config.minimum-release-age=0",
     );

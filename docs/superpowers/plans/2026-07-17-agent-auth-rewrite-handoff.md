@@ -81,6 +81,18 @@ Agent Caller 完全由 Agent 收到的 credential 及其 Eve verifier 建立。
 `authorization.required` 属于 Eve Connection Auth，继续走现有 stream/HITL UI，不进入本计划
 的 Agent Connection 或 OIDC callback 状态机。
 
+### 3.5 2026-07-24 新增的 Agent-user Identity 边界
+
+`packages/identity-broker` 的 managed Identity 不是本文件的 Playground Agent Connection
+credential provider。它服务外部用户聊天面：Internal/OIDC Provider 先解析为通用 external
+identity，再建立独立 Identity Session，并在 Realm → Project grant 存在时签发短时、
+project-bound ES256 Caller Token。Gateway 对公开请求继续透明转发 Authorization，Agent
+通过显式 `evelandIdentity()` AuthFn 验签。
+
+不得把 Better Auth session、Playground delegated credential、managed Caller Token 三者
+互换或自动回退。`eve-chats` 只知道 Eveland issuer/JWKS/project contract，不知道具体
+上游 Provider；第一阶段只启用 Internal Provider。
+
 ## 4. Eve verifier 与 Eveland 客户端能力矩阵
 
 | Eve Agent 入站 helper | Eveland 调用端能力 | 说明 |

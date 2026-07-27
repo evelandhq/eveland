@@ -18,6 +18,8 @@ export type AppOptions = {
   webOrigin?: string;
   cookieDomain?: string;
   appSecretKey?: string;
+  identityIssuer?: string;
+  identityAllowedOrigins?: string[];
   playgroundRunner?: PlaygroundRunner;
   playgroundProxy?: PlaygroundProxy;
   dataDir?: string;

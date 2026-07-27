@@ -3,14 +3,20 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentMemberOrNull } from "@/lib/server-api";
+import { safeLoginNextPath } from "@/lib/identity-continuation";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Sign in",
 };
 
-export default async function LoginPage() {
-  if (await getCurrentMemberOrNull()) redirect("/projects");
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ next?: string }>;
+} = {}) {
+  const nextPath = safeLoginNextPath((await searchParams)?.next);
+  if (await getCurrentMemberOrNull()) redirect(nextPath);
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-5 py-10">
@@ -23,7 +29,7 @@ export default async function LoginPage() {
           <CardDescription>Manage your team’s eve projects and runtime.</CardDescription>
         </CardHeader>
         <CardContent>
-          <LoginForm />
+          <LoginForm nextPath={nextPath} />
         </CardContent>
       </Card>
     </main>

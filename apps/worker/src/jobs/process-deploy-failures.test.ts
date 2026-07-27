@@ -502,6 +502,8 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
+        identityIssuer: "https://control.example.com",
+        identityJwksUrl: "http://api:4000/.well-known/jwks.json",
         workflowPostgresUrl:
           "postgres://eveland:eveland@host.docker.internal:5432/eveland",
         ensureProjectWorkflowWorld: async (env, projectId) => {
@@ -547,6 +549,9 @@ describe("processNextJob", () => {
         project.id,
       ),
       NODE_ENV: "production",
+      EVELAND_PROJECT_ID: project.id,
+      EVELAND_IDENTITY_ISSUER: "https://control.example.com",
+      EVELAND_IDENTITY_JWKS_URL: "http://api:4000/.well-known/jwks.json",
     });
     expect(ensuredProjects).toEqual([project.id]);
     await expect(store.getProject(project.id)).resolves.toMatchObject({
