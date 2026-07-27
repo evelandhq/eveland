@@ -457,6 +457,8 @@ export async function processRuntimeJob(
         ? await store.getScheduleRun(scheduleRunId)
         : null;
       let activationLeaseId: string | null = null;
+      const startedAtMs = Date.now();
+      let failurePhase = "ScheduleRun validation";
       try {
         if (!scheduleRunId || !run)
           throw new Error("Schedule trigger is missing a valid ScheduleRun.");
@@ -543,6 +545,13 @@ export async function processRuntimeJob(
         );
         await mkdir(sandboxCache.workerDir, { recursive: true });
         await mkdir(observerOutbox.workerDir, { recursive: true });
+        failurePhase = "Deployment activation";
+        await store.appendLog({
+          projectId: job.projectId,
+          deploymentId: deployment.id,
+          type: "runtime",
+          line: `ScheduleRun ${run.id} activating ${schedule.key} on Deployment ${deployment.id} (Release ${release.id}, runtime=${deployment.runtimeKind}).`,
+        });
         const activation = await ensureDeploymentActive(
           store,
           {
@@ -575,6 +584,13 @@ export async function processRuntimeJob(
         );
         activationLeaseId = activation.lease.id;
         await store.updateDeploymentStatus(deployment.id, "running");
+        failurePhase = "Scheduler Channel dispatch";
+        await store.appendLog({
+          projectId: job.projectId,
+          deploymentId: deployment.id,
+          type: "runtime",
+          line: `ScheduleRun ${run.id} dispatching ${schedule.key} to the Scheduler Channel on Deployment ${deployment.id}.`,
+        });
         const credential = createScheduleDispatchCredential(
           {
             scheduleRunId: run.id,
@@ -612,10 +628,11 @@ export async function processRuntimeJob(
           projectId: job.projectId,
           deploymentId: deployment.id,
           type: "runtime",
-          line: `ScheduleRun ${run.id} dispatched for ${schedule.key}.`,
+          line: `ScheduleRun ${run.id} succeeded for ${schedule.key} with ${result.sessionIds.length} ${result.sessionIds.length === 1 ? "Session" : "Sessions"} after ${Date.now() - startedAtMs}ms.`,
         });
       } catch (error) {
-        const message = errorMessage(error);
+        const rawMessage = errorMessage(error);
+        const message = `${failurePhase} failed: ${rawMessage}`;
         if (run) {
           const current = await store.getScheduleRun(run.id);
           if (
@@ -637,7 +654,7 @@ export async function processRuntimeJob(
           projectId: job.projectId,
           deploymentId: run?.deploymentId ?? null,
           type: "runtime",
-          line: `ScheduleRun ${scheduleRunId ?? "unknown"} failed: ${message}`,
+          line: `ScheduleRun ${scheduleRunId ?? "unknown"} failed during ${failurePhase} after ${Date.now() - startedAtMs}ms: ${rawMessage}`,
         });
       } finally {
         if (activationLeaseId)

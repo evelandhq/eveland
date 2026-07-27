@@ -538,6 +538,10 @@ promote、rollback 或 stable route 权重变化不得重选其 target。
 每次 cron 或 manual 执行都持久化独立 ScheduleRun；成功且没有创建 Session 也是
 合法结果。ScheduleRun 保留 Release/Deployment provenance、状态、attempt、missed
 tick、错误和关联 Sessions，供 Sessions/Schedules 历史读取。
+Worker 同时在 Runtime Logs 中按 ScheduleRun ID 记录 pinned Release/Deployment/runtime、
+activation、Scheduler Channel dispatch 和最终结果阶段，以及端到端耗时。dispatch 超时必须
+把实际超时预算和目标 Deployment 写入 ScheduleRun 错误与日志，不能只保留底层
+`AbortError` 文案；日志不得包含 dispatch credential、runtime secret 或 Project Secret。
 
 点击“查看历史”后，跳转到 Sessions，并自动筛选：
 
@@ -640,7 +644,7 @@ MVP 只提供三类日志：
 
 * Build Log
 * Deploy Log
-* Runtime stdout/stderr
+* Runtime stdout/stderr 与 ScheduleRun lifecycle diagnostics
 
 Agent 的具体执行过程不放在 Logs 中，而放在 Session Timeline 中。
 Logs 页面默认按时间倒序展示最新记录，在固定高度的滚动区域内提供文本搜索、类型筛选和
