@@ -142,6 +142,7 @@ describe("Eveland public website contract", () => {
       "operations/runtime.mdx",
       "operations/diagnostics.mdx",
       "operations/upgrades.mdx",
+      "operations/upgrade-0-11-to-0-12.mdx",
       "operations/security.mdx",
       "reference/configuration.mdx",
       "reference/eve-compatibility.mdx",
