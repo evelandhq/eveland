@@ -233,7 +233,7 @@ localhost, literal private addresses, and redirects; the network layer must addi
 resolved private/link-local destinations. Never expose OIDC tokens, authorization codes, state, client secrets, or
 PKCE verifiers through reverse-proxy access logs or runtime diagnostics.
 
-The explicit Vercel OIDC Connection method mirrors Eve 0.27.3 by resolving its configured Secret reference and
+The explicit Vercel OIDC Connection method mirrors Eve 0.27.6 by resolving its configured Secret reference and
 sending the token in both `Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short
 lived; rotate the referenced Secret before expiry. Eveland does not infer this method from a Vercel deployment,
 Agent source, or a 401 response.
@@ -725,6 +725,12 @@ executes the authored TypeScript definition once, projects two Sessions and
 provider usage, observes no duplicate from the neutralized native tick, stops
 after idle TTL, and wakes the bound Deployment for a later public continuation.
 Success prints `SCHEDULE SCALE TO ZERO E2E OK`.
+
+Eve 0.27.4+ session reset requires migration `0029_sparkling_hammerhead`: it backfills the latest known
+continuation token into each Gateway SessionBinding and adds the unique routing index used by public and
+Playground reset requests. Apply migrations before rolling API/Gateway/Worker processes. Eve 0.27.6 remote
+principal forwarding remains Agent-owned and opt-in on both deployments; do not add a permissive
+`trustedForwarders` predicate as a platform workaround.
 
 The script then runs the `@eveland/sandbox-bwrap` contract test as the
 unprivileged `eveland-app` user under deployed-agent systemd constraints

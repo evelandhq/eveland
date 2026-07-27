@@ -178,6 +178,7 @@ describe("routing repository", () => {
     await store.bindSession({
       projectId: project.id,
       eveSessionId: "eve_gateway",
+      continuationToken: "continue_gateway",
       routeId: route!.id,
       deploymentId: deployment.id,
       trigger: "api",
@@ -193,6 +194,23 @@ describe("routing repository", () => {
       expect.objectContaining({ trigger: "api", routeId: route!.id, deploymentId: deployment.id }),
     ]);
     await expect(store.findSessionBinding(project.id, "eve_gateway")).resolves.toMatchObject({ requestId: "req_1" });
+    await expect(
+      store.findSessionBindingByContinuationToken(project.id, "continue_gateway"),
+    ).resolves.toMatchObject({
+      eveSessionId: "eve_gateway",
+      deploymentId: deployment.id,
+    });
+
+    await expect(
+      store.setSessionBindingContinuationToken(
+        project.id,
+        "eve_gateway",
+        null,
+      ),
+    ).resolves.toMatchObject({ continuationToken: null });
+    await expect(
+      store.findSessionBindingByContinuationToken(project.id, "continue_gateway"),
+    ).resolves.toBeNull();
   });
 
   test("applies a binding learned before the Playground session learns its Eve id", async () => {

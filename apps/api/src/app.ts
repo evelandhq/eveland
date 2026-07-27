@@ -14,6 +14,7 @@ import {
 import type { AuthPrincipal } from "@eveland/core/contracts";
 import {
   getEveString,
+  isEveRecord,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
   validatePlaygroundTurn,
 } from "@eveland/core/eve";
@@ -547,12 +548,15 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const playgroundMarker = "/playground";
     const markerIndex = requestUrl.pathname.indexOf(playgroundMarker);
     const evePath = markerIndex >= 0 ? requestUrl.pathname.slice(markerIndex + playgroundMarker.length) : "";
+    const isReset = c.req.method === "POST" && evePath === "/eve/v1/session/reset";
     const pathSessionId = playgroundSessionIdFromPath(evePath);
     const isInitial = c.req.method === "POST" && evePath === "/eve/v1/session";
-    const isContinuation = c.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
+    const isContinuation = !isReset && c.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
     const isCancel = c.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+\/cancel$/.test(evePath);
     const isStream = c.req.method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(evePath);
-    if (!isInitial && !isContinuation && !isCancel && !isStream) return c.json({ error: "Playground route not found" }, 404);
+    if (!isInitial && !isContinuation && !isCancel && !isStream && !isReset) {
+      return c.json({ error: "Playground route not found" }, 404);
+    }
 
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
@@ -575,7 +579,37 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         detail: error instanceof Error ? error.message : "Invalid Agent Auth configuration.",
       }, 409);
     }
-    let platformSession = pathSessionId ? await store.getSessionByEveSessionId(projectId, pathSessionId) : null;
+    let body: Uint8Array | null = null;
+    let resetContinuationToken: string | null = null;
+    if (isInitial || isContinuation || isCancel || isReset) {
+      try {
+        body = await readLimitedPlaygroundBody(c.req.raw, PLAYGROUND_MAX_TRANSPORT_BYTES);
+        if (isReset) {
+          const resetBody = parsePlaygroundBody(body);
+          resetContinuationToken = isEveRecord(resetBody)
+            ? getEveString(resetBody, "continuationToken")
+            : null;
+          if (!resetContinuationToken) {
+            throw new Error("Playground reset requires a continuationToken.");
+          }
+        } else if (!isCancel) {
+          validatePlaygroundTurn(parsePlaygroundBody(body));
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid Playground request";
+        const status = message === "Playground request body is too large." ? 413 : 400;
+        return c.json({ error: message }, status);
+      }
+    }
+
+    const resetBinding = resetContinuationToken
+      ? await store.findSessionBindingByContinuationToken(projectId, resetContinuationToken)
+      : null;
+    let platformSession = pathSessionId
+      ? await store.getSessionByEveSessionId(projectId, pathSessionId)
+      : resetBinding
+        ? await store.getSessionByEveSessionId(projectId, resetBinding.eveSessionId)
+        : null;
     if (pathSessionId && !platformSession) return c.json({ error: "Playground session not found" }, 404);
     const eveVersion = platformSession?.deploymentId
       ? await resolveProjectEveVersion(store, projectId, platformSession.deploymentId)
@@ -586,18 +620,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         detail: unsupportedEveVersionMessage(eveVersion.version),
         eveVersion,
       }, 409);
-    }
-
-    let body: Uint8Array | null = null;
-    if (isInitial || isContinuation || isCancel) {
-      try {
-        body = await readLimitedPlaygroundBody(c.req.raw, PLAYGROUND_MAX_TRANSPORT_BYTES);
-        if (!isCancel) validatePlaygroundTurn(parsePlaygroundBody(body));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Invalid Playground request";
-        const status = message === "Playground request body is too large." ? 413 : 400;
-        return c.json({ error: message }, status);
-      }
     }
 
     if (isInitial) {
@@ -650,14 +672,14 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         }
       }
     } catch (error) {
-      if (platformSession && !isCancel) {
+      if (platformSession && (isInitial || isContinuation)) {
         await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
       }
       const message = error instanceof Error ? error.message : String(error);
       return c.json({ error: "Playground request failed", detail: message }, 502);
     }
 
-    if (!upstream.ok && platformSession && !isCancel) {
+    if (!upstream.ok && platformSession && (isInitial || isContinuation)) {
       await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
     }
 
@@ -669,6 +691,19 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         eveSessionId,
         continuationToken: getEveString(parsed, "continuationToken"),
       });
+    }
+    if (isReset && upstream.ok && platformSession) {
+      const parsed = await parsePlaygroundResponse(upstream.clone());
+      if (
+        getEveString(parsed, "status") === "reset" &&
+        getEveString(parsed, "previousSessionId") === platformSession.eveSessionId
+      ) {
+        await store.completeSession(platformSession.id, {
+          status: "completed",
+          eveSessionId: platformSession.eveSessionId,
+          continuationToken: null,
+        });
+      }
     }
 
     const responseBody = isStream && upstream.ok && upstream.body && platformSession && pathSessionId

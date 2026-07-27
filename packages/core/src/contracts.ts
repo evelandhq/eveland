@@ -273,6 +273,7 @@ export type SessionBinding = {
   id: string;
   projectId: string;
   eveSessionId: string;
+  continuationToken: string | null;
   routeId: string;
   deploymentId: string;
   trigger: "api" | "playground";

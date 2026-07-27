@@ -470,7 +470,20 @@ export interface RoutingStore {
     targets: Array<Omit<RouteTarget, "routeId">>,
   ): Promise<ResolvedAgentRoute>;
   findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
-  bindSession(input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt">): Promise<SessionBinding>;
+  findSessionBindingByContinuationToken(
+    projectId: string,
+    continuationToken: string,
+  ): Promise<SessionBinding | null>;
+  bindSession(
+    input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt" | "continuationToken"> & {
+      continuationToken?: string | null;
+    },
+  ): Promise<SessionBinding>;
+  setSessionBindingContinuationToken(
+    projectId: string,
+    eveSessionId: string,
+    continuationToken: string | null,
+  ): Promise<SessionBinding | null>;
 }
 
 export interface SessionStore {

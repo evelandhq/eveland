@@ -217,6 +217,7 @@ export function requestHasBody(method: string): boolean {
 }
 
 export function sessionIdFromPath(pathname: string): string | null {
+  if (pathname === "/eve/v1/session/reset") return null;
   const match = /^\/eve\/v1\/session\/([^/]+)(?:\/|$)/.exec(pathname);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }

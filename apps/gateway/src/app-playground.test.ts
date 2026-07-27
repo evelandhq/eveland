@@ -230,6 +230,20 @@ describe("Gateway", () => {
           return;
         }
         if (
+          request.method === "POST" &&
+          request.url === "/eve/v1/session/reset"
+        ) {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              ok: true,
+              previousSessionId: "eve_stream",
+              status: "reset",
+            }),
+          );
+          return;
+        }
+        if (
           request.method === "GET" &&
           request.url === "/eve/v1/session/eve_stream/stream?startIndex=1"
         ) {
@@ -330,6 +344,18 @@ describe("Gateway", () => {
         body: cancelBody,
       },
     );
+    const resetBody = JSON.stringify({ continuationToken: "continue_2" });
+    const reset = await app.request(
+      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/reset",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer service-secret",
+          "content-type": "application/json",
+        },
+        body: resetBody,
+      },
+    );
     const startedAt = Date.now();
     const stream = await app.request(
       "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_stream/stream?startIndex=1",
@@ -358,6 +384,12 @@ describe("Gateway", () => {
       sessionId: "eve_stream",
       status: "accepted",
     });
+    expect(reset.status).toBe(200);
+    await expect(reset.json()).resolves.toEqual({
+      ok: true,
+      previousSessionId: "eve_stream",
+      status: "reset",
+    });
     expect(new TextDecoder().decode(first.value)).toContain(
       "reasoning.appended",
     );
@@ -384,6 +416,12 @@ describe("Gateway", () => {
           body: cancelBody,
         },
         {
+          method: "POST",
+          path: "/eve/v1/session/reset",
+          host: `localhost:${upstream.port}`,
+          body: resetBody,
+        },
+        {
           method: "GET",
           path: "/eve/v1/session/eve_stream/stream?startIndex=1",
           host: `localhost:${upstream.port}`,
@@ -394,6 +432,7 @@ describe("Gateway", () => {
     expect(repo.bindings).toContainEqual(
       expect.objectContaining({
         eveSessionId: "eve_stream",
+        continuationToken: null,
         trigger: "playground",
       }),
     );
@@ -409,7 +448,7 @@ describe("Gateway", () => {
       activationClient.activate.mock.calls.filter(
         ([input]) => input.kind === "turn",
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
   });
 
   test("invalidates cached Host resolution through the service-authenticated control path", async () => {

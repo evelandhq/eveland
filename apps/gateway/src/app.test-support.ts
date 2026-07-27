@@ -132,8 +132,31 @@ export function repository(
         ) as never) ?? null
       );
     },
+    async findSessionBindingByContinuationToken(projectId, continuationToken) {
+      return (
+        (bindings.find(
+          (binding) =>
+            binding.projectId === projectId &&
+            binding.continuationToken === continuationToken,
+        ) as never) ?? null
+      );
+    },
     async bindSession(input) {
       bindings.push(input);
+    },
+    async setSessionBindingContinuationToken(
+      projectId,
+      eveSessionId,
+      continuationToken,
+    ) {
+      const binding = bindings.find(
+        (candidate) =>
+          candidate.projectId === projectId &&
+          candidate.eveSessionId === eveSessionId,
+      );
+      if (!binding) return null;
+      binding.continuationToken = continuationToken;
+      return binding as never;
     },
   };
 }

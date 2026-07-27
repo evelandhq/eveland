@@ -339,7 +339,7 @@ describe("api app", () => {
       files: [],
       schedules: [],
     });
-    await store.recordDeployment({
+    const deployment = await store.recordDeployment({
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/playground:streaming",
@@ -348,6 +348,11 @@ describe("api app", () => {
       hostPort: 41003,
       runtimeKind: "docker",
     });
+    const [route] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployment.id,
+      "agent.localhost",
+    );
     const proxyCalls: Array<{ method: string; path: string; body: string }> =
       [];
     let cancelCalls = 0;
@@ -356,6 +361,20 @@ describe("api app", () => {
         const body = input.body ? new TextDecoder().decode(input.body) : "";
         proxyCalls.push({ method: input.method, path: input.path, body });
         if (input.method === "POST" && input.path === "/eve/v1/session") {
+          await store.bindSession({
+            projectId: project.id,
+            eveSessionId: "eve_chat",
+            continuationToken: "continue_1",
+            routeId: route!.id,
+            deploymentId: deployment.id,
+            trigger: "playground",
+            variantName: null,
+            experimentId: null,
+            requestId: "req_streaming",
+            remoteIp: null,
+            affinityFingerprint: null,
+            affinitySource: null,
+          });
           return new Response(
             JSON.stringify({
               sessionId: "eve_chat",
@@ -421,6 +440,11 @@ describe("api app", () => {
           input.method === "POST" &&
           input.path === "/eve/v1/session/eve_chat"
         ) {
+          await store.setSessionBindingContinuationToken(
+            project.id,
+            "eve_chat",
+            "continue_2",
+          );
           return new Response(
             JSON.stringify({
               sessionId: "eve_chat",
@@ -446,6 +470,16 @@ describe("api app", () => {
             { sessionId: "eve_chat", status: "accepted" },
             { status: 202 },
           );
+        }
+        if (
+          input.method === "POST" &&
+          input.path === "/eve/v1/session/reset"
+        ) {
+          return Response.json({
+            ok: true,
+            previousSessionId: "eve_chat",
+            status: "reset",
+          });
         }
         return new Response("not found", { status: 404 });
       },
@@ -536,11 +570,26 @@ describe("api app", () => {
       },
     );
     expect(unsupportedCancel.status).toBe(404);
+    const resetBody = JSON.stringify({ continuationToken: "continue_2" });
+    const reset = await app.request(
+      `/projects/${project.id}/playground/eve/v1/session/reset`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: resetBody,
+      },
+    );
+    expect(reset.status).toBe(200);
+    await expect(reset.json()).resolves.toEqual({
+      ok: true,
+      previousSessionId: "eve_chat",
+      status: "reset",
+    });
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({
         eveSessionId: "eve_chat",
-        status: "running",
-        continuationToken: "continue_2",
+        status: "completed",
+        continuationToken: null,
       }),
     ]);
     expect(proxyCalls).toEqual([
@@ -557,6 +606,7 @@ describe("api app", () => {
         body: cancelBody,
       },
       { method: "POST", path: "/eve/v1/session/eve_chat/cancel", body: "" },
+      { method: "POST", path: "/eve/v1/session/reset", body: resetBody },
     ]);
   });
 
