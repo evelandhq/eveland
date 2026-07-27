@@ -24,6 +24,7 @@ import {
   type RuntimeCommandContext,
 } from "../runtime/types.js";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
+import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
 
 import type {
   ProcessJobOptions,
@@ -230,6 +231,15 @@ export async function composeDeploymentEnv(
     options.schedulerRedeemUrl ?? process.env.EVELAND_SCHEDULER_REDEEM_URL;
   const appSecretKey =
     options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
+  const identityConfiguration = resolveIdentityDeploymentConfiguration({
+    dataDir: options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+    nodeEnv,
+    issuer: options.identityIssuer || process.env.EVELAND_IDENTITY_ISSUER,
+    jwksUrl:
+      options.identityJwksUrl || process.env.EVELAND_IDENTITY_JWKS_URL,
+  });
+  const identityIssuer = identityConfiguration?.issuer;
+  const identityJwksUrl = identityConfiguration?.jwksUrl;
   const secrets = await readRuntimeSecrets(store, projectId, appSecretKey);
   const sharedEnvironment = readSharedAgentEnvironmentValues(
     await store.getSharedAgentEnvironmentRecord(),
@@ -240,6 +250,13 @@ export async function composeDeploymentEnv(
   // URL reserved so a project cannot silently redirect the injected world to
   // an uninitialized or tenant-controlled database.
   const reserved = {
+    EVELAND_PROJECT_ID: projectId,
+    ...(identityIssuer
+      ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") }
+      : {}),
+    ...(identityJwksUrl
+      ? { EVELAND_IDENTITY_JWKS_URL: identityJwksUrl }
+      : {}),
     ...(projectWorkflowUrl
       ? { WORKFLOW_POSTGRES_URL: projectWorkflowUrl }
       : {}),

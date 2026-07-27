@@ -190,6 +190,20 @@
       "when": 1784643286285,
       "tag": "0026_unusual_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784876208479,
+      "tag": "0027_lonely_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784879513723,
+      "tag": "0028_shocking_black_panther",
+      "breakpoints": true
     }
   ]
 }

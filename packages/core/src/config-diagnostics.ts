@@ -126,6 +126,30 @@ const definitions: ConfigurationDefinition[] = [
     required: true,
   },
   { ...entry("EVELAND_COOKIE_DOMAIN", ["api"], "Optional shared parent domain for the control-plane session cookie."), emptyUsesFallback: true },
+  urlEntry(
+    "EVELAND_IDENTITY_ISSUER",
+    ["api", "worker"],
+    "Stable public issuer for Agent-user Caller Tokens.",
+    "http://localhost:4000",
+  ),
+  {
+    ...entry(
+      "EVELAND_IDENTITY_ALLOWED_ORIGINS",
+      ["api"],
+      "Comma-separated exact browser origins allowed to use the Identity API.",
+      "http://localhost:3010",
+    ),
+    required: production,
+  },
+  {
+    ...urlEntry(
+      "EVELAND_IDENTITY_JWKS_URL",
+      ["worker"],
+      "Agent-reachable JWKS URL injected into deployed runtimes.",
+      "http://host.docker.internal:4000/.well-known/jwks.json",
+    ),
+    required: production,
+  },
   entry("EVELAND_DATA_DIR", ["api", "worker"], "Root for managed sources, releases, observer data, and runtime state.", ".eveland-data"),
   {
     name: "EVELAND_HOST_DATA_DIR",

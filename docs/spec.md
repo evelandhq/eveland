@@ -67,6 +67,25 @@ API 与 Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `
 `revision`、发布 `channel` 与当前 `component`；所有组件共享 `service = eveland`，
 不得把 API、Web、Gateway 或 Worker 建模成独立产品版本。
 
+### Agent 用户身份 (/settings/identity)
+
+Agent 用户身份与控制面 Better Auth、Playground 的 Agent Connection credential 是三条独立边界。
+第一阶段提供一个受管 `Internal` Provider：API 只在服务端验证有效 Better Auth member，
+再映射为通用 `ResolvedExternalIdentity`，通过统一的 `finalizeIdentity()` 建立独立
+`eveland_identity` Session。Better Auth cookie/token、member role 与 provider credential
+都不得进入 Caller Token、浏览器聊天存储、Gateway 或 Agent。
+
+System Admin 配置 Provider、允许的 Identity Realm、精确 web-chat return origin，以及显式
+Realm → Project grant。只有 enabled Provider、精确 enabled Realm 和 grant 同时成立时，
+Identity Broker 才签发约 60 秒、ES256、`aud=eveland:project:<projectId>` 的 Caller Token。
+Token 只包含 Eveland 内部 principal/realm claims，不包含 provider issuer、外部 subject 或
+provider 名称。公开 JWKS 支持 active/retiring key overlap。
+
+部署 Worker 把 `EVELAND_IDENTITY_ISSUER`、`EVELAND_IDENTITY_JWKS_URL` 和不可由 Project
+覆盖的 `EVELAND_PROJECT_ID` 注入 Agent。公开 Gateway 原样转发 Agent-owned Authorization；
+它不验签、不换 token、不读取 identity claims。Agent 的 `evelandIdentity()` AuthFn
+验证 issuer、project audience、ES256、kid、exp/nbf 后建立 `principalType=user`。
+
 ### 首页：Projects (/projects)
 
 展示用户全部项目：

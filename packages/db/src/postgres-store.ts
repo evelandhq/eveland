@@ -7,6 +7,7 @@ import { createPostgresAgentAuthStore } from "./postgres-agent-auth-store.js";
 import { createPostgresDeploymentRoutingStore } from "./postgres-deployment-routing-store.js";
 import { createPostgresJobSourceStore } from "./postgres-job-source-store.js";
 import { createPostgresInstanceHealthStore } from "./postgres-instance-health-store.js";
+import { createPostgresIdentityStore } from "./postgres-identity-store.js";
 import { createPostgresProjectStore } from "./postgres-project-store.js";
 import { createPostgresRuntimeStore } from "./postgres-runtime-store.js";
 import { createPostgresScheduleStore } from "./postgres-schedule-store.js";
@@ -219,6 +220,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
   return {
     ...createPostgresProjectStore(context),
     ...createPostgresAgentAuthStore(context),
+    ...createPostgresIdentityStore(context),
     ...createPostgresSecretStore(context),
     ...createPostgresJobSourceStore(context),
     ...createPostgresDeploymentRoutingStore(context),

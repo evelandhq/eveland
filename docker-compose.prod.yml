@@ -9,6 +9,8 @@
 #   WEB_ORIGIN=https://your-web-host          # CORS allow-origin for the API
 #   NEXT_PUBLIC_API_URL=https://your-api-host  # where the browser calls the API (baked in at build)
 #   BETTER_AUTH_URL=https://your-api-host      # browser-visible Better Auth API origin
+#   EVELAND_IDENTITY_ISSUER=https://your-api-host
+#   EVELAND_IDENTITY_ALLOWED_ORIGINS=https://your-chat-host
 #   BETTER_AUTH_SECRET=<long-random-secret>    # independent auth encryption/signing secret
 # They default to localhost so `up` works with no .env for a quick bring-up.
 #
@@ -47,6 +49,8 @@ services:
       EVELAND_COLD_START_TIMEOUT_MS: "${EVELAND_COLD_START_TIMEOUT_MS:-30000}"
       EVELAND_GATEWAY_PUBLIC_SCHEME: https
       EVELAND_GATEWAY_PUBLIC_PORT: 0
+      EVELAND_IDENTITY_ISSUER: "${EVELAND_IDENTITY_ISSUER:?set EVELAND_IDENTITY_ISSUER}"
+      EVELAND_IDENTITY_ALLOWED_ORIGINS: "${EVELAND_IDENTITY_ALLOWED_ORIGINS:?set EVELAND_IDENTITY_ALLOWED_ORIGINS}"
       APP_SECRET_KEY: "${APP_SECRET_KEY:?set APP_SECRET_KEY}"
       EVELAND_SCHEDULER_RUNTIME_SECRET: "${EVELAND_SCHEDULER_RUNTIME_SECRET:?set EVELAND_SCHEDULER_RUNTIME_SECRET}"
       EVELAND_SCHEDULER_DISPATCH_SECRET: "${EVELAND_SCHEDULER_DISPATCH_SECRET:?set EVELAND_SCHEDULER_DISPATCH_SECRET}"

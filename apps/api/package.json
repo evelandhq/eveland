@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file=../../.env src/server.ts",
+    "dev": "tsx watch --include ../../.env --env-file=../../.env src/server.ts",
     "build": "tsc -p tsconfig.json --noEmit",
     "db:generate": "pnpm --filter @eveland/db db:generate",
     "db:migrate": "pnpm --filter @eveland/db db:migrate",
@@ -17,6 +17,7 @@
     "@eveland/agent-auth": "workspace:*",
     "@eveland/core": "workspace:*",
     "@eveland/db": "workspace:*",
+    "@eveland/identity-broker": "workspace:*",
     "@eveland/session-collector": "workspace:*",
     "@hono/node-server": "^2.0.6",
     "better-auth": "^1.6.23",

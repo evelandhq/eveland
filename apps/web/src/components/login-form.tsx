@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { signIn } from "@/lib/client-api";
+import { safeLoginNextPath } from "@/lib/identity-continuation";
 
-export function LoginForm() {
+export function LoginForm({ nextPath = "/projects" }: { nextPath?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -20,7 +21,7 @@ export function LoginForm() {
     setError(null);
     try {
       await signIn(String(form.get("email") ?? ""), String(form.get("password") ?? ""));
-      router.push("/projects");
+      router.push(safeLoginNextPath(nextPath));
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Sign in failed");

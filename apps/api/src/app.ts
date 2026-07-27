@@ -34,6 +34,11 @@ import {
   type PlaygroundRunEvent,
 } from "./gateway-playground.js";
 import { registerInternalRoutes } from "./app-internal-routes.js";
+import {
+  createIdentityRouteServices,
+  registerPublicIdentityRoutes,
+  registerSystemIdentityRoutes,
+} from "./app-identity-routes.js";
 import { registerProjectRoutes } from "./app-project-routes.js";
 import { registerQueryRoutes } from "./app-query-routes.js";
 import { registerSecretRoutes } from "./app-secret-routes.js";
@@ -91,6 +96,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
+  const identityRouteContext = { app, store, options, appSecretKey, webOrigin };
+  const identityRouteServices = createIdentityRouteServices(identityRouteContext);
   const ensureProjectAgentConnection = async (projectId: string) => {
     const existing = await store.getProjectAgentConnection(projectId);
     if (existing) return existing;
@@ -226,7 +233,10 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   app.use(
     "*",
     cors({
-      origin: webOrigin,
+      origin: [
+        webOrigin,
+        ...identityRouteServices.allowedOrigins,
+      ],
       credentials: true,
     }),
   );
@@ -240,6 +250,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     runtimeActivationLeaseTtlMs,
     runtimeActivationWaitTimeoutMs,
   });
+  registerPublicIdentityRoutes(identityRouteContext, identityRouteServices);
 
   if (options.auth) {
     app.on(["GET", "POST"], "/api/auth/*", (c) => {
@@ -273,6 +284,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       c.set("principal", principal);
       await next();
     });
+    registerSystemIdentityRoutes(identityRouteContext);
 
     app.get("/auth/session", (c) => c.json({ member: c.get("principal") }));
 

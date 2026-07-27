@@ -22,6 +22,10 @@ vi.mock("@/components/ui/card", () => ({
   CardTitle: "div",
 }));
 
+vi.mock("@/lib/identity-continuation", () => ({
+  safeLoginNextPath: (value: string | undefined) => value ?? "/projects",
+}));
+
 vi.mock("next/navigation", () => ({
   redirect: auth.redirect,
 }));

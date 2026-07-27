@@ -36,6 +36,9 @@ importers:
       '@eveland/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@eveland/identity-broker':
+        specifier: workspace:*
+        version: link:../../packages/identity-broker
       '@eveland/session-collector':
         specifier: workspace:*
         version: link:../../packages/session-collector
@@ -383,6 +386,22 @@ importers:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
 
+  packages/identity-broker:
+    dependencies:
+      '@eveland/core':
+        specifier: workspace:*
+        version: link:../core
+      '@eveland/db':
+        specifier: workspace:*
+        version: link:../db
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.4
+        version: 0.5.4
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
+
   packages/sandbox-bwrap:
     devDependencies:
       ai:
@@ -400,6 +419,15 @@ importers:
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/sdk:
+    devDependencies:
+      eve:
+        specifier: 0.27.3
+        version: 0.27.3(@electric-sql/pglite@0.5.4)(ai@7.0.35(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/session-collector:
     dependencies:

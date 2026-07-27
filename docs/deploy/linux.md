@@ -237,11 +237,30 @@ The explicit Vercel OIDC Connection method mirrors Eve 0.27.3 by resolving its c
 sending the token in both `Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short
 lived; rotate the referenced Secret before expiry. Eveland does not infer this method from a Vercel deployment,
 Agent source, or a 401 response.
+
+External authenticated chat uses a separate managed Identity boundary. Set the same stable public
+`EVELAND_IDENTITY_ISSUER` on API and worker, set `EVELAND_IDENTITY_ALLOWED_ORIGINS` to the exact
+EveChats browser origin, and give the worker an Agent-reachable `EVELAND_IDENTITY_JWKS_URL`
+(`http://127.0.0.1:4000/.well-known/jwks.json` for host systemd Agents). In System > Identity,
+create the Internal Provider and exact allowed Realm, register the `eve-chats` return origin, and
+grant only the intended Projects. The worker reserves and injects issuer, JWKS URL, and
+`EVELAND_PROJECT_ID`; Project Secrets and Shared Agent Environment cannot override them.
+
+Do not reuse `BETTER_AUTH_SECRET`, Better Auth cookies, Playground Agent Connection credentials, or
+provider tokens in EveChats or Agent configuration. The browser receives only a short-lived
+project-audience Caller Token; Gateway transparently forwards it and the Agent verifies it.
+
+Deploy Eveland Identity and the browser chat surface on the same schemeful site,
+typically as sibling HTTPS subdomains. The separate `eveland_identity` cookie
+uses `SameSite=Lax`; an unrelated site cannot use it for credentialed token
+requests even when its exact origin is present in the CORS allowlist.
 | `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
 | `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
 | `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
 | `EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS` | `120000` | Maximum private Scheduler Channel dispatch duration before the Worker treats the result as failed or unknown. |
 | `EVELAND_SCHEDULER_PREWARM_MS` | `60000` | Window before `nextRunAt` in which the scheduler target stays warm or is proactively activated. Prewarming never executes the handler early. |
+| `EVELAND_IDENTITY_ISSUER` | `http://localhost:4000` | Stable public issuer embedded in Caller Tokens; configure the same value on API and worker. |
+| `EVELAND_IDENTITY_JWKS_URL` | issuer + `/.well-known/jwks.json` | Agent-reachable signing-key URL reserved and injected by Worker. Host systemd deployments normally use API loopback. |
 | `EVELAND_ACTIVATION_IDLE_TTL_MS` | `300000` | Time after the final lease release/expiry before Worker stops a ready RuntimeInstance. The Deployment and Release remain. |
 | `EVELAND_ACTIVATION_REAPER_BATCH_SIZE` | `25` | Maximum idle RuntimeInstances claimed per Worker tick. |
 | `EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE` | `25` | Maximum interrupted `starting` RuntimeInstances re-enqueued per Worker tick. |

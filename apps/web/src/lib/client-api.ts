@@ -5,6 +5,11 @@ import type {
   SharedAgentEnvironment,
 } from "@eveland/core/contracts";
 import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
+import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity";
+import type {
+  IdentityRealmGrant,
+  PublicIdentityProvider,
+} from "./server-api";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -212,6 +217,105 @@ export async function updateMemberRole(userId: string, role: Member["role"]): Pr
 
 export async function removeMember(userId: string): Promise<void> {
   await clientRequest(`/members/${userId}`, { method: "DELETE" });
+}
+
+export async function createInternalIdentityProvider(input: {
+  displayName: string;
+  internalRealmKey: string;
+  enabled: boolean;
+}): Promise<PublicIdentityProvider> {
+  return clientRequest<{ provider: PublicIdentityProvider }>(
+    "/system/identity/providers",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "internal", ...input }),
+    },
+  ).then((data) => data.provider);
+}
+
+export async function updateInternalIdentityProvider(input: {
+  id: string;
+  expectedSecurityRevision: number;
+  displayName: string;
+  internalRealmKey: string;
+  enabled: boolean;
+}): Promise<PublicIdentityProvider> {
+  return clientRequest<{ provider: PublicIdentityProvider }>(
+    `/system/identity/providers/${encodeURIComponent(input.id)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  ).then((data) => data.provider);
+}
+
+export async function preflightIdentityProvider(providerId: string): Promise<{
+  ok: boolean;
+  checks: Record<string, boolean>;
+}> {
+  return clientRequest(
+    `/system/identity/providers/${encodeURIComponent(providerId)}/preflight`,
+    { method: "POST" },
+  );
+}
+
+export async function createInternalIdentityRealm(input: {
+  providerConnectionId: string;
+  externalRealmId: string;
+  displayName: string;
+  enabled: boolean;
+}): Promise<IdentityRealm> {
+  return clientRequest<{ realm: IdentityRealm }>("/system/identity/realms", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...input, externalRealmKind: "internal" }),
+  }).then((data) => data.realm);
+}
+
+export async function updateIdentityRealm(input: {
+  id: string;
+  displayName: string;
+  enabled: boolean;
+}): Promise<IdentityRealm> {
+  return clientRequest<{ realm: IdentityRealm }>(
+    `/system/identity/realms/${encodeURIComponent(input.id)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  ).then((data) => data.realm);
+}
+
+export async function setIdentityRealmProjectGrant(
+  realmId: string,
+  projectId: string,
+  granted: boolean,
+): Promise<IdentityRealmGrant | null> {
+  const path = `/system/identity/realms/${encodeURIComponent(realmId)}/projects/${encodeURIComponent(projectId)}`;
+  if (!granted) {
+    await clientRequest(path, { method: "DELETE" });
+    return null;
+  }
+  return clientRequest<{ grant: IdentityRealmGrant }>(path, { method: "PUT" })
+    .then((data) => data.grant);
+}
+
+export async function upsertIdentityReturnTarget(input: {
+  key: string;
+  origin: string;
+  enabled: boolean;
+}): Promise<IdentityReturnTarget> {
+  return clientRequest<{ target: IdentityReturnTarget }>(
+    `/system/identity/return-targets/${encodeURIComponent(input.key)}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ origin: input.origin, enabled: input.enabled }),
+    },
+  ).then((data) => data.target);
 }
 
 export function createPlaygroundMessage(text: string, files: readonly FileUIPart[]): string | UserContent {

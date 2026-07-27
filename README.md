@@ -9,6 +9,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
 - `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
 - `packages/agent-auth`: Node-only generic Agent Connection registry plus Authorization Code + PKCE OIDC acquisition, encrypted transaction/credential state, verification, refresh, and Basic/Bearer/Vercel-OIDC/custom-header materialization.
+- `packages/identity-broker`: provider-neutral Agent-user identity finalization, separate Identity Sessions, Realm → Project authorization, short-lived ES256 Caller Token issuance, signing-key rotation, and public JWKS.
 - `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
 - `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Its thin app entrypoint composes focused route modules; persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private. Pure Host/header/affinity/target rules are separated from request lifecycle orchestration.
@@ -61,6 +62,11 @@ The initial Admin email defaults to `admin@example.com`; its password comes only
 `EVELAND_ADMIN_PASSWORD` and must contain at least 12 characters.
 `BETTER_AUTH_SECRET` is a separate random secret of at least 32 characters. `BETTER_AUTH_URL`
 must be the browser-visible API origin (for example `https://api.example.com` in production).
+Better Auth remains control-plane authentication only. System > Identity configures an
+independent Internal Provider, allowed Identity Realm, exact web-chat return origin, and
+explicit Realm → Project grants. The Identity Broker then issues a separate HttpOnly
+Identity Session and approximately 60-second, project-audience ES256 Caller Tokens; neither
+the Better Auth session nor provider credentials are sent to the chat UI, Gateway, or Agent.
 
 All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
 
@@ -190,6 +196,9 @@ WEB_ORIGIN=https://your-web-host
 NEXT_PUBLIC_API_URL=https://your-api-host
 BETTER_AUTH_URL=https://your-api-host
 BETTER_AUTH_SECRET=<independent-long-random-auth-secret>
+EVELAND_IDENTITY_ISSUER=https://your-api-host
+EVELAND_IDENTITY_ALLOWED_ORIGINS=https://your-chat-host
+EVELAND_IDENTITY_JWKS_URL=http://127.0.0.1:4000/.well-known/jwks.json
 EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
 EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
@@ -210,6 +219,12 @@ The base development Compose file contains a development `APP_SECRET_KEY`.
 Before a real production deploy, replace it for the API through a site-specific
 Compose override with a private 32-byte value, and configure that exact value in
 the host worker. Do not use the checked-in development fallback in production.
+
+Agent projects accept Eveland Caller Tokens with `evelandIdentity()` from the
+versioned `eveland/auth` SDK entry point under `packages/sdk`. The package is
+buildable and packable independently, uses Eve as a peer dependency, and
+projects opt in explicitly in their Eve channel auth walk. Eveland never
+rewrites an Agent's public authentication boundary.
 
 The production overlay uses host networking so Gateway can reach systemd Agent
 processes on host loopback. It runs the web production build and configures the

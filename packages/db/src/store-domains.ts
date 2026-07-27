@@ -59,6 +59,18 @@ import type {
   InstanceWorkload,
   WorkerHeartbeat,
 } from "@eveland/core/instance-health";
+import type {
+  ExternalRealmKind,
+  IdentityLoginTransaction,
+  IdentityOidcCredential,
+  IdentityPrincipal,
+  IdentityProviderConnection,
+  IdentityRealm,
+  IdentityReturnTarget,
+  IdentitySession,
+  IdentitySigningKey,
+  IdentitySigningKeyStatus,
+} from "@eveland/core/identity";
 
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
@@ -234,6 +246,148 @@ export interface AgentAuthStore {
   consumeAgentAuthTransaction(stateHash: string, now?: Date): Promise<AgentAuthTransaction | null>;
   deleteExpiredAgentAuthTransactions(now?: Date, limit?: number): Promise<number>;
   deleteStaleAgentAuthCredentials(agentConnectionId: string, currentSecurityRevision: number): Promise<number>;
+}
+
+export interface IdentityStore {
+  createIdentityProviderConnection(input: {
+    type: "internal" | "oidc";
+    displayName: string;
+    internalRealmKey?: string;
+    issuer?: string;
+    clientId?: string;
+    clientSecretEncrypted?: string | null;
+    scopes?: string[];
+    authorizationParameters?: Record<string, string>;
+    tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post" | "none";
+    externalRealmResolution?:
+      | "connection"
+      | "internal_member"
+      | "id_token_claim"
+      | "userinfo_claim"
+      | "provider_api";
+    externalRealmClaim?: string | null;
+    enabled: boolean;
+  }): Promise<IdentityProviderConnection>;
+  listIdentityProviderConnections(): Promise<IdentityProviderConnection[]>;
+  getIdentityProviderConnection(id: string): Promise<IdentityProviderConnection | null>;
+  updateIdentityProviderConnection(input: {
+    id: string;
+    expectedSecurityRevision: number;
+    displayName: string;
+    internalRealmKey?: string;
+    issuer?: string;
+    clientId?: string;
+    clientSecretEncrypted?: string | null;
+    scopes?: string[];
+    authorizationParameters?: Record<string, string>;
+    tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post" | "none";
+    externalRealmResolution?:
+      | "connection"
+      | "internal_member"
+      | "id_token_claim"
+      | "userinfo_claim"
+      | "provider_api";
+    externalRealmClaim?: string | null;
+    enabled: boolean;
+    securityChanged: boolean;
+  }): Promise<IdentityProviderConnection | null>;
+  createIdentityRealm(input: {
+    providerConnectionId: string;
+    externalRealmId: string;
+    externalRealmKind: ExternalRealmKind;
+    displayName: string;
+    enabled: boolean;
+  }): Promise<IdentityRealm>;
+  listIdentityRealms(providerConnectionId?: string): Promise<IdentityRealm[]>;
+  getIdentityRealm(id: string): Promise<IdentityRealm | null>;
+  getIdentityRealmByExternalId(
+    providerConnectionId: string,
+    externalRealmId: string,
+  ): Promise<IdentityRealm | null>;
+  updateIdentityRealm(
+    id: string,
+    input: { displayName: string; enabled: boolean },
+  ): Promise<IdentityRealm | null>;
+  upsertIdentityPrincipal(input: {
+    identityRealmId: string;
+    externalSubject: string;
+    displayName: string | null;
+    email: string | null;
+    claims: Record<string, string | readonly string[]>;
+  }): Promise<IdentityPrincipal>;
+  getIdentityPrincipal(id: string): Promise<IdentityPrincipal | null>;
+  createIdentitySession(input: {
+    tokenHash: string;
+    identityPrincipalId: string;
+    activeIdentityRealmId: string;
+    expiresAt: Date;
+  }): Promise<IdentitySession>;
+  getActiveIdentitySession(tokenHash: string, now?: Date): Promise<IdentitySession | null>;
+  revokeIdentitySession(id: string, now?: Date): Promise<IdentitySession | null>;
+  revokeIdentitySessionByTokenHash(tokenHash: string, now?: Date): Promise<boolean>;
+  createIdentityLoginTransaction(input: {
+    stateHash: string;
+    providerConnectionId: string;
+    providerSecurityRevision: number;
+    returnTargetId: string;
+    returnPath: string;
+    nonceHash: string | null;
+    pkceVerifierEncrypted: string | null;
+    expiresAt: Date;
+  }): Promise<IdentityLoginTransaction>;
+  consumeIdentityLoginTransaction(
+    stateHash: string,
+    now?: Date,
+  ): Promise<IdentityLoginTransaction | null>;
+  deleteExpiredIdentityLoginTransactions(now?: Date, limit?: number): Promise<number>;
+  upsertIdentityReturnTarget(input: {
+    key: string;
+    origin: string;
+    enabled: boolean;
+  }): Promise<IdentityReturnTarget>;
+  listIdentityReturnTargets(): Promise<IdentityReturnTarget[]>;
+  getIdentityReturnTargetByKey(key: string): Promise<IdentityReturnTarget | null>;
+  grantIdentityRealmProject(
+    identityRealmId: string,
+    projectId: string,
+  ): Promise<{ identityRealmId: string; projectId: string; createdAt: string }>;
+  revokeIdentityRealmProject(identityRealmId: string, projectId: string): Promise<boolean>;
+  hasIdentityRealmProjectGrant(identityRealmId: string, projectId: string): Promise<boolean>;
+  listIdentityRealmProjectGrants(
+    identityRealmId: string,
+  ): Promise<Array<{ identityRealmId: string; projectId: string; createdAt: string }>>;
+  putIdentityOidcCredential(input: {
+    identityPrincipalId: string;
+    providerConnectionId: string;
+    accessTokenEncrypted: string;
+    refreshTokenEncrypted: string | null;
+    scope: string;
+    accessTokenExpiresAt: Date | null;
+  }): Promise<IdentityOidcCredential>;
+  getIdentityOidcCredential(
+    identityPrincipalId: string,
+    providerConnectionId: string,
+  ): Promise<IdentityOidcCredential | null>;
+  rotateIdentityOidcCredential(input: {
+    identityPrincipalId: string;
+    providerConnectionId: string;
+    expectedRotationSeq: number;
+    accessTokenEncrypted: string;
+    refreshTokenEncrypted: string | null;
+    scope: string;
+    accessTokenExpiresAt: Date | null;
+  }): Promise<IdentityOidcCredential | null>;
+  createIdentitySigningKey(input: {
+    id?: string;
+    algorithm: "ES256";
+    publicJwk: Record<string, unknown>;
+    privateKeyEncrypted: string;
+    status: IdentitySigningKeyStatus;
+    notBefore: Date;
+    expiresAt: Date;
+  }): Promise<IdentitySigningKey>;
+  listIdentitySigningKeys(): Promise<IdentitySigningKey[]>;
+  getActiveIdentitySigningKey(now?: Date): Promise<IdentitySigningKey | null>;
 }
 
 export interface SecretStore {
@@ -477,6 +631,7 @@ export type Store = ProjectStore &
   SourceStore &
   GitCredentialStore &
   AgentAuthStore &
+  IdentityStore &
   SecretStore &
   JobStore &
   DeploymentStore &
