@@ -3,15 +3,19 @@ title: Eve compatibility
 description: Understand Eveland's verified Eve version window and fail-closed policy.
 ---
 
-Until Eve publishes a stable compatibility contract, Eveland supports a sliding window of the latest three fully verified Eve minor lines. The current checked-in product contract supports `0.25.x`, `0.26.x`, and `0.27.x`, verified at `0.25.3`, `0.26.2`, and `0.27.3`.
+Until Eve publishes a stable compatibility contract, Eveland supports a sliding window of the latest three fully verified Eve minor lines. The current checked-in product contract supports `0.25.x`, `0.26.x`, and `0.27.x`, verified at `0.25.3`, `0.26.2`, and `0.27.6`.
 
 The UI marks only the latest supported line, `0.27.x`, in green. Older supported lines stay operational but appear in red with an upgrade reminder; unsupported versions also appear in red and remain blocked.
 
 Eve 0.27 moves Nuxt deployments to Vercel's stable services model, improves compaction and prompt caching, and makes Route Auth advertise standards-compliant challenges. HTTP Basic now advertises its realm and UTF-8 charset and compares credentials after Unicode NFC normalization. Eveland does not host imported Agents through Eve's Nuxt integration and does not infer a Connection method from a 401 challenge, so these changes require no adapter branch.
 
-The 0.27.1–0.27.3 patches improve workflow concurrency and cancellation, queued channel delivery, Slack and Teams routing, prefixed callback routes, dynamic-tool refresh, sandbox seed ordering, and diagnostics. Eve 0.27.2 also sends an initial whitespace byte when opening an NDJSON stream and lets Client callers opt out of automatic stream reconnection. Eveland's stream monitor already ignores blank lines, Gateway forwards the byte without buffering, and the Playground keeps the default durable reconnect behavior. The canonical session/continuation/cancel/stream routes, Vercel OIDC headers, observer hook events, schedule/channel definitions, and `SandboxBackend` contract remain compatible across the verified window.
+The 0.27.1–0.27.3 patches improve workflow concurrency and cancellation, queued channel delivery, Slack and Teams routing, prefixed callback routes, dynamic-tool refresh, sandbox seed ordering, and diagnostics. Eve 0.27.2 also sends an initial whitespace byte when opening an NDJSON stream and lets Client callers opt out of automatic stream reconnection. Eveland's stream monitor already ignores blank lines, Gateway forwards the byte without buffering, and the Playground keeps the default durable reconnect behavior.
 
-Agent projects should refresh their lockfile and redeploy to receive `0.27.3`, even when a range such as `^0.27.0` already permits it. Eve 0.27.3 also requires AI SDK `ai@^7.0.34`; update a separately pinned or locked older AI SDK at the same time. Custom NDJSON consumers must ignore blank lines. Relay or proxy code may use Eve's explicit reconnect opt-out when it owns reconnection itself; ordinary Agent clients should keep the default.
+Eve 0.27.4 adds durable session reset through `POST /eve/v1/session/reset`. Eveland stores the latest continuation token with its SessionBinding, so token-only resume and reset stay pinned to the Deployment that owns the durable workflow even after promote, rollback, or weight changes. A successful reset clears that token binding; the historical session-to-Deployment binding remains for streams, observation, and retention. Migration `0029_sparkling_hammerhead` backfills known tokens before adding the unique routing index.
+
+Eve 0.27.6 adds explicit principal-metadata forwarding for remote Agents, ignores an empty remote `outputSchema`, and fixes remote create/cancel URLs below a base path. Forwarding remains disabled by default. The sender must set `forwardPrincipal: true`, and the receiving Agent must define a precise `trustedForwarders` predicate. Eveland transparently proxies the body and Agent-owned authentication but never enables trust, rewrites the principal, or forwards credentials. The canonical create/continue/cancel/stream messages, Vercel OIDC headers, observer hook events, schedule definitions, and `SandboxBackend` contract otherwise remain compatible across the verified window.
+
+Agent projects should refresh their lockfile and redeploy to receive `0.27.6`, even when a range such as `^0.27.0` already permits it. Eve 0.27.3+ requires AI SDK `ai@^7.0.34`; update a separately pinned or locked older AI SDK at the same time. Custom NDJSON consumers must ignore blank lines. Relay or proxy code may use Eve's explicit reconnect opt-out when it owns reconnection itself; ordinary Agent clients should keep the default. Only enable remote principal forwarding after both deployments are upgraded and the receiver can name the exact trusted forwarder.
 
 An npm publication alone does not widen the window. A new minor enters only after changelog and source review plus the complete compatibility matrix. When it enters, the older supported minor leaves the window deliberately.
 
@@ -24,6 +28,7 @@ Eveland fails closed when the dependency is missing, outside the window, or cann
 - cold activation
 - Playground traffic
 - public session create, continue, cancel, and stream
+- public session reset
 - schedule execution
 
 The diagnostic asks the project owner to upgrade instead of guessing an older protocol. Review the release notes before upgrading either Eve or Eveland in production.

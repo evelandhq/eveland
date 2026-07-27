@@ -15,7 +15,7 @@ describe("Agent Auth provider registry", () => {
       await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
     ) as { dependencies: Record<string, string> };
 
-    expect(packageJson.dependencies.eve).toBe("0.27.3");
+    expect(packageJson.dependencies.eve).toBe("0.27.6");
   });
 
   test("keeps provider keys, descriptors, and credential scopes consistent", () => {
@@ -80,7 +80,7 @@ describe("Agent Auth provider registry", () => {
     });
   });
 
-  test("mirrors Eve 0.27.3 Vercel OIDC client headers", async () => {
+  test("mirrors Eve 0.27.6 Vercel OIDC client headers", async () => {
     const registry = registryWithOidc();
 
     await expect(resolve(registry, "vercel-oidc", { token: "vercel-oidc-token" })).resolves.toEqual({

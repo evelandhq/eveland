@@ -590,33 +590,108 @@ export function createPostgresDeploymentRoutingStore({
       return binding ? sessionBindingRowToSessionBinding(binding) : null;
     },
 
-    async bindSession(input) {
+    async findSessionBindingByContinuationToken(
+      projectId,
+      continuationToken,
+    ) {
       const [binding] = await db
-        .insert(sessionBindings)
-        .values({ id: createId("bind"), ...input })
-        .onConflictDoUpdate({
-          target: [sessionBindings.projectId, sessionBindings.eveSessionId],
-          set: { ...input, updatedAt: new Date() },
-        })
-        .returning();
-      if (!binding)
-        throw new Error("Failed to persist the Gateway SessionBinding.");
-      await db
-        .update(sessions)
-        .set({
-          trigger: input.trigger,
-          routeId: input.routeId,
-          experimentId: input.experimentId,
-          variantName: input.variantName,
-          deploymentId: input.deploymentId,
-        })
+        .select()
+        .from(sessionBindings)
         .where(
           and(
-            eq(sessions.projectId, input.projectId),
-            eq(sessions.eveSessionId, input.eveSessionId),
+            eq(sessionBindings.projectId, projectId),
+            eq(sessionBindings.continuationToken, continuationToken),
           ),
-        );
-      return sessionBindingRowToSessionBinding(binding);
+        )
+        .limit(1);
+      return binding ? sessionBindingRowToSessionBinding(binding) : null;
+    },
+
+    async bindSession(input) {
+      return db.transaction(async (tx) => {
+        const continuationToken = input.continuationToken ?? null;
+        if (continuationToken !== null) {
+          await tx
+            .update(sessionBindings)
+            .set({ continuationToken: null, updatedAt: new Date() })
+            .where(
+              and(
+                eq(sessionBindings.projectId, input.projectId),
+                eq(sessionBindings.continuationToken, continuationToken),
+                ne(sessionBindings.eveSessionId, input.eveSessionId),
+              ),
+            );
+        }
+        const [binding] = await tx
+          .insert(sessionBindings)
+          .values({ id: createId("bind"), ...input, continuationToken })
+          .onConflictDoUpdate({
+            target: [sessionBindings.projectId, sessionBindings.eveSessionId],
+            set: { ...input, continuationToken, updatedAt: new Date() },
+          })
+          .returning();
+        if (!binding)
+          throw new Error("Failed to persist the Gateway SessionBinding.");
+        await tx
+          .update(sessions)
+          .set({
+            trigger: input.trigger,
+            routeId: input.routeId,
+            experimentId: input.experimentId,
+            variantName: input.variantName,
+            deploymentId: input.deploymentId,
+            continuationToken,
+          })
+          .where(
+            and(
+              eq(sessions.projectId, input.projectId),
+              eq(sessions.eveSessionId, input.eveSessionId),
+            ),
+          );
+        return sessionBindingRowToSessionBinding(binding);
+      });
+    },
+
+    async setSessionBindingContinuationToken(
+      projectId,
+      eveSessionId,
+      continuationToken,
+    ) {
+      return db.transaction(async (tx) => {
+        if (continuationToken !== null) {
+          await tx
+            .update(sessionBindings)
+            .set({ continuationToken: null, updatedAt: new Date() })
+            .where(
+              and(
+                eq(sessionBindings.projectId, projectId),
+                eq(sessionBindings.continuationToken, continuationToken),
+                ne(sessionBindings.eveSessionId, eveSessionId),
+              ),
+            );
+        }
+        const [binding] = await tx
+          .update(sessionBindings)
+          .set({ continuationToken, updatedAt: new Date() })
+          .where(
+            and(
+              eq(sessionBindings.projectId, projectId),
+              eq(sessionBindings.eveSessionId, eveSessionId),
+            ),
+          )
+          .returning();
+        if (!binding) return null;
+        await tx
+          .update(sessions)
+          .set({ continuationToken })
+          .where(
+            and(
+              eq(sessions.projectId, projectId),
+              eq(sessions.eveSessionId, eveSessionId),
+            ),
+          );
+        return sessionBindingRowToSessionBinding(binding);
+      });
     },
   };
 }

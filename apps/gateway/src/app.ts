@@ -34,7 +34,6 @@ import {
   resolveTarget,
   routeExperimentId,
   serializeAffinityCookie,
-  sessionIdFromJson,
   sessionIdFromPath,
 } from "./gateway-routing.js";
 
@@ -85,26 +84,66 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     const requestUrl = new URL(context.req.url);
     const playgroundPrefix = `/internal/projects/${encodeURIComponent(context.req.param("projectId"))}/playground`;
     const evePath = requestUrl.pathname.slice(playgroundPrefix.length);
-    const pathSessionId = sessionIdFromPath(evePath);
     const isInitial = context.req.method === "POST" && evePath === "/eve/v1/session";
-    const isContinuation = context.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
+    const isReset = context.req.method === "POST" && evePath === "/eve/v1/session/reset";
+    const pathSessionId = isReset ? null : sessionIdFromPath(evePath);
+    const isContinuation =
+      !isReset &&
+      context.req.method === "POST" &&
+      /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
     const isCancel = context.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+\/cancel$/.test(evePath);
     const isStream = context.req.method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(evePath);
-    if (!isInitial && !isContinuation && !isCancel && !isStream) return context.json({ error: "Not found" }, 404);
+    if (!isInitial && !isContinuation && !isCancel && !isReset && !isStream) {
+      return context.json({ error: "Not found" }, 404);
+    }
 
     const route = await repository.findProjectRoute(context.req.param("projectId"));
     if (!route?.enabled) return context.json({ error: "Project route not found" }, 404);
-    const binding = pathSessionId ? await repository.findSessionBinding(route.projectId, pathSessionId) : null;
+    const declaredContentLength = Number(context.req.header("content-length"));
+    if (Number.isFinite(declaredContentLength) && declaredContentLength > PLAYGROUND_MAX_TRANSPORT_BYTES) {
+      return context.json({ error: "Request body too large" }, 413);
+    }
+    let routingBody: Uint8Array | null | undefined;
+    if (isInitial || isReset) {
+      try {
+        routingBody = requestHasBody(context.req.method)
+          ? await readLimitedBody(
+              context.req.raw.body,
+              PLAYGROUND_MAX_TRANSPORT_BYTES,
+              context.req.raw.signal,
+            )
+          : null;
+      } catch (error) {
+        if (error instanceof RequestBodyTooLargeError) {
+          return context.json({ error: "Request body too large" }, 413);
+        }
+        if (
+          error instanceof DownstreamAbortedError ||
+          context.req.raw.signal.aborted
+        ) {
+          return new Response(JSON.stringify({ error: "Client closed request" }), {
+            status: 499,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        throw error;
+      }
+    }
+    const requestContinuationToken = continuationTokenFromBody(routingBody);
+    const binding = pathSessionId
+      ? await repository.findSessionBinding(route.projectId, pathSessionId)
+      : requestContinuationToken
+        ? await repository.findSessionBindingByContinuationToken(
+            route.projectId,
+            requestContinuationToken,
+          )
+        : null;
     if (pathSessionId && !binding) return context.json({ error: "Playground session not found" }, 404);
     const activationOwnerId = crypto.randomUUID();
     const target = await resolveTarget(repository, route, binding, crypto.randomUUID(), Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
     const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
     if (versionFailure) return versionFailure;
-    const declaredContentLength = Number(context.req.header("content-length"));
-    if (Number.isFinite(declaredContentLength) && declaredContentLength > PLAYGROUND_MAX_TRANSPORT_BYTES) {
-      return context.json({ error: "Request body too large" }, 413);
-    }
     let activation: { leaseId: string; endpointPort: number } | null = null;
     if (options.activationClient) {
       try {
@@ -126,9 +165,11 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
 
     let upstream: Response;
     try {
-      const body = requestHasBody(context.req.method)
-        ? await readLimitedBody(context.req.raw.body, PLAYGROUND_MAX_TRANSPORT_BYTES, context.req.raw.signal)
-        : null;
+      const body = routingBody !== undefined
+        ? routingBody
+        : requestHasBody(context.req.method)
+          ? await readLimitedBody(context.req.raw.body, PLAYGROUND_MAX_TRANSPORT_BYTES, context.req.raw.signal)
+          : null;
       const endpointPort = activation?.endpointPort ?? target.hostPort;
       const authority = agentAuth.authority === "loopback" ? `localhost:${endpointPort}` : route.hostname;
       upstream = await proxyToDeployment({
@@ -152,13 +193,21 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       throw error;
     }
 
+    const responseMetadata =
+      upstream.ok && (isInitial || isContinuation || isReset)
+        ? await eveSessionResponseMetadata(upstream.clone())
+        : null;
     if (isInitial && upstream.ok) {
-      const eveSessionId = upstream.headers.get("x-eve-session-id") ?? (await sessionIdFromJson(upstream.clone()));
+      const eveSessionId =
+        upstream.headers.get("x-eve-session-id") ??
+        responseMetadata?.sessionId ??
+        null;
       if (eveSessionId) {
         try {
           await repository.bindSession({
             projectId: route.projectId,
             eveSessionId,
+            continuationToken: responseMetadata?.continuationToken ?? null,
             routeId: route.id,
             deploymentId: target.deploymentId,
             trigger: "playground",
@@ -177,6 +226,27 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
           throw error;
         }
       }
+    } else if (
+      isContinuation &&
+      pathSessionId &&
+      responseMetadata?.continuationToken
+    ) {
+      await repository.setSessionBindingContinuationToken(
+        route.projectId,
+        pathSessionId,
+        responseMetadata.continuationToken,
+      );
+    } else if (
+      isReset &&
+      binding &&
+      responseMetadata?.status === "reset" &&
+      responseMetadata.previousSessionId === binding.eveSessionId
+    ) {
+      await repository.setSessionBindingContinuationToken(
+        route.projectId,
+        binding.eveSessionId,
+        null,
+      );
     }
 
     const response = new Response(upstream.body, {
@@ -255,6 +325,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       await repository.bindSession({
         projectId: route.projectId,
         eveSessionId,
+        continuationToken,
         routeId: route.id,
         deploymentId: target.deploymentId,
         trigger: "playground",
@@ -306,20 +377,62 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (!route?.enabled) return context.json({ error: "Route not found" }, 404);
 
     const requestUrl = new URL(context.req.url);
-    const pathSessionId = sessionIdFromPath(requestUrl.pathname);
+    const isInitial =
+      context.req.method === "POST" &&
+      requestUrl.pathname === "/eve/v1/session";
+    const isReset =
+      context.req.method === "POST" &&
+      requestUrl.pathname === "/eve/v1/session/reset";
+    const pathSessionId = isReset
+      ? null
+      : sessionIdFromPath(requestUrl.pathname);
     const requestId = crypto.randomUUID();
     const remoteIp = remoteAddress(context);
     const affinity = affinityKey(context.req.raw.headers, options.affinitySecret);
-    const binding = pathSessionId ? await repository.findSessionBinding(route.projectId, pathSessionId) : null;
+    const declaredContentLength = Number(context.req.header("content-length"));
+    if (Number.isFinite(declaredContentLength) && declaredContentLength > maxRequestBodyBytes) {
+      return context.json({ error: "Request body too large" }, 413);
+    }
+    let routingBody: Uint8Array | null | undefined;
+    if (isInitial || isReset) {
+      try {
+        routingBody = requestHasBody(context.req.method)
+          ? await readLimitedBody(
+              context.req.raw.body,
+              maxRequestBodyBytes,
+              context.req.raw.signal,
+            )
+          : null;
+      } catch (error) {
+        if (error instanceof RequestBodyTooLargeError) {
+          return context.json({ error: "Request body too large" }, 413);
+        }
+        if (
+          error instanceof DownstreamAbortedError ||
+          context.req.raw.signal.aborted
+        ) {
+          return new Response(JSON.stringify({ error: "Client closed request" }), {
+            status: 499,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        throw error;
+      }
+    }
+    const requestContinuationToken = continuationTokenFromBody(routingBody);
+    const binding = pathSessionId
+      ? await repository.findSessionBinding(route.projectId, pathSessionId)
+      : requestContinuationToken
+        ? await repository.findSessionBindingByContinuationToken(
+            route.projectId,
+            requestContinuationToken,
+          )
+        : null;
     const target = await resolveTarget(repository, route, binding, affinity.key, Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
     if (isEveSessionRequest(context.req.method, requestUrl.pathname)) {
       const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
       if (versionFailure) return versionFailure;
-    }
-    const declaredContentLength = Number(context.req.header("content-length"));
-    if (Number.isFinite(declaredContentLength) && declaredContentLength > maxRequestBodyBytes) {
-      return context.json({ error: "Request body too large" }, 413);
     }
     let activation: { leaseId: string; endpointPort: number } | null = null;
     if (options.activationClient) {
@@ -341,9 +454,11 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     }
     let upstream: Response;
     try {
-      const body = requestHasBody(context.req.method)
-        ? await readLimitedBody(context.req.raw.body, maxRequestBodyBytes, context.req.raw.signal)
-        : null;
+      const body = routingBody !== undefined
+        ? routingBody
+        : requestHasBody(context.req.method)
+          ? await readLimitedBody(context.req.raw.body, maxRequestBodyBytes, context.req.raw.signal)
+          : null;
       upstream = await proxyToDeployment({
         port: activation?.endpointPort ?? target.hostPort,
         path: `${requestUrl.pathname}${requestUrl.search}`,
@@ -364,13 +479,25 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       throw error;
     }
 
-    if (context.req.method === "POST" && requestUrl.pathname === "/eve/v1/session" && upstream.ok) {
-      const eveSessionId = upstream.headers.get("x-eve-session-id") ?? (await sessionIdFromJson(upstream.clone()));
+    const isContinuation =
+      !isReset &&
+      context.req.method === "POST" &&
+      /^\/eve\/v1\/session\/[^/]+$/.test(requestUrl.pathname);
+    const responseMetadata =
+      upstream.ok && (isInitial || isContinuation || isReset)
+        ? await eveSessionResponseMetadata(upstream.clone())
+        : null;
+    if (isInitial && upstream.ok) {
+      const eveSessionId =
+        upstream.headers.get("x-eve-session-id") ??
+        responseMetadata?.sessionId ??
+        null;
       if (eveSessionId) {
         try {
           await repository.bindSession({
             projectId: route.projectId,
             eveSessionId,
+            continuationToken: responseMetadata?.continuationToken ?? null,
             routeId: route.id,
             deploymentId: target.deploymentId,
             trigger: "api",
@@ -389,6 +516,27 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
           throw error;
         }
       }
+    } else if (
+      isContinuation &&
+      pathSessionId &&
+      responseMetadata?.continuationToken
+    ) {
+      await repository.setSessionBindingContinuationToken(
+        route.projectId,
+        pathSessionId,
+        responseMetadata.continuationToken,
+      );
+    } else if (
+      isReset &&
+      binding &&
+      responseMetadata?.status === "reset" &&
+      responseMetadata.previousSessionId === binding.eveSessionId
+    ) {
+      await repository.setSessionBindingContinuationToken(
+        route.projectId,
+        binding.eveSessionId,
+        null,
+      );
     }
 
     const responseHeaders = new Headers(upstream.headers);
@@ -509,6 +657,36 @@ function parseJsonRecord(value: string): Record<string, unknown> | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function continuationTokenFromBody(
+  body: Uint8Array | null | undefined,
+): string | null {
+  if (!body || body.byteLength === 0) return null;
+  const parsed = parseJsonRecord(new TextDecoder().decode(body));
+  return stringValue(parsed?.continuationToken);
+}
+
+async function eveSessionResponseMetadata(response: Response): Promise<{
+  sessionId: string | null;
+  continuationToken: string | null;
+  previousSessionId: string | null;
+  status: string | null;
+} | null> {
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    return null;
+  }
+  const parsed = parseJsonRecord(await response.text());
+  if (!parsed) return null;
+  return {
+    sessionId:
+      stringValue(parsed.sessionId) ?? stringValue(parsed.session_id),
+    continuationToken:
+      stringValue(parsed.continuationToken) ??
+      stringValue(parsed.continuation_token),
+    previousSessionId: stringValue(parsed.previousSessionId),
+    status: stringValue(parsed.status),
+  };
 }
 
 function stringValue(value: unknown): string | null {

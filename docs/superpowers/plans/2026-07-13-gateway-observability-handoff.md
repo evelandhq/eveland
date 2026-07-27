@@ -1413,3 +1413,34 @@ Archive 继续按持久化的 `runtimeKind` 删除 systemd Release 或 Docker im
 上限约束。`build_deploy` 在 Deployment 落库前失败时同样删除 partial build directory；若 runtime
 artifact 已经创建，则先通过对应 adapter 删除。已成功落库的 Deployment 不走该失败清理路径，
 仍由正常 retention、route 与 SessionBinding 保护规则管理。
+
+---
+
+## 31. 2026-07-27 follow-up：Eve 0.27.6 verified patch baseline
+
+Eve 0.27.4、0.27.5 与 0.27.6 已完成 GitHub release notes、`eve@0.27.3..eve@0.27.6`
+源码 diff 和实际发布包核对。三 minor 支持窗口保持 0.25.x、0.26.x 与 0.27.x；精确矩阵
+patch 更新为 0.25.3、0.26.2 与 0.27.6。默认开发、Web Client、Agent Auth 和完整 Linux
+fixture 使用 0.27.6，basic systemd smoke 继续使用窗口最旧端的 0.25.3。
+
+本次 patch baseline 的直接协议变化与 Eveland 对策：
+
+- 0.27.4 新增 `POST /eve/v1/session/reset`，只使用 continuation token 寻址 durable owner。
+  Gateway 不能把路径中的 `reset` 当作 session id，也不能在 promote/rollback 后重新执行
+  route weighting；`SessionBinding` 因此新增 nullable continuation token 与 project-scoped
+  partial unique index。create response、continuation response 和 token-only create/resume 会更新
+  owner binding；公开与内部 Playground reset 按该 binding 激活原 Deployment，成功后只释放
+  token，保留历史 Eve session binding。迁移 0029 从 `sessions.continuation_token` 回填已知 owner；
+- 0.27.6 的 remote principal forwarding 使用 create-session body 中的 metadata，并要求发送端
+  `forwardPrincipal: true` 与接收端精确 `trustedForwarders` 双向 opt-in。Gateway 保持 body 与
+  Agent-owned Authorization 透明传输，不自动开启 trust、不解释 principal，也不转发 credential；
+- remote empty `outputSchema`、base-path create/cancel、portable channel scaffold、dev TUI、
+  shutdown 和 Slack reset helper 属于 Eve runtime/authoring 改进，不需要 Eveland adapter 分支；
+- Vercel OIDC headers、Hook event schema、Schedule public definitions、现有 create/continue/cancel/
+  stream message 与 `SandboxBackend` contract 未变；AI SDK peer 下限仍为 `ai@^7.0.34`。
+
+实际发布包矩阵继续覆盖 0.25.3/0.26.2/0.27.6 observer hook 与 packaged skill discovery、
+schedule discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox
+public type compatibility。Agent 项目需要刷新 lockfile 并重新部署才能确定取得 0.27.6。只有两端
+Deployment 都升级且接收端能精确识别可信 transport forwarder 时，才应启用 remote principal
+forwarding；不得使用 `trustedForwarders: () => true` 作为平台兼容手段。

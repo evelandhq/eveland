@@ -9,7 +9,20 @@ export type GatewayRepository = {
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
   getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
   findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
-  bindSession(input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt">): Promise<unknown>;
+  findSessionBindingByContinuationToken(
+    projectId: string,
+    continuationToken: string,
+  ): Promise<SessionBinding | null>;
+  bindSession(
+    input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt" | "continuationToken"> & {
+      continuationToken?: string | null;
+    },
+  ): Promise<unknown>;
+  setSessionBindingContinuationToken(
+    projectId: string,
+    eveSessionId: string,
+    continuationToken: string | null,
+  ): Promise<SessionBinding | null>;
 };
 
 export type GatewayActivationClient = {

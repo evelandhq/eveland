@@ -757,6 +757,7 @@ export const sessionBindings = pgTable(
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull().references(() => projects.id),
     eveSessionId: text("eve_session_id").notNull(),
+    continuationToken: text("continuation_token"),
     routeId: text("route_id").notNull().references(() => agentRoutes.id),
     deploymentId: text("deployment_id").notNull().references(() => deployments.id),
     trigger: text("trigger").notNull(),
@@ -769,7 +770,12 @@ export const sessionBindings = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex("session_bindings_project_eve_idx").on(table.projectId, table.eveSessionId)],
+  (table) => [
+    uniqueIndex("session_bindings_project_eve_idx").on(table.projectId, table.eveSessionId),
+    uniqueIndex("session_bindings_project_continuation_idx")
+      .on(table.projectId, table.continuationToken)
+      .where(sql`${table.continuationToken} is not null`),
+  ],
 );
 
 export const sourceFiles = pgTable(

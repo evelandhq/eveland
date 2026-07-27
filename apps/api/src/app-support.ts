@@ -86,6 +86,7 @@ export async function invalidateGateway(
 }
 
 export function playgroundSessionIdFromPath(pathname: string): string | null {
+  if (pathname === "/eve/v1/session/reset") return null;
   const match = /^\/eve\/v1\/session\/([^/]+)(?:\/|$)/.exec(pathname);
   if (!match?.[1]) return null;
   try {

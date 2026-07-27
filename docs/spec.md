@@ -293,7 +293,7 @@ patch、锚定在对应 minor patch 上的 `~`/`^` range，以及 `0.25` / `0.25
 `0.26` / `0.26.x` / `0.26.*`、`0.27` / `0.27.x` / `0.27.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
-Playground，以及公开 Gateway 的 Eve session 新建、继续、取消和 stream 请求，不能通过已有的
+Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、reset 和 stream 请求，不能通过已有的
 旧 Source Revision、旧 Deployment 或 SessionBinding 绕过。Gateway 在选定实际 Deployment
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
@@ -350,7 +350,7 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 * `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
 * `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
 * `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
-* `vercel-oidc`：镜像 Eve 0.27.3 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
+* `vercel-oidc`：镜像 Eve 0.27.6 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
 * `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
@@ -359,7 +359,7 @@ job 和持久化日志，自动跟随最新日志；部署进行中始终提供�
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
 verifier 建立的 Caller 做隐式映射。
 
-`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.27.3
+`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.27.6
 `ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
 `x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
 Connection 只保存 token Secret reference/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
@@ -695,13 +695,13 @@ http://<deploymentKey>--<projectSlug>.agent.localhost:4080
 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个
 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
-底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 的主操作 `Sync, deploy & promote` 在新 Deployment 通过健康检查并创建 preview route 后，显式 promote 该次任务创建的确切 Deployment；次操作 `Sync & create preview` 保留底层默认行为。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 后持久化 `SessionBinding`，continuation、cancel 与 stream 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。Worker 周期性扫描不受保护且已经 `stopped` 的旧 Deployment，幂等排入 archive job；archive 按 Deployment 保存的 `runtimeKind` 删除 runtime artifact 和对应的 build directory。构建或启动在 Deployment 落库前失败时也必须删除已准备的 build directory 和已创建的 runtime artifact，不能留下数据库无法寻址的 Release。
+底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 的主操作 `Sync, deploy & promote` 在新 Deployment 通过健康检查并创建 preview route 后，显式 promote 该次任务创建的确切 Deployment；次操作 `Sync & create preview` 保留底层默认行为。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 与 continuationToken 后持久化 `SessionBinding`。continuation、cancel、stream、带 token 的 create/resume 与 Eve 0.27.4+ session reset 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment；reset 成功后必须释放旧 token 绑定，让下一次新建 Session 重新按当前 route policy 选择 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。Worker 周期性扫描不受保护且已经 `stopped` 的旧 Deployment，幂等排入 archive job；archive 按 Deployment 保存的 `runtimeKind` 删除 runtime artifact 和对应的 build directory。构建或启动在 Deployment 落库前失败时也必须删除已准备的 build directory 和已创建的 runtime artifact，不能留下数据库无法寻址的 Release。
 
 cron、public request、turn 和 stream 在访问进程前获取有期限的 ActivationLease。同一
 dormant Deployment 的并发唤醒只允许一个 starter；API 只持久化/等待状态，不获得
 Docker 或 systemd 权限，Worker 按 Deployment 保存的 `runtimeKind` 启动 exact Release。
 Gateway 默认最多等待 30 秒冷启动，并保留 Agent 自有 auth、cookie、Host 语义、body
-limit、abort 和 NDJSON streaming。continuation 必须按 SessionBinding 唤醒原
+limit、abort 和 NDJSON streaming。continuation 与 session reset 必须按 SessionBinding 唤醒原
 Deployment，不能重新执行 route weighting。最后一个 lease 释放或过期后默认 idle
 5 分钟再停进程；停机前必须事务式复查是否出现新 lease。Worker 启动后的 recovery 与
 reconciliation 会重排中断的 activation job，并把实际已消失的 transient process 状态
