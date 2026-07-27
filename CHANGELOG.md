@@ -4,6 +4,21 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.12.0](https://github.com/evelandhq/eveland/compare/v0.11.0...v0.12.0) (2026-07-27)
+
+
+### Features
+
+* add authenticated web chat identity ([#135](https://github.com/evelandhq/eveland/issues/135)) ([603ff02](https://github.com/evelandhq/eveland/commit/603ff0246bd70260b12e9064178ac20b0cd1d957))
+* improve source browser with Pierre Trees and Diffs ([9f2f90a](https://github.com/evelandhq/eveland/commit/9f2f90ae955d3a67846573d2a36da9ff3f563e34))
+* reorganize project navigation and settings ([#140](https://github.com/evelandhq/eveland/issues/140)) ([d3e539f](https://github.com/evelandhq/eveland/commit/d3e539f6cb2cfff2e013873d169ed627650fb23c))
+* support Eve 0.27.6 ([0f9c584](https://github.com/evelandhq/eveland/commit/0f9c58417f5d641af83fd155ae076cce6e3d9e55))
+
+
+### Bug Fixes
+
+* add schedule run diagnostics ([#138](https://github.com/evelandhq/eveland/issues/138)) ([95e4d91](https://github.com/evelandhq/eveland/commit/95e4d918a2c595aada8defc6a115849162497793))
+
 ## [0.11.0](https://github.com/evelandhq/eveland/compare/v0.10.0...v0.11.0) (2026-07-24)
 
 
