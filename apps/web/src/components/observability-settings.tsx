@@ -1,13 +1,15 @@
 "use client";
 
 import { useId, useState } from "react";
-import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
-import type {
-  AgentCapturePolicy,
-  ExternalDestinationConfig,
-  ObservabilitySignal,
-  PublicObservabilityPolicy,
-  TelemetryDomain,
+import { PencilIcon, PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
+import {
+  TELEMETRY_DOMAINS,
+  type AgentCapturePolicy,
+  type ExternalDestinationConfigPatch,
+  type ObservabilitySignal,
+  type PublicExternalObservabilityDestination,
+  type PublicObservabilityPolicy,
+  type TelemetryDomain,
 } from "@eveland/core/observability";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -64,9 +66,11 @@ import {
   deleteObservabilityDestination,
   saveObservabilitySettings,
   toggleObservabilityDestination,
+  updateObservabilityDestination,
 } from "@/lib/client-api";
 
-type DestinationKind = ExternalDestinationConfig["kind"];
+type Destination = PublicExternalObservabilityDestination;
+type DestinationKind = ExternalDestinationConfigPatch["kind"];
 type DestinationDraft = {
   kind: DestinationKind;
   endpoint: string;
@@ -77,6 +81,18 @@ type DestinationDraft = {
   signals: Record<ObservabilitySignal, boolean>;
   domains: Record<TelemetryDomain, boolean>;
   headers: string;
+};
+/**
+ * Editing never receives the stored credentials back, so the draft starts them empty and
+ * an empty field is submitted as "keep what is stored". That is only possible while the
+ * stored configuration can still be opened, so `storedCredentials` is null both when
+ * creating and when the configuration is unreadable — in both cases the Admin must supply
+ * the credential.
+ */
+type DestinationEditor = {
+  destinationId: string | null;
+  draft: DestinationDraft;
+  storedCredentials: { headerNames: string[] } | null;
 };
 
 const destinationKindItems = [
@@ -105,9 +121,7 @@ export function ObservabilitySettings({
   const [settings, setSettings] = useState(initialSettings);
   const [capture, setCapture] = useState(initialSettings.agentCapture);
   const [pending, setPending] = useState(false);
-  const [destinationDialogOpen, setDestinationDialogOpen] = useState(false);
-  const [destinationDraft, setDestinationDraft] =
-    useState<DestinationDraft>(emptyDestination);
+  const [editor, setEditor] = useState<DestinationEditor | null>(null);
   const [destinationError, setDestinationError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,23 +155,51 @@ export function ObservabilitySettings({
     }
   }
 
-  function openDestinationDialog() {
-    setDestinationDraft(emptyDestination());
+  function openCreateDialog() {
     setDestinationError(null);
-    setDestinationDialogOpen(true);
+    setEditor({
+      destinationId: null,
+      draft: emptyDestination(),
+      storedCredentials: null,
+    });
   }
 
-  async function createDestination(event: React.FormEvent<HTMLFormElement>) {
+  function openEditDialog(destination: Destination) {
+    setDestinationError(null);
+    setEditor({
+      destinationId: destination.id,
+      draft: draftFromDestination(destination),
+      storedCredentials: destination.config
+        ? {
+            headerNames:
+              destination.config.kind === "custom_otlp"
+                ? destination.config.headerNames
+                : [],
+          }
+        : null,
+    });
+  }
+
+  async function submitDestination(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!editor) return;
     setPending(true);
     setDestinationError(null);
     try {
-      const updated = await createObservabilityDestination({
-        expectedRevision: settings.revision,
-        config: destinationConfig(destinationDraft),
-      });
-      setSettings(updated);
-      setDestinationDialogOpen(false);
+      const config = destinationPatch(editor.draft);
+      setSettings(
+        editor.destinationId === null
+          ? await createObservabilityDestination({
+              expectedRevision: settings.revision,
+              config,
+            })
+          : await updateObservabilityDestination({
+              destinationId: editor.destinationId,
+              expectedRevision: settings.revision,
+              config,
+            }),
+      );
+      setEditor(null);
     } catch (caught) {
       setDestinationError(
         caught instanceof Error
@@ -216,35 +258,6 @@ export function ObservabilitySettings({
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Built-in</CardTitle>
-          <CardDescription>
-            Eveland&apos;s private OTLP destination for its own monitoring
-            views.
-          </CardDescription>
-          <CardAction>
-            <Badge variant="secondary">Always on</Badge>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex flex-wrap gap-2">
-            {settings.builtIn.signals.map((signal) => (
-              <Badge key={signal} variant="outline">
-                {signal}
-              </Badge>
-            ))}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {settings.builtIn.health.status === "healthy"
-              ? `Receiving telemetry · last batch ${new Date(
-                  settings.builtIn.health.lastReceivedAt!,
-                ).toLocaleString()}`
-              : "Waiting for the first telemetry batch."}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>External destinations</CardTitle>
           <CardDescription>
             Forward Eveland telemetry through the managed OpenTelemetry
@@ -255,7 +268,7 @@ export function ObservabilitySettings({
             <Button
               type="button"
               size="sm"
-              onClick={openDestinationDialog}
+              onClick={openCreateDialog}
               disabled={pending}
             >
               <PlusIcon data-icon="inline-start" />
@@ -271,8 +284,8 @@ export function ObservabilitySettings({
           ) : null}
           {settings.externalDestinations.length === 0 ? (
             <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-              No external destination is configured. Built-in monitoring
-              continues to receive all Eveland telemetry.
+              No external destination is configured. Until one is added, span,
+              log, and metric detail is not retained anywhere.
             </div>
           ) : (
             settings.externalDestinations.map((destination) => (
@@ -306,6 +319,7 @@ export function ObservabilitySettings({
                             : "Probe paused"}
                     </Badge>
                   </div>
+                  <DestinationEndpoint destination={destination} />
                   <div className="flex flex-wrap gap-1.5">
                     {destination.supportedSignals.map((signal) => (
                       <Badge key={signal} variant="outline">
@@ -337,6 +351,16 @@ export function ObservabilitySettings({
                   ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Edit ${destinationKindLabel(destination.kind)}`}
+                    disabled={pending}
+                    onClick={() => openEditDialog(destination)}
+                  >
+                    <PencilIcon />
+                  </Button>
                   <Switch
                     aria-label={`Enable ${destinationKindLabel(destination.kind)}`}
                     checked={destination.enabled}
@@ -366,7 +390,7 @@ export function ObservabilitySettings({
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                           Eveland will stop forwarding telemetry to this
-                          destination. Built-in monitoring is unaffected.
+                          destination and its stored credentials are deleted.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -502,20 +526,43 @@ export function ObservabilitySettings({
         </form>
       </Card>
 
-      <DestinationDialog
-        open={destinationDialogOpen}
-        draft={destinationDraft}
-        pending={pending}
-        error={destinationError}
-        onOpenChange={(open) => {
-          if (!pending) setDestinationDialogOpen(open);
-        }}
-        onDraftChange={(patch) =>
-          setDestinationDraft((current) => ({ ...current, ...patch }))
-        }
-        onSubmit={createDestination}
-      />
+      {editor ? (
+        <DestinationDialog
+          editor={editor}
+          pending={pending}
+          error={destinationError}
+          onOpenChange={(open) => {
+            if (!pending && !open) setEditor(null);
+          }}
+          onDraftChange={(patch) =>
+            setEditor((current) =>
+              current
+                ? { ...current, draft: { ...current.draft, ...patch } }
+                : current,
+            )
+          }
+          onSubmit={submitDestination}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function DestinationEndpoint({ destination }: { destination: Destination }) {
+  if (!destination.config) {
+    return (
+      <p className="text-xs text-destructive">
+        The stored configuration cannot be read with the current
+        APP_SECRET_KEY. Edit the destination to replace it.
+      </p>
+    );
+  }
+  return (
+    <span className="break-all font-mono text-xs">
+      {destination.config.kind === "langfuse"
+        ? destination.config.baseUrl
+        : destination.config.endpoint}
+    </span>
   );
 }
 
@@ -553,16 +600,14 @@ function CaptureSwitch({
 }
 
 function DestinationDialog({
-  open,
-  draft,
+  editor,
   pending,
   error,
   onOpenChange,
   onDraftChange,
   onSubmit,
 }: {
-  open: boolean;
-  draft: DestinationDraft;
+  editor: DestinationEditor;
   pending: boolean;
   error: string | null;
   onOpenChange: (open: boolean) => void;
@@ -576,12 +621,19 @@ function DestinationDialog({
   const publicKeyId = useId();
   const secretKeyId = useId();
   const headersId = useId();
+  const { draft, storedCredentials } = editor;
+  const editing = editor.destinationId !== null;
+  const keepStored = "Leave blank to keep the stored value.";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Add external destination</DialogTitle>
+          <DialogTitle>
+            {editing
+              ? `Edit ${destinationKindLabel(draft.kind)}`
+              : "Add external destination"}
+          </DialogTitle>
           <DialogDescription>
             The managed Collector applies a separate filter, retry queue, and
             exporter for this destination.
@@ -594,6 +646,7 @@ function DestinationDialog({
               <Select
                 items={destinationKindItems}
                 value={draft.kind}
+                disabled={editing}
                 onValueChange={(kind) => {
                   if (kind) onDraftChange({ kind });
                 }}
@@ -681,8 +734,11 @@ function DestinationDialog({
                         credential: event.currentTarget.value,
                       })
                     }
-                    required
+                    required={storedCredentials === null}
                   />
+                  {storedCredentials ? (
+                    <FieldDescription>{keepStored}</FieldDescription>
+                  ) : null}
                 </Field>
               </>
             ) : null}
@@ -698,8 +754,11 @@ function DestinationDialog({
                     onChange={(event) =>
                       onDraftChange({ publicKey: event.currentTarget.value })
                     }
-                    required
+                    required={storedCredentials === null}
                   />
+                  {storedCredentials ? (
+                    <FieldDescription>{keepStored}</FieldDescription>
+                  ) : null}
                 </Field>
                 <Field>
                   <FieldLabel htmlFor={secretKeyId}>Secret key</FieldLabel>
@@ -711,8 +770,11 @@ function DestinationDialog({
                     onChange={(event) =>
                       onDraftChange({ secretKey: event.currentTarget.value })
                     }
-                    required
+                    required={storedCredentials === null}
                   />
+                  {storedCredentials ? (
+                    <FieldDescription>{keepStored}</FieldDescription>
+                  ) : null}
                 </Field>
               </>
             ) : null}
@@ -764,11 +826,18 @@ function DestinationDialog({
                     onChange={(event) =>
                       onDraftChange({ headers: event.currentTarget.value })
                     }
-                    required
+                    required={storedCredentials === null}
                   />
                   <FieldDescription>
                     Header values are encrypted with the destination
                     configuration.
+                    {storedCredentials
+                      ? ` ${keepStored}${
+                          storedCredentials.headerNames.length > 0
+                            ? ` Configured: ${storedCredentials.headerNames.join(", ")}.`
+                            : ""
+                        }`
+                      : ""}
                   </FieldDescription>
                 </Field>
               </>
@@ -791,7 +860,11 @@ function DestinationDialog({
             </Button>
             <Button type="submit" disabled={pending}>
               {pending ? <Spinner data-icon="inline-start" /> : null}
-              {pending ? "Saving…" : "Add destination"}
+              {pending
+                ? "Saving…"
+                : editing
+                  ? "Save changes"
+                  : "Add destination"}
             </Button>
           </DialogFooter>
         </form>
@@ -828,14 +901,52 @@ function destinationKindLabel(kind: DestinationKind): string {
   );
 }
 
-function destinationConfig(draft: DestinationDraft): ExternalDestinationConfig {
+function draftFromDestination(destination: Destination): DestinationDraft {
+  const config = destination.config;
+  const signals: readonly ObservabilitySignal[] = destination.supportedSignals;
+  const domains: readonly TelemetryDomain[] =
+    "domains" in destination ? destination.domains : TELEMETRY_DOMAINS;
+  return {
+    kind: destination.kind,
+    endpoint: config
+      ? config.kind === "langfuse"
+        ? config.baseUrl
+        : config.endpoint
+      : "",
+    authorizationType:
+      config?.kind === "elastic" ? config.authorization.type : "bearer",
+    credential: "",
+    publicKey: "",
+    secretKey: "",
+    signals: {
+      traces: signals.includes("traces"),
+      logs: signals.includes("logs"),
+      metrics: signals.includes("metrics"),
+    },
+    domains: {
+      agent: domains.includes("agent"),
+      platform: domains.includes("platform"),
+      runtime: domains.includes("runtime"),
+      capacity: domains.includes("capacity"),
+    },
+    headers: "",
+  };
+}
+
+/**
+ * Empty credential fields are omitted rather than sent as empty strings, which is how the
+ * API distinguishes "keep the stored credential" from an invalid one.
+ */
+function destinationPatch(
+  draft: DestinationDraft,
+): ExternalDestinationConfigPatch {
   if (draft.kind === "elastic") {
     return {
       kind: "elastic",
       endpoint: draft.endpoint,
       authorization: {
         type: draft.authorizationType,
-        value: draft.credential,
+        ...(draft.credential ? { value: draft.credential } : {}),
       },
     };
   }
@@ -843,20 +954,11 @@ function destinationConfig(draft: DestinationDraft): ExternalDestinationConfig {
     return {
       kind: "langfuse",
       baseUrl: draft.endpoint,
-      publicKey: draft.publicKey,
-      secretKey: draft.secretKey,
+      ...(draft.publicKey ? { publicKey: draft.publicKey } : {}),
+      ...(draft.secretKey ? { secretKey: draft.secretKey } : {}),
     };
   }
 
-  const headers: unknown = JSON.parse(draft.headers);
-  if (
-    !headers ||
-    typeof headers !== "object" ||
-    Array.isArray(headers) ||
-    Object.values(headers).some((value) => typeof value !== "string")
-  ) {
-    throw new Error("Headers must be a JSON object with string values.");
-  }
   const supportedSignals = (
     Object.entries(draft.signals) as [ObservabilitySignal, boolean][]
   )
@@ -875,6 +977,19 @@ function destinationConfig(draft: DestinationDraft): ExternalDestinationConfig {
     endpoint: draft.endpoint,
     supportedSignals,
     domains,
-    headers: headers as Record<string, string>,
+    ...(draft.headers.trim() ? { headers: parseHeaders(draft.headers) } : {}),
   };
+}
+
+function parseHeaders(input: string): Record<string, string> {
+  const headers: unknown = JSON.parse(input);
+  if (
+    !headers ||
+    typeof headers !== "object" ||
+    Array.isArray(headers) ||
+    Object.values(headers).some((value) => typeof value !== "string")
+  ) {
+    throw new Error("Headers must be a JSON object with string values.");
+  }
+  return headers as Record<string, string>;
 }

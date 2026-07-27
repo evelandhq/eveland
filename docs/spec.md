@@ -234,9 +234,10 @@ Built-in 是平台内置且始终启用的 Destination，不提供配置或关�
 原有的运行数据——CPU、memory、disk 等宿主容量，token usage 与成本，Session 事件，组件
 心跳——改用标准 OTLP 协议收集，投影为 Sessions、Usage 与 Instance Health 必需的读模型。
 Built-in 不存储原始明细，不提供统计视图，也不引入任何原本不存在的监控项。页面因此只展示
-Built-in 的接收状态、外部 Destination 配置与 Agent capture 策略；不展示 spans/logs/metrics
-明细，不展示平台操作统计、build/deploy 时间线或投递统计，也不查询 Agent 进程或外部监控
-产品。任何 Span、LogRecord、Metric Point 级别的观测与下钻都由外部 Destination 承担，
+外部 Destination 配置与 Agent capture 策略；不展示 Built-in 自身的状态，不展示
+spans/logs/metrics 明细，不展示平台操作统计、build/deploy 时间线或投递统计，也不查询 Agent
+进程或外部监控产品。Built-in 是否在接收遥测属于 Instance Health 的组件状态，不在这个页面
+重复。任何 Span、LogRecord、Metric Point 级别的观测与下钻都由外部 Destination 承担，
 Eveland 不做本地兜底。
 
 Managed Collector 只向 Built-in 发送 logs 与 metrics：logs 投影 Session/Usage 读模型，
@@ -266,6 +267,11 @@ Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destinatio
   Langfuse Base URL，例如 `https://us.cloud.langfuse.com`；Eveland 生成
   `/api/public/otel/v1/traces` signal endpoint
 * Custom OTLP/HTTP 可以选择 signals、domains 与加密 Header
+* 已配置的 Destination 必须可以修改：页面展示 Admin 配置的那个远端 URL，不展示 Eveland
+  派生的 signal endpoint。Admin 可以改 URL、Custom OTLP 的 signals/domains 与 Header，也
+  可以更换凭据。凭据不回浏览器，因此提交时留空表示保留已存储的值，只有首次配置必须提供；
+  Destination 的产品类型创建后不可更改。无法用当前 `APP_SECRET_KEY` 解开配置的 Destination
+  仍要列出并可编辑替换，不能静默隐藏
 * 每个外部 exporter 使用独立 retry 与持久化 sending queue；一个目标失败不能阻塞 Built-in
   或其他目标
 * 平台自身遥测的观测完全由外部 Destination 承担。未启用 Elastic 或 Custom OTLP 时，
@@ -278,7 +284,9 @@ Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destinatio
   Destination，不进入 Built-in。Collector 的投递量、发送失败与 queue 压力属于第三方监控
   产品的职责；Eveland 不为它建立本地视图
 
-系统设置中的外部凭据使用 `APP_SECRET_KEY` 加密，保存后不返回浏览器。Worker 将 revisioned
+系统设置中的外部凭据使用 `APP_SECRET_KEY` 加密，保存后不返回浏览器；可以再次展示的只有
+Destination 的 URL 与凭据形态——authorization 模式与转发 Header 的名称，凭据值本身不可读回。
+Worker 将 revisioned
 设置渲染为官方 OpenTelemetry Collector 配置，先使用同版本 Collector 校验，再原子应用并只
 重启 Collector；不能为了监控设置重启 Agent Deployment。
 

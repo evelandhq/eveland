@@ -9,7 +9,7 @@ import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity
 import type { PublicIdentityProvider } from "./server-api";
 import type {
   AgentCapturePolicy,
-  ExternalDestinationConfig,
+  ExternalDestinationConfigPatch,
   PublicObservabilityPolicy,
 } from "@eveland/core/observability";
 
@@ -177,13 +177,31 @@ export async function saveObservabilitySettings(input: {
 
 export async function createObservabilityDestination(input: {
   expectedRevision: number;
-  config: ExternalDestinationConfig;
+  config: ExternalDestinationConfigPatch;
 }): Promise<PublicObservabilityPolicy> {
   return clientRequest("/system/observability/destinations", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export async function updateObservabilityDestination(input: {
+  destinationId: string;
+  expectedRevision: number;
+  config: ExternalDestinationConfigPatch;
+}): Promise<PublicObservabilityPolicy> {
+  return clientRequest(
+    `/system/observability/destinations/${input.destinationId}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: input.expectedRevision,
+        config: input.config,
+      }),
+    },
+  );
 }
 
 export async function toggleObservabilityDestination(input: {

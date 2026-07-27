@@ -5,9 +5,7 @@ import {
 } from "@eveland/core/observability";
 import type { Store } from "@eveland/db";
 import { DEFAULT_TEAM_ID } from "@eveland/db";
-import {
-  decryptDestinationConfig,
-} from "./process-collector-observability.js";
+import { decryptDestinationConfig } from "@eveland/core/server/observability";
 
 const probeIntervalMs = 5 * 60 * 1_000;
 const probeTimeoutMs = 5_000;

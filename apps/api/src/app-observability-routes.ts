@@ -1,13 +1,19 @@
 import {
   agentCapturePolicySchema,
-  externalDestinationConfigSchema,
+  externalDestinationConfigPatchSchema,
+  mergeExternalDestinationConfig,
+  toPublicExternalDestinationConfig,
   toPublicObservabilityPolicy,
   type ExternalDestinationConfig,
   type ExternalObservabilityDestination,
   type ObservabilityPolicy,
+  type PublicExternalDestinationConfig,
 } from "@eveland/core/observability";
 import { createId } from "@eveland/core/ids";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
+import {
+  decryptDestinationConfig,
+  encryptDestinationConfig,
+} from "@eveland/core/server/observability";
 import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
 import { z } from "zod";
 import type { ApiApp, AppOptions } from "./app-types.js";
@@ -21,13 +27,13 @@ const updateAgentCaptureSchema = z
 const createDestinationSchema = z
   .object({
     expectedRevision: z.number().int().positive(),
-    config: externalDestinationConfigSchema,
+    config: externalDestinationConfigPatchSchema,
   })
   .strict();
 const updateDestinationSchema = z
   .object({
     expectedRevision: z.number().int().positive(),
-    config: externalDestinationConfigSchema,
+    config: externalDestinationConfigPatchSchema,
     enabled: z.boolean().optional(),
   })
   .strict();
@@ -55,7 +61,7 @@ export function registerObservabilityRoutes(input: {
     if (options.auth && c.get("principal").role !== "admin") {
       return c.json({ error: "Admin access required" }, 403);
     }
-    return c.json(await publicPolicy(store));
+    return c.json(await publicPolicy(store, appSecretKey));
   });
 
   app.put("/system/observability", async (c) => {
@@ -82,7 +88,7 @@ export function registerObservabilityRoutes(input: {
       externalDestinations: current.externalDestinations,
     });
     return updated
-      ? c.json(await publicPolicy(store, updated))
+      ? c.json(await publicPolicy(store, appSecretKey, updated))
       : c.json(
           {
             error:
@@ -117,10 +123,21 @@ export function registerObservabilityRoutes(input: {
         409,
       );
     }
-    const destination = createDestination(
-      parsed.data.config,
-      appSecretKey,
-    );
+    let config: ExternalDestinationConfig;
+    try {
+      config = mergeExternalDestinationConfig(parsed.data.config, null);
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Invalid observability destination configuration.",
+        },
+        422,
+      );
+    }
+    const destination = createDestination(config, appSecretKey);
     const updated = await store.saveObservabilityPolicy({
       teamId: DEFAULT_TEAM_ID,
       expectedRevision: parsed.data.expectedRevision,
@@ -144,7 +161,7 @@ export function registerObservabilityRoutes(input: {
       destination.id,
       destination.enabled,
     );
-    return c.json(await publicPolicy(store, updated), 201);
+    return c.json(await publicPolicy(store, appSecretKey, updated), 201);
   });
 
   app.put("/system/observability/destinations/:destinationId", async (c) => {
@@ -168,7 +185,24 @@ export function registerObservabilityRoutes(input: {
     if (existing.kind !== parsed.data.config.kind) {
       return c.json({ error: "Destination kind cannot be changed" }, 400);
     }
-    const replacement = createDestination(parsed.data.config, appSecretKey, {
+    let config: ExternalDestinationConfig;
+    try {
+      config = mergeExternalDestinationConfig(
+        parsed.data.config,
+        readDestinationConfig(existing, appSecretKey),
+      );
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Invalid observability destination configuration.",
+        },
+        422,
+      );
+    }
+    const replacement = createDestination(config, appSecretKey, {
       id: existing.id,
       enabled: parsed.data.enabled ?? existing.enabled,
       securityRevision: existing.securityRevision + 1,
@@ -195,7 +229,7 @@ export function registerObservabilityRoutes(input: {
       replacement.id,
       replacement.enabled,
     );
-    return c.json(await publicPolicy(store, updated));
+    return c.json(await publicPolicy(store, appSecretKey, updated));
   });
 
   app.patch("/system/observability/destinations/:destinationId", async (c) => {
@@ -240,7 +274,7 @@ export function registerObservabilityRoutes(input: {
       existing.id,
       parsed.data.enabled,
     );
-    return c.json(await publicPolicy(store, updated));
+    return c.json(await publicPolicy(store, appSecretKey, updated));
   });
 
   app.delete("/system/observability/destinations/:destinationId", async (c) => {
@@ -273,7 +307,7 @@ export function registerObservabilityRoutes(input: {
       ),
     );
     return updated
-      ? c.json(await publicPolicy(store, updated))
+      ? c.json(await publicPolicy(store, appSecretKey, updated))
       : c.json({ error: "Observability policy changed; reload and try again." }, 409);
   });
 }
@@ -303,9 +337,7 @@ function createDestination(
 ): ExternalObservabilityDestination {
   const common = {
     ...existing,
-    encryptedConfig: JSON.stringify(
-      encryptSecretValue(JSON.stringify(config), appSecretKey),
-    ),
+    encryptedConfig: encryptDestinationConfig(config, appSecretKey),
   };
   switch (config.kind) {
     case "elastic":
@@ -361,22 +393,43 @@ async function markDestinationProbePending(
   });
 }
 
+/**
+ * Null when the sealed configuration cannot be opened — a rotated `APP_SECRET_KEY` leaves
+ * a destination that is still configured but no longer readable, and the Admin has to see
+ * it in order to replace it.
+ */
+function readDestinationConfig(
+  destination: ExternalObservabilityDestination,
+  appSecretKey: string,
+): ExternalDestinationConfig | null {
+  try {
+    return decryptDestinationConfig(destination.encryptedConfig, appSecretKey);
+  } catch {
+    return null;
+  }
+}
+
 async function publicPolicy(
   store: Store,
+  appSecretKey: string,
   policy?: ObservabilityPolicy,
 ) {
   const resolvedPolicy =
     policy ?? (await store.getObservabilityPolicy(DEFAULT_TEAM_ID));
-  const [lastReceivedAt, destinationHealth] = await Promise.all([
-    store.latestOtlpBatchReceivedAt(),
-    store.listExternalObservabilityDestinationHealth(),
-  ]);
-  return toPublicObservabilityPolicy(
-    resolvedPolicy,
-    {
-      status: lastReceivedAt ? "healthy" : "waiting",
-      lastReceivedAt,
-    },
+  const destinationHealth =
+    await store.listExternalObservabilityDestinationHealth();
+  const destinationConfigs = new Map<string, PublicExternalDestinationConfig>();
+  for (const destination of resolvedPolicy.externalDestinations) {
+    const config = readDestinationConfig(destination, appSecretKey);
+    if (config) {
+      destinationConfigs.set(
+        destination.id,
+        toPublicExternalDestinationConfig(config),
+      );
+    }
+  }
+  return toPublicObservabilityPolicy(resolvedPolicy, {
     destinationHealth,
-  );
+    destinationConfigs,
+  });
 }

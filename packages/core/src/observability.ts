@@ -10,12 +10,6 @@ export type ObservabilitySignal = (typeof OBSERVABILITY_SIGNALS)[number];
 export type TelemetryDomain = (typeof TELEMETRY_DOMAINS)[number];
 export type ExternalDestinationKind = (typeof EXTERNAL_DESTINATION_KINDS)[number];
 
-export const BUILT_IN_DESTINATION_CAPABILITY = {
-  configurable: false,
-  signals: OBSERVABILITY_SIGNALS,
-  domains: TELEMETRY_DOMAINS,
-} as const;
-
 export const BUILT_IN_OBSERVABILITY_RETENTION_DAYS = {
   sessions: 90,
   capacity: 30,
@@ -141,6 +135,9 @@ const destinationHeadersSchema = z
     }
   });
 
+const authorizationTypeSchema = z.enum(["bearer", "api_key"]);
+const credentialSchema = z.string().min(1).max(4096);
+
 export const externalDestinationConfigSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -148,8 +145,8 @@ export const externalDestinationConfigSchema = z.discriminatedUnion("kind", [
       endpoint: externalHttpUrlSchema,
       authorization: z
         .object({
-          type: z.enum(["bearer", "api_key"]),
-          value: z.string().min(1).max(4096),
+          type: authorizationTypeSchema,
+          value: credentialSchema,
         })
         .strict(),
     })
@@ -159,7 +156,7 @@ export const externalDestinationConfigSchema = z.discriminatedUnion("kind", [
       kind: z.literal("langfuse"),
       baseUrl: externalHttpUrlSchema,
       publicKey: z.string().min(1).max(1024),
-      secretKey: z.string().min(1).max(4096),
+      secretKey: credentialSchema,
     })
     .strict(),
   z
@@ -169,6 +166,44 @@ export const externalDestinationConfigSchema = z.discriminatedUnion("kind", [
       supportedSignals: uniqueNonEmptySignalsSchema,
       domains: uniqueNonEmptyDomainsSchema,
       headers: destinationHeadersSchema,
+    })
+    .strict(),
+]);
+
+/**
+ * Submitted configuration. Credential fields are optional because they are never returned
+ * to the browser, so an endpoint or filter change cannot require re-typing them;
+ * `mergeExternalDestinationConfig` carries the stored credential forward when one is
+ * absent, and rejects the payload when there is nothing stored to carry.
+ */
+export const externalDestinationConfigPatchSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("elastic"),
+      endpoint: externalHttpUrlSchema,
+      authorization: z
+        .object({
+          type: authorizationTypeSchema,
+          value: credentialSchema.optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("langfuse"),
+      baseUrl: externalHttpUrlSchema,
+      publicKey: z.string().min(1).max(1024).optional(),
+      secretKey: credentialSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("custom_otlp"),
+      endpoint: externalHttpUrlSchema,
+      supportedSignals: uniqueNonEmptySignalsSchema,
+      domains: uniqueNonEmptyDomainsSchema,
+      headers: destinationHeadersSchema.optional(),
     })
     .strict(),
 ]);
@@ -315,6 +350,9 @@ export type ExternalObservabilityDestination = z.infer<
 export type ExternalDestinationConfig = z.infer<
   typeof externalDestinationConfigSchema
 >;
+export type ExternalDestinationConfigPatch = z.infer<
+  typeof externalDestinationConfigPatchSchema
+>;
 export type AgentCapturePolicy = z.infer<typeof agentCapturePolicySchema>;
 export type ObservabilityPolicy = z.infer<typeof observabilityPolicySchema>;
 export type AgentRuntimePolicy = z.infer<typeof agentRuntimePolicySchema>;
@@ -404,22 +442,99 @@ export class UnmanagedTelemetryResourceError extends Error {
     this.name = "UnmanagedTelemetryResourceError";
   }
 }
+/**
+ * The configuration an Admin may see again: destination URLs and the non-credential
+ * choices around them. Credential values stay behind `encryptedConfig`; only the shape of
+ * the credential — its authorization mode, the names of forwarded headers — is public, so
+ * the Settings page can show what is configured without being able to read it.
+ */
+export type PublicExternalDestinationConfig =
+  | {
+      kind: "elastic";
+      endpoint: string;
+      authorization: { type: "bearer" | "api_key" };
+    }
+  | { kind: "langfuse"; baseUrl: string }
+  | { kind: "custom_otlp"; endpoint: string; headerNames: string[] };
+
+export function toPublicExternalDestinationConfig(
+  config: ExternalDestinationConfig,
+): PublicExternalDestinationConfig {
+  switch (config.kind) {
+    case "elastic":
+      return {
+        kind: "elastic",
+        endpoint: config.endpoint,
+        authorization: { type: config.authorization.type },
+      };
+    case "langfuse":
+      return { kind: "langfuse", baseUrl: config.baseUrl };
+    case "custom_otlp":
+      return {
+        kind: "custom_otlp",
+        endpoint: config.endpoint,
+        headerNames: Object.keys(config.headers).sort(),
+      };
+  }
+}
+
+/**
+ * Resolves a submitted patch against the stored configuration. A credential absent from
+ * the patch means "keep the stored one", which is the only way an Admin can edit a
+ * destination they can no longer read the credential of.
+ */
+export function mergeExternalDestinationConfig(
+  patch: ExternalDestinationConfigPatch,
+  previous: ExternalDestinationConfig | null,
+): ExternalDestinationConfig {
+  switch (patch.kind) {
+    case "elastic": {
+      const value =
+        patch.authorization.value ??
+        (previous?.kind === "elastic" ? previous.authorization.value : undefined);
+      if (!value) throw new Error("An Elastic credential is required.");
+      return externalDestinationConfigSchema.parse({
+        ...patch,
+        authorization: { type: patch.authorization.type, value },
+      });
+    }
+    case "langfuse": {
+      const publicKey =
+        patch.publicKey ??
+        (previous?.kind === "langfuse" ? previous.publicKey : undefined);
+      const secretKey =
+        patch.secretKey ??
+        (previous?.kind === "langfuse" ? previous.secretKey : undefined);
+      if (!publicKey || !secretKey) {
+        throw new Error("A Langfuse public key and secret key are required.");
+      }
+      return externalDestinationConfigSchema.parse({
+        ...patch,
+        publicKey,
+        secretKey,
+      });
+    }
+    case "custom_otlp": {
+      const headers =
+        patch.headers ??
+        (previous?.kind === "custom_otlp" ? previous.headers : undefined);
+      if (!headers) throw new Error("Custom OTLP headers are required.");
+      return externalDestinationConfigSchema.parse({ ...patch, headers });
+    }
+  }
+}
+
 export type PublicExternalObservabilityDestination<
   Destination = ExternalObservabilityDestination,
 > = Destination extends ExternalObservabilityDestination
   ? Omit<Destination, "encryptedConfig"> & {
-      configured: true;
+      /** Null when the stored configuration cannot be decrypted or no longer validates. */
+      config: PublicExternalDestinationConfig | null;
       health: ExternalDestinationHealth;
     }
   : never;
 export type PublicObservabilityPolicy = {
   revision: number;
-  builtIn: typeof BUILT_IN_DESTINATION_CAPABILITY & {
-    health: {
-      status: "healthy" | "waiting";
-      lastReceivedAt: string | null;
-    };
-  };
   agentCapture: AgentCapturePolicy;
   externalDestinations: PublicExternalObservabilityDestination[];
 };
@@ -441,28 +556,27 @@ export function createDefaultObservabilityPolicy(revision: number): Observabilit
 
 export function toPublicObservabilityPolicy(
   policy: ObservabilityPolicy,
-  builtInHealth: PublicObservabilityPolicy["builtIn"]["health"] = {
-    status: "waiting",
-    lastReceivedAt: null,
-  },
-  destinationHealth: ExternalDestinationHealth[] = [],
+  input: {
+    destinationHealth?: ExternalDestinationHealth[];
+    /** Decrypted, credential-stripped configuration by destination id. */
+    destinationConfigs?: ReadonlyMap<string, PublicExternalDestinationConfig>;
+  } = {},
 ): PublicObservabilityPolicy {
   const healthByDestination = new Map(
-    destinationHealth.map((health) => [health.destinationId, health]),
+    (input.destinationHealth ?? []).map((health) => [
+      health.destinationId,
+      health,
+    ]),
   );
   return {
     revision: policy.revision,
-    builtIn: {
-      ...BUILT_IN_DESTINATION_CAPABILITY,
-      health: builtInHealth,
-    },
     agentCapture: policy.agentCapture,
     externalDestinations: policy.externalDestinations.map((destination) => {
       const { encryptedConfig: _encryptedConfig, ...publicDestination } =
         destination;
       return {
         ...publicDestination,
-        configured: true,
+        config: input.destinationConfigs?.get(destination.id) ?? null,
         health:
           healthByDestination.get(destination.id) ??
           ({

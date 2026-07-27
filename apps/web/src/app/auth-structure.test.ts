@@ -81,11 +81,11 @@ describe("team management web surfaces", () => {
     const settings = source("../components/observability-settings.tsx");
     expect(page).toContain("getObservabilitySettings");
     expect(page).toContain('member.role !== "admin"');
-    expect(settings).toContain("Built-in");
-    expect(settings).toContain("Always on");
     // This page configures monitoring and shows no observation data at all: no
-    // statistics, no timelines, not even Collector delivery counts. Everything
-    // observational belongs to whichever external destination the Admin configures.
+    // statistics, no timelines, not even Collector delivery counts, and no Built-in
+    // status. Everything observational belongs to whichever external destination the
+    // Admin configures.
+    expect(settings).not.toContain("Built-in");
     expect(settings).not.toContain("Collector delivery");
     expect(settings).not.toContain("Queue utilization");
     expect(settings).not.toContain("Platform operations");
@@ -94,8 +94,12 @@ describe("team management web surfaces", () => {
     expect(settings).toContain("saveObservabilitySettings");
     expect(settings).toContain("External destinations");
     expect(settings).toContain("createObservabilityDestination");
+    expect(settings).toContain("updateObservabilityDestination");
     expect(settings).toContain("toggleObservabilityDestination");
     expect(settings).toContain("deleteObservabilityDestination");
+    // The configured remote URL is what identifies a destination to an Admin.
+    expect(settings).toContain("DestinationEndpoint");
+    expect(settings).toContain("config.endpoint");
     expect(settings).toContain("Elastic");
     expect(settings).toContain("Langfuse");
     expect(settings).toContain("Langfuse base URL");

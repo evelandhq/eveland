@@ -1,7 +1,6 @@
 import {
   COLLECTOR_SELF_SERVICE_NAME,
   collectorExporterComponentId,
-  externalDestinationConfigSchema,
   langfuseOtlpTracesEndpoint,
   TELEMETRY_DOMAINS,
   type ExternalDestinationConfig,
@@ -9,10 +8,7 @@ import {
   type ObservabilitySignal,
   type TelemetryDomain,
 } from "@eveland/core/observability";
-import {
-  decryptSecretValue,
-  type EncryptedSecret,
-} from "@eveland/core/server/secrets";
+import { decryptDestinationConfig } from "@eveland/core/server/observability";
 import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
 import { execa } from "execa";
 import {
@@ -346,20 +342,6 @@ function baseCollectorConfig(): CollectorConfig {
       },
     },
   };
-}
-
-export function decryptDestinationConfig(
-  encryptedConfig: string,
-  appSecretKey: string,
-): ExternalDestinationConfig {
-  try {
-    const encrypted = JSON.parse(encryptedConfig) as EncryptedSecret;
-    return externalDestinationConfigSchema.parse(
-      JSON.parse(decryptSecretValue(encrypted, appSecretKey)),
-    );
-  } catch {
-    throw new Error("Could not decrypt an observability destination.");
-  }
 }
 
 function externalExporter(config: ExternalDestinationConfig) {

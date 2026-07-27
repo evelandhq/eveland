@@ -18,14 +18,6 @@ describe("observability settings", () => {
     expect(initial.status).toBe(200);
     expect(await initial.json()).toMatchObject({
       revision: 1,
-      builtIn: {
-        configurable: false,
-        signals: ["traces", "logs", "metrics"],
-        health: {
-          status: "waiting",
-          lastReceivedAt: null,
-        },
-      },
       agentCapture: {
         enabled: true,
         sampling: { ratio: 1 },
@@ -79,28 +71,6 @@ describe("observability settings", () => {
     expect(JSON.stringify(updatedBody)).not.toContain("encryptedConfig");
   });
 
-  test("shows Built-in ingestion health without making it configurable", async () => {
-    const store = createTestStore();
-    await store.ingestOtlpBatch({
-      signal: "traces",
-      payload: { resourceSpans: [] },
-    });
-    const app = createApp(store);
-
-    const response = await app.request("/system/observability");
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      builtIn: {
-        configurable: false,
-        health: {
-          status: "healthy",
-          lastReceivedAt: expect.any(String),
-        },
-      },
-    });
-  });
-
   test("encrypts and revision-controls external destinations", async () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });
@@ -131,7 +101,11 @@ describe("observability settings", () => {
         {
           kind: "elastic",
           enabled: true,
-          configured: true,
+          config: {
+            kind: "elastic",
+            endpoint: "https://elastic.example.com:8200",
+            authorization: { type: "api_key" },
+          },
           supportedSignals: ["traces", "logs", "metrics"],
           filterProfile: "all_eveland",
           securityRevision: 1,
@@ -194,5 +168,124 @@ describe("observability settings", () => {
       revision: 4,
       externalDestinations: [],
     });
+  });
+
+  test("edits a destination endpoint without re-sending its credentials", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+
+    const created = await app.request("/system/observability/destinations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        config: {
+          kind: "langfuse",
+          baseUrl: "https://us.cloud.langfuse.com",
+          publicKey: "pk-lf-original",
+          secretKey: "sk-lf-original",
+        },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const destinationId = (
+      await store.getObservabilityPolicy(DEFAULT_TEAM_ID)
+    ).externalDestinations[0]!.id;
+
+    const edited = await app.request(
+      `/system/observability/destinations/${destinationId}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 2,
+          config: {
+            kind: "langfuse",
+            baseUrl: "https://eu.cloud.langfuse.com",
+          },
+        }),
+      },
+    );
+    expect(edited.status).toBe(200);
+    const editedBody = await edited.json();
+    expect(editedBody).toMatchObject({
+      revision: 3,
+      externalDestinations: [
+        {
+          id: destinationId,
+          kind: "langfuse",
+          config: {
+            kind: "langfuse",
+            baseUrl: "https://eu.cloud.langfuse.com",
+          },
+          securityRevision: 2,
+          health: { status: "pending" },
+        },
+      ],
+    });
+    expect(JSON.stringify(editedBody)).not.toContain("sk-lf-original");
+    expect(JSON.stringify(editedBody)).not.toContain("pk-lf-original");
+
+    const stored = await store.getObservabilityPolicy(DEFAULT_TEAM_ID);
+    expect(
+      JSON.parse(
+        decryptSecretValue(
+          JSON.parse(
+            stored.externalDestinations[0]!.encryptedConfig,
+          ) as EncryptedSecret,
+          appSecretKey,
+        ),
+      ),
+    ).toEqual({
+      kind: "langfuse",
+      baseUrl: "https://eu.cloud.langfuse.com",
+      publicKey: "pk-lf-original",
+      secretKey: "sk-lf-original",
+    });
+
+    const changedKind = await app.request(
+      `/system/observability/destinations/${destinationId}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 3,
+          config: {
+            kind: "elastic",
+            endpoint: "https://elastic.example.com:8200",
+            authorization: { type: "bearer", value: "token" },
+          },
+        }),
+      },
+    );
+    expect(changedKind.status).toBe(400);
+  });
+
+  test("rejects a first-time destination that omits its credential", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+
+    const response = await app.request(
+      "/system/observability/destinations",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          config: {
+            kind: "langfuse",
+            baseUrl: "https://us.cloud.langfuse.com",
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("Langfuse"),
+    });
+    await expect(
+      store.getObservabilityPolicy(DEFAULT_TEAM_ID),
+    ).resolves.toMatchObject({ revision: 1, externalDestinations: [] });
   });
 });
