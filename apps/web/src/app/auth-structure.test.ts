@@ -133,13 +133,18 @@ describe("team management web surfaces", () => {
   });
 
   test("manages project variables and secrets with the shared table and dialog pattern", () => {
-    const page = source("./projects/[projectId]/secrets/page.tsx");
+    const page = source("./projects/[projectId]/settings/environment/page.tsx");
     const settingsUrl = new URL("../components/project-secrets-settings.tsx", import.meta.url);
     expect(existsSync(fileURLToPath(settingsUrl))).toBe(true);
     if (!existsSync(fileURLToPath(settingsUrl))) return;
 
     const settings = source("../components/project-secrets-settings.tsx");
     expect(page).toContain("<ProjectSecretsSettings");
+    expect(page).toContain("return <ProjectSecretsSettings");
+    expect(settings).toContain('aria-labelledby="variables-secrets-heading"');
+    expect(settings).toContain(
+      "Values are encrypted and never returned after saving. Saving changes restarts live deployments; otherwise, they apply the next time this project starts.",
+    );
     expect(settings).toContain("<Table");
     expect(settings).toContain("<Dialog");
     expect(settings).toContain("<AlertDialog");

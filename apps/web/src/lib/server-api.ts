@@ -32,7 +32,6 @@ import type {
   SessionNode,
   SourceFile,
   SourceRevision,
-  VariantMetric,
 } from "./api";
 import type { CurrentMember, Invitation, Member } from "./client-api";
 
@@ -48,7 +47,6 @@ export const getAgentEndpoints = (projectId: string) =>
 export const getEveVersion = (projectId: string) =>
   apiGet<{ eveVersion: EveVersionInfo }>(`/projects/${projectId}/eve-version`).then((data) => data.eveVersion);
 export const getDeploymentOverview = (projectId: string) => apiGet<DeploymentOverview>(`/projects/${projectId}/deployments`);
-export const getVariantMetrics = (projectId: string) => apiGet<{ variants: VariantMetric[] }>(`/projects/${projectId}/variant-metrics`).then((data) => data.variants);
 export const getSecrets = (projectId: string) => apiGet<{ secrets: PublicSecret[] }>(`/projects/${projectId}/secrets`).then((data) => data.secrets);
 export const getSchedules = (projectId: string) =>
   apiGet<{ schedules: ProjectScheduleSummary[] }>(`/projects/${projectId}/schedules`).then((data) => data.schedules);

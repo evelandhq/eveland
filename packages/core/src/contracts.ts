@@ -33,6 +33,7 @@ export type Project = {
   id: string;
   slug: string;
   name: string;
+  description: string | null;
   importKind: ProjectImportKind;
   gitUrl: string | null;
   status: ProjectStatus;

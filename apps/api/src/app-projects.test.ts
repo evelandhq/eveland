@@ -142,6 +142,76 @@ describe("api app", () => {
     });
   });
 
+  test("updates project display metadata without changing its stable identifiers", async () => {
+    const store = createTestStore();
+    const app = createApp(store);
+    const project = await store.createProject({
+      name: "office-assistant",
+      importKind: "zip",
+    });
+
+    const response = await app.request(`/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Office Assistant",
+        description:
+          "Answers routine office questions and helps employees complete common requests.",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      project: {
+        id: project.id,
+        slug: "office-assistant",
+        name: "Office Assistant",
+        description:
+          "Answers routine office questions and helps employees complete common requests.",
+      },
+    });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      id: project.id,
+      slug: "office-assistant",
+      name: "Office Assistant",
+      description:
+        "Answers routine office questions and helps employees complete common requests.",
+    });
+  });
+
+  test("validates project display metadata and normalizes an empty description", async () => {
+    const store = createTestStore();
+    const app = createApp(store);
+    const project = await store.createProject({
+      name: "metadata-validation",
+      importKind: "zip",
+    });
+
+    const invalidResponse = await app.request(`/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: " ", description: "x".repeat(241) }),
+    });
+    expect(invalidResponse.status).toBe(400);
+
+    const clearedResponse = await app.request(`/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Metadata validation",
+        description: "   ",
+      }),
+    });
+    expect(clearedResponse.status).toBe(200);
+    await expect(clearedResponse.json()).resolves.toMatchObject({
+      project: {
+        id: project.id,
+        name: "Metadata validation",
+        description: null,
+      },
+    });
+  });
+
   test("preflights source before atomically creating a Project from the validated snapshot", async () => {
     const store = createTestStore();
     const app = createApp(store, {

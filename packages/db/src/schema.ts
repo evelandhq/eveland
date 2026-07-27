@@ -122,6 +122,7 @@ export const projects = pgTable(
     teamId: text("team_id").notNull().default("team_local").references(() => teams.id),
     ownerId: text("owner_id").notNull().references(() => users.id),
     name: text("name").notNull(),
+    description: text("description"),
     importKind: text("import_kind").notNull(),
     gitUrl: text("git_url"),
     status: text("status").notNull(),

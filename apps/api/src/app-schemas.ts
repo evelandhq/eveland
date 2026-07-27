@@ -14,6 +14,15 @@ export const projectNameSchema = z
     "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.",
   );
 
+export const updateProjectMetadataSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  description: z
+    .string()
+    .trim()
+    .max(240)
+    .transform((value) => value || null),
+});
+
 export const gitRepositoryUrlSchema = z
   .string()
   .min(1)

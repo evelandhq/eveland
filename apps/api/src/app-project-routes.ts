@@ -15,6 +15,7 @@ import {
   projectNameSchema,
   routeTargetsSchema,
   syncSourceSchema,
+  updateProjectMetadataSchema,
 } from "./app-schemas.js";
 import {
   createZipProjectFromUpload,
@@ -342,6 +343,28 @@ export function registerProjectRoutes(input: {
       return c.json({ error: "Project not found" }, 404);
     }
     return c.json({ project });
+  });
+
+  app.patch("/projects/:projectId", async (c) => {
+    const parsed = updateProjectMetadataSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: "Invalid project metadata",
+          issues: parsed.error.issues,
+        },
+        400,
+      );
+    }
+    const project = await store.updateProjectMetadata(
+      c.req.param("projectId"),
+      parsed.data,
+    );
+    return project
+      ? c.json({ project })
+      : c.json({ error: "Project not found" }, 404);
   });
 
   app.get("/projects/:projectId/jobs", async (c) => {

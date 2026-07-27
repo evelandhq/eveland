@@ -21,6 +21,7 @@ const baseProject: Project = {
   id: "proj_123",
   slug: "support-agent",
   name: "support-agent",
+  description: null,
   importKind: "git",
   gitUrl: "https://github.com/evelandhq/support-agent.git",
   status: "import_pending",

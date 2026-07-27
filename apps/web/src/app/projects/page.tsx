@@ -150,6 +150,11 @@ export default async function ProjectsPage() {
                   </CardAction>
                 </CardHeader>
                 <CardContent>
+                  {project.description ? (
+                    <p className="mb-4 line-clamp-2 text-sm text-muted-foreground">
+                      {project.description}
+                    </p>
+                  ) : null}
                   <dl className="grid grid-cols-3 gap-3">
                     <div className="min-w-0">
                       <dt className="text-xs text-muted-foreground">Eve version</dt>

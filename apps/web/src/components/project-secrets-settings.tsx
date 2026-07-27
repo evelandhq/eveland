@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -154,118 +153,118 @@ export function ProjectSecretsSettings({
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Variables and secrets</CardTitle>
-          <CardDescription>
-            Runtime configuration for this project. Values are encrypted and never returned after saving.
-          </CardDescription>
-          <CardAction>
-            <Button type="button" size="sm" onClick={openAddDialog} disabled={pending || entries.length >= 50}>
-              <PlusIcon data-icon="inline-start" />
-              Add entry
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
-          {notice ? <Alert><AlertDescription>{notice}</AlertDescription></Alert> : null}
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-32">Type</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Value</TableHead>
-                  <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.length === 0 ? (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={4}>
-                      <Empty className="border-0 py-10">
-                        <EmptyHeader>
-                          <EmptyMedia variant="icon"><LockKeyholeIcon /></EmptyMedia>
-                          <EmptyTitle>No project entries</EmptyTitle>
-                          <EmptyDescription>Add a variable or secret for this project&apos;s Agent runtime.</EmptyDescription>
-                        </EmptyHeader>
-                      </Empty>
-                    </TableCell>
-                  </TableRow>
-                ) : entries.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell><Badge variant="secondary">{entry.kind === "secret" ? "Secret" : "Variable"}</Badge></TableCell>
-                    <TableCell className="font-mono text-xs font-medium">{entry.key}</TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-2 text-muted-foreground">
-                        <LockKeyholeIcon className="size-4" />
-                        Configured
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Edit entry ${entry.key}`}
-                          title="Edit entry"
-                          disabled={pending}
-                          onClick={() => openEditDialog(entry)}
-                        >
-                          <PencilIcon />
-                        </Button>
-                        <AlertDialog
-                          open={deleteEntry?.id === entry.id}
-                          onOpenChange={(open) => {
-                            if (!pending) setDeleteEntry(open ? entry : null);
-                          }}
-                        >
-                          <AlertDialogTrigger
-                            render={
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={`Remove entry ${entry.key}`}
-                                title="Remove entry"
-                                disabled={pending}
-                              />
-                            }
-                          >
-                            <Trash2Icon />
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Remove {entry.key}?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This removes the runtime value and restarts live deployments so it no longer applies.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <form onSubmit={removeEntry}>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel type="button" disabled={pending}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction type="submit" variant="destructive" disabled={pending}>
-                                  {pending ? <Spinner data-icon="inline-start" /> : <Trash2Icon data-icon="inline-start" />}
-                                  {pending ? "Removing…" : "Remove entry"}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </form>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+      <section
+        aria-labelledby="variables-secrets-heading"
+        className="flex min-w-0 flex-col gap-5"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 id="variables-secrets-heading" className="font-medium">
+              Variables and secrets
+            </h3>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Values are encrypted and never returned after saving. Saving changes restarts live deployments; otherwise, they apply the next time this project starts.
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Changes restart live deployments. With no live deployment, they apply on the next start.
-          </p>
-        </CardContent>
-      </Card>
+          <Button type="button" size="sm" onClick={openAddDialog} disabled={pending || entries.length >= 50}>
+            <PlusIcon data-icon="inline-start" />
+            Add entry
+          </Button>
+        </div>
+        {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
+        {notice ? <Alert><AlertDescription>{notice}</AlertDescription></Alert> : null}
+        <div className="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-32">Type</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Value</TableHead>
+                <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={4}>
+                    <Empty className="border-0 py-10">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon"><LockKeyholeIcon /></EmptyMedia>
+                        <EmptyTitle>No project entries</EmptyTitle>
+                        <EmptyDescription>Add a variable or secret for this project&apos;s Agent runtime.</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  </TableCell>
+                </TableRow>
+              ) : entries.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell><Badge variant="secondary">{entry.kind === "secret" ? "Secret" : "Variable"}</Badge></TableCell>
+                  <TableCell className="font-mono text-xs font-medium">{entry.key}</TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center gap-2 text-muted-foreground">
+                      <LockKeyholeIcon className="size-4" />
+                      Configured
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Edit entry ${entry.key}`}
+                        title="Edit entry"
+                        disabled={pending}
+                        onClick={() => openEditDialog(entry)}
+                      >
+                        <PencilIcon />
+                      </Button>
+                      <AlertDialog
+                        open={deleteEntry?.id === entry.id}
+                        onOpenChange={(open) => {
+                          if (!pending) setDeleteEntry(open ? entry : null);
+                        }}
+                      >
+                        <AlertDialogTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Remove entry ${entry.key}`}
+                              title="Remove entry"
+                              disabled={pending}
+                            />
+                          }
+                        >
+                          <Trash2Icon />
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remove {entry.key}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This removes the runtime value and restarts live deployments so it no longer applies.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <form onSubmit={removeEntry}>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel type="button" disabled={pending}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction type="submit" variant="destructive" disabled={pending}>
+                                {pending ? <Spinner data-icon="inline-start" /> : <Trash2Icon data-icon="inline-start" />}
+                                {pending ? "Removing…" : "Remove entry"}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </form>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
 
       <Dialog
         open={dialogOpen}

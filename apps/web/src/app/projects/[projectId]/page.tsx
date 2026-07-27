@@ -1,182 +1,277 @@
-import Link from "next/link";
-import { BadgeCheckIcon } from "lucide-react";
-import { getAgentEndpoints, getDeploymentOverview, getEveVersion, getLogs, getProject, getProjectJobs, getSchedules, getSessions, getVariantMetrics } from "@/lib/server-api";
-import { DeploymentActions } from "@/components/deployment-actions";
-import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
-import { EveVersionStatus } from "@/components/eve-version-status";
-import { ProjectDangerZone } from "@/components/project-danger-zone";
-import { StatusBadge } from "@/components/status-badge";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link"
+import { ArrowRightIcon, PlayIcon } from "lucide-react"
+import { EveVersionStatus } from "@/components/eve-version-status"
+import { ProjectOverviewTrend } from "@/components/project-overview-trend"
+import { StatusBadge } from "@/components/status-badge"
+import { buttonVariants } from "@/components/ui/button"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  getAgentEndpoints,
+  getEveVersion,
+  getProject,
+  getProjectUsageAnalytics,
+  getSchedules,
+} from "@/lib/server-api"
+import {
+  completionRate,
+  formatTokenCount,
+  formatUsd,
+  usageCoverage,
+} from "@/lib/usage"
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"
 
-export default async function ProjectOverviewPage({ params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = await params;
-  const [project, jobs, endpoints, eveVersion, sessions, schedules, logs, deploymentOverview, variantMetrics] = await Promise.all([
-    getProject(projectId),
-    getProjectJobs(projectId),
-    getAgentEndpoints(projectId),
-    getEveVersion(projectId),
-    getSessions(projectId),
-    getSchedules(projectId),
-    getLogs(projectId),
-    getDeploymentOverview(projectId),
-    getVariantMetrics(projectId),
-  ]);
-  const recentFailureLog = project?.status === "failed" || project?.deploymentStatus === "failed" ? findRecentFailureLog(logs) : null;
-  const latestImportJob = jobs.find((job) => job.type === "import_source") ?? null;
-  const stableRoute = deploymentOverview.routes.find((route) => route.kind === "project") ?? null;
+export default async function ProjectOverviewPage({
+  params,
+}: {
+  params: Promise<{ projectId: string }>
+}) {
+  const { projectId } = await params
+  const [project, endpoints, eveVersion, schedules, analytics] =
+    await Promise.all([
+      getProject(projectId),
+      getAgentEndpoints(projectId),
+      getEveVersion(projectId),
+      getSchedules(projectId),
+      getProjectUsageAnalytics(projectId, { range: "7d" }),
+    ])
+  const completion = completionRate(analytics.summary)
+  const coverage = usageCoverage(analytics.summary)
+  const totalTokens =
+    analytics.summary.inputTokens + analytics.summary.outputTokens
+  const nextSchedule = schedules
+    .filter(({ schedule }) => schedule.enabled && schedule.nextRunAt)
+    .sort(
+      (left, right) =>
+        new Date(left.schedule.nextRunAt!).getTime() -
+        new Date(right.schedule.nextRunAt!).getTime(),
+    )[0]
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-      {recentFailureLog ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 lg:col-span-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-destructive">Last failure</h2>
-              <p className="mt-2 font-mono text-xs leading-5 text-destructive">{recentFailureLog.line}</p>
-            </div>
-            <Link href={`/projects/${projectId}/logs`} className="text-xs font-medium text-destructive underline-offset-4 hover:underline">
-              Open logs
-            </Link>
-          </div>
+    <div className="flex min-w-0 flex-col gap-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs text-muted-foreground">Last 7 days</p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">Overview</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Execution volume, reliability, and the latest activity for this Agent.
+          </p>
         </div>
-      ) : null}
+        <Link
+          href={`/projects/${projectId}/playground`}
+          className={buttonVariants()}
+        >
+          <PlayIcon data-icon="inline-start" />
+          Open Playground
+        </Link>
+      </header>
 
-      <div className="rounded-md border border-border bg-card">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+      <section
+        className="grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 xl:grid-cols-4"
+        aria-label="Current project context"
+      >
+        <OverviewContext
+          label="Production"
+          value={<StatusBadge status={project?.deploymentStatus ?? null} />}
+          detail={project?.releaseId ?? "No release"}
+        />
+        <OverviewContext
+          label="Eve Agent"
+          value={<EveVersionStatus eveVersion={eveVersion} />}
+          detail={eveVersion.supported ? "Compatible with Eveland" : "Action required"}
+        />
+        <OverviewContext
+          label="Stable endpoint"
+          value={
+            endpoints.stable ? (
+              <a
+                href={endpoints.stable}
+                target="_blank"
+                rel="noreferrer"
+                className="block truncate underline-offset-4 hover:underline"
+              >
+                {endpoints.stable}
+              </a>
+            ) : (
+              "Not available"
+            )
+          }
+          detail={project?.slug ?? projectId}
+        />
+        <OverviewContext
+          label="Next schedule"
+          value={
+            nextSchedule?.schedule.nextRunAt
+              ? new Date(nextSchedule.schedule.nextRunAt).toLocaleString()
+              : "None scheduled"
+          }
+          detail={nextSchedule?.schedule.key ?? `${schedules.length} discovered`}
+        />
+      </section>
+
+      <section aria-labelledby="execution-summary-heading">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold">Deployment</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Current Production release and source revision.</p>
+            <h3 id="execution-summary-heading" className="text-base font-semibold">
+              Execution summary
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sessions are bucketed by their start time.
+            </p>
           </div>
-          <DeploymentActions
-            projectId={projectId}
-            importKind={project?.importKind === "git" ? "git" : "zip"}
-            canSync={project?.importKind === "git" && Boolean(project?.gitUrl)}
-            canDeploy={Boolean(project?.sourceRevisionId)}
-            importJob={latestImportJob}
+          <Link
+            href={`/projects/${projectId}/usage?range=7d`}
+            className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
+          >
+            View usage
+            <ArrowRightIcon className="size-4" />
+          </Link>
+        </div>
+        <dl className="mt-5 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+          <OverviewStat
+            label="Sessions"
+            value={analytics.summary.sessions.toLocaleString()}
+            detail={`${analytics.summary.runningSessions} running`}
           />
-        </div>
-        <dl className="grid grid-cols-2 gap-px bg-border text-sm">
-          {(
-            [
-            ["Deployment", project?.deploymentStatus ?? "unknown"],
-            ["Eve Agent", eveVersion.version ?? "Unknown"],
-            ["Source revision", project?.sourceRevisionId ?? "None"],
-            ["Release", project?.releaseId ?? "None"],
-            ["Stable endpoint", endpoints.stable ?? "None"],
-            ["Preview endpoint", endpoints.previews.at(-1) ?? "None"],
-            ] satisfies Array<[string, string]>
-          ).map(([label, value]) => (
-            <div key={label} className="bg-card p-4 last:col-span-2">
-              <dt className="text-xs text-muted-foreground">{label}</dt>
-              <dd className="mt-2 break-all font-medium">
-                {label === "Eve Agent" ? (
-                  <EveVersionStatus eveVersion={eveVersion} />
-                ) : label.endsWith("endpoint") && value !== "None" ? (
-                  <a href={value} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
-                    {value}
-                  </a>
-                ) : (
-                  value
-                )}
-              </dd>
-            </div>
-          ))}
+          <OverviewStat
+            label="Completed"
+            value={completion === null ? "—" : `${completion.toFixed(1)}%`}
+            detail={`${analytics.summary.failedSessions} failed`}
+          />
+          <OverviewStat
+            label="Model tokens"
+            value={formatTokenCount(totalTokens)}
+            detail={
+              coverage === null ? "No usage reported" : `${coverage.toFixed(1)}% coverage`
+            }
+          />
+          <OverviewStat
+            label="Provider cost"
+            value={formatUsd(analytics.summary.costUsd)}
+            detail="Provider-reported only"
+          />
         </dl>
-      </div>
+        <div className="mt-5 border-t border-border pt-4">
+          <ProjectOverviewTrend series={analytics.series} />
+        </div>
+      </section>
 
-      <div className="rounded-md border border-border bg-card lg:col-span-2">
-        <div className="border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold">Deployments &amp; traffic</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Stable marks deployments receiving production traffic; manage previews, rollbacks, splits, drain, and retention.</p>
-        </div>
-        <div className="divide-y divide-border">
-          {deploymentOverview.deployments.map((deployment) => {
-            const stableTarget = stableRoute?.targets.find((target) => target.deploymentId === deployment.id) ?? null;
-            const retention = deploymentOverview.retention.find((entry) => entry.deployment.id === deployment.id);
-            return (
-              <div key={deployment.id} className="grid gap-3 p-4 text-sm md:grid-cols-[1fr_auto] md:items-center">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono font-medium">{deployment.deploymentKey}</span>
-                    {stableTarget ? (
-                      <Badge>
-                        <BadgeCheckIcon data-icon="inline-start" />
-                        Stable · {stableTarget.weight / 100}% traffic
-                      </Badge>
-                    ) : null}
-                    <StatusBadge status={deployment.status} />
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    <time dateTime={deployment.createdAt}>
-                      Deployed {new Date(deployment.createdAt).toLocaleString()}
-                    </time>
-                    {" · "}{deployment.runtimeKind} · {retention?.protected ? `protected: ${retention.reasons.join(", ")}` : "eligible for archive"}
-                  </p>
-                </div>
-                <DeploymentTrafficActions
-                  projectId={projectId}
-                  deploymentId={deployment.id}
-                  productionDeploymentId={project?.deploymentId ?? null}
-                  stableRouteId={stableRoute?.id ?? null}
-                  status={deployment.status}
-                  retentionProtected={retention?.protected ?? true}
-                />
-              </div>
-            );
-          })}
-          {deploymentOverview.deployments.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No deployments yet.</p> : null}
-        </div>
-      </div>
-
-      <div className="rounded-md border border-border bg-card lg:col-span-2">
-        <div className="border-b border-border px-4 py-3"><h2 className="text-sm font-semibold">Variant metrics</h2></div>
-        <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4">
-          {variantMetrics.map((metric) => (
-            <div key={`${metric.deploymentId}:${metric.experimentId}:${metric.variantName}`} className="bg-card p-4 text-sm">
-              <p className="font-medium">{metric.variantName}</p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">{metric.experimentId ?? "no experiment"} · {metric.deploymentId ?? "unassigned"}</p>
-              <p className="mt-2 text-xs text-muted-foreground">{metric.success} success / {metric.failure} failed · {Math.round(metric.averageLatencyMs)}ms avg</p>
-              <p className="mt-1 text-xs text-muted-foreground">{metric.tokens} tokens · ${metric.costUsd.toFixed(4)}</p>
-            </div>
-          ))}
-          {variantMetrics.length === 0 ? <p className="bg-card p-4 text-sm text-muted-foreground">No variant sessions yet.</p> : null}
-        </div>
-      </div>
-
-      <div className="rounded-md border border-border bg-card">
-        <div className="border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold">Recent state</h2>
-        </div>
-        <div className="flex flex-col gap-3 p-4 text-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Sessions</span>
-            <span className="font-medium">{sessions.length}</span>
+      <section aria-labelledby="recent-sessions-heading">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 id="recent-sessions-heading" className="text-base font-semibold">
+              Recent Sessions
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Latest observed executions from the same seven-day window.
+            </p>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Schedules</span>
-            <span className="font-medium">{schedules.length}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Last session</span>
-            <StatusBadge status={project?.latestSessionStatus ?? null} />
-          </div>
+          <Link
+            href={`/projects/${projectId}/sessions`}
+            className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
+          >
+            View all
+            <ArrowRightIcon className="size-4" />
+          </Link>
         </div>
-      </div>
-
-      {project ? <ProjectDangerZone project={project} /> : null}
+        <div className="mt-3 overflow-x-auto border-y border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Session</TableHead>
+                <TableHead>Trigger</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Tokens</TableHead>
+                <TableHead>Started</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {analytics.recentSessions.slice(0, 8).map((session) => (
+                <TableRow key={session.id}>
+                  <TableCell>
+                    <Link
+                      href={`/projects/${projectId}/sessions/${session.id}`}
+                      className="font-mono font-medium hover:underline"
+                    >
+                      {session.id}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {session.trigger}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={session.status} />
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {session.usage.status === "none" ||
+                    session.usage.status === "missing"
+                      ? "—"
+                      : formatTokenCount(
+                          session.usage.inputTokens + session.usage.outputTokens,
+                        )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(session.startedAt).toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {analytics.recentSessions.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="h-24 text-center text-muted-foreground"
+                  >
+                    No Sessions observed in the last 7 days.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
     </div>
-  );
+  )
 }
 
-function findRecentFailureLog(logs: Awaited<ReturnType<typeof getLogs>>) {
-  for (let index = logs.length - 1; index >= 0; index -= 1) {
-    const log = logs[index];
-    if (log && /failed|error/i.test(log.line)) {
-      return log;
-    }
-  }
+function OverviewContext({
+  label,
+  value,
+  detail,
+}: {
+  label: string
+  value: React.ReactNode
+  detail: string
+}) {
+  return (
+    <div className="min-w-0 bg-background p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="mt-2 min-w-0 text-sm font-medium">{value}</div>
+      <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>
+    </div>
+  )
+}
 
-  return logs.at(-1) ?? null;
+function OverviewStat({
+  label,
+  value,
+  detail,
+}: {
+  label: string
+  value: string
+  detail: string
+}) {
+  return (
+    <div>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-2 font-mono text-xl font-semibold">{value}</dd>
+      <dd className="mt-1 text-xs text-muted-foreground">{detail}</dd>
+    </div>
+  )
 }
