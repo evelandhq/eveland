@@ -127,4 +127,66 @@ describe("sweepReleaseRetention", () => {
       }),
     ).resolves.toEqual([]);
   });
+
+  test("archives an old stopped deployment after its Playground binding expires", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Expired Playground Sweep Agent",
+      importKind: "zip",
+    });
+    const importJob = await store.claimNextJob("expired-playground-fixture");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/expired-playground-sweep",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployments: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const deployment = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `expired-playground:${index}`,
+        containerName: `expired-playground-${index}`,
+        internalPort: 3000,
+        hostPort: 41860 + index,
+        runtimeKind: "systemd",
+      });
+      await store.updateDeploymentStatus(deployment.id, "stopped");
+      deployments.push(deployment);
+    }
+    const [projectRoute] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployments[3]!.id,
+      "agent.localhost",
+    );
+    await store.bindSession({
+      projectId: project.id,
+      eveSessionId: "eve_expired_playground_sweep",
+      continuationToken: "continue_expired_playground_sweep",
+      routeId: projectRoute!.id,
+      deploymentId: deployments[0]!.id,
+      trigger: "playground",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_expired_playground_sweep",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+    });
+
+    await expect(
+      sweepReleaseRetention(store, {
+        keepRecent: 3,
+        limit: 25,
+        now: new Date("2026-07-30T12:00:00.000Z"),
+        playgroundIdleTtlMs: 86_400_000,
+        apiIdleTtlMs: 604_800_000,
+      }),
+    ).resolves.toBe(1);
+  });
 });

@@ -196,6 +196,18 @@ const definitions: ConfigurationDefinition[] = [
   entry("EVELAND_PLAYGROUND_TIMEOUT_MS", ["gateway"], "Timeout for privileged Playground requests proxied to a Deployment.", "120000"),
   urlEntry("EVELAND_API_INTERNAL_URL", ["gateway"], "Private API origin used for service-authenticated runtime activation.", "http://127.0.0.1:4000"),
   entry("EVELAND_ACTIVATION_LEASE_TTL_MS", ["api"], "Lifetime of request, stream, turn, and ScheduleRun activation leases.", "180000"),
+  entry(
+    "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS",
+    ["api", "gateway", "worker"],
+    "Idle time after the last successful Playground session request before its Deployment binding expires.",
+    "86400000",
+  ),
+  entry(
+    "EVELAND_API_SESSION_IDLE_TTL_MS",
+    ["api", "gateway", "worker"],
+    "Idle time after the last successful public API session request before its Deployment binding expires.",
+    "604800000",
+  ),
   entry("EVELAND_COLD_START_TIMEOUT_MS", ["api"], "Maximum time Gateway may wait for a dormant Deployment to become ready.", "30000"),
   entry("EVELAND_SOURCE_PREFLIGHT_TTL_MS", ["api"], "Lifetime of an unconsumed validated source snapshot.", "3600000"),
   entry("EVELAND_ACTIVATION_RENEW_INTERVAL_MS", ["gateway"], "Interval for renewing a lease while an upstream response stream remains active.", "60000"),

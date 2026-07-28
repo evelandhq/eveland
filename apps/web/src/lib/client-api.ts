@@ -361,6 +361,37 @@ export async function cancelPlaygroundTurn(session: { cancel(): Promise<unknown>
   await session.cancel();
 }
 
+export async function resetPlaygroundConversation(input: {
+  session: { reset(): Promise<unknown> };
+  clear: () => void;
+}): Promise<void> {
+  await input.session.reset();
+  input.clear();
+}
+
+export function resetPlaygroundOnPageLeave(input: {
+  projectId: string;
+  sessionState: {
+    continuationToken?: string;
+  };
+  fetcher?: typeof fetch;
+}): boolean {
+  const continuationToken = input.sessionState.continuationToken;
+  if (!continuationToken) return false;
+  const fetcher = input.fetcher ?? fetch;
+  void fetcher(
+    `/api/eveland/projects/${encodeURIComponent(input.projectId)}/playground/eve/v1/session/reset`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ continuationToken }),
+      credentials: "same-origin",
+      keepalive: true,
+    },
+  ).catch(() => undefined);
+  return true;
+}
+
 export async function enqueueBuildDeploy(projectId: string): Promise<Job> {
   const data = await clientRequest<{ job: Job }>(`/projects/${projectId}/build-deploy`, { method: "POST" });
   return data.job;

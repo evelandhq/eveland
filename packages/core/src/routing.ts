@@ -1,6 +1,13 @@
 import type { RouteTarget } from "./contracts.js";
 
 export type RouteTargetInput = Pick<RouteTarget, "deploymentId" | "weight" | "variantName">;
+export type SessionBindingIdlePolicy = {
+  playgroundIdleTtlMs?: number;
+  apiIdleTtlMs?: number;
+};
+
+export const DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS = 86_400_000;
+export const DEFAULT_API_SESSION_IDLE_TTL_MS = 604_800_000;
 
 export function validateRouteTargets(targets: RouteTargetInput[]): void {
   if (targets.length < 1 || targets.length > 2) throw new Error("A route must have one or two targets.");
@@ -50,4 +57,28 @@ export function isDeploymentProtected(input: {
   retainedIds: ReadonlySet<string>;
 }): boolean {
   return input.routeTargetIds.has(input.deploymentId) || input.activeBindingIds.has(input.deploymentId) || input.retainedIds.has(input.deploymentId);
+}
+
+export function isSessionBindingActive(
+  binding: {
+    trigger: "api" | "playground";
+    updatedAt: Date | string;
+  },
+  now = new Date(),
+  policy: SessionBindingIdlePolicy = {},
+): boolean {
+  const ttlMs =
+    binding.trigger === "playground"
+      ? policy.playgroundIdleTtlMs ??
+        DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS
+      : policy.apiIdleTtlMs ?? DEFAULT_API_SESSION_IDLE_TTL_MS;
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0)
+    throw new Error("SessionBinding idle TTL must be positive.");
+  const updatedAt =
+    binding.updatedAt instanceof Date
+      ? binding.updatedAt
+      : new Date(binding.updatedAt);
+  if (!Number.isFinite(updatedAt.getTime()))
+    throw new Error("SessionBinding updatedAt must be a valid timestamp.");
+  return updatedAt.getTime() > now.getTime() - ttlMs;
 }

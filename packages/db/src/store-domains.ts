@@ -54,6 +54,7 @@ import type {
 import type { ModelStepUsage } from "@eveland/core/eve";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { EveVersionInfo } from "@eveland/core/source";
+import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
 import type {
   HostMetricSample,
   InstanceWorkload,
@@ -75,7 +76,13 @@ import type {
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
   protected: boolean;
-  reasons: Array<"route_target" | "active_session" | "recent_artifact">;
+  reasons: Array<
+    "route_target" | "active_session" | "active_request" | "recent_artifact"
+  >;
+};
+
+export type DeploymentRetentionOptions = SessionBindingIdlePolicy & {
+  now?: Date;
 };
 
 export type CreateProjectInput = {
@@ -464,7 +471,11 @@ export interface DeploymentStore {
   getDeploymentByContainerName(containerName: string): Promise<DeploymentRecord | null>;
   updateDeploymentStatus(deploymentId: string, status: DeploymentStatus): Promise<DeploymentRecord | null>;
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
-  getDeploymentRetention(projectId: string, keepRecent?: number): Promise<DeploymentRetention[]>;
+  getDeploymentRetention(
+    projectId: string,
+    keepRecent?: number,
+    options?: DeploymentRetentionOptions,
+  ): Promise<DeploymentRetention[]>;
 }
 
 export interface RoutingStore {
@@ -495,6 +506,12 @@ export interface RoutingStore {
     projectId: string,
     eveSessionId: string,
     continuationToken: string | null,
+    now?: Date,
+  ): Promise<SessionBinding | null>;
+  touchSessionBinding(
+    projectId: string,
+    eveSessionId: string,
+    now?: Date,
   ): Promise<SessionBinding | null>;
 }
 

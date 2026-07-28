@@ -1,10 +1,12 @@
 import type { Store } from "@eveland/db";
+import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
 
 export async function sweepReleaseRetention(
   store: Store,
-  input: {
+  input: SessionBindingIdlePolicy & {
     keepRecent?: number;
     limit?: number;
+    now?: Date;
   } = {},
 ): Promise<number> {
   const configuredKeepRecent = input.keepRecent ?? 3;
@@ -22,6 +24,7 @@ export async function sweepReleaseRetention(
     const retention = await store.getDeploymentRetention(
       project.id,
       keepRecent,
+      input,
     );
     for (const entry of retention) {
       if (

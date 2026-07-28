@@ -429,7 +429,7 @@ token 后读取 envelope：`local-dev` 构造 loopback Host，其他方法构造
 最后写入 credential Header。Gateway 不保存、解密或刷新 provider credential；public path 的
 Authorization、Cookie、Origin、Host、abort 与 NDJSON streaming 继续透明转发。
 
-每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Observer/Collector 的权威观测路径。
+每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。用户点击 New conversation 时，Web 必须先完成 canonical session reset，再清空本地对话；离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Observer/Collector 的权威观测路径。
 
 平台记录该 Session 的来源：
 
@@ -750,7 +750,7 @@ http://<deploymentKey>--<projectSlug>.agent.localhost:4080
 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个
 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
-底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 的主操作 `Sync, deploy & promote` 在新 Deployment 通过健康检查并创建 preview route 后，显式 promote 该次任务创建的确切 Deployment；次操作 `Sync & create preview` 保留底层默认行为。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 与 continuationToken 后持久化 `SessionBinding`。continuation、cancel、stream、带 token 的 create/resume 与 Eve 0.27.4+ session reset 即使在 promote、rollback 或 weight 归零后仍回到原 Deployment；reset 成功后必须释放旧 token 绑定，让下一次新建 Session 重新按当前 route policy 选择 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target 和非终态 SessionBinding 都受 retention protection。Worker 周期性扫描不受保护且已经 `stopped` 的旧 Deployment，幂等排入 archive job；archive 按 Deployment 保存的 `runtimeKind` 删除 runtime artifact 和对应的 build directory。构建或启动在 Deployment 落库前失败时也必须删除已准备的 build directory 和已创建的 runtime artifact，不能留下数据库无法寻址的 Release。
+底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 的主操作 `Sync, deploy & promote` 在新 Deployment 通过健康检查并创建 preview route 后，显式 promote 该次任务创建的确切 Deployment；次操作 `Sync & create preview` 保留底层默认行为。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；Eve 返回 sessionId 与 continuationToken 后持久化 `SessionBinding`。continuation、cancel、stream、带 token 的 create/resume 与 Eve 0.27.4+ session reset 在 binding 未过期时，即使 promote、rollback 或 weight 归零也仍回到原 Deployment；每次成功使用前刷新 binding 的 `updatedAt`。Playground binding 默认 idle 24 小时过期，公开 API binding 默认 idle 7 天过期；已知但过期的 binding 必须返回 `410` 与稳定的 `session_expired` code，不能重跑路由权重或落到另一 Deployment。reset 成功后必须释放旧 token 绑定，让下一次新建 Session 重新按当前 route policy 选择 Deployment。Deployment 生命周期为 running、draining、stopped、archived；最近三个 artifact、可变 route target、未过期 SessionBinding 和活跃 ActivationLease 都受 retention protection。Worker 周期性扫描不受保护且已经 `stopped` 的旧 Deployment，幂等排入 archive job；archive 按 Deployment 保存的 `runtimeKind` 删除 runtime artifact 和对应的 build directory。构建或启动在 Deployment 落库前失败时也必须删除已准备的 build directory 和已创建的 runtime artifact，不能留下数据库无法寻址的 Release。
 
 cron、public request、turn 和 stream 在访问进程前获取有期限的 ActivationLease。同一
 dormant Deployment 的并发唤醒只允许一个 starter；API 只持久化/等待状态，不获得

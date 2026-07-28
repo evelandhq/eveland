@@ -108,10 +108,14 @@ describe("configuration diagnostics", () => {
       expect.objectContaining({ name: "EVELAND_ACTIVATION_LEASE_TTL_MS", value: "180000" }),
       expect.objectContaining({ name: "EVELAND_COLD_START_TIMEOUT_MS", value: "30000" }),
       expect.objectContaining({ name: "EVELAND_SOURCE_PREFLIGHT_TTL_MS", value: "3600000" }),
+      expect.objectContaining({ name: "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS", value: "86400000" }),
+      expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "604800000" }),
     ]));
     expect(gateway.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "EVELAND_API_INTERNAL_URL" }),
       expect.objectContaining({ name: "EVELAND_ACTIVATION_RENEW_INTERVAL_MS", value: "60000" }),
+      expect.objectContaining({ name: "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS", value: "86400000" }),
+      expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "604800000" }),
     ]));
     expect(worker.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "EVELAND_SCHEDULER_PREWARM_MS", value: "60000" }),
@@ -122,6 +126,8 @@ describe("configuration diagnostics", () => {
       expect.objectContaining({ name: "EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE", value: "100" }),
       expect.objectContaining({ name: "EVELAND_RELEASE_SWEEP_INTERVAL_MS", value: "3600000" }),
       expect.objectContaining({ name: "EVELAND_RELEASE_SWEEP_BATCH_SIZE", value: "25" }),
+      expect.objectContaining({ name: "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS", value: "86400000" }),
+      expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "604800000" }),
     ]));
   });
 });

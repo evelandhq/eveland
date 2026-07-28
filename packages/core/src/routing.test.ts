@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { affinityBucket, affinityBucketForRoute, selectWeightedTarget, validateRouteTargets, isDeploymentProtected } from "./routing.js";
+import * as Routing from "./routing.js";
 
 describe("route policy", () => {
   test("uses a deterministic 10,000 bucket and honors 90/10 then 50/50 weights", () => {
@@ -43,5 +44,29 @@ describe("route policy", () => {
     expect(isDeploymentProtected({ deploymentId: "dep_b", routeTargetIds: new Set(), activeBindingIds: new Set(["dep_b"]), retainedIds: new Set() })).toBe(true);
     expect(isDeploymentProtected({ deploymentId: "dep_c", routeTargetIds: new Set(), activeBindingIds: new Set(), retainedIds: new Set(["dep_c"]) })).toBe(true);
     expect(isDeploymentProtected({ deploymentId: "dep_old", routeTargetIds: new Set(), activeBindingIds: new Set(), retainedIds: new Set() })).toBe(false);
+  });
+
+  test("uses trigger-specific idle windows to decide whether a SessionBinding is active", () => {
+    const isSessionBindingActive = (Routing as Record<string, unknown>).isSessionBindingActive;
+    expect(isSessionBindingActive).toBeTypeOf("function");
+    if (typeof isSessionBindingActive !== "function") return;
+
+    const now = new Date("2026-07-28T12:00:00.000Z");
+    const policy = {
+      playgroundIdleTtlMs: 86_400_000,
+      apiIdleTtlMs: 604_800_000,
+    };
+    expect(isSessionBindingActive({
+      trigger: "playground",
+      updatedAt: "2026-07-27T12:00:00.001Z",
+    }, now, policy)).toBe(true);
+    expect(isSessionBindingActive({
+      trigger: "playground",
+      updatedAt: "2026-07-27T12:00:00.000Z",
+    }, now, policy)).toBe(false);
+    expect(isSessionBindingActive({
+      trigger: "api",
+      updatedAt: "2026-07-22T12:00:00.000Z",
+    }, now, policy)).toBe(true);
   });
 });

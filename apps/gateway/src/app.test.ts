@@ -128,6 +128,7 @@ describe("Gateway", () => {
       allowedBaseDomains: ["agent.localhost"],
       affinitySecret,
       activationClient,
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
     });
 
     for (const request of [
@@ -296,6 +297,7 @@ describe("Gateway", () => {
       allowedBaseDomains: ["agent.localhost"],
       affinitySecret,
       activationClient,
+      now: () => new Date("2026-07-16T00:00:00.000Z"),
     });
 
     const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_stopped_bound", {

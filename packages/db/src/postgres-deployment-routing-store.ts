@@ -1,12 +1,24 @@
 import type { DeploymentStatus } from "@eveland/core/contracts";
 import { claimDeploymentKey, createId } from "@eveland/core/ids";
-import { validateRouteTargets } from "@eveland/core/routing";
+import {
+  isSessionBindingActive,
+  validateRouteTargets,
+} from "@eveland/core/routing";
 import { getNextRunAt } from "@eveland/core/schedules";
 import {
   createEveVersionInfo,
   readDeclaredEveVersion,
 } from "@eveland/core/source";
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  ne,
+  sql,
+} from "drizzle-orm";
 import {
   agentRouteRowToAgentRoute,
   deploymentRowToDeployment,
@@ -15,6 +27,7 @@ import {
 } from "./mappers.js";
 import {
   agentRoutes,
+  activationLeases,
   deployments,
   projectSchedulerTargets,
   projectSchedules,
@@ -529,7 +542,8 @@ export function createPostgresDeploymentRoutingStore({
       return (await this.findRouteByHostname(hostname))!;
     },
 
-    async getDeploymentRetention(projectId, keepRecent = 3) {
+    async getDeploymentRetention(projectId, keepRecent = 3, options = {}) {
+      const now = options.now ?? new Date();
       const deploymentList = await this.listDeployments(projectId);
       const routes = await this.listProjectRoutes(projectId);
       const targeted = new Set(
@@ -543,6 +557,7 @@ export function createPostgresDeploymentRoutingStore({
         .select()
         .from(sessionBindings)
         .where(eq(sessionBindings.projectId, projectId));
+      const bindings = bindingRows.map(sessionBindingRowToSessionBinding);
       const sessionRows = await db
         .select()
         .from(sessions)
@@ -556,21 +571,46 @@ export function createPostgresDeploymentRoutingStore({
           ]),
       );
       const active = new Set(
-        bindingRows
+        bindings
           .filter(
-            (binding) => terminalByEveId.get(binding.eveSessionId) !== true,
+            (binding) =>
+              terminalByEveId.get(binding.eveSessionId) !== true &&
+              isSessionBindingActive(binding, now, options),
           )
           .map((binding) => binding.deploymentId),
+      );
+      const activeLeaseRows =
+        deploymentList.length === 0
+          ? []
+          : await db
+              .select({ deploymentId: activationLeases.deploymentId })
+              .from(activationLeases)
+              .where(
+                and(
+                  inArray(
+                    activationLeases.deploymentId,
+                    deploymentList.map((deployment) => deployment.id),
+                  ),
+                  isNull(activationLeases.releasedAt),
+                  gt(activationLeases.expiresAt, now),
+                ),
+              );
+      const activeRequests = new Set(
+        activeLeaseRows.map((lease) => lease.deploymentId),
       );
       const recent = new Set(
         deploymentList.slice(0, keepRecent).map((deployment) => deployment.id),
       );
       return deploymentList.map((deployment) => {
         const reasons: Array<
-          "route_target" | "active_session" | "recent_artifact"
+          | "route_target"
+          | "active_session"
+          | "active_request"
+          | "recent_artifact"
         > = [];
         if (targeted.has(deployment.id)) reasons.push("route_target");
         if (active.has(deployment.id)) reasons.push("active_session");
+        if (activeRequests.has(deployment.id)) reasons.push("active_request");
         if (recent.has(deployment.id)) reasons.push("recent_artifact");
         return { deployment, protected: reasons.length > 0, reasons };
       });
@@ -656,12 +696,13 @@ export function createPostgresDeploymentRoutingStore({
       projectId,
       eveSessionId,
       continuationToken,
+      now = new Date(),
     ) {
       return db.transaction(async (tx) => {
         if (continuationToken !== null) {
           await tx
             .update(sessionBindings)
-            .set({ continuationToken: null, updatedAt: new Date() })
+            .set({ continuationToken: null, updatedAt: now })
             .where(
               and(
                 eq(sessionBindings.projectId, projectId),
@@ -672,7 +713,7 @@ export function createPostgresDeploymentRoutingStore({
         }
         const [binding] = await tx
           .update(sessionBindings)
-          .set({ continuationToken, updatedAt: new Date() })
+          .set({ continuationToken, updatedAt: now })
           .where(
             and(
               eq(sessionBindings.projectId, projectId),
@@ -692,6 +733,20 @@ export function createPostgresDeploymentRoutingStore({
           );
         return sessionBindingRowToSessionBinding(binding);
       });
+    },
+
+    async touchSessionBinding(projectId, eveSessionId, now = new Date()) {
+      const [binding] = await db
+        .update(sessionBindings)
+        .set({ updatedAt: now })
+        .where(
+          and(
+            eq(sessionBindings.projectId, projectId),
+            eq(sessionBindings.eveSessionId, eveSessionId),
+          ),
+        )
+        .returning();
+      return binding ? sessionBindingRowToSessionBinding(binding) : null;
     },
   };
 }

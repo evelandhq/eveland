@@ -160,6 +160,12 @@ const sweepReleases = () => {
   sweepReleaseRetention(storeFactory.store, {
     keepRecent: Number(process.env.EVELAND_RELEASE_RETENTION ?? 3),
     limit: Number(process.env.EVELAND_RELEASE_SWEEP_BATCH_SIZE ?? 25),
+    playgroundIdleTtlMs: Number(
+      process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000,
+    ),
+    apiIdleTtlMs: Number(
+      process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000,
+    ),
   }).catch((error: unknown) =>
     console.error(
       "Release retention sweep failed:",

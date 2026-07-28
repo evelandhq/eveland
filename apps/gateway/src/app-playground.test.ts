@@ -173,6 +173,62 @@ describe("Gateway", () => {
     );
   });
 
+  test("returns 410 instead of waking an expired Playground SessionBinding", async () => {
+    const repo = repository([route({ deploymentStatus: "stopped" })]);
+    repo.bindings.push({
+      id: "bind_expired_playground",
+      projectId: "proj_1",
+      eveSessionId: "eve_expired_playground",
+      continuationToken: "continue_expired_playground",
+      routeId: "route_project",
+      deploymentId: "dep_1",
+      trigger: "playground",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_expired_playground",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-07-27T11:59:59.000Z",
+      updatedAt: "2026-07-27T11:59:59.000Z",
+    });
+    const activationClient = {
+      activate: vi.fn(async () => ({
+        leaseId: "lease_expired_playground",
+        endpointPort: 41999,
+      })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+      activationClient,
+      now: () => new Date("2026-07-28T12:00:00.000Z"),
+      playgroundSessionIdleTtlMs: 86_400_000,
+    });
+
+    const response = await app.request(
+      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_expired_playground",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer service-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ message: "too late" }),
+      },
+    );
+
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toEqual({
+      error: "Session expired",
+      code: "session_expired",
+    });
+    expect(activationClient.activate).not.toHaveBeenCalled();
+  });
+
   test("proxies the canonical Eve Playground protocol with streaming, attachments, and pinned continuations", async () => {
     const requests: Array<{
       method: string;
