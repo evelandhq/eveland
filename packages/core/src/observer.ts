@@ -6,6 +6,7 @@ export const observerEnvelopeV1Schema = z.object({
   observerEventId: z.string().min(1),
   eventFingerprint: z.string().min(1),
   deploymentId: z.string().min(1),
+  runtimeInstanceId: z.string().min(1).nullable().optional(),
   eveSessionId: z.string().min(1),
   parentEveSessionId: z.string().min(1).nullable(),
   sourceSequence: z.number().int().nonnegative(),

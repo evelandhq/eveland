@@ -14,6 +14,7 @@ export type ProcessJobOptions = {
   schedulerDispatchSecret?: string;
   schedulerRuntimeSecret?: string;
   schedulerRedeemUrl?: string;
+  scheduleRunMaxRuntimeMs?: number;
   identityIssuer?: string;
   identityJwksUrl?: string;
   jobHeartbeatIntervalMs?: number;

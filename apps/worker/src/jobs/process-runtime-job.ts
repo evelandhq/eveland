@@ -465,6 +465,7 @@ export async function processRuntimeJob(
         ? await store.getScheduleRun(scheduleRunId)
         : null;
       let activationLeaseId: string | null = null;
+      let activationLeaseHandedOff = false;
       const startedAtMs = Date.now();
       let failurePhase = "ScheduleRun validation";
       try {
@@ -553,6 +554,7 @@ export async function processRuntimeJob(
         );
         await mkdir(sandboxCache.workerDir, { recursive: true });
         await mkdir(observerOutbox.workerDir, { recursive: true });
+        const maxRuntimeMs = scheduleRunMaxRuntimeMs(options);
         failurePhase = "Deployment activation";
         await store.appendLog({
           projectId: job.projectId,
@@ -588,6 +590,7 @@ export async function processRuntimeJob(
             readyTimeoutMs: Number(
               process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000,
             ),
+            leaseTtlMs: maxRuntimeMs,
           },
         );
         activationLeaseId = activation.lease.id;
@@ -618,32 +621,54 @@ export async function processRuntimeJob(
           credential,
           runtimeSecret,
         });
-        const reported = await store.getScheduleRun(run.id);
+        let reported = await store.getScheduleRun(run.id);
         if (reported?.status === "dispatching") {
-          await store.completeScheduleRun(run.id, {
+          reported = await store.completeScheduleRun(run.id, {
             status: "succeeded",
             eveSessionIds: result.sessionIds,
           });
         } else if (
           !reported ||
-          (reported.status !== "succeeded" && reported.status !== "failed")
+          !["running", "succeeded", "failed"].includes(reported.status)
         ) {
           throw new Error(
             "Scheduler Channel returned without a durable dispatch result.",
           );
         }
+        if (reported?.status === "running") {
+          const renewed = await store.renewActivationLease(
+            activationLeaseId,
+            new Date(Date.now() + maxRuntimeMs),
+          );
+          if (!renewed)
+            throw new Error("ScheduleRun activation lease could not be extended.");
+          activationLeaseHandedOff = true;
+        }
         await store.appendLog({
           projectId: job.projectId,
           deploymentId: deployment.id,
           type: "runtime",
-          line: `ScheduleRun ${run.id} succeeded for ${schedule.key} with ${result.sessionIds.length} ${result.sessionIds.length === 1 ? "Session" : "Sessions"} after ${Date.now() - startedAtMs}ms.`,
+          line: `ScheduleRun ${run.id} ${activationLeaseHandedOff ? "started" : "succeeded for"} ${schedule.key} with ${result.sessionIds.length} ${result.sessionIds.length === 1 ? "Session" : "Sessions"} after ${Date.now() - startedAtMs}ms.`,
         });
       } catch (error) {
         const rawMessage = errorMessage(error);
         const message = `${failurePhase} failed: ${rawMessage}`;
+        let durableExecutionContinues = false;
         if (run) {
           const current = await store.getScheduleRun(run.id);
           if (
+            current?.status === "running" &&
+            activationLeaseId
+          ) {
+            const renewed = await store.renewActivationLease(
+              activationLeaseId,
+              new Date(Date.now() + scheduleRunMaxRuntimeMs(options)),
+            );
+            if (renewed) {
+              activationLeaseHandedOff = true;
+              durableExecutionContinues = true;
+            }
+          } else if (
             current &&
             !["succeeded", "failed", "dispatch_unknown", "skipped"].includes(
               current.status,
@@ -662,10 +687,12 @@ export async function processRuntimeJob(
           projectId: job.projectId,
           deploymentId: run?.deploymentId ?? null,
           type: "runtime",
-          line: `ScheduleRun ${scheduleRunId ?? "unknown"} failed during ${failurePhase} after ${Date.now() - startedAtMs}ms: ${rawMessage}`,
+          line: durableExecutionContinues
+            ? `ScheduleRun ${scheduleRunId ?? "unknown"} continued after its durable Session result was recorded but the Scheduler Channel response failed after ${Date.now() - startedAtMs}ms: ${rawMessage}`
+            : `ScheduleRun ${scheduleRunId ?? "unknown"} failed during ${failurePhase} after ${Date.now() - startedAtMs}ms: ${rawMessage}`,
         });
       } finally {
-        if (activationLeaseId)
+        if (activationLeaseId && !activationLeaseHandedOff)
           await store.releaseActivationLease(activationLeaseId);
       }
       return;
@@ -673,4 +700,16 @@ export async function processRuntimeJob(
     default:
       throw new Error(`Unsupported runtime job type: ${job.type}`);
   }
+}
+
+function scheduleRunMaxRuntimeMs(options: ProcessJobOptions): number {
+  const value =
+    options.scheduleRunMaxRuntimeMs ??
+    Number(process.env.EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS ?? 86_400_000);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(
+      "EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS must be a positive integer.",
+    );
+  }
+  return value;
 }

@@ -76,8 +76,10 @@ describe("injectObserverHooks", () => {
     const observerPath = path.join(releaseDir, result.injectedFiles[0]!);
     const originalOutbox = process.env.EVELAND_OBSERVER_OUTBOX_DIR;
     const originalDeployment = process.env.EVELAND_DEPLOYMENT_ID;
+    const originalRuntimeInstance = process.env.EVELAND_RUNTIME_INSTANCE_ID;
     process.env.EVELAND_OBSERVER_OUTBOX_DIR = outboxDir;
     process.env.EVELAND_DEPLOYMENT_ID = "dep_1";
+    process.env.EVELAND_RUNTIME_INSTANCE_ID = "rti_1";
 
     try {
       const observer = (await import(`${observerPath}?cancelled=${Date.now()}`)) as {
@@ -95,9 +97,11 @@ describe("injectObserverHooks", () => {
           .map(async (file) => JSON.parse(await readFile(path.join(outboxDir, "sessions", sessionDirectories[0]!, file), "utf8"))),
       );
       expect(envelopes.map((envelope) => envelope.event.type)).toEqual(["turn.cancelled"]);
+      expect(envelopes[0]?.runtimeInstanceId).toBe("rti_1");
     } finally {
       restoreEnv("EVELAND_OBSERVER_OUTBOX_DIR", originalOutbox);
       restoreEnv("EVELAND_DEPLOYMENT_ID", originalDeployment);
+      restoreEnv("EVELAND_RUNTIME_INSTANCE_ID", originalRuntimeInstance);
     }
   });
 

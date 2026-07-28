@@ -1,4 +1,4 @@
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { createId } from "@eveland/core/ids";
 import { parseStepUsageEvent } from "@eveland/core/eve";
 import {
@@ -13,9 +13,13 @@ import {
   sessionRowToSession,
 } from "./mappers.js";
 import {
+  activationLeases,
   deployments,
   modelUsageEvents,
   projects,
+  runtimeInstances,
+  scheduleRunSessions,
+  scheduleRuns,
   sessionBindings,
   sessionEvents,
   sessionNodes,
@@ -37,6 +41,24 @@ export async function ingestPostgresObserverEnvelope(
       throw new ObserverEnvelopeRejectedError(
         `Observer deployment ${envelope.deploymentId} is not managed by Eveland.`,
       );
+    }
+    const runtimeInstanceId = envelope.runtimeInstanceId ?? null;
+    if (runtimeInstanceId) {
+      const [runtimeInstance] = await tx
+        .select({ id: runtimeInstances.id })
+        .from(runtimeInstances)
+        .where(
+          and(
+            eq(runtimeInstances.id, runtimeInstanceId),
+            eq(runtimeInstances.deploymentId, envelope.deploymentId),
+          ),
+        )
+        .limit(1);
+      if (!runtimeInstance) {
+        throw new ObserverEnvelopeRejectedError(
+          `Observer RuntimeInstance ${runtimeInstanceId} does not belong to Deployment ${envelope.deploymentId}.`,
+        );
+      }
     }
     const [binding] = await tx
       .select()
@@ -66,6 +88,8 @@ export async function ingestPostgresObserverEnvelope(
         .update(sessionNodes)
         .set({
           lastObservedDeploymentId: envelope.deploymentId,
+          lastObservedRuntimeInstanceId:
+            runtimeInstanceId ?? node.lastObservedRuntimeInstanceId,
           agentName: envelope.agent.name ?? node.agentName,
           nodeId: envelope.agent.nodeId ?? node.nodeId,
           channelKind: envelope.channelKind ?? node.channelKind,
@@ -166,6 +190,8 @@ export async function ingestPostgresObserverEnvelope(
             parentEveSessionId: null,
             startedDeploymentId: envelope.deploymentId,
             lastObservedDeploymentId: envelope.deploymentId,
+            startedRuntimeInstanceId: runtimeInstanceId,
+            lastObservedRuntimeInstanceId: runtimeInstanceId,
             resolutionStatus: "unresolved",
             status: "running",
           })
@@ -232,6 +258,8 @@ export async function ingestPostgresObserverEnvelope(
           parentEveSessionId: envelope.parentEveSessionId,
           startedDeploymentId: envelope.deploymentId,
           lastObservedDeploymentId: envelope.deploymentId,
+          startedRuntimeInstanceId: runtimeInstanceId,
+          lastObservedRuntimeInstanceId: runtimeInstanceId,
           agentId: envelope.agent.id,
           agentName: envelope.agent.name,
           nodeId: envelope.agent.nodeId,
@@ -292,6 +320,7 @@ export async function ingestPostgresObserverEnvelope(
         observerEventId: envelope.observerEventId,
         eventFingerprint: envelope.eventFingerprint,
         observedDeploymentId: envelope.deploymentId,
+        observedRuntimeInstanceId: runtimeInstanceId,
         sourceSequence: envelope.sourceSequence,
         index: countRow?.count ?? 0,
         type,
@@ -306,7 +335,7 @@ export async function ingestPostgresObserverEnvelope(
       type === "session.started"
         ? recordValue(recordValue(payload)?.runtime)
         : null;
-    [node] = await tx
+    const [updatedNode] = await tx
       .update(sessionNodes)
       .set({
         status: projectedStatus ?? node.status,
@@ -319,9 +348,12 @@ export async function ingestPostgresObserverEnvelope(
       })
       .where(eq(sessionNodes.id, node.id))
       .returning();
+    if (!updatedNode)
+      throw new Error("Failed to update observer session node.");
+    node = updatedNode;
 
-    if (projectedStatus && node?.parentNodeId === null) {
-      [sessionRow] = await tx
+    if (projectedStatus && node.parentNodeId === null) {
+      const [updatedSession] = await tx
         .update(sessions)
         .set({
           status: projectedStatus,
@@ -332,10 +364,91 @@ export async function ingestPostgresObserverEnvelope(
         })
         .where(eq(sessions.id, sessionRow.id))
         .returning();
+      if (!updatedSession)
+        throw new Error("Failed to update observer session.");
+      sessionRow = updatedSession;
       await tx
         .update(projects)
         .set({ latestSessionStatus: projectedStatus, updatedAt: new Date() })
         .where(eq(projects.id, deployment.projectId));
+    }
+
+    if (sessionRow.scheduleRunId) {
+      const now = new Date();
+      const executionStatus =
+        node.parentNodeId === null
+          ? scheduleExecutionStatus(type, projectedStatus)
+          : null;
+      await tx
+        .update(scheduleRunSessions)
+        .set({
+          lastObservedAt: now,
+          ...(executionStatus
+            ? {
+                status: executionStatus,
+                completedAt: now,
+                error:
+                  executionStatus === "failed"
+                    ? scheduleExecutionError(type, payload)
+                    : null,
+              }
+            : {}),
+        })
+        .where(
+          and(
+            eq(scheduleRunSessions.scheduleRunId, sessionRow.scheduleRunId),
+            eq(scheduleRunSessions.sessionId, sessionRow.id),
+            ...(executionStatus
+              ? [eq(scheduleRunSessions.status, "running")]
+              : []),
+          ),
+        );
+      if (executionStatus) {
+        const executions = await tx
+          .select({
+            status: scheduleRunSessions.status,
+            error: scheduleRunSessions.error,
+          })
+          .from(scheduleRunSessions)
+          .where(
+            eq(
+              scheduleRunSessions.scheduleRunId,
+              sessionRow.scheduleRunId,
+            ),
+          );
+        if (
+          executions.length > 0 &&
+          executions.every((execution) => execution.status !== "running")
+        ) {
+          const failure = executions.find(
+            (execution) => execution.status === "failed",
+          );
+          await tx
+            .update(scheduleRuns)
+            .set({
+              status: failure ? "failed" : "succeeded",
+              error: failure?.error ?? null,
+              completedAt: now,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(scheduleRuns.id, sessionRow.scheduleRunId),
+                eq(scheduleRuns.status, "running"),
+              ),
+            );
+          await tx
+            .update(activationLeases)
+            .set({ releasedAt: now })
+            .where(
+              and(
+                eq(activationLeases.kind, "schedule_run"),
+                eq(activationLeases.ownerId, sessionRow.scheduleRunId),
+                isNull(activationLeases.releasedAt),
+              ),
+            );
+        }
+      }
     }
 
     if (type === "subagent.called") {
@@ -504,6 +617,30 @@ function observerStatus(type: string, current: string): SessionStatus | null {
   if (type === "session.completed") return "completed";
   if (type === "session.failed") return "failed";
   return null;
+}
+
+function scheduleExecutionStatus(
+  type: string,
+  projectedStatus: SessionStatus | null,
+): "succeeded" | "failed" | "parked" | null {
+  if (type === "turn.completed" || type === "session.completed")
+    return "succeeded";
+  if (
+    type === "turn.failed" ||
+    type === "turn.cancelled" ||
+    type === "session.failed"
+  )
+    return "failed";
+  if (type === "session.waiting")
+    return projectedStatus === "waiting_approval" ? "parked" : "succeeded";
+  return null;
+}
+
+function scheduleExecutionError(type: string, payload: unknown): string {
+  const message = stringValue(recordValue(payload)?.message);
+  return message
+    ? `Scheduled Session ${type}: ${message}`
+    : `Scheduled Session ended with ${type}.`;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

@@ -502,6 +502,7 @@ export function sessionEventRowToSessionEvent(row: {
   observerEventId: string | null;
   eventFingerprint: string | null;
   observedDeploymentId: string | null;
+  observedRuntimeInstanceId: string | null;
   sourceSequence: number | null;
   eventAt: Date;
   createdAt: Date;
@@ -516,6 +517,7 @@ export function sessionEventRowToSessionEvent(row: {
     observerEventId: row.observerEventId,
     eventFingerprint: row.eventFingerprint,
     observedDeploymentId: row.observedDeploymentId,
+    observedRuntimeInstanceId: row.observedRuntimeInstanceId,
     sourceSequence: row.sourceSequence,
     eventAt: timestampToIso(row.eventAt),
     createdAt: timestampToIso(row.createdAt),
@@ -531,6 +533,8 @@ export function sessionNodeRowToSessionNode(row: {
   parentEveSessionId: string | null;
   startedDeploymentId: string;
   lastObservedDeploymentId: string;
+  startedRuntimeInstanceId: string | null;
+  lastObservedRuntimeInstanceId: string | null;
   agentId: string | null;
   agentName: string | null;
   nodeId: string | null;

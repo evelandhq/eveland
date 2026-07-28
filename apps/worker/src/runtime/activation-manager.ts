@@ -104,7 +104,13 @@ export async function startRuntimeInstance(
   if (current.status !== "starting") throw new Error(`RuntimeInstance cannot start from ${current.status}.`);
   try {
     const start = input.runtime.ensureProcess?.bind(input.runtime) ?? input.runtime.startProcess.bind(input.runtime);
-    await start(input.startInput);
+    await start({
+      ...input.startInput,
+      env: {
+        ...input.startInput.env,
+        EVELAND_RUNTIME_INSTANCE_ID: runtimeInstanceId,
+      },
+    });
     await (options.waitForHealth ?? waitForHttpHealth)({
       host: "127.0.0.1",
       port: input.deployment.hostPort,
@@ -170,8 +176,28 @@ export async function reconcileRuntimeInstances(
   } = {},
 ): Promise<number> {
   const now = input.now ?? new Date();
-  const instances = await store.listRuntimeInstances(["ready"], input.limit ?? 100);
-  let reconciled = 0;
+  const limit = input.limit ?? 100;
+  const interruptedInstances = await store.listRuntimeInstances(
+    ["stopped", "failed"],
+    limit,
+  );
+  let reconciled = await store.failExpiredScheduleExecutions(now, limit);
+  for (const instance of interruptedInstances) {
+    const reason = `RuntimeInstance ${instance.id} ${instance.status} before its active Sessions reached a terminal boundary.`;
+    const failedExecutions =
+      await store.failScheduleExecutionsForRuntimeInstance(
+        instance.id,
+        reason,
+        now,
+      );
+    const failedSessions = await store.failRunningSessionsForRuntimeInstance(
+      instance.id,
+      reason,
+      now,
+    );
+    if (failedExecutions > 0 || failedSessions > 0) reconciled += 1;
+  }
+  const instances = await store.listRuntimeInstances(["ready"], limit);
   for (const instance of instances) {
     const deployment = await store.getDeployment(instance.deploymentId);
     if (!deployment) {
@@ -189,6 +215,17 @@ export async function reconcileRuntimeInstances(
       error: failed ? "Runtime process inspection reported failure." : null,
     }, now);
     await store.updateDeploymentStatus(deployment.id, failed ? "failed" : "stopped");
+    const reason = `RuntimeInstance ${instance.id} ${failed ? "failed" : "stopped"} before its active Sessions reached a terminal boundary.`;
+    await store.failScheduleExecutionsForRuntimeInstance(
+      instance.id,
+      reason,
+      now,
+    );
+    await store.failRunningSessionsForRuntimeInstance(
+      instance.id,
+      reason,
+      now,
+    );
     reconciled += 1;
   }
   return reconciled;
