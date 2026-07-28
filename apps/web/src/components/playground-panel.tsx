@@ -61,7 +61,7 @@ import {
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import {
   PLAYGROUND_ATTACHMENT_ACCEPT,
@@ -69,7 +69,12 @@ import {
   PLAYGROUND_MAX_FILES,
   PLAYGROUND_MAX_TOTAL_FILE_BYTES,
 } from "@eveland/core/eve";
-import { cancelPlaygroundTurn, createPlaygroundMessage } from "@/lib/client-api";
+import {
+  cancelPlaygroundTurn,
+  createPlaygroundMessage,
+  resetPlaygroundConversation,
+  resetPlaygroundOnPageLeave,
+} from "@/lib/client-api";
 import type { EveVersionInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AgentConnectionSettings } from "@/components/agent-connection-settings";
@@ -100,7 +105,9 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
       }).session(),
   );
   const pendingRouteAuthTurn = useRef<PendingPlaygroundMessage | null>(null);
+  const leaveResetSent = useRef(false);
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
   const resumedPendingTurn = useRef(false);
   const agent = useEveAgent({
     session,
@@ -143,12 +150,56 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
     });
   }, [projectId]);
 
+  useEffect(() => {
+    const resetOnLeave = () => {
+      if (leaveResetSent.current) return;
+      leaveResetSent.current = resetPlaygroundOnPageLeave({
+        projectId,
+        sessionState: session.state,
+      });
+    };
+    const handlePageHide = (event: PageTransitionEvent) => {
+      if (!event.persisted) resetOnLeave();
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      resetOnLeave();
+    };
+  }, [projectId, session]);
+
   return (
     <div className="flex h-[calc(100svh-8.5rem)] min-h-[36rem] flex-col overflow-hidden">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-1 pt-3 text-xs text-muted-foreground sm:px-6">
         <span>Eve Agent</span>
         <EveVersionStatus eveVersion={eveVersion} showMessage={false} />
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            disabled={
+              isBusy ||
+              isResetting ||
+              agent.data.messages.length === 0
+            }
+            onClick={async () => {
+              setComposerError(null);
+              setIsResetting(true);
+              try {
+                await resetPlaygroundConversation({
+                  session,
+                  clear: agent.reset,
+                });
+                leaveResetSent.current = false;
+              } catch (resetError) {
+                setComposerError(toErrorMessage(resetError));
+              } finally {
+                setIsResetting(false);
+              }
+            }}
+            size="sm"
+            variant="outline"
+          >
+            New conversation
+          </Button>
           <AgentConnectionSettings projectId={projectId} />
         </div>
       </div>

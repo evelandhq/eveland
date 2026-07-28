@@ -690,6 +690,72 @@ describe("api app", () => {
     });
   });
 
+  test("reports an expired Playground binding as eligible for archive", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Expired Retention Agent",
+      importKind: "zip",
+    });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/expired-retention",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployments = [];
+    for (let index = 0; index < 4; index += 1) {
+      deployments.push(await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `expired-retention-${index}`,
+        containerName: `expired-retention-${index}`,
+        internalPort: 3000,
+        hostPort: 41210 + index,
+        runtimeKind: "docker",
+      }));
+    }
+    const [stableRoute] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployments[3]!.id,
+      "agent.localhost",
+    );
+    await store.bindSession({
+      projectId: project.id,
+      eveSessionId: "eve_expired_retention",
+      continuationToken: "continue_expired_retention",
+      routeId: stableRoute!.id,
+      deploymentId: deployments[0]!.id,
+      trigger: "playground",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_expired_retention",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+    });
+    const app = createApp(store, {
+      sessionBindingNow: () => new Date("2026-07-30T12:00:00.000Z"),
+      playgroundSessionIdleTtlMs: 86_400_000,
+      apiSessionIdleTtlMs: 604_800_000,
+    });
+
+    const response = await app.request(`/projects/${project.id}/deployments`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      retention: expect.arrayContaining([
+        expect.objectContaining({
+          deployment: expect.objectContaining({ id: deployments[0]!.id }),
+          protected: false,
+          reasons: [],
+        }),
+      ]),
+    });
+  });
+
   test("groups experiment metrics by deployment, experiment, and variant", async () => {
     const store = createTestStore();
     const project = await store.createProject({

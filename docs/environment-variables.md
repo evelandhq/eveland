@@ -94,7 +94,9 @@ site.
 | `EVELAND_GIT_CLONE_MAX_ATTEMPTS` | Maximum attempts for transient DNS, connection, TLS, timeout, and HTTP 5xx clone failures. | `3` | worker (`source/importer.ts`) |
 | `EVELAND_GIT_CLONE_RETRY_DELAY_MS` | Initial Git retry delay; each subsequent retry doubles it. | `1000` | worker (`source/importer.ts`) |
 | `EVELAND_HEALTH_TIMEOUT_MS` | Timeout waiting for a freshly started deployment to pass its health check. On failure the worker captures masked, bounded runtime state and recent logs before cleanup. | `15000` | worker (`process.ts`) |
-| `EVELAND_RELEASE_RETENTION` | Minimum newest Deployments/releases retained per project by the automatic archive policy. Route targets and active SessionBindings remain protected independently of age. | `3` (minimum 3) | API + worker |
+| `EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS` | Idle time before a Playground SessionBinding stops protecting its Deployment. Keep the value identical across API, Gateway, and worker. | `86400000` (24 hours) | API + Gateway + worker |
+| `EVELAND_API_SESSION_IDLE_TTL_MS` | Idle time before a public API SessionBinding stops protecting its Deployment. Keep the value identical across API, Gateway, and worker. | `604800000` (7 days) | API + Gateway + worker |
+| `EVELAND_RELEASE_RETENTION` | Minimum newest Deployments/releases retained per project by the automatic archive policy. Route targets, non-expired SessionBindings, and active request leases remain protected independently of age. | `3` (minimum 3) | API + worker |
 | `EVELAND_RELEASE_SWEEP_INTERVAL_MS` | Interval between automatic scans that enqueue archive jobs for unprotected stopped Deployments. `0` disables the automatic sweep. | `3600000` (1 hour) | worker (`worker.ts`) |
 | `EVELAND_RELEASE_SWEEP_BATCH_SIZE` | Maximum new archive jobs enqueued by one automatic Release sweep. | `25` | worker (`runtime/release-reaper.ts`) |
 | `WORKER_ID` | Worker instance identity, used when claiming jobs. | — | `apps/worker/src/worker.ts` |

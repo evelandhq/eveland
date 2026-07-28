@@ -177,6 +177,104 @@ describe("Gateway", () => {
     );
   });
 
+  test("returns 410 instead of routing an expired public API SessionBinding", async () => {
+    const upstream = await startUpstream((_request, response) => {
+      response.end("should not be reached");
+    });
+    const repo = repository([route({ hostPort: upstream.port })]);
+    repo.bindings.push({
+      id: "bind_expired_api",
+      projectId: "proj_1",
+      eveSessionId: "eve_expired_api",
+      continuationToken: "continue_expired_api",
+      routeId: "route_project",
+      deploymentId: "dep_1",
+      trigger: "api",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_expired_api",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-07-20T12:00:00.000Z",
+      updatedAt: "2026-07-20T12:00:00.000Z",
+    });
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      now: () => new Date("2026-07-28T12:00:00.000Z"),
+      apiSessionIdleTtlMs: 604_800_000,
+    });
+
+    const response = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session/eve_expired_api",
+      {
+        method: "POST",
+        headers: { host: "p-alpha.agent.localhost" },
+      },
+    );
+
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toEqual({
+      error: "Session expired",
+      code: "session_expired",
+    });
+  });
+
+  test("refreshes a live binding before activating its continuation", async () => {
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(202, { "content-type": "application/json" });
+      response.end(JSON.stringify({ sessionId: "eve_live_api" }));
+    });
+    const repo = repository([
+      route({ hostPort: upstream.port, deploymentStatus: "stopped" }),
+    ]);
+    repo.bindings.push({
+      id: "bind_live_api",
+      projectId: "proj_1",
+      eveSessionId: "eve_live_api",
+      continuationToken: "continue_live_api",
+      routeId: "route_project",
+      deploymentId: "dep_1",
+      trigger: "api",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_live_api",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-07-28T10:00:00.000Z",
+      updatedAt: "2026-07-28T10:00:00.000Z",
+    });
+    const activationClient = {
+      activate: vi.fn(async () => ({
+        leaseId: "lease_live_api",
+        endpointPort: upstream.port,
+      })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const now = new Date("2026-07-28T12:00:00.000Z");
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+      now: () => now,
+    });
+
+    const response = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session/eve_live_api",
+      {
+        method: "POST",
+        headers: { host: "p-alpha.agent.localhost" },
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(repo.bindings[0]).toMatchObject({ updatedAt: now.toISOString() });
+    expect(activationClient.activate).toHaveBeenCalledOnce();
+  });
+
   test("keeps bindings pinned across 90/10 to 50/50 and weight-zero policy changes", async () => {
     let firstSequence = 0;
     const first = await startUpstream((_request, response) => {

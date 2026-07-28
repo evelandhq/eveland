@@ -37,4 +37,56 @@ describe("Playground message composition", () => {
     const serverFailure = Object.assign(new Error("Unavailable"), { status: 503 });
     await expect(cancelPlaygroundTurn({ cancel: vi.fn(async () => Promise.reject(serverFailure)) })).rejects.toBe(serverFailure);
   });
+
+  test("resets the durable Playground session before clearing the conversation", async () => {
+    const resetPlaygroundConversation = (ClientApi as Record<string, unknown>).resetPlaygroundConversation;
+    expect(resetPlaygroundConversation).toBeTypeOf("function");
+    if (typeof resetPlaygroundConversation !== "function") return;
+
+    const order: string[] = [];
+    await resetPlaygroundConversation({
+      session: { reset: vi.fn(async () => { order.push("server"); }) },
+      clear: () => { order.push("client"); },
+    });
+
+    expect(order).toEqual(["server", "client"]);
+    await expect(resetPlaygroundConversation({
+      session: { reset: vi.fn(async () => Promise.reject(new Error("reset failed"))) },
+      clear: vi.fn(),
+    })).rejects.toThrow("reset failed");
+  });
+
+  test("sends a keepalive reset when a started Playground leaves the page", async () => {
+    const resetPlaygroundOnPageLeave = (ClientApi as Record<string, unknown>).resetPlaygroundOnPageLeave;
+    expect(resetPlaygroundOnPageLeave).toBeTypeOf("function");
+    if (typeof resetPlaygroundOnPageLeave !== "function") return;
+
+    const fetcher = vi.fn(async () => new Response(null, { status: 202 }));
+    expect(resetPlaygroundOnPageLeave({
+      projectId: "proj_1",
+      sessionState: { streamIndex: 0 },
+      fetcher,
+    })).toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
+
+    expect(resetPlaygroundOnPageLeave({
+      projectId: "proj_1",
+      sessionState: {
+        sessionId: "eve_1",
+        continuationToken: "continue_1",
+        streamIndex: 3,
+      },
+      fetcher,
+    })).toBe(true);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/eveland/projects/proj_1/playground/eve/v1/session/reset",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ continuationToken: "continue_1" }),
+        credentials: "same-origin",
+        keepalive: true,
+      },
+    );
+  });
 });

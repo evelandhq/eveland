@@ -6,6 +6,11 @@ import {
   type AgentAuthEnvelope,
 } from "@eveland/core/agent-auth";
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
+import {
+  DEFAULT_API_SESSION_IDLE_TTL_MS,
+  DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
+  isSessionBindingActive,
+} from "@eveland/core/routing";
 import type { ResolvedAgentRoute } from "@eveland/core/contracts";
 import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
@@ -62,6 +67,21 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   const routeCache = new Map<string, { route: ResolvedAgentRoute | null; expiresAt: number }>();
   const routeCacheTtlMs = options.routeCacheTtlMs ?? 5_000;
   const maxRequestBodyBytes = options.maxRequestBodyBytes ?? 10_485_760;
+  const now = options.now ?? (() => new Date());
+  const sessionIdlePolicy = {
+    playgroundIdleTtlMs:
+      options.playgroundSessionIdleTtlMs ??
+      Number(
+        process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ??
+          DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
+      ),
+    apiIdleTtlMs:
+      options.apiSessionIdleTtlMs ??
+      Number(
+        process.env.EVELAND_API_SESSION_IDLE_TTL_MS ??
+          DEFAULT_API_SESSION_IDLE_TTL_MS,
+      ),
+  };
 
   app.get("/health", (context) => context.json({ ok: true, ...buildInfo }));
   app.get("/internal/diagnostics/config", (context) => {
@@ -139,6 +159,18 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
           )
         : null;
     if (pathSessionId && !binding) return context.json({ error: "Playground session not found" }, 404);
+    if (binding) {
+      const requestTime = now();
+      if (!isSessionBindingActive(binding, requestTime, sessionIdlePolicy)) {
+        return sessionExpiredResponse();
+      }
+      const touched = await repository.touchSessionBinding(
+        route.projectId,
+        binding.eveSessionId,
+        requestTime,
+      );
+      if (!touched) return sessionExpiredResponse();
+    }
     const activationOwnerId = crypto.randomUUID();
     const target = await resolveTarget(repository, route, binding, crypto.randomUUID(), Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
@@ -428,6 +460,18 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
             requestContinuationToken,
           )
         : null;
+    if (binding) {
+      const requestTime = now();
+      if (!isSessionBindingActive(binding, requestTime, sessionIdlePolicy)) {
+        return sessionExpiredResponse();
+      }
+      const touched = await repository.touchSessionBinding(
+        route.projectId,
+        binding.eveSessionId,
+        requestTime,
+      );
+      if (!touched) return sessionExpiredResponse();
+    }
     const target = await resolveTarget(repository, route, binding, affinity.key, Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
     if (isEveSessionRequest(context.req.method, requestUrl.pathname)) {
@@ -561,6 +605,13 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   });
 
   return app;
+}
+
+function sessionExpiredResponse(): Response {
+  return Response.json(
+    { error: "Session expired", code: "session_expired" },
+    { status: 410 },
+  );
 }
 
 async function unsupportedDeploymentResponse(

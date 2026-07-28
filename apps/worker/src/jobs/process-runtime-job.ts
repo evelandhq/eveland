@@ -223,6 +223,14 @@ export async function processRuntimeJob(
         Number.isFinite(configuredRetention)
           ? Math.max(3, Math.floor(configuredRetention))
           : 3,
+        {
+          playgroundIdleTtlMs: Number(
+            process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000,
+          ),
+          apiIdleTtlMs: Number(
+            process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000,
+          ),
+        },
       );
       const policy = retention.find(
         (entry) => entry.deployment.id === deployment.id,

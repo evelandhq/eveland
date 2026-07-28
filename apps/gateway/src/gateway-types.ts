@@ -22,6 +22,12 @@ export type GatewayRepository = {
     projectId: string,
     eveSessionId: string,
     continuationToken: string | null,
+    now?: Date,
+  ): Promise<SessionBinding | null>;
+  touchSessionBinding(
+    projectId: string,
+    eveSessionId: string,
+    now?: Date,
   ): Promise<SessionBinding | null>;
 };
 
@@ -45,4 +51,7 @@ export type GatewayAppOptions = {
   affinityCookieSecure?: boolean;
   activationClient?: GatewayActivationClient;
   activationRenewIntervalMs?: number;
+  playgroundSessionIdleTtlMs?: number;
+  apiSessionIdleTtlMs?: number;
+  now?: () => Date;
 };

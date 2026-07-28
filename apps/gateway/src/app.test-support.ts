@@ -142,12 +142,19 @@ export function repository(
       );
     },
     async bindSession(input) {
-      bindings.push(input);
+      const now = new Date().toISOString();
+      bindings.push({
+        id: `bind_${bindings.length + 1}`,
+        createdAt: now,
+        updatedAt: now,
+        ...input,
+      });
     },
     async setSessionBindingContinuationToken(
       projectId,
       eveSessionId,
       continuationToken,
+      now = new Date(),
     ) {
       const binding = bindings.find(
         (candidate) =>
@@ -156,6 +163,17 @@ export function repository(
       );
       if (!binding) return null;
       binding.continuationToken = continuationToken;
+      binding.updatedAt = now.toISOString();
+      return binding as never;
+    },
+    async touchSessionBinding(projectId, eveSessionId, now = new Date()) {
+      const binding = bindings.find(
+        (candidate) =>
+          candidate.projectId === projectId &&
+          candidate.eveSessionId === eveSessionId,
+      );
+      if (!binding) return null;
+      binding.updatedAt = now.toISOString();
       return binding as never;
     },
   };

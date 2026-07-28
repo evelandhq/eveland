@@ -1444,3 +1444,23 @@ schedule discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC he
 public type compatibility。Agent 项目需要刷新 lockfile 并重新部署才能确定取得 0.27.6。只有两端
 Deployment 都升级且接收端能精确识别可信 transport forwarder 时，才应启用 remote principal
 forwarding；不得使用 `trustedForwarders: () => true` 作为平台兼容手段。
+
+---
+
+## 32. 2026-07-28 follow-up：SessionBinding idle retention（#148）
+
+非终态 Session 不再无限期保护其 Deployment。平台按 `SessionBinding.updatedAt` 应用
+trigger-specific idle deadline：Playground 默认 24 小时，公开 API 默认 7 天；API、Gateway
+与 Worker 必须分别使用相同的 `EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS` 和
+`EVELAND_API_SESSION_IDLE_TTL_MS`。Gateway 在激活 pinned Deployment 前刷新仍然有效的
+binding；已知但过期的 session/token 返回 `410` 与 `session_expired`，不能重新执行 route
+weighting 或静默落到另一 Deployment。
+
+Retention 只把未过期 binding 计为 `active_session`，并新增 `active_request`，以活跃且未释放的
+ActivationLease 保护正在唤醒或处理请求的 Deployment。Worker 的周期 sweep、archive job 二次
+检查、API Deployment overview 与手动 Archive 使用同一时间和 TTL 规则；超过最近 N 个且无 route、
+binding 或 lease 保护的 stopped Deployment 会恢复进入正常 archive 流程。
+
+Playground 保持临时工具语义：显式 New conversation 先完成 canonical reset 再清空浏览器状态；
+route unmount 或非 bfcache `pagehide` 使用 same-origin keepalive request best-effort reset。页面退出
+不等待网络结果，因此服务端 TTL 仍是浏览器崩溃、断网或强制结束时的最终兜底。

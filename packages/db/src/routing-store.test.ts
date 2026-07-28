@@ -106,6 +106,135 @@ describe("routing repository", () => {
     expect(policy.find((entry) => entry.deployment.id === deployments[2]!.id)).toMatchObject({ protected: true, reasons: expect.arrayContaining(["route_target", "recent_artifact"]) });
   });
 
+  test("expires idle Playground bindings instead of protecting their deployments forever", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Idle Playground Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/idle-playground", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const deployments: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      deployments.push(await store.recordDeployment({
+        projectId: project.id, sourceRevisionId: revision.id, imageTag: `idle-v${index}`, containerName: `idle-v${index}`,
+        internalPort: 3000, hostPort: 41120 + index, runtimeKind: "docker",
+      }));
+    }
+    const session = await store.createSession({
+      projectId: project.id,
+      deploymentId: deployments[0]!.id,
+      trigger: "playground",
+      eveSessionId: "eve_idle_playground",
+    });
+    await store.completeSession(session.id, {
+      status: "waiting",
+      eveSessionId: "eve_idle_playground",
+      continuationToken: "continue_idle_playground",
+    });
+    const [projectRoute] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployments[3]!.id,
+      "agent.localhost",
+    );
+    await store.bindSession({
+      projectId: project.id,
+      eveSessionId: "eve_idle_playground",
+      continuationToken: "continue_idle_playground",
+      routeId: projectRoute!.id,
+      deploymentId: deployments[0]!.id,
+      trigger: "playground",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_idle_playground",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+    });
+
+    const policy = await store.getDeploymentRetention(project.id, 3, {
+      now: new Date("2026-07-30T00:00:00.000Z"),
+      playgroundIdleTtlMs: 86_400_000,
+      apiIdleTtlMs: 604_800_000,
+    });
+
+    expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({
+      protected: false,
+      reasons: [],
+    });
+  });
+
+  test("protects a stopped deployment while an activation lease is active", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Active Request Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/active-request", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const deployments: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const deployment = await store.recordDeployment({
+        projectId: project.id, sourceRevisionId: revision.id, imageTag: `active-v${index}`, containerName: `active-v${index}`,
+        internalPort: 3000, hostPort: 41130 + index, runtimeKind: "docker",
+      });
+      await store.updateDeploymentStatus(deployment.id, "stopped");
+      deployments.push(deployment);
+    }
+    const now = new Date("2026-07-28T12:00:00.000Z");
+    await store.acquireActivationLease({
+      deploymentId: deployments[0]!.id,
+      kind: "turn",
+      ownerId: "request_active",
+      expiresAt: new Date("2026-07-28T12:05:00.000Z"),
+      now,
+    });
+
+    const policy = await store.getDeploymentRetention(project.id, 3, { now });
+
+    expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({
+      protected: true,
+      reasons: expect.arrayContaining(["active_request"]),
+    });
+  });
+
+  test("refreshes SessionBinding activity without changing its continuation token", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Binding Touch Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/binding-touch", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "binding-touch", containerName: "binding-touch",
+      internalPort: 3000, hostPort: 41140, runtimeKind: "docker",
+    });
+    const [projectRoute] = await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
+    await store.bindSession({
+      projectId: project.id,
+      eveSessionId: "eve_binding_touch",
+      continuationToken: "continue_binding_touch",
+      routeId: projectRoute!.id,
+      deploymentId: deployment.id,
+      trigger: "api",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_binding_touch",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+    });
+    const touchedAt = new Date("2026-07-28T12:00:00.000Z");
+
+    await store.touchSessionBinding(
+      project.id,
+      "eve_binding_touch",
+      touchedAt,
+    );
+
+    await expect(
+      store.findSessionBinding(project.id, "eve_binding_touch"),
+    ).resolves.toMatchObject({
+      continuationToken: "continue_binding_touch",
+      updatedAt: touchedAt.toISOString(),
+    });
+  });
+
   test("assigns a semantic project slug and short deployment key and materializes stable/preview routes", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Gateway Agent", importKind: "zip" });

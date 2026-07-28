@@ -35,6 +35,9 @@ export type AppOptions = {
   runtimeActivationLeaseTtlMs?: number;
   runtimeActivationWaitTimeoutMs?: number;
   sourcePreflightTtlMs?: number;
+  playgroundSessionIdleTtlMs?: number;
+  apiSessionIdleTtlMs?: number;
+  sessionBindingNow?: () => Date;
   agentAuthProviders?: AgentAuthProviderRegistration[];
   oidcProtocol?: OidcProtocol;
   oidcVerifyAccessToken?: OidcAuthorizationCodeProviderOptions["verifyAccessToken"];

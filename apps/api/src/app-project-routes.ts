@@ -4,6 +4,10 @@ import {
   normalizeGitHttpHost,
 } from "@eveland/core/ids";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
+import {
+  DEFAULT_API_SESSION_IDLE_TTL_MS,
+  DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
+} from "@eveland/core/routing";
 import { ProjectSlugConflictError, type Store } from "@eveland/db";
 import type { MiddlewareHandler } from "hono";
 import type { ApiApp, AppOptions } from "./app-types.js";
@@ -43,6 +47,21 @@ export function registerProjectRoutes(input: {
 }): void {
   const { app, store, options, dataDir, appSecretKey, sourcePreflightTtlMs } =
     input;
+  const deploymentRetentionOptions = () => ({
+    now: options.sessionBindingNow?.() ?? new Date(),
+    playgroundIdleTtlMs:
+      options.playgroundSessionIdleTtlMs ??
+      Number(
+        process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ??
+          DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
+      ),
+    apiIdleTtlMs:
+      options.apiSessionIdleTtlMs ??
+      Number(
+        process.env.EVELAND_API_SESSION_IDLE_TTL_MS ??
+          DEFAULT_API_SESSION_IDLE_TTL_MS,
+      ),
+  });
   const rejectProjectMutationsWhileDeleting: MiddlewareHandler = async (
     c,
     next,
@@ -412,7 +431,11 @@ export function registerProjectRoutes(input: {
     const projectId = c.req.param("projectId");
     const [deployments, retention, routes] = await Promise.all([
       store.listDeployments(projectId),
-      store.getDeploymentRetention(projectId),
+      store.getDeploymentRetention(
+        projectId,
+        undefined,
+        deploymentRetentionOptions(),
+      ),
       store.listProjectRoutes(projectId),
     ]);
     return c.json({ deployments, retention, routes });
@@ -531,7 +554,13 @@ export function registerProjectRoutes(input: {
     async (c) => {
       const projectId = c.req.param("projectId");
       const deploymentId = c.req.param("deploymentId");
-      const policy = (await store.getDeploymentRetention(projectId)).find(
+      const policy = (
+        await store.getDeploymentRetention(
+          projectId,
+          undefined,
+          deploymentRetentionOptions(),
+        )
+      ).find(
         (entry) => entry.deployment.id === deploymentId,
       );
       if (!policy) return c.json({ error: "Deployment not found" }, 404);
