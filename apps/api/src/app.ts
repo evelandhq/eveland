@@ -40,6 +40,7 @@ import {
   registerPublicIdentityRoutes,
   registerSystemIdentityRoutes,
 } from "./app-identity-routes.js";
+import { registerAgentCatalogRoutes } from "./app-agent-catalog-routes.js";
 import { registerProjectRoutes } from "./app-project-routes.js";
 import { registerQueryRoutes } from "./app-query-routes.js";
 import { registerSecretRoutes } from "./app-secret-routes.js";
@@ -73,6 +74,8 @@ import {
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
 const identityBrowserCorsPaths = new Set([
+  "/agent-catalog",
+  "/identity/app-tokens",
   "/identity/session",
   "/identity/caller-tokens",
   "/identity/logout",
@@ -259,6 +262,11 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     runtimeActivationWaitTimeoutMs,
   });
   registerPublicIdentityRoutes(identityRouteContext, identityRouteServices);
+  registerAgentCatalogRoutes({
+    app,
+    store,
+    options,
+  });
 
   if (options.auth) {
     app.on(["GET", "POST"], "/api/auth/*", (c) => {

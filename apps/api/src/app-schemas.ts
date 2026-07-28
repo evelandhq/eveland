@@ -306,6 +306,10 @@ export const callerTokenRequestSchema = z.object({
   projectId: z.string().min(1),
 });
 
+export const identityAppTokenRequestSchema = z.object({
+  target: z.string().trim().min(1),
+});
+
 export const schedulerDispatchSchema = z.discriminatedUnion("phase", [
   z.object({
     phase: z.literal("claim"),

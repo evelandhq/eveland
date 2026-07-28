@@ -75,11 +75,48 @@ Agent 用户身份与控制面 Better Auth、Playground 的 Agent Connection cre
 `eveland_identity` Session。Better Auth cookie/token、member role 与 provider credential
 都不得进入 Caller Token、浏览器聊天存储、Gateway 或 Agent。
 
-System Admin 配置 Provider、允许的 Identity Realm、精确 web-chat return origin，以及显式
-Realm → Project grant。只有 enabled Provider、精确 enabled Realm 和 grant 同时成立时，
-Identity Broker 才签发约 60 秒、ES256、`aud=eveland:project:<projectId>` 的 Caller Token。
-Token 只包含 Eveland 内部 principal/realm claims，不包含 provider issuer、外部 subject 或
-provider 名称。公开 JWKS 支持 active/retiring key overlap。
+System Admin 配置当前唯一 active Provider、允许的 Identity Realm 与精确 web-chat return
+origin。有效 Identity Session 可以请求约 60 秒、ES256、
+`aud=eveland:project:<projectId>` 的 Caller Token；Eveland 不再配置或检查 Realm →
+Project access。Token 只包含 Eveland 内部 principal/realm claims，不包含 provider issuer、
+外部 subject 或 provider credential。公开 JWKS 支持 active/retiring key overlap。
+
+Caller Token 只证明调用者身份。Agent 根据 Eveland principal、标准 claims 与自身业务数据
+决定访问权限，并对不允许的用户返回 `403`。财务部门、产品角色或其他“谁能使用哪个 Agent”
+规则不属于 Eveland 配置。Eveland 仍可限制可信 provider tenant/Realm，因为这是实例的身份
+信任边界。
+
+独立且公开的 `GET /agent-catalog` 提供 Agent Catalog 只读投影。它不要求 Identity Session，
+所有调用者得到完全相同的列表，Realm 不参与 Project 过滤。Catalog 只返回 Stable route
+当前全部正权重 Deployment 均可路由，且这些 Deployment 对应
+的不可变 Source Revision 都声明 `capabilities.eveChat=true` 的 Project。`running` 与
+scale-to-zero 的 `stopped` Deployment 都可收录。Catalog 返回 Project ID、Display name、
+Description、Stable endpoint 与 capability；它不创建独立 Catalog 记录，不动态探测 Agent，
+不包含或推断 auth 配置，也不提供 marketplace、分类、搜索或审核。`projectId` 是聊天端结合
+Eveland issuer 使用的稳定 managed Agent identity，endpoint 变化不得生成新的 Agent 身份。
+
+Source scan 只在标准 `agent/channels/eve.ts`（含受支持的 JS/TS 扩展）明确从
+`eve/channels/eve` 导入并默认导出 `eveChannel(...)` 时记录 `eveChat=true`。Catalog
+始终读取 Stable route 实际 Deployment → Release → Source Revision，而不是 Project
+后来导入但尚未部署的 current Source Revision。没有标准 Eve Channel、没有 Stable
+Deployment、任一正权重 target 不可路由或未声明 Eve Channel 的 Project 不得出现在结果中。
+Agent 使用 `none()`、`localDev()`、`httpBasic()`、JWT、OIDC、`evelandIdentity()` 或
+custom `AuthFn` 都不改变 Catalog membership。
+
+已登记的精确 return target origin 还可以在有效 Identity Session 下请求约五分钟的
+ES256 App Token，audience 为 `eveland:app:<targetKey>`。App Token 只证明 Eveland
+principal 与 active Realm 对该聊天应用的登录作用域；聊天应用用它保护自身历史与手动
+外部 Agent，不能用它替代 Agent credential。客户端不能因为 Catalog entry 有 `projectId`
+就自动取得或发送 Caller Token；必须先遵循 Agent route auth，只有 Agent 要求
+`evelandIdentity()` 时才进入 Eveland continuation。Caller Token 可携带 Eveland 解析并签名的
+`agent_url` 供 endpoint-substitution 防护，但该 claim 不表示 Agent 使用 Eveland Identity。
+
+`evelandIdentity()` 通过标准 `WWW-Authenticate` Bearer challenge 声明 Eveland-owned
+`authorization_uri`、Project audience 与显示名。多个 AuthFn 的 challenge 可以同时出现；
+例如 Basic 与 Eveland Identity 仍是 fallback，而不是由 Eveland challenge 抢占。已有 Identity
+Session 的客户端可静默签发 Caller Token；否则浏览器导航到 `/identity/login`。登录 state
+随机、短时且只能消费一次，Eveland 根据当前 active Provider 完成认证后签发统一 Caller Token。
+Gateway 必须透明转发 challenge、请求 credential 与响应，不解释或改写该协议。
 
 部署 Worker 把 `EVELAND_IDENTITY_ISSUER`、`EVELAND_IDENTITY_JWKS_URL` 和不可由 Project
 覆盖的 `EVELAND_PROJECT_ID` 注入 Agent。公开 Gateway 原样转发 Agent-owned Authorization；
@@ -267,7 +304,8 @@ Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使�
 * 拉取或解压源码
 * 检查是否为合法 Eve 项目
 * 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.25.x、0.26.x 或 0.27.x
-* 识别项目配置、agent、tools、skills、schedules
+* 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
+  `capabilities.eveChat`
 * 创建 Source Revision
 
 `agent/skills/` 由 Eve 原生发现、编译和按需加载。Eveland 不把 runtime 的

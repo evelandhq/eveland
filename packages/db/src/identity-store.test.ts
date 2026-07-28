@@ -117,32 +117,6 @@ describe("Identity store", () => {
     });
   });
 
-  test("stores unique Realm to Project grants and cascades deleted Projects", async () => {
-    const store = createTestStore();
-    const project = await store.createProject({ name: "identity-agent", importKind: "zip" });
-    const connection = await store.createIdentityProviderConnection({
-      type: "internal",
-      displayName: "Internal",
-      internalRealmKey: "members",
-      enabled: true,
-    });
-    const realm = await store.createIdentityRealm({
-      providerConnectionId: connection.id,
-      externalRealmId: "members",
-      externalRealmKind: "internal",
-      displayName: "Members",
-      enabled: true,
-    });
-
-    const first = await store.grantIdentityRealmProject(realm.id, project.id);
-    const duplicate = await store.grantIdentityRealmProject(realm.id, project.id);
-    expect(duplicate).toEqual(first);
-    await expect(store.hasIdentityRealmProjectGrant(realm.id, project.id)).resolves.toBe(true);
-
-    await store.deleteProject(project.id);
-    await expect(store.hasIdentityRealmProjectGrant(realm.id, project.id)).resolves.toBe(false);
-  });
-
   test("looks up hashed Identity sessions and enforces expiry and revocation", async () => {
     const store = createTestStore();
     const { connection, realm, principal } = await identityFixture(store);

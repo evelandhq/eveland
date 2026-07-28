@@ -27,6 +27,14 @@ authentication produces an Eve `user` principal with `name`, optional `email`,
 and internal `realmId` attributes. It never accepts Better Auth sessions or
 upstream provider tokens.
 
-`localDev()` is an explicit optional fallback and should remain last in the auth
-walk. A recognized Eveland token fails closed when the helper is unconfigured
-or signing keys are unavailable.
+When issuer and Project configuration are present, the helper also advertises a
+standard Bearer `WWW-Authenticate` challenge containing Eveland's
+`authorization_uri`, `project_id`, and display name. A capable client can follow
+that continuation, obtain a Caller Token, and retry the original request.
+`parseEvelandAuthenticationChallenge()` reads that challenge from either a
+standalone or combined header.
+
+`localDev()` and other AuthFns remain explicit fallbacks. Eve aggregates their
+challenges, so a route such as `[evelandIdentity(), httpBasic()]` advertises
+both methods. A recognized Eveland token fails closed when the helper is
+unconfigured or signing keys are unavailable.

@@ -3,6 +3,7 @@ import {
   UnauthenticatedError,
   extractBearerToken,
   verifyJwtEcdsa,
+  withAuthChallenges,
   type AuthFn,
 } from "eve/channels/auth";
 
@@ -17,6 +18,13 @@ export type EvelandIdentityOptions = {
   jwksUrl?: string;
   fetch?: FetchLike;
   now?: () => Date;
+};
+
+export type EvelandAuthenticationChallenge = {
+  kind: "eveland";
+  url: string;
+  projectId: string;
+  displayName: string;
 };
 
 export function evelandIdentity(
@@ -72,7 +80,7 @@ export function evelandIdentity(
     return keys;
   }
 
-  return async (request) => {
+  const verify: AuthFn<Request> = async (request) => {
     const token = extractBearerToken(request.headers.get("authorization"));
     if (!token) return null;
     const decoded = decodeToken(token);
@@ -153,6 +161,76 @@ export function evelandIdentity(
       },
     };
   };
+
+  return withAuthChallenges(
+    verify,
+    issuer && projectId
+      ? [
+          {
+            scheme: "Bearer",
+            parameters: {
+              realm: "eveland",
+              authorization_uri: `${issuer}/identity/login`,
+              project_id: projectId,
+              display_name: "Eveland",
+            },
+          },
+        ]
+      : [{ scheme: "Bearer" }],
+  );
+}
+
+export function parseEvelandAuthenticationChallenge(
+  header: string | null,
+): EvelandAuthenticationChallenge | null {
+  if (!header) return null;
+  const starts = [
+    ...header.matchAll(/(?:^|,\s*)(Basic|Bearer)(?:\s+|$)/gi),
+  ];
+  for (let index = 0; index < starts.length; index += 1) {
+    const match = starts[index]!;
+    if (match[1]?.toLowerCase() !== "bearer") continue;
+    const start = (match.index ?? 0) + match[0].length;
+    const end = starts[index + 1]?.index ?? header.length;
+    const parameters = parseChallengeParameters(header.slice(start, end));
+    if (parameters.realm !== "eveland") continue;
+    const projectId = parameters.project_id?.trim();
+    const displayName = parameters.display_name?.trim();
+    const authorizationUri = parameters.authorization_uri;
+    if (!projectId || !displayName || !authorizationUri) continue;
+    let url: URL;
+    try {
+      url = new URL(authorizationUri);
+    } catch {
+      continue;
+    }
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username ||
+      url.password
+    ) {
+      continue;
+    }
+    return {
+      kind: "eveland",
+      url: url.toString(),
+      projectId,
+      displayName,
+    };
+  }
+  return null;
+}
+
+function parseChallengeParameters(value: string): Record<string, string> {
+  const parameters: Record<string, string> = {};
+  const pattern = /([!#$%&'*+.^_`|~0-9A-Za-z-]+)="((?:\\.|[^"])*)"/g;
+  for (const match of value.matchAll(pattern)) {
+    const key = match[1]?.toLowerCase();
+    const raw = match[2];
+    if (!key || raw === undefined) continue;
+    parameters[key] = raw.replace(/\\(.)/g, "$1");
+  }
+  return parameters;
 }
 
 function decodeToken(token: string): {

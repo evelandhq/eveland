@@ -67,7 +67,7 @@ describe("Identity Broker", () => {
     });
   });
 
-  test("issues a short ES256 project-bound Caller Token only with an explicit grant", async () => {
+  test("issues a short ES256 project-bound Caller Token without Project grants", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "caller-agent", importKind: "zip" });
     const { connection, realm } = await configuredIdentity(store);
@@ -90,12 +90,6 @@ describe("Identity Broker", () => {
       },
     });
 
-    await expect(broker.issueCallerToken({
-      sessionToken: finalized.sessionToken,
-      projectId: project.id,
-    })).rejects.toMatchObject({ code: "identity_project_forbidden", status: 403 });
-
-    await store.grantIdentityRealmProject(realm.id, project.id);
     const issued = await broker.issueCallerToken({
       sessionToken: finalized.sessionToken,
       projectId: project.id,
@@ -138,7 +132,6 @@ describe("Identity Broker", () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "revoked-agent", importKind: "zip" });
     const { connection, realm } = await configuredIdentity(store);
-    await store.grantIdentityRealmProject(realm.id, project.id);
     const broker = createIdentityBroker({
       store,
       issuer: "https://identity.example.com",

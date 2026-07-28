@@ -19,11 +19,16 @@ export type EveProjectSummary = {
   sandbox: string[];
 };
 
+export type EveProjectCapabilities = {
+  eveChat: boolean;
+};
+
 export type EveProjectInspection = {
   valid: boolean;
   layout: EveProjectLayout;
   projectName: string | null;
   eveVersion: string | null;
+  capabilities: EveProjectCapabilities;
   summary: EveProjectSummary;
   envVars: string[];
   schedules: DiscoveredSchedule[];
@@ -123,11 +128,30 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
     layout,
     projectName: readProjectName(normalized),
     eveVersion,
+    capabilities: {
+      eveChat: detectsEveChatCapability(normalized, root),
+    },
     summary,
     envVars: [...envVars].sort(),
     schedules,
     errors,
   };
+}
+
+function detectsEveChatCapability(
+  files: Array<{ path: string; content: string }>,
+  root: string,
+): boolean {
+  const channel = files.find((file) =>
+    new RegExp(`^${root}channels/eve\\.(?:[cm]?[jt]s)$`).test(file.path),
+  );
+  if (!channel) return false;
+  return (
+    /import\s*\{[^}]*\beveChannel\b[^}]*\}\s*from\s*["']eve\/channels\/eve["']/.test(
+      channel.content,
+    ) &&
+    /export\s+default\s+eveChannel\s*\(/.test(channel.content)
+  );
 }
 
 export function isSupportedEveDependency(specifier: string | null): boolean {

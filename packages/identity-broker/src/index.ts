@@ -7,7 +7,11 @@ import {
   randomBytes,
   sign,
 } from "node:crypto";
-import { callerTokenAudience, type ResolvedExternalIdentity } from "@eveland/core/identity";
+import {
+  callerTokenAudience,
+  identityAppTokenAudience,
+  type ResolvedExternalIdentity,
+} from "@eveland/core/identity";
 import type { Store } from "@eveland/db";
 
 export class IdentityBrokerError extends Error {
@@ -28,12 +32,14 @@ export type IdentityBrokerOptions = {
   now?: () => Date;
   identitySessionTtlSeconds?: number;
   callerTokenTtlSeconds?: number;
+  appTokenTtlSeconds?: number;
 };
 
 export function createIdentityBroker(options: IdentityBrokerOptions) {
   const now = options.now ?? (() => new Date());
   const identitySessionTtlSeconds = options.identitySessionTtlSeconds ?? 30 * 24 * 60 * 60;
   const callerTokenTtlSeconds = options.callerTokenTtlSeconds ?? 60;
+  const appTokenTtlSeconds = options.appTokenTtlSeconds ?? 5 * 60;
   const issuer = options.issuer.replace(/\/$/, "");
 
   async function finalizeIdentity(input: {
@@ -145,6 +151,7 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
   async function issueCallerToken(input: {
     sessionToken: string;
     projectId: string;
+    agentUrl?: string;
   }) {
     const resolved = await resolveSession(input.sessionToken);
     const project = await options.store.getProject(input.projectId);
@@ -155,20 +162,6 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
         "The requested Project does not exist.",
       );
     }
-    if (
-      !(await options.store.hasIdentityRealmProjectGrant(
-        resolved.realm.id,
-        project.id,
-      ))
-    ) {
-      throw new IdentityBrokerError(
-        "identity_project_forbidden",
-        403,
-        "The current identity scope cannot use this Agent.",
-      );
-    }
-
-    const key = await ensureActiveSigningKey(options, now());
     const current = now();
     const issuedAt = Math.floor(current.getTime() / 1_000);
     const expiresAt = new Date(current.getTime() + callerTokenTtlSeconds * 1_000);
@@ -182,32 +175,56 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
         ? { name: resolved.principal.displayName }
         : {}),
       ...(resolved.principal.email ? { email: resolved.principal.email } : {}),
+      ...(input.agentUrl ? { agent_url: input.agentUrl } : {}),
       iat: issuedAt,
       nbf: issuedAt,
       exp: Math.floor(expiresAt.getTime() / 1_000),
       jti: randomBytes(16).toString("base64url"),
     };
-    const header = { alg: "ES256", typ: "JWT", kid: key.id };
-    const encodedHeader = encodeJson(header);
-    const encodedPayload = encodeJson(payload);
-    const signingInput = `${encodedHeader}.${encodedPayload}`;
-    const privateKey = openPrivateKey(
-      key.privateKeyEncrypted,
-      options.appSecretKey,
-      key.id,
-    );
-    const signature = sign("sha256", Buffer.from(signingInput), {
-      key: privateKey,
-      dsaEncoding: "ieee-p1363",
-    }).toString("base64url");
 
     return {
-      token: `${signingInput}.${signature}`,
+      token: await signIdentityJwt(options, now, payload),
       expiresAt: expiresAt.toISOString(),
       principal: {
         id: resolved.principal.id,
         name: resolved.principal.displayName,
       },
+    };
+  }
+
+  async function issueAppToken(input: {
+    sessionToken: string;
+    targetKey: string;
+    origin: string;
+  }) {
+    const resolved = await resolveSession(input.sessionToken);
+    const target = await options.store.getIdentityReturnTargetByKey(
+      input.targetKey,
+    );
+    if (!target?.enabled || target.origin !== input.origin) {
+      throw new IdentityBrokerError(
+        "identity_return_target_invalid",
+        403,
+        "This origin cannot receive an Eveland app token.",
+      );
+    }
+    const current = now();
+    const issuedAt = Math.floor(current.getTime() / 1_000);
+    const expiresAt = new Date(current.getTime() + appTokenTtlSeconds * 1_000);
+    const payload = {
+      iss: issuer,
+      sub: resolved.principal.id,
+      aud: identityAppTokenAudience(target.key),
+      principal_type: "user",
+      realm_id: resolved.realm.id,
+      iat: issuedAt,
+      nbf: issuedAt,
+      exp: Math.floor(expiresAt.getTime() / 1_000),
+      jti: randomBytes(16).toString("base64url"),
+    };
+    return {
+      token: await signIdentityJwt(options, now, payload),
+      expiresAt: expiresAt.toISOString(),
     };
   }
 
@@ -255,9 +272,35 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
     finalizeIdentity,
     resolveSession,
     issueCallerToken,
+    issueAppToken,
     getJwks,
     resolveReturnTarget,
   };
+}
+
+async function signIdentityJwt(
+  options: IdentityBrokerOptions,
+  now: () => Date,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  const key = await ensureActiveSigningKey(options, now());
+  const encodedHeader = encodeJson({
+    alg: "ES256",
+    typ: "JWT",
+    kid: key.id,
+  });
+  const encodedPayload = encodeJson(payload);
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const privateKey = openPrivateKey(
+    key.privateKeyEncrypted,
+    options.appSecretKey,
+    key.id,
+  );
+  const signature = sign("sha256", Buffer.from(signingInput), {
+    key: privateKey,
+    dsaEncoding: "ieee-p1363",
+  }).toString("base64url");
+  return `${signingInput}.${signature}`;
 }
 
 export function hashIdentityToken(value: string): string {

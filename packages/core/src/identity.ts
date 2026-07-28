@@ -221,6 +221,14 @@ export function callerTokenAudience(projectId: string): string {
   return `eveland:project:${normalized}`;
 }
 
+export function identityAppTokenAudience(targetKey: string): string {
+  const normalized = requiredString(
+    targetKey,
+    "Identity return target key is required.",
+  );
+  return `eveland:app:${normalized}`;
+}
+
 export function parseCallerTokenAudience(audience: string): string | null {
   const prefix = "eveland:project:";
   if (!audience.startsWith(prefix)) return null;

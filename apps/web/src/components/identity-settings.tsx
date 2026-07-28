@@ -20,45 +20,28 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldTitle,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   createInternalIdentityProvider,
   createInternalIdentityRealm,
   preflightIdentityProvider,
-  setIdentityRealmProjectGrant,
   updateIdentityRealm,
   updateInternalIdentityProvider,
   upsertIdentityReturnTarget,
 } from "@/lib/client-api";
-import type {
-  IdentityRealmGrant,
-  PublicIdentityProvider,
-} from "@/lib/server-api";
+import type { PublicIdentityProvider } from "@/lib/server-api";
 
 export function IdentitySettings({
   initialProviders,
   initialRealms,
-  initialGrants,
   initialReturnTargets,
-  projects,
 }: {
   initialProviders: PublicIdentityProvider[];
   initialRealms: IdentityRealm[];
-  initialGrants: IdentityRealmGrant[];
   initialReturnTargets: IdentityReturnTarget[];
-  projects: Array<{ id: string; name: string }>;
 }) {
   const providerNameId = useId();
   const realmKeyId = useId();
@@ -66,7 +49,6 @@ export function IdentitySettings({
   const returnTargetOriginId = useId();
   const [providers, setProviders] = useState(initialProviders);
   const [realms, setRealms] = useState(initialRealms);
-  const [grants, setGrants] = useState(initialGrants);
   const [returnTargets, setReturnTargets] = useState(initialReturnTargets);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +124,7 @@ export function IdentitySettings({
         enabled: true,
       });
       setRealms((current) => [...current, realm]);
-      setNotice("Identity Realm enabled. Grant only the Projects this scope may use.");
+      setNotice("Identity Realm enabled.");
     });
   }
 
@@ -158,26 +140,6 @@ export function IdentitySettings({
         current.map((candidate) => candidate.id === realm.id ? realm : candidate),
       );
       setNotice(enabled ? "Identity Realm enabled." : "Identity Realm disabled.");
-    });
-  }
-
-  async function toggleGrant(projectId: string, granted: boolean) {
-    if (!internalRealm) return;
-    await run(`grant:${projectId}`, async () => {
-      const grant = await setIdentityRealmProjectGrant(
-        internalRealm.id,
-        projectId,
-        granted,
-      );
-      setGrants((current) => [
-        ...current.filter(
-          (candidate) =>
-            candidate.identityRealmId !== internalRealm.id ||
-            candidate.projectId !== projectId,
-        ),
-        ...(grant ? [grant] : []),
-      ]);
-      setNotice(granted ? "Project access granted." : "Project access revoked.");
     });
   }
 
@@ -432,67 +394,6 @@ export function IdentitySettings({
               </FieldGroup>
             </form>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Project access</CardTitle>
-          <CardDescription>
-            Caller Tokens are issued only when this Realm has an explicit grant to the target Project.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Project ID</TableHead>
-                  <TableHead className="w-32 text-right">Access</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {projects.map((project) => {
-                  const granted = Boolean(
-                    internalRealm &&
-                      grants.some(
-                        (grant) =>
-                          grant.identityRealmId === internalRealm.id &&
-                          grant.projectId === project.id,
-                      ),
-                  );
-                  const grantPending = pending === `grant:${project.id}`;
-                  return (
-                    <TableRow key={project.id}>
-                      <TableCell className="font-medium">{project.name}</TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {project.id}
-                      </TableCell>
-                      <TableCell>
-                        <Field orientation="horizontal" data-disabled={!internalRealm}>
-                          <FieldContent>
-                            <FieldTitle className="sr-only">
-                              Access to {project.name}
-                            </FieldTitle>
-                          </FieldContent>
-                          <Switch
-                            aria-label={`Allow ${project.name}`}
-                            checked={granted}
-                            onCheckedChange={(checked) =>
-                              toggleGrant(project.id, checked)
-                            }
-                            disabled={!internalRealm || pending !== null}
-                          />
-                          {grantPending ? <Spinner /> : null}
-                        </Field>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
         </CardContent>
       </Card>
     </div>

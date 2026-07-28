@@ -7,6 +7,10 @@ describe("inspectEveProject", () => {
       { path: "package.json", content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.25.1" } }) },
       { path: "agent/agent.ts", content: `export default defineAgent({ model: process.env.DEFAULT_MODEL })` },
       { path: "agent/instructions.md", content: "You are a weather agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `import { eveChannel } from "eve/channels/eve";\nexport default eveChannel({});`,
+      },
       { path: "agent/tools/get_weather.ts", content: "export default defineTool({})" },
       { path: "agent/skills/report.md", content: "---\ndescription: Report\n---" },
       { path: "agent/connections/linear.ts", content: "process.env.LINEAR_API_TOKEN" },
@@ -20,6 +24,7 @@ describe("inspectEveProject", () => {
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
     expect(result.eveVersion).toBe("0.25.1");
+    expect(result.capabilities).toEqual({ eveChat: true });
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
       instructions: ["agent/instructions.md"],
@@ -31,6 +36,19 @@ describe("inspectEveProject", () => {
       sandbox: ["agent/sandbox/sandbox.ts"],
     });
     expect(result.envVars).toEqual(["ANTHROPIC_API_KEY", "DEFAULT_MODEL", "LINEAR_API_TOKEN", "OPENAI_API_KEY"]);
+  });
+
+  test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
+    const result = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.25.1" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      {
+        path: "agent/channels/eve.ts",
+        content: `export default customChannel({ note: "eveChannel" });`,
+      },
+    ]);
+
+    expect(result.capabilities).toEqual({ eveChat: false });
   });
 
   test("uses Eve's authored skill extensions in the source summary", () => {

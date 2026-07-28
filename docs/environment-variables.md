@@ -57,14 +57,16 @@ production" means the process throws or a deploy is blocked when it is missing.
 | Variable | Purpose | Default | Read by |
 | --- | --- | --- | --- |
 | `EVELAND_IDENTITY_ISSUER` | Stable public issuer embedded in Eveland Caller Tokens. It must match the issuer configured by every consuming chat service and Agent verifier. | `http://localhost:4000` | API + worker |
-| `EVELAND_IDENTITY_ALLOWED_ORIGINS` | Comma-separated exact browser origins allowed to read Identity Session state, request Caller Tokens, and log out. Wildcards are not supported. | `http://localhost:3010` | API |
+| `EVELAND_IDENTITY_ALLOWED_ORIGINS` | Comma-separated exact browser origins allowed to read Identity Session state, request Caller Tokens, and log out. The public Agent Catalog does not depend on this allowlist. Wildcards are not supported. | `http://localhost:3010` | API |
 | `EVELAND_IDENTITY_JWKS_URL` | Agent-reachable public-key URL injected into every Deployment. It may use a private/loopback address while `EVELAND_IDENTITY_ISSUER` remains the stable public issuer. | `http://host.docker.internal:4000/.well-known/jwks.json` | worker |
 | `EVELAND_PROJECT_ID` | Audience/project binding injected by the worker into each Agent Deployment. Project and Shared Agent Environment values cannot override it. | current Project ID | deployed Agent |
 
-The `eveland_identity` cookie is separate from Better Auth and scoped to `/identity`.
-Caller Tokens are ES256, short-lived, and issued only after an explicit Realm → Project
-grant. Register browser return origins in System > Identity; environment CORS configuration
-does not create or widen that redirect allowlist.
+The `eveland_identity` cookie is separate from Better Auth and scoped to `/identity`;
+`/agent-catalog` is a public, identity-independent projection.
+Caller Tokens are ES256, short-lived, and authenticate a principal to one Project audience;
+Agents remain responsible for business authorization. Register browser return origins in
+System > Identity; environment CORS configuration does not create or widen that redirect
+allowlist.
 
 Native development supplies the table defaults even when an older local `.env`
 does not contain these variables. The API and Worker development watchers also

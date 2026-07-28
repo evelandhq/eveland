@@ -4,6 +4,7 @@ import { createId } from "@eveland/core/ids";
 import type { StoreDatabase } from "./client.js";
 import { agentRouteRowToAgentRoute, jobRowToJob } from "./mappers.js";
 import { createPostgresAgentAuthStore } from "./postgres-agent-auth-store.js";
+import { createPostgresCatalogStore } from "./postgres-catalog-store.js";
 import { createPostgresDeploymentRoutingStore } from "./postgres-deployment-routing-store.js";
 import { createPostgresJobSourceStore } from "./postgres-job-source-store.js";
 import { createPostgresInstanceHealthStore } from "./postgres-instance-health-store.js";
@@ -219,6 +220,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
 
   return {
     ...createPostgresProjectStore(context),
+    ...createPostgresCatalogStore(context),
     ...createPostgresAgentAuthStore(context),
     ...createPostgresIdentityStore(context),
     ...createPostgresSecretStore(context),

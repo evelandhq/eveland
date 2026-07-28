@@ -417,25 +417,6 @@ export const identityLoginTransactions = pgTable(
   ],
 );
 
-export const identityRealmProjectGrants = pgTable(
-  "identity_realm_project_grants",
-  {
-    identityRealmId: text("identity_realm_id").notNull().references(
-      () => identityRealms.id,
-      { onDelete: "cascade" },
-    ),
-    projectId: text("project_id").notNull().references(
-      () => projects.id,
-      { onDelete: "cascade" },
-    ),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.identityRealmId, table.projectId] }),
-    index("identity_realm_project_grants_project_idx").on(table.projectId),
-  ],
-);
-
 export const identityOidcCredentials = pgTable(
   "identity_oidc_credentials",
   {

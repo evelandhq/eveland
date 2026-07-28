@@ -125,10 +125,9 @@ describe("Eveland Internal Identity routes", () => {
     ).resolves.toBeNull();
   });
 
-  test("lets only an admin configure one Internal provider, its Realm, and grants", async () => {
+  test("lets only an admin configure one Internal provider and its Realm", async () => {
     const { app, store } = await createIdentityApp();
     const cookie = await signIn(app);
-    const project = await store.createProject({ name: "greeter", importKind: "zip" });
 
     const providerResponse = await app.request("/system/identity/providers", {
       method: "POST",
@@ -210,30 +209,6 @@ describe("Eveland Internal Identity routes", () => {
     });
     const realmBody = await realmResponse.json() as { realm: { id: string } };
     expect(realmResponse.status).toBe(201);
-
-    expect((await app.request(
-      `/system/identity/realms/${realmBody.realm.id}/projects/${project.id}`,
-      {
-        method: "PUT",
-        headers: { cookie, origin: webOrigin },
-      },
-    )).status).toBe(200);
-    await expect(store.hasIdentityRealmProjectGrant(
-      realmBody.realm.id,
-      project.id,
-    )).resolves.toBe(true);
-    const grants = await app.request(
-      `/system/identity/realms/${realmBody.realm.id}/grants`,
-      { headers: { cookie } },
-    );
-    await expect(grants.json()).resolves.toEqual({
-      grants: [
-        expect.objectContaining({
-          identityRealmId: realmBody.realm.id,
-          projectId: project.id,
-        }),
-      ],
-    });
 
     const disabledRealm = await app.request(
       `/system/identity/realms/${realmBody.realm.id}`,
@@ -349,10 +324,22 @@ describe("Eveland Internal Identity routes", () => {
     expect(continued.headers.get("location")).toBe(
       `${chatOrigin}/agents/agent_123`,
     );
+    const replayed = await app.request(
+      `/identity/internal/continue?state=${encodeURIComponent(state!)}`,
+      {
+        headers: { cookie: controlCookie },
+        redirect: "manual",
+      },
+    );
+    expect(replayed.status).toBe(400);
+    await expect(replayed.json()).resolves.toMatchObject({
+      code: "identity_login_transaction_invalid",
+    });
     const identitySetCookie = continued.headers.get("set-cookie")!;
     expect(identitySetCookie).toContain("eveland_identity=");
     expect(identitySetCookie).toContain("HttpOnly");
     expect(identitySetCookie).toContain("SameSite=Lax");
+    expect(identitySetCookie).toContain("Path=/identity");
     expect(identitySetCookie).not.toContain("eveland_session=");
     const identityCookie = identitySetCookie.split(";", 1)[0]!;
 
@@ -379,7 +366,7 @@ describe("Eveland Internal Identity routes", () => {
     ))).not.toContain(controlCookie);
   });
 
-  test("reuses an existing Identity session and returns 403 instead of re-login without a grant", async () => {
+  test("reuses an existing Identity session and issues Caller Tokens without Project grants", async () => {
     const { app, store } = await createIdentityApp();
     const project = await store.createProject({ name: "private-agent", importKind: "zip" });
     const connection = await store.createIdentityProviderConnection({
@@ -437,7 +424,7 @@ describe("Eveland Internal Identity routes", () => {
       ).json(),
     ).resolves.toEqual({ authenticated: false });
 
-    const forbidden = await app.request("/identity/caller-tokens", {
+    const issued = await app.request("/identity/caller-tokens", {
       method: "POST",
       headers: {
         cookie: rotatedIdentityCookie,
@@ -446,11 +433,10 @@ describe("Eveland Internal Identity routes", () => {
       },
       body: JSON.stringify({ projectId: project.id }),
     });
-    expect(forbidden.status).toBe(403);
-    expect(forbidden.headers.get("cache-control")).toBe("no-store");
-    await expect(forbidden.json()).resolves.toEqual({
-      code: "identity_project_forbidden",
-      error: "The current identity scope cannot use this Agent.",
+    expect(issued.status).toBe(200);
+    expect(issued.headers.get("cache-control")).toBe("no-store");
+    await expect(issued.json()).resolves.toMatchObject({
+      token: expect.stringMatching(/^[^.]+\.[^.]+\.[^.]+$/),
     });
   });
 
@@ -463,14 +449,13 @@ describe("Eveland Internal Identity routes", () => {
       internalRealmKey: "members",
       enabled: true,
     });
-    const realm = await store.createIdentityRealm({
+    await store.createIdentityRealm({
       providerConnectionId: connection.id,
       externalRealmId: "members",
       externalRealmKind: "internal",
       displayName: "Members",
       enabled: true,
     });
-    await store.grantIdentityRealmProject(realm.id, project.id);
     const controlCookie = await signIn(app);
     const login = await app.request(
       "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_123",
@@ -513,6 +498,7 @@ describe("Eveland Internal Identity routes", () => {
     });
     expect(logout.status).toBe(204);
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(logout.headers.get("set-cookie")).toContain("Path=/identity");
     expect((await app.request("/identity/caller-tokens", {
       method: "POST",
       headers: {
@@ -522,5 +508,214 @@ describe("Eveland Internal Identity routes", () => {
       },
       body: JSON.stringify({ projectId: project.id }),
     })).status).toBe(401);
+  });
+
+  test("returns stable eveChat deployments without Realm Project grants", async () => {
+    const { app, store } = await createIdentityApp();
+    const connection = await store.createIdentityProviderConnection({
+      type: "internal",
+      displayName: "Internal",
+      internalRealmKey: "members",
+      enabled: true,
+    });
+    await store.createIdentityRealm({
+      providerConnectionId: connection.id,
+      externalRealmId: "members",
+      externalRealmKind: "internal",
+      displayName: "Members",
+      enabled: true,
+    });
+    const chatProject = await store.createProject({
+      name: "Catalog Chat",
+      importKind: "zip",
+    });
+    await store.updateProjectMetadata(chatProject.id, {
+      name: "Catalog Chat",
+      description: "Answers catalog questions.",
+    });
+    const deployedRevision = await store.recordSourceRevision({
+      projectId: chatProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/catalog-chat",
+      summary: { capabilities: { eveChat: true } },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: chatProject.id,
+      sourceRevisionId: deployedRevision.id,
+      imageTag: "catalog-chat:stable",
+      containerName: "catalog-chat-stable",
+      internalPort: 3000,
+      hostPort: 41981,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "running");
+    await store.ensureDeploymentRoutes(
+      chatProject.id,
+      deployment.id,
+      "agent.localhost",
+    );
+    await store.recordSourceRevision({
+      projectId: chatProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/catalog-chat-next",
+      summary: { capabilities: { eveChat: false } },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+
+    const noChannelProject = await store.createProject({
+      name: "No Channel",
+      importKind: "zip",
+    });
+    const noChannelRevision = await store.recordSourceRevision({
+      projectId: noChannelProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/no-channel",
+      summary: { capabilities: { eveChat: false } },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const noChannelDeployment = await store.recordDeployment({
+      projectId: noChannelProject.id,
+      sourceRevisionId: noChannelRevision.id,
+      imageTag: "no-channel:stable",
+      containerName: "no-channel-stable",
+      internalPort: 3000,
+      hostPort: 41982,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(noChannelDeployment.id, "running");
+    await store.ensureDeploymentRoutes(
+      noChannelProject.id,
+      noChannelDeployment.id,
+      "agent.localhost",
+    );
+
+    const stoppedProject = await store.createProject({
+      name: "Stopped Chat",
+      importKind: "zip",
+    });
+    const stoppedRevision = await store.recordSourceRevision({
+      projectId: stoppedProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/stopped-chat",
+      summary: { capabilities: { eveChat: true } },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const stoppedDeployment = await store.recordDeployment({
+      projectId: stoppedProject.id,
+      sourceRevisionId: stoppedRevision.id,
+      imageTag: "stopped-chat:stable",
+      containerName: "stopped-chat-stable",
+      internalPort: 3000,
+      hostPort: 41983,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(stoppedDeployment.id, "stopped");
+    await store.ensureDeploymentRoutes(
+      stoppedProject.id,
+      stoppedDeployment.id,
+      "agent.localhost",
+    );
+
+    const undeployedProject = await store.createProject({
+      name: "Undeployed Chat",
+      importKind: "zip",
+    });
+    await store.recordSourceRevision({
+      projectId: undeployedProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/undeployed-chat",
+      summary: { capabilities: { eveChat: true } },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+
+    const response = await app.request("/agent-catalog", {
+      headers: { origin: chatOrigin },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBe(chatOrigin);
+    await expect(response.json()).resolves.toEqual({
+      agents: [
+        {
+          projectId: chatProject.id,
+          name: "Catalog Chat",
+          description: "Answers catalog questions.",
+          url: `http://${chatProject.slug}.agent.localhost:4080`,
+          capabilities: { eveChat: true },
+        },
+        {
+          projectId: stoppedProject.id,
+          name: stoppedProject.name,
+          description: null,
+          url: `http://${stoppedProject.slug}.agent.localhost:4080`,
+          capabilities: { eveChat: true },
+        },
+      ],
+    });
+
+  });
+
+  test("issues an app-scoped identity token for a registered return target", async () => {
+    const { app, store } = await createIdentityApp();
+    const connection = await store.createIdentityProviderConnection({
+      type: "internal",
+      displayName: "Internal",
+      internalRealmKey: "members",
+      enabled: true,
+    });
+    const realm = await store.createIdentityRealm({
+      providerConnectionId: connection.id,
+      externalRealmId: "members",
+      externalRealmKind: "internal",
+      displayName: "Members",
+      enabled: true,
+    });
+    const controlCookie = await signIn(app);
+    const login = await app.request(
+      "/identity/login?target=eve-chats&returnPath=%2F",
+      { headers: { cookie: controlCookie }, redirect: "manual" },
+    );
+    const identityCookie =
+      login.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+
+    const response = await app.request("/identity/app-tokens", {
+      method: "POST",
+      headers: {
+        cookie: identityCookie,
+        origin: chatOrigin,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ target: "eve-chats" }),
+    });
+    const body = (await response.json()) as {
+      token: string;
+      expiresAt: string;
+    };
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(body.expiresAt).toEqual(expect.any(String));
+    const payload = JSON.parse(
+      Buffer.from(body.token.split(".")[1]!, "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
+
+    expect(payload).toMatchObject({
+      iss: apiOrigin,
+      aud: "eveland:app:eve-chats",
+      principal_type: "user",
+      realm_id: realm.id,
+    });
+    expect(payload).not.toHaveProperty("project_id");
   });
 });

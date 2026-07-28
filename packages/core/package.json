@@ -7,6 +7,7 @@
   "exports": {
     "./agent-auth": "./src/agent-auth.ts",
     "./build-info": "./src/build-info.ts",
+    "./catalog": "./src/catalog.ts",
     "./config-diagnostics": "./src/config-diagnostics.ts",
     "./contracts": "./src/contracts.ts",
     "./eve": "./src/eve.ts",

@@ -5,9 +5,7 @@ const server = vi.hoisted(() => ({
   getCurrentMember: vi.fn(),
   getIdentityProviders: vi.fn(),
   getIdentityRealms: vi.fn(),
-  getIdentityRealmGrants: vi.fn(),
   getIdentityReturnTargets: vi.fn(),
-  getProjects: vi.fn(),
 }));
 
 vi.mock("@/lib/server-api", () => server);
@@ -31,7 +29,7 @@ describe("Identity settings page", () => {
     Object.values(server).forEach((mock) => mock.mockReset());
   });
 
-  test("loads provider, Realm, grant, and Project context for an admin", async () => {
+  test("loads provider, Realm, and return target context for an admin", async () => {
     server.getCurrentMember.mockResolvedValue({ role: "admin" });
     server.getIdentityProviders.mockResolvedValue([
       { id: "idpc_1", type: "internal", displayName: "Eveland Internal" },
@@ -39,10 +37,6 @@ describe("Identity settings page", () => {
     server.getIdentityRealms.mockResolvedValue([
       { id: "irlm_1", providerConnectionId: "idpc_1" },
     ]);
-    server.getIdentityRealmGrants.mockResolvedValue([
-      { identityRealmId: "irlm_1", projectId: "proj_1" },
-    ]);
-    server.getProjects.mockResolvedValue([{ id: "proj_1", name: "Greeter" }]);
     server.getIdentityReturnTargets.mockResolvedValue([
       { id: "irtg_1", key: "eve-chats", origin: "http://localhost:3010", enabled: true },
     ]);
@@ -50,8 +44,6 @@ describe("Identity settings page", () => {
     await expect(IdentitySettingsPage()).resolves.toBeTruthy();
     expect(server.getIdentityProviders).toHaveBeenCalledOnce();
     expect(server.getIdentityRealms).toHaveBeenCalledOnce();
-    expect(server.getIdentityRealmGrants).toHaveBeenCalledWith("irlm_1");
-    expect(server.getProjects).toHaveBeenCalledOnce();
     expect(server.getIdentityReturnTargets).toHaveBeenCalledOnce();
   });
 
