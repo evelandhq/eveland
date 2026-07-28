@@ -1,0 +1,119 @@
+---
+title: Upgrade from 0.12 to 0.13
+description: Migrate Identity authorization to the public Agent Catalog, apply Session and Schedule lifecycle changes, verify 0.13, and preserve the only safe 0.12 rollback path.
+---
+
+Eveland 0.13 adds a public Agent Catalog with Identity continuation, batch `.env` import, bounded idle retention for SessionBindings, complete scheduled-session lifecycle tracking, and verified Eve 0.27.8 compatibility. This guide covers a production upgrade from `v0.12.0` to `v0.13.0`.
+
+## Operational impact
+
+Plan a maintenance window. Three database migrations must run before any 0.13 process starts. One migration intentionally drops the 0.12 Realm-to-Project grant table, so a source-only rollback to 0.12 is not safe; retain a pre-upgrade Postgres backup until 0.13 is accepted.
+
+The authorization boundary also changes. `/agent-catalog` is public metadata and returns the same routable Projects to every caller. Eveland Identity authenticates a principal to a Project audience, but the Agent now owns all business authorization and must return `403` for principals it does not allow. If you used 0.12 Realm-to-Project grants as the effective access-control boundary, add and deploy equivalent authorization inside each Agent before upgrading.
+
+The upgrade does not change Project IDs, slugs, Stable or Preview endpoints, route weights, or Deployment runtime ownership.
+
+## 1. Back up and inspect 0.12
+
+Back up Postgres and `EVELAND_DATA_DIR` with your normal infrastructure procedure. Record the current tag and revision, confirm API and Gateway health, and wait for important import, build, deployment, schedule, or deletion jobs to finish.
+
+Stop the host Worker before changing either checkout so 0.12 cannot claim work while the database is being migrated:
+
+```bash
+sudo systemctl stop eveland-worker
+```
+
+Confirm that every Identity-enabled Agent enforces its own authorization. The Catalog does not reveal secrets or credentials, but its Project name, description, ID, and Stable endpoint are public after the upgrade.
+
+## 2. Add the 0.13 lifecycle settings
+
+No new secret is required. Add explicit SessionBinding lifetimes to the control-plane `.env` so API and Gateway use the same policy:
+
+```dotenv
+EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS=86400000
+EVELAND_API_SESSION_IDLE_TTL_MS=604800000
+```
+
+Add the same two values and the scheduled-run safety deadline to `/etc/eveland/eveland-worker.env`:
+
+```dotenv
+EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS=86400000
+EVELAND_API_SESSION_IDLE_TTL_MS=604800000
+EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS=86400000
+```
+
+The defaults are 24 hours for Playground bindings, seven days for public API bindings, and 24 hours for a dispatched ScheduleRun whose Observer never reports a terminal turn boundary. Keep both SessionBinding values identical on API, Gateway, and Worker. A successful bound request refreshes its idle window.
+
+Bindings already idle beyond the selected limit expire as soon as 0.13 evaluates them. A later request for a known expired binding receives `410 session_expired` instead of being routed to a different Deployment. Expired bindings stop protecting old stopped Deployments from archive.
+
+## 3. Install 0.13 and apply migrations
+
+In the control-plane checkout:
+
+```bash
+git fetch --tags origin
+git checkout v0.13.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/api db:migrate
+git rev-parse --short=12 HEAD
+```
+
+Put the printed revision in the shared production environment as `EVELAND_REVISION` and keep `EVELAND_RELEASE_CHANNEL=stable`.
+
+The migration command applies:
+
+- `0031_fancy_wild_child`: drops the obsolete `identity_realm_project_grants` table. This is deliberate and is the reason rollback requires restoring the database.
+- `0032_agent_catalog_capability_backfill`: marks existing Source Revisions that explicitly export the standard `eveChannel()` so their eligible Stable Deployments can appear in the Catalog. Existing summary fields and explicit capability values are preserved.
+- `0033_puzzling_madame_masque`: records every Session returned by a ScheduleRun, adds RuntimeInstance provenance to Session nodes and events, and backfills existing scheduled Sessions. A formerly succeeded ScheduleRun is returned to `running` only when its backfilled Session is still running.
+
+Complete the migration command before API, Gateway, or Worker 0.13 starts. On a large Session history, allow time for the `0033` backfill to inspect scheduled Sessions and their latest events.
+
+Update the separate Worker checkout to the same tag and rebuild the vendored sandbox backend:
+
+```bash
+cd /opt/eveland
+git fetch --tags origin
+git checkout v0.13.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/sandbox-bwrap build
+git rev-parse --short=12 HEAD
+```
+
+Set the same revision and `stable` channel in `/etc/eveland/eveland-worker.env`.
+
+## 4. Start the coordinated release
+
+Validate the merged Compose configuration, start the unprivileged control plane, and only then start the host Worker:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+sudo systemctl start eveland-worker
+sudo journalctl -u eveland-worker -n 100 --no-pager
+```
+
+The first 0.13 Worker start does not require a blanket redeploy. Existing Catalog-eligible Source Revisions are covered by the migration backfill. A scheduled dispatch now remains `running` until Observer reports a root terminal turn boundary for every returned Session; its lease protects the exact RuntimeInstance beyond the normal activation idle timeout.
+
+## 5. Verify 0.13
+
+Complete all of these checks:
+
+1. API and Gateway `/health` return `version: 0.13.0`, `channel: stable`, and the same revision.
+2. **Settings → About** reports matching Web, API, Gateway, and Worker build identity and lifecycle settings.
+3. An unauthenticated `GET /agent-catalog` returns only Projects whose Stable route has routable, positive-weight targets backed by Source Revisions with a standard Eve Channel. Repeat the request from another client and confirm the projection is not Realm-specific.
+4. For an Agent using `evelandIdentity()`, an unauthenticated request advertises the Eveland continuation, an allowed principal can complete login and retry, and an unauthorized principal receives the Agent's `403`.
+5. Existing active Agent sessions continue on their pinned Deployment. Confirm that a deliberately expired test binding returns `410 session_expired`.
+6. Run a test Schedule and confirm it remains `running` until the observed root turn finishes, then reaches the correct terminal status.
+7. Paste or upload a non-secret sample `.env` in Project **Settings → Environment**, inspect the parsed preview, and cancel before saving unless the values are intended.
+
+Eveland 0.13 still accepts imported Agents on Eve `0.25.x`, `0.26.x`, and `0.27.x`; upgrading the platform does not force an immediate Agent dependency change. The compatibility matrix now verifies `0.27.8`. To receive Eve 0.27.7 bounded stream catch-up or 0.27.8 authoring commands, refresh the Agent lockfile and redeploy. Bounded `follow: false` reads require both Client and Agent to use Eve 0.27.7 or newer.
+
+## Roll back to 0.12
+
+Do not point 0.12 processes at a database that has applied `0031`. The 0.12 control plane still expects the Realm-to-Project grant table.
+
+To roll back, stop Worker and all 0.13 control-plane services, restore the pre-upgrade Postgres backup, restore `EVELAND_DATA_DIR` if your backup procedure requires a matched database/filesystem point, check out `v0.12.0` in both locations, reinstall the frozen lockfile, rebuild `@eveland/sandbox-bwrap`, restore the 0.12 revision, and restart Compose before Worker.
+
+The restore discards database changes made after the backup, including new 0.13 Sessions, Jobs, Environment imports, and Identity state. Do not manually recreate the dropped grant table or partially reverse `0032`/`0033`; a coordinated backup restore is the supported rollback boundary.
+
+For the invariant upgrade procedure, see [Upgrade and rollback](/docs/operations/upgrades). For Agent dependency details, see [Eve compatibility](/docs/reference/eve-compatibility).

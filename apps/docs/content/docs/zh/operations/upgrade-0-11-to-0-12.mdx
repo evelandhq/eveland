@@ -61,10 +61,8 @@ Migration 命令会应用：
 - `0028_shocking_black_panther`：只允许一个启用的 Internal Provider。
 - `0029_sparkling_hammerhead`：回填 Continuation Token，并创建 Eve 0.27.4+ Reset 所需的唯一 SessionBinding 路由索引。
 - `0030_zippy_albert_cleary`：可为空的 Project Description 字段。
-- `0031_fancy_wild_child`：删除已经废弃的 Realm → Project Grant 表。
-- `0032_agent_catalog_capability_backfill`：为显式导出标准 `eveChannel()` 的既有 Source Revision 回填 Agent Catalog Capability 元数据。
 
-`0029` 会读取现有 Session 并回填已知 Continuation Token。`0031` 会有意删除已被替代的 Grant 表；Caller Token 签发与 Catalog Membership 已不再使用它。`0032` 只填充缺失的 `eveChat` Capability 元数据，保留既有 Summary 字段和显式 Capability 值，并且在数据库恢复后重复执行仍然安全。Migration Runner 会记录每项 Migration 并只应用一次。必须在 API、Gateway 或 Worker 0.12 启动前完成 Migration 命令。
+四项变更都是 Additive。`0029` 会读取现有 Session 并回填已知 Continuation Token；Migration Runner 会记录并只应用一次。必须在 API、Gateway 或 Worker 0.12 启动前完成 Migration 命令。
 
 将独立的 Worker Checkout 更新到同一 Tag，并重新构建会被注入 Release 的 Sandbox Backend：
 

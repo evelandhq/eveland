@@ -61,10 +61,8 @@ The migration command applies:
 - `0028_shocking_black_panther`: the single-enabled-Internal-Provider constraint.
 - `0029_sparkling_hammerhead`: continuation-token backfill and the unique SessionBinding routing index required by Eve 0.27.4+ reset.
 - `0030_zippy_albert_cleary`: the nullable Project description field.
-- `0031_fancy_wild_child`: removal of the obsolete Realm-to-Project grant table.
-- `0032_agent_catalog_capability_backfill`: Agent Catalog capability metadata for existing Source Revisions that explicitly export the standard `eveChannel()`.
 
-Migration `0029` reads existing Sessions to backfill known continuation tokens. Migration `0031` intentionally removes the superseded grant table; Caller Token issuance and Catalog membership no longer use it. Migration `0032` only fills missing `eveChat` capability metadata, preserves existing summary fields and explicit capability values, and is safe when rerun by a restored database. The migration runner records and applies each migration once. Complete the migration command before API, Gateway, or Worker 0.12 starts.
+All four changes are additive. Migration `0029` reads existing Sessions to backfill known continuation tokens; the migration runner records and applies it once. Complete the migration command before API, Gateway, or Worker 0.12 starts.
 
 Update the separate Worker checkout to the same tag and rebuild the vendored sandbox backend:
 
