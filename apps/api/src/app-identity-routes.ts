@@ -12,10 +12,12 @@ import {
 } from "@eveland/identity-broker";
 import type { Store } from "@eveland/db";
 import type { AppOptions, ApiApp } from "./app-types.js";
+import { publicGatewayUrl } from "./app-support.js";
 import {
   callerTokenRequestSchema,
   createIdentityProviderSchema,
   createIdentityRealmSchema,
+  identityAppTokenRequestSchema,
   updateIdentityRealmSchema,
   updateIdentityProviderSchema,
   upsertIdentityReturnTargetSchema,
@@ -224,10 +226,61 @@ export function registerPublicIdentityRoutes(
       );
     }
     try {
+      const sessionToken =
+        getCookie(c, IDENTITY_SESSION_COOKIE_NAME) ?? "";
+      const resolved = await broker.resolveSession(sessionToken);
+      const catalogAgent = (await store.listAgentCatalog()).find(
+        (agent) => agent.projectId === parsed.data.projectId,
+      );
       return c.json(
         await broker.issueCallerToken({
-          sessionToken: getCookie(c, IDENTITY_SESSION_COOKIE_NAME) ?? "",
+          sessionToken,
           projectId: parsed.data.projectId,
+          ...(catalogAgent
+            ? {
+                agentUrl: publicGatewayUrl(
+                  catalogAgent.hostname,
+                  options,
+                ),
+              }
+            : {}),
+        }),
+      );
+    } catch (error) {
+      return identityError(c, error);
+    }
+  });
+
+  app.post("/identity/app-tokens", async (c) => {
+    c.header("cache-control", "no-store");
+    const origin = c.req.header("origin") ?? "";
+    if (!allowedOrigins.has(origin)) {
+      return c.json(
+        {
+          code: "identity_origin_forbidden",
+          error: "This origin cannot request Eveland app tokens.",
+        },
+        403,
+      );
+    }
+    const parsed = identityAppTokenRequestSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      return c.json(
+        {
+          code: "identity_request_invalid",
+          error: "Identity return target is required.",
+        },
+        400,
+      );
+    }
+    try {
+      return c.json(
+        await broker.issueAppToken({
+          sessionToken: getCookie(c, IDENTITY_SESSION_COOKIE_NAME) ?? "",
+          targetKey: parsed.data.target,
+          origin,
         }),
       );
     } catch (error) {
@@ -491,49 +544,6 @@ export function registerSystemIdentityRoutes(
       ? c.json({ realm })
       : c.json({ error: "Identity Realm not found" }, 404);
   });
-
-  app.get("/system/identity/realms/:realmId/grants", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
-    const realm = await store.getIdentityRealm(c.req.param("realmId"));
-    if (!realm) return c.json({ error: "Identity Realm not found" }, 404);
-    return c.json({
-      grants: await store.listIdentityRealmProjectGrants(realm.id),
-    });
-  });
-
-  app.put(
-    "/system/identity/realms/:realmId/projects/:projectId",
-    async (c) => {
-      if (!requireAdmin(c.get("principal").role)) {
-        return c.json({ error: "Admin access required" }, 403);
-      }
-      const realm = await store.getIdentityRealm(c.req.param("realmId"));
-      const project = await store.getProject(c.req.param("projectId"));
-      if (!realm || !project) {
-        return c.json({ error: "Identity Realm or Project not found." }, 404);
-      }
-      return c.json({
-        grant: await store.grantIdentityRealmProject(realm.id, project.id),
-      });
-    },
-  );
-
-  app.delete(
-    "/system/identity/realms/:realmId/projects/:projectId",
-    async (c) => {
-      if (!requireAdmin(c.get("principal").role)) {
-        return c.json({ error: "Admin access required" }, 403);
-      }
-      return (await store.revokeIdentityRealmProject(
-        c.req.param("realmId"),
-        c.req.param("projectId"),
-      ))
-        ? c.body(null, 204)
-        : c.json({ error: "Identity Realm grant not found." }, 404);
-    },
-  );
 
   app.get("/system/identity/return-targets", async (c) => {
     if (!requireAdmin(c.get("principal").role)) {

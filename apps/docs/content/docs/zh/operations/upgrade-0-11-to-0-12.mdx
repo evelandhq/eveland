@@ -39,7 +39,7 @@ EVELAND_IDENTITY_JWKS_URL=http://127.0.0.1:4000/.well-known/jwks.json
 
 API 与 Worker 的 `EVELAND_IDENTITY_ISSUER` 必须完全相同。Issuer 是写入 Caller Token 的稳定公开 API Origin；systemd Worker 可以向 Agent 注入私有 Loopback JWKS URL，因为 Agent 运行在同一宿主机。`EVELAND_IDENTITY_ALLOWED_ORIGINS` 只接受逗号分隔的精确 Browser Origin，不能使用通配符。
 
-Identity API 与 Browser Chat 必须位于同一个 Schemeful Site，通常是同一主域下的 HTTPS 子域，因为独立的 `eveland_identity` Cookie 使用 `SameSite=Lax`。如果尚未启用带认证 Chat，也应先配置计划使用的精确同站 Origin；该 Origin 上线前不要创建 Return Target 或 Project Grant。
+Identity API 与 Browser Chat 必须位于同一个 Schemeful Site，通常是同一主域下的 HTTPS 子域，因为独立的 `eveland_identity` Cookie 使用 `SameSite=Lax`。如果尚未启用带认证 Chat，也应先配置计划使用的精确同站 Origin；该 Origin 上线前不要创建 Return Target。
 
 ## 3. 安装 0.12 并执行 Migration
 
@@ -61,8 +61,10 @@ Migration 命令会应用：
 - `0028_shocking_black_panther`：只允许一个启用的 Internal Provider。
 - `0029_sparkling_hammerhead`：回填 Continuation Token，并创建 Eve 0.27.4+ Reset 所需的唯一 SessionBinding 路由索引。
 - `0030_zippy_albert_cleary`：可为空的 Project Description 字段。
+- `0031_fancy_wild_child`：删除已经废弃的 Realm → Project Grant 表。
+- `0032_agent_catalog_capability_backfill`：为显式导出标准 `eveChannel()` 的既有 Source Revision 回填 Agent Catalog Capability 元数据。
 
-四项变更都是 Additive。`0029` 会读取现有 Session 并回填已知 Continuation Token；Migration Runner 会记录并只应用一次。必须在 API、Gateway 或 Worker 0.12 启动前完成 Migration 命令。
+`0029` 会读取现有 Session 并回填已知 Continuation Token。`0031` 会有意删除已被替代的 Grant 表；Caller Token 签发与 Catalog Membership 已不再使用它。`0032` 只填充缺失的 `eveChat` Capability 元数据，保留既有 Summary 字段和显式 Capability 值，并且在数据库恢复后重复执行仍然安全。Migration Runner 会记录每项 Migration 并只应用一次。必须在 API、Gateway 或 Worker 0.12 启动前完成 Migration 命令。
 
 将独立的 Worker Checkout 更新到同一 Tag，并重新构建会被注入 Release 的 Sandbox Backend：
 

@@ -27,6 +27,7 @@ import {
   extractZipUpload,
   invalidateGateway,
   isMultipartRequest,
+  publicGatewayUrl,
   resolveProjectEveVersion,
 } from "./app-support.js";
 
@@ -403,26 +404,16 @@ export function registerProjectRoutes(input: {
     const routes = await store.listProjectRoutes(c.req.param("projectId"));
     if (routes.length === 0)
       return c.json({ error: "Agent endpoints not found" }, 404);
-    const scheme =
-      options.gatewayPublicScheme ??
-      (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME === "https"
-        ? "https"
-        : "http");
-    const configuredPort =
-      options.gatewayPublicPort ??
-      Number(
-        process.env.EVELAND_GATEWAY_PUBLIC_PORT ??
-          (scheme === "http" ? 4080 : 0),
-      );
-    const suffix = configuredPort ? `:${configuredPort}` : "";
-    const url = (hostname: string) => `${scheme}://${hostname}${suffix}`;
     return c.json({
       stable: routes.find((route) => route.kind === "project")
-        ? url(routes.find((route) => route.kind === "project")!.hostname)
+        ? publicGatewayUrl(
+            routes.find((route) => route.kind === "project")!.hostname,
+            options,
+          )
         : null,
       previews: routes
         .filter((route) => route.kind === "deployment")
-        .map((route) => url(route.hostname))
+        .map((route) => publicGatewayUrl(route.hostname, options))
         .sort(),
     });
   });

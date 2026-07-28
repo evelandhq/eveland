@@ -6,10 +6,7 @@ import type {
 } from "@eveland/core/contracts";
 import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity";
-import type {
-  IdentityRealmGrant,
-  PublicIdentityProvider,
-} from "./server-api";
+import type { PublicIdentityProvider } from "./server-api";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -309,20 +306,6 @@ export async function updateIdentityRealm(input: {
       body: JSON.stringify(input),
     },
   ).then((data) => data.realm);
-}
-
-export async function setIdentityRealmProjectGrant(
-  realmId: string,
-  projectId: string,
-  granted: boolean,
-): Promise<IdentityRealmGrant | null> {
-  const path = `/system/identity/realms/${encodeURIComponent(realmId)}/projects/${encodeURIComponent(projectId)}`;
-  if (!granted) {
-    await clientRequest(path, { method: "DELETE" });
-    return null;
-  }
-  return clientRequest<{ grant: IdentityRealmGrant }>(path, { method: "PUT" })
-    .then((data) => data.grant);
 }
 
 export async function upsertIdentityReturnTarget(input: {

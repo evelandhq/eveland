@@ -347,4 +347,46 @@ describe("Gateway", () => {
     expect(response.headers.getSetCookie()).toEqual(["eve_session=abc; HttpOnly", "variant=v1; HttpOnly"]);
   });
 
+  test("transparently forwards Agent authentication challenges", async () => {
+    const challenge =
+      'Bearer realm="eveland", authorization_uri="https://identity.example.com/identity/login", project_id="proj_agent", display_name="Eveland"';
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(401, {
+        "cache-control": "no-store",
+        "content-type": "application/json",
+        "www-authenticate": challenge,
+      });
+      response.end(
+        JSON.stringify({
+          code: "authentication_required",
+          error: "Eveland authentication is required.",
+        }),
+      );
+    });
+    const app = createGatewayApp(
+      repository([route({ hostPort: upstream.port })]),
+      { allowedBaseDomains: ["agent.localhost"], affinitySecret },
+    );
+
+    const response = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session",
+      {
+        method: "POST",
+        headers: {
+          host: "p-alpha.agent.localhost",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ message: "hello" }),
+      },
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe(challenge);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      code: "authentication_required",
+      error: "Eveland authentication is required.",
+    });
+  });
+
 });

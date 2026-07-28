@@ -2,12 +2,16 @@ import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 
 import { describe, expect, test, vi } from "vitest";
 import {
+  httpBasic,
   UnauthenticatedError,
   localDev,
   routeAuth,
 } from "eve/channels/auth";
 
-import { evelandIdentity } from "./auth.js";
+import {
+  evelandIdentity,
+  parseEvelandAuthenticationChallenge,
+} from "./auth.js";
 
 const issuer = "https://identity.eveland.example";
 const projectId = "proj_agent";
@@ -270,6 +274,37 @@ describe("evelandIdentity", () => {
     ).resolves.toMatchObject({
       authenticator: "local-dev",
       principalType: "local-dev",
+    });
+  });
+
+  test("advertises an Eveland continuation without suppressing Basic fallback", async () => {
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+    });
+
+    const result = await routeAuth(
+      new Request("https://agent.example/eve/v1/session", { method: "POST" }),
+      [
+        auth,
+        httpBasic(
+          { username: "agent", password: "secret" },
+          { realm: "agent" },
+        ),
+      ],
+    );
+
+    expect(result).toBeInstanceOf(Response);
+    const response = result as Response;
+    expect(response.status).toBe(401);
+    const challenge = response.headers.get("www-authenticate");
+    expect(challenge).toContain('Basic realm="agent"');
+    expect(parseEvelandAuthenticationChallenge(challenge)).toEqual({
+      kind: "eveland",
+      url: `${issuer}/identity/login`,
+      projectId,
+      displayName: "Eveland",
     });
   });
 });

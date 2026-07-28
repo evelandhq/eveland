@@ -52,6 +52,7 @@ import type {
   UsageRange,
 } from "@eveland/core/contracts";
 import type { ModelStepUsage } from "@eveland/core/eve";
+import type { AgentCatalogRecord } from "@eveland/core/catalog";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { EveVersionInfo } from "@eveland/core/source";
 import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
@@ -153,6 +154,10 @@ export interface ProjectStore {
     projectId: string,
     state: { status?: ProjectStatus; deploymentStatus?: DeploymentStatus },
   ): Promise<Project | null>;
+}
+
+export interface CatalogStore {
+  listAgentCatalog(): Promise<AgentCatalogRecord[]>;
 }
 
 export interface SourceStore {
@@ -358,15 +363,6 @@ export interface IdentityStore {
   }): Promise<IdentityReturnTarget>;
   listIdentityReturnTargets(): Promise<IdentityReturnTarget[]>;
   getIdentityReturnTargetByKey(key: string): Promise<IdentityReturnTarget | null>;
-  grantIdentityRealmProject(
-    identityRealmId: string,
-    projectId: string,
-  ): Promise<{ identityRealmId: string; projectId: string; createdAt: string }>;
-  revokeIdentityRealmProject(identityRealmId: string, projectId: string): Promise<boolean>;
-  hasIdentityRealmProjectGrant(identityRealmId: string, projectId: string): Promise<boolean>;
-  listIdentityRealmProjectGrants(
-    identityRealmId: string,
-  ): Promise<Array<{ identityRealmId: string; projectId: string; createdAt: string }>>;
   putIdentityOidcCredential(input: {
     identityPrincipalId: string;
     providerConnectionId: string;
@@ -670,6 +666,7 @@ export interface InstanceHealthStore {
 }
 
 export type Store = ProjectStore &
+  CatalogStore &
   SourceStore &
   GitCredentialStore &
   AgentAuthStore &

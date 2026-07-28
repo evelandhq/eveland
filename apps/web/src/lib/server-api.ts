@@ -94,11 +94,6 @@ export type PublicIdentityProvider = Omit<
   IdentityProviderConnection,
   "clientSecretEncrypted"
 > & { clientSecretConfigured: boolean };
-export type IdentityRealmGrant = {
-  identityRealmId: string;
-  projectId: string;
-  createdAt: string;
-};
 export const getIdentityProviders = () =>
   apiGet<{ providers: PublicIdentityProvider[] }>("/system/identity/providers")
     .then((data) => data.providers);
@@ -108,11 +103,6 @@ export const getIdentityRealms = () =>
 export const getIdentityReturnTargets = () =>
   apiGet<{ targets: IdentityReturnTarget[] }>("/system/identity/return-targets")
     .then((data) => data.targets);
-export const getIdentityRealmGrants = (realmId: string) =>
-  apiGet<{ grants: IdentityRealmGrant[] }>(
-    `/system/identity/realms/${encodeURIComponent(realmId)}/grants`,
-  ).then((data) => data.grants);
-
 function queryString(filters: Record<string, string | undefined>): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);

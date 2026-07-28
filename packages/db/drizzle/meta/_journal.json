@@ -218,6 +218,20 @@
       "when": 1785134477005,
       "tag": "0030_zippy_albert_cleary",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1785212758205,
+      "tag": "0031_fancy_wild_child",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1785219237773,
+      "tag": "0032_agent_catalog_capability_backfill",
+      "breakpoints": true
     }
   ]
 }

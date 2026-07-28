@@ -9,7 +9,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
 - `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
 - `packages/agent-auth`: Node-only generic Agent Connection registry plus Authorization Code + PKCE OIDC acquisition, encrypted transaction/credential state, verification, refresh, and Basic/Bearer/Vercel-OIDC/custom-header materialization.
-- `packages/identity-broker`: provider-neutral Agent-user identity finalization, separate Identity Sessions, Realm → Project authorization, short-lived ES256 Caller Token issuance, signing-key rotation, and public JWKS.
+- `packages/identity-broker`: provider-neutral Agent-user identity finalization, separate Identity Sessions, short-lived project-audience ES256 Caller Token issuance, signing-key rotation, and public JWKS.
 - `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
 - `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Its thin app entrypoint composes focused route modules; persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private. Pure Host/header/affinity/target rules are separated from request lifecycle orchestration.
@@ -62,11 +62,24 @@ The initial Admin email defaults to `admin@example.com`; its password comes only
 `EVELAND_ADMIN_PASSWORD` and must contain at least 12 characters.
 `BETTER_AUTH_SECRET` is a separate random secret of at least 32 characters. `BETTER_AUTH_URL`
 must be the browser-visible API origin (for example `https://api.example.com` in production).
-Better Auth remains control-plane authentication only. System > Identity configures an
-independent Internal Provider, allowed Identity Realm, exact web-chat return origin, and
-explicit Realm → Project grants. The Identity Broker then issues a separate HttpOnly
-Identity Session and approximately 60-second, project-audience ES256 Caller Tokens; neither
-the Better Auth session nor provider credentials are sent to the chat UI, Gateway, or Agent.
+Better Auth remains control-plane authentication only. System > Identity configures the
+single active Agent-user Identity Provider, its allowed Identity Realm, and an exact web-chat
+return origin. The Identity Broker creates a separate HttpOnly Identity Session and can issue
+approximately 60-second, project-audience ES256 Caller Tokens; neither the Better Auth
+session nor provider credentials are sent to the chat UI, Gateway, or Agent. Eveland uses
+those tokens to authenticate a principal, while each Agent owns its business authorization.
+
+`GET /agent-catalog` is a read-only projection of Stable routes whose positive-weight
+Deployments all use an immutable Source Revision with an explicit standard `eveChannel`.
+Scale-to-zero `stopped` targets remain discoverable. Catalog membership does not depend on an
+Agent's auth helper or the reader's Identity Realm; the endpoint is public and returns the same
+list to every caller. EveChats uses the Eveland issuer plus Project ID as the stable managed
+identity and lazily creates a local connection only when an Agent is opened. It first calls the
+Agent with its app-scoped credential. An `evelandIdentity()` route advertises a parameterized
+Bearer challenge; only then does EveChats enter `/identity/login`, obtain a Caller Token, and
+retry the original request. Other AuthFns, including Basic fallback in the same auth array,
+remain Agent-owned. A separate `eveland:app:eve-chats` App Token protects EveChats-owned history
+and external Agent data.
 
 All four processes are required: the web form posts to the API, Playground/public Agent traffic goes through Gateway, and imports, builds, and deploys are executed by the worker's job polling — without it, projects stay pending after upload.
 

@@ -26,7 +26,6 @@ import {
   identityOidcCredentials,
   identityPrincipals,
   identityProviderConnections,
-  identityRealmProjectGrants,
   identityRealms,
   identityReturnTargets,
   identitySessions,
@@ -441,74 +440,6 @@ export function createPostgresIdentityStore(
       return row ? returnTargetRow(row) : null;
     },
 
-    async grantIdentityRealmProject(identityRealmId, projectId) {
-      const inserted = await db
-        .insert(identityRealmProjectGrants)
-        .values({ identityRealmId, projectId })
-        .onConflictDoNothing({
-          target: [
-            identityRealmProjectGrants.identityRealmId,
-            identityRealmProjectGrants.projectId,
-          ],
-        })
-        .returning();
-      const row =
-        inserted[0] ??
-        (
-          await db
-            .select()
-            .from(identityRealmProjectGrants)
-            .where(
-              and(
-                eq(
-                  identityRealmProjectGrants.identityRealmId,
-                  identityRealmId,
-                ),
-                eq(identityRealmProjectGrants.projectId, projectId),
-              ),
-            )
-            .limit(1)
-        )[0];
-      if (!row) throw new Error("Failed to grant Identity Realm Project access.");
-      return grantRow(row);
-    },
-
-    async revokeIdentityRealmProject(identityRealmId, projectId) {
-      const rows = await db
-        .delete(identityRealmProjectGrants)
-        .where(
-          and(
-            eq(identityRealmProjectGrants.identityRealmId, identityRealmId),
-            eq(identityRealmProjectGrants.projectId, projectId),
-          ),
-        )
-        .returning({ projectId: identityRealmProjectGrants.projectId });
-      return rows.length > 0;
-    },
-
-    async hasIdentityRealmProjectGrant(identityRealmId, projectId) {
-      const [row] = await db
-        .select({ projectId: identityRealmProjectGrants.projectId })
-        .from(identityRealmProjectGrants)
-        .where(
-          and(
-            eq(identityRealmProjectGrants.identityRealmId, identityRealmId),
-            eq(identityRealmProjectGrants.projectId, projectId),
-          ),
-        )
-        .limit(1);
-      return Boolean(row);
-    },
-
-    async listIdentityRealmProjectGrants(identityRealmId) {
-      return (await db
-        .select()
-        .from(identityRealmProjectGrants)
-        .where(eq(identityRealmProjectGrants.identityRealmId, identityRealmId))
-        .orderBy(asc(identityRealmProjectGrants.createdAt)))
-        .map(grantRow);
-    },
-
     async putIdentityOidcCredential(input) {
       const [row] = await db
         .insert(identityOidcCredentials)
@@ -782,14 +713,6 @@ function signingKeyRow(row: SigningKeyRow): IdentitySigningKey {
     status: row.status as IdentitySigningKeyStatus,
     notBefore: row.notBefore.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-function grantRow(row: typeof identityRealmProjectGrants.$inferSelect) {
-  return {
-    identityRealmId: row.identityRealmId,
-    projectId: row.projectId,
     createdAt: row.createdAt.toISOString(),
   };
 }

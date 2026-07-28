@@ -29,6 +29,22 @@ export function publicInvitation(invitation: TeamInvitation) {
   return invitation;
 }
 
+export function publicGatewayUrl(
+  hostname: string,
+  options: AppOptions,
+): string {
+  const scheme =
+    options.gatewayPublicScheme ??
+    (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME === "https" ? "https" : "http");
+  const configuredPort =
+    options.gatewayPublicPort ??
+    Number(
+      process.env.EVELAND_GATEWAY_PUBLIC_PORT ??
+        (scheme === "http" ? 4080 : 0),
+    );
+  return `${scheme}://${hostname}${configuredPort ? `:${configuredPort}` : ""}`;
+}
+
 export function getSetCookies(headers: Headers): string[] {
   const withGetSetCookie = headers as Headers & {
     getSetCookie?: () => string[];

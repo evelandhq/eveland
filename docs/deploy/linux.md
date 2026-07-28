@@ -245,17 +245,23 @@ External authenticated chat uses a separate managed Identity boundary. Set the s
 EveChats browser origin, and give the worker an Agent-reachable `EVELAND_IDENTITY_JWKS_URL`
 (`http://127.0.0.1:4000/.well-known/jwks.json` for host systemd Agents). In System > Identity,
 create the Internal Provider and exact allowed Realm, register the `eve-chats` return origin, and
-grant only the intended Projects. The worker reserves and injects issuer, JWKS URL, and
+verify the read-only `/agent-catalog` projection. The Catalog returns the same routable
+`eveChannel` Projects to every caller; it is public, does not filter by Realm, and does not
+configure Agent authorization. The worker reserves and injects issuer, JWKS URL, and
 `EVELAND_PROJECT_ID`; Project Secrets and Shared Agent Environment cannot override them.
 
 Do not reuse `BETTER_AUTH_SECRET`, Better Auth cookies, Playground Agent Connection credentials, or
-provider tokens in EveChats or Agent configuration. The browser receives only a short-lived
-project-audience Caller Token; Gateway transparently forwards it and the Agent verifies it.
+provider tokens in EveChats or Agent configuration. When an Agent's route auth requires
+Eveland Identity, its `WWW-Authenticate` response identifies the Eveland login continuation and
+Project audience. The browser follows that continuation, obtains a short-lived Caller Token, and
+retries the original request. Gateway transparently forwards both the challenge and credential;
+the Agent verifies the token and remains responsible for business authorization, including `403`.
 
 Deploy Eveland Identity and the browser chat surface on the same schemeful site,
-typically as sibling HTTPS subdomains. The separate `eveland_identity` cookie
-uses `SameSite=Lax`; an unrelated site cannot use it for credentialed token
-requests even when its exact origin is present in the CORS allowlist.
+typically as sibling HTTPS subdomains. The separate `eveland_identity` cookie is
+scoped to `/identity` and protects only the Identity API; `/agent-catalog` is public.
+The cookie uses `SameSite=Lax`, so an unrelated site cannot use it for credentialed
+token requests even when its exact origin is present in the CORS allowlist.
 | `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
 | `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
 | `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |

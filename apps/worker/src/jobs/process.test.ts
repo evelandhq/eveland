@@ -27,6 +27,11 @@ describe("processNextJob", () => {
   test("validates an Eve source before a Project exists", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
+    await mkdir(path.join(sourcePath, "agent/channels"), { recursive: true });
+    await writeFile(
+      path.join(sourcePath, "agent/channels/eve.ts"),
+      `import { eveChannel } from "eve/channels/eve";\nexport default eveChannel({});`,
+    );
     const preflight = await store.createSourcePreflight({
       userId: "user_local_admin",
       kind: "zip",
@@ -37,7 +42,10 @@ describe("processNextJob", () => {
     await expect(processNextSourcePreflight(store, "preflight-worker")).resolves.toBe(true);
     await expect(store.getSourcePreflight(preflight.id, "user_local_admin")).resolves.toMatchObject({
       status: "completed",
-      summary: expect.objectContaining({ eveVersion: expect.any(String) }),
+      summary: expect.objectContaining({
+        eveVersion: expect.any(String),
+        capabilities: { eveChat: true },
+      }),
     });
     await expect(store.listProjects()).resolves.toEqual([]);
   });
