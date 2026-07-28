@@ -321,6 +321,8 @@ pnpm 版本执行 frozen install，存在 `package-lock.json` 时使用 `npm ci`
 到 `npm install`。pnpm frozen install 仍校验 lockfile 与 package integrity，但不得因为平台
 自身的 package minimum-release-age 策略拒绝项目已经提交的锁定版本。Docker 与 systemd
 runtime 必须使用相同选择，不能改用 npm 重新解析 pnpm 项目并绕过其 lockfile。
+Eve 0.27.8 的 `eve add` / `eve registry` 只属于源码作者主动执行的 CLI；Eveland 的 import、
+build 与 deploy 不得运行这些命令、访问 registry 或修改不可变 Source Revision。
 
 Git 拉取由 worker 以非交互方式执行，默认最多等待 120 秒；可通过
 `EVELAND_GIT_CLONE_TIMEOUT_MS` 调整。超时或 Git 失败必须终止拉取、清理未完成的
@@ -423,7 +425,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 * `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
 * `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
 * `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
-* `vercel-oidc`：镜像 Eve 0.27.6 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
+* `vercel-oidc`：镜像 Eve 0.27.8 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
 * `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
@@ -432,7 +434,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
 verifier 建立的 Caller 做隐式映射。
 
-`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.27.6
+`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.27.8
 `ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
 `x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
 Connection 只保存 token Secret reference/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
@@ -486,6 +488,11 @@ Playground 中可查看当前 Session 的：
 * 当前 turn 的图片、PDF、文本和代码附件
 
 Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.25.x、0.26.x 与 0.27.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
+Eve 0.27.7+ Client 可以通过 `follow: false` 做有界 Catch-up Read：请求使用
+`includeTailIndex=1`，Agent 返回 `x-eve-stream-tail-index`。Web rewrite、API Playground proxy、
+内部与公开 Gateway 必须原样保留该 query、响应 header 与 NDJSON body；只有 Client 与目标 Agent
+都至少为 0.27.7 时才能使用该模式，旧 Agent 缺少 tail header 时必须明确失败。Playground 自身
+继续使用默认 Live Follow，不因平台依赖升级而停止等待当前 turn 的后续事件。
 
 ---
 

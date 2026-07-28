@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "ai": "^7.0.34",
-    "eve": "0.27.6",
+    "eve": "0.27.8",
     "eve-0-25": "npm:eve@0.25.3",
     "eve-0-26": "npm:eve@0.26.2",
     "vitest": "^4.1.9"

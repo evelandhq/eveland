@@ -1464,3 +1464,36 @@ binding 或 lease 保护的 stopped Deployment 会恢复进入正常 archive 流
 Playground 保持临时工具语义：显式 New conversation 先完成 canonical reset 再清空浏览器状态；
 route unmount 或非 bfcache `pagehide` 使用 same-origin keepalive request best-effort reset。页面退出
 不等待网络结果，因此服务端 TTL 仍是浏览器崩溃、断网或强制结束时的最终兜底。
+
+---
+
+## 33. 2026-07-28 follow-up：Eve 0.27.8 verified patch baseline
+
+Eve 0.27.7 与 0.27.8 已完成 GitHub release notes、`eve@0.27.6..eve@0.27.8` 源码 diff 和
+实际发布包核对。三 minor 支持窗口保持 0.25.x、0.26.x 与 0.27.x；精确矩阵 patch 更新为
+0.25.3、0.26.2 与 0.27.8。默认开发、Web Client、Agent Auth 和完整 Linux fixture 使用
+0.27.8，basic systemd smoke 继续使用窗口最旧端的 0.25.3。
+
+本次 patch baseline 的直接协议变化与 Eveland 对策：
+
+- 0.27.7 的 `ClientSession.stream()` 新增 `follow: false` 有界读取。Client 首次请求会附带
+  `includeTailIndex=1`，Eve Channel 以 `x-eve-stream-tail-index` 返回打开时的 durable tail。
+  Eveland 的 Web rewrite、API Playground proxy、内部 Gateway 路径与公开 Gateway 都保持 query、
+  响应 header 和 NDJSON body 透明，因此不新增 adapter 分支；Gateway/API 回归测试固定该透传。
+  旧 Agent 不返回 tail header，0.27.7+ Client 会明确报错，所以只有 Client 与目标 Agent 都升级
+  到 0.27.7+ 时才能使用 bounded catch-up。Playground 继续使用默认 live follow；
+- 0.27.7 会解析 provider-executed tool call 的 raw JSON string，并把 malformed arguments 转成
+  failed tool result，而不是使整个 turn 失败。Observer Hook event surface 没有改变，Collector
+  无需 schema 分支；
+- 0.27.7 的单 Nitro build 只影响 Eve 的 Vercel Build Output。Eveland 使用 standalone Release
+  build/runtime，不复制 Vercel functionRules，也不改变 Worker 或 sandbox privilege boundary；
+- 0.27.8 的 `eve add` / `eve registry` 是 authoring-time CLI。Eveland import/build/deploy 不运行
+  这些命令，Release preparation 不因此访问 registry 或修改 immutable Source Revision；
+- create/continue/cancel/reset route、continuation token、Vercel OIDC headers、Route Auth、
+  Hook、Schedule、principal forwarding 和 `SandboxBackend` 公共定义均未变化；AI SDK peer 下限
+  仍为 `ai@^7.0.34`。
+
+实际发布包矩阵继续覆盖 0.25.3/0.26.2/0.27.8 observer hook 与 packaged skill discovery、
+schedule discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox
+public type compatibility。Agent 项目需刷新 lockfile 并重新部署才能确定取得 0.27.8；仅改
+`package.json` range 不会改变现有 immutable Release。

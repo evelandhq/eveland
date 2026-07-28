@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
   { version: "0.25.3", fixtureName: "eve-0.25-schedules", packageName: "eve-0-25" },
   { version: "0.26.2", fixtureName: "eve-0.25-schedules", packageName: "eve-0-26" },
-  { version: "0.27.6", fixtureName: "eve-0.25-schedules", packageName: "eve" },
+  { version: "0.27.8", fixtureName: "eve-0.25-schedules", packageName: "eve" },
 ] as const;
 
 describe("Eve schedule compatibility matrix", () => {
