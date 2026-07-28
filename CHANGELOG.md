@@ -4,6 +4,21 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.13.0](https://github.com/evelandhq/eveland/compare/v0.12.0...v0.13.0) (2026-07-28)
+
+
+### Features
+
+* add agent catalog and identity continuation ([#150](https://github.com/evelandhq/eveland/issues/150)) ([43c2ddb](https://github.com/evelandhq/eveland/commit/43c2ddb80eb3732ccfd800f0dd69666f0344b5d6))
+* import project environment from .env ([#145](https://github.com/evelandhq/eveland/issues/145)) ([eded6da](https://github.com/evelandhq/eveland/commit/eded6da27ec65539723aa6c1ad2aa7afe0f2df40))
+* support Eve 0.27.8 ([#151](https://github.com/evelandhq/eveland/issues/151)) ([c8dff3a](https://github.com/evelandhq/eveland/commit/c8dff3aba83b762679087886572cea2f0c9189e6))
+
+
+### Bug Fixes
+
+* expire idle session bindings ([#149](https://github.com/evelandhq/eveland/issues/149)) ([381586a](https://github.com/evelandhq/eveland/commit/381586a79d3f134c3ff58c566848bde980780e06))
+* preserve scheduled session execution lifecycle ([1264a5e](https://github.com/evelandhq/eveland/commit/1264a5e4642ac3a1e8f110cd7152fad022310274)), closes [#147](https://github.com/evelandhq/eveland/issues/147)
+
 ## [0.12.0](https://github.com/evelandhq/eveland/compare/v0.11.0...v0.12.0) (2026-07-27)
 
 
