@@ -301,9 +301,12 @@ describe("Gateway", () => {
         }
         if (
           request.method === "GET" &&
-          request.url === "/eve/v1/session/eve_stream/stream?startIndex=1"
+          request.url === "/eve/v1/session/eve_stream/stream?startIndex=1&includeTailIndex=1"
         ) {
-          response.writeHead(200, { "content-type": "application/x-ndjson" });
+          response.writeHead(200, {
+            "content-type": "application/x-ndjson",
+            "x-eve-stream-tail-index": "3",
+          });
           response.write(
             `${JSON.stringify({ type: "reasoning.appended", data: { reasoningDelta: "Checking" } })}\n`,
           );
@@ -414,7 +417,7 @@ describe("Gateway", () => {
     );
     const startedAt = Date.now();
     const stream = await app.request(
-      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_stream/stream?startIndex=1",
+      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_stream/stream?startIndex=1&includeTailIndex=1",
       {
         headers: {
           authorization: "Bearer service-secret",
@@ -449,6 +452,7 @@ describe("Gateway", () => {
     expect(new TextDecoder().decode(first.value)).toContain(
       "reasoning.appended",
     );
+    expect(stream.headers.get("x-eve-stream-tail-index")).toBe("3");
     expect(Date.now() - startedAt).toBeLessThan(200);
     await reader.cancel();
     expect(requests).toEqual(
@@ -479,7 +483,7 @@ describe("Gateway", () => {
         },
         {
           method: "GET",
-          path: "/eve/v1/session/eve_stream/stream?startIndex=1",
+          path: "/eve/v1/session/eve_stream/stream?startIndex=1&includeTailIndex=1",
           host: `localhost:${upstream.port}`,
           body: "",
         },

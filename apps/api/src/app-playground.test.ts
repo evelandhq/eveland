@@ -391,7 +391,7 @@ describe("api app", () => {
         }
         if (
           input.method === "GET" &&
-          input.path === "/eve/v1/session/eve_chat/stream"
+          input.path === "/eve/v1/session/eve_chat/stream?startIndex=0&includeTailIndex=1"
         ) {
           return new Response(
             [
@@ -432,7 +432,10 @@ describe("api app", () => {
               .join("\n") + "\n",
             {
               status: 200,
-              headers: { "content-type": "application/x-ndjson" },
+              headers: {
+                "content-type": "application/x-ndjson",
+                "x-eve-stream-tail-index": "2",
+              },
             },
           );
         }
@@ -506,7 +509,7 @@ describe("api app", () => {
       },
     );
     const stream = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_chat/stream`,
+      `/projects/${project.id}/playground/eve/v1/session/eve_chat/stream?startIndex=0&includeTailIndex=1`,
       {
         headers: { accept: "application/x-ndjson" },
       },
@@ -518,6 +521,7 @@ describe("api app", () => {
       continuationToken: "continue_1",
     });
     expect(stream.status).toBe(200);
+    expect(stream.headers.get("x-eve-stream-tail-index")).toBe("2");
     await expect(stream.text()).resolves.toContain("input.requested");
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({
@@ -594,7 +598,11 @@ describe("api app", () => {
     ]);
     expect(proxyCalls).toEqual([
       { method: "POST", path: "/eve/v1/session", body: initialBody },
-      { method: "GET", path: "/eve/v1/session/eve_chat/stream", body: "" },
+      {
+        method: "GET",
+        path: "/eve/v1/session/eve_chat/stream?startIndex=0&includeTailIndex=1",
+        body: "",
+      },
       {
         method: "POST",
         path: "/eve/v1/session/eve_chat",

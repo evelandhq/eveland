@@ -74,6 +74,35 @@ describe("Gateway", () => {
     ).resolves.toBeUndefined();
   });
 
+  test("preserves Eve 0.27.7 bounded stream query and durable tail header", async () => {
+    let upstreamPath: string | undefined;
+    const upstream = await startUpstream((request, response) => {
+      upstreamPath = request.url;
+      response.writeHead(200, {
+        "content-type": "application/x-ndjson",
+        "x-eve-stream-tail-index": "2",
+      });
+      response.end('{"type":"session.waiting"}\n');
+    });
+    const app = createGatewayApp(
+      repository([route({ hostPort: upstream.port })]),
+      { allowedBaseDomains: ["agent.localhost"], affinitySecret },
+    );
+
+    const response = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session/eve_1/stream?startIndex=1&includeTailIndex=1",
+      {
+        headers: { host: "p-alpha.agent.localhost:4080" },
+      },
+    );
+
+    expect(upstreamPath).toBe(
+      "/eve/v1/session/eve_1/stream?startIndex=1&includeTailIndex=1",
+    );
+    expect(response.headers.get("x-eve-stream-tail-index")).toBe("2");
+    await expect(response.text()).resolves.toContain("session.waiting");
+  });
+
   test("passes through a custom channel method, query, headers, and body", async () => {
     const upstream = await startUpstream((request, response) => {
       const chunks: Buffer[] = [];
