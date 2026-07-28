@@ -1,0 +1,119 @@
+---
+title: 从 0.12 升级到 0.13
+description: 将 Identity 授权迁移到公开 Agent Catalog，应用 Session 与 Schedule 生命周期变更，验收 0.13，并保留唯一安全的 0.12 回滚路径。
+---
+
+Eveland 0.13 新增带 Identity Continuation 的公开 Agent Catalog、批量 `.env` 导入、带 Idle 上限的 SessionBinding 保留策略、完整的 Schedule Session 生命周期追踪，以及通过验证的 Eve 0.27.8 兼容性。本文说明如何将生产环境从 `v0.12.0` 升级到 `v0.13.0`。
+
+## 运维影响
+
+请安排维护窗口。三个数据库 Migration 必须先于任何 0.13 进程执行。其中一个 Migration 会有意删除 0.12 的 Realm → Project Grant 表，因此仅回滚源码并不能安全返回 0.12；在确认接受 0.13 前必须保留升级前的 Postgres 备份。
+
+授权边界也发生变化。`/agent-catalog` 是公开元数据，对所有调用者返回相同的可路由 Project。Eveland Identity 只负责把 Principal 认证到某个 Project Audience；业务授权现在完全由 Agent 负责，并且 Agent 必须对不允许的 Principal 返回 `403`。如果之前把 0.12 Realm → Project Grant 当作实际访问控制边界，请先在每个 Agent 内实现并部署等价授权，再升级平台。
+
+本次升级不会改变 Project ID、Slug、Stable 或 Preview Endpoint、Route Weight，也不会改变 Deployment 的 Runtime Ownership。
+
+## 1. 备份并检查 0.12
+
+按照现有基础设施流程备份 Postgres 与 `EVELAND_DATA_DIR`。记录当前 Tag 和 Revision，确认 API 与 Gateway Health 正常，并等待重要的 Import、Build、Deployment、Schedule 或 Delete Job 完成。
+
+修改两个 Checkout 前先停止宿主机 Worker，避免 0.12 在数据库迁移期间继续领取任务：
+
+```bash
+sudo systemctl stop eveland-worker
+```
+
+确认每个启用 Identity 的 Agent 都执行自己的授权判断。Catalog 不会泄露 Secret 或 Credential，但升级后其中的 Project Name、Description、ID 与 Stable Endpoint 都属于公开信息。
+
+## 2. 增加 0.13 生命周期配置
+
+本次升级不需要新增 Secret。在控制面 `.env` 中明确加入 SessionBinding 生命周期，让 API 与 Gateway 使用相同策略：
+
+```dotenv
+EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS=86400000
+EVELAND_API_SESSION_IDLE_TTL_MS=604800000
+```
+
+在 `/etc/eveland/eveland-worker.env` 中加入相同的两个值，以及 ScheduleRun 安全截止时间：
+
+```dotenv
+EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS=86400000
+EVELAND_API_SESSION_IDLE_TTL_MS=604800000
+EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS=86400000
+```
+
+默认值分别是 Playground Binding 24 小时、Public API Binding 7 天，以及 Observer 一直没有报告 Terminal Turn Boundary 时，已 Dispatch ScheduleRun 的 24 小时硬截止时间。API、Gateway 与 Worker 的两个 SessionBinding 值必须保持一致。每次成功的 Bound Request 都会刷新对应 Idle Window。
+
+升级后，已经空闲超过所选上限的 Binding 会在 0.13 首次判断时立即过期。之后对已知过期 Binding 的请求会收到 `410 session_expired`，不会被路由到另一个 Deployment。过期 Binding 也不再阻止旧的 Stopped Deployment 被 Archive。
+
+## 3. 安装 0.13 并执行 Migration
+
+在控制面 Checkout 中执行：
+
+```bash
+git fetch --tags origin
+git checkout v0.13.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/api db:migrate
+git rev-parse --short=12 HEAD
+```
+
+将输出的 Revision 写入共享生产环境的 `EVELAND_REVISION`，并保持 `EVELAND_RELEASE_CHANNEL=stable`。
+
+Migration 命令会应用：
+
+- `0031_fancy_wild_child`：删除已废弃的 `identity_realm_project_grants` 表。这是有意行为，也是回滚必须恢复数据库的原因。
+- `0032_agent_catalog_capability_backfill`：标记显式导出标准 `eveChannel()` 的既有 Source Revision，使其符合条件的 Stable Deployment 能出现在 Catalog 中；既有 Summary 字段和显式 Capability 值会保留。
+- `0033_puzzling_madame_masque`：记录每个 ScheduleRun 返回的全部 Session，在 Session Node 与 Event 上增加 RuntimeInstance Provenance，并回填既有 Scheduled Session。只有回填得到的 Session 仍在运行时，原来显示 Succeeded 的 ScheduleRun 才会恢复为 `running`。
+
+必须在 API、Gateway 或 Worker 0.13 启动前完成 Migration。Session 历史很大时，要为 `0033` 扫描 Scheduled Session 及其最近 Event 预留时间。
+
+将独立的 Worker Checkout 更新到同一 Tag，并重新构建会被注入 Release 的 Sandbox Backend：
+
+```bash
+cd /opt/eveland
+git fetch --tags origin
+git checkout v0.13.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/sandbox-bwrap build
+git rev-parse --short=12 HEAD
+```
+
+在 `/etc/eveland/eveland-worker.env` 中设置相同 Revision 与 `stable` Channel。
+
+## 4. 协调启动 Release
+
+先验证合并后的 Compose 配置并启动非特权控制面，随后再启动宿主机 Worker：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+sudo systemctl start eveland-worker
+sudo journalctl -u eveland-worker -n 100 --no-pager
+```
+
+0.13 Worker 第一次启动不需要统一 Redeploy。Migration Backfill 已覆盖符合 Catalog 条件的既有 Source Revision。现在 Schedule Dispatch 会保持 `running`，直到 Observer 为返回的每个 Session 报告 Root Terminal Turn Boundary；对应 Lease 会让精确 RuntimeInstance 在普通 Activation Idle Timeout 之后继续受到保护。
+
+## 5. 验收 0.13
+
+完成以下全部检查：
+
+1. API 与 Gateway `/health` 返回 `version: 0.13.0`、`channel: stable` 和相同 Revision。
+2. **Settings → About** 中 Web、API、Gateway 与 Worker 的 Build Identity 和生命周期配置一致。
+3. 未认证请求 `GET /agent-catalog` 时，只返回 Stable Route 中所有正权重 Target 均可路由、且 Source Revision 包含标准 Eve Channel 的 Project。换一个客户端重复请求，确认结果不按 Realm 过滤。
+4. 对使用 `evelandIdentity()` 的 Agent，未认证请求会声明 Eveland Continuation；允许的 Principal 能完成登录并重试；不允许的 Principal 收到 Agent 返回的 `403`。
+5. 已有活跃 Agent Session 继续访问被 Pin 的 Deployment。另用测试 Binding 验证超过 Idle 上限后返回 `410 session_expired`。
+6. 执行一个测试 Schedule，确认它在 Root Turn 被观测为完成前保持 `running`，随后进入正确的 Terminal Status。
+7. 在 Project **Settings → Environment** 中粘贴或上传一份不含 Secret 的示例 `.env`，检查解析 Preview；除非这些值确实需要保存，否则在确认前取消。
+
+Eveland 0.13 仍接受使用 Eve `0.25.x`、`0.26.x` 与 `0.27.x` 的导入 Agent；升级平台不要求立即修改 Agent 依赖。Compatibility Matrix 现在验证到 `0.27.8`。若要使用 Eve 0.27.7 的 Bounded Stream Catch-up 或 0.27.8 的 Authoring Command，请刷新 Agent Lockfile 并重新部署。`follow: false` 有界读取要求 Client 与 Agent 都使用 Eve 0.27.7 或更高版本。
+
+## 回滚到 0.12
+
+不要让 0.12 进程连接已经执行 `0031` 的数据库。0.12 控制面仍然依赖 Realm → Project Grant 表。
+
+回滚时，先停止 Worker 和所有 0.13 控制面 Service，恢复升级前的 Postgres 备份；如果现有备份流程要求数据库与文件系统时间点一致，也要恢复 `EVELAND_DATA_DIR`。随后在两个位置 Checkout `v0.12.0`，重新安装 Frozen Lockfile、构建 `@eveland/sandbox-bwrap`、恢复 0.12 Revision，并先启动 Compose，最后启动 Worker。
+
+数据库恢复会丢弃备份后产生的变更，包括新的 0.13 Session、Job、Environment Import 与 Identity 状态。不要手工重建已删除的 Grant 表，也不要只反向处理 `0032`/`0033`；协调一致的备份恢复才是受支持的回滚边界。
+
+通用升级约束请阅读[升级与回滚](/zh/docs/operations/upgrades)，Agent 依赖细节请阅读 [Eve 兼容性](/zh/docs/reference/eve-compatibility)。
