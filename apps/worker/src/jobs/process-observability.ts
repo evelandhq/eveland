@@ -14,7 +14,7 @@ import {
 import {
   resolveAgentObservabilityDirs,
   writeAgentRuntimePolicy,
-} from "../runtime/observability-policy.js";
+} from "../runtime/observability/policy.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";

@@ -6,7 +6,7 @@ const execFileAsync = promisify(execFile);
 
 describe("OTLP protobuf Node.js compatibility", () => {
   test("loads the codec through the native Node.js ESM loader", async () => {
-    const moduleUrl = new URL("./otlp-protobuf.ts", import.meta.url).href;
+    const moduleUrl = new URL("./otlp/protobuf.ts", import.meta.url).href;
     const result = await execFileAsync(
       process.execPath,
       [

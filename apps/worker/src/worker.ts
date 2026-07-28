@@ -29,8 +29,9 @@ import { createCollectorObservabilityReconciler } from "./jobs/process-collector
 import { createObservabilityRetentionReconciler } from "./jobs/process-observability-retention.js";
 import { createExternalDestinationHealthReconciler } from "./jobs/process-observability-destination-health.js";
 import { instrumentRuntimeLogStore } from "./runtime/runtime-log-store.js";
-import { createAgentTelemetryNetworkReconciler } from "./runtime/docker.js";
+import { createAgentTelemetryNetworkReconciler } from "./runtime/docker/agent-network.js";
 import { resolveRuntimeKind } from "./runtime/select.js";
+import { createWorkerObservabilityReconciler } from "./runtime/observability/reconciler.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
@@ -74,6 +75,32 @@ const reconcileAgentTelemetryNetworks =
         process.env.EVELAND_OTEL_COLLECTOR_CONTAINER,
       )
     : undefined;
+const reconcileObservability = createWorkerObservabilityReconciler([
+  {
+    name: "Deployment observability policy",
+    run: reconcileDeploymentObservability,
+  },
+  {
+    name: "OpenTelemetry Collector configuration",
+    run: reconcileCollectorObservability,
+  },
+  {
+    name: "Observability retention",
+    run: reconcileObservabilityRetention,
+  },
+  {
+    name: "External observability destination health",
+    run: reconcileExternalDestinationHealth,
+  },
+  ...(reconcileAgentTelemetryNetworks
+    ? [
+        {
+          name: "Docker Agent telemetry network",
+          run: reconcileAgentTelemetryNetworks,
+        },
+      ]
+    : []),
+]);
 
 // A misconfigured systemd host would otherwise only surface on the first
 // deployment attempt; fail fast here with the complete list of what's missing.
@@ -132,8 +159,6 @@ const telemetry = createWorkerTelemetry(capacityObservability.meter, {
 let lastTickDurationMs = 0;
 let lastTickError: unknown | null = null;
 let telemetryPublishing = false;
-let lastObservabilityWarningAt = 0;
-let lastAgentTelemetryNetworkWarningAt = 0;
 
 function publishTelemetry() {
   if (telemetryPublishing) return;
@@ -141,42 +166,6 @@ function publishTelemetry() {
   telemetry.publishTick({ durationMs: lastTickDurationMs, error: lastTickError })
     .catch((error: unknown) => console.warn("Worker heartbeat is unavailable:", error instanceof Error ? error.message : String(error)))
     .finally(() => { telemetryPublishing = false; });
-}
-
-async function reconcileObservability() {
-  try {
-    await Promise.all([
-      reconcileDeploymentObservability(),
-      reconcileCollectorObservability(),
-      reconcileObservabilityRetention(),
-      reconcileExternalDestinationHealth(),
-    ]);
-  } catch (error) {
-    const now = Date.now();
-    if (now - lastObservabilityWarningAt >= 60_000) {
-      lastObservabilityWarningAt = now;
-      console.warn(
-        "Eveland observability reconciliation is degraded:",
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-  if (reconcileAgentTelemetryNetworks) {
-    try {
-      await reconcileAgentTelemetryNetworks();
-    } catch (error) {
-      const now = Date.now();
-      if (
-        now - lastAgentTelemetryNetworkWarningAt >= 60_000
-      ) {
-        lastAgentTelemetryNetworkWarningAt = now;
-        console.warn(
-          "Docker Agent telemetry network reconciliation is degraded:",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    }
-  }
 }
 
 async function tick() {

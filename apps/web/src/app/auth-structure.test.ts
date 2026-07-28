@@ -71,14 +71,20 @@ describe("team management web surfaces", () => {
 
   test("provides administrator controls for Eveland capture and external OTLP destinations", () => {
     const pageUrl = new URL("./settings/observability/page.tsx", import.meta.url);
-    const settingsUrl = new URL("../components/observability-settings.tsx", import.meta.url);
+    const settingsUrl = new URL("../components/observability/settings.tsx", import.meta.url);
 
     expect(existsSync(fileURLToPath(pageUrl))).toBe(true);
     expect(existsSync(fileURLToPath(settingsUrl))).toBe(true);
     if (!existsSync(fileURLToPath(pageUrl)) || !existsSync(fileURLToPath(settingsUrl))) return;
 
     const page = source("./settings/observability/page.tsx");
-    const settings = source("../components/observability-settings.tsx");
+    const settings = [
+      source("../components/observability/settings.tsx"),
+      source("../components/observability/capture-form.tsx"),
+      source("../components/observability/destination-dialog.tsx"),
+      source("../components/observability/destination-draft.ts"),
+      source("../components/observability/destination-list.tsx"),
+    ].join("\n");
     expect(page).toContain("getObservabilitySettings");
     expect(page).toContain('member.role !== "admin"');
     // This page configures monitoring and shows no observation data at all: no

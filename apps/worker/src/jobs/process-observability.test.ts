@@ -4,7 +4,7 @@ import path from "node:path";
 import { createTestStore } from "@eveland/db/vitest";
 import { afterEach, describe, expect, test } from "vitest";
 import { DEFAULT_TEAM_ID } from "@eveland/db";
-import { resolveAgentObservabilityDirs } from "../runtime/observability-policy.js";
+import { resolveAgentObservabilityDirs } from "../runtime/observability/policy.js";
 import {
   createDeploymentObservabilityReconciler,
   prepareDeploymentObservability,

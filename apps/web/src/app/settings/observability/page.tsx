@@ -1,4 +1,4 @@
-import { ObservabilitySettings } from "@/components/observability-settings";
+import { ObservabilitySettings } from "@/components/observability/settings";
 import {
   Card,
   CardContent,

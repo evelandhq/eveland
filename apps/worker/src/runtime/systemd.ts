@@ -12,7 +12,7 @@ import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from 
 import {
   AGENT_OBSERVABILITY_MOUNT_DIR,
   AGENT_OBSERVABILITY_POLICY_FILE_NAME,
-} from "./observability-policy.js";
+} from "./observability/policy.js";
 
 export type SystemdStartInput = {
   unitName: string;

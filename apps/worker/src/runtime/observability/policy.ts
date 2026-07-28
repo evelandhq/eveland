@@ -6,7 +6,7 @@ import {
   agentRuntimePolicySchema,
   type AgentRuntimePolicy,
 } from "@eveland/core/observability";
-import { processSafeName } from "./types.js";
+import { processSafeName } from "../types.js";
 
 export const AGENT_OBSERVABILITY_MOUNT_DIR = path.posix.dirname(
   AGENT_RUNTIME_POLICY_PATH,

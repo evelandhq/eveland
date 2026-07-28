@@ -6,7 +6,7 @@ import {
   listOrphanAgentTelemetryNetworks,
   removeOrphanAgentTelemetryNetwork,
   type ManagedAgentTelemetryNetwork,
-} from "./docker.js";
+} from "./docker/agent-network.js";
 
 export const DEPLOYMENT_PROCESS_PREFIX = "eveland-";
 

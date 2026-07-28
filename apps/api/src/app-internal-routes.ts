@@ -10,7 +10,7 @@ import { runtimeActivationSchema, schedulerDispatchSchema } from "./app-schemas.
 import { isServiceRequest, safeSecretEqual, waitForRuntimeActivation } from "./app-support.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { registerOtlpRoutes } from "./app-otel-routes.js";
-import { registerObservabilityProxyRoute } from "./app-observability-routes.js";
+import { registerObservabilityProxyRoute } from "./app-observability-proxy-routes.js";
 
 export function registerInternalRoutes(input: {
   app: ApiApp;

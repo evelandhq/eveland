@@ -10,11 +10,11 @@ import type { Store } from "@eveland/db";
 import {
   countOtlpSignalItems,
   createOtlpPartialSuccessResponse,
+  countValidOtlpSpans,
   decodeOtlpProtobufRequest,
   encodeOtlpProtobufResponse,
   projectAgentEventItemsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
-  projectOtlpSpans,
 } from "@eveland/session-collector";
 import { runWithPlatformTracingSuppressed } from "@eveland/platform-observability";
 import type { ApiApp, AppOptions } from "./app-types.js";
@@ -96,8 +96,8 @@ export function registerOtlpRoutes(input: {
       await store.ingestOtlpBatch({ signal, payload });
       if (signal === "traces") {
         // Traces have no Built-in read model: platform spans go to external
-        // destinations only. The projection runs solely for the rejection count.
-        acceptedItems = projectOtlpSpans(payload).length;
+        // destinations only. Validation runs solely for the rejection count.
+        acceptedItems = countValidOtlpSpans(payload);
       }
       if (signal === "logs") {
         for (const observation of projectAgentEventItemsFromOtlpLogs(payload, {

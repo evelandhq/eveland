@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   AGENT_OBSERVABILITY_MOUNT_DIR,
   writeAgentRuntimePolicy,
-} from "./observability-policy.js";
+} from "./policy.js";
 
 const temporaryDirectories: string[] = [];
 

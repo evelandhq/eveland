@@ -8,7 +8,7 @@ import type { Type } from "protobufjs";
 const { Root } = protobufjs;
 
 const protoRootDirectory = fileURLToPath(
-  new URL("../proto/", import.meta.url),
+  new URL("../../proto/", import.meta.url),
 );
 const protoRoot = new Root();
 protoRoot.resolvePath = (_origin, target) =>

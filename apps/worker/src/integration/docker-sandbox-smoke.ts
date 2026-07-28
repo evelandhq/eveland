@@ -12,7 +12,7 @@ import path from "node:path";
 import { allocateAvailableHostPort } from "../jobs/process.js";
 import { createDockerAdapter } from "../runtime/docker.js";
 import { waitForHttpHealth } from "../runtime/health.js";
-import { writeAgentRuntimePolicy } from "../runtime/observability-policy.js";
+import { writeAgentRuntimePolicy } from "../runtime/observability/policy.js";
 import { resolveBackendDistDir } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
 

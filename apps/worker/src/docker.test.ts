@@ -8,16 +8,17 @@ import {
   buildDockerRunArgs,
   buildDockerSandboxVerifyArgs,
   buildDockerStartCommand,
-  createAgentTelemetryNetworkReconciler,
   createDockerAdapter,
-  ensureAgentTelemetryNetwork,
   isBenignDockerStopFailure,
-  listOrphanAgentTelemetryNetworks,
-  removeOrphanAgentTelemetryNetwork,
-  resolveAgentTelemetryNetworkName,
   verifyDockerSandbox,
   writeGeneratedDockerfile,
 } from "./runtime/docker.js";
+import {
+  ensureAgentTelemetryNetwork,
+  listOrphanAgentTelemetryNetworks,
+  removeOrphanAgentTelemetryNetwork,
+  resolveAgentTelemetryNetworkName,
+} from "./runtime/docker/agent-network.js";
 import { injectSandboxModules } from "./runtime/sandbox-inject.js";
 import { processSafeName } from "./runtime/types.js";
 
@@ -301,154 +302,6 @@ describe("createDockerAdapter listProcesses", () => {
     vi.mocked(execa).mockResolvedValueOnce({ failed: true, all: "Cannot connect to the Docker daemon" } as never);
 
     await expect(adapter.listProcesses!("eveland-")).rejects.toThrow(/docker ps/);
-  });
-});
-
-describe("Agent telemetry network reconciliation", () => {
-  test("reattaches managed networks only when the Collector identity changes", async () => {
-    vi.mocked(execa).mockClear();
-    const processA = "eveland-proj_a-dep_a";
-    const processB = "eveland-proj_b-dep_b";
-    const networkA = resolveAgentTelemetryNetworkName(processA);
-    const networkB = resolveAgentTelemetryNetworkName(processB);
-    vi.mocked(execa)
-      .mockResolvedValueOnce({
-        failed: false,
-        stdout: "collector-id-1\n",
-      } as never)
-      .mockResolvedValueOnce({
-        failed: false,
-        stdout: `${networkA}\t${processA}\n${networkB}\t${processB}\n`,
-      } as never)
-      .mockResolvedValueOnce({ failed: false, all: "" } as never)
-      .mockResolvedValueOnce({ failed: false, all: "" } as never)
-      .mockResolvedValueOnce({
-        failed: true,
-        all: `Error: No such container: ${processB}`,
-      } as never)
-      .mockResolvedValueOnce({
-        failed: false,
-        stdout: "collector-id-1\n",
-      } as never)
-      .mockResolvedValueOnce({
-        failed: false,
-        stdout: "collector-id-2\n",
-      } as never)
-      .mockResolvedValueOnce({
-        failed: false,
-        stdout: `${networkA}\t${processA}\n`,
-      } as never)
-      .mockResolvedValueOnce({ failed: false, all: "" } as never)
-      .mockResolvedValueOnce({ failed: false, all: "" } as never);
-
-    const reconcile = createAgentTelemetryNetworkReconciler(
-      "custom-otel-collector",
-    );
-
-    await reconcile();
-    await reconcile();
-    await reconcile();
-
-    expect(vi.mocked(execa).mock.calls).toEqual([
-      [
-        "docker",
-        ["inspect", "--format", "{{.Id}}", "custom-otel-collector"],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        [
-          "network",
-          "ls",
-          "--filter",
-          "label=com.eveland.managed=agent-telemetry",
-          "--format",
-          '{{.Name}}\t{{.Label "com.eveland.process"}}',
-        ],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        ["inspect", "--type", "container", processA],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        [
-          "network",
-          "connect",
-          "--alias",
-          "eveland-otel-collector",
-          networkA,
-          "custom-otel-collector",
-        ],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        ["inspect", "--type", "container", processB],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        ["inspect", "--format", "{{.Id}}", "custom-otel-collector"],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        ["inspect", "--format", "{{.Id}}", "custom-otel-collector"],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        [
-          "network",
-          "ls",
-          "--filter",
-          "label=com.eveland.managed=agent-telemetry",
-          "--format",
-          '{{.Name}}\t{{.Label "com.eveland.process"}}',
-        ],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        ["inspect", "--type", "container", processA],
-        { all: true, reject: false },
-      ],
-      [
-        "docker",
-        [
-          "network",
-          "connect",
-          "--alias",
-          "eveland-otel-collector",
-          networkA,
-          "custom-otel-collector",
-        ],
-        { all: true, reject: false },
-      ],
-    ]);
-  });
-
-  test("silently retries after the Collector container is absent", async () => {
-    vi.mocked(execa).mockClear();
-    vi.mocked(execa)
-      .mockResolvedValueOnce({
-        failed: true,
-        all: "Error: No such object: eveland-otel-collector",
-      } as never)
-      .mockResolvedValueOnce({
-        failed: false,
-        stdout: "collector-id-restored\n",
-      } as never)
-      .mockResolvedValueOnce({ failed: false, stdout: "" } as never);
-    const reconcile = createAgentTelemetryNetworkReconciler();
-
-    await expect(reconcile()).resolves.toBeUndefined();
-    await expect(reconcile()).resolves.toBeUndefined();
-
-    expect(vi.mocked(execa).mock.calls).toHaveLength(3);
   });
 });
 
