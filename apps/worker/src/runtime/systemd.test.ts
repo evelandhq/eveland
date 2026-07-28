@@ -4,6 +4,7 @@ import { execa } from "execa";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import {
   buildBwrapArgs,
+  buildDynamicUserAccessRepairScript,
   buildEnvFileContent,
   buildReleaseBuildCommand,
   buildRunAsUserArgs,
@@ -13,6 +14,7 @@ import {
   isBenignSystemctlStopFailure,
   resolveProjectSandboxCacheDir,
   resolveSandboxCacheRoot,
+  resolveSystemdDeploymentUser,
 } from "./systemd.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { verifySandbox } from "./sandbox-verify.js";
@@ -62,8 +64,13 @@ describe("buildSystemdRunArgs", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      dataDir: "/var/lib/eveland-data",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
+      accessRepairScriptPath:
+        "/data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
+      dynamicUserUidMarkerPath:
+        "/var/lib/eveland-data/observability/proj_123/dep_456/.dynamic-user-uid",
       command: "npx eve start --host 127.0.0.1 --port 41000",
     });
 
@@ -74,10 +81,14 @@ describe("buildSystemdRunArgs", () => {
       "--service-type=exec",
       "--property=Restart=on-failure",
       "--property=RestartSec=2",
-      "--property=User=eveland-app",
+      `--property=User=${resolveSystemdDeploymentUser("eveland-proj_123-dep_456")}`,
+      "--property=DynamicUser=yes",
+      "--property=Group=eveland-app",
+      "--property=UMask=0002",
       "--property=WorkingDirectory=/data/builds/proj_123/rel_789",
       "--property=EnvironmentFile=/data/deployment-env/eveland-proj_123-dep_456.env",
       "--property=Environment=PORT=41000",
+      "--property=Environment=HOME=/data/builds/proj_123/rel_789",
       "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/proj_123",
       "--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/data/builds/proj_123/rel_789",
       "--property=MemoryMax=2G",
@@ -85,9 +96,18 @@ describe("buildSystemdRunArgs", () => {
       "--property=ProtectSystem=strict",
       "--property=ReadWritePaths=/data/builds/proj_123/rel_789",
       "--property=ReadWritePaths=/var/lib/eveland-data/sandbox/proj_123",
+      "--property=ReadWritePaths=/run/eveland/dynamic-user-uid",
+      "--property=TemporaryFileSystem=/var/lib/eveland-data:ro",
+      "--property=BindPaths=/data/builds/proj_123/rel_789",
+      "--property=BindPaths=/var/lib/eveland-data/sandbox/proj_123",
+      "--property=BindPaths=/var/lib/eveland-data/observability/proj_123/dep_456/.dynamic-user-uid:/run/eveland/dynamic-user-uid",
+      "--property=BindReadOnlyPaths=/data/deployment-env/eveland-proj_123-dep_456.env",
+      "--property=BindReadOnlyPaths=/data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh:/run/eveland/prepare-dynamic-user-access",
       "--property=BindReadOnlyPaths=/var/lib/eveland-data/observability/proj_123/dep_456:/run/eveland/observability",
+      "--property=ProtectProc=invisible",
       "--property=PrivateTmp=yes",
       "--property=NoNewPrivileges=yes",
+      "--property=ExecStartPre=+/bin/sh /run/eveland/prepare-dynamic-user-access",
       "sh",
       "-lc",
       "npx eve start --host 127.0.0.1 --port 41000",
@@ -109,7 +129,11 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/p",
+      dataDir: "/var/lib/eveland-data",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/p/d",
+      accessRepairScriptPath: "/env/p.prepare-access.sh",
+      dynamicUserUidMarkerPath:
+        "/var/lib/eveland-data/observability/p/d/.dynamic-user-uid",
       command: "npx eve start",
     });
 
@@ -119,6 +143,80 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
     expect(args).toContain("--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/rel");
     // The env file must still be read before PORT is forced.
     expect(args.indexOf("--property=EnvironmentFile=/env/p.env")).toBeLessThan(args.indexOf("--property=Environment=PORT=41000"));
+  });
+});
+
+describe("buildSystemdRunArgs (sibling isolation)", () => {
+  test("masks the data root so one Deployment cannot read another's telemetry credential", () => {
+    const args = buildSystemdRunArgs({
+      unitName: "eveland-p-d",
+      releaseDir: "/var/lib/eveland-data/builds/p/rel",
+      envFilePath: "/var/lib/eveland-data/deployment-env/p.env",
+      port: 41000,
+      user: "eveland-app",
+      memoryMax: "2G",
+      cpuQuota: "200%",
+      sandboxCacheDir: "/var/lib/eveland-data/sandbox/p",
+      dataDir: "/var/lib/eveland-data",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/p/d",
+      accessRepairScriptPath:
+        "/var/lib/eveland-data/deployment-env/p.prepare-access.sh",
+      dynamicUserUidMarkerPath:
+        "/var/lib/eveland-data/observability/p/d/.dynamic-user-uid",
+      command: "npx eve start",
+    });
+
+    expect(args).toContain(
+      "--property=TemporaryFileSystem=/var/lib/eveland-data:ro",
+    );
+    // Only this Deployment's own subtrees are reopened; a sibling's policy dir
+    // under the same data root stays hidden behind the tmpfs.
+    expect(args).toContain(
+      "--property=BindPaths=/var/lib/eveland-data/builds/p/rel",
+    );
+    expect(args).toContain(
+      "--property=BindPaths=/var/lib/eveland-data/sandbox/p",
+    );
+    expect(
+      args.filter((arg) => arg.startsWith("--property=BindPaths=")),
+    ).toHaveLength(3);
+    // The env file carries every project secret and also lives under the mask,
+    // so it must be reopened or the Deployment starts with no configuration.
+    expect(
+      args.filter((arg) => arg.startsWith("--property=BindReadOnlyPaths=")),
+    ).toEqual([
+      "--property=BindReadOnlyPaths=/var/lib/eveland-data/deployment-env/p.env",
+      "--property=BindReadOnlyPaths=/var/lib/eveland-data/deployment-env/p.prepare-access.sh:/run/eveland/prepare-dynamic-user-access",
+      "--property=BindReadOnlyPaths=/var/lib/eveland-data/observability/p/d:/run/eveland/observability",
+    ]);
+    // systemd applies TemporaryFileSystem= before the binds that reopen paths
+    // through it, so a bind listed first would be masked back out.
+    expect(
+      args.indexOf("--property=TemporaryFileSystem=/var/lib/eveland-data:ro"),
+    ).toBeLessThan(
+      args.indexOf("--property=BindPaths=/var/lib/eveland-data/builds/p/rel"),
+    );
+    expect(args).toContain("--property=DynamicUser=yes");
+    expect(args).toContain("--property=Group=eveland-app");
+    expect(args).toContain("--property=UMask=0002");
+    expect(args).toContain("--property=ProtectProc=invisible");
+    expect(args).toContain(
+      `--property=User=${resolveSystemdDeploymentUser("eveland-p-d")}`,
+    );
+  });
+});
+
+describe("resolveSystemdDeploymentUser", () => {
+  test("assigns different bounded dynamic identities to different Deployments", () => {
+    const first = resolveSystemdDeploymentUser("eveland-proj_123-dep_456");
+    const second = resolveSystemdDeploymentUser("eveland-proj_123-dep_789");
+
+    expect(first).not.toBe(second);
+    expect(first).toMatch(/^eveland-d-[a-f0-9]{20}$/);
+    expect(first.length).toBeLessThanOrEqual(31);
+    expect(resolveSystemdDeploymentUser("eveland-proj_123-dep_456")).toBe(
+      first,
+    );
   });
 });
 
@@ -314,6 +412,88 @@ describe("createSystemdAdapter backendDistDir laziness", () => {
 });
 
 describe("createSystemdAdapter startProcess", () => {
+  test("defers recursive permission repair to an identity-aware ExecStartPre", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(writeFile).mockClear();
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await adapter.startProcess({
+      processName: "eveland-proj_123-dep_456",
+      releaseRef: "/data/builds/proj_123/rel_platform",
+      port: 41000,
+      env: {},
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
+    });
+
+    expect(vi.mocked(execa).mock.calls.slice(0, 3)).toEqual([
+      [
+        "chown",
+        [
+          "-R",
+          "root:eveland-app",
+          "/var/lib/eveland-data/observability/proj_123/dep_456",
+        ],
+      ],
+      [
+        "chmod",
+        ["2750", "/var/lib/eveland-data/observability/proj_123/dep_456"],
+      ],
+      [
+        "chmod",
+        [
+          "0640",
+          "/var/lib/eveland-data/observability/proj_123/dep_456/agent-policy.json",
+        ],
+      ],
+    ]);
+    expect(vi.mocked(execa).mock.calls).not.toContainEqual([
+      "chmod",
+      expect.arrayContaining([
+        "-R",
+        "/data/builds/proj_123/rel_platform",
+      ]),
+    ]);
+    expect(writeFile).toHaveBeenCalledWith(
+      "/var/lib/eveland-data/observability/proj_123/dep_456/.dynamic-user-uid",
+      "",
+      { flag: "a", mode: 0o600 },
+    );
+    expect(writeFile).toHaveBeenCalledWith(
+      "/var/lib/eveland-data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
+      expect.stringContaining(
+        'if [ "$current_uid" != "$previous_uid" ]; then',
+      ),
+      { mode: 0o700 },
+    );
+    const systemdArgs = vi.mocked(execa).mock.calls.at(-1)?.[1];
+    expect(systemdArgs).toContain(
+      "--property=ExecStartPre=+/bin/sh /run/eveland/prepare-dynamic-user-access",
+    );
+    expect(vi.mocked(execa).mock.calls.at(-1)?.[0]).toBe("systemd-run");
+  });
+
+  test("repairs both persistent roots in one pass only after the dynamic uid changes", () => {
+    const script = buildDynamicUserAccessRepairScript({
+      deploymentUser: "eveland-d-123",
+      releaseDir: "/data/release with spaces",
+      sandboxCacheDir: "/data/cache",
+    });
+
+    expect(script).toContain(
+      'if [ "$current_uid" != "$previous_uid" ]; then',
+    );
+    expect(script.match(/chmod -R/g)).toHaveLength(1);
+    expect(script).toContain(
+      "chmod -R g+rwX,g-s -- '/data/release with spaces' '/data/cache'",
+    );
+    expect(script.indexOf("chmod -R")).toBeLessThan(
+      script.indexOf("printf '%s\\n'"),
+    );
+  });
+
   test("does not let project env override the platform template revision", async () => {
     vi.mocked(writeFile).mockClear();
     const adapter = createSystemdAdapter(baseAdapterConfig);
@@ -399,13 +579,22 @@ describe("createSystemdAdapter startProcess", () => {
 });
 
 describe("createSystemdAdapter stopProcess", () => {
-  test("deletes the deployment env file after stopping the unit, tolerating an already-missing file", async () => {
+  test("deletes transient deployment files after stopping the unit", async () => {
+    vi.mocked(rm).mockClear();
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     await adapter.stopProcess("eveland-proj_123-dep_456");
 
     expect(rm).toHaveBeenCalledWith(
       path.join("/var/lib/eveland-data", "deployment-env", "eveland-proj_123-dep_456.env"),
+      { force: true },
+    );
+    expect(rm).toHaveBeenCalledWith(
+      path.join(
+        "/var/lib/eveland-data",
+        "deployment-env",
+        "eveland-proj_123-dep_456.prepare-access.sh",
+      ),
       { force: true },
     );
   });
@@ -421,6 +610,14 @@ describe("createSystemdAdapter stopProcess", () => {
     await expect(adapter.stopProcess("eveland-proj_123-dep_456")).resolves.toBeUndefined();
     expect(rm).toHaveBeenCalledWith(
       path.join("/var/lib/eveland-data", "deployment-env", "eveland-proj_123-dep_456.env"),
+      { force: true },
+    );
+    expect(rm).toHaveBeenCalledWith(
+      path.join(
+        "/var/lib/eveland-data",
+        "deployment-env",
+        "eveland-proj_123-dep_456.prepare-access.sh",
+      ),
       { force: true },
     );
   });
@@ -522,6 +719,18 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     const chownCalls = execaCalls.filter(([cmd]) => cmd === "chown").map(([, args]) => args);
     expect(chownCalls).toContainEqual(["-R", "eveland-app:", path.resolve("/data/builds/proj_123/rel_789")]);
     expect(chownCalls).toContainEqual(["-R", "eveland-app:", cacheDir]);
+    expect(execaCalls).toContainEqual([
+      "chmod",
+      [
+        "-R",
+        "g+rwX,g-s",
+        path.resolve("/data/builds/proj_123/rel_789"),
+      ],
+    ]);
+    expect(execaCalls).toContainEqual([
+      "chmod",
+      ["-R", "g+rwX,g-s", cacheDir],
+    ]);
 
     expect(result.log).toContain("Injected eve sandbox modules: agent/sandbox.js");
     expect(result.log).not.toContain("WARNING");

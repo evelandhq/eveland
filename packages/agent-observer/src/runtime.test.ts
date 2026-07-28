@@ -172,6 +172,9 @@ describe("private Agent telemetry runtime", () => {
       "eveland.runtime.instance.id": "rti_1",
       "eveland.telemetry.domain": "agent",
     });
+    expect(turnSpan?.resource.attributes).toMatchObject({
+      "eveland.deployment.credential": "credential.signature",
+    });
 
     const logRecords = logs.getFinishedLogRecords();
     expect(logRecords.map((record) => record.eventName)).toContain("eve.message.received");
@@ -180,6 +183,10 @@ describe("private Agent telemetry runtime", () => {
     );
     expect(messageLog?.body).toMatchObject({
       data: { message: "private prompt" },
+    });
+    expect(messageLog?.resource.attributes).toMatchObject({
+      "eveland.deployment.id": "dep_1",
+      "eveland.deployment.credential": "credential.signature",
     });
     expect(messageLog?.attributes).toMatchObject({
       "eveland.event.id": expect.any(String),
@@ -196,6 +203,9 @@ describe("private Agent telemetry runtime", () => {
       .getMetrics()
       .flatMap((resourceMetric) => resourceMetric.scopeMetrics)
       .flatMap((scopeMetric) => scopeMetric.metrics);
+    expect(metrics.getMetrics()[0]?.resource.attributes).toMatchObject({
+      "eveland.deployment.credential": "credential.signature",
+    });
     const tokenMetric = metricData.find(
       (metric) => metric.descriptor.name === "gen_ai.client.token.usage",
     );
@@ -439,6 +449,7 @@ function policy(
       includeReasoning: false,
       ...capture,
     },
+    deploymentCredential: "credential.signature",
     otlp: { endpoint: "http://127.0.0.1:4318" },
     resource: {
       teamId: "team_1",

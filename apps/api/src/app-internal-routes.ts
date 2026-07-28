@@ -10,6 +10,7 @@ import { runtimeActivationSchema, schedulerDispatchSchema } from "./app-schemas.
 import { isServiceRequest, safeSecretEqual, waitForRuntimeActivation } from "./app-support.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { registerOtlpRoutes } from "./app-otel-routes.js";
+import { registerObservabilityProxyRoute } from "./app-observability-routes.js";
 
 export function registerInternalRoutes(input: {
   app: ApiApp;
@@ -18,11 +19,18 @@ export function registerInternalRoutes(input: {
   buildInfo: EvelandBuildInfo;
   runtimeActivationLeaseTtlMs: number;
   runtimeActivationWaitTimeoutMs: number;
+  appSecretKey: string;
 }): void {
   const { app, store, options, buildInfo, runtimeActivationLeaseTtlMs, runtimeActivationWaitTimeoutMs } = input;
   app.get("/health", (c) => c.json({ ok: true, ...buildInfo }));
 
-  registerOtlpRoutes({ app, store, options });
+  registerOtlpRoutes({ app, store, options, appSecretKey: input.appSecretKey });
+  registerObservabilityProxyRoute({
+    app,
+    store,
+    options,
+    appSecretKey: input.appSecretKey,
+  });
 
   app.post("/internal/scheduler/dispatch", async (c) => {
     const runtimeSecret = options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);

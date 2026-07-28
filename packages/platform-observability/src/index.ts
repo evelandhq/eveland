@@ -43,6 +43,8 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 
 const instrumentationName = "@eveland/platform-observability";
+const developmentOtlpServiceToken =
+  "eveland-dev-otlp-service-token";
 
 type EmitLogInput = {
   severity: "debug" | "info" | "warn" | "error";
@@ -67,6 +69,7 @@ export type PlatformObservabilityInput = {
   environment: string;
   teamId: string;
   otlpEndpoint: string;
+  otlpServiceToken: string;
   hostMetrics?: boolean;
   ignoredIncomingPaths?: string[];
   metricExportIntervalMs?: number;
@@ -96,6 +99,7 @@ export type PrivateMetrics = {
 export type PrivateMetricsInput = EvelandResourceInput & {
   telemetryDomain: "capacity";
   otlpEndpoint: string;
+  otlpServiceToken: string;
   hostMetrics?: boolean;
   metricExportIntervalMs?: number;
   exporter?: PushMetricExporter;
@@ -111,6 +115,7 @@ export type PrivateLogs = {
 export type PrivateLogsInput = EvelandResourceInput & {
   telemetryDomain: "runtime";
   otlpEndpoint: string;
+  otlpServiceToken: string;
   exporter?: LogRecordExporter;
 };
 
@@ -132,6 +137,28 @@ export function resolveOtlpHttpSignalUrls(endpoint: string): {
     logs: `${base}/v1/logs`,
     metrics: `${base}/v1/metrics`,
   };
+}
+
+export function resolvePlatformOtlpServiceToken(
+  env: Record<string, string | undefined>,
+): string {
+  const token = env.EVELAND_OTLP_SERVICE_TOKEN;
+  if (token) return token;
+  if (env.NODE_ENV === "production") {
+    throw new Error(
+      "EVELAND_OTLP_SERVICE_TOKEN is required in production.",
+    );
+  }
+  return developmentOtlpServiceToken;
+}
+
+function otlpAuthorizationHeaders(
+  serviceToken: string,
+): Record<string, string> {
+  if (!serviceToken) {
+    throw new Error("EVELAND_OTLP_SERVICE_TOKEN must not be empty.");
+  }
+  return { authorization: `Bearer ${serviceToken}` };
 }
 
 export function runWithPlatformTracingSuppressed<T>(
@@ -168,12 +195,16 @@ export function startPlatformObservability(
   input: PlatformObservabilityInput,
 ): PlatformObservability {
   const urls = resolveOtlpHttpSignalUrls(input.otlpEndpoint);
+  const headers = otlpAuthorizationHeaders(input.otlpServiceToken);
   const traceExporter =
-    input.exporters?.traces ?? new OTLPTraceExporter({ url: urls.traces });
+    input.exporters?.traces ??
+    new OTLPTraceExporter({ url: urls.traces, headers });
   const logExporter =
-    input.exporters?.logs ?? new OTLPLogExporter({ url: urls.logs });
+    input.exporters?.logs ??
+    new OTLPLogExporter({ url: urls.logs, headers });
   const metricExporter =
-    input.exporters?.metrics ?? new OTLPMetricExporter({ url: urls.metrics });
+    input.exporters?.metrics ??
+    new OTLPMetricExporter({ url: urls.metrics, headers });
   const spanProcessor = new BatchSpanProcessor(traceExporter);
   const logProcessor = new BatchLogRecordProcessor({
     exporter: logExporter,
@@ -214,7 +245,11 @@ export function startPlatformObservability(
 export function startPrivateLogs(input: PrivateLogsInput): PrivateLogs {
   const urls = resolveOtlpHttpSignalUrls(input.otlpEndpoint);
   const exporter =
-    input.exporter ?? new OTLPLogExporter({ url: urls.logs });
+    input.exporter ??
+    new OTLPLogExporter({
+      url: urls.logs,
+      headers: otlpAuthorizationHeaders(input.otlpServiceToken),
+    });
   const processor = new BatchLogRecordProcessor({ exporter });
   const provider = new LoggerProvider({
     resource: createEvelandResource(input, input.telemetryDomain),
@@ -235,7 +270,11 @@ export function startPrivateMetrics(
 ): PrivateMetrics {
   const urls = resolveOtlpHttpSignalUrls(input.otlpEndpoint);
   const exporter =
-    input.exporter ?? new OTLPMetricExporter({ url: urls.metrics });
+    input.exporter ??
+    new OTLPMetricExporter({
+      url: urls.metrics,
+      headers: otlpAuthorizationHeaders(input.otlpServiceToken),
+    });
   const reader = new PeriodicExportingMetricReader({
     exporter,
     exportIntervalMillis: input.metricExportIntervalMs ?? 60_000,

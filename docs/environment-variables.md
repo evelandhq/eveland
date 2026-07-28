@@ -33,7 +33,7 @@ production" means the process throws or a deploy is blocked when it is missing.
 
 | Variable | Purpose | Default | Read by |
 | --- | --- | --- | --- |
-| `APP_SECRET_KEY` | Symmetric key (aes-256-gcm) for project secrets and personal Git host credentials. The API encrypts on write; the worker decrypts project secrets for deployments and GitLab PATs only for host-scoped source clone authentication. Validated by `assertValidSecretKey`. | dev-only `eveland-dev-secret-key-000000000` | API + worker |
+| `APP_SECRET_KEY` | Symmetric key (aes-256-gcm) for project secrets, personal Git host credentials, external observability destinations, and the derived Agent telemetry signing key. The API encrypts on write; the worker decrypts only at the owning runtime boundary. Rotation intentionally requires redeploying all Agent Deployments so their signed telemetry credentials match the new API key. Validated by `assertValidSecretKey`. | dev-only `eveland-dev-secret-key-000000000` | API + worker |
 
 > **Change `APP_SECRET_KEY` in production.** Leaving the dev default in place means
 > stored secrets are effectively unprotected.
@@ -151,11 +151,13 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 
 | Variable | Purpose | Default | Read by |
 | --- | --- | --- | --- |
-| `EVELAND_OTLP_ENDPOINT` | Internal OTLP/HTTP receiver used by Eveland-owned API, Gateway, Worker, and injected Agent providers. This is deployment topology, not the admin capture switch or an external destination. | `http://127.0.0.1:4318` | API + Gateway + Worker |
-| `EVELAND_OTLP_SERVICE_TOKEN` | Service credential used only between the managed Collector and Built-in API ingest. Configure the same value on both services. | dev-only value in Compose | API + Collector |
+| `EVELAND_OTLP_ENDPOINT` | Service-authenticated platform OTLP/HTTP receiver used by Eveland-owned API, Gateway, and Worker. Agent providers receive the separate 4328 endpoint in their runtime policy. | `http://127.0.0.1:4318` | API + Gateway + Worker |
+| `EVELAND_OTLP_SERVICE_TOKEN` | Shared credential for platform producers to the Collector and for Collector-to-API Built-in/proxy requests. Never expose it to Agent Deployments. | dev-only value in Compose | API + Gateway + Worker + Collector |
+| `EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST` | Comma-separated exact destination hostnames or IPs permitted to use HTTP or resolve to private/non-public addresses. No wildcards. Set the same value on both: the API validates and forwards, the Worker probes destination health. | empty | API + Worker |
 | `EVELAND_OTEL_METRIC_INTERVAL_MS` | Export interval for platform SDK metrics. | `60000` | API + Gateway + Worker |
 | `EVELAND_HOST_METRIC_INTERVAL_MS` | Worker cadence for emitting standard host CPU, memory, filesystem, workload, and heartbeat metrics. | `60000` | Worker |
 | `EVELAND_BUILTIN_OTLP_ENDPOINT` | Internal API endpoint used by the Collector's always-on Built-in exporter. | topology-specific Compose value | Collector |
+| `EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT` | Internal API prefix used by Collector external exporters; remote URLs and credentials are resolved by the API egress proxy. | topology-specific Compose value | Collector |
 | `EVELAND_OTEL_COLLECTOR_CONTAINER` | Managed Collector container name used by Compose and by Worker when applying a validated configuration revision. | `eveland-otel-collector` | Compose + Worker |
 | `EVELAND_OTEL_COLLECTOR_IMAGE` | Collector image used by Worker for configuration validation. Keep it aligned with the running Collector image. | `otel/opentelemetry-collector-contrib:0.149.0` | Worker |
 | `EVELAND_DEPLOYMENT_ID` | Current Deployment id injected into the Agent runtime. | injected at deploy time | Worker |

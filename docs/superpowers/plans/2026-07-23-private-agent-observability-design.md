@@ -1,9 +1,15 @@
 # Eveland OTel-native Observability 设计
 
 > 日期：2026-07-23
-> 状态：Approved for implementation
+> 状态：Historical design — Built-in 产品范围与安全出口已由 `docs/spec.md` 收窄并取代
 > 设计方法：从产品需求与 OpenTelemetry 标准出发，不以当前监控实现为约束
 > 工作分支：`codex/private-agent-observability`
+
+> 2026-07-27 实现说明：本文保留早期方案与决策过程，不再是当前产品真相源。当前 Built-in
+> 只投影 Sessions、Usage 与 Instance Health，不存 raw telemetry、平台统计、trace tree 或
+> delivery diagnostics；外部 Destination 通过 API 安全出口转发，Collector 配置不保存远端
+> URL/凭据；平台与 Agent 使用独立 receiver。与这些结论冲突的后续章节均以
+> `docs/spec.md` 为准。
 
 ## 1. 设计目标
 
@@ -327,12 +333,14 @@ Observability Controller 为每个 Deployment 生成不含 Secret 的 revisioned
 
 ### 6.3 External destination 配置
 
-External endpoint、auth、TLS 和 headers 只进入 Collector 私有配置：
+External endpoint、auth、TLS 和 headers 由 API 加密保存，并只在
+service-authenticated egress proxy 内解密：
 
 - Agent 不持有 Elastic/Langfuse credential；
 - Agent 不知道启用了哪些外部产品；
 - external destination 开关不重启 Agent；
 - 一个 external destination 失败不改变 Built-in 或其他 destination；
+- Collector 只持有 Destination ID 和 API proxy 地址，不持有远端 credential；
 - credentials 使用 `APP_SECRET_KEY` 加密，API 永不返回原值。
 
 ## 7. Telemetry 分类与路由标签
@@ -829,7 +837,7 @@ Elastic/Langfuse/Custom OTLP 的 enable/disable：
 
 ## 17. 安全与隐私
 
-- External credentials 只存在于加密配置和 Collector；
+- External credentials 只存在于加密配置和 API egress proxy 的单次请求内；
 - Agent 只访问无凭据的私有 OTLP endpoint；
 - Collector 没有 Docker socket、Project source、Secret store 或 host root mount；
 - 用户输入/输出/reasoning 在 Agent producer 处裁剪；
@@ -837,6 +845,8 @@ Elastic/Langfuse/Custom OTLP 的 enable/disable：
 - Authorization、Cookie、Secret 和 affinity material 不进入 telemetry；
 - OTLP receiver 不公开；
 - Built-in ingest 使用 service authentication；
+- external egress proxy 验证每个 Agent Resource 的 Deployment credential，
+  覆盖 Agent 自报归属，并在远端发送前删除 credential；
 - external endpoint 执行 SSRF、TLS、DNS rebinding 和 reserved-header 校验；
 - telemetry 故障不得使 Agent turn、Gateway 请求或 Worker job 失败。
 

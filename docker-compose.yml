@@ -35,12 +35,15 @@ services:
         condition: service_completed_successfully
     environment:
       EVELAND_BUILTIN_OTLP_ENDPOINT: http://host.docker.internal:4000/internal/otel
+      EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT: http://host.docker.internal:4000/internal/observability/destinations
       EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
       - "127.0.0.1:4317:4317"
       - "127.0.0.1:4318:4318"
+      - "127.0.0.1:4327:4327"
+      - "127.0.0.1:4328:4328"
     volumes:
       - ./.eveland-data:/var/lib/eveland:ro
       - eveland-otel-collector:/var/lib/otelcol
@@ -74,6 +77,7 @@ services:
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
       EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
       EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
+      EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST: ${EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST:-}
       EVELAND_ACTIVATION_LEASE_TTL_MS: ${EVELAND_ACTIVATION_LEASE_TTL_MS:-180000}
       EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS: ${EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS:-86400000}
       EVELAND_API_SESSION_IDLE_TTL_MS: ${EVELAND_API_SESSION_IDLE_TTL_MS:-604800000}
@@ -104,6 +108,7 @@ services:
       EVELAND_GATEWAY_PUBLIC_SCHEME: ${EVELAND_GATEWAY_PUBLIC_SCHEME:-http}
       EVELAND_API_INTERNAL_URL: http://api:4000
       EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
+      EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
       EVELAND_ACTIVATION_RENEW_INTERVAL_MS: ${EVELAND_ACTIVATION_RENEW_INTERVAL_MS:-60000}
       EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS: ${EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS:-86400000}
       EVELAND_API_SESSION_IDLE_TTL_MS: ${EVELAND_API_SESSION_IDLE_TTL_MS:-604800000}
@@ -155,6 +160,10 @@ services:
       EVELAND_HOST_DATA_DIR: ${EVELAND_HOST_DATA_DIR:-${PWD}/.eveland-data}
       EVELAND_RUNTIME: docker
       EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
+      EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
+      # The Worker probes destination health directly, so it must apply the same
+      # allowlist the API uses or an allowlisted private destination reads degraded.
+      EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST: ${EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST:-}
       EVELAND_GIT_CLONE_TIMEOUT_MS: ${EVELAND_GIT_CLONE_TIMEOUT_MS:-120000}
       EVELAND_GIT_CLONE_MAX_ATTEMPTS: ${EVELAND_GIT_CLONE_MAX_ATTEMPTS:-3}
       EVELAND_GIT_CLONE_RETRY_DELAY_MS: ${EVELAND_GIT_CLONE_RETRY_DELAY_MS:-1000}

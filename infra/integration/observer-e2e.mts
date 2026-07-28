@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import {
+  deriveAgentTelemetrySecret,
+  verifyAgentTelemetryCredential,
+} from "../../packages/core/src/server/agent-telemetry-credential.js";
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { projectAgentEventsFromOtlpLogs } from "../../packages/session-collector/src/otlp.js";
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
@@ -10,6 +14,7 @@ import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
 
 const APP_SECRET_KEY =
   process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
+const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
 const FIXTURE_SOURCE_PATH = fileURLToPath(
   new URL(
     "../../apps/worker/src/integration/fixtures/observer-e2e",
@@ -120,7 +125,17 @@ async function waitForAgentObservations(
   const observations: ReturnType<typeof projectAgentEventsFromOtlpLogs> = [];
   for (let attempt = 0; attempt < 60; attempt += 1) {
     for (const payload of receiver.drain("logs")) {
-      observations.push(...projectAgentEventsFromOtlpLogs(payload));
+      observations.push(
+        ...projectAgentEventsFromOtlpLogs(payload, {
+          resolveDeploymentId: (credential) =>
+            credential
+              ? verifyAgentTelemetryCredential(
+                  credential,
+                  AGENT_TELEMETRY_SECRET,
+                )?.deploymentId
+              : undefined,
+        }),
+      );
     }
     if (
       observations.some(

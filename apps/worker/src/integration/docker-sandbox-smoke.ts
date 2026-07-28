@@ -99,7 +99,8 @@ try {
           recordOutputs: false,
           includeReasoning: false,
         },
-        otlp: { endpoint: "http://host.docker.internal:4318" },
+        otlp: { endpoint: "http://eveland-otel-collector:4328" },
+        deploymentCredential: "credential.signature",
         resource: {
           teamId: "team_default",
           projectId,

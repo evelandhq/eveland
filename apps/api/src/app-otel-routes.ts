@@ -2,16 +2,18 @@ import {
   UnmanagedTelemetryResourceError,
   type ObservabilitySignal,
 } from "@eveland/core/observability";
+import {
+  deriveAgentTelemetrySecret,
+  verifyAgentTelemetryCredential,
+} from "@eveland/core/server/agent-telemetry-credential";
 import type { Store } from "@eveland/db";
 import {
   countOtlpSignalItems,
   createOtlpPartialSuccessResponse,
   decodeOtlpProtobufRequest,
   encodeOtlpProtobufResponse,
-  projectAgentEventsFromOtlpLogs,
+  projectAgentEventItemsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
-  projectOtlpLogRecords,
-  projectOtlpMetricPoints,
   projectOtlpSpans,
 } from "@eveland/session-collector";
 import { runWithPlatformTracingSuppressed } from "@eveland/platform-observability";
@@ -31,8 +33,18 @@ export function registerOtlpRoutes(input: {
   app: ApiApp;
   store: Store;
   options: AppOptions;
+  appSecretKey: string;
 }): void {
   const { app, store, options } = input;
+  const telemetrySecret = deriveAgentTelemetrySecret(input.appSecretKey);
+  // The Agent receiver is unauthenticated by design, so the deployment an Agent
+  // claims is only trusted once its Worker-issued credential verifies. A resource
+  // whose credential is absent or forged projects nothing and counts as rejected.
+  const resolveDeploymentId = (credential: string | undefined) =>
+    credential
+      ? verifyAgentTelemetryCredential(credential, telemetrySecret)
+          ?.deploymentId
+      : undefined;
 
   app.post("/internal/otel/v1/:signal", async (c) => {
     const token =
@@ -88,11 +100,13 @@ export function registerOtlpRoutes(input: {
         acceptedItems = projectOtlpSpans(payload).length;
       }
       if (signal === "logs") {
-        const logs = projectOtlpLogRecords(payload);
-        acceptedItems = logs.length;
-        for (const observation of projectAgentEventsFromOtlpLogs(payload)) {
+        for (const observation of projectAgentEventItemsFromOtlpLogs(payload, {
+          resolveDeploymentId,
+        })) {
+          if (!observation) continue;
           try {
             await store.ingestAgentEvent(observation);
+            acceptedItems += 1;
           } catch (error) {
             if (error instanceof UnmanagedTelemetryResourceError) continue;
             throw error;
@@ -100,8 +114,6 @@ export function registerOtlpRoutes(input: {
         }
       }
       if (signal === "metrics") {
-        const points = projectOtlpMetricPoints(payload);
-        acceptedItems = points.length;
         const projection =
           projectInstanceTelemetryFromOtlpMetrics(payload);
         await Promise.all([
@@ -112,6 +124,7 @@ export function registerOtlpRoutes(input: {
             store.recordHostMetric(sample),
           ),
         ]);
+        acceptedItems = projection.acceptedDataPoints;
       }
       const response = createOtlpPartialSuccessResponse(
         signal,

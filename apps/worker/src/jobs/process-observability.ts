@@ -4,6 +4,10 @@ import {
   type ObservabilityPolicy,
 } from "@eveland/core/observability";
 import {
+  createAgentTelemetryCredential,
+  deriveAgentTelemetrySecret,
+} from "@eveland/core/server/agent-telemetry-credential";
+import {
   DEFAULT_TEAM_ID,
   type Store,
 } from "@eveland/db";
@@ -12,6 +16,8 @@ import {
   writeAgentRuntimePolicy,
 } from "../runtime/observability-policy.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
+
+const devSecretKey = "eveland-dev-secret-key-000000000";
 
 export async function prepareDeploymentObservability(input: {
   store: Store;
@@ -22,19 +28,29 @@ export async function prepareDeploymentObservability(input: {
   runtimeKind: RuntimeAdapter["name"];
   nodeEnv?: string;
   policy?: ObservabilityPolicy;
+  appSecretKey?: string;
 }): Promise<{
   policy: AgentRuntimePolicy;
   workerDir: string;
   hostDir: string;
 }> {
+  const telemetrySecret = deriveAgentTelemetrySecret(
+    input.appSecretKey ?? input.env.APP_SECRET_KEY ?? devSecretKey,
+  );
   const policy = createAgentRuntimePolicy({
     policy:
       input.policy ??
       (await input.store.getObservabilityPolicy(DEFAULT_TEAM_ID)),
     otlpEndpoint:
       input.runtimeKind === "docker"
-        ? "http://host.docker.internal:4318"
-        : "http://127.0.0.1:4318",
+        ? // The Docker adapter connects the Collector to this Deployment's
+          // isolated network under a fixed alias.
+          "http://eveland-otel-collector:4328"
+        : "http://127.0.0.1:4328",
+    deploymentCredential: createAgentTelemetryCredential(
+      { deploymentId: input.deploymentId, issuedAt: new Date().toISOString() },
+      telemetrySecret,
+    ),
     resource: {
       teamId: DEFAULT_TEAM_ID,
       projectId: input.projectId,

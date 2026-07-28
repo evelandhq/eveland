@@ -2,6 +2,11 @@ import type { RuntimeKind } from "@eveland/core/contracts";
 import type { Store } from "@eveland/db";
 import { createRuntimeAdapterForKind } from "./select.js";
 import type { RuntimeAdapter } from "./types.js";
+import {
+  listOrphanAgentTelemetryNetworks,
+  removeOrphanAgentTelemetryNetwork,
+  type ManagedAgentTelemetryNetwork,
+} from "./docker.js";
 
 export const DEPLOYMENT_PROCESS_PREFIX = "eveland-";
 
@@ -22,6 +27,12 @@ export type OrphanProcessReaperOptions = {
   graceMs?: number;
   kinds?: RuntimeKind[];
   runtimeForKind?: (kind: RuntimeKind) => RuntimeAdapter;
+  listOrphanDockerNetworks?: () => Promise<
+    ManagedAgentTelemetryNetwork[]
+  >;
+  removeOrphanDockerNetwork?: (
+    network: ManagedAgentTelemetryNetwork,
+  ) => Promise<boolean>;
 };
 
 /**
@@ -31,12 +42,20 @@ export type OrphanProcessReaperOptions = {
  * owns it from then on, or -- when no Deployment can legitimately own it
  * (row gone, archived, or recorded under another runtime kind) -- stopped
  * after the grace period. This is what retires pre-RuntimeInstance "zombie"
- * deployments that the idle reaper and reconciler cannot see.
+ * deployments that the idle reaper and reconciler cannot see. Managed Agent
+ * telemetry networks with no remaining container follow the same grace period
+ * and are removed only after a final container-existence check.
  */
 export function createOrphanProcessReaper(store: Store, options: OrphanProcessReaperOptions = {}) {
   const graceMs = options.graceMs ?? 300_000;
   const kinds: RuntimeKind[] = options.kinds ?? ["systemd", "docker"];
   const runtimeForKind = options.runtimeForKind ?? createRuntimeAdapterForKind;
+  const listOrphanDockerNetworks =
+    options.listOrphanDockerNetworks ??
+    listOrphanAgentTelemetryNetworks;
+  const removeOrphanDockerNetwork =
+    options.removeOrphanDockerNetwork ??
+    removeOrphanAgentTelemetryNetwork;
   const firstSeenAt = new Map<string, number>();
 
   async function sweepProcess(adapter: RuntimeAdapter, kind: RuntimeKind, name: string, key: string, now: Date): Promise<number> {
@@ -120,6 +139,36 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
         } catch (error) {
           console.error(`Orphan sweep failed for ${kind} process ${name}:`, error);
         }
+      }
+    }
+    if (kinds.includes("docker")) {
+      try {
+        const networks = await listOrphanDockerNetworks();
+        for (const network of networks) {
+          const key = `docker-network:${network.name}`;
+          seenKeys.add(key);
+          const firstSeen =
+            firstSeenAt.get(key) ?? now.getTime();
+          firstSeenAt.set(key, firstSeen);
+          if (now.getTime() - firstSeen < graceMs) continue;
+          try {
+            if (await removeOrphanDockerNetwork(network)) {
+              stopped += 1;
+              firstSeenAt.delete(key);
+              console.warn(
+                `Removed orphan Docker Agent telemetry network ${network.name}: container ${network.processName} does not exist.`,
+              );
+            }
+          } catch (error) {
+            console.error(
+              `Orphan sweep failed for Docker Agent telemetry network ${network.name}:`,
+              error,
+            );
+          }
+        }
+      } catch {
+        // Docker may be unavailable on a systemd-only host. Process cleanup
+        // for other runtimes must continue independently.
       }
     }
     // A process that vanished between sweeps must not keep an aging grace

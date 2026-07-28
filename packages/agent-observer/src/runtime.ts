@@ -128,7 +128,7 @@ export function createPrivateAgentTelemetryRuntime(input: {
     logs: new OTLPLogExporter({ url: `${endpoint}/v1/logs` }),
     metrics: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics` }),
   };
-  const resource = resourceFromAttributes({
+  const resourceAttributes = {
     "service.name": "eveland-agent",
     "service.instance.id": policy.resource.deploymentId,
     "deployment.environment.name": policy.resource.environment,
@@ -139,10 +139,12 @@ export function createPrivateAgentTelemetryRuntime(input: {
     "eveland.deployment.id": policy.resource.deploymentId,
     "eveland.runtime.kind": policy.resource.runtimeKind,
     "eveland.telemetry.domain": "agent",
+    "eveland.deployment.credential": policy.deploymentCredential,
     ...(runtimeInstanceId
       ? { "eveland.runtime.instance.id": runtimeInstanceId }
       : {}),
-  });
+  };
+  const resource = resourceFromAttributes(resourceAttributes);
   const tracerProvider = new BasicTracerProvider({
     resource,
     sampler: new TraceIdRatioBasedSampler(policy.capture.sampleRatio),

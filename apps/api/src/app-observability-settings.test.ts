@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { DEFAULT_TEAM_ID } from "@eveland/db";
 import { createTestStore } from "@eveland/db/vitest";
 import {
@@ -73,7 +73,10 @@ describe("observability settings", () => {
 
   test("encrypts and revision-controls external destinations", async () => {
     const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
+    const app = createApp(store, {
+      appSecretKey,
+      validateObservabilityDestination: async () => undefined,
+    });
 
     const created = await app.request(
       "/system/observability/destinations",
@@ -172,7 +175,10 @@ describe("observability settings", () => {
 
   test("edits a destination endpoint without re-sending its credentials", async () => {
     const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
+    const app = createApp(store, {
+      appSecretKey,
+      validateObservabilityDestination: async () => undefined,
+    });
 
     const created = await app.request("/system/observability/destinations", {
       method: "POST",
@@ -263,7 +269,10 @@ describe("observability settings", () => {
 
   test("rejects a first-time destination that omits its credential", async () => {
     const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
+    const app = createApp(store, {
+      appSecretKey,
+      validateObservabilityDestination: async () => undefined,
+    });
 
     const response = await app.request(
       "/system/observability/destinations",
@@ -284,6 +293,46 @@ describe("observability settings", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("Langfuse"),
     });
+    await expect(
+      store.getObservabilityPolicy(DEFAULT_TEAM_ID),
+    ).resolves.toMatchObject({ revision: 1, externalDestinations: [] });
+  });
+
+  test("rejects an unsafe destination before persisting it", async () => {
+    const store = createTestStore();
+    const validateObservabilityDestination = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("Destination must resolve only to public IP addresses."),
+      );
+    const app = createApp(store, {
+      appSecretKey,
+      validateObservabilityDestination,
+    });
+
+    const response = await app.request(
+      "/system/observability/destinations",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          config: {
+            kind: "custom_otlp",
+            endpoint: "http://169.254.169.254",
+            supportedSignals: ["logs"],
+            domains: ["agent"],
+            headers: {},
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: "Destination must resolve only to public IP addresses.",
+    });
+    expect(validateObservabilityDestination).toHaveBeenCalledOnce();
     await expect(
       store.getObservabilityPolicy(DEFAULT_TEAM_ID),
     ).resolves.toMatchObject({ revision: 1, externalDestinations: [] });

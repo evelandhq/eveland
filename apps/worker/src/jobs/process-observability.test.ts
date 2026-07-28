@@ -66,7 +66,7 @@ describe("Deployment observability policy", () => {
           sampleRatio: 0.5,
           recordInputs: true,
         },
-        otlp: { endpoint: "http://host.docker.internal:4318" },
+        otlp: { endpoint: "http://eveland-otel-collector:4328" },
         resource: {
           teamId: DEFAULT_TEAM_ID,
           projectId: "proj_1",

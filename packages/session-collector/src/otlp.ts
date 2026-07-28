@@ -20,6 +20,7 @@ export {
 } from "./otlp-protobuf.js";
 
 export type InstanceTelemetryProjection = {
+  acceptedDataPoints: number;
   heartbeats: WorkerHeartbeat[];
   hostMetrics: Array<Omit<HostMetricSample, "id">>;
 };
@@ -244,27 +245,51 @@ export function projectOtlpMetricPoints(
 
 export function projectAgentEventsFromOtlpLogs(
   payload: Record<string, unknown>,
+  options: {
+    resolveDeploymentId: (credential: string | undefined) => string | undefined;
+  },
 ): AgentEventObservation[] {
-  const observations: AgentEventObservation[] = [];
+  return projectAgentEventItemsFromOtlpLogs(payload, options).flatMap(
+    (observation) => (observation ? [observation] : []),
+  );
+}
+
+/**
+ * `resolveDeploymentId` receives the Agent-supplied `eveland.deployment.credential`
+ * and must return the deployment it authenticates, or null to drop the resource.
+ * It is required rather than optional so no ingest path can silently fall back to
+ * the unauthenticated `eveland.deployment.id` attribute, which any Agent with
+ * access to the Collector's agent receiver can set to another tenant's id.
+ */
+export function projectAgentEventItemsFromOtlpLogs(
+  payload: Record<string, unknown>,
+  options: {
+    resolveDeploymentId: (credential: string | undefined) => string | undefined;
+  },
+): Array<AgentEventObservation | null> {
+  const observations: Array<AgentEventObservation | null> = [];
   for (const resourceLogs of arrayOfRecords(payload.resourceLogs)) {
     const resource = recordValue(resourceLogs.resource);
     const resourceAttributes = attributesFrom(resource?.attributes);
-    if (resourceAttributes["eveland.telemetry.domain"] !== "agent") continue;
-    const deploymentId = stringValue(
-      resourceAttributes["eveland.deployment.id"],
+    const isAgent =
+      resourceAttributes["eveland.telemetry.domain"] === "agent";
+    const deploymentId = options.resolveDeploymentId(
+      stringValue(resourceAttributes["eveland.deployment.credential"]),
     );
-    if (!deploymentId) continue;
     const runtimeInstanceId =
       stringValue(resourceAttributes["eveland.runtime.instance.id"]) ?? null;
 
     for (const scopeLogs of arrayOfRecords(resourceLogs.scopeLogs)) {
       for (const logRecord of arrayOfRecords(scopeLogs.logRecords)) {
-        const observation = observationFromLogRecord(
-          deploymentId,
-          runtimeInstanceId,
-          logRecord,
+        observations.push(
+          isAgent && deploymentId
+            ? observationFromLogRecord(
+                deploymentId,
+                runtimeInstanceId,
+                logRecord,
+              )
+            : null,
         );
-        if (observation) observations.push(observation);
       }
     }
   }
@@ -275,13 +300,19 @@ export function projectInstanceTelemetryFromOtlpMetrics(
   payload: Record<string, unknown>,
 ): InstanceTelemetryProjection {
   const projection: InstanceTelemetryProjection = {
+    acceptedDataPoints: 0,
     heartbeats: [],
     hostMetrics: [],
   };
   for (const resourceMetrics of arrayOfRecords(payload.resourceMetrics)) {
     const resource = recordValue(resourceMetrics.resource);
     const resourceAttributes = attributesFrom(resource?.attributes);
-    if (resourceAttributes["service.name"] !== "eveland-worker") continue;
+    if (
+      resourceAttributes["service.name"] !== "eveland-worker" ||
+      resourceAttributes["eveland.telemetry.domain"] !== "capacity"
+    ) {
+      continue;
+    }
     const workerId = stringValue(
       resourceAttributes["service.instance.id"],
     );
@@ -323,6 +354,10 @@ export function projectInstanceTelemetryFromOtlpMetrics(
             ? "Worker tick failed; inspect Worker telemetry."
             : null,
       });
+      projection.acceptedDataPoints += 1;
+      if (histogramMean(durationPoint) !== undefined) {
+        projection.acceptedDataPoints += 1;
+      }
     }
 
     const memoryUsed = pointByAttribute(
@@ -336,12 +371,6 @@ export function projectInstanceTelemetryFromOtlpMetrics(
       "system.memory.usage",
       "system.memory.state",
       "free",
-    );
-    const diskUsed = pointByAttribute(
-      metrics,
-      "system.filesystem.usage",
-      "system.filesystem.state",
-      "used",
     );
     const diskFree = pointByAttribute(
       metrics,
@@ -379,17 +408,80 @@ export function projectInstanceTelemetryFromOtlpMetrics(
       memoryTotalBytes: memoryUsed + memoryFree,
       memoryAvailableBytes: memoryFree,
       diskTotalBytes: diskLimit,
-      diskAvailableBytes:
-        diskFree ??
-        (diskUsed === undefined
-          ? diskLimit
-          : Math.max(0, diskLimit - diskUsed)),
+      diskAvailableBytes: diskFree,
       diskInodesTotal: inodeLimit ?? null,
       diskInodesAvailable:
         inodeFree === undefined ? null : inodeFree,
     });
+    projection.acceptedDataPoints += acceptedHostMetricDataPoints(metrics);
   }
   return projection;
+}
+
+function acceptedHostMetricDataPoints(
+  metrics: Map<string, Record<string, unknown>[]>,
+): number {
+  const cpuPoints = (metrics.get("system.cpu.utilization") ?? []).filter(
+    (point) =>
+      attributesFrom(point.attributes)["cpu.mode"] !== "idle" &&
+      numberValue(point) !== undefined,
+  ).length;
+  return (
+    cpuPoints +
+    acceptedAttributeNumberPoint(
+      metrics,
+      "system.memory.usage",
+      "system.memory.state",
+      "used",
+    ) +
+    acceptedAttributeNumberPoint(
+      metrics,
+      "system.memory.usage",
+      "system.memory.state",
+      "free",
+    ) +
+    acceptedAttributeNumberPoint(
+      metrics,
+      "system.filesystem.usage",
+      "system.filesystem.state",
+      "free",
+    ) +
+    acceptedFirstNumberPoint(metrics, "system.filesystem.limit") +
+    acceptedAttributeNumberPoint(
+      metrics,
+      "eveland.system.filesystem.inodes.usage",
+      "eveland.system.filesystem.inodes.state",
+      "free",
+    ) +
+    acceptedFirstNumberPoint(
+      metrics,
+      "eveland.system.filesystem.inodes.limit",
+    ) +
+    acceptedFirstNumberPoint(metrics, "eveland.host.load.1m")
+  );
+}
+
+function acceptedFirstNumberPoint(
+  metrics: Map<string, Record<string, unknown>[]>,
+  name: string,
+): number {
+  return numberValue(metrics.get(name)?.[0]) === undefined ? 0 : 1;
+}
+
+function acceptedAttributeNumberPoint(
+  metrics: Map<string, Record<string, unknown>[]>,
+  name: string,
+  attributeName: string,
+  attributeValue: string,
+): number {
+  const point = metrics
+    .get(name)
+    ?.find(
+      (candidate) =>
+        attributesFrom(candidate.attributes)[attributeName] ===
+        attributeValue,
+    );
+  return numberValue(point) === undefined ? 0 : 1;
 }
 
 function observationFromLogRecord(

@@ -73,6 +73,7 @@ describe("Eveland private telemetry providers", () => {
           recordOutputs: false,
           includeReasoning: false,
         },
+        deploymentCredential: "credential.signature",
         otlp: { endpoint: "http://127.0.0.1:4318" },
         resource: {
           teamId: "team_1",

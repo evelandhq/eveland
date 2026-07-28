@@ -1,9 +1,27 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createTestStore } from "@eveland/db/vitest";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { Root } from "protobufjs";
+import {
+  createAgentTelemetryCredential,
+  deriveAgentTelemetrySecret,
+} from "@eveland/core/server/agent-telemetry-credential";
 import { createApp } from "./app.js";
+
+// `createApp` falls back to this key when no APP_SECRET_KEY is configured, so
+// credentials minted here verify against the same derived telemetry secret.
+const devSecretKey = "eveland-dev-secret-key-000000000";
+
+function agentCredential(
+  deploymentId: string,
+  appSecretKey = devSecretKey,
+): string {
+  return createAgentTelemetryCredential(
+    { deploymentId, issuedAt: "2026-07-23T12:00:00.000Z" },
+    deriveAgentTelemetrySecret(appSecretKey),
+  );
+}
 
 describe("Built-in OTLP ingest", () => {
   test("accepts authenticated OTLP/HTTP JSON and hides the route otherwise", async () => {
@@ -123,9 +141,9 @@ describe("Built-in OTLP ingest", () => {
         signal: "logs",
         payload: platformLogBatch(),
         verify: async (store: ReturnType<typeof createTestStore>) => {
-          // A platform-domain LogRecord projects into no read model; only Agent logs
-          // produce Sessions and usage. Acceptance is all there is to assert.
+          // Platform logs are not part of the Built-in read model.
         },
+        rejected: 1,
       },
       {
         signal: "metrics",
@@ -141,6 +159,7 @@ describe("Built-in OTLP ingest", () => {
             }),
           ).resolves.toHaveLength(1);
         },
+        rejected: 2,
       },
     ] as const;
 
@@ -165,7 +184,24 @@ describe("Built-in OTLP ingest", () => {
       expect(response.headers.get("content-type")).toBe(
         "application/x-protobuf",
       );
-      expect(new Uint8Array(await response.arrayBuffer())).toHaveLength(0);
+      const responseBytes = new Uint8Array(await response.arrayBuffer());
+      if ("rejected" in testCase && testCase.rejected > 0) {
+        const responseType = protobufResponseTypes[testCase.signal];
+        expect(
+          responseType.toObject(responseType.decode(responseBytes), {
+            longs: String,
+          }),
+        ).toEqual({
+          partialSuccess: {
+            [testCase.signal === "logs"
+              ? "rejectedLogRecords"
+              : "rejectedDataPoints"]: String(testCase.rejected),
+            errorMessage: expect.stringContaining("required"),
+          },
+        });
+      } else {
+        expect(responseBytes).toHaveLength(0);
+      }
       await expect(
         store.latestOtlpBatchReceivedAt({ signal: testCase.signal }),
       ).resolves.toEqual(expect.any(String));
@@ -286,6 +322,138 @@ describe("Built-in OTLP ingest", () => {
     ).resolves.toEqual(expect.any(String));
   });
 
+  test("reports Agent LogRecords rejected when the Session projector cannot consume them", async () => {
+    const store = createTestStore();
+    const app = createApp(store, {
+      otlpServiceToken: "collector-service-token",
+    });
+    const payload = {
+      resourceLogs: [
+        {
+          resource: {
+            attributes: [
+              attribute("service.name", "eveland-agent"),
+              attribute("eveland.telemetry.domain", "agent"),
+              attribute("eveland.deployment.id", "dep_missing"),
+              attribute(
+                "eveland.deployment.credential",
+                agentCredential("dep_missing"),
+              ),
+            ],
+          },
+          scopeLogs: [
+            {
+              scope: { name: "@eveland/eve-runtime" },
+              logRecords: [
+                {
+                  timeUnixNano: "1784808000000000000",
+                  body: { stringValue: "not an Eve event" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const response = await app.request("/internal/otel/v1/logs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer collector-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      partialSuccess: {
+        rejectedLogRecords: "1",
+        errorMessage: expect.stringContaining("required"),
+      },
+    });
+  });
+
+  test("refuses Agent telemetry that claims another Deployment than its credential", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Victim",
+      importKind: "zip",
+    });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/otlp-victim",
+      summary: { eveVersion: "0.27.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const victim = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/otlp-victim:test",
+      containerName: "eveland-otlp-victim",
+      internalPort: 3000,
+      hostPort: 41000,
+      runtimeKind: "docker",
+    });
+    const app = createApp(store, {
+      otlpServiceToken: "collector-service-token",
+    });
+
+    // A batch signed for one Deployment but naming the victim's id in the
+    // unauthenticated `eveland.deployment.id` attribute.
+    const forged = agentLogBatch(victim.id);
+    forged.resourceLogs[0]!.resource.attributes = [
+      attribute("service.name", "eveland-agent"),
+      attribute("eveland.telemetry.domain", "agent"),
+      attribute("eveland.deployment.id", victim.id),
+      attribute("eveland.deployment.credential", agentCredential("dep_other")),
+    ];
+
+    const response = await app.request("/internal/otel/v1/logs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer collector-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(forged),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      partialSuccess: {
+        rejectedLogRecords: "2",
+        errorMessage: expect.stringContaining("required"),
+      },
+    });
+    await expect(store.listSessions(project.id)).resolves.toEqual([]);
+  });
+
+  test("reports valid Agent events rejected when their Deployment is unmanaged", async () => {
+    const app = createApp(createTestStore(), {
+      otlpServiceToken: "collector-service-token",
+    });
+
+    const response = await app.request("/internal/otel/v1/logs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer collector-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(agentLogBatch("dep_unmanaged")),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      partialSuccess: {
+        rejectedLogRecords: "2",
+        errorMessage: expect.stringContaining("required"),
+      },
+    });
+  });
+
   test("projects retry-safe Instance Health read models from standard OTLP metrics", async () => {
     const store = createTestStore();
     const app = createApp(store, {
@@ -323,6 +491,388 @@ describe("Built-in OTLP ingest", () => {
     // Capacity metrics leave behind these read models only; the points themselves are
     // not retained anywhere.
   });
+
+  test("reports metric points rejected when the Instance Health projector cannot consume them", async () => {
+    const app = createApp(createTestStore(), {
+      otlpServiceToken: "collector-service-token",
+    });
+    const payload = {
+      resourceMetrics: [
+        {
+          resource: {
+            attributes: [
+              attribute("service.name", "eveland-api"),
+              attribute("eveland.telemetry.domain", "platform"),
+              attribute("service.instance.id", "api_1"),
+            ],
+          },
+          scopeMetrics: [
+            {
+              metrics: [
+                gauge("http.server.request.duration", [metricPoint(10)]),
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const response = await app.request("/internal/otel/v1/metrics", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer collector-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      partialSuccess: {
+        rejectedDataPoints: "1",
+        errorMessage: expect.stringContaining("required"),
+      },
+    });
+  });
+});
+
+describe("external OTLP egress proxy", () => {
+  /**
+   * Production always configures `options.auth`; before this test nothing in
+   * apps/api did, so the catch-all session middleware never ran under test and
+   * a route registered behind it would 401 the Collector only in production.
+   */
+  test("stays reachable with the Collector service token when session auth is enabled", async () => {
+    const store = createTestStore();
+    const authenticate = vi.fn().mockResolvedValue(null);
+    const app = createApp(store, {
+      appSecretKey: "0123456789abcdef0123456789abcdef",
+      otlpServiceToken: "collector-service-token",
+      auth: { authenticate } as unknown as NonNullable<
+        Parameters<typeof createApp>[1]
+      >["auth"],
+    });
+
+    const response = await app.request(
+      "/internal/observability/destinations/dst_missing/v1/logs",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ resourceLogs: [] }),
+      },
+    );
+
+    // 404 is the route's own "no such destination" answer, proving the handler
+    // ran. A 401 here would mean the session middleware intercepted it.
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "Not found" });
+    expect(authenticate).not.toHaveBeenCalled();
+  });
+
+  test("authenticates Collector traffic and forwards through the validated requester", async () => {
+    const store = createTestStore();
+    const forwardExternalObservabilityRequest = vi.fn().mockResolvedValue({
+      status: 202,
+      contentType: "application/json",
+      body: new Uint8Array(),
+    });
+    const app = createApp(store, {
+      appSecretKey: "0123456789abcdef0123456789abcdef",
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    const created = await app.request(
+      "/system/observability/destinations",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          config: {
+            kind: "custom_otlp",
+            endpoint: "https://collector.example",
+            supportedSignals: ["logs"],
+            domains: ["agent"],
+            headers: { "x-api-key": "destination-secret" },
+          },
+        }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const destinationId = (
+      await store.getObservabilityPolicy("team_local")
+    ).externalDestinations[0]!.id;
+    const body = JSON.stringify({ resourceLogs: [] });
+
+    const hidden = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      },
+    );
+    expect(hidden.status).toBe(404);
+
+    const response = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body,
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(forwardExternalObservabilityRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          endpoint: "https://collector.example",
+          headers: { "x-api-key": "destination-secret" },
+        }),
+        signal: "logs",
+        contentType: "application/json",
+        body: new Uint8Array(Buffer.from(body)),
+      }),
+    );
+  });
+
+  test("binds Agent telemetry to the signed Deployment and strips the credential before forwarding", async () => {
+    const store = createTestStore();
+    const attackerProject = await store.createProject({
+      name: "Attacker",
+      importKind: "zip",
+    });
+    const attackerRevision = await store.recordSourceRevision({
+      projectId: attackerProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/otlp-attacker",
+      summary: { eveVersion: "0.27.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const attacker = await store.recordDeployment({
+      projectId: attackerProject.id,
+      sourceRevisionId: attackerRevision.id,
+      imageTag: "eveland/otlp-attacker:test",
+      containerName: "eveland-otlp-attacker",
+      internalPort: 3000,
+      hostPort: 41000,
+      runtimeKind: "systemd",
+    });
+    const victimProject = await store.createProject({
+      name: "Victim",
+      importKind: "zip",
+    });
+    const victimRevision = await store.recordSourceRevision({
+      projectId: victimProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/otlp-victim",
+      summary: { eveVersion: "0.27.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const victim = await store.recordDeployment({
+      projectId: victimProject.id,
+      sourceRevisionId: victimRevision.id,
+      imageTag: "eveland/otlp-victim:test",
+      containerName: "eveland-otlp-victim",
+      internalPort: 3000,
+      hostPort: 41001,
+      runtimeKind: "docker",
+    });
+    const forwardExternalObservabilityRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      contentType: "application/json",
+      body: new Uint8Array(),
+    });
+    const app = createApp(store, {
+      appSecretKey: devSecretKey,
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    await app.request("/system/observability/destinations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        config: {
+          kind: "custom_otlp",
+          endpoint: "https://collector.example",
+          supportedSignals: ["logs"],
+          domains: ["agent"],
+          headers: {},
+        },
+      }),
+    });
+    const destinationId = (
+      await store.getObservabilityPolicy("team_local")
+    ).externalDestinations[0]!.id;
+    const payload = {
+      resourceLogs: [
+        {
+          resource: {
+            attributes: [
+              attribute("service.name", "eveland-agent"),
+              attribute("eveland.telemetry.domain", "agent"),
+              attribute("eveland.team.id", "team_victim"),
+              attribute("eveland.project.id", victim.projectId),
+              attribute("eveland.release.id", victim.releaseId),
+              attribute("eveland.deployment.id", victim.id),
+              attribute("eveland.runtime.kind", "docker"),
+              attribute(
+                "eveland.deployment.credential",
+                agentCredential(attacker.id),
+              ),
+            ],
+          },
+          scopeLogs: [
+            {
+              scope: { name: "@eveland/eve-runtime" },
+              logRecords: [
+                {
+                  attributes: [
+                    attribute("eveland.project.id", victim.projectId),
+                    attribute(
+                      "langfuse.observation.metadata.eveland.project_id",
+                      victim.projectId,
+                    ),
+                    attribute(
+                      "eveland.deployment.credential",
+                      agentCredential(attacker.id),
+                    ),
+                  ],
+                  body: { stringValue: "event" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const response = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const forwarded = JSON.parse(
+      new TextDecoder().decode(
+        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
+      ),
+    );
+    const resourceAttributes =
+      forwarded.resourceLogs[0].resource.attributes;
+    expect(readStringAttributes(resourceAttributes)).toMatchObject({
+      "service.name": "eveland-agent",
+      "eveland.telemetry.domain": "agent",
+      "eveland.team.id": "team_local",
+      "eveland.project.id": attacker.projectId,
+      "eveland.release.id": attacker.releaseId,
+      "eveland.deployment.id": attacker.id,
+      "eveland.runtime.kind": "systemd",
+    });
+    expect(readStringAttributes(resourceAttributes)).not.toHaveProperty(
+      "eveland.deployment.credential",
+    );
+    expect(
+      readStringAttributes(
+        forwarded.resourceLogs[0].scopeLogs[0].logRecords[0].attributes,
+      ),
+    ).toMatchObject({
+      "eveland.project.id": attacker.projectId,
+      "langfuse.observation.metadata.eveland.project_id":
+        attacker.projectId,
+    });
+    expect(JSON.stringify(forwarded)).not.toContain(
+      "eveland.deployment.credential",
+    );
+  });
+
+  test("drops Agent resources whose deployment credential cannot be verified", async () => {
+    const store = createTestStore();
+    const forwardExternalObservabilityRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      contentType: "application/json",
+      body: new Uint8Array(),
+    });
+    const app = createApp(store, {
+      appSecretKey: devSecretKey,
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    await app.request("/system/observability/destinations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        config: {
+          kind: "custom_otlp",
+          endpoint: "https://collector.example",
+          supportedSignals: ["logs"],
+          domains: ["agent"],
+          headers: {},
+        },
+      }),
+    });
+    const destinationId = (
+      await store.getObservabilityPolicy("team_local")
+    ).externalDestinations[0]!.id;
+
+    const response = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          resourceLogs: [
+            {
+              resource: {
+                attributes: [
+                  attribute("eveland.telemetry.domain", "agent"),
+                  attribute(
+                    "eveland.deployment.credential",
+                    "forged.signature",
+                  ),
+                ],
+              },
+              scopeLogs: [],
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const forwarded = JSON.parse(
+      new TextDecoder().decode(
+        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
+      ),
+    );
+    expect(forwarded).toEqual({ resourceLogs: [] });
+  });
 });
 
 function agentLogBatch(deploymentId: string) {
@@ -334,6 +884,10 @@ function agentLogBatch(deploymentId: string) {
             attribute("service.name", "eveland-agent"),
             attribute("eveland.telemetry.domain", "agent"),
             attribute("eveland.deployment.id", deploymentId),
+            attribute(
+              "eveland.deployment.credential",
+              agentCredential(deploymentId),
+            ),
           ],
         },
         scopeLogs: [
@@ -448,6 +1002,14 @@ function logRecord(eventId: string, event: unknown) {
 
 function attribute(key: string, value: string) {
   return { key, value: { stringValue: value } };
+}
+
+function readStringAttributes(
+  attributes: Array<{ key: string; value: { stringValue?: string } }>,
+) {
+  return Object.fromEntries(
+    attributes.map(({ key, value }) => [key, value.stringValue]),
+  );
 }
 
 function anyValue(value: unknown): Record<string, unknown> {

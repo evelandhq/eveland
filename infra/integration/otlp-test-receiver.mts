@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 
 type Signal = "traces" | "logs" | "metrics";
 
-export async function startOtlpTestReceiver(port = 4318) {
+export async function startOtlpTestReceiver(port = 4328) {
   const received: Record<Signal, Array<Record<string, unknown>>> = {
     traces: [],
     logs: [],

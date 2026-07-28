@@ -49,7 +49,11 @@
   the host root read-only first. This is unrelated to `ProtectSystem=strict` — it is
   the same role eve's Docker backend fills by baking `/workspace` into its base
   image.
-- A service user for deployments: `useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app`.
+- An artifact-access user and same-named group:
+  `useradd --system --user-group --home-dir /var/lib/eveland-app --create-home eveland-app`.
+  Each Deployment runs under its own systemd `DynamicUser`; those identities
+  use `eveland-app` only as their primary access group for the explicitly
+  bound release, cache, and policy paths.
 - A second service user for builds: `useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build`.
   Dependency lifecycle scripts (`npm ci`/`npx eve build`) run as this user inside
   the build sandbox, not as the worker's own root user (see the build-trust note
@@ -83,18 +87,55 @@ bind-mounts it at that same absolute path, matching the host worker's
 `sourcePath` is written by whichever side imports the project and read by
 whichever side later serves or deploys it — a mismatched mount would leave
 one side unable to find files the other wrote.
-The managed Collector receives Eveland-owned OTLP on loopback ports 4317/4318.
-Built-in always exports to the API's service-authenticated `/internal/otel`
-endpoint, which accepts standard OTLP/HTTP JSON and protobuf for traces, logs,
-and metrics; the managed exporter uses protobuf by default. The Worker writes
+The managed Collector publishes its service-authenticated platform receiver on
+host loopback ports 4317/4318. Its Agent receiver uses 4327/4328: systemd Agents
+reach host loopback port 4328, while each active Docker Deployment gets a
+private network containing only its Agent and the Collector and uses
+`http://eveland-otel-collector:4328`. Do not publish either receiver on a public
+interface. The Docker adapter creates and removes these networks with the
+Deployment lifecycle and attaches the configured Collector container under the
+fixed alias. The Worker detects a recreated Collector by container identity and
+reattaches it to surviving managed networks. A missing Collector degrades telemetry
+but never blocks an Agent start or cold activation. The orphan sweep removes managed
+networks whose Agent container remains absent after the normal grace period.
+Different Agent Deployments therefore cannot resolve or connect to one another
+through the telemetry path. The Agent receiver is unauthenticated, so each
+Deployment's telemetry is attributed by a Worker-signed credential written into
+its `agent-policy.json` and mounted read-only. The private provider carries it on
+Agent traces, logs, and metrics. Built-in and the external-destination API proxy
+verify it and replace Agent-supplied ownership with the Store-owned Deployment
+identity; the proxy removes the credential before remote delivery. systemd
+Agents use a distinct `DynamicUser`, hide other users' `/proc` entries, and run
+with the shared data root masked. Built-in exports only Agent logs and Worker capacity metrics to the
+API's service-authenticated `/internal/otel` endpoint; the API still accepts
+standard OTLP/HTTP JSON and protobuf for all three signals. The Worker writes
 revisioned Collector configuration below
 `/var/lib/eveland/otel`, validates it with the pinned official Collector image,
 and restarts only the Collector container when an admin changes an external
 destination. Each exporter has an independent persistent queue below the
-Collector volume. Collector detailed self-metrics stay on its loopback
-Prometheus endpoint, are re-ingested as standard platform-domain OTel metrics,
-and drive Built-in delivery diagnostics and Collector freshness health.
+Collector volume. External queues send to the API egress proxy, which revalidates
+DNS, pins the approved address, disables redirects, and attaches the stored
+destination credential. Collector self-metrics stay on its loopback Prometheus
+endpoint and go only to external destinations that accept platform metrics.
 Agent Deployments are not restarted by an observability settings change.
+
+Each active Docker Deployment consumes one bridge subnet. Docker's built-in
+address pools are too small for a long-lived multi-Deployment host, so configure
+a non-overlapping pool before starting a Docker-runtime Worker:
+
+```json
+{
+  "default-address-pools": [
+    { "base": "10.201.0.0/16", "size": 24 }
+  ]
+}
+```
+
+Merge this into `/etc/docker/daemon.json`, choose a base that does not overlap
+the host, VPN, or deployment networks, and restart Docker. The example permits
+256 bridge networks. Docker-runtime startup preflight creates and removes one
+temporary bridge so address-pool exhaustion is reported before any deployment
+job is accepted.
 Gateway listens on host port 4080 and is the only process Traefik forwards wildcard Agent
 hosts to. Agent processes remain on `127.0.0.1:41xxx`; never add those dynamic ports to
 Traefik or firewall rules. Start from `infra/traefik/agents.yml`, replace the example domain,
@@ -159,7 +200,10 @@ than guessing values; the observed timestamp identifies older snapshots.
 
 ### Startup preflight
 
-When the resolved runtime is systemd — an explicit `EVELAND_RUNTIME=systemd`,
+When the resolved runtime is Docker, the Worker first proves that Docker can
+allocate and release an Agent bridge subnet; failure points to the
+`default-address-pools` configuration above. When the resolved runtime is
+systemd — an explicit `EVELAND_RUNTIME=systemd`,
 or `NODE_ENV=production` with `EVELAND_RUNTIME` unset — the worker refuses to
 start until every host
 prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
@@ -190,14 +234,16 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_RUNTIME` | `docker`; `systemd` when `NODE_ENV=production` | Set `systemd` explicitly on the deploy host. An explicit value always wins over the `NODE_ENV`-based default. |
 | `EVELAND_RELEASE_CHANNEL` | `dev` | Product release channel reported by health, logs, and Web About: `dev`, `edge`, `prerelease`, or `stable`. Production tag checkouts use `stable`; `main` test instances use `edge`. |
 | `EVELAND_REVISION` | `unknown` | Exact deployed Git revision, normally `git rev-parse --short=12 HEAD`. Configure the same value for API, Gateway, Web, and Worker. |
-| `EVELAND_APP_USER` | `eveland-app` | Unix user deployments run as. |
+| `EVELAND_APP_USER` | `eveland-app` | Unix user and same-named access group that own built release/cache artifacts and are granted only on each Deployment's explicitly bound paths. Deployment processes use separate systemd dynamic users. |
 | `EVELAND_BUILD_USER` | `eveland-build` | Unix user the build (`npm ci`/`npx eve build`, i.e. third-party lifecycle scripts) runs as. |
 | `EVELAND_MEMORY_MAX` | `2G` | systemd `MemoryMax` per deployment. |
 | `EVELAND_CPU_QUOTA` | `200%` | systemd `CPUQuota` per deployment. |
 | `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
 | `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files, Agent observability policies, and managed Collector configuration. Use an absolute path, e.g. `/var/lib/eveland`. |
 | `EVELAND_HOST_DATA_DIR` | `EVELAND_DATA_DIR` | Host-daemon view of the same data directory. Set this only when a containerized worker drives Docker through `/var/run/docker.sock`; native systemd workers use the same path on both sides. |
-| `EVELAND_OTLP_ENDPOINT` | `http://127.0.0.1:4318` | Internal OTLP/HTTP receiver for Eveland-owned platform and injected Agent telemetry. This topology value is not the admin capture switch. |
+| `EVELAND_OTLP_ENDPOINT` | `http://127.0.0.1:4318` | Service-authenticated platform OTLP/HTTP receiver used by API, Gateway, and Worker. Agent receiver endpoints are injected through the runtime policy. |
+| `EVELAND_OTLP_SERVICE_TOKEN` | *(unset)* | Required shared secret for API, Gateway, Worker, and Collector platform traffic plus Collector-to-API observability requests. Agents must not receive it. |
+| `EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST` | *(empty)* | Comma-separated exact hostnames/IPs permitted to use HTTP or resolve to non-public addresses for external destinations. Keep empty unless a private OTLP target is intentional. |
 | `EVELAND_OTEL_METRIC_INTERVAL_MS` | `60000` | Platform SDK metric export interval. |
 | `EVELAND_HOST_METRIC_INTERVAL_MS` | `60000` | Worker cadence for standard host CPU, memory, filesystem, workload, and heartbeat metrics. |
 | `EVELAND_OTEL_COLLECTOR_CONTAINER` | `eveland-otel-collector` | Collector container restarted after a generated configuration passes validation. |
@@ -284,7 +330,7 @@ token requests even when its exact origin is present in the CORS allowlist.
 | `EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE` | `25` | Maximum interrupted `starting` RuntimeInstances re-enqueued per Worker tick. |
 | `EVELAND_ACTIVATION_START_STALE_MS` | `300000` | Age after which a running activation job can be reclaimed following a Worker crash. |
 | `EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE` | `100` | Maximum ready RuntimeInstances compared with Docker/systemd process state per Worker tick. |
-| `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | `3600000` | Interval between orphan-process sweeps (1 hour). The Worker lists running `eveland-*-dep_*` units/containers, adopts unmanaged ones into the RuntimeInstance idle lifecycle, and stops processes no Deployment legitimately owns. `0` disables the sweep. |
+| `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | `3600000` | Interval between orphan-resource sweeps (1 hour). The Worker lists running `eveland-*-dep_*` units/containers, adopts unmanaged ones into the RuntimeInstance idle lifecycle, stops processes no Deployment legitimately owns, and removes managed Agent telemetry networks whose container remains absent. `0` disables the sweep. |
 | `EVELAND_ORPHAN_GRACE_MS` | `300000` | How long an out-of-model process may keep running before the sweep stops it. |
 | `EVELAND_RELEASE_SWEEP_INTERVAL_MS` | `3600000` | Interval between automatic Release retention sweeps (1 hour). Each sweep enqueues archive jobs for old, unprotected, stopped Deployments; `0` disables the sweep. |
 | `EVELAND_RELEASE_SWEEP_BATCH_SIZE` | `25` | Maximum new archive jobs enqueued by one Release retention sweep. |
@@ -300,7 +346,7 @@ token requests even when its exact origin is present in the CORS allowlist.
 | `EVELAND_HOST_METRIC_INTERVAL_MS` | `60000` | How often Worker persists host CPU, memory, load, data-filesystem, and inode measurements for Instance Health. |
 | `EVELAND_HOST_METRIC_RETENTION_MS` | `2592000000` | How long host metric samples are retained; the default is 30 days and expired samples are pruned daily. |
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from automatic or manual archive. Mutable route targets, non-expired SessionBindings, and active request leases are protected independently of age. Older unprotected stopped Deployments are swept automatically; archive removes both the runtime artifact and build directory. |
-| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
+| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts stored secrets and derives Agent telemetry credentials. It must match the API value. After rotation, redeploy every Agent Deployment so its policy contains a credential signed by the new key; hot reload across a key change is not supported. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Platform-owned Postgres **base** URL for durable workflow worlds. The worker derives one database per project (`eveland_wf_<project>_<digest>`), creates and bootstraps it before any deployment process starts, and injects the derived URL — deployments never share a workflow database. The role in this URL needs `CREATEDB`. Required in production and reserved from Project Secret overrides. For systemd, use a host-reachable address such as `postgres://eveland:eveland@127.0.0.1:5432/eveland`. |
 | `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | Matching `DATABASE_URL` when the deployment URL uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches a separate workflow database through `localhost` or a Compose service name. It is never injected into an Agent. |
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
@@ -508,9 +554,17 @@ does not inject a world and Eve keeps its local development world.
   inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
   PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`
-  with `User=eveland-app`, `ProtectSystem=strict`,
+  with a deterministic per-Deployment `User=eveland-d-…`, `DynamicUser=yes`,
+  `Group=eveland-app`, `UMask=0002`, `ProtectProc=invisible`,
+  `ProtectSystem=strict`,
   `ReadWritePaths=<releaseDir>`, `ReadWritePaths=<sandboxCacheDir>`, and a read-only bind of the
-  Deployment's Agent observability policy at the fixed runtime path. The unit also uses
+  Deployment's Agent observability policy at the fixed runtime path. The fixed
+  primary group and group-write umask keep new files group-accessible. A root-only
+  UID marker in the Deployment policy records the last dynamic identity; an
+  `ExecStartPre` repairs group access for the release and sandbox cache in one
+  recursive pass only when that identity changes, so explicit `0600`/`0700`
+  entries remain usable without charging every cold activation for a full walk.
+  The unit also uses
   `PrivateTmp`, `NoNewPrivileges`,
   `MemoryMax`, `CPUQuota`, `Restart=on-failure`. The app binds `127.0.0.1:<hostPort>`;
   secrets arrive via a root-owned 0600 `EnvironmentFile`.
@@ -708,11 +762,13 @@ Session and ScheduleRun; if no boundary arrives before
 
 ## Known limits (v1)
 
-- Deployments share one service user; per-deployment `DynamicUser` isolation is
-  a follow-up.
 - The sandbox cache under `EVELAND_SANDBOX_CACHE_DIR` is never pruned; disk usage grows
   with the number of durable sessions and unique templates (see "Agent exec sandbox"
   above).
+- Each active Docker Deployment uses one bridge subnet. Capacity is bounded by
+  Docker's configured `default-address-pools`; the recommended `/16` split into
+  `/24` networks permits 256 concurrent managed networks, including other Docker
+  bridges on the same daemon.
 - An eve project with no `agent/` directory, or a plain Node project, gets no injected
   sandbox and runs on eve's default sandbox chain. Under production-style `eve start`,
   the optional `just-bash` peer may be absent; even when installed it cannot run real

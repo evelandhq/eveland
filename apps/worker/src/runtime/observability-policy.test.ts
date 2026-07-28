@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -40,6 +40,8 @@ describe("Agent runtime observability policy delivery", () => {
       capture: { enabled: true },
     });
     expect(await readdir(directory)).toEqual(["agent-policy.json"]);
+    expect((await stat(directory)).mode & 0o7777).toBe(0o2750);
+    expect((await stat(secondPath)).mode & 0o777).toBe(0o640);
     expect(AGENT_OBSERVABILITY_MOUNT_DIR).toBe(
       "/run/eveland/observability",
     );
@@ -80,6 +82,7 @@ function policy(revision: number, enabled: boolean) {
     otlp: {
       endpoint: "http://127.0.0.1:4318",
     },
+    deploymentCredential: "credential.signature",
     resource: {
       teamId: "team_1",
       projectId: "proj_1",

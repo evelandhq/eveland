@@ -25,7 +25,11 @@ import { encryptSecretValue } from "@eveland/core/server/secrets";
 import { createPgliteTestStore } from "@eveland/db/test";
 import { processNextJob } from "../jobs/process.js";
 import { resolveRuntimeKind } from "../runtime/select.js";
-import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
+import {
+  resolveProjectSandboxCacheDir,
+  resolveSandboxCacheRoot,
+  resolveSystemdDeploymentUser,
+} from "../runtime/systemd.js";
 
 if (resolveRuntimeKind(process.env) !== "systemd") {
   throw new Error("Run with EVELAND_RUNTIME=systemd (this test exercises the systemd + bwrap sandbox injection path).");
@@ -35,7 +39,8 @@ if (resolveRuntimeKind(process.env) !== "systemd") {
 // processNextJob call below so secret encryption/decryption never depends on
 // an ambient APP_SECRET_KEY the VM shell may or may not have set.
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
-const DEPLOY_USER = process.env.EVELAND_APP_USER ?? "eveland-app";
+const DEPLOY_ACCESS_GROUP =
+  process.env.EVELAND_APP_USER ?? "eveland-app";
 const FIXTURE_SOURCE_PATH = fileURLToPath(new URL("./fixtures/agent-sandbox-e2e", import.meta.url));
 
 const TEMPLATE_KEY = "e2e-template";
@@ -108,6 +113,10 @@ try {
     assert.equal(result.exitCode, 0, \`echo failed: \${result.stderr}\`);
     assert.ok(result.stdout.includes("hello-from-sandbox"), \`unexpected stdout: \${result.stdout}\`);
     await handle.session.writeTextFile({ path: "e2e-marker.txt", content: markerContent });
+    const restrict = await handle.session.run({
+      command: "chmod 0600 /workspace/e2e-marker.txt && chmod 0700 /workspace",
+    });
+    assert.equal(restrict.exitCode, 0, \`chmod failed: \${restrict.stderr}\`);
   } else if (mode === "verify") {
     const content = await handle.session.readTextFile({ path: "e2e-marker.txt" });
     assert.equal(content, markerContent, "durable session marker did not survive the redeploy");
@@ -125,21 +134,27 @@ console.log("E2E SANDBOX CHECK OK");
 }
 
 /**
- * systemd-run argv for the check script above. The property list is copied
- * from sandbox-verify.ts's buildSandboxVerifyArgs: same user, same hardening
- * (NoNewPrivileges, ProtectSystem=strict, PrivateTmp), same cache-dir grant
- * and env var -- this check must run under exactly the constraints the
- * deployed unit itself gets, or it proves nothing about the real deployment.
+ * Runs each deterministic check under a fresh dynamic identity with the
+ * deployment access group, group-write umask, and production hardening. Using
+ * different identities for seed and verify proves the durable cache remains
+ * usable across the UID turnover that restart and cold activation can cause.
  */
-function buildCheckArgs(input: { releaseDir: string; user: string; cacheDir: string; scriptPath: string; mode: "seed" | "verify" }): string[] {
+function buildCheckArgs(input: { releaseDir: string; cacheDir: string; scriptPath: string; mode: "seed" | "verify" }): string[] {
+  const dynamicUser = resolveSystemdDeploymentUser(
+    `eveland-sandbox-check-${process.pid}-${input.mode}`,
+  );
   return [
     "--wait",
     "--pipe",
     "--collect",
     "--service-type=exec",
-    `--property=User=${input.user}`,
+    `--property=User=${dynamicUser}`,
+    "--property=DynamicUser=yes",
+    `--property=Group=${DEPLOY_ACCESS_GROUP}`,
+    "--property=UMask=0002",
     "--property=NoNewPrivileges=yes",
     "--property=ProtectSystem=strict",
+    "--property=ProtectProc=invisible",
     "--property=PrivateTmp=yes",
     `--property=ReadWritePaths=${input.cacheDir}`,
     `--property=WorkingDirectory=${input.releaseDir}`,
@@ -159,7 +174,12 @@ async function runDeterministicCheck(input: { releaseDir: string; cacheDir: stri
 
   const result = await execa(
     "systemd-run",
-    buildCheckArgs({ releaseDir: input.releaseDir, user: DEPLOY_USER, cacheDir: input.cacheDir, scriptPath, mode: input.mode }),
+    buildCheckArgs({
+      releaseDir: input.releaseDir,
+      cacheDir: input.cacheDir,
+      scriptPath,
+      mode: input.mode,
+    }),
     { all: true, reject: false },
   );
   const output = result.all ?? "";

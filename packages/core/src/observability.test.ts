@@ -420,6 +420,7 @@ describe("Agent runtime policy", () => {
     const runtimePolicy = createAgentRuntimePolicy({
       policy: observabilityPolicy,
       otlpEndpoint: "http://127.0.0.1:4318",
+      deploymentCredential: "credential.signature",
       resource: {
         teamId: "team_1",
         projectId: "proj_1",
@@ -441,6 +442,7 @@ describe("Agent runtime policy", () => {
         includeReasoning: true,
       },
       otlp: { endpoint: "http://127.0.0.1:4318" },
+      deploymentCredential: "credential.signature",
       resource: {
         teamId: "team_1",
         projectId: "proj_1",
@@ -459,6 +461,7 @@ describe("Agent runtime policy", () => {
       createAgentRuntimePolicy({
         policy: observabilityPolicy,
         otlpEndpoint: "http://collector:secret@127.0.0.1:4318",
+        deploymentCredential: "credential.signature",
         resource: {
           teamId: "team_1",
           projectId: "proj_1",

@@ -309,6 +309,7 @@ export const agentRuntimePolicySchema = z
         endpoint: agentOtlpEndpointSchema,
       })
       .strict(),
+    deploymentCredential: z.string().min(1),
     resource: z
       .object({
         teamId: z.string().min(1),
@@ -594,6 +595,7 @@ export function toPublicObservabilityPolicy(
 export function createAgentRuntimePolicy(input: {
   policy: ObservabilityPolicy;
   otlpEndpoint: string;
+  deploymentCredential: string;
   resource: AgentRuntimePolicy["resource"];
 }): AgentRuntimePolicy {
   const policy = observabilityPolicySchema.parse(input.policy);
@@ -610,6 +612,7 @@ export function createAgentRuntimePolicy(input: {
     otlp: {
       endpoint: input.otlpEndpoint,
     },
+    deploymentCredential: input.deploymentCredential,
     resource: input.resource,
   });
 }

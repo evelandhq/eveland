@@ -33,6 +33,9 @@ export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: Nod
   if (kind === "docker") {
     return createDockerAdapter({
       internalPort: Number(env.EVELAND_INTERNAL_PORT ?? 3000),
+      collectorContainerName:
+        env.EVELAND_OTEL_COLLECTOR_CONTAINER ??
+        "eveland-otel-collector",
       backendDistDir: resolveBackendDistDir,
     });
   }

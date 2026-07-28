@@ -15,6 +15,7 @@ import {
 import { afterEach, describe, expect, test } from "vitest";
 import {
   createPlatformResource,
+  resolvePlatformOtlpServiceToken,
   resolveOtlpHttpSignalUrls,
   runWithPlatformTracingSuppressed,
   startPrivateLogs,
@@ -29,6 +30,17 @@ afterEach(() => {
 });
 
 describe("platform observability", () => {
+  test("fails fast without the platform receiver token in production", () => {
+    expect(() =>
+      resolvePlatformOtlpServiceToken({ NODE_ENV: "production" }),
+    ).toThrow(
+      "EVELAND_OTLP_SERVICE_TOKEN is required in production.",
+    );
+    expect(
+      resolvePlatformOtlpServiceToken({ NODE_ENV: "development" }),
+    ).toBe("eveland-dev-otlp-service-token");
+  });
+
   test("builds credential-free standard OTLP/HTTP signal endpoints", () => {
     expect(
       resolveOtlpHttpSignalUrls("http://collector.internal:4318/"),
@@ -57,6 +69,7 @@ describe("platform observability", () => {
       environment: "production",
       teamId: "team_local",
       otlpEndpoint: "http://127.0.0.1:4318",
+      otlpServiceToken: "platform-service-token",
       exporters: {
         traces: traceExporter,
         logs: logExporter,
@@ -132,6 +145,7 @@ describe("platform observability", () => {
       teamId: "team_local",
       telemetryDomain: "capacity",
       otlpEndpoint: "http://127.0.0.1:4318",
+      otlpServiceToken: "platform-service-token",
       exporter: metricExporter,
     });
 
@@ -160,6 +174,7 @@ describe("platform observability", () => {
       teamId: "team_local",
       telemetryDomain: "runtime",
       otlpEndpoint: "http://127.0.0.1:4318",
+      otlpServiceToken: "platform-service-token",
       exporter: logExporter,
     });
 

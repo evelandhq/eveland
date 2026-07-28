@@ -1,4 +1,6 @@
 extensions:
+  bearertokenauth/platform:
+    token: ${env:EVELAND_OTLP_SERVICE_TOKEN}
   file_storage:
     directory: /var/lib/otelcol/storage
     create_directory: true
@@ -6,12 +8,22 @@ extensions:
     endpoint: 0.0.0.0:13133
 
 receivers:
-  otlp:
+  otlp/platform:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: bearertokenauth/platform
       http:
         endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth/platform
+  otlp/agent:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4327
+      http:
+        endpoint: 0.0.0.0:4328
   prometheus/collector_self:
     config:
       scrape_configs:
@@ -29,12 +41,31 @@ processors:
   batch:
     timeout: 1s
     send_batch_size: 1024
-  filter/builtin_eveland:
+  resource/trusted_agent:
+    attributes:
+      - key: service.name
+        value: eveland-agent
+        action: upsert
+      - key: eveland.telemetry.domain
+        value: agent
+        action: upsert
+  filter/trusted_agent:
     error_mode: ignore
+    trace_conditions:
+      - 'scope.name != "@eveland/eve-runtime"'
     log_conditions:
-      - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
+      - 'scope.name != "@eveland/eve-runtime"'
     metric_conditions:
-      - 'resource.attributes["eveland.telemetry.domain"] != "agent" and resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "runtime" and resource.attributes["eveland.telemetry.domain"] != "capacity"'
+      - 'scope.name != "@eveland/eve-runtime"'
+  filter/builtin_capacity:
+    error_mode: ignore
+    metric_conditions:
+      - 'resource.attributes["service.name"] != "eveland-worker" or resource.attributes["eveland.telemetry.domain"] != "capacity"'
+      - 'metric.name != "eveland.worker.heartbeat" and metric.name != "eveland.worker.tick.duration" and metric.name != "system.cpu.utilization" and metric.name != "system.memory.usage" and metric.name != "system.filesystem.usage" and metric.name != "system.filesystem.limit" and metric.name != "eveland.system.filesystem.inodes.usage" and metric.name != "eveland.system.filesystem.inodes.limit" and metric.name != "eveland.host.load.1m"'
+      - 'metric.name == "system.cpu.utilization" and datapoint.attributes["cpu.mode"] == "idle"'
+      - 'metric.name == "system.memory.usage" and datapoint.attributes["system.memory.state"] != "used" and datapoint.attributes["system.memory.state"] != "free"'
+      - 'metric.name == "system.filesystem.usage" and datapoint.attributes["system.filesystem.state"] != "free"'
+      - 'metric.name == "eveland.system.filesystem.inodes.usage" and datapoint.attributes["eveland.system.filesystem.inodes.state"] != "free"'
   resource/collector_self:
     attributes:
       - key: service.name
@@ -68,24 +99,26 @@ exporters:
 
 service:
   extensions:
+    - bearertokenauth/platform
     - file_storage
     - health_check
   pipelines:
     logs:
       receivers:
-        - otlp
+        - otlp/agent
       processors:
         - memory_limiter
-        - filter/builtin_eveland
+        - resource/trusted_agent
+        - filter/trusted_agent
         - batch
       exporters:
         - otlp_http/builtin
     metrics:
       receivers:
-        - otlp
+        - otlp/platform
       processors:
         - memory_limiter
-        - filter/builtin_eveland
+        - filter/builtin_capacity
         - batch
       exporters:
         - otlp_http/builtin

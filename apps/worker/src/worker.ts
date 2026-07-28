@@ -29,6 +29,8 @@ import { createCollectorObservabilityReconciler } from "./jobs/process-collector
 import { createObservabilityRetentionReconciler } from "./jobs/process-observability-retention.js";
 import { createExternalDestinationHealthReconciler } from "./jobs/process-observability-destination-health.js";
 import { instrumentRuntimeLogStore } from "./runtime/runtime-log-store.js";
+import { createAgentTelemetryNetworkReconciler } from "./runtime/docker.js";
+import { resolveRuntimeKind } from "./runtime/select.js";
 
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
@@ -66,6 +68,12 @@ const reconcileExternalDestinationHealth =
       process.env.APP_SECRET_KEY ??
       "eveland-dev-secret-key-000000000",
   });
+const reconcileAgentTelemetryNetworks =
+  resolveRuntimeKind(process.env) === "docker"
+    ? createAgentTelemetryNetworkReconciler(
+        process.env.EVELAND_OTEL_COLLECTOR_CONTAINER,
+      )
+    : undefined;
 
 // A misconfigured systemd host would otherwise only surface on the first
 // deployment attempt; fail fast here with the complete list of what's missing.
@@ -125,6 +133,7 @@ let lastTickDurationMs = 0;
 let lastTickError: unknown | null = null;
 let telemetryPublishing = false;
 let lastObservabilityWarningAt = 0;
+let lastAgentTelemetryNetworkWarningAt = 0;
 
 function publishTelemetry() {
   if (telemetryPublishing) return;
@@ -150,6 +159,22 @@ async function reconcileObservability() {
         "Eveland observability reconciliation is degraded:",
         error instanceof Error ? error.message : String(error),
       );
+    }
+  }
+  if (reconcileAgentTelemetryNetworks) {
+    try {
+      await reconcileAgentTelemetryNetworks();
+    } catch (error) {
+      const now = Date.now();
+      if (
+        now - lastAgentTelemetryNetworkWarningAt >= 60_000
+      ) {
+        lastAgentTelemetryNetworkWarningAt = now;
+        console.warn(
+          "Docker Agent telemetry network reconciliation is degraded:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     }
   }
 }

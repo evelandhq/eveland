@@ -1,4 +1,5 @@
 import { execa } from "execa";
+import { createHash } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
@@ -29,6 +30,16 @@ export type DockerRunInput = {
   command: string;
 };
 
+const defaultCollectorContainerName = "eveland-otel-collector";
+const agentTelemetryCollectorAlias = "eveland-otel-collector";
+const agentTelemetryNetworkLabel = "com.eveland.managed=agent-telemetry";
+const agentTelemetryProcessLabel = "com.eveland.process";
+
+export type ManagedAgentTelemetryNetwork = {
+  name: string;
+  processName: string;
+};
+
 const DOCKER_BWRAP_SECURITY_ARGS = [
   "--cap-drop",
   "ALL",
@@ -50,6 +61,8 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     input.containerName,
     "--restart",
     "unless-stopped",
+    "--network",
+    resolveAgentTelemetryNetworkName(input.containerName),
   ];
 
   if (input.sandboxEnabled) {
@@ -186,6 +199,280 @@ export async function dockerRun(input: DockerRunInput): Promise<string> {
   return result.all ?? "";
 }
 
+export function resolveAgentTelemetryNetworkName(
+  processName: string,
+): string {
+  const digest = createHash("sha256")
+    .update(processName)
+    .digest("hex")
+    .slice(0, 24);
+  return `eveland-agent-${digest}`;
+}
+
+export async function ensureAgentTelemetryNetwork(
+  processName: string,
+  collectorContainerName = defaultCollectorContainerName,
+): Promise<void> {
+  const networkName = resolveAgentTelemetryNetworkName(processName);
+  const inspect = await execa(
+    "docker",
+    ["network", "inspect", networkName],
+    { all: true, reject: false },
+  );
+  if (inspect.failed) {
+    if (!/No such network|not found/i.test(inspect.all ?? "")) {
+      throw new Error(
+        `Could not inspect Docker network "${networkName}": ${
+          inspect.all?.trim() || "docker network inspect failed"
+        }`,
+      );
+    }
+    const create = await execa(
+      "docker",
+      [
+        "network",
+        "create",
+        "--label",
+        agentTelemetryNetworkLabel,
+        "--label",
+        `${agentTelemetryProcessLabel}=${processName}`,
+        networkName,
+      ],
+      { all: true, reject: false },
+    );
+    if (create.failed && !/already exists/i.test(create.all ?? "")) {
+      throw new Error(
+        `Could not create Docker network "${networkName}": ${
+          create.all?.trim() || "docker network create failed"
+        }. If Docker reports that all predefined address pools are subnetted, configure a larger default-address-pools range as documented in docs/deploy/linux.md.`,
+      );
+    }
+  }
+
+  await connectCollectorToAgentNetwork(
+    networkName,
+    collectorContainerName,
+    true,
+  );
+}
+
+async function connectCollectorToAgentNetwork(
+  networkName: string,
+  collectorContainerName: string,
+  warnWhenCollectorMissing = false,
+): Promise<boolean> {
+  const connect = await execa(
+    "docker",
+    [
+      "network",
+      "connect",
+      "--alias",
+      agentTelemetryCollectorAlias,
+      networkName,
+      collectorContainerName,
+    ],
+    { all: true, reject: false },
+  );
+  if (
+    connect.failed &&
+    /No such (container|object)/i.test(connect.all ?? "")
+  ) {
+    if (warnWhenCollectorMissing) {
+      console.warn(
+        `OpenTelemetry Collector "${collectorContainerName}" is unavailable; Agent telemetry network "${networkName}" will be reconnected after the Collector returns.`,
+      );
+    }
+    return false;
+  }
+  if (
+    connect.failed &&
+    !/already exists in network|already connected/i.test(connect.all ?? "")
+  ) {
+    throw new Error(
+      `Could not connect Collector "${collectorContainerName}" to Docker network "${networkName}": ${
+        connect.all?.trim() || "docker network connect failed"
+      }`,
+    );
+  }
+  return true;
+}
+
+export async function listManagedAgentTelemetryNetworks(): Promise<
+  ManagedAgentTelemetryNetwork[]
+> {
+  const list = await execa(
+    "docker",
+    [
+      "network",
+      "ls",
+      "--filter",
+      `label=${agentTelemetryNetworkLabel}`,
+      "--format",
+      `{{.Name}}\t{{.Label "${agentTelemetryProcessLabel}"}}`,
+    ],
+    { all: true, reject: false },
+  );
+  if (list.failed) {
+    throw new Error(
+      `Could not list managed Agent telemetry networks: ${
+        list.all?.trim() || "docker network ls failed"
+      }`,
+    );
+  }
+  return (list.stdout ?? "")
+    .split("\n")
+    .map((line) => {
+      const [name, processName] = line.split("\t", 2);
+      return {
+        name: name?.trim() ?? "",
+        processName: processName?.trim() ?? "",
+      };
+    })
+    .filter(
+      (network) =>
+        network.name.length > 0 &&
+        network.processName.length > 0 &&
+        network.name ===
+          resolveAgentTelemetryNetworkName(network.processName),
+    );
+}
+
+async function dockerContainerExists(containerName: string): Promise<boolean> {
+  const inspect = await execa(
+    "docker",
+    ["inspect", "--type", "container", containerName],
+    { all: true, reject: false },
+  );
+  if (!inspect.failed) return true;
+  if (/No such (container|object)/i.test(inspect.all ?? "")) return false;
+  throw new Error(
+    `Could not inspect Docker container "${containerName}": ${
+      inspect.all?.trim() || "docker inspect failed"
+    }`,
+  );
+}
+
+export function createAgentTelemetryNetworkReconciler(
+  collectorContainerName = defaultCollectorContainerName,
+): () => Promise<void> {
+  let lastCollectorId: string | undefined;
+  return async () => {
+    const inspect = await execa(
+      "docker",
+      ["inspect", "--format", "{{.Id}}", collectorContainerName],
+      { all: true, reject: false },
+    );
+    if (inspect.failed) {
+      if (/No such (container|object)/i.test(inspect.all ?? "")) {
+        lastCollectorId = undefined;
+        return;
+      }
+      throw new Error(
+        `Could not inspect Collector "${collectorContainerName}": ${
+          inspect.all?.trim() || "docker inspect failed"
+        }`,
+      );
+    }
+    const collectorId = inspect.stdout?.trim();
+    if (!collectorId) {
+      throw new Error(
+        `Docker returned no container identity for Collector "${collectorContainerName}".`,
+      );
+    }
+    if (collectorId === lastCollectorId) return;
+
+    const networks = await listManagedAgentTelemetryNetworks();
+    for (const network of networks) {
+      if (!(await dockerContainerExists(network.processName))) continue;
+      const connected = await connectCollectorToAgentNetwork(
+        network.name,
+        collectorContainerName,
+      );
+      if (!connected) return;
+    }
+    lastCollectorId = collectorId;
+  };
+}
+
+async function removeAgentTelemetryNetworkByName(
+  networkName: string,
+  collectorContainerName: string,
+): Promise<void> {
+  const disconnect = await execa(
+    "docker",
+    [
+      "network",
+      "disconnect",
+      "--force",
+      networkName,
+      collectorContainerName,
+    ],
+    { all: true, reject: false },
+  );
+  if (
+    disconnect.failed &&
+    !/not connected|No such (container|network)|not found/i.test(
+      disconnect.all ?? "",
+    )
+  ) {
+    throw new Error(
+      `Could not disconnect Collector "${collectorContainerName}" from Docker network "${networkName}": ${
+        disconnect.all?.trim() || "docker network disconnect failed"
+      }`,
+    );
+  }
+  const remove = await execa(
+    "docker",
+    ["network", "rm", networkName],
+    { all: true, reject: false },
+  );
+  if (
+    remove.failed &&
+    !/No such network|not found/i.test(remove.all ?? "")
+  ) {
+    throw new Error(
+      `Could not remove Docker network "${networkName}": ${
+        remove.all?.trim() || "docker network rm failed"
+      }`,
+    );
+  }
+}
+
+async function removeAgentTelemetryNetwork(
+  processName: string,
+  collectorContainerName: string,
+): Promise<void> {
+  await removeAgentTelemetryNetworkByName(
+    resolveAgentTelemetryNetworkName(processName),
+    collectorContainerName,
+  );
+}
+
+export async function listOrphanAgentTelemetryNetworks(): Promise<
+  ManagedAgentTelemetryNetwork[]
+> {
+  const networks = await listManagedAgentTelemetryNetworks();
+  const orphaned: ManagedAgentTelemetryNetwork[] = [];
+  for (const network of networks) {
+    if (!(await dockerContainerExists(network.processName))) {
+      orphaned.push(network);
+    }
+  }
+  return orphaned;
+}
+
+export async function removeOrphanAgentTelemetryNetwork(
+  network: ManagedAgentTelemetryNetwork,
+  collectorContainerName = defaultCollectorContainerName,
+): Promise<boolean> {
+  if (await dockerContainerExists(network.processName)) return false;
+  await removeAgentTelemetryNetworkByName(
+    network.name,
+    collectorContainerName,
+  );
+  return true;
+}
+
 export type DockerCommandOutcome = {
   failed: boolean;
   exitCode?: number;
@@ -238,11 +525,14 @@ export function buildDockerStartCommand(context: RuntimeCommandContext, internal
 
 export type DockerAdapterConfig = {
   internalPort: number;
+  collectorContainerName?: string;
   /** Resolves the built bwrap backend only when an Eve release is built. */
   backendDistDir: () => string;
 };
 
 export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter {
+  const collectorContainerName =
+    config.collectorContainerName ?? defaultCollectorContainerName;
   const adapter: RuntimeAdapter = {
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
@@ -305,18 +595,30 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       }
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
-      const log = await dockerRun({
-        containerName: input.processName,
-        imageTag: input.releaseRef,
-        internalPort: config.internalPort,
-        hostPort: input.port,
-        sandboxEnabled: input.commandContext.isEveProject,
-        sandboxCacheDir: input.sandboxCacheDir,
-        observabilityPolicyDir: input.observabilityPolicyDir,
-        env: input.env,
-        command: buildDockerStartCommand(input.commandContext, config.internalPort),
-      });
-      return { internalPort: config.internalPort, log };
+      await ensureAgentTelemetryNetwork(
+        input.processName,
+        collectorContainerName,
+      );
+      try {
+        const log = await dockerRun({
+          containerName: input.processName,
+          imageTag: input.releaseRef,
+          internalPort: config.internalPort,
+          hostPort: input.port,
+          sandboxEnabled: input.commandContext.isEveProject,
+          sandboxCacheDir: input.sandboxCacheDir,
+          observabilityPolicyDir: input.observabilityPolicyDir,
+          env: input.env,
+          command: buildDockerStartCommand(input.commandContext, config.internalPort),
+        });
+        return { internalPort: config.internalPort, log };
+      } catch (error) {
+        await removeAgentTelemetryNetwork(
+          input.processName,
+          collectorContainerName,
+        ).catch(() => undefined);
+        throw error;
+      }
     },
     async inspectProcess(processName) {
       const result = await execa("docker", ["inspect", "--format", "{{.State.Status}}", processName], {
@@ -371,6 +673,16 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     },
     async stopProcess(processName: string): Promise<void> {
       await dockerStopAndRemove(processName);
+      await removeAgentTelemetryNetwork(
+        processName,
+        collectorContainerName,
+      ).catch((error) => {
+        console.warn(
+          `Could not clean up Agent telemetry network for "${processName}"; the orphan sweep will retry: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
     },
     async removeRelease(releaseRef: string): Promise<void> {
       const result = await execa("docker", ["image", "rm", releaseRef], { all: true, reject: false });

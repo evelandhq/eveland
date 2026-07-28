@@ -4,6 +4,7 @@ import {
   startPlatformObservability,
   startPrivateLogs,
   startPrivateMetrics,
+  resolvePlatformOtlpServiceToken,
 } from "@eveland/platform-observability";
 
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
@@ -20,6 +21,7 @@ const resource = {
   teamId: DEFAULT_TEAM_ID,
   otlpEndpoint:
     process.env.EVELAND_OTLP_ENDPOINT ?? "http://127.0.0.1:4318",
+  otlpServiceToken: resolvePlatformOtlpServiceToken(process.env),
   metricExportIntervalMs: Number(
     process.env.EVELAND_OTEL_METRIC_INTERVAL_MS ?? 60_000,
   ),

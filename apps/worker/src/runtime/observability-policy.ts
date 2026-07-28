@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, rename, rm } from "node:fs/promises";
+import { chmod, mkdir, open, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import {
   AGENT_RUNTIME_POLICY_PATH,
@@ -12,6 +12,7 @@ export const AGENT_OBSERVABILITY_MOUNT_DIR = path.posix.dirname(
   AGENT_RUNTIME_POLICY_PATH,
 );
 const policyFileName = path.posix.basename(AGENT_RUNTIME_POLICY_PATH);
+export const AGENT_OBSERVABILITY_POLICY_FILE_NAME = policyFileName;
 
 export async function writeAgentRuntimePolicy(input: {
   directory: string;
@@ -24,9 +25,10 @@ export async function writeAgentRuntimePolicy(input: {
     directory,
     `.${policyFileName}.${randomUUID()}.tmp`,
   );
-  await mkdir(directory, { recursive: true, mode: 0o755 });
+  await mkdir(directory, { recursive: true, mode: 0o2750 });
+  await chmod(directory, 0o2750);
 
-  const handle = await open(temporaryPath, "wx", 0o644);
+  const handle = await open(temporaryPath, "wx", 0o640);
   try {
     await handle.writeFile(`${JSON.stringify(policy)}\n`, "utf8");
     await handle.sync();

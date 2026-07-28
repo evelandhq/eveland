@@ -4,7 +4,7 @@ import {
   type ObservabilityPolicy,
 } from "@eveland/core/observability";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   createExternalDestinationHealthReconciler,
   probeExternalDestination,
@@ -12,31 +12,30 @@ import {
 
 const appSecretKey = "eveland-dev-secret-key-000000000";
 
-afterEach(() => vi.unstubAllGlobals());
-
 describe("external observability destination health", () => {
   test("derives the Langfuse traces endpoint from its base URL", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(null, { status: 200 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await probeExternalDestination({
-      kind: "langfuse",
-      baseUrl: "https://us.cloud.langfuse.com",
-      publicKey: "pk-lf",
-      secretKey: "sk-lf",
+    const requestDestination = vi.fn().mockResolvedValue({
+      status: 200,
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://us.cloud.langfuse.com/api/public/otel/v1/traces",
+    await probeExternalDestination(
+      {
+        kind: "langfuse",
+        baseUrl: "https://us.cloud.langfuse.com",
+        publicKey: "pk-lf",
+        secretKey: "sk-lf",
+      },
+      requestDestination,
+    );
+
+    expect(requestDestination).toHaveBeenCalledWith(
       expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          authorization: `Basic ${Buffer.from("pk-lf:sk-lf").toString("base64")}`,
-          "content-type": "application/json",
-          "x-langfuse-ingestion-version": "4",
+        config: expect.objectContaining({
+          kind: "langfuse",
+          baseUrl: "https://us.cloud.langfuse.com",
         }),
+        signal: "traces",
+        contentType: "application/json",
       }),
     );
   });

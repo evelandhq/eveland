@@ -1,7 +1,6 @@
 import {
   COLLECTOR_SELF_SERVICE_NAME,
   collectorExporterComponentId,
-  langfuseOtlpTracesEndpoint,
   TELEMETRY_DOMAINS,
   type ExternalDestinationConfig,
   type ObservabilityPolicy,
@@ -21,16 +20,21 @@ import {
 import path from "node:path";
 import { stringify } from "yaml";
 
-/**
- * Signals Built-in still receives. Traces are excluded on purpose: no Built-in read
- * model consumes spans, so shipping them would only buy a parse per batch.
- */
-const BUILT_IN_SIGNALS: readonly ObservabilitySignal[] = ["logs", "metrics"];
-
 const DEFAULT_COLLECTOR_IMAGE =
   "otel/opentelemetry-collector-contrib:0.149.0";
 const DEFAULT_COLLECTOR_CONTAINER = "eveland-otel-collector";
 const devSecretKey = "eveland-dev-secret-key-000000000";
+const builtInCapacityMetricNames = [
+  "eveland.worker.heartbeat",
+  "eveland.worker.tick.duration",
+  "system.cpu.utilization",
+  "system.memory.usage",
+  "system.filesystem.usage",
+  "system.filesystem.limit",
+  "eveland.system.filesystem.inodes.usage",
+  "eveland.system.filesystem.inodes.limit",
+  "eveland.host.load.1m",
+] as const;
 
 type CollectorConfig = {
   extensions: Record<string, unknown>;
@@ -142,19 +146,34 @@ export function renderCollectorConfig(input: {
 
   for (const destination of input.policy.externalDestinations) {
     if (!destination.enabled) continue;
-    const destinationConfig = decryptDestinationConfig(
-      destination.encryptedConfig,
-      input.appSecretKey,
-    );
-    if (destinationConfig.kind !== destination.kind) {
-      throw new Error(
-        `Observability destination ${destination.id} has an invalid encrypted configuration.`,
+    // A destination sealed under a rotated APP_SECRET_KEY stays listed so an Admin
+    // can replace its credentials, so it must not abort the whole reconciliation
+    // and freeze every other pipeline revision. Its exporter needs only the id and
+    // kind; the API egress proxy holds the decrypted config and answers 502 until
+    // the Admin repairs it, while the persistent queue keeps the telemetry.
+    let destinationConfig: ExternalDestinationConfig | undefined;
+    try {
+      destinationConfig = decryptDestinationConfig(
+        destination.encryptedConfig,
+        input.appSecretKey,
       );
+    } catch {
+      destinationConfig = undefined;
+    }
+    // Skip rather than throw for the same reason: one corrupt destination must
+    // not freeze the revision for every other pipeline. The API egress proxy
+    // repeats this check and refuses to forward, so nothing is delivered under a
+    // mismatched kind.
+    if (destinationConfig && destinationConfig.kind !== destination.kind) {
+      continue;
     }
 
     const exporterId = collectorExporterComponentId(destination.id);
     const componentId = exporterId.slice(exporterId.indexOf("/") + 1);
-    config.exporters[exporterId] = externalExporter(destinationConfig);
+    config.exporters[exporterId] = externalExporter(
+      destination.id,
+      destination.kind,
+    );
 
     const domains =
       destination.kind === "langfuse"
@@ -176,18 +195,44 @@ export function renderCollectorConfig(input: {
     }
 
     for (const signal of destination.supportedSignals) {
-      config.service.pipelines[
-        `${signal}/${destination.kind.replace("_otlp", "")}_${componentId}`
-      ] = {
-        receivers: ["otlp"],
-        processors: [
-          "memory_limiter",
-          filterId,
-          ...(transformId ? [transformId] : []),
-          "batch",
-        ],
-        exporters: [exporterId],
-      };
+      const pipelineName =
+        `${signal}/${destination.kind.replace("_otlp", "")}_${componentId}`;
+      const agentProcessors = [
+        "memory_limiter",
+        "resource/trusted_agent",
+        "filter/trusted_agent",
+        filterId,
+        ...(transformId ? [transformId] : []),
+        "batch",
+      ];
+      const platformProcessors = [
+        "memory_limiter",
+        filterId,
+        ...(transformId ? [transformId] : []),
+        "batch",
+      ];
+      const includesAgent = domains.includes("agent");
+      const includesPlatform = domains.some((domain) => domain !== "agent");
+      if (includesAgent && !includesPlatform) {
+        config.service.pipelines[pipelineName] = {
+          receivers: ["otlp/agent"],
+          processors: agentProcessors,
+          exporters: [exporterId],
+        };
+      } else {
+        config.service.pipelines[pipelineName] = {
+          receivers: ["otlp/platform"],
+          processors: platformProcessors,
+          exporters: [exporterId],
+        };
+        if (includesAgent) {
+          config.service.pipelines[`${signal}/agent_${componentId}`] = {
+            receivers: ["otlp/agent"],
+            processors: agentProcessors,
+            exporters: [exporterId],
+          };
+        }
+      }
       if (signal === "metrics" && domains.includes("platform")) {
         config.service.pipelines[
           `metrics/collector_self_${destination.kind.replace("_otlp", "")}_${componentId}`
@@ -213,6 +258,9 @@ export function renderCollectorConfig(input: {
 function baseCollectorConfig(): CollectorConfig {
   return {
     extensions: {
+      "bearertokenauth/platform": {
+        token: "${env:EVELAND_OTLP_SERVICE_TOKEN}",
+      },
       file_storage: {
         directory: "/var/lib/otelcol/storage",
         create_directory: true,
@@ -222,10 +270,22 @@ function baseCollectorConfig(): CollectorConfig {
       },
     },
     receivers: {
-      otlp: {
+      "otlp/platform": {
         protocols: {
-          grpc: { endpoint: "0.0.0.0:4317" },
-          http: { endpoint: "0.0.0.0:4318" },
+          grpc: {
+            endpoint: "0.0.0.0:4317",
+            auth: { authenticator: "bearertokenauth/platform" },
+          },
+          http: {
+            endpoint: "0.0.0.0:4318",
+            auth: { authenticator: "bearertokenauth/platform" },
+          },
+        },
+      },
+      "otlp/agent": {
+        protocols: {
+          grpc: { endpoint: "0.0.0.0:4327" },
+          http: { endpoint: "0.0.0.0:4328" },
         },
       },
       "prometheus/collector_self": {
@@ -252,10 +312,45 @@ function baseCollectorConfig(): CollectorConfig {
         timeout: "1s",
         send_batch_size: 1024,
       },
-      "filter/builtin_eveland": domainFilter(
-        [...TELEMETRY_DOMAINS],
-        [...BUILT_IN_SIGNALS],
-      ),
+      "resource/trusted_agent": {
+        attributes: [
+          {
+            key: "service.name",
+            value: "eveland-agent",
+            action: "upsert",
+          },
+          {
+            key: "eveland.telemetry.domain",
+            value: "agent",
+            action: "upsert",
+          },
+        ],
+      },
+      "filter/trusted_agent": {
+        error_mode: "ignore",
+        trace_conditions: [
+          'scope.name != "@eveland/eve-runtime"',
+        ],
+        log_conditions: [
+          'scope.name != "@eveland/eve-runtime"',
+        ],
+        metric_conditions: [
+          'scope.name != "@eveland/eve-runtime"',
+        ],
+      },
+      "filter/builtin_capacity": {
+        error_mode: "ignore",
+        metric_conditions: [
+          'resource.attributes["service.name"] != "eveland-worker" or resource.attributes["eveland.telemetry.domain"] != "capacity"',
+          builtInCapacityMetricNames
+            .map((name) => `metric.name != "${name}"`)
+            .join(" and "),
+          'metric.name == "system.cpu.utilization" and datapoint.attributes["cpu.mode"] == "idle"',
+          'metric.name == "system.memory.usage" and datapoint.attributes["system.memory.state"] != "used" and datapoint.attributes["system.memory.state"] != "free"',
+          'metric.name == "system.filesystem.usage" and datapoint.attributes["system.filesystem.state"] != "free"',
+          'metric.name == "eveland.system.filesystem.inodes.usage" and datapoint.attributes["eveland.system.filesystem.inodes.state"] != "free"',
+        ],
+      },
       "resource/collector_self": {
         attributes: [
           {
@@ -292,25 +387,34 @@ function baseCollectorConfig(): CollectorConfig {
       },
     },
     service: {
-      extensions: ["file_storage", "health_check"],
+      extensions: [
+        "bearertokenauth/platform",
+        "file_storage",
+        "health_check",
+      ],
       pipelines: {
         // Traces are deliberately absent: Built-in keeps no span read model, so
         // forwarding them would cost a full parse per batch for nothing. Spans reach
         // external destinations through their own pipelines below.
-        ...Object.fromEntries(
-          BUILT_IN_SIGNALS.map((signal) => [
-            signal,
-            {
-              receivers: ["otlp"],
-              processors: [
-                "memory_limiter",
-                "filter/builtin_eveland",
-                "batch",
-              ],
-              exporters: ["otlp_http/builtin"],
-            },
-          ]),
-        ),
+        logs: {
+          receivers: ["otlp/agent"],
+          processors: [
+            "memory_limiter",
+            "resource/trusted_agent",
+            "filter/trusted_agent",
+            "batch",
+          ],
+          exporters: ["otlp_http/builtin"],
+        },
+        metrics: {
+          receivers: ["otlp/platform"],
+          processors: [
+            "memory_limiter",
+            "filter/builtin_capacity",
+            "batch",
+          ],
+          exporters: ["otlp_http/builtin"],
+        },
       },
       telemetry: {
         resource: {
@@ -344,36 +448,23 @@ function baseCollectorConfig(): CollectorConfig {
   };
 }
 
-function externalExporter(config: ExternalDestinationConfig) {
-  switch (config.kind) {
-    case "elastic":
-      return {
-        endpoint: config.endpoint,
-        headers: {
-          authorization: `${
-            config.authorization.type === "api_key" ? "ApiKey" : "Bearer"
-          } ${config.authorization.value}`,
-        },
-        ...reliableExporterDelivery(),
-      };
-    case "langfuse":
-      return {
-        traces_endpoint: langfuseOtlpTracesEndpoint(config.baseUrl),
-        headers: {
-          authorization: `Basic ${Buffer.from(
-            `${config.publicKey}:${config.secretKey}`,
-          ).toString("base64")}`,
-          "x-langfuse-ingestion-version": "4",
-        },
-        ...reliableExporterDelivery(),
-      };
-    case "custom_otlp":
-      return {
-        endpoint: config.endpoint,
-        headers: config.headers,
-        ...reliableExporterDelivery(),
-      };
-  }
+function externalExporter(
+  destinationId: string,
+  kind: "elastic" | "langfuse" | "custom_otlp",
+) {
+  const endpoint =
+    "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/" + destinationId;
+  return {
+    ...(kind === "langfuse"
+      ? { traces_endpoint: `${endpoint}/v1/traces` }
+      : { endpoint }),
+    encoding: "json",
+    compression: "none",
+    headers: {
+      authorization: "Bearer ${env:EVELAND_OTLP_SERVICE_TOKEN}",
+    },
+    ...reliableExporterDelivery(),
+  };
 }
 
 function reliableExporterDelivery() {
@@ -466,6 +557,8 @@ async function validateCollectorConfig(
       `${location.hostPath}:/etc/eveland-otel/collector.yaml:ro`,
       "--env",
       "EVELAND_BUILTIN_OTLP_ENDPOINT=http://127.0.0.1:4000/internal/otel",
+      "--env",
+      "EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT=http://127.0.0.1:4000/internal/observability/destinations",
       "--env",
       "EVELAND_OTLP_SERVICE_TOKEN=validation-only",
       image,

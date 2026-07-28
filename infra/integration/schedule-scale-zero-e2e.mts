@@ -7,6 +7,10 @@ import { createApp } from "../../apps/api/src/app.js";
 import { createApiActivationClient } from "../../apps/gateway/src/activation-client.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import {
+  deriveAgentTelemetrySecret,
+  verifyAgentTelemetryCredential,
+} from "../../packages/core/src/server/agent-telemetry-credential.js";
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { projectAgentEventsFromOtlpLogs } from "../../packages/session-collector/src/otlp.js";
 import { processNextJob, type ProcessJobOptions } from "../../apps/worker/src/jobs/process.js";
@@ -16,6 +20,7 @@ import { planDueSchedules } from "../../apps/worker/src/scheduler/planner.js";
 import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
 
 const APP_SECRET_KEY = "eveland-dev-secret-key-000000000";
+const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
 const GATEWAY_SERVICE_TOKEN = "schedule-e2e-gateway-service-token-00000000";
 const SCHEDULER_RUNTIME_SECRET = "schedule-e2e-runtime-secret-000000000000";
 const SCHEDULER_DISPATCH_SECRET = "schedule-e2e-dispatch-secret-0000000000";
@@ -258,7 +263,17 @@ async function projectPendingOtlpLogs(
   receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>>,
 ) {
   for (const payload of receiver.drain("logs")) {
-    for (const observation of projectAgentEventsFromOtlpLogs(payload)) {
+    for (
+      const observation of projectAgentEventsFromOtlpLogs(payload, {
+        resolveDeploymentId: (credential) =>
+          credential
+            ? verifyAgentTelemetryCredential(
+                credential,
+                AGENT_TELEMETRY_SECRET,
+              )?.deploymentId
+            : undefined,
+      })
+    ) {
       await candidateStore.ingestAgentEvent(observation);
     }
   }
