@@ -131,7 +131,7 @@ describe("api app", () => {
     await expect(store.getActivationLease(abortedLeaseId!)).resolves.toMatchObject({ releasedAt: expect.any(String) });
   });
 
-  test("redeems a schedule dispatch credential once and attaches completed Sessions", async () => {
+  test("redeems a schedule dispatch credential once and attaches running Sessions", async () => {
     const store = createTestStore();
     const { project, schedule, deployment, run } = await createScheduleRunFixture(store);
     await store.claimScheduleRunActivation(run.id);
@@ -166,7 +166,7 @@ describe("api app", () => {
       }),
     });
     expect(complete.status).toBe(200);
-    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "succeeded" });
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "running" });
     await expect(store.listSessions(project.id)).resolves.toContainEqual(expect.objectContaining({
       eveSessionId: "eve_schedule_api",
       scheduleRunId: run.id,
@@ -271,7 +271,7 @@ describe("api app", () => {
       targetDeploymentId: deployment.id,
     }] });
     const runs = await app.request(
-      `/projects/${project.id}/schedule-runs?scheduleId=${schedule.id}&trigger=manual&status=succeeded&limit=1`,
+      `/projects/${project.id}/schedule-runs?scheduleId=${schedule.id}&trigger=manual&status=running&limit=1`,
     );
     expect(runs.status).toBe(200);
     await expect(runs.json()).resolves.toMatchObject({ runs: [{ id: run.id, sessionCount: 1 }], nextCursor: null });

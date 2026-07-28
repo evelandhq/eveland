@@ -297,6 +297,8 @@ export type SessionNode = {
   parentEveSessionId: string | null;
   startedDeploymentId: string;
   lastObservedDeploymentId: string;
+  startedRuntimeInstanceId: string | null;
+  lastObservedRuntimeInstanceId: string | null;
   agentId: string | null;
   agentName: string | null;
   nodeId: string | null;
@@ -408,6 +410,7 @@ export type SessionEvent = {
   observerEventId: string | null;
   eventFingerprint: string | null;
   observedDeploymentId: string | null;
+  observedRuntimeInstanceId: string | null;
   sourceSequence: number | null;
   eventAt: string;
   createdAt: string;

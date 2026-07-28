@@ -182,7 +182,7 @@ describe("schedule persistence", () => {
         status: "succeeded",
         eveSessionIds: ["eve_schedule_one", "eve_schedule_two"],
       }),
-    ).resolves.toMatchObject({ status: "succeeded", completedAt: expect.any(String) });
+    ).resolves.toMatchObject({ status: "running", completedAt: null });
     const scheduledSessions = await store.listSessions(project.id);
     expect(scheduledSessions).toHaveLength(2);
     expect(scheduledSessions).toEqual(
@@ -277,6 +277,71 @@ describe("schedule persistence", () => {
       status: "succeeded",
     });
     await expect(store.listSessions(project.id)).resolves.toEqual([]);
+  });
+
+  test("keeps a successful dispatch running while its returned Session is active", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Running schedule execution",
+      importKind: "zip",
+    });
+    await store.completeJob((await store.claimNextJob("fixture-import"))!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/running-schedule-execution",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const [recorded] = await store.recordScheduleVersions({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      definitions: [{
+        key: "daily-topics",
+        kind: "markdown",
+        cron: "0 2 * * *",
+        sourcePath: "agent/schedules/daily-topics.md",
+        definitionHash: "running-v1",
+      }],
+    });
+    if (!recorded) throw new Error("Expected schedule fixture.");
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:running-schedule",
+      containerName: "fixture-running-schedule",
+      internalPort: 3000,
+      hostPort: 41995,
+      runtimeKind: "docker",
+    });
+    await store.setProjectSchedulerTarget(project.id, deployment.id);
+    const run = await store.createManualScheduleRun(
+      project.id,
+      recorded.schedule.id,
+      new Date("2026-07-28T02:21:14.000Z"),
+    );
+    await store.claimScheduleRunActivation(run.id);
+    await store.redeemScheduleRunDispatch(run.id, deployment.id);
+
+    const dispatched = await store.completeScheduleRun(run.id, {
+      status: "succeeded",
+      eveSessionIds: ["eve_long_running_schedule"],
+    });
+
+    expect(dispatched).toMatchObject({
+      id: run.id,
+      status: "running",
+      completedAt: null,
+    });
+    await expect(store.listSessions(project.id)).resolves.toContainEqual(
+      expect.objectContaining({
+        eveSessionId: "eve_long_running_schedule",
+        scheduleRunId: run.id,
+        status: "running",
+      }),
+    );
   });
 
   test("paginates filtered run and Session history with zero-Session runs and aggregate usage", async () => {

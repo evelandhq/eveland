@@ -159,6 +159,7 @@ function enqueue(sessionId, operation) {
 async function persist(event, ctx) {
   const outboxDir = process.env.EVELAND_OBSERVER_OUTBOX_DIR;
   const deploymentId = process.env.EVELAND_DEPLOYMENT_ID;
+  const runtimeInstanceId = process.env.EVELAND_RUNTIME_INSTANCE_ID;
   if (!outboxDir || !deploymentId) throw new Error("observer outbox environment is not configured");
 
   const eveSessionId = ctx.session.id;
@@ -178,6 +179,7 @@ async function persist(event, ctx) {
     observerEventId,
     eventFingerprint: createHash("sha256").update(eveSessionId).update("\\0").update(eventAt).update("\\0").update(canonicalJson(event)).digest("hex"),
     deploymentId,
+    runtimeInstanceId: runtimeInstanceId ?? null,
     eveSessionId,
     parentEveSessionId: parentSessions.get(eveSessionId) ?? null,
     sourceSequence: sequence,

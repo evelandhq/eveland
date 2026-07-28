@@ -804,6 +804,36 @@ export const sessions = pgTable(
   ],
 );
 
+export const scheduleRunSessions = pgTable(
+  "schedule_run_sessions",
+  {
+    scheduleRunId: text("schedule_run_id").notNull().references(
+      () => scheduleRuns.id,
+      { onDelete: "cascade" },
+    ),
+    sessionId: text("session_id").notNull().references(
+      () => sessions.id,
+      { onDelete: "cascade" },
+    ),
+    status: text("status").notNull().default("running"),
+    lastObservedAt: timestamp("last_observed_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scheduleRunId, table.sessionId] }),
+    index("schedule_run_sessions_status_idx").on(
+      table.scheduleRunId,
+      table.status,
+    ),
+    check(
+      "schedule_run_sessions_status_check",
+      sql`${table.status} in ('running', 'succeeded', 'failed', 'parked')`,
+    ),
+  ],
+);
+
 export const sessionNodes = pgTable(
   "session_nodes",
   {
@@ -815,6 +845,14 @@ export const sessionNodes = pgTable(
     parentEveSessionId: text("parent_eve_session_id"),
     startedDeploymentId: text("started_deployment_id").notNull().references(() => deployments.id),
     lastObservedDeploymentId: text("last_observed_deployment_id").notNull().references(() => deployments.id),
+    startedRuntimeInstanceId: text("started_runtime_instance_id").references(
+      () => runtimeInstances.id,
+      { onDelete: "set null" },
+    ),
+    lastObservedRuntimeInstanceId: text("last_observed_runtime_instance_id").references(
+      () => runtimeInstances.id,
+      { onDelete: "set null" },
+    ),
     agentId: text("agent_id"),
     agentName: text("agent_name"),
     nodeId: text("node_id"),
@@ -830,6 +868,10 @@ export const sessionNodes = pgTable(
   (table) => [
     uniqueIndex("session_nodes_project_eve_idx").on(table.projectId, table.eveSessionId),
     index("session_nodes_project_model_idx").on(table.projectId, table.modelId),
+    index("session_nodes_last_runtime_idx").on(
+      table.lastObservedRuntimeInstanceId,
+      table.status,
+    ),
   ],
 );
 
@@ -869,6 +911,10 @@ export const sessionEvents = pgTable(
     observerEventId: text("observer_event_id"),
     eventFingerprint: text("event_fingerprint"),
     observedDeploymentId: text("observed_deployment_id").references(() => deployments.id),
+    observedRuntimeInstanceId: text("observed_runtime_instance_id").references(
+      () => runtimeInstances.id,
+      { onDelete: "set null" },
+    ),
     sourceSequence: integer("source_sequence"),
     index: integer("index").notNull(),
     type: text("type").notNull(),

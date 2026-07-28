@@ -278,6 +278,7 @@ const definitions: ConfigurationDefinition[] = [
   entry("EVELAND_HOST_METRIC_INTERVAL_MS", ["worker"], "Cadence for persisted host CPU, memory, and filesystem samples.", "60000"),
   entry("EVELAND_HOST_METRIC_RETENTION_MS", ["worker"], "Retention window for persisted host metric samples.", "2592000000"),
   entry("EVELAND_SCHEDULER_PREWARM_MS", ["worker"], "How far before nextRunAt a scheduler target is kept warm or proactively activated.", "60000"),
+  entry("EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS", ["worker"], "Hard deadline for a dispatched ScheduleRun when no Observer execution boundary arrives.", "86400000"),
   entry("EVELAND_ACTIVATION_IDLE_TTL_MS", ["worker"], "Idle time after the final lease before a ready RuntimeInstance is stopped.", "300000"),
   entry("EVELAND_ACTIVATION_REAPER_BATCH_SIZE", ["worker"], "Maximum idle RuntimeInstances claimed in one reaper tick.", "25"),
   entry("EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE", ["worker"], "Maximum starting RuntimeInstances recovered in one worker tick.", "25"),

@@ -56,4 +56,23 @@ describe("observer envelope V1", () => {
       }).success,
     ).toBe(false);
   });
+
+  test("preserves the RuntimeInstance generation that emitted an envelope", () => {
+    const parsed = observerEnvelopeV1Schema.parse({
+      schemaVersion: 1,
+      observerEventId: "evt_runtime",
+      eventFingerprint: "runtime-fingerprint",
+      deploymentId: "dep_1",
+      runtimeInstanceId: "rti_1",
+      eveSessionId: "eve_1",
+      parentEveSessionId: null,
+      sourceSequence: 1,
+      agent: { id: null, name: null, nodeId: null },
+      channelKind: "schedule",
+      eventAt: "2026-07-28T02:21:14.000Z",
+      event: { type: "session.started" },
+    });
+
+    expect(parsed.runtimeInstanceId).toBe("rti_1");
+  });
 });

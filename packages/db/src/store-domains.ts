@@ -549,6 +549,11 @@ export interface SessionStore {
     envelope: ObserverEnvelopeV1,
   ): Promise<{ session: Session; node: SessionNode; event: SessionEvent; duplicate: boolean }>;
   listModelUsageEvents(sessionId: string): Promise<ModelUsageEvent[]>;
+  failRunningSessionsForRuntimeInstance(
+    runtimeInstanceId: string,
+    reason: string,
+    now?: Date,
+  ): Promise<number>;
 }
 
 export interface UsageStore {
@@ -602,6 +607,12 @@ export interface ScheduleStore {
     scheduleRunId: string,
     input: { status: "succeeded" | "failed" | "dispatch_unknown"; error?: string | null; eveSessionIds?: string[] },
   ): Promise<ScheduleRun | null>;
+  failScheduleExecutionsForRuntimeInstance(
+    runtimeInstanceId: string,
+    reason: string,
+    now?: Date,
+  ): Promise<number>;
+  failExpiredScheduleExecutions(now: Date, limit: number): Promise<number>;
 }
 
 export interface RuntimeStore {

@@ -122,10 +122,15 @@ try {
   assert.equal(planned.items.length, 1);
   const runId = planned.items[0]!.id;
   assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "trigger_schedule did not run");
-  const completed = await store.getScheduleRunDetail(runId);
-  assert.equal(completed?.status, "succeeded", completed?.error ?? "ScheduleRun did not succeed");
-  assert.equal(completed?.attempt, 1);
-  assert.equal(completed?.sessions.length, 2);
+  const dispatched = await store.getScheduleRunDetail(runId);
+  assert.equal(dispatched?.status, "running", dispatched?.error ?? "ScheduleRun did not stay active");
+  assert.equal(dispatched?.attempt, 1);
+  assert.equal(dispatched?.sessions.length, 2);
+  assert.equal(
+    await stopAfterIdle(store, runtime),
+    0,
+    "idle reaping stopped a RuntimeInstance before its scheduled Sessions reached a turn boundary",
+  );
 
   const observerRoot = resolveObserverOutboxDirs(process.env, project.id, deployment.id).workerDir;
   const collector = createCollectorRuntime({
@@ -133,6 +138,7 @@ try {
     ingest: async (envelope) => { await store.ingestObserverEnvelope(envelope); },
   });
   const observed = await waitForObservedUsage(store, collector, runId);
+  assert.equal(observed.status, "succeeded", observed.error ?? "Observer did not settle ScheduleRun");
   assert.equal(observed.sessions.length, 2);
   assert.ok(observed.usage.reportedSteps >= 2, "schedule Session usage was not projected");
 
@@ -232,7 +238,12 @@ async function waitForObservedUsage(
   for (let attempt = 0; attempt < 40; attempt += 1) {
     await collector.processOnce();
     const detail = await candidateStore.getScheduleRunDetail(scheduleRunId);
-    if (detail && detail.sessions.length === 2 && detail.usage.reportedSteps >= 2) return detail;
+    if (
+      detail?.status === "succeeded" &&
+      detail.sessions.length === 2 &&
+      detail.usage.reportedSteps >= 2
+    )
+      return detail;
     await delay(250);
   }
   throw new Error("Observer did not project both scheduled Sessions and their provider usage.");

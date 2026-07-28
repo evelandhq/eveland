@@ -1,5 +1,5 @@
 import { createId } from "@eveland/core/ids";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   sessionEventRowToSessionEvent,
   sessionRowToSession,
@@ -274,6 +274,85 @@ export function createPostgresSessionStore({
           .set({ latestSessionStatus: input.status, updatedAt: new Date() })
           .where(eq(projects.id, row.projectId));
         return sessionRowToSession(row);
+      });
+    },
+
+    async failRunningSessionsForRuntimeInstance(
+      runtimeInstanceId,
+      reason,
+      now = new Date(),
+    ) {
+      return db.transaction(async (tx) => {
+        const interrupted = await tx
+          .select({
+            sessionId: sessions.id,
+            projectId: sessions.projectId,
+            nodeId: sessionNodes.id,
+            deploymentId: sessionNodes.lastObservedDeploymentId,
+          })
+          .from(sessions)
+          .innerJoin(
+            sessionNodes,
+            and(
+              eq(sessionNodes.rootSessionId, sessions.id),
+              isNull(sessionNodes.parentNodeId),
+            ),
+          )
+          .where(
+            and(
+              eq(sessions.status, "running"),
+              eq(
+                sessionNodes.lastObservedRuntimeInstanceId,
+                runtimeInstanceId,
+              ),
+            ),
+          );
+        if (interrupted.length === 0) return 0;
+
+        const sessionIds = interrupted.map((session) => session.sessionId);
+        const nodeIds = interrupted.map((session) => session.nodeId);
+        await tx
+          .update(sessions)
+          .set({ status: "failed", completedAt: now })
+          .where(
+            and(
+              inArray(sessions.id, sessionIds),
+              eq(sessions.status, "running"),
+            ),
+          );
+        await tx
+          .update(sessionNodes)
+          .set({ status: "failed", updatedAt: now })
+          .where(inArray(sessionNodes.id, nodeIds));
+        for (const session of interrupted) {
+          const [count] = await tx
+            .select({ value: sql<number>`count(*)::int` })
+            .from(sessionEvents)
+            .where(eq(sessionEvents.sessionId, session.sessionId));
+          await tx.insert(sessionEvents).values({
+            id: createId("evt"),
+            sessionId: session.sessionId,
+            sessionNodeId: session.nodeId,
+            observedDeploymentId: session.deploymentId,
+            observedRuntimeInstanceId: runtimeInstanceId,
+            index: count?.value ?? 0,
+            type: "platform.runtime_lost",
+            payload: { runtimeInstanceId, reason },
+            eventAt: now,
+          });
+        }
+        await tx
+          .update(projects)
+          .set({ latestSessionStatus: "failed", updatedAt: now })
+          .where(
+            inArray(
+              projects.id,
+              [...new Set(
+                interrupted.map((session) => session.projectId),
+              )],
+            ),
+          );
+        return interrupted.length;
       });
     },
   };

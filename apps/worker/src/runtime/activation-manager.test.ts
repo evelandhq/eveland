@@ -149,6 +149,13 @@ describe("ensureDeploymentActive", () => {
     expect(ensureProcess).toHaveBeenCalledTimes(1);
     expect(new Set(activations.map((activation) => activation.runtimeInstance.id)).size).toBe(1);
     expect(activations[0]?.runtimeInstance).toMatchObject({ status: "ready", endpointPort: deployment.hostPort });
+    expect(ensureProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: expect.objectContaining({
+          EVELAND_RUNTIME_INSTANCE_ID: activations[0]!.runtimeInstance.id,
+        }),
+      }),
+    );
   });
 
   test("releases every concurrent lease when the elected starter fails", async () => {
@@ -250,6 +257,20 @@ describe("ensureDeploymentActive", () => {
       endpointHost: "127.0.0.1",
       endpointPort: deployment.hostPort,
     });
+    const observed = await store.ingestObserverEnvelope({
+      schemaVersion: 1,
+      observerEventId: "evt_crashed_runtime",
+      eventFingerprint: "fingerprint_crashed_runtime",
+      deploymentId: deployment.id,
+      runtimeInstanceId: claim.runtimeInstance.id,
+      eveSessionId: "eve_crashed_runtime",
+      parentEveSessionId: null,
+      sourceSequence: 1,
+      agent: { id: null, name: "root", nodeId: "root" },
+      channelKind: "http",
+      eventAt: "2026-07-28T02:21:14.000Z",
+      event: { type: "step.started", data: { stepIndex: 201 } },
+    });
     const runtime = {
       name: "docker",
       buildRelease: vi.fn(),
@@ -265,5 +286,257 @@ describe("ensureDeploymentActive", () => {
 
     await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({ status: "stopped" });
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "stopped" });
+    await expect(store.getSession(observed.session.id)).resolves.toMatchObject({
+      status: "failed",
+      completedAt: expect.any(String),
+    });
+    await expect(store.listSessionEvents(observed.session.id)).resolves.toContainEqual(
+      expect.objectContaining({
+        type: "platform.runtime_lost",
+        payload: expect.objectContaining({
+          runtimeInstanceId: claim.runtimeInstance.id,
+        }),
+      }),
+    );
+  });
+
+  test("fails an active scheduled execution when its RuntimeInstance disappears", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Interrupted Schedule Agent",
+      importKind: "zip",
+    });
+    await store.completeJob((await store.claimNextJob("fixture-import"))!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/interrupted-schedule-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const [recorded] = await store.recordScheduleVersions({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      definitions: [{
+        key: "daily-topics",
+        kind: "markdown",
+        cron: "0 2 * * *",
+        sourcePath: "agent/schedules/daily-topics.md",
+        definitionHash: "interrupted-v1",
+      }],
+    });
+    if (!recorded) throw new Error("Expected schedule fixture.");
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:interrupted-schedule",
+      containerName: "fixture-interrupted-schedule",
+      internalPort: 3000,
+      hostPort: 41999,
+      runtimeKind: "docker",
+    });
+    await store.setProjectSchedulerTarget(project.id, deployment.id);
+    const run = await store.createManualScheduleRun(
+      project.id,
+      recorded.schedule.id,
+      new Date("2026-07-28T02:21:14.000Z"),
+    );
+    await store.claimScheduleRunActivation(run.id);
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "schedule_run",
+      ownerId: run.id,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    });
+    await store.redeemScheduleRunDispatch(run.id, deployment.id);
+    await store.completeScheduleRun(run.id, {
+      status: "succeeded",
+      eveSessionIds: ["eve_interrupted_schedule"],
+    });
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      inspectProcess: vi.fn(async () => "missing" as const),
+    } as unknown as RuntimeAdapter;
+
+    await expect(reconcileRuntimeInstances(store, {
+      limit: 10,
+      runtimeForKind: () => runtime,
+    })).resolves.toBe(1);
+
+    const [session] = await store.listSessions(project.id);
+    expect(session).toMatchObject({
+      eveSessionId: "eve_interrupted_schedule",
+      status: "failed",
+      completedAt: expect.any(String),
+    });
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
+      status: "failed",
+      error: expect.stringContaining(claim.runtimeInstance.id),
+      completedAt: expect.any(String),
+    });
+    await expect(store.listSessionEvents(session!.id)).resolves.toContainEqual(
+      expect.objectContaining({
+        type: "platform.runtime_lost",
+        payload: expect.objectContaining({
+          runtimeInstanceId: claim.runtimeInstance.id,
+        }),
+      }),
+    );
+    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+  });
+
+  test("recovers a zombie scheduled execution whose RuntimeInstance was already stopped", async () => {
+    const store = createTestStore();
+    const fixture = await createRunningScheduleExecution(
+      store,
+      "Previously Stopped Schedule Agent",
+      42000,
+    );
+    await store.updateRuntimeInstance(
+      fixture.runtimeInstanceId,
+      { status: "stopped" },
+      new Date("2026-07-28T02:26:24.000Z"),
+    );
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      inspectProcess: vi.fn(async () => "missing" as const),
+    } as unknown as RuntimeAdapter;
+
+    await expect(reconcileRuntimeInstances(store, {
+      now: new Date("2026-07-28T02:36:24.000Z"),
+      limit: 10,
+      runtimeForKind: () => runtime,
+    })).resolves.toBe(1);
+
+    await expect(store.getScheduleRun(fixture.scheduleRunId)).resolves.toMatchObject({
+      status: "failed",
+      error: expect.stringContaining(fixture.runtimeInstanceId),
+    });
+    await expect(store.getSession(fixture.sessionId)).resolves.toMatchObject({
+      status: "failed",
+    });
+    expect(runtime.inspectProcess).not.toHaveBeenCalled();
+  });
+
+  test("fails a scheduled execution after its hard runtime deadline", async () => {
+    const store = createTestStore();
+    const fixture = await createRunningScheduleExecution(
+      store,
+      "Expired Schedule Agent",
+      42001,
+    );
+    await store.releaseActivationLease(
+      fixture.activationLeaseId,
+      new Date("2026-07-28T02:22:14.000Z"),
+    );
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      inspectProcess: vi.fn(async () => "ready" as const),
+    } as unknown as RuntimeAdapter;
+
+    await expect(reconcileRuntimeInstances(store, {
+      now: new Date("2026-07-29T02:21:14.001Z"),
+      limit: 10,
+      runtimeForKind: () => runtime,
+    })).resolves.toBe(1);
+
+    await expect(store.getScheduleRun(fixture.scheduleRunId)).resolves.toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("maximum runtime"),
+    });
+    await expect(store.getSession(fixture.sessionId)).resolves.toMatchObject({
+      status: "failed",
+    });
   });
 });
+
+async function createRunningScheduleExecution(
+  store: ReturnType<typeof createTestStore>,
+  name: string,
+  hostPort: number,
+) {
+  const project = await store.createProject({ name, importKind: "zip" });
+  await store.completeJob((await store.claimNextJob("fixture-import"))!.id);
+  const revision = await store.recordSourceRevision({
+    projectId: project.id,
+    kind: "zip",
+    sourcePath: `/tmp/${name.toLowerCase().replaceAll(" ", "-")}`,
+    summary: {},
+    envVars: [],
+    files: [],
+    schedules: [],
+  });
+  const [recorded] = await store.recordScheduleVersions({
+    projectId: project.id,
+    sourceRevisionId: revision.id,
+    definitions: [{
+      key: "daily-topics",
+      kind: "markdown",
+      cron: "0 2 * * *",
+      sourcePath: "agent/schedules/daily-topics.md",
+      definitionHash: `${name}-v1`,
+    }],
+  });
+  if (!recorded) throw new Error("Expected schedule fixture.");
+  const deployment = await store.recordDeployment({
+    projectId: project.id,
+    sourceRevisionId: revision.id,
+    imageTag: `fixture:${name}`,
+    containerName: `fixture-${hostPort}`,
+    internalPort: 3000,
+    hostPort,
+    runtimeKind: "docker",
+  });
+  await store.setProjectSchedulerTarget(project.id, deployment.id);
+  const run = await store.createManualScheduleRun(
+    project.id,
+    recorded.schedule.id,
+    new Date("2026-07-28T02:21:14.000Z"),
+  );
+  await store.claimScheduleRunActivation(run.id);
+  const claim = await store.acquireActivationLease({
+    deploymentId: deployment.id,
+    kind: "schedule_run",
+    ownerId: run.id,
+    expiresAt: new Date("2026-07-29T02:21:14.000Z"),
+    now: new Date("2026-07-28T02:21:14.000Z"),
+  });
+  await store.updateRuntimeInstance(claim.runtimeInstance.id, {
+    status: "ready",
+    endpointHost: "127.0.0.1",
+    endpointPort: deployment.hostPort,
+  });
+  await store.redeemScheduleRunDispatch(run.id, deployment.id);
+  await store.completeScheduleRun(run.id, {
+    status: "succeeded",
+    eveSessionIds: [`eve_${hostPort}`],
+  });
+  const session = await store.getSessionByEveSessionId(
+    project.id,
+    `eve_${hostPort}`,
+  );
+  if (!session) throw new Error("Expected scheduled Session fixture.");
+  return {
+    deploymentId: deployment.id,
+    runtimeInstanceId: claim.runtimeInstance.id,
+    activationLeaseId: claim.lease.id,
+    scheduleRunId: run.id,
+    sessionId: session.id,
+  };
+}

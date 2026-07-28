@@ -1,6 +1,6 @@
 import { createId } from "@eveland/core/ids";
 import { getNextRunAt } from "@eveland/core/schedules";
-import { and, asc, desc, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   deploymentRowToDeployment,
   projectScheduleRowToProjectSchedule,
@@ -12,14 +12,18 @@ import {
   sessionRowToSession,
 } from "./mappers.js";
 import {
+  activationLeases,
   deployments,
   jobs,
+  projects,
   projectSchedulerTargets,
   projectSchedules,
   releases,
+  scheduleRunSessions,
   scheduleRuns,
   scheduleVersions,
   schedules,
+  sessionEvents,
   sessions,
   sourceRevisions,
 } from "./schema.js";
@@ -679,9 +683,14 @@ export function createPostgresScheduleStore({
           throw new Error("ScheduleRun references an unknown ProjectSchedule.");
 
         const trigger = run.trigger === "cron" ? "cron" : "manual";
-        for (const eveSessionId of new Set(input.eveSessionIds ?? [])) {
+        const dispatchedSessionIds = new Set(input.eveSessionIds ?? []);
+        for (const eveSessionId of dispatchedSessionIds) {
           const [existing] = await tx
-            .select({ id: sessions.id })
+            .select({
+              id: sessions.id,
+              rootNodeId: sessions.rootNodeId,
+              status: sessions.status,
+            })
             .from(sessions)
             .where(
               and(
@@ -690,6 +699,16 @@ export function createPostgresScheduleStore({
               ),
             )
             .limit(1);
+          let sessionId = existing?.id;
+          let executionStatus:
+            | "running"
+            | "succeeded"
+            | "failed"
+            | "parked" = input.status === "succeeded"
+              ? "running"
+              : "failed";
+          let executionError =
+            input.status === "succeeded" ? null : (input.error ?? null);
           if (existing) {
             await tx
               .update(sessions)
@@ -700,33 +719,393 @@ export function createPostgresScheduleStore({
                 scheduleRunId: run.id,
               })
               .where(eq(sessions.id, existing.id));
-            continue;
+            if (input.status === "succeeded" && existing.rootNodeId) {
+              const [boundary] = await tx
+                .select({
+                  type: sessionEvents.type,
+                  payload: sessionEvents.payload,
+                })
+                .from(sessionEvents)
+                .where(
+                  and(
+                    eq(sessionEvents.sessionId, existing.id),
+                    eq(sessionEvents.sessionNodeId, existing.rootNodeId),
+                    gte(
+                      sessionEvents.createdAt,
+                      run.startedAt ?? run.createdAt,
+                    ),
+                    inArray(sessionEvents.type, [
+                      "turn.completed",
+                      "turn.failed",
+                      "turn.cancelled",
+                      "session.waiting",
+                      "session.completed",
+                      "session.failed",
+                    ]),
+                  ),
+                )
+                .orderBy(desc(sessionEvents.index))
+                .limit(1);
+              executionStatus = scheduleExecutionStatusFromBoundary(
+                boundary?.type,
+                existing.status,
+              );
+              executionError =
+                executionStatus === "failed"
+                  ? scheduleExecutionBoundaryError(
+                      boundary?.type,
+                      boundary?.payload,
+                    )
+                  : null;
+            }
+          } else {
+            const [created] = await tx
+              .insert(sessions)
+              .values({
+                id: createId("sess"),
+                projectId: schedule.projectId,
+                deploymentId: run.deploymentId,
+                eveSessionId,
+                trigger,
+                scheduleId: run.scheduleId,
+                scheduleRunId: run.id,
+                status: "running",
+              })
+              .returning({ id: sessions.id });
+            sessionId = created?.id;
           }
-          await tx.insert(sessions).values({
-            id: createId("sess"),
-            projectId: schedule.projectId,
-            deploymentId: run.deploymentId,
-            eveSessionId,
-            trigger,
-            scheduleId: run.scheduleId,
-            scheduleRunId: run.id,
-            status: "running",
-          });
+          if (!sessionId)
+            throw new Error("Failed to link a scheduled Session.");
+          await tx
+            .insert(scheduleRunSessions)
+            .values({
+              scheduleRunId: run.id,
+              sessionId,
+              status: executionStatus,
+              completedAt:
+                executionStatus === "running" ? null : new Date(),
+              error: executionError,
+            })
+            .onConflictDoNothing();
         }
 
         const now = new Date();
+        const executions =
+          dispatchedSessionIds.size > 0
+            ? await tx
+                .select({
+                  status: scheduleRunSessions.status,
+                  error: scheduleRunSessions.error,
+                })
+                .from(scheduleRunSessions)
+                .where(eq(scheduleRunSessions.scheduleRunId, run.id))
+            : [];
+        const executionFailure = executions.find(
+          (execution) => execution.status === "failed",
+        );
+        const remainsRunning =
+          input.status === "succeeded" &&
+          dispatchedSessionIds.size > 0 &&
+          executions.some((execution) => execution.status === "running");
+        const terminalStatus =
+          input.status === "succeeded" && executionFailure
+            ? "failed"
+            : input.status;
         const [completed] = await tx
           .update(scheduleRuns)
           .set({
-            status: input.status,
-            error: input.error ?? null,
-            completedAt: now,
+            status: remainsRunning ? "running" : terminalStatus,
+            error: executionFailure?.error ?? input.error ?? null,
+            completedAt: remainsRunning ? null : now,
             updatedAt: now,
           })
           .where(eq(scheduleRuns.id, scheduleRunId))
           .returning();
+        if (!remainsRunning) {
+          await tx
+            .update(activationLeases)
+            .set({ releasedAt: now })
+            .where(
+              and(
+                eq(activationLeases.kind, "schedule_run"),
+                eq(activationLeases.ownerId, scheduleRunId),
+                isNull(activationLeases.releasedAt),
+              ),
+            );
+        }
         return completed ? scheduleRunRowToScheduleRun(completed) : null;
       });
     },
+
+    async failScheduleExecutionsForRuntimeInstance(
+      runtimeInstanceId,
+      reason,
+      now = new Date(),
+    ) {
+      return db.transaction(async (tx) => {
+        const interrupted = await tx
+          .select({
+            scheduleRunId: scheduleRunSessions.scheduleRunId,
+            sessionId: scheduleRunSessions.sessionId,
+            projectId: sessions.projectId,
+          })
+          .from(scheduleRunSessions)
+          .innerJoin(
+            sessions,
+            eq(sessions.id, scheduleRunSessions.sessionId),
+          )
+          .innerJoin(
+            activationLeases,
+            and(
+              eq(
+                activationLeases.ownerId,
+                scheduleRunSessions.scheduleRunId,
+              ),
+              eq(activationLeases.kind, "schedule_run"),
+              eq(activationLeases.runtimeInstanceId, runtimeInstanceId),
+            ),
+          )
+          .where(eq(scheduleRunSessions.status, "running"));
+        if (interrupted.length === 0) return 0;
+
+        const runIds = [...new Set(
+          interrupted.map((execution) => execution.scheduleRunId),
+        )];
+        const sessionIds = interrupted.map(
+          (execution) => execution.sessionId,
+        );
+        await tx
+          .update(scheduleRunSessions)
+          .set({
+            status: "failed",
+            completedAt: now,
+            error: reason,
+          })
+          .where(
+            and(
+              inArray(scheduleRunSessions.scheduleRunId, runIds),
+              inArray(scheduleRunSessions.sessionId, sessionIds),
+              eq(scheduleRunSessions.status, "running"),
+            ),
+          );
+        await tx
+          .update(sessions)
+          .set({ status: "failed", completedAt: now })
+          .where(
+            and(
+              inArray(sessions.id, sessionIds),
+              eq(sessions.status, "running"),
+            ),
+          );
+        for (const execution of interrupted) {
+          const [count] = await tx
+            .select({ value: sql<number>`count(*)::int` })
+            .from(sessionEvents)
+            .where(eq(sessionEvents.sessionId, execution.sessionId));
+          await tx.insert(sessionEvents).values({
+            id: createId("evt"),
+            sessionId: execution.sessionId,
+            index: count?.value ?? 0,
+            type: "platform.runtime_lost",
+            payload: { runtimeInstanceId, reason },
+            eventAt: now,
+          });
+        }
+        await tx
+          .update(scheduleRuns)
+          .set({
+            status: "failed",
+            error: reason,
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(inArray(scheduleRuns.id, runIds));
+        await tx
+          .update(activationLeases)
+          .set({ releasedAt: now })
+          .where(
+            and(
+              eq(activationLeases.runtimeInstanceId, runtimeInstanceId),
+              eq(activationLeases.kind, "schedule_run"),
+              inArray(activationLeases.ownerId, runIds),
+              isNull(activationLeases.releasedAt),
+            ),
+          );
+        const projectIds = [...new Set(
+          interrupted.map((execution) => execution.projectId),
+        )];
+        await tx
+          .update(projects)
+          .set({ latestSessionStatus: "failed", updatedAt: now })
+          .where(inArray(projects.id, projectIds));
+        return interrupted.length;
+      });
+    },
+
+    async failExpiredScheduleExecutions(now, limit) {
+      if (!Number.isInteger(limit) || limit < 1)
+        throw new Error("Expired ScheduleRun limit must be positive.");
+      return db.transaction(async (tx) => {
+        const expiredRuns = await tx
+          .selectDistinct({
+            scheduleRunId: scheduleRunSessions.scheduleRunId,
+            runtimeInstanceId: activationLeases.runtimeInstanceId,
+          })
+          .from(scheduleRunSessions)
+          .innerJoin(
+            activationLeases,
+            and(
+              eq(
+                activationLeases.ownerId,
+                scheduleRunSessions.scheduleRunId,
+              ),
+              eq(activationLeases.kind, "schedule_run"),
+            ),
+          )
+          .where(
+            and(
+              eq(scheduleRunSessions.status, "running"),
+              lte(activationLeases.expiresAt, now),
+            ),
+          )
+          .limit(limit);
+        for (const expired of expiredRuns) {
+          const reason = `ScheduleRun exceeded its maximum runtime on RuntimeInstance ${expired.runtimeInstanceId ?? "unknown"}.`;
+          const executions = await tx
+            .select({
+              sessionId: scheduleRunSessions.sessionId,
+              projectId: sessions.projectId,
+            })
+            .from(scheduleRunSessions)
+            .innerJoin(
+              sessions,
+              eq(sessions.id, scheduleRunSessions.sessionId),
+            )
+            .where(
+              and(
+                eq(
+                  scheduleRunSessions.scheduleRunId,
+                  expired.scheduleRunId,
+                ),
+                eq(scheduleRunSessions.status, "running"),
+              ),
+            );
+          const sessionIds = executions.map(
+            (execution) => execution.sessionId,
+          );
+          if (sessionIds.length === 0) continue;
+          await tx
+            .update(scheduleRunSessions)
+            .set({
+              status: "failed",
+              completedAt: now,
+              error: reason,
+            })
+            .where(
+              and(
+                eq(
+                  scheduleRunSessions.scheduleRunId,
+                  expired.scheduleRunId,
+                ),
+                eq(scheduleRunSessions.status, "running"),
+              ),
+            );
+          await tx
+            .update(sessions)
+            .set({ status: "failed", completedAt: now })
+            .where(
+              and(
+                inArray(sessions.id, sessionIds),
+                eq(sessions.status, "running"),
+              ),
+            );
+          for (const execution of executions) {
+            const [count] = await tx
+              .select({ value: sql<number>`count(*)::int` })
+              .from(sessionEvents)
+              .where(eq(sessionEvents.sessionId, execution.sessionId));
+            await tx.insert(sessionEvents).values({
+              id: createId("evt"),
+              sessionId: execution.sessionId,
+              index: count?.value ?? 0,
+              type: "platform.runtime_deadline_exceeded",
+              payload: {
+                runtimeInstanceId: expired.runtimeInstanceId,
+                reason,
+              },
+              eventAt: now,
+            });
+          }
+          await tx
+            .update(scheduleRuns)
+            .set({
+              status: "failed",
+              error: reason,
+              completedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(scheduleRuns.id, expired.scheduleRunId));
+          await tx
+            .update(activationLeases)
+            .set({ releasedAt: now })
+            .where(
+              and(
+                eq(activationLeases.kind, "schedule_run"),
+                eq(activationLeases.ownerId, expired.scheduleRunId),
+                isNull(activationLeases.releasedAt),
+              ),
+            );
+          await tx
+            .update(projects)
+            .set({ latestSessionStatus: "failed", updatedAt: now })
+            .where(
+              inArray(
+                projects.id,
+                [...new Set(
+                  executions.map((execution) => execution.projectId),
+                )],
+              ),
+            );
+        }
+        return expiredRuns.length;
+      });
+    },
   };
+}
+
+function scheduleExecutionStatusFromBoundary(
+  type: string | undefined,
+  sessionStatus: string,
+): "running" | "succeeded" | "failed" | "parked" {
+  if (
+    type === "turn.failed" ||
+    type === "turn.cancelled" ||
+    type === "session.failed"
+  )
+    return "failed";
+  if (type === "session.waiting" && sessionStatus === "waiting_approval")
+    return "parked";
+  if (
+    type === "turn.completed" ||
+    type === "session.waiting" ||
+    type === "session.completed"
+  )
+    return "succeeded";
+  return "running";
+}
+
+function scheduleExecutionBoundaryError(
+  type: string | undefined,
+  payload: unknown,
+): string {
+  const message =
+    typeof payload === "object" &&
+    payload !== null &&
+    "message" in payload &&
+    typeof payload.message === "string"
+      ? payload.message
+      : null;
+  return message
+    ? `Scheduled Session ${type ?? "failed"}: ${message}`
+    : `Scheduled Session ended with ${type ?? "failure"}.`;
 }

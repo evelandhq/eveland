@@ -159,7 +159,7 @@ describe.skipIf(!database)("Postgres schedule state", () => {
       expect(redeemed.filter(Boolean)).toHaveLength(1);
       await expect(
         store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: ["eve_postgres_schedule"] }),
-      ).resolves.toMatchObject({ status: "succeeded" });
+      ).resolves.toMatchObject({ status: "running", completedAt: null });
       await expect(store.listSessions(project.id)).resolves.toContainEqual(
         expect.objectContaining({
           eveSessionId: "eve_postgres_schedule",
@@ -176,7 +176,7 @@ describe.skipIf(!database)("Postgres schedule state", () => {
       await expect(store.listScheduleRuns(project.id, {
         scheduleId: run.scheduleId,
         trigger: "cron",
-        status: "succeeded",
+        status: "running",
         limit: 10,
       })).resolves.toMatchObject({
         items: [expect.objectContaining({ id: run.id, sessionCount: 1, sessions: [expect.any(Object)] })],

@@ -429,6 +429,12 @@ describe("processNextJob", () => {
         deploymentId: deployment.id,
         scheduleKey: schedule.key,
       });
+      await expect(
+        store.hasActiveActivationLeases(
+          deployment.id,
+          new Date(Date.now() + 10 * 60_000),
+        ),
+      ).resolves.toBe(true);
       await store.redeemScheduleRunDispatch(run.id, deployment.id);
       await store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: ["eve_worker_schedule"] });
       return { sessionIds: ["eve_worker_schedule"] };
@@ -443,13 +449,19 @@ describe("processNextJob", () => {
     await expect(processNextJob(store, "schedule-worker", options)).resolves.toBe(true);
     await expect(processNextJob(store, "schedule-worker", options)).resolves.toBe(true);
 
-    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "succeeded", attempt: 1 });
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "running", attempt: 1 });
     expect(dispatchSchedule).toHaveBeenCalledTimes(1);
     await expect(store.listSessions(project.id)).resolves.toContainEqual(expect.objectContaining({
       eveSessionId: "eve_worker_schedule",
       scheduleRunId: run.id,
     }));
-    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(true);
+    await expect(
+      store.hasActiveActivationLeases(
+        deployment.id,
+        new Date(Date.now() + 10 * 60_000),
+      ),
+    ).resolves.toBe(true);
     await expect(store.listLogs(project.id, "runtime")).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -460,7 +472,7 @@ describe("processNextJob", () => {
         }),
         expect.objectContaining({
           line: expect.stringMatching(
-            new RegExp(`^ScheduleRun ${run.id} succeeded for billing/sweep with 1 Session after \\d+ms\\.$`),
+            new RegExp(`^ScheduleRun ${run.id} started billing/sweep with 1 Session after \\d+ms\\.$`),
           ),
         }),
       ]),
@@ -479,7 +491,7 @@ describe("processNextJob", () => {
       attempt: 1,
       error: "Scheduler Channel dispatch failed: runtime connection closed after dispatch claim",
     });
-    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(true);
     await expect(store.listLogs(project.id, "runtime")).resolves.toContainEqual(
       expect.objectContaining({
         line: expect.stringMatching(
@@ -489,6 +501,34 @@ describe("processNextJob", () => {
         ),
       }),
     );
+
+    const acknowledgedRun = await store.createManualScheduleRun(
+      project.id,
+      schedule.id,
+    );
+    await expect(processNextJob(store, "schedule-worker", {
+      ...options,
+      dispatchSchedule: async () => {
+        await store.redeemScheduleRunDispatch(
+          acknowledgedRun.id,
+          deployment.id,
+        );
+        await store.completeScheduleRun(acknowledgedRun.id, {
+          status: "succeeded",
+          eveSessionIds: ["eve_acknowledged_schedule"],
+        });
+        throw new Error("runtime response was lost after durable completion");
+      },
+    })).resolves.toBe(true);
+    await expect(store.getScheduleRun(acknowledgedRun.id)).resolves.toMatchObject({
+      status: "running",
+      completedAt: null,
+    });
+    await expect(store.getSessionByEveSessionId(
+      project.id,
+      "eve_acknowledged_schedule",
+    )).resolves.toMatchObject({ status: "running" });
+    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(true);
   });
 
   test("invalidates each materialized Gateway hostname when service credentials are configured", async () => {
