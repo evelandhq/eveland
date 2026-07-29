@@ -83,10 +83,17 @@ bind-mounts it at that same absolute path, matching the host worker's
 `sourcePath` is written by whichever side imports the project and read by
 whichever side later serves or deploys it — a mismatched mount would leave
 one side unable to find files the other wrote.
-The observer outbox lives below `/var/lib/eveland/observer`. Each deployment can
-write only its own directory; the API starts the collector in embedded mode and
-reads the shared root. Collector degradation is reported separately at
-`GET /internal/collector/health` and does not make the control-plane `/health` fail.
+The production Compose stack also runs a managed OpenTelemetry Collector. Its
+platform receiver is bound to host loopback, and its persistent sending queue
+uses the `eveland-otel-collector` volume. The Collector authenticates requests
+to the API's private Built-in OTLP endpoint with `EVELAND_OTLP_SERVICE_TOKEN`;
+the token must never be exposed to Agent deployments.
+
+The existing observer outbox lives below `/var/lib/eveland/observer`. Each
+deployment can write only its own directory; the API starts that collector in
+embedded mode and reads the shared root. Its degradation is reported separately
+at `GET /internal/collector/health` and does not make the control-plane
+`/health` fail.
 Gateway listens on host port 4080 and is the only process Traefik forwards wildcard Agent
 hosts to. Agent processes remain on `127.0.0.1:41xxx`; never add those dynamic ports to
 Traefik or firewall rules. Start from `infra/traefik/agents.yml`, replace the example domain,
@@ -193,6 +200,8 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_COLLECTOR_MODE` | `embedded` | `embedded` starts collection with the API; `disabled` is for controlled maintenance and leaves envelopes queued on disk. |
 | `EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS` | `100` | Maximum distinct Eve sessions projected in one collector round. |
 | `EVELAND_COLLECTOR_MAX_BACKLOG_BYTES` | `1073741824` | Total queued observer bytes that trigger degraded health and an operator-visible alarm. |
+| `EVELAND_OTLP_SERVICE_TOKEN` | *(unset)* | Required shared secret used only between the managed Collector and the API Built-in OTLP endpoint. Agents must not receive it. |
+| `EVELAND_OTEL_COLLECTOR_CONTAINER` | `eveland-otel-collector` | Stable name of the managed Collector container. |
 | `EVELAND_AGENT_BASE_DOMAINS` | `agent.localhost` | Comma-separated Host suffix allowlist used by Gateway; the first value is the canonical domain materialized into routes. Production normally uses one value such as `agents.example.com`. |
 | `EVELAND_GATEWAY_INTERNAL_URL` | `http://127.0.0.1:4080` | Private API/worker control URL for Playground and route-cache invalidation. |
 | `EVELAND_GATEWAY_SERVICE_TOKEN` | *(unset)* | Required shared secret for API/Gateway `/internal/*` calls, including runtime activation; use a long random value and configure it identically on API, worker, and Gateway. |

@@ -10,8 +10,8 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. Hooks write durable envelopes without importing Eveland runtime code.
 - `packages/agent-auth`: Node-only generic Agent Connection registry plus Authorization Code + PKCE OIDC acquisition, encrypted transaction/credential state, verification, refresh, and Basic/Bearer/Vercel-OIDC/custom-header materialization.
 - `packages/identity-broker`: provider-neutral Agent-user identity finalization, separate Identity Sessions, short-lived project-audience ES256 Caller Token issuance, signing-key rotation, and public JWKS.
-- `packages/session-collector`: filesystem outbox claim/lease recovery, validation, ingestion, and Session/usage projection.
-- `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus an embedded observer collector. Its thin app entrypoint composes focused route modules; persistence is supplied by `packages/db`.
+- `packages/session-collector`: standard OTLP JSON/protobuf decoding plus the existing filesystem outbox collector, both projecting into Eveland Session, usage, and instance-health read models.
+- `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus authenticated Built-in OTLP ingest and the embedded observer collector. Its thin app entrypoint composes focused route modules; persistence is supplied by `packages/db`.
 - `apps/gateway`: Host-routed public Agent data plane. It preserves Agent auth/cookies and streaming bodies, pins Eve sessions to deployments, and keeps raw Agent ports private. Pure Host/header/affinity/target rules are separated from request lifecycle orchestration.
 - `apps/worker`: Docker and systemd runtime adapters, Postgres job consumer, and domain processors for import/build/restart/schedule job state transitions, with queue fencing kept separate from concrete job execution.
 - `apps/web`: Next.js App Router control panel using the requested shadcn preset and Tailwind v4. Its account menu opens profile/password settings; System settings owns member management, an About view for build/configuration diagnostics, and an admin-only Instance Health view for component reachability, host capacity trends, workload pressure, and disk-risk forecasting.
@@ -133,9 +133,9 @@ scoped to Workers edits for the account and zone that own `eveland.ai`.
 `apps/docs/wrangler.jsonc` owns the Worker name and custom-domain binding, so
 the Cloudflare account must have an active `eveland.ai` zone before deployment.
 
-Docker Compose runs the full stack (Postgres + API + Gateway + web + worker) in **development mode**.
+Docker Compose runs the full stack (Postgres + OpenTelemetry Collector + API + Gateway + web + worker) in **development mode**.
 Only the worker receives the Docker controller socket; Gateway masks `.eveland-data` so the public
-proxy cannot read imported project sources, observer outboxes, or encrypted project secrets:
+proxy cannot read imported project sources, observer outboxes, Collector configuration, or encrypted project secrets:
 
 ```bash
 docker compose up
@@ -202,7 +202,7 @@ Pick one mode: either everything in Compose, or only `postgres` in Compose and t
 The current production topology deliberately separates the control plane from
 the privileged runtime controller:
 
-- Postgres, API, Gateway, and web run through Docker Compose.
+- Postgres, OpenTelemetry Collector, API, Gateway, and web run through Docker Compose.
 - Worker runs directly on the host as a systemd service and starts Agent
   deployments through the systemd runtime.
 - Traefik forwards wildcard public Agent hosts to Gateway on port 4080. Agent
@@ -226,6 +226,7 @@ EVELAND_IDENTITY_JWKS_URL=http://127.0.0.1:4000/.well-known/jwks.json
 EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
 EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
+EVELAND_OTLP_SERVICE_TOKEN=<independent-long-random-collector-secret>
 EVELAND_SCHEDULER_RUNTIME_SECRET=<independent-long-random-runtime-secret>
 EVELAND_SCHEDULER_DISPATCH_SECRET=<independent-long-random-dispatch-secret>
 EVELAND_SCHEDULER_REDEEM_URL=http://127.0.0.1:4000/internal/scheduler/dispatch
