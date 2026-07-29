@@ -30,7 +30,14 @@ export type DockerRunInput = {
   sandboxEnabled: boolean;
   sandboxCacheDir: string;
   observabilityPolicyDir: string;
-  env: Record<string, string>;
+  /**
+   * Root-owned 0600 file holding the deployment's decrypted environment.
+   * Passed as --env-file rather than --env KEY=VALUE: argv is world-readable
+   * through /proc/<pid>/cmdline while the CLI runs and is retained forever in
+   * `docker inspect`, so project secrets must never ride on it. Mirrors the
+   * systemd adapter's EnvironmentFile discipline.
+   */
+  envFilePath: string;
   command: string;
 };
 
@@ -97,13 +104,30 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     );
   }
 
-  for (const [key, value] of Object.entries(input.env).sort(([a], [b]) => a.localeCompare(b))) {
-    if (input.sandboxEnabled && key === "EVELAND_SANDBOX_TEMPLATE_REVISION") continue;
-    args.push("--env", `${key}=${value}`);
-  }
+  args.push("--env-file", input.envFilePath);
 
   args.push(input.imageTag, "sh", "-lc", input.command);
   return args;
+}
+
+/**
+ * Docker's --env-file format is plain KEY=VALUE: the value runs literally to
+ * end of line, with no quoting or escaping, so a newline cannot be
+ * represented (and would silently truncate the secret or inject another key).
+ * Deliberately NOT buildEnvFileContent from the systemd adapter -- that one
+ * emits shell-quoted values for systemd's EnvironmentFile, and Docker would
+ * hand the surrounding quotes to the process as part of the value.
+ */
+export function buildDockerEnvFileContent(env: Record<string, string>): string {
+  const lines = Object.entries(env)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => {
+      if (/[\n\r]/.test(value)) {
+        throw new Error(`Secret ${key} contains a newline; a Docker --env-file cannot represent it.`);
+      }
+      return `${key}=${value}`;
+    });
+  return lines.length ? `${lines.join("\n")}\n` : "";
 }
 
 export function buildDockerBuildArgs(input: DockerBuildInput): string[] {
@@ -254,6 +278,8 @@ export function buildDockerStartCommand(context: RuntimeCommandContext, internal
 export type DockerAdapterConfig = {
   internalPort: number;
   collectorContainerName?: string;
+  /** Root of the worker's data dir; holds the root-owned 0600 env files. */
+  dataDir: string;
   /** Resolves the built bwrap backend only when an Eve release is built. */
   backendDistDir: () => string;
 };
@@ -261,6 +287,8 @@ export type DockerAdapterConfig = {
 export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter {
   const collectorContainerName =
     config.collectorContainerName ?? defaultCollectorContainerName;
+  const envDir = path.resolve(config.dataDir, "deployment-env");
+  const envFilePathFor = (processName: string) => path.join(envDir, `${processName}.env`);
   const adapter: RuntimeAdapter = {
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
@@ -327,6 +355,11 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         input.processName,
         collectorContainerName,
       );
+      await mkdir(envDir, { recursive: true });
+      const envFilePath = envFilePathFor(input.processName);
+      const deploymentEnv = { ...input.env };
+      if (input.commandContext.isEveProject) delete deploymentEnv.EVELAND_SANDBOX_TEMPLATE_REVISION;
+      await writeFile(envFilePath, buildDockerEnvFileContent(deploymentEnv), { mode: 0o600 });
       try {
         const log = await dockerRun({
           containerName: input.processName,
@@ -336,11 +369,15 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
           sandboxEnabled: input.commandContext.isEveProject,
           sandboxCacheDir: input.sandboxCacheDir,
           observabilityPolicyDir: input.observabilityPolicyDir,
-          env: input.env,
+          envFilePath,
           command: buildDockerStartCommand(input.commandContext, config.internalPort),
         });
         return { internalPort: config.internalPort, log };
       } catch (error) {
+        // Docker copies the env file's contents into the container config at
+        // create time, so nothing needs it after this call -- and a failed
+        // start must not leave decrypted secrets on disk.
+        await rm(envFilePath, { force: true }).catch(() => undefined);
         await removeAgentTelemetryNetwork(
           input.processName,
           collectorContainerName,
@@ -405,6 +442,9 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     },
     async stopProcess(processName: string): Promise<void> {
       await dockerStopAndRemove(processName);
+      // Same discipline as the systemd adapter: decrypted secrets never
+      // outlive the process they were written for.
+      await rm(envFilePathFor(processName), { force: true }).catch(() => undefined);
       await removeAgentTelemetryNetwork(
         processName,
         collectorContainerName,

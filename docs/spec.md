@@ -884,7 +884,10 @@ Web 以 Type、Name、Value 状态和行级操作组成的表格展示 Entry；�
 Shared Agent Environment < Project Secret < Eveland 保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。
 共享值只在 deploy、restart、cold activation
 或 schedule activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、
-generated Dockerfile、OTLP signal、日志或 Web payload。完整 Project/Shared Environment 值集合必须
+generated Dockerfile、OTLP signal、日志或 Web payload。解密后的值只能经由 root-owned 0600 的
+环境文件交给 runtime（systemd 的 `EnvironmentFile`、Docker 的 `--env-file`），不得出现在进程
+argv 上——argv 通过 `/proc/<pid>/cmdline` 对同主机任意用户可读，且会被 `docker inspect` 永久
+保留。该文件在进程停止或启动失败时必须删除。完整 Project/Shared Environment 值集合必须
 参与 runtime/build diagnostic 脱敏。
 
 Entry 语义变化才递增内部 revision。更新或清空共享环境时，API 对所有 Project 的
