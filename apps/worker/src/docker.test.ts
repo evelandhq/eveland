@@ -798,3 +798,15 @@ describe("isBenignDockerStopFailure", () => {
     expect(isBenignDockerStopFailure({ failed: true, exitCode: 1, stderr: "permission denied" })).toBe(false);
   });
 });
+
+describe("createDockerAdapter inspectProcess", () => {
+  test("reports a paused container as failed so ensureProcess replaces it", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: false, stdout: "paused\n", all: "paused\n" } as never);
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    // A paused container never becomes ready on its own; "starting" made
+    // activation poll health until timeout instead of replacing it.
+    await expect(adapter.inspectProcess!("eveland-proj_p-dep_p1")).resolves.toBe("failed");
+  });
+});

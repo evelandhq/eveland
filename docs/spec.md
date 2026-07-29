@@ -977,9 +977,12 @@ failed，防止 Gateway 继续把流量代理给错误的 Agent。
 
 Worker 还按独立周期执行 orphan sweep，把主机上实际运行的 `eveland-*-dep_*` 进程与
 控制面对账：持有活跃 lease 或 live RuntimeInstance 的进程不受影响；属于合法
-Deployment 但失管的进程（早于 RuntimeInstance 机制部署、restart 后未激活等）被收养为
-ready RuntimeInstance，从此由 idle 生命周期接管；没有 Deployment 记录、Deployment 已
-archived、或运行在非 Deployment 所属 runtimeKind 下的进程在宽限期后被停止。清扫只
+Deployment 但失管的进程（早于 RuntimeInstance 机制部署、restart 后未激活等）仅当
+Deployment 处于 running/draining 时被收养为 ready RuntimeInstance，从此由 idle 生命周期
+接管；没有 Deployment 记录、Deployment 已 archived/stopped/failed、或运行在非 Deployment
+所属 runtimeKind 下的进程在宽限期后被停止——控制面已决定停止的进程只能收割，不得复活。
+清扫视野包含 systemd 处于 activating（auto-restart 翻滚中）的 unit；transient unit 配置
+显式 StartLimit，起不来的进程在限额后放弃而不是无限翻滚。清扫只
 匹配完整的 Deployment 命名形态，平台自身的 Compose 容器（`eveland-postgres-1` 等）
 永远不在清扫范围内。带平台 telemetry 标签但已无对应 Agent 容器的 Docker network 使用
 同一宽限期回收；回收前必须再次确认容器仍不存在，不能与并发启动竞争。

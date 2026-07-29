@@ -359,8 +359,12 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       }
       const status = (result.stdout ?? "").trim();
       if (status === "running") return "ready";
-      if (status === "created" || status === "restarting" || status === "paused") return "starting";
+      if (status === "created" || status === "restarting") return "starting";
       if (status === "exited") return "stopped";
+      // "paused" lands here deliberately: a paused container never becomes
+      // ready on its own, so treating it as transitional made ensureProcess
+      // reuse it and activation poll health until timeout. Failed makes
+      // ensureProcess stop and replace it.
       return "failed";
     },
     async getProcessDiagnostics(processName) {

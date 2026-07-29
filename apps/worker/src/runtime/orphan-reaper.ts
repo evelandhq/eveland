@@ -70,12 +70,14 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
         firstSeenAt.delete(key);
         return 0;
       }
-      if (deployment.status !== "archived") {
+      if (deployment.status === "running" || deployment.status === "draining") {
         // Running but unmanaged (deployed or restarted before RuntimeInstances
         // existed, or never activated since). Adoption -- not stopping -- is
         // the action here: the idle reaper then drains it with its own lease
         // re-checks, so an explicit user restart is never killed behind a
-        // racing activation.
+        // racing activation. A stopped/failed/archived Deployment is the
+        // opposite case: the control plane decided this process must not run,
+        // so a surviving unit is reaped below, never resurrected.
         const adopted = await store.adoptRuntimeInstance(deployment.id, {
           endpointHost: "127.0.0.1",
           endpointPort: deployment.hostPort,
@@ -106,7 +108,7 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
         deploymentId: deployment.id,
         type: "runtime",
         line: deployment.runtimeKind === kind
-          ? `Stopped orphan process ${name} left behind by archived Deployment ${deployment.id}.`
+          ? `Stopped orphan process ${name} left behind by ${deployment.status} Deployment ${deployment.id}.`
           : `Stopped orphan ${kind} process ${name}; Deployment ${deployment.id} is owned by the ${deployment.runtimeKind} runtime.`,
       });
     } else {

@@ -81,6 +81,8 @@ describe("buildSystemdRunArgs", () => {
       "--service-type=exec",
       "--property=Restart=on-failure",
       "--property=RestartSec=2",
+      "--property=StartLimitIntervalSec=60",
+      "--property=StartLimitBurst=5",
       `--property=User=${resolveSystemdDeploymentUser("eveland-proj_123-dep_456")}`,
       "--property=DynamicUser=yes",
       "--property=Group=eveland-app",
@@ -369,7 +371,7 @@ describe("createSystemdAdapter listProcesses", () => {
     ]);
     expect(execa).toHaveBeenLastCalledWith(
       "systemctl",
-      ["list-units", "--type=service", "--state=active", "--plain", "--no-legend", "--no-pager", "eveland-*.service"],
+      ["list-units", "--type=service", "--state=active,activating", "--plain", "--no-legend", "--no-pager", "eveland-*.service"],
       expect.objectContaining({ reject: false }),
     );
   });
@@ -1191,5 +1193,39 @@ describe("createSystemdAdapter verifyPortOwnership", () => {
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     await expect(adapter.verifyPortOwnership!(ownershipInput)).rejects.toThrow(/ss.*command not found/);
+  });
+});
+
+describe("createSystemdAdapter startProcess failure cleanup", () => {
+  test("deletes the decrypted env file and repair script when systemd-run fails", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(rm).mockClear();
+    vi.mocked(execa).mockImplementation((async (command: unknown) => {
+      if (command === "systemd-run") throw new Error("Failed to start transient service unit");
+      return { all: "", stdout: "", stderr: "" };
+    }) as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(
+      adapter.startProcess({
+        processName: "eveland-proj_123-dep_456",
+        releaseRef: "/data/builds/proj_123/rel_456",
+        port: 41000,
+        env: { OPENAI_API_KEY: "secret" },
+        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+        sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        observabilityPolicyDir:
+          "/var/lib/eveland-data/observability/proj_123/dep_456",
+      }),
+    ).rejects.toThrow(/transient service unit/);
+
+    expect(vi.mocked(rm).mock.calls).toEqual(
+      expect.arrayContaining([
+        ["/var/lib/eveland-data/deployment-env/eveland-proj_123-dep_456.env", { force: true }],
+        ["/var/lib/eveland-data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh", { force: true }],
+      ]),
+    );
+    vi.mocked(execa).mockReset();
+    vi.mocked(execa).mockResolvedValue({ all: "", stdout: "", stderr: "" } as never);
   });
 });

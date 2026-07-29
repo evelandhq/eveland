@@ -104,6 +104,10 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     "--service-type=exec",
     "--property=Restart=on-failure",
     "--property=RestartSec=2",
+    // A unit that cannot come up (a lost port bind, a crashed release) must
+    // give up instead of flapping in auto-restart indefinitely.
+    "--property=StartLimitIntervalSec=60",
+    "--property=StartLimitBurst=5",
     `--property=User=${resolveSystemdDeploymentUser(input.unitName)}`,
     "--property=DynamicUser=yes",
     `--property=Group=${input.user}`,
@@ -499,25 +503,35 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         { mode: 0o700 },
       );
 
-      const result = await execa(
-        "systemd-run",
-        buildSystemdRunArgs({
-          unitName: input.processName,
-          releaseDir: input.releaseRef,
-          envFilePath,
-          port: input.port,
-          user: config.user,
-          memoryMax: config.memoryMax,
-          cpuQuota: config.cpuQuota,
-          sandboxCacheDir: input.sandboxCacheDir,
-          dataDir,
-          observabilityPolicyDir: input.observabilityPolicyDir,
-          accessRepairScriptPath,
-          dynamicUserUidMarkerPath,
-          command: buildSystemdStartCommand(input.commandContext, input.port),
-        }),
-        { all: true },
-      );
+      let result;
+      try {
+        result = await execa(
+          "systemd-run",
+          buildSystemdRunArgs({
+            unitName: input.processName,
+            releaseDir: input.releaseRef,
+            envFilePath,
+            port: input.port,
+            user: config.user,
+            memoryMax: config.memoryMax,
+            cpuQuota: config.cpuQuota,
+            sandboxCacheDir: input.sandboxCacheDir,
+            dataDir,
+            observabilityPolicyDir: input.observabilityPolicyDir,
+            accessRepairScriptPath,
+            dynamicUserUidMarkerPath,
+            command: buildSystemdStartCommand(input.commandContext, input.port),
+          }),
+          { all: true },
+        );
+      } catch (error) {
+        // No unit was created, so no later stopProcess will ever delete the
+        // decrypted EnvironmentFile written above -- remove it here or the
+        // plaintext secrets persist indefinitely.
+        await rm(envFilePath, { force: true }).catch(() => undefined);
+        await rm(accessRepairScriptPath, { force: true }).catch(() => undefined);
+        throw error;
+      }
       return { internalPort: input.port, log: result.all ?? "" };
     },
     async inspectProcess(processName) {
@@ -613,7 +627,10 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
     async listProcesses(namePrefix) {
       const result = await execa(
         "systemctl",
-        ["list-units", "--type=service", "--state=active", "--plain", "--no-legend", "--no-pager", `${namePrefix}*.service`],
+        // "activating" included deliberately: a unit flapping in
+        // auto-restart (e.g. a lost port bind) never reaches "active", and
+        // excluding it hid exactly those zombies from the orphan sweep.
+        ["list-units", "--type=service", "--state=active,activating", "--plain", "--no-legend", "--no-pager", `${namePrefix}*.service`],
         { all: true, reject: false },
       );
       if (result.failed) {
