@@ -48,11 +48,6 @@ import {
   ProjectRouteNotFoundError,
 } from "./store-shared.js";
 
-const defaultOwner = {
-  id: "user_local_admin",
-  email: "admin@example.com",
-  name: "Local Admin",
-};
 
 import type {
   PostgresDomain,

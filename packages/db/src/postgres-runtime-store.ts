@@ -8,11 +8,6 @@ import { activationLeases, deployments, runtimeInstances } from "./schema.js";
 import { isUniqueConstraint } from "./postgres-store-support.js";
 import { RuntimeInstanceDrainingError } from "./store-shared.js";
 
-const defaultOwner = {
-  id: "user_local_admin",
-  email: "admin@example.com",
-  name: "Local Admin",
-};
 
 import type {
   PostgresDomain,
