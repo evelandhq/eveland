@@ -21,6 +21,8 @@ export type ProcessJobOptions = {
   jobHeartbeatIntervalMs?: number;
   dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
   tracer?: Tracer;
+  /** Aborted when this execution's job lease is fenced away; long-running steps must stop. */
+  signal?: AbortSignal;
 };
 
 export type ScheduleDispatchInput = {

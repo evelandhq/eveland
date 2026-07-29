@@ -577,6 +577,9 @@ export const jobs = pgTable("jobs", {
   attempts: integer("attempts").notNull().default(0),
   lastError: text("last_error"),
   lockedAt: timestamp("locked_at", { withTimezone: true }),
+  // FIFO tiebreaker: created_at has finite resolution, so two jobs enqueued in
+  // the same instant would otherwise claim in plan-dependent order.
+  sequence: bigint("sequence", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

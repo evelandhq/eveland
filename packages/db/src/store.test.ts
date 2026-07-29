@@ -203,17 +203,46 @@ describe("SQL Store jobs", () => {
     await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({ projectId: project.id, type: "delete_project" });
   });
 
+  test("never claims a job for a project that already has a running job", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Serial Agent", importKind: "zip" });
+    const running = await store.claimNextJob("worker-a");
+    expect(running).toMatchObject({ projectId: project.id, type: "import_source" });
+    await store.enqueueJob(project.id, "build_deploy");
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    // Same project: both queued jobs must wait for the running one.
+    await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
+
+    // A different project is not blocked by this project's running job.
+    const otherProject = await store.createProject({ name: "Parallel Agent", importKind: "zip" });
+    await expect(store.claimNextJob("worker-b")).resolves.toMatchObject({
+      projectId: otherProject.id,
+      type: "import_source",
+    });
+
+    // Completion unblocks the oldest queued job for the project -- one at a time.
+    await store.completeJob(running!.id);
+    const next = await store.claimNextJob("worker-c");
+    expect(next).toMatchObject({ projectId: project.id, type: "build_deploy" });
+    await expect(store.claimNextJob("worker-d")).resolves.toBeNull();
+  });
+
   test("claims queued jobs once and tracks completion", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Worker Agent", importKind: "zip" });
     await store.enqueueJob(project.id, "build_deploy");
 
     const first = await store.claimNextJob("worker-a");
-    const second = await store.claimNextJob("worker-b");
 
     expect(first).toMatchObject({ type: "import_source", status: "running", attempts: 1 });
-    expect(second).toMatchObject({ type: "build_deploy", status: "running", attempts: 1 });
+    // Same project: the queued build_deploy waits for the running import.
+    await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
     await store.completeJob(first!.id);
+
+    const second = await store.claimNextJob("worker-b");
+    expect(second).toMatchObject({ type: "build_deploy", status: "running", attempts: 1 });
+    await store.completeJob(second!.id);
 
     const none = await store.claimNextJob("worker-c");
     expect(none).toBeNull();

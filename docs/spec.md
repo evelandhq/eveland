@@ -464,7 +464,11 @@ job source 目录、将 job 和 Project 标记为失败，并保存经过限长�
 DNS、连接、TLS、timeout 和 HTTP 5xx 等瞬时错误默认最多尝试三次并指数退避；认证失败、
 仓库不存在等确定性错误不重试。worker 必须为 running job 持续续租，回收超过 stale
 窗口且没有心跳的 job；complete/fail 必须使用 claim attempt 作为 fencing token，迟到的旧
-worker 不得覆盖新 attempt 的状态。
+worker 不得覆盖新 attempt 的状态。同一 Project 同时至多一个 running job：queued job
+必须等待该 Project 的 running job 完成、失败或被回收后才可被 claim，不同 Project 互不
+阻塞。心跳被 fencing 拒绝（lease 已被新 attempt 接管）时，旧执行必须中止自己的宿主机
+副作用——取消进行中的 build 并在 start/record/promote 等边界停止——而不是与新执行并行
+跑完。
 Project 页面展示最近 Git import job 的 queued/running/failed 状态，在活动期间自动刷新，
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 

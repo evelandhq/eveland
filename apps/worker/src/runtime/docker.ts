@@ -181,9 +181,15 @@ EXPOSE 3000
   return dockerfilePath;
 }
 
-export async function dockerBuild(contextDir: string, imageTag: string, dockerfilePath: string): Promise<string> {
+export async function dockerBuild(
+  contextDir: string,
+  imageTag: string,
+  dockerfilePath: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const result = await execa("docker", buildDockerBuildArgs({ contextDir, imageTag, dockerfilePath }), {
     all: true,
+    ...(signal ? { cancelSignal: signal } : {}),
   });
   return result.all ?? "";
 }
@@ -273,7 +279,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
           await writeSandboxVerifyScript(path.resolve(input.buildDir));
         }
         const dockerfilePath = await writeGeneratedDockerfile(input.buildDir, input.workflowWorld);
-        const log = await dockerBuild(input.buildDir, imageTag, dockerfilePath);
+        const log = await dockerBuild(input.buildDir, imageTag, dockerfilePath, input.signal);
         if (sandboxInjection) {
           await verifyDockerSandbox(imageTag);
         }

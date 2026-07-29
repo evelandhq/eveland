@@ -5,6 +5,7 @@ import {
   allocateAvailableHostPort,
   cleanupExpiredSourcePreflights,
   invalidateGatewayRouteCache,
+  JobLeaseLostError,
   processNextJob,
   processNextSourcePreflight,
   runWithJobHeartbeat,
@@ -115,6 +116,54 @@ describe("processNextJob", () => {
       intervalMs: 1,
       heartbeat: async () => { heartbeatObserved(); return true; },
       work: () => new Promise<string>((resolve) => { finish = resolve; }),
+    });
+    await observed;
+    finish("done");
+
+    await expect(running).resolves.toBe("done");
+  });
+
+  test("aborts the work signal when the heartbeat reports a lost lease", async () => {
+    let heartbeats = 0;
+    let workSignal!: AbortSignal;
+    const aborted = new Promise<unknown>((resolve) => {
+      void runWithJobHeartbeat({
+        intervalMs: 1,
+        // First beat holds the lease, second observes it fenced away.
+        heartbeat: async () => ++heartbeats < 2,
+        work: (signal) => new Promise<never>((_resolve, reject) => {
+          workSignal = signal;
+          signal.addEventListener("abort", () => {
+            resolve(signal.reason);
+            reject(signal.reason);
+          });
+        }),
+      }).catch(() => undefined);
+    });
+
+    const reason = await aborted;
+    expect(workSignal.aborted).toBe(true);
+    expect(reason).toBeInstanceOf(JobLeaseLostError);
+    expect((reason as Error).message).toMatch(/lease/i);
+  });
+
+  test("a heartbeat transport failure does not abort the work", async () => {
+    let finish!: (value: string) => void;
+    let failuresObserved = 0;
+    let observeFailures!: () => void;
+    const observed = new Promise<void>((resolve) => { observeFailures = resolve; });
+
+    const running = runWithJobHeartbeat({
+      intervalMs: 1,
+      heartbeat: async () => {
+        failuresObserved += 1;
+        if (failuresObserved >= 3) observeFailures();
+        throw new Error("database briefly unreachable");
+      },
+      work: (signal) => new Promise<string>((resolve, reject) => {
+        finish = resolve;
+        signal.addEventListener("abort", () => reject(signal.reason));
+      }),
     });
     await observed;
     finish("done");

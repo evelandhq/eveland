@@ -197,19 +197,22 @@ export function createPostgresJobSourceStore({
               from ${jobs} candidate
               join ${projects} project on project.id = candidate.project_id
               where candidate.status = 'queued'
+                -- One running job per project: concurrent jobs for the same
+                -- project interleave stop/start/updateProjectState and race
+                -- host-port allocation, so a queued job waits until the
+                -- project's running job completes, fails, or is recovered as
+                -- stale. Other projects' jobs are unaffected.
+                and not exists (
+                  select 1 from ${jobs} running
+                  where running.project_id = candidate.project_id
+                    and running.id <> candidate.id
+                    and running.status = 'running'
+                )
                 and (
                   project.deletion_status is distinct from 'deleting'
-                  or (
-                    candidate.type = 'delete_project'
-                    and not exists (
-                      select 1 from ${jobs} running
-                      where running.project_id = candidate.project_id
-                        and running.id <> candidate.id
-                        and running.status = 'running'
-                    )
-                  )
+                  or candidate.type = 'delete_project'
                 )
-              order by candidate.created_at asc
+              order by candidate.created_at asc, candidate.sequence asc
               limit 1
               for update skip locked
             )`,
