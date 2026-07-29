@@ -205,6 +205,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     warning: productionSecretWarning,
   },
   entry("EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES", ["gateway"], "Maximum buffered public request body accepted by Gateway.", "10485760"),
+  entry("EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS", ["gateway"], "Socket idle timeout for public upstream proxying; streaming resets it.", "120000"),
   entry("EVELAND_PLAYGROUND_TIMEOUT_MS", ["gateway"], "Timeout for privileged Playground requests proxied to a Deployment.", "120000"),
   urlEntry("EVELAND_API_INTERNAL_URL", ["gateway"], "Private API origin used for service-authenticated runtime activation.", "http://127.0.0.1:4000"),
   entry("EVELAND_ACTIVATION_LEASE_TTL_MS", ["api"], "Lifetime of request, stream, turn, and ScheduleRun activation leases.", "180000"),

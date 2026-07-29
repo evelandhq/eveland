@@ -1,0 +1,84 @@
+---
+title: Upgrade from 0.15 to 0.16
+description: Move the verified Eve baseline to 0.27.12 and pick up Gateway resource bounds. No database migrations, so a source rollback is sufficient.
+---
+
+Eveland 0.16 moves the verified Eve patch baseline to `0.27.12` and bounds three resources on the public data plane. This guide covers a production upgrade from `v0.15.0` to `v0.16.0`.
+
+## Operational impact
+
+**There are no database migrations in this release.** That is the defining difference from 0.15, which required four. Nothing here rewrites rows or changes a schema, so checking out `v0.15.0` again is a sufficient rollback — see the rollback section.
+
+No environment variable becomes required, no host prerequisite changes, and Agents keep serving traffic throughout. Existing Sessions, routes, and Deployments are untouched.
+
+The supported Eve range is unchanged: imported Agents on `0.25.x`, `0.26.x`, and `0.27.x` remain accepted. The compatibility matrix now verifies `0.25.3`, `0.26.2`, and `0.27.12`.
+
+### Behavior changes to expect
+
+- **Public upstream requests now have a socket idle timeout**, 120 seconds by default (`EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS`). It is an *idle* timeout, not a total deadline: streaming NDJSON keeps resetting it, so long turns are unaffected. What it stops is a deployment that accepts a connection and then never answers, which previously held the client, the socket, and the deployment's renewing activation lease indefinitely. Raise it only if one of your Agents legitimately goes more than two minutes between bytes.
+- **Gateway's hostname route cache is bounded** at 1000 entries. Requests to unknown subdomains under an allowed base domain could previously grow it for the life of the process. Eviction drops expired entries first, then the oldest; with a five-second TTL this is not observable in normal operation.
+- **Usage and experiment views do less work per request.** `variant-metrics` aggregates in SQL instead of loading every Session a Project ever recorded, and the usage dashboard stops transferring whole Session rows repeated per usage event. The numbers are unchanged.
+
+## 1. Back up and install
+
+Back up Postgres and `EVELAND_DATA_DIR` with your normal procedure, then stop the host Worker:
+
+```bash
+sudo systemctl stop eveland-worker
+```
+
+In the control-plane checkout:
+
+```bash
+git fetch --tags origin
+git checkout v0.16.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/api db:migrate
+git rev-parse --short=12 HEAD
+```
+
+`db:migrate` is still worth running — it is a no-op when the database is current, and it confirms 0.15's migrations were all applied.
+
+Put the printed revision in the shared production environment as `EVELAND_REVISION` and keep `EVELAND_RELEASE_CHANNEL=stable`.
+
+Update the Worker checkout to the same tag and rebuild the vendored sandbox backend:
+
+```bash
+cd /opt/eveland
+git fetch --tags origin
+git checkout v0.16.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/sandbox-bwrap build
+git rev-parse --short=12 HEAD
+```
+
+Set the same revision and `stable` channel in `/etc/eveland/eveland-worker.env`.
+
+## 2. Start the release
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+sudo systemctl start eveland-worker
+sudo journalctl -u eveland-worker -n 100 --no-pager
+```
+
+## 3. Verify
+
+1. API and Gateway `/health` return `version: 0.16.0`, `channel: stable`, and the same revision.
+2. **Settings → About** reports matching Web, API, Gateway, and Worker build identity.
+3. Run one Playground turn and confirm the Session, its nodes, events, and usage appear.
+4. Open **Usage** and a Project's experiment view; the figures should match what 0.15 reported for the same window.
+5. If any Agent streams with long gaps between chunks, exercise it once and confirm the stream completes. A turn cut off at roughly two minutes of silence means it needs a higher `EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS`.
+
+## 4. Pick up Eve 0.27.12 in your Agents
+
+The verified baseline moving to `0.27.12` does not change what a deployed Agent runs. An Agent gets the new patch when its own dependency resolves to it, which means refreshing its lockfile and redeploying. Agents pinned to an older patch in the supported range keep working as before.
+
+## Roll back to 0.15
+
+Because this release adds no migrations, a source rollback is sufficient: stop the Worker and control-plane services, check out `v0.15.0` in both locations, reinstall the frozen lockfile, rebuild `@eveland/sandbox-bwrap`, restore the previous revision, start Compose, and start the Worker last. The database needs no restore.
+
+The one thing that does not roll back is any Agent you redeployed against Eve 0.27.12 in step 4; those Releases keep the dependency they were built with until you redeploy them again.
+
+For the invariant upgrade procedure, see [Upgrade and rollback](/docs/operations/upgrades). For every variable named here, see [Configuration](/docs/reference/configuration).
