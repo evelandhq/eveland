@@ -117,7 +117,7 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `EVELAND_APP_USER` | Unix service user that runs the deployed agent process. | `eveland-app` |
+| `EVELAND_APP_USER` | Unix access group used by each deployment's isolated systemd DynamicUser. The user and same-named group must exist. | `eveland-app` |
 | `EVELAND_BUILD_USER` | Unprivileged Unix user that runs `npm ci` / `npx eve build`. | `eveland-build` |
 | `EVELAND_MEMORY_MAX` | systemd unit `MemoryMax`. | `2G` |
 | `EVELAND_CPU_QUOTA` | systemd unit `CPUQuota`. | `200%` |
