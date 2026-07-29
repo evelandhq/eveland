@@ -12,7 +12,6 @@ import {
 } from "@eveland/core/source";
 import type { Store } from "@eveland/db";
 import { access, readFile, realpath, rm } from "node:fs/promises";
-import net from "node:net";
 import path from "node:path";
 import {
   resolveProjectSandboxCacheDir,
@@ -441,22 +440,7 @@ function parsePackageJson(raw: string | undefined): PackageJson | null {
   }
 }
 
-export async function allocateAvailableHostPort(
-  startPort = Number(process.env.EVELAND_DEPLOYMENT_PORT ?? 41000),
-  endPort = startPort + 100,
-  reservedPorts: ReadonlySet<number> = new Set(),
-): Promise<number> {
-  for (let port = startPort; port <= endPort; port += 1) {
-    if (reservedPorts.has(port)) continue;
-    if (await isTcpPortAvailable("127.0.0.1", port)) {
-      return port;
-    }
-  }
-
-  throw new Error(
-    `No available deployment host port in range ${startPort}-${endPort}.`,
-  );
-}
+export { allocateAvailableHostPort, claimInFlightPort, isTcpPortAvailable, releaseInFlightPort } from "../runtime/ports.js";
 
 /**
  * Maps the worker-visible durable sandbox cache to the path the host Docker
@@ -512,34 +496,3 @@ export async function invalidateGatewayRouteCache(
   }
 }
 
-export async function isTcpPortAvailable(
-  host: string,
-  port: number,
-): Promise<boolean> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    const cleanup = () => {
-      server.removeAllListeners();
-    };
-
-    server.once("listening", () => {
-      server.close((error) => {
-        cleanup();
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(true);
-      });
-    });
-    server.once("error", (error: NodeJS.ErrnoException) => {
-      cleanup();
-      if (error.code === "EADDRINUSE" || error.code === "EACCES") {
-        resolve(false);
-        return;
-      }
-      reject(error);
-    });
-    server.listen(port, host);
-  });
-}

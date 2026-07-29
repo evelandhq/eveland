@@ -726,6 +726,12 @@ export const runtimeInstances = pgTable(
   (table) => [
     uniqueIndex("runtime_instances_deployment_generation_idx").on(table.deploymentId, table.generation),
     index("runtime_instances_deployment_status_idx").on(table.deploymentId, table.status),
+    // At most one live process per loopback port, across every Deployment.
+    // Reservation happens before bind (reserveRuntimeInstancePort); leaving
+    // the live statuses releases the port automatically.
+    uniqueIndex("runtime_instances_live_port_idx")
+      .on(table.endpointPort)
+      .where(sql`${table.status} in ('starting', 'ready', 'draining') and ${table.endpointPort} is not null`),
     check("runtime_instances_status_check", sql`${table.status} in ('starting', 'ready', 'draining', 'stopped', 'failed')`),
   ],
 );

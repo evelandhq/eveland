@@ -18,11 +18,13 @@ import { processRuntimeJob } from "./process-runtime-job.js";
 import { prepareDeploymentObservability } from "./process-observability.js";
 import {
   allocateAvailableHostPort,
+  claimInFlightPort,
   composeDeploymentEnv,
   devSecretKey,
   invalidateGatewayRouteCache,
   parseEncryptedSecret,
   readGitCredentialPayload,
+  releaseInFlightPort,
   resolveRuntimeCommandContext,
   resolveSandboxCacheDirs,
   stopStartedProcessOnFailure,
@@ -172,16 +174,6 @@ export async function processJob(
         project.id,
         releaseId,
       );
-      // A Deployment is an immutable previewable version. Never recycle a port
-      // from the production target: old and new versions must be able to run
-      // concurrently until an explicit promote/drain decision is made.
-      const hostPort = options.allocateHostPort
-        ? await options.allocateHostPort()
-        : await allocateAvailableHostPort(
-            undefined,
-            undefined,
-            new Set(await store.listReservedDeploymentHostPorts()),
-          );
       const { env, secretValues } = await composeDeploymentEnv(
         store,
         project.id,
@@ -254,6 +246,20 @@ export async function processJob(
         runtimeKind: runtime.name,
         nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
       });
+      // A Deployment is an immutable previewable version. Never recycle a port
+      // from the production target: old and new versions must be able to run
+      // concurrently until an explicit promote/drain decision is made.
+      // Allocated only now -- after the minutes-long build -- so the window in
+      // which the port is invisible to the DB reserved set is seconds, and the
+      // in-flight claim below covers even that for this worker process.
+      const hostPort = options.allocateHostPort
+        ? await options.allocateHostPort()
+        : await allocateAvailableHostPort(
+            undefined,
+            undefined,
+            new Set(await store.listReservedDeploymentHostPorts()),
+          );
+      claimInFlightPort(hostPort);
       // Only the process started by this job is its cleanup responsibility.
       let startedProcess: string | null = null;
       let deploymentRecorded = false;
@@ -389,6 +395,10 @@ export async function processJob(
           }
         }
         throw error;
+      } finally {
+        // Recorded: the DB reserved set covers the port from here. Failed: the
+        // cleanup above stopped anything that bound it.
+        releaseInFlightPort(hostPort);
       }
       return;
     }

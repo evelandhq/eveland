@@ -663,3 +663,152 @@ async function createRunningScheduleExecution(
     sessionId: session.id,
   };
 }
+
+describe("port resolution during activation", () => {
+  async function createFixture(store: ReturnType<typeof createTestStore>, name: string, hostPort: number, runtimeKind: "docker" | "systemd") {
+    const project = await store.createProject({ name, importKind: "zip" });
+    const importJob = await store.claimNextJob(`fixture-${hostPort}`);
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: `/tmp/${name}`,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: `fixture:${hostPort}`,
+      containerName: `fixture-${hostPort}`,
+      internalPort: 3000,
+      hostPort,
+      runtimeKind,
+    });
+    return deployment;
+  }
+
+  function startInputFor(deployment: { containerName: string; hostPort: number }): ProcessStartInput {
+    return {
+      processName: deployment.containerName,
+      releaseRef: "fixture:ports",
+      port: deployment.hostPort,
+      env: {},
+      commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
+      sandboxCacheDir: "/tmp/cache",
+      observabilityPolicyDir: "/tmp/observability",
+    };
+  }
+
+  test("adopts the previous generation's port when our own unit still holds it", async () => {
+    const store = createTestStore();
+    const deployment = await createFixture(store, "Adopt Port Agent", 41880, "systemd");
+    // Previous generation ran (and its unit still runs) on a reallocated port.
+    const first = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_adopt_prior",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.updateRuntimeInstance(first.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: 41888,
+    });
+    await store.updateRuntimeInstance(first.runtimeInstance.id, { status: "stopped" });
+    await store.releaseActivationLease(first.lease.id);
+
+    const ensureProcess = vi.fn(async (input: ProcessStartInput) => ({ internalPort: input.port, log: "reused" }));
+    const runtime = {
+      name: "systemd",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      ensureProcess,
+      verifyPortOwnership: vi.fn(async ({ port }: { port: number }) =>
+        port === 41888 ? { status: "owned" as const } : { status: "unbound" as const },
+      ),
+    } as unknown as RuntimeAdapter;
+
+    const activation = await ensureDeploymentActive(store, {
+      deployment,
+      runtime,
+      startInput: startInputFor(deployment),
+      kind: "public_request",
+      ownerId: "req_adopt",
+    }, { waitForHealth: vi.fn(), pollIntervalMs: 1 });
+
+    expect(activation.runtimeInstance).toMatchObject({ status: "ready", endpointPort: 41888 });
+    expect(ensureProcess).toHaveBeenCalledWith(expect.objectContaining({ port: 41888 }));
+  });
+
+  test("reserves a fresh port when the preferred one is held by a foreign process", async () => {
+    const store = createTestStore();
+    const deployment = await createFixture(store, "Fresh Port Agent", 41881, "systemd");
+    const ensureProcess = vi.fn(async (input: ProcessStartInput) => ({ internalPort: input.port, log: "started" }));
+    const runtime = {
+      name: "systemd",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      ensureProcess,
+      verifyPortOwnership: vi.fn(async ({ port }: { port: number }) =>
+        port === 41881
+          ? { status: "foreign" as const, holder: "pid 4242 (unit eveland-other.service)" }
+          : { status: "owned" as const },
+      ),
+    } as unknown as RuntimeAdapter;
+
+    const activation = await ensureDeploymentActive(store, {
+      deployment,
+      runtime,
+      startInput: startInputFor(deployment),
+      kind: "public_request",
+      ownerId: "req_fresh",
+    }, { waitForHealth: vi.fn(), pollIntervalMs: 1 });
+
+    const resolvedPort = activation.runtimeInstance.endpointPort;
+    expect(resolvedPort).not.toBeNull();
+    expect(resolvedPort).not.toBe(41881);
+    expect(ensureProcess).toHaveBeenCalledWith(expect.objectContaining({ port: resolvedPort }));
+    // The reservation is persisted on the live row, so a second live instance
+    // could never claim the same port.
+    await expect(store.getRuntimeInstance(activation.runtimeInstance.id)).resolves.toMatchObject({
+      endpointPort: resolvedPort,
+    });
+  });
+
+  test("docker fails loudly when the deployment port is reserved by another live instance", async () => {
+    const store = createTestStore();
+    const holderDeployment = await createFixture(store, "Docker Holder Agent", 41882, "docker");
+    const victimDeployment = await createFixture(store, "Docker Victim Agent", 41883, "docker");
+    const holder = await store.acquireActivationLease({
+      deploymentId: holderDeployment.id,
+      kind: "public_request",
+      ownerId: "req_docker_holder",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    // The holder legitimately reserved the victim's port (e.g. stale data).
+    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41883)).resolves.toBe(true);
+
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      ensureProcess: vi.fn(async () => ({ internalPort: 3000, log: "started" })),
+    } as unknown as RuntimeAdapter;
+
+    await expect(
+      ensureDeploymentActive(store, {
+        deployment: victimDeployment,
+        runtime,
+        startInput: startInputFor(victimDeployment),
+        kind: "public_request",
+        ownerId: "req_docker_victim",
+      }, { waitForHealth: vi.fn(), pollIntervalMs: 1 }),
+    ).rejects.toThrow(/reserved by another live RuntimeInstance/);
+  });
+});

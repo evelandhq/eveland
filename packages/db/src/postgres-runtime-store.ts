@@ -5,6 +5,7 @@ import {
   runtimeInstanceRowToRuntimeInstance,
 } from "./mappers.js";
 import { activationLeases, deployments, runtimeInstances } from "./schema.js";
+import { isUniqueConstraint } from "./postgres-store-support.js";
 import { RuntimeInstanceDrainingError } from "./store-shared.js";
 
 const defaultOwner = {
@@ -124,7 +125,8 @@ export function createPostgresRuntimeStore({
     },
 
     async adoptRuntimeInstance(deploymentId, endpoint, now = new Date()) {
-      return db.transaction(async (tx) => {
+      try {
+      return await db.transaction(async (tx) => {
         // Same deployment-level lock acquireActivationLease takes, so adoption
         // and activation serialize on the runtime_instances generation chain
         // instead of racing to insert the same generation.
@@ -165,6 +167,13 @@ export function createPostgresRuntimeStore({
           .returning();
         return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
       });
+      } catch (error) {
+        // Another live instance already reserved this port: the orphan is a
+        // duplicate claimant, not adoptable. Callers treat null as "leave it
+        // to the stop path", matching the existing already-owned contract.
+        if (isUniqueConstraint(error, "runtime_instances_live_port_idx")) return null;
+        throw error;
+      }
     },
 
     async listRuntimeInstances(statuses, limit) {
@@ -205,6 +214,20 @@ export function createPostgresRuntimeStore({
         .where(eq(runtimeInstances.id, runtimeInstanceId))
         .returning();
       return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
+    },
+
+    async reserveRuntimeInstancePort(runtimeInstanceId, port) {
+      try {
+        const [row] = await db
+          .update(runtimeInstances)
+          .set({ endpointHost: "127.0.0.1", endpointPort: port })
+          .where(eq(runtimeInstances.id, runtimeInstanceId))
+          .returning({ id: runtimeInstances.id });
+        return Boolean(row);
+      } catch (error) {
+        if (isUniqueConstraint(error, "runtime_instances_live_port_idx")) return false;
+        throw error;
+      }
     },
 
     async getActivationLease(leaseId) {

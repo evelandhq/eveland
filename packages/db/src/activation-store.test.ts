@@ -249,3 +249,106 @@ async function deploymentFixture(store: ReturnType<typeof createTestStore>, name
   });
   return { project, revision, deployment };
 }
+
+describe("runtime instance port reservation", () => {
+  async function createFixtureDeployment(
+    store: ReturnType<typeof createTestStore>,
+    name: string,
+    hostPort: number,
+  ) {
+    const project = await store.createProject({ name, importKind: "zip" });
+    const importJob = await store.claimNextJob(`fixture-import-${hostPort}`);
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: `/tmp/${hostPort}`,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    return store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: `fixture:${hostPort}`,
+      containerName: `fixture-port-${hostPort}`,
+      internalPort: 3000,
+      hostPort,
+      runtimeKind: "systemd",
+    });
+  }
+
+  test("reserves a free port on a starting instance and stamps the endpoint", async () => {
+    const store = createTestStore();
+    const deployment = await createFixtureDeployment(store, "Port Reserve Agent", 41900);
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_reserve",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(store.reserveRuntimeInstancePort(claim.runtimeInstance.id, 41911)).resolves.toBe(true);
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "starting",
+      endpointHost: "127.0.0.1",
+      endpointPort: 41911,
+    });
+  });
+
+  test("refuses a port held by another live instance, in any live status", async () => {
+    const store = createTestStore();
+    const holderDeployment = await createFixtureDeployment(store, "Port Holder Agent", 41901);
+    const contenderDeployment = await createFixtureDeployment(store, "Port Contender Agent", 41902);
+    const holder = await store.acquireActivationLease({
+      deploymentId: holderDeployment.id,
+      kind: "public_request",
+      ownerId: "req_holder",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41912)).resolves.toBe(true);
+
+    const contender = await store.acquireActivationLease({
+      deploymentId: contenderDeployment.id,
+      kind: "public_request",
+      ownerId: "req_contender",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    // Still reservable-looking while the holder is only starting -- must refuse.
+    await expect(store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41912)).resolves.toBe(false);
+
+    // Ready keeps the reservation.
+    await store.updateRuntimeInstance(holder.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: 41912,
+    });
+    await expect(store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41912)).resolves.toBe(false);
+
+    // A different port still works for the contender.
+    await expect(store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41913)).resolves.toBe(true);
+  });
+
+  test("frees the port once the holding instance leaves live statuses", async () => {
+    const store = createTestStore();
+    const holderDeployment = await createFixtureDeployment(store, "Port Free Agent", 41903);
+    const contenderDeployment = await createFixtureDeployment(store, "Port Reuse Agent", 41904);
+    const holder = await store.acquireActivationLease({
+      deploymentId: holderDeployment.id,
+      kind: "public_request",
+      ownerId: "req_free",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41914)).resolves.toBe(true);
+    await store.updateRuntimeInstance(holder.runtimeInstance.id, { status: "failed", error: "fixture" });
+
+    const contender = await store.acquireActivationLease({
+      deploymentId: contenderDeployment.id,
+      kind: "public_request",
+      ownerId: "req_reuse",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await expect(store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41914)).resolves.toBe(true);
+  });
+});

@@ -1,6 +1,7 @@
 import type { ActivationLeaseClaim, ActivationLeaseKind, DeploymentRecord, RuntimeInstance, RuntimeKind } from "@eveland/core/contracts";
 import { RuntimeInstanceDrainingError, type Store } from "@eveland/db";
 import { waitForOwnedHttpHealth } from "./health.js";
+import { allocateReservedInstancePort, isTcpPortAvailable } from "./ports.js";
 import { createRuntimeAdapterForKind } from "./select.js";
 import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
 
@@ -89,6 +90,57 @@ export async function ensureDeploymentActive(
   }
 }
 
+/**
+ * Resolves the loopback port this activation will start on and persists the
+ * claim to the RuntimeInstance row BEFORE anything binds it. On systemd a
+ * transient unit can start on any port, so a preferred port that cannot be
+ * reserved (or is held by a foreign process) falls through to a fresh
+ * allocation; a Docker container's published port is fixed at creation, so
+ * Docker must reserve the Deployment's port or fail loudly.
+ */
+async function resolveInstancePort(
+  store: Store,
+  input: Pick<DeploymentActivationInput, "deployment" | "runtime" | "startInput">,
+  current: RuntimeInstance,
+): Promise<number> {
+  // A recovered activation resumes an instance that already holds its
+  // reservation -- the live-port index guarantees it is still exclusively ours.
+  if (current.endpointPort !== null) return current.endpointPort;
+
+  // Prefer the port the previous generation actually ran on (its still-active
+  // unit binds that port, not necessarily deployments.host_port, which is a
+  // first-deploy hint once instances reallocate).
+  const priorInstances = await store.listDeploymentRuntimeInstances(input.deployment.id);
+  const priorPort = [...priorInstances]
+    .reverse()
+    .find((instance) => instance.id !== current.id && instance.endpointPort !== null)?.endpointPort;
+  const preferred = priorPort ?? input.deployment.hostPort;
+  if (input.runtime.name !== "systemd") {
+    if (await store.reserveRuntimeInstancePort(current.id, preferred)) return preferred;
+    throw new Error(
+      `Deployment port ${preferred} is reserved by another live RuntimeInstance and the ${input.runtime.name} ` +
+        "runtime cannot rebind a Deployment to a different port.",
+    );
+  }
+
+  // Adopt the preferred port when our own still-running unit already holds it
+  // (scale-to-zero wake reusing an active unit); otherwise treat a bound
+  // preferred port as unavailable.
+  const ownership = input.runtime.verifyPortOwnership
+    ? await input.runtime.verifyPortOwnership({
+        processName: input.startInput.processName,
+        port: preferred,
+      })
+    : { status: "unbound" as const };
+  const preferredUsable =
+    ownership.status === "owned" ||
+    (ownership.status === "unbound" && (await isTcpPortAvailable("127.0.0.1", preferred)));
+  return allocateReservedInstancePort(store, current.id, {
+    ...(preferredUsable ? { preferredPort: preferred } : {}),
+    dbReservedPorts: new Set(await store.listReservedDeploymentHostPorts()),
+  });
+}
+
 export async function startRuntimeInstance(
   store: Store,
   input: Pick<DeploymentActivationInput, "deployment" | "runtime" | "startInput">,
@@ -103,9 +155,11 @@ export async function startRuntimeInstance(
   if (current.status === "ready") return current;
   if (current.status !== "starting") throw new Error(`RuntimeInstance cannot start from ${current.status}.`);
   try {
+    const port = await resolveInstancePort(store, input, current);
     const start = input.runtime.ensureProcess?.bind(input.runtime) ?? input.runtime.startProcess.bind(input.runtime);
     await start({
       ...input.startInput,
+      port,
       env: {
         ...input.startInput.env,
         EVELAND_RUNTIME_INSTANCE_ID: runtimeInstanceId,
@@ -113,7 +167,7 @@ export async function startRuntimeInstance(
     });
     await waitForOwnedHttpHealth({
       host: "127.0.0.1",
-      port: input.deployment.hostPort,
+      port,
       timeoutMs: options.readyTimeoutMs ?? 30_000,
       processName: input.startInput.processName,
       runtime: input.runtime,
@@ -122,7 +176,7 @@ export async function startRuntimeInstance(
     const ready = await store.updateRuntimeInstance(runtimeInstanceId, {
       status: "ready",
       endpointHost: "127.0.0.1",
-      endpointPort: input.deployment.hostPort,
+      endpointPort: port,
       error: null,
     }, now());
     if (!ready) throw new Error("RuntimeInstance disappeared during activation.");

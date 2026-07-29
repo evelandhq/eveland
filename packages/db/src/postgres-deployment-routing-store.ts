@@ -15,6 +15,7 @@ import {
   eq,
   gt,
   inArray,
+  isNotNull,
   isNull,
   ne,
   sql,
@@ -29,6 +30,7 @@ import {
   agentRoutes,
   activationLeases,
   deployments,
+  runtimeInstances,
   projectSchedulerTargets,
   projectSchedules,
   projects,
@@ -154,7 +156,23 @@ export function createPostgresDeploymentRoutingStore({
         .selectDistinct({ hostPort: deployments.hostPort })
         .from(deployments)
         .where(ne(deployments.status, "archived"));
-      return rows.map((row) => row.hostPort);
+      // Live RuntimeInstances can run on reallocated ports that no
+      // deployments.host_port mentions; they are just as occupied.
+      const instanceRows = await db
+        .selectDistinct({ port: runtimeInstances.endpointPort })
+        .from(runtimeInstances)
+        .where(
+          and(
+            inArray(runtimeInstances.status, ["starting", "ready", "draining"]),
+            isNotNull(runtimeInstances.endpointPort),
+          ),
+        );
+      return [
+        ...new Set([
+          ...rows.map((row) => row.hostPort),
+          ...instanceRows.map((row) => row.port as number),
+        ]),
+      ];
     },
 
     async getDeployment(deploymentId) {

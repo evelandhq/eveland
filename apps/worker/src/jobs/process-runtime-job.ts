@@ -133,6 +133,20 @@ export async function processRuntimeJob(
       );
 
       await adapter.stopProcess(deployment.containerName);
+      // The restarted process binds deployment.hostPort directly; any live
+      // RuntimeInstance rows (possibly holding a reallocated port reservation)
+      // no longer describe a running process. Retire them with their port
+      // claims so the next activation adopts the actually-bound port instead
+      // of trusting a stale endpoint.
+      for (const instance of await store.listDeploymentRuntimeInstances(deployment.id)) {
+        if (instance.status === "starting" || instance.status === "ready" || instance.status === "draining") {
+          await store.updateRuntimeInstance(instance.id, {
+            status: "stopped",
+            endpointHost: null,
+            endpointPort: null,
+          });
+        }
+      }
       // Same worker/Docker-host path pairing build_deploy uses.
       const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
       await mkdir(sandboxCache.workerDir, { recursive: true });
