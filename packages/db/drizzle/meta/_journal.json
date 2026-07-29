@@ -267,6 +267,13 @@
       "when": 1785329846743,
       "tag": "0037_black_cerebro",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1785339065741,
+      "tag": "0038_foamy_tomorrow_man",
+      "breakpoints": true
     }
   ]
 }
