@@ -16,6 +16,7 @@ import {
   projectAgentEventItemsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
 } from "@eveland/session-collector";
+import { runWithPlatformTracingSuppressed } from "@eveland/platform-observability";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { isServiceRequest } from "./app-support.js";
 
@@ -86,7 +87,7 @@ export function registerOtlpRoutes(input: {
     if (!payload || !matchesSignal(payload, signal)) {
       return c.json({ error: "Invalid OTLP request" }, 400);
     }
-    return (async () => {
+    return runWithPlatformTracingSuppressed(async () => {
       const receivedItems = countOtlpSignalItems(signal, payload);
       let acceptedItems = 0;
       // Built-in projects rather than stores. Every projection below still runs in
@@ -136,7 +137,7 @@ export function registerOtlpRoutes(input: {
         });
       }
       return c.json(response);
-    })();
+    });
   });
 }
 

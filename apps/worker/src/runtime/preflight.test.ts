@@ -262,6 +262,13 @@ describe("collectSystemdPreflightIssues", () => {
     expect(issues.some((issue) => issue.includes('"git"'))).toBe(true);
   });
 
+  test("requires docker to validate and reload the managed OpenTelemetry Collector", async () => {
+    const deps = makePassingDeps();
+    deps.commandExists = vi.fn(async (name: string) => name !== "docker");
+    const issues = await collectSystemdPreflightIssues(deps);
+    expect(issues.some((issue) => issue.includes('"docker"'))).toBe(true);
+  });
+
   test("requires bwrap by default", async () => {
     const deps = makePassingDeps();
     deps.commandExists = vi.fn(async (name: string) => name !== "bwrap");

@@ -18,7 +18,7 @@ limactl shell "$VM" -- sudo bash -c "
   # Lima provisions only when the VM is first created. Keep reused guests on
   # the current platform-owned sandbox command baseline before pnpm or the
   # worker preflight can fail on a tool added after that guest was created.
-  apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
+  apt-get install -y apparmor bash bubblewrap ca-certificates curl docker.io findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
   corepack enable
   corepack install --global pnpm@11.7.0
 

@@ -25,6 +25,9 @@ import {
   resolveIdentityDeploymentConfiguration,
 } from "./runtime/identity-config-reconciler.js";
 import { createDeploymentObservabilityReconciler } from "./jobs/process-observability.js";
+import { createCollectorObservabilityReconciler } from "./jobs/process-collector-observability.js";
+import { createObservabilityRetentionReconciler } from "./jobs/process-observability-retention.js";
+import { createExternalDestinationHealthReconciler } from "./jobs/process-observability-destination-health.js";
 import { instrumentRuntimeLogStore } from "./runtime/runtime-log-store.js";
 import { createAgentTelemetryNetworkReconciler } from "./runtime/docker/agent-network.js";
 import { resolveRuntimeKind } from "./runtime/select.js";
@@ -50,6 +53,22 @@ const reconcileDeploymentObservability =
     env: process.env,
     nodeEnv: process.env.NODE_ENV,
   });
+const reconcileCollectorObservability =
+  createCollectorObservabilityReconciler({
+    store,
+    env: process.env,
+  });
+const reconcileObservabilityRetention =
+  createObservabilityRetentionReconciler({
+    store,
+  });
+const reconcileExternalDestinationHealth =
+  createExternalDestinationHealthReconciler({
+    store,
+    appSecretKey:
+      process.env.APP_SECRET_KEY ??
+      "eveland-dev-secret-key-000000000",
+  });
 const reconcileAgentTelemetryNetworks =
   resolveRuntimeKind(process.env) === "docker"
     ? createAgentTelemetryNetworkReconciler(
@@ -60,6 +79,18 @@ const reconcileObservability = createWorkerObservabilityReconciler([
   {
     name: "Deployment observability policy",
     run: reconcileDeploymentObservability,
+  },
+  {
+    name: "OpenTelemetry Collector configuration",
+    run: reconcileCollectorObservability,
+  },
+  {
+    name: "Observability retention",
+    run: reconcileObservabilityRetention,
+  },
+  {
+    name: "External observability destination health",
+    run: reconcileExternalDestinationHealth,
   },
   ...(reconcileAgentTelemetryNetworks
     ? [
