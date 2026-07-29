@@ -129,4 +129,31 @@ describe("Better Auth runtime", () => {
     expect(accepted.principal).toMatchObject({ email: "member@example.com", role: "member" });
     expect(accepted.headers.get("set-cookie")).toContain(`${SESSION_COOKIE_NAME}=`);
   });
+
+  test("lists only invitations that can still be accepted", async () => {
+    const { database, runtime } = await createTestRuntime();
+    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
+    const { cookie } = await signIn(runtime);
+    const request = new Request("http://localhost:4000/invitations", { headers: { cookie } });
+
+    const used = await runtime.invite(request, "used@example.com");
+    await runtime.acceptInvitation({ token: used.token, name: "Used", password: "member-password" });
+    const revoked = await runtime.invite(request, "revoked@example.com");
+    await runtime.revokeInvitation(request, revoked.invitation.id);
+    await database.db.insert(invitations).values({
+      id: "invitation_stale",
+      organizationId: "team_local",
+      email: "stale@example.com",
+      role: "member",
+      status: "pending",
+      expiresAt: new Date(Date.now() - 60_000),
+      inviterId: "user_local_admin",
+    });
+    const live = await runtime.invite(request, "live@example.com");
+
+    await expect(runtime.listInvitations(request)).resolves.toEqual([
+      expect.objectContaining({ id: live.invitation.id, email: "live@example.com", status: "pending" }),
+    ]);
+    await expect(database.db.select().from(invitations)).resolves.toHaveLength(4);
+  });
 });

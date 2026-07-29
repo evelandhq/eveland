@@ -204,7 +204,10 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       headers: request.headers,
       query: { organizationId: DEFAULT_ORGANIZATION_ID },
     });
-    return invitations.map(toTeamInvitation);
+    const now = Date.now();
+    return invitations
+      .filter((invitation) => invitation.status === "pending" && invitation.expiresAt.getTime() > now)
+      .map(toTeamInvitation);
   }
 
   async function reissueInvitation(request: Request, invitationId: string) {
