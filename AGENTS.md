@@ -103,6 +103,14 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
 - `packages/session-collector`: standard OTLP projection into Eveland
   Session, usage, and instance-health read models.
 - `packages/sandbox-bwrap`: the systemd runtime's Eve exec sandbox backend.
+- `packages/agent-auth`: Agent Connection auth providers, OIDC, and the sealed
+  config/credential envelopes.
+- `packages/identity-broker`: Agent-user Identity realms, sessions, and Caller
+  Token minting.
+- `packages/agent-scheduler`: release-time injection of the private Scheduler
+  Channel.
+- `packages/sdk`: the published `eveland` npm package. It must never import a
+  workspace package -- Agents install it from the registry, not from here.
 - `infra`: Compose, Traefik, systemd, Lima, and real integration-smoke assets.
 
 Keep the dependency direction:
@@ -110,6 +118,9 @@ Keep the dependency direction:
 ```text
 apps -> packages
 session-collector -> core + db
+agent-auth, identity-broker -> core + db
+agent-scheduler -> core
+sdk -> no Eveland package at all
 db -> core
 core -> no other Eveland package
 apps -X-> apps
