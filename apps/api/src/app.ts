@@ -271,16 +271,22 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   });
 
   if (options.auth) {
+    // Allowlist, not denylist: every Better Auth endpoint outside this set is
+    // unroutable. A denylist silently widened the public surface on every
+    // Better Auth upgrade, and left concrete gaps -- e.g. the raw
+    // /change-password endpoint lets the CLIENT decide whether other sessions
+    // are revoked, while Eveland's own /profile/password wrapper forces
+    // revocation. Everything else (invitations, membership, roles, password
+    // change) goes through Eveland-owned endpoints that call the Better Auth
+    // server API directly.
+    const allowedAuthPaths = new Set([
+      "/api/auth/sign-in/email",
+      "/api/auth/sign-out",
+      "/api/auth/get-session",
+    ]);
     app.on(["GET", "POST"], "/api/auth/*", (c) => {
       const path = new URL(c.req.url).pathname;
-      if (
-        path.startsWith("/api/auth/sign-up/") ||
-        path.startsWith("/api/auth/admin/") ||
-        path.startsWith("/api/auth/organization/") ||
-        path === "/api/auth/update-user"
-      ) {
-        return c.notFound();
-      }
+      if (!allowedAuthPaths.has(path)) return c.notFound();
       return options.auth!.handler(c.req.raw);
     });
 

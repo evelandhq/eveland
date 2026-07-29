@@ -74,6 +74,25 @@ describe("control-plane auth routes", () => {
     await expect(response.json()).resolves.toEqual({ error: "Authentication required" });
   });
 
+  test("blocks the raw change-password endpoint so session revocation cannot be skipped", async () => {
+    const { app } = await createAuthApp();
+    const { cookie } = await signIn(app);
+
+    // Eveland's /profile/password wrapper forces revokeOtherSessions: true;
+    // the raw endpoint lets the caller keep their own hijacked session alive.
+    const response = await app.request("/api/auth/change-password", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
+      body: JSON.stringify({
+        currentPassword: "admin-password-123",
+        newPassword: "hijacker-password-456",
+        revokeOtherSessions: false,
+      }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
   test("blocks public sign-up and direct organization writes", async () => {
     const { app } = await createAuthApp();
     const { cookie } = await signIn(app);

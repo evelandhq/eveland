@@ -173,8 +173,11 @@ Personal 与 System 分组导航。
 * 查看登录邮箱；MVP 中邮箱只读
 * 使用当前密码修改密码；新密码至少 12 个字符，成功后撤销当前 Session 之外的所有登录 Session
 
-Profile 更新复用 Better Auth 用户记录，不允许通过公开的 Better Auth `update-user`
-端点绕过 Eveland 的姓名与头像输入约束。
+Profile 更新复用 Better Auth 用户记录。Better Auth 的 HTTP 面按 allowlist 暴露：仅
+`sign-in/email`、`sign-out`、`get-session` 公开可路由，其余端点（含 `update-user`、
+`change-password`、sign-up、organization、admin 族，以及未来版本新增的任何端点）一律
+404——密码修改必须走 Eveland 的 `/profile/password`（强制撤销其他 Session），邀请与
+成员管理走 Eveland-owned 端点。
 
 #### Git Credentials (/settings/git-credentials)
 
