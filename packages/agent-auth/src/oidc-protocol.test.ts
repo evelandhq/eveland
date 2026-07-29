@@ -142,3 +142,68 @@ function jwt(key: import("node:crypto").KeyObject, payload: Record<string, unkno
   const input = `${header}.${claims}`;
   return `${input}.${sign("RSA-SHA256", Buffer.from(input), key).toString("base64url")}`;
 }
+
+describe("discovery SSRF hardening", () => {
+  test("refuses to follow a redirect issued by the discovery endpoint", async () => {
+    // A hostile issuer redirecting its own /.well-known response is the SSRF
+    // vector the hardened fetch must close: the discovery GET is the request
+    // the attacker most directly controls. The redirect target here serves
+    // VALID metadata, so a fetch that follows redirects would make discovery
+    // succeed -- the assertion below fails on the unhardened path rather than
+    // passing by accident.
+    let innerIssuer = "";
+    let innerHits = 0;
+    const innerServer = createServer((request, response) => {
+      innerHits += 1;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({
+        issuer: innerIssuer,
+        authorization_endpoint: `${innerIssuer}/authorize`,
+        token_endpoint: `${innerIssuer}/token`,
+        jwks_uri: `${innerIssuer}/jwks`,
+        response_types_supported: ["code"],
+        subject_types_supported: ["public"],
+        id_token_signing_alg_values_supported: ["RS256"],
+        token_endpoint_auth_methods_supported: ["none"],
+      }));
+    });
+    innerServer.listen(0, "127.0.0.1");
+    await once(innerServer, "listening");
+    const innerAddress = innerServer.address();
+    if (!innerAddress || typeof innerAddress === "string") throw new Error("Expected TCP address.");
+    innerIssuer = `http://127.0.0.1:${innerAddress.port}`;
+
+    const redirectingServer = createServer((request, response) => {
+      response.statusCode = 302;
+      response.setHeader("location", `${innerIssuer}/.well-known/openid-configuration`);
+      response.end();
+    });
+    redirectingServer.listen(0, "127.0.0.1");
+    await once(redirectingServer, "listening");
+    const address = redirectingServer.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP address.");
+    const redirectingIssuer = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const protocol = createOpenIdClientProtocol({ allowInsecureIssuer: true });
+      await expect(
+        protocol.preflight(
+          {
+            issuer: redirectingIssuer,
+            clientId: "redirect-client",
+            scopes: ["openid"],
+            tokenEndpointAuthMethod: "none",
+          } as OidcAuthorizationCodeConfig,
+          undefined,
+        ),
+      ).rejects.toThrow();
+      // The redirect target must never even be contacted: a blind GET against
+      // an attacker-chosen internal URL is the SSRF this fix closes, whether
+      // or not discovery ultimately rejects the response.
+      expect(innerHits).toBe(0);
+    } finally {
+      redirectingServer.close();
+      innerServer.close();
+    }
+  });
+});

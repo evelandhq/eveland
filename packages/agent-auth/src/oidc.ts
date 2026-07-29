@@ -550,6 +550,13 @@ export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: bool
         clientAuth,
         {
           timeout: 10,
+          // Defense in depth: openid-client v6 happens not to follow
+          // redirects during discovery, but that is its internal behavior,
+          // not a contract. Pinning the hardened fetch here makes the
+          // no-redirect/per-URL-assertion policy explicit for the one request
+          // a hostile issuer most directly controls, and the accompanying
+          // test fails if a library upgrade ever starts following redirects.
+          [oidc.customFetch]: safeOidcFetch(options.allowInsecureIssuer === true),
           ...(options.allowInsecureIssuer ? { execute: [oidc.allowInsecureRequests] } : {}),
         },
       ).then((configuration) => {
