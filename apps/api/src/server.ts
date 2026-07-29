@@ -1,3 +1,4 @@
+import { platformObservability } from "./observability.js";
 import { serve } from "@hono/node-server";
 import { formatBuildInfo } from "@eveland/core/build-info";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
@@ -49,9 +50,18 @@ serve({
 });
 
 console.log(`${formatBuildInfo(buildInfo)} listening on http://localhost:${port}`);
+platformObservability.emitLog({
+  severity: "info",
+  eventName: "eveland.api.ready",
+  body: "Eveland API is ready.",
+  attributes: { "server.port": port },
+});
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
-    void storeFactory.close().finally(() => process.exit(0));
+    void Promise.all([
+      storeFactory.close(),
+      platformObservability.shutdown(),
+    ]).finally(() => process.exit(0));
   });
 }

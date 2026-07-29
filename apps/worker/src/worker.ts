@@ -1,3 +1,10 @@
+import {
+  capacityObservability,
+  platformObservability,
+  runtimeObservability,
+  workerInstanceId,
+} from "./observability.js";
+import { SpanStatusCode } from "@opentelemetry/api";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { formatBuildInfo } from "@eveland/core/build-info";
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
@@ -18,6 +25,7 @@ import {
   resolveIdentityDeploymentConfiguration,
 } from "./runtime/identity-config-reconciler.js";
 import { createDeploymentObservabilityReconciler } from "./jobs/process-observability.js";
+import { instrumentRuntimeLogStore } from "./runtime/runtime-log-store.js";
 import { createAgentTelemetryNetworkReconciler } from "./runtime/docker/agent-network.js";
 import { resolveRuntimeKind } from "./runtime/select.js";
 import { createWorkerObservabilityReconciler } from "./runtime/observability/reconciler.js";
@@ -28,13 +36,17 @@ const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_M
 const releaseSweepIntervalMs = Number(
   process.env.EVELAND_RELEASE_SWEEP_INTERVAL_MS ?? 3_600_000,
 );
-const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
+const workerId = workerInstanceId;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
+const store = instrumentRuntimeLogStore(
+  storeFactory.store,
+  runtimeObservability,
+);
 const reconcileDeploymentObservability =
   createDeploymentObservabilityReconciler({
-    store: storeFactory.store,
+    store,
     env: process.env,
     nodeEnv: process.env.NODE_ENV,
   });
@@ -99,13 +111,18 @@ console.log(
     scripts: {},
   })}`,
 );
+platformObservability.emitLog({
+  severity: "info",
+  eventName: "eveland.worker.ready",
+  body: "Eveland Worker is ready.",
+  attributes: { "eveland.worker.poll_interval_ms": intervalMs },
+});
 
-const telemetry = createWorkerTelemetry(storeFactory.store, {
+const telemetry = createWorkerTelemetry(capacityObservability.meter, {
   workerId,
   dataDir,
   intervalMs,
   metricIntervalMs: Number(process.env.EVELAND_HOST_METRIC_INTERVAL_MS ?? 60_000),
-  retentionMs: Number(process.env.EVELAND_HOST_METRIC_RETENTION_MS ?? 2_592_000_000),
   onMetricError: (error) => console.warn("Worker host metrics are unavailable:", error instanceof Error ? error.message : String(error)),
 });
 let lastTickDurationMs = 0;
@@ -121,48 +138,89 @@ function publishTelemetry() {
 }
 
 async function tick() {
-  const startedAt = Date.now();
-  try {
-    await Promise.all([
-      planDueSchedules(storeFactory.store, {
-        limit: Number(process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25),
-        prewarmMs: schedulerPrewarmMs,
-        activationLeaseTtlMs: schedulerPrewarmMs + Math.max(10_000, intervalMs * 2),
-      }),
-      reapIdleDeployments(storeFactory.store, {
-        idleTtlMs: Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 300_000),
-        schedulePrewarmMs: schedulerPrewarmMs,
-        limit: Number(process.env.EVELAND_ACTIVATION_REAPER_BATCH_SIZE ?? 25),
-      }),
-      recoverStartingRuntimeInstances(storeFactory.store, {
-        limit: Number(process.env.EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE ?? 25),
-        staleJobAfterMs: Number(process.env.EVELAND_ACTIVATION_START_STALE_MS ?? 300_000),
-      }),
-      reconcileRuntimeInstances(storeFactory.store, {
-        limit: Number(process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100),
-      }),
-      reconcileObservability(),
-      storeFactory.store.recoverStaleJobs(
-        new Date(),
-        Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
-        Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
-      ),
-      storeFactory.store.recoverStaleSourcePreflights(
-        new Date(),
-        Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
-        Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
-      ),
-      cleanupExpiredSourcePreflights(storeFactory.store),
-      processNextSourcePreflight(storeFactory.store, workerId),
-      processNextJob(storeFactory.store, workerId),
-    ]);
-    lastTickError = null;
-  } catch (error) {
-    lastTickError = error;
-    console.error(error);
-  } finally {
-    lastTickDurationMs = Date.now() - startedAt;
-  }
+  return platformObservability.tracer.startActiveSpan(
+    "eveland.worker.tick",
+    {
+      attributes: {
+        "eveland.worker.id": workerId,
+        "eveland.telemetry.domain": "platform",
+      },
+    },
+    async (span) => {
+      const startedAt = Date.now();
+      try {
+        await Promise.all([
+          planDueSchedules(store, {
+            limit: Number(
+              process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25,
+            ),
+            prewarmMs: schedulerPrewarmMs,
+            activationLeaseTtlMs:
+              schedulerPrewarmMs + Math.max(10_000, intervalMs * 2),
+          }),
+          reapIdleDeployments(store, {
+            idleTtlMs: Number(
+              process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 300_000,
+            ),
+            schedulePrewarmMs: schedulerPrewarmMs,
+            limit: Number(
+              process.env.EVELAND_ACTIVATION_REAPER_BATCH_SIZE ?? 25,
+            ),
+          }),
+          recoverStartingRuntimeInstances(store, {
+            limit: Number(
+              process.env.EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE ?? 25,
+            ),
+            staleJobAfterMs: Number(
+              process.env.EVELAND_ACTIVATION_START_STALE_MS ?? 300_000,
+            ),
+          }),
+          reconcileRuntimeInstances(store, {
+            limit: Number(
+              process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100,
+            ),
+          }),
+          reconcileObservability(),
+          store.recoverStaleJobs(
+            new Date(),
+            Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
+            Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
+          ),
+          store.recoverStaleSourcePreflights(
+            new Date(),
+            Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
+            Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
+          ),
+          cleanupExpiredSourcePreflights(store),
+          processNextSourcePreflight(store, workerId),
+          processNextJob(store, workerId, {
+            tracer: platformObservability.tracer,
+          }),
+        ]);
+        lastTickError = null;
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        lastTickError = error;
+        span.recordException(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        platformObservability.emitLog({
+          severity: "error",
+          eventName: "eveland.worker.tick.failed",
+          body: "Worker control-loop tick failed.",
+          attributes: {
+            "error.type":
+              error instanceof Error ? error.name : "UnknownError",
+          },
+        });
+        console.error(error);
+      } finally {
+        lastTickDurationMs = Date.now() - startedAt;
+        span.end();
+      }
+    },
+  );
 }
 
 void tick();
@@ -175,7 +233,7 @@ const telemetryTimer = setInterval(publishTelemetry, intervalMs);
 // Separate cadence from tick(): host process listing is comparatively heavy
 // and orphan cleanup is not latency-sensitive. Set the interval to 0 to
 // disable the sweep entirely.
-const reapOrphanProcesses = createOrphanProcessReaper(storeFactory.store, {
+const reapOrphanProcesses = createOrphanProcessReaper(store, {
   graceMs: Number(process.env.EVELAND_ORPHAN_GRACE_MS ?? 300_000),
 });
 const sweepOrphans = () => {
@@ -216,6 +274,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     clearInterval(telemetryTimer);
     if (orphanTimer) clearInterval(orphanTimer);
     if (releaseTimer) clearInterval(releaseTimer);
-    void storeFactory.close().finally(() => process.exit(0));
+    void Promise.all([
+      storeFactory.close(),
+      capacityObservability.shutdown(),
+      platformObservability.shutdown(),
+      runtimeObservability.shutdown(),
+    ]).finally(() => process.exit(0));
   });
 }

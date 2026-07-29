@@ -1,3 +1,4 @@
+import { platformObservability } from "./observability.js";
 import { serve } from "@hono/node-server";
 import { formatBuildInfo } from "@eveland/core/build-info";
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
@@ -40,10 +41,16 @@ const app = createGatewayApp(store, {
 const server = serve({ fetch: app.fetch, port });
 
 console.log(`${formatBuildInfo(buildInfo)} listening on http://0.0.0.0:${port}`);
+platformObservability.emitLog({
+  severity: "info",
+  eventName: "eveland.gateway.ready",
+  body: "Eveland Gateway is ready.",
+  attributes: { "server.port": port },
+});
 
 async function shutdown() {
   await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-  await close();
+  await Promise.all([close(), platformObservability.shutdown()]);
 }
 
 process.once("SIGINT", () => void shutdown().then(() => process.exit(0)));

@@ -147,12 +147,18 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 > invalidation and route changes only take effect after the cache TTL. This pair has no
 > dev fallback.
 
-## Observability (OpenTelemetry Collector)
+## Observability (OpenTelemetry)
 
 | Variable | Purpose | Default | Read by |
 | --- | --- | --- | --- |
-| `EVELAND_OTLP_SERVICE_TOKEN` | Shared credential used by the managed OpenTelemetry Collector when it sends Built-in OTLP requests to the API. Never expose it to Agent Deployments. | dev-only value in Compose; required by the production overlay | API + Collector |
+| `EVELAND_OTLP_ENDPOINT` | Service-authenticated platform OTLP/HTTP receiver used by Eveland-owned API, Gateway, and Worker. Agent providers receive their separate receiver through runtime policy. | `http://127.0.0.1:4318` | API + Gateway + Worker |
+| `EVELAND_OTLP_SERVICE_TOKEN` | Shared credential for platform producers to the Collector and for Collector-to-API Built-in requests. Never expose it to Agent Deployments. | dev-only value in Compose; required by the production overlay | API + Gateway + Worker + Collector |
+| `EVELAND_OTEL_METRIC_INTERVAL_MS` | Export interval for platform SDK metrics. | `60000` | API + Gateway + Worker |
+| `EVELAND_HOST_METRIC_INTERVAL_MS` | Worker cadence for emitting host CPU, memory, filesystem, workload, and heartbeat metrics. | `60000` | Worker |
 | `EVELAND_OTEL_COLLECTOR_CONTAINER` | Stable container name for the managed OpenTelemetry Collector attached to Docker Agent telemetry networks. | `eveland-otel-collector` | Compose + worker |
+
+Agent capture and content settings remain revisioned System settings. They are
+not environment variables and do not alter user-authored instrumentation.
 
 ---
 

@@ -120,10 +120,6 @@ export function createPostgresSessionQueryStore({
       return ingestPostgresAgentEvent(database, observation);
     },
 
-    async ingestAgentEvent(observation) {
-      return ingestPostgresAgentEvent(database, observation);
-    },
-
     async listModelUsageEvents(sessionId) {
       const rows = await db
         .select()

@@ -85,9 +85,10 @@ whichever side later serves or deploys it — a mismatched mount would leave
 one side unable to find files the other wrote.
 The production Compose stack also runs a managed OpenTelemetry Collector. Its
 platform receiver is bound to host loopback, and its persistent sending queue
-uses the `eveland-otel-collector` volume. The Collector authenticates requests
-to the API's private Built-in OTLP endpoint with `EVELAND_OTLP_SERVICE_TOKEN`;
-the token must never be exposed to Agent deployments.
+uses the `eveland-otel-collector` volume. API, Gateway, and Worker authenticate
+to that receiver with `EVELAND_OTLP_SERVICE_TOKEN`; the Collector uses the same
+service credential for the API's private Built-in OTLP endpoint. The token must
+never be exposed to Agent deployments.
 
 Each Deployment receives only its own read-only Agent observability policy.
 Docker Deployments use an isolated bridge shared solely with the Collector;
@@ -196,7 +197,9 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
 | `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland`. |
 | `EVELAND_HOST_DATA_DIR` | `EVELAND_DATA_DIR` | Host-daemon view of the same data directory. Set this only when a containerized worker drives Docker through `/var/run/docker.sock`; native systemd workers use the same path on both sides. |
-| `EVELAND_OTLP_SERVICE_TOKEN` | *(unset)* | Required shared secret used only between the managed Collector and the API Built-in OTLP endpoint. Agents must not receive it. |
+| `EVELAND_OTLP_ENDPOINT` | `http://127.0.0.1:4318` | Service-authenticated platform OTLP/HTTP receiver used by API, Gateway, and Worker. |
+| `EVELAND_OTLP_SERVICE_TOKEN` | *(unset)* | Required shared secret for platform producers and Collector-to-API Built-in delivery. Agents must not receive it. |
+| `EVELAND_OTEL_METRIC_INTERVAL_MS` | `60000` | Platform SDK metric export interval. |
 | `EVELAND_OTEL_COLLECTOR_CONTAINER` | `eveland-otel-collector` | Stable name of the managed Collector container. |
 | `EVELAND_AGENT_BASE_DOMAINS` | `agent.localhost` | Comma-separated Host suffix allowlist used by Gateway; the first value is the canonical domain materialized into routes. Production normally uses one value such as `agents.example.com`. |
 | `EVELAND_GATEWAY_INTERNAL_URL` | `http://127.0.0.1:4080` | Private API/worker control URL for Playground and route-cache invalidation. |
@@ -293,8 +296,7 @@ token requests even when its exact origin is present in the CORS allowlist.
 | `WORKER_JOB_STALE_MS` | `120000` | Time without a heartbeat before a running job is re-queued after worker failure. Keep this above the heartbeat interval. |
 | `WORKER_JOB_RECOVERY_BATCH_SIZE` | `25` | Maximum stale jobs recovered per worker poll. |
 | `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
-| `EVELAND_HOST_METRIC_INTERVAL_MS` | `60000` | How often Worker persists host CPU, memory, load, data-filesystem, and inode measurements for Instance Health. |
-| `EVELAND_HOST_METRIC_RETENTION_MS` | `2592000000` | How long host metric samples are retained; the default is 30 days and expired samples are pruned daily. |
+| `EVELAND_HOST_METRIC_INTERVAL_MS` | `60000` | How often Worker emits host CPU, memory, load, data-filesystem, inode, workload, and heartbeat metrics through OTLP. |
 | `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from automatic or manual archive. Mutable route targets, non-expired SessionBindings, and active request leases are protected independently of age. Older unprotected stopped Deployments are swept automatically; archive removes both the runtime artifact and build directory. |
 | `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts each project's stored secrets before writing them into the deployment's `EnvironmentFile`. Must match the value configured on the API instance that encrypted them — a mismatch fails the deploy at secret-decrypt time. Never rely on the fallback dev key outside local development. |
 | `WORKFLOW_POSTGRES_URL` | *(unset)* | Platform-owned Postgres **base** URL for durable workflow worlds. The worker derives one database per project (`eveland_wf_<project>_<digest>`), creates and bootstraps it before any deployment process starts, and injects the derived URL — deployments never share a workflow database. The role in this URL needs `CREATEDB`. Required in production and reserved from Project Secret overrides. For systemd, use a host-reachable address such as `postgres://eveland:eveland@127.0.0.1:5432/eveland`. |
