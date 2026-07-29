@@ -8,7 +8,6 @@ import {
   processNextJob,
   processNextSourcePreflight,
   runWithJobHeartbeat,
-  resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
   type ScheduleDispatchInput,
 } from "./process.js";
@@ -230,7 +229,7 @@ describe("processNextJob", () => {
       const managedProjectDirs = [
         path.join(dataDir, "sources", project.id),
         path.join(dataDir, "builds", project.id),
-        path.join(dataDir, "observer", processSafeName(project.id)),
+        path.join(dataDir, "observability", processSafeName(project.id)),
         path.join(dataDir, "sandbox", processSafeName(project.id)),
       ];
       for (const directory of managedProjectDirs) {

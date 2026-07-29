@@ -298,23 +298,4 @@ describe("api app", () => {
     await expect(response.json()).resolves.toEqual({ ok: true, ...buildInfo });
   });
 
-  test("reports collector degradation separately from API liveness", async () => {
-    const app = createApp(createTestStore(), {
-      collectorHealth: () => ({
-        status: "degraded",
-        lastProcessedAt: null,
-        backlogEvents: 4,
-        backlogBytes: 2048,
-        oldestEventAge: 30_000,
-        quarantinedEvents: 1,
-        lastError: "invalid envelope",
-      }),
-    });
-
-    expect((await app.request("/health")).status).toBe(200);
-    const response = await app.request("/internal/collector/health");
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ status: "degraded", backlogEvents: 4 });
-  });
-
 });

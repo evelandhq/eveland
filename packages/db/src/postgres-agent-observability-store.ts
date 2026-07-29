@@ -288,7 +288,7 @@ export async function ingestPostgresAgentEvent(
         and(
           eq(sessionEvents.sessionNodeId, node.id),
           or(
-            eq(sessionEvents.observerEventId, observation.telemetryEventId),
+            eq(sessionEvents.telemetryEventId, observation.telemetryEventId),
             eq(sessionEvents.eventFingerprint, observation.eventFingerprint),
           ),
         ),
@@ -318,7 +318,7 @@ export async function ingestPostgresAgentEvent(
         id: createId("evt"),
         sessionId: sessionRow.id,
         sessionNodeId: node.id,
-        observerEventId: observation.telemetryEventId,
+        telemetryEventId: observation.telemetryEventId,
         eventFingerprint: observation.eventFingerprint,
         observedDeploymentId: observation.deploymentId,
         observedRuntimeInstanceId: runtimeInstanceId,

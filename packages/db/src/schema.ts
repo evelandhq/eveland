@@ -982,7 +982,7 @@ export const sessionEvents = pgTable(
     id: text("id").primaryKey(),
     sessionId: text("session_id").notNull().references(() => sessions.id),
     sessionNodeId: text("session_node_id").references(() => sessionNodes.id),
-    observerEventId: text("observer_event_id"),
+    telemetryEventId: text("telemetry_event_id"),
     eventFingerprint: text("event_fingerprint"),
     observedDeploymentId: text("observed_deployment_id").references(() => deployments.id),
     observedRuntimeInstanceId: text("observed_runtime_instance_id").references(
@@ -997,7 +997,7 @@ export const sessionEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("session_events_node_observer_idx").on(table.sessionNodeId, table.observerEventId),
+    uniqueIndex("session_events_node_telemetry_idx").on(table.sessionNodeId, table.telemetryEventId),
     uniqueIndex("session_events_node_fingerprint_idx").on(table.sessionNodeId, table.eventFingerprint),
   ],
 );

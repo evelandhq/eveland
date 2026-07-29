@@ -89,11 +89,11 @@ uses the `eveland-otel-collector` volume. The Collector authenticates requests
 to the API's private Built-in OTLP endpoint with `EVELAND_OTLP_SERVICE_TOKEN`;
 the token must never be exposed to Agent deployments.
 
-The existing observer outbox lives below `/var/lib/eveland/observer`. Each
-deployment can write only its own directory; the API starts that collector in
-embedded mode and reads the shared root. Its degradation is reported separately
-at `GET /internal/collector/health` and does not make the control-plane
-`/health` fail.
+Each Deployment receives only its own read-only Agent observability policy.
+Docker Deployments use an isolated bridge shared solely with the Collector;
+systemd Deployments reach the Agent receiver on host loopback and use distinct
+DynamicUser identities plus mount namespacing to prevent sibling credential
+access.
 Gateway listens on host port 4080 and is the only process Traefik forwards wildcard Agent
 hosts to. Agent processes remain on `127.0.0.1:41xxx`; never add those dynamic ports to
 Traefik or firewall rules. Start from `infra/traefik/agents.yml`, replace the example domain,
@@ -196,10 +196,6 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
 | `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland`. |
 | `EVELAND_HOST_DATA_DIR` | `EVELAND_DATA_DIR` | Host-daemon view of the same data directory. Set this only when a containerized worker drives Docker through `/var/run/docker.sock`; native systemd workers use the same path on both sides. |
-| `EVELAND_OBSERVER_ROOT` | `$EVELAND_DATA_DIR/observer` | API collector root shared with deployment observer outboxes. |
-| `EVELAND_COLLECTOR_MODE` | `embedded` | `embedded` starts collection with the API; `disabled` is for controlled maintenance and leaves envelopes queued on disk. |
-| `EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS` | `100` | Maximum distinct Eve sessions projected in one collector round. |
-| `EVELAND_COLLECTOR_MAX_BACKLOG_BYTES` | `1073741824` | Total queued observer bytes that trigger degraded health and an operator-visible alarm. |
 | `EVELAND_OTLP_SERVICE_TOKEN` | *(unset)* | Required shared secret used only between the managed Collector and the API Built-in OTLP endpoint. Agents must not receive it. |
 | `EVELAND_OTEL_COLLECTOR_CONTAINER` | `eveland-otel-collector` | Stable name of the managed Collector container. |
 | `EVELAND_AGENT_BASE_DOMAINS` | `agent.localhost` | Comma-separated Host suffix allowlist used by Gateway; the first value is the canonical domain materialized into routes. Production normally uses one value such as `agents.example.com`. |
@@ -502,15 +498,16 @@ does not inject a world and Eve keeps its local development world.
 ## How a deployment runs
 
 - Build: source is copied to `$EVELAND_DATA_DIR/builds/<project>/<release>`, then
-  Eveland injects its reserved observer hook and, when configured, the platform workflow-world
+  Eveland injects its reserved private OpenTelemetry hook and, when configured, the platform workflow-world
   wrapper into the copied release (never the imported source). The project install, pinned
   package-manager-aware world install, and `npx eve build` run as the unprivileged build user (`EVELAND_BUILD_USER`)
   inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
   PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`
-  with `User=eveland-app`, `ProtectSystem=strict`,
-  `ReadWritePaths=<releaseDir>`, `ReadWritePaths=<observerOutboxDir>`, and a further `ReadWritePaths=<sandboxCacheDir>` for the
-  project's `EVELAND_SANDBOX_CACHE_DIR` subdirectory, `PrivateTmp`, `NoNewPrivileges`,
+  with a deterministic per-Deployment `DynamicUser`, the `eveland-app` access
+  group, `ProtectSystem=strict`, a masked data root, writable binds for only
+  the release and sandbox cache, and a read-only bind for only that
+  Deployment's observability policy. It also uses `PrivateTmp`, `NoNewPrivileges`,
   `MemoryMax`, `CPUQuota`, `Restart=on-failure`. The app binds `127.0.0.1:<hostPort>`;
   secrets arrive via a root-owned 0600 `EnvironmentFile`.
 - Health: the worker polls `http://127.0.0.1:<hostPort>/eve/v1/health` until any

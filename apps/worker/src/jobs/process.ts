@@ -33,7 +33,6 @@ export type { ProcessJobOptions, ScheduleDispatchInput } from "./process-types.j
 export {
   allocateAvailableHostPort,
   invalidateGatewayRouteCache,
-  resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
 } from "./process-support.js";
 

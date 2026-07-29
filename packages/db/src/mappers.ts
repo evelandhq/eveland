@@ -499,7 +499,7 @@ export function sessionEventRowToSessionEvent(row: {
   type: string;
   payload: unknown;
   sessionNodeId: string | null;
-  observerEventId: string | null;
+  telemetryEventId: string | null;
   eventFingerprint: string | null;
   observedDeploymentId: string | null;
   observedRuntimeInstanceId: string | null;
@@ -514,7 +514,7 @@ export function sessionEventRowToSessionEvent(row: {
     type: row.type,
     payload: row.payload,
     sessionNodeId: row.sessionNodeId,
-    observerEventId: row.observerEventId,
+    telemetryEventId: row.telemetryEventId,
     eventFingerprint: row.eventFingerprint,
     observedDeploymentId: row.observedDeploymentId,
     observedRuntimeInstanceId: row.observedRuntimeInstanceId,

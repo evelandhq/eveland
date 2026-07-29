@@ -348,6 +348,9 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: ^2.10.0
         version: 2.10.0(@opentelemetry/api@1.9.1)
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.1
     devDependencies:
       eve:
         specifier: 0.27.8
@@ -470,9 +473,6 @@ importers:
       '@eveland/core':
         specifier: workspace:*
         version: link:../core
-      '@eveland/db':
-        specifier: workspace:*
-        version: link:../db
       protobufjs:
         specifier: ^7.6.5
         version: 7.6.5

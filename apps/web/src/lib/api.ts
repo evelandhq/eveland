@@ -182,7 +182,7 @@ export type SessionEvent = {
   type: string;
   payload: unknown;
   sessionNodeId: string | null;
-  observerEventId: string | null;
+  telemetryEventId: string | null;
   eventFingerprint: string | null;
   observedDeploymentId: string | null;
   sourceSequence: number | null;
@@ -208,16 +208,6 @@ export type SessionNode = {
   remoteUrl: string | null;
   resolutionStatus: "observed" | "unresolved";
   status: string;
-};
-
-export type CollectorHealth = {
-  status: "healthy" | "delayed" | "degraded";
-  lastProcessedAt: string | null;
-  backlogEvents: number;
-  backlogBytes: number;
-  oldestEventAge: number;
-  quarantinedEvents: number;
-  lastError: string | null;
 };
 
 export type ModelUsageEvent = {

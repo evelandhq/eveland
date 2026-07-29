@@ -37,12 +37,12 @@ import {
   parseEncryptedSecret,
   readGitCredentialPayload,
   removeManagedProjectFiles,
-  resolveObserverOutboxDirs,
   resolveRuntimeCommandContext,
   resolveSandboxCacheDirs,
   stopStartedProcessOnFailure,
 } from "./process-support.js";
 import type { ProcessJobOptions } from "./process-types.js";
+import { prepareDeploymentObservability } from "./process-observability.js";
 
 export async function processRuntimeJob(
   store: Store,
@@ -135,13 +135,16 @@ export async function processRuntimeJob(
       await adapter.stopProcess(deployment.containerName);
       // Same worker/Docker-host path pairing build_deploy uses.
       const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
-      const observerOutbox = resolveObserverOutboxDirs(
-        process.env,
-        project.id,
-        deployment.id,
-      );
       await mkdir(sandboxCache.workerDir, { recursive: true });
-      await mkdir(observerOutbox.workerDir, { recursive: true });
+      const observability = await prepareDeploymentObservability({
+        store,
+        env: process.env,
+        projectId: project.id,
+        releaseId: release.id,
+        deploymentId: deployment.id,
+        runtimeKind: adapter.name,
+        nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+      });
       // Tracks whether the restart's own startProcess (above stop notwithstanding)
       // actually came up, so a startProcess failure -- nothing running under this
       // name -- doesn't trigger a pointless (or misleading) extra stop call.
@@ -157,10 +160,10 @@ export async function processRuntimeJob(
             adapter.name === "docker"
               ? sandboxCache.hostDir
               : sandboxCache.workerDir,
-          observerOutboxDir:
+          observabilityPolicyDir:
             adapter.name === "docker"
-              ? observerOutbox.hostDir
-              : observerOutbox.workerDir,
+              ? observability.hostDir
+              : observability.workerDir,
         });
         restarted = true;
         await (options.waitForDeployment ?? waitForHttpHealth)({
@@ -411,13 +414,16 @@ export async function processRuntimeJob(
         persistedSourceFiles,
       );
       const sandboxCache = resolveSandboxCacheDirs(process.env, job.projectId);
-      const observerOutbox = resolveObserverOutboxDirs(
-        process.env,
-        job.projectId,
-        deployment.id,
-      );
       await mkdir(sandboxCache.workerDir, { recursive: true });
-      await mkdir(observerOutbox.workerDir, { recursive: true });
+      const observability = await prepareDeploymentObservability({
+        store,
+        env: process.env,
+        projectId: job.projectId,
+        releaseId: release.id,
+        deploymentId: deployment.id,
+        runtimeKind: runtime.name,
+        nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+      });
       await startRuntimeInstance(
         store,
         {
@@ -433,10 +439,10 @@ export async function processRuntimeJob(
               runtime.name === "docker"
                 ? sandboxCache.hostDir
                 : sandboxCache.workerDir,
-            observerOutboxDir:
+            observabilityPolicyDir:
               runtime.name === "docker"
-                ? observerOutbox.hostDir
-                : observerOutbox.workerDir,
+                ? observability.hostDir
+                : observability.workerDir,
           },
         },
         runtimeInstance.id,
@@ -547,13 +553,7 @@ export async function processRuntimeJob(
           process.env,
           job.projectId,
         );
-        const observerOutbox = resolveObserverOutboxDirs(
-          process.env,
-          job.projectId,
-          deployment.id,
-        );
         await mkdir(sandboxCache.workerDir, { recursive: true });
-        await mkdir(observerOutbox.workerDir, { recursive: true });
         const maxRuntimeMs = scheduleRunMaxRuntimeMs(options);
         failurePhase = "Deployment activation";
         await store.appendLog({
@@ -561,6 +561,15 @@ export async function processRuntimeJob(
           deploymentId: deployment.id,
           type: "runtime",
           line: `ScheduleRun ${run.id} activating ${schedule.key} on Deployment ${deployment.id} (Release ${release.id}, runtime=${deployment.runtimeKind}).`,
+        });
+        const observability = await prepareDeploymentObservability({
+          store,
+          env: process.env,
+          projectId: job.projectId,
+          releaseId: release.id,
+          deploymentId: deployment.id,
+          runtimeKind: runtime.name,
+          nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
         });
         const activation = await ensureDeploymentActive(
           store,
@@ -579,10 +588,10 @@ export async function processRuntimeJob(
                 runtime.name === "docker"
                   ? sandboxCache.hostDir
                   : sandboxCache.workerDir,
-              observerOutboxDir:
+              observabilityPolicyDir:
                 runtime.name === "docker"
-                  ? observerOutbox.hostDir
-                  : observerOutbox.workerDir,
+                  ? observability.hostDir
+                  : observability.workerDir,
             },
           },
           {

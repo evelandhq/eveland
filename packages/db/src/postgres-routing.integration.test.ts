@@ -1,4 +1,4 @@
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import type { AgentEventObservation } from "@eveland/core/observability";
 import { afterAll, describe, expect, test } from "vitest";
 import { createDatabase } from "./client.js";
 import { createPostgresStore } from "./postgres-store.js";
@@ -49,7 +49,7 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
     });
   }, 30_000);
 
-  test("materializes routes and merges a binding with child-first observer ingestion", async () => {
+  test("materializes routes and merges a binding with child-first telemetry ingestion", async () => {
     const store = createPostgresStore(database!);
     const project = await store.createProject({ name: `Gateway integration ${Date.now()}`, importKind: "zip" });
     const revision = await store.recordSourceRevision({
@@ -85,8 +85,8 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
       affinitySource: null,
     });
 
-    await store.ingestObserverEnvelope(envelope(deployment.id, "eve_gateway_child", "eve_gateway_root", "child"));
-    await store.ingestObserverEnvelope(envelope(deployment.id, "eve_gateway_root", null, "root"));
+    await store.ingestAgentEvent(envelope(deployment.id, "eve_gateway_child", "eve_gateway_root", "child"));
+    await store.ingestAgentEvent(envelope(deployment.id, "eve_gateway_root", null, "root"));
 
     await expect(store.findRouteByHostname(`${project.slug}.agent.localhost`)).resolves.toMatchObject({
       targets: [expect.objectContaining({ deploymentId: deployment.id, status: "running" })],
@@ -166,7 +166,7 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
       affinityFingerprint: "sha256-experiment",
       affinitySource: "version_key",
     });
-    await store.ingestObserverEnvelope(envelope(candidate.id, "eve_experiment_candidate", null, "experiment-candidate"));
+    await store.ingestAgentEvent(envelope(candidate.id, "eve_experiment_candidate", null, "experiment-candidate"));
     await expect(store.listSessions(project.id)).resolves.toContainEqual(expect.objectContaining({
       eveSessionId: "eve_experiment_candidate",
       deploymentId: candidate.id,
@@ -237,10 +237,9 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
   }, 30_000);
 });
 
-function envelope(deploymentId: string, eveSessionId: string, parentEveSessionId: string | null, name: string): ObserverEnvelopeV1 {
+function envelope(deploymentId: string, eveSessionId: string, parentEveSessionId: string | null, name: string): AgentEventObservation {
   return {
-    schemaVersion: 1,
-    observerEventId: `evt_${name}`,
+    telemetryEventId: `evt_${name}`,
     eventFingerprint: `fingerprint_${name}`,
     deploymentId,
     eveSessionId,

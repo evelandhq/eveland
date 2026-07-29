@@ -95,7 +95,7 @@ export async function removeManagedProjectFiles(
   const ownedPaths = new Set([
     path.join(root, "sources", projectId),
     path.join(root, "builds", projectId),
-    path.join(root, "observer", safeProjectId),
+    path.join(root, "observability", safeProjectId),
     path.join(root, "sandbox", safeProjectId),
   ]);
   const allowedSourceRoots = [
@@ -456,24 +456,6 @@ export async function allocateAvailableHostPort(
   throw new Error(
     `No available deployment host port in range ${startPort}-${endPort}.`,
   );
-}
-
-export function resolveObserverOutboxDirs(
-  env: NodeJS.ProcessEnv,
-  projectId: string,
-  deploymentId: string,
-): { workerDir: string; hostDir: string } {
-  const dataDir = path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data");
-  const hostDataDir = path.resolve(env.EVELAND_HOST_DATA_DIR ?? dataDir);
-  const suffix = path.join(
-    "observer",
-    processSafeName(projectId),
-    processSafeName(deploymentId),
-  );
-  return {
-    workerDir: path.join(dataDir, suffix),
-    hostDir: path.join(hostDataDir, suffix),
-  };
 }
 
 /**

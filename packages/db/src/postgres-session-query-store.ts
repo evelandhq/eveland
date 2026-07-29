@@ -6,7 +6,6 @@ import {
   sessionNodeRowToSessionNode,
   sessionRowToSession,
 } from "./mappers.js";
-import { ingestPostgresObserverEnvelope } from "./postgres-observer-store.js";
 import { ingestPostgresAgentEvent } from "./postgres-agent-observability-store.js";
 import {
   logs,
@@ -115,10 +114,6 @@ export function createPostgresSessionQueryStore({
         .where(eq(sessionNodes.rootSessionId, sessionId))
         .orderBy(sessionNodes.createdAt);
       return rows.map(sessionNodeRowToSessionNode);
-    },
-
-    async ingestObserverEnvelope(envelope) {
-      return ingestPostgresObserverEnvelope(database, envelope);
     },
 
     async ingestAgentEvent(observation) {

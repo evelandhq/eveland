@@ -9,6 +9,12 @@ import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
+import { AGENT_OBSERVABILITY_MOUNT_DIR } from "./observability/policy.js";
+import {
+  ensureAgentTelemetryNetwork,
+  removeAgentTelemetryNetwork,
+  resolveAgentTelemetryNetworkName,
+} from "./docker/agent-network.js";
 
 export type DockerBuildInput = {
   contextDir: string;
@@ -23,10 +29,12 @@ export type DockerRunInput = {
   hostPort: number;
   sandboxEnabled: boolean;
   sandboxCacheDir: string;
-  observerOutboxDir: string;
+  observabilityPolicyDir: string;
   env: Record<string, string>;
   command: string;
 };
+
+const defaultCollectorContainerName = "eveland-otel-collector";
 
 const DOCKER_BWRAP_SECURITY_ARGS = [
   "--cap-drop",
@@ -49,6 +57,8 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     input.containerName,
     "--restart",
     "unless-stopped",
+    "--network",
+    resolveAgentTelemetryNetworkName(input.containerName),
   ];
 
   if (input.sandboxEnabled) {
@@ -68,7 +78,7 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     "--publish",
     `127.0.0.1:${input.hostPort}:${input.internalPort}`,
     "--volume",
-    `${input.observerOutboxDir}:/var/lib/eveland-observer`,
+    `${input.observabilityPolicyDir}:${AGENT_OBSERVABILITY_MOUNT_DIR}:ro`,
   );
 
   if (input.sandboxEnabled) {
@@ -77,8 +87,6 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
       `${input.sandboxCacheDir}:/var/lib/eveland-sandbox`,
     );
   }
-
-  args.push("--env", "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer");
 
   if (input.sandboxEnabled) {
     args.push(
@@ -239,11 +247,14 @@ export function buildDockerStartCommand(context: RuntimeCommandContext, internal
 
 export type DockerAdapterConfig = {
   internalPort: number;
+  collectorContainerName?: string;
   /** Resolves the built bwrap backend only when an Eve release is built. */
   backendDistDir: () => string;
 };
 
 export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter {
+  const collectorContainerName =
+    config.collectorContainerName ?? defaultCollectorContainerName;
   const adapter: RuntimeAdapter = {
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
@@ -306,18 +317,30 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
       }
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
-      const log = await dockerRun({
-        containerName: input.processName,
-        imageTag: input.releaseRef,
-        internalPort: config.internalPort,
-        hostPort: input.port,
-        sandboxEnabled: input.commandContext.isEveProject,
-        sandboxCacheDir: input.sandboxCacheDir,
-        observerOutboxDir: input.observerOutboxDir,
-        env: input.env,
-        command: buildDockerStartCommand(input.commandContext, config.internalPort),
-      });
-      return { internalPort: config.internalPort, log };
+      await ensureAgentTelemetryNetwork(
+        input.processName,
+        collectorContainerName,
+      );
+      try {
+        const log = await dockerRun({
+          containerName: input.processName,
+          imageTag: input.releaseRef,
+          internalPort: config.internalPort,
+          hostPort: input.port,
+          sandboxEnabled: input.commandContext.isEveProject,
+          sandboxCacheDir: input.sandboxCacheDir,
+          observabilityPolicyDir: input.observabilityPolicyDir,
+          env: input.env,
+          command: buildDockerStartCommand(input.commandContext, config.internalPort),
+        });
+        return { internalPort: config.internalPort, log };
+      } catch (error) {
+        await removeAgentTelemetryNetwork(
+          input.processName,
+          collectorContainerName,
+        ).catch(() => undefined);
+        throw error;
+      }
     },
     async inspectProcess(processName) {
       const result = await execa("docker", ["inspect", "--format", "{{.State.Status}}", processName], {
@@ -372,6 +395,16 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
     },
     async stopProcess(processName: string): Promise<void> {
       await dockerStopAndRemove(processName);
+      await removeAgentTelemetryNetwork(
+        processName,
+        collectorContainerName,
+      ).catch((error) => {
+        console.warn(
+          `Could not clean up Agent telemetry network for "${processName}"; the orphan sweep will retry: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
     },
     async removeRelease(releaseRef: string): Promise<void> {
       const result = await execa("docker", ["image", "rm", releaseRef], { all: true, reject: false });

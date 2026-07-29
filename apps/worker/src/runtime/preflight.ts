@@ -1,6 +1,7 @@
 import { execa } from "execa";
 import { assertValidSecretKey } from "@eveland/core/server/secrets";
 import { access, mkdir as fsMkdir, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { SANDBOX_TOOLCHAIN_COMMANDS } from "./sandbox-toolchain.js";
 import { resolveBackendDistDir, resolveRuntimeKind } from "./select.js";
@@ -16,8 +17,10 @@ export type PreflightDeps = {
   mkdir: (p: string) => Promise<void>;
   commandExists: (name: string) => Promise<boolean>;
   userExists: (name: string) => Promise<boolean>;
+  groupExists: (name: string) => Promise<boolean>;
   canTraverseAs: (user: string, dir: string) => Promise<boolean>;
   backendDistDir: () => string;
+  probeDockerNetworkPool: () => Promise<string | undefined>;
 };
 
 async function defaultPathExists(p: string): Promise<boolean> {
@@ -54,9 +57,51 @@ async function defaultUserExists(name: string): Promise<boolean> {
   return result.exitCode === 0;
 }
 
+async function defaultGroupExists(name: string): Promise<boolean> {
+  const result = await execa(
+    "sh",
+    ["-c", 'getent group "$1" >/dev/null 2>&1', "preflight", name],
+    { reject: false },
+  );
+  return result.exitCode === 0;
+}
+
 async function defaultCanTraverseAs(user: string, dir: string): Promise<boolean> {
   const result = await execa("runuser", ["-u", user, "--", "test", "-x", dir], { reject: false });
   return result.exitCode === 0;
+}
+
+export async function probeDockerNetworkPool(): Promise<
+  string | undefined
+> {
+  const networkName =
+    `eveland-agent-preflight-${randomUUID()}`;
+  const create = await execa(
+    "docker",
+    [
+      "network",
+      "create",
+      "--label",
+      "com.eveland.managed=preflight",
+      networkName,
+    ],
+    { all: true, reject: false },
+  );
+  if (create.failed) {
+    return create.all?.trim() || "docker network create failed";
+  }
+  const remove = await execa(
+    "docker",
+    ["network", "rm", networkName],
+    { all: true, reject: false },
+  );
+  if (remove.failed) {
+    return (
+      remove.all?.trim() ||
+      "Docker allocated the preflight network but could not remove it."
+    );
+  }
+  return undefined;
 }
 
 function defaultDeps(env: NodeJS.ProcessEnv): PreflightDeps {
@@ -69,8 +114,10 @@ function defaultDeps(env: NodeJS.ProcessEnv): PreflightDeps {
     mkdir: defaultMkdir,
     commandExists: defaultCommandExists,
     userExists: defaultUserExists,
+    groupExists: defaultGroupExists,
     canTraverseAs: defaultCanTraverseAs,
     backendDistDir: resolveBackendDistDir,
+    probeDockerNetworkPool,
   };
 }
 
@@ -141,7 +188,11 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   const appUser = deps.env.EVELAND_APP_USER ?? "eveland-app";
   const appUserExists = await deps.userExists(appUser);
   if (!appUserExists) {
-    issues.push(`App user "${appUser}" does not exist. Create it (e.g. "useradd --system --no-create-home ${appUser}") before starting the worker.`);
+    issues.push(`App user "${appUser}" does not exist. Create it with a same-named group (e.g. "useradd --system --user-group --no-create-home ${appUser}") before starting the worker.`);
+  } else if (!(await deps.groupExists(appUser))) {
+    issues.push(
+      `Access group "${appUser}" does not exist. Dynamic Deployment users require a same-named group; recreate or update the app user with "--user-group" before starting the worker.`,
+    );
   }
 
   // 6b. The build user exists -- npm ci/npx eve build's third-party lifecycle
@@ -222,11 +273,21 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
 export async function assertWorkerPreflight(env: NodeJS.ProcessEnv, overrides: Partial<PreflightDeps> = {}): Promise<void> {
   assertValidSecretKey(env.APP_SECRET_KEY ?? devSecretKey);
   assertSchedulerPreflight(env);
-  if (resolveRuntimeKind(env) !== "systemd") {
+  const runtimeKind = resolveRuntimeKind(env);
+  const deps: PreflightDeps = { ...defaultDeps(env), ...overrides };
+  if (runtimeKind === "docker") {
+    const networkPoolIssue =
+      await deps.probeDockerNetworkPool();
+    if (networkPoolIssue) {
+      throw new Error(
+        "docker runtime preflight failed: Docker could not allocate and release an Agent bridge network. " +
+          "Configure a non-overlapping default-address-pools range in /etc/docker/daemon.json as documented in docs/deploy/linux.md. " +
+          `Docker reported: ${networkPoolIssue}`,
+      );
+    }
     return;
   }
 
-  const deps: PreflightDeps = { ...defaultDeps(env), ...overrides };
   const issues = await collectSystemdPreflightIssues(deps);
   if (issues.length > 0) {
     throw new Error(`systemd runtime preflight failed:\n${issues.map((issue) => `- ${issue}`).join("\n")}`);

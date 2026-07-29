@@ -1,4 +1,4 @@
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
+import type { AgentEventObservation } from "@eveland/core/observability";
 import type { DeploymentRecord } from "@eveland/core/contracts";
 import { describe, expect, test } from "vitest";
 import { createTestStore } from "./vitest-store.js";
@@ -280,7 +280,7 @@ describe("routing repository", () => {
     await expect(store.findRouteByHostname(`${project.slug}.agents.example.com`)).resolves.toMatchObject({ kind: "project" });
   });
 
-  test("binding a Gateway session upgrades observer provenance without creating a duplicate root", async () => {
+  test("binding a Gateway session upgrades telemetry provenance without creating a duplicate root", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Bound Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
@@ -302,7 +302,7 @@ describe("routing repository", () => {
       runtimeKind: "docker",
     });
     const [route] = await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
-    await store.ingestObserverEnvelope(envelope(deployment.id));
+    await store.ingestAgentEvent(envelope(deployment.id));
 
     await store.bindSession({
       projectId: project.id,
@@ -390,10 +390,9 @@ describe("routing repository", () => {
   });
 });
 
-function envelope(deploymentId: string): ObserverEnvelopeV1 {
+function envelope(deploymentId: string): AgentEventObservation {
   return {
-    schemaVersion: 1,
-    observerEventId: "evt_gateway",
+    telemetryEventId: "evt_gateway",
     eventFingerprint: "fingerprint_gateway",
     deploymentId,
     eveSessionId: "eve_gateway",

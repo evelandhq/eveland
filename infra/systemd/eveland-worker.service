@@ -13,8 +13,8 @@ After=network-online.target
 
 [Service]
 Type=exec
-# Root on purpose: the worker drives systemd-run, systemctl and chown. Deployed
-# agents themselves run unprivileged (User=eveland-app transient units).
+# Root on purpose: the worker drives systemd-run, systemctl and chown. Each
+# deployed Agent runs under its own unprivileged systemd DynamicUser.
 User=root
 WorkingDirectory=/opt/eveland
 EnvironmentFile=/etc/eveland/eveland-worker.env
