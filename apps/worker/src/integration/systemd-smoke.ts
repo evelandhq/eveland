@@ -238,7 +238,9 @@ try {
       && log.line.includes("ActiveState=")
       && log.line.includes("Recent logs:"),
   );
-  const failureIndex = failRuntimeLogs.findIndex((log) => log.line.includes("did not respond within"));
+  const failureIndex = failRuntimeLogs.findIndex(
+    (log) => log.line.includes("did not respond within") || log.line.includes("did not bind"),
+  );
   if (diagnosticIndex < 0 || diagnosticIndex >= failureIndex) {
     throw new Error(
       `Expected systemd diagnostics before the health failure log, got: ${JSON.stringify(failRuntimeLogs.map((log) => log.line))}`,
