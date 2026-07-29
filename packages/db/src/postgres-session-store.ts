@@ -23,7 +23,7 @@ import type {
   PostgresDomain,
   PostgresStoreContext,
 } from "./postgres-store-support.js";
-import { modelUsageRowToModelUsageEvent } from "./postgres-store-support.js";
+import { appendSessionEventRow, modelUsageRowToModelUsageEvent, moveSessionEventsForMerge } from "./postgres-store-support.js";
 
 export function createPostgresSessionStore({
   db,
@@ -77,20 +77,14 @@ export function createPostgresSessionStore({
     },
 
     async appendSessionEvent(sessionId, type, payload) {
-      const existingEvents = await db
-        .select({ index: sessionEvents.index })
-        .from(sessionEvents)
-        .where(eq(sessionEvents.sessionId, sessionId));
-      const [row] = await db
-        .insert(sessionEvents)
-        .values({
+      const row = await db.transaction((tx) =>
+        appendSessionEventRow(tx, {
           id: createId("evt"),
           sessionId,
-          index: existingEvents.length,
           type,
           payload,
-        })
-        .returning();
+        }),
+      );
 
       if (!row) {
         throw new Error("Failed to append session event.");
@@ -199,10 +193,7 @@ export function createPostgresSessionStore({
               .update(sessionNodes)
               .set({ rootSessionId: sessionId })
               .where(eq(sessionNodes.rootSessionId, observed.id));
-            await tx
-              .update(sessionEvents)
-              .set({ sessionId })
-              .where(eq(sessionEvents.sessionId, observed.id));
+            await moveSessionEventsForMerge(tx, observed.id, sessionId);
             await tx
               .update(modelUsageEvents)
               .set({ sessionId })
@@ -325,17 +316,12 @@ export function createPostgresSessionStore({
           .set({ status: "failed", updatedAt: now })
           .where(inArray(sessionNodes.id, nodeIds));
         for (const session of interrupted) {
-          const [count] = await tx
-            .select({ value: sql<number>`count(*)::int` })
-            .from(sessionEvents)
-            .where(eq(sessionEvents.sessionId, session.sessionId));
-          await tx.insert(sessionEvents).values({
+          await appendSessionEventRow(tx, {
             id: createId("evt"),
             sessionId: session.sessionId,
             sessionNodeId: session.nodeId,
             observedDeploymentId: session.deploymentId,
             observedRuntimeInstanceId: runtimeInstanceId,
-            index: count?.value ?? 0,
             type: "platform.runtime_lost",
             payload: { runtimeInstanceId, reason },
             eventAt: now,

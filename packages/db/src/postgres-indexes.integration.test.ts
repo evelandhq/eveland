@@ -86,3 +86,35 @@ describe.skipIf(!database)("hot-path index usage", () => {
     expect(plan).toContain("logs_project_created_idx");
   });
 });
+
+describe.skipIf(!database)("concurrent Session event appends", () => {
+  test("assign distinct indices under real concurrency", async () => {
+    const { createPostgresStore } = await import("./postgres-store.js");
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({
+      name: `Event index integration ${Date.now()}`,
+      importKind: "zip",
+    });
+    try {
+      const session = await store.createSession({
+        projectId: project.id,
+        trigger: "playground",
+      });
+
+      // PGlite is single-connection and cannot express this race at all: the
+      // pooled driver is the only place the old count(*) assignment could be
+      // caught handing two appends the same index.
+      const appends = await Promise.all(
+        Array.from({ length: 12 }, (_, attempt) =>
+          store.appendSessionEvent(session.id, "platform.probe", { attempt }),
+        ),
+      );
+
+      const indices = appends.map((event) => event.index).sort((a, b) => a - b);
+      expect(new Set(indices).size).toBe(appends.length);
+      expect(indices).toEqual(Array.from({ length: appends.length }, (_, i) => i));
+    } finally {
+      await store.deleteProject(project.id);
+    }
+  });
+});

@@ -387,7 +387,12 @@ describe("Agent observability ingestion repository", () => {
     expect(completed).toMatchObject({ id: gatewaySession.id, trigger: "playground", rootNodeId: observed.node.id });
     await expect(store.listSessions(projectId)).resolves.toHaveLength(1);
     await expect(store.listSessionNodes(gatewaySession.id)).resolves.toHaveLength(1);
-    await expect(store.listSessionEvents(gatewaySession.id)).resolves.toHaveLength(2);
+    // A merge re-parents the observed Session's events onto the surviving one.
+    // Both numbered their events from zero, so they must be renumbered rather
+    // than merely re-pointed: `index` is the replay ordering key.
+    const mergedEvents = await store.listSessionEvents(gatewaySession.id);
+    expect(mergedEvents).toHaveLength(2);
+    expect(mergedEvents.map((event) => event.index)).toEqual([0, 1]);
   });
 });
 

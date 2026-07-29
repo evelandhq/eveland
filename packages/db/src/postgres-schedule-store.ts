@@ -39,6 +39,7 @@ import type {
   PostgresDomain,
   PostgresStoreContext,
 } from "./postgres-store-support.js";
+import { appendSessionEventRow } from "./postgres-store-support.js";
 
 export function createPostgresScheduleStore({
   db,
@@ -898,14 +899,9 @@ export function createPostgresScheduleStore({
             ),
           );
         for (const execution of interrupted) {
-          const [count] = await tx
-            .select({ value: sql<number>`count(*)::int` })
-            .from(sessionEvents)
-            .where(eq(sessionEvents.sessionId, execution.sessionId));
-          await tx.insert(sessionEvents).values({
+          await appendSessionEventRow(tx, {
             id: createId("evt"),
             sessionId: execution.sessionId,
-            index: count?.value ?? 0,
             type: "platform.runtime_lost",
             payload: { runtimeInstanceId, reason },
             eventAt: now,
@@ -1020,14 +1016,9 @@ export function createPostgresScheduleStore({
               ),
             );
           for (const execution of executions) {
-            const [count] = await tx
-              .select({ value: sql<number>`count(*)::int` })
-              .from(sessionEvents)
-              .where(eq(sessionEvents.sessionId, execution.sessionId));
-            await tx.insert(sessionEvents).values({
+            await appendSessionEventRow(tx, {
               id: createId("evt"),
               sessionId: execution.sessionId,
-              index: count?.value ?? 0,
               type: "platform.runtime_deadline_exceeded",
               payload: {
                 runtimeInstanceId: expired.runtimeInstanceId,
