@@ -45,6 +45,13 @@ export async function resolveTarget(
   }
   const eligible = route.targets.filter((target) => target.status === "running" || (allowStopped && target.status === "stopped"));
   if (eligible.length === 0) return null;
+  // Partially degraded two-target policy: the filtered subset no longer
+  // carries the full 10,000 basis points, and weighted selection over it
+  // would throw -- turning every unpinned request into a 500 while a healthy
+  // target exists. The one surviving target takes all new sessions, even at
+  // weight 0: failing over beats refusing, and pinned sessions keep using
+  // their binding regardless.
+  if (eligible.length < route.targets.length) return eligible[0] ?? null;
   return selectWeightedTarget(eligible, affinityKey, { id: route.id, policyRevision: route.policyRevision });
 }
 
