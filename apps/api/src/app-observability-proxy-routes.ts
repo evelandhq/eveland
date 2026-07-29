@@ -9,7 +9,10 @@ import {
   requestExternalObservabilityDestination,
 } from "@eveland/core/server/observability";
 import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
-import { runWithPlatformTracingSuppressed } from "@eveland/platform-observability";
+import {
+  resolvePlatformOtlpServiceToken,
+  runWithPlatformTracingSuppressed,
+} from "@eveland/platform-observability";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { isServiceRequest } from "./app-support.js";
 import { prepareExternalOtlpJson } from "./observability/egress.js";
@@ -36,7 +39,8 @@ export function registerObservabilityProxyRoute(input: {
     "/internal/observability/destinations/:destinationId/v1/:signal",
     async (c) => {
       const token =
-        options.otlpServiceToken ?? process.env.EVELAND_OTLP_SERVICE_TOKEN;
+        options.otlpServiceToken ??
+        resolvePlatformOtlpServiceToken(process.env);
       if (!isServiceRequest(c.req.header("authorization"), token)) {
         return c.json({ error: "Not found" }, 404);
       }
