@@ -356,59 +356,66 @@ export function createPostgresJobSourceStore({
     },
 
     async recordSourceRevision(input) {
-      const [revisionRow] = await db
-        .insert(sourceRevisions)
-        .values({
-          id: createId("src"),
-          projectId: input.projectId,
-          kind: input.kind,
-          commitSha: input.commitSha ?? null,
-          sourcePath: input.sourcePath,
-          summary: input.summary,
-          envVars: input.envVars,
-        })
-        .returning();
-
-      if (!revisionRow) {
-        throw new Error("Failed to create source revision.");
-      }
-
-      if (input.files.length > 0) {
-        await db.insert(sourceFiles).values(
-          input.files.map((file) => ({
-            id: createId("file"),
-            revisionId: revisionRow.id,
-            path: file.path,
-            content: file.content,
-            size: Buffer.byteLength(file.content),
-          })),
-        );
-      }
-
-      await db
-        .delete(schedules)
-        .where(eq(schedules.projectId, input.projectId));
-      if (input.schedules.length > 0) {
-        await db.insert(schedules).values(
-          input.schedules.map((schedule) => ({
-            id: createId("sch"),
+      // Recording a revision is all-or-nothing: it replaces the project's
+      // schedules and then repoints the project at the new revision. Run
+      // outside a transaction, a failure between those steps left a project
+      // with no schedules, or a source pointer disagreeing with what is
+      // actually stored.
+      return db.transaction(async (tx) => {
+        const [revisionRow] = await tx
+          .insert(sourceRevisions)
+          .values({
+            id: createId("src"),
             projectId: input.projectId,
-            ...schedule,
-            nextRunAt: schedule.nextRunAt ? new Date(schedule.nextRunAt) : null,
-          })),
-        );
-      }
+            kind: input.kind,
+            commitSha: input.commitSha ?? null,
+            sourcePath: input.sourcePath,
+            summary: input.summary,
+            envVars: input.envVars,
+          })
+          .returning();
 
-      await db
-        .update(projects)
-        .set({
-          sourceRevisionId: revisionRow.id,
-          status: sql`case when ${projects.deploymentId} is null then 'imported' else ${projects.status} end`,
-          updatedAt: new Date(),
-        })
-        .where(eq(projects.id, input.projectId));
+        if (!revisionRow) {
+          throw new Error("Failed to create source revision.");
+        }
 
-      return sourceRevisionRowToSourceRevision(revisionRow);
+        if (input.files.length > 0) {
+          await tx.insert(sourceFiles).values(
+            input.files.map((file) => ({
+              id: createId("file"),
+              revisionId: revisionRow.id,
+              path: file.path,
+              content: file.content,
+              size: Buffer.byteLength(file.content),
+            })),
+          );
+        }
+
+        await tx
+          .delete(schedules)
+          .where(eq(schedules.projectId, input.projectId));
+        if (input.schedules.length > 0) {
+          await tx.insert(schedules).values(
+            input.schedules.map((schedule) => ({
+              id: createId("sch"),
+              projectId: input.projectId,
+              ...schedule,
+              nextRunAt: schedule.nextRunAt ? new Date(schedule.nextRunAt) : null,
+            })),
+          );
+        }
+
+        await tx
+          .update(projects)
+          .set({
+            sourceRevisionId: revisionRow.id,
+            status: sql`case when ${projects.deploymentId} is null then 'imported' else ${projects.status} end`,
+            updatedAt: new Date(),
+          })
+          .where(eq(projects.id, input.projectId));
+
+        return sourceRevisionRowToSourceRevision(revisionRow);
+      });
     },
 
     async getCurrentSourceRevision(projectId) {
