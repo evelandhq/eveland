@@ -7,6 +7,7 @@ import {
 } from "@eveland/core/observability";
 import type { SessionStatus, SessionTrigger } from "@eveland/core/contracts";
 import type { StoreDatabase } from "./client.js";
+import { appendSessionEventRow, moveSessionEventsForMerge } from "./postgres-store-support.js";
 import {
   sessionEventRowToSessionEvent,
   sessionNodeRowToSessionNode,
@@ -308,28 +309,19 @@ export async function ingestPostgresAgentEvent(
       typeof eventRecord?.type === "string" ? eventRecord.type : "event";
     const payload =
       recordValue(eventRecord?.data) ?? eventRecord ?? observation.event;
-    const [countRow] = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(sessionEvents)
-      .where(eq(sessionEvents.sessionId, sessionRow.id));
-    const [eventRow] = await tx
-      .insert(sessionEvents)
-      .values({
-        id: createId("evt"),
-        sessionId: sessionRow.id,
-        sessionNodeId: node.id,
-        telemetryEventId: observation.telemetryEventId,
-        eventFingerprint: observation.eventFingerprint,
-        observedDeploymentId: observation.deploymentId,
-        observedRuntimeInstanceId: runtimeInstanceId,
-        sourceSequence: observation.sourceSequence,
-        index: countRow?.count ?? 0,
-        type,
-        payload,
-        eventAt: new Date(observation.eventAt),
-      })
-      .returning();
-    if (!eventRow) throw new Error("Failed to insert Agent telemetry event.");
+    const eventRow = await appendSessionEventRow(tx, {
+      id: createId("evt"),
+      sessionId: sessionRow.id,
+      sessionNodeId: node.id,
+      telemetryEventId: observation.telemetryEventId,
+      eventFingerprint: observation.eventFingerprint,
+      observedDeploymentId: observation.deploymentId,
+      observedRuntimeInstanceId: runtimeInstanceId,
+      sourceSequence: observation.sourceSequence,
+      type,
+      payload,
+      eventAt: new Date(observation.eventAt),
+    });
 
     const projectedStatus = eventStatus(type, node.status);
     const runtime =
@@ -479,10 +471,7 @@ export async function ingestPostgresAgentEvent(
               .update(sessionNodes)
               .set({ rootSessionId: sessionRow!.id })
               .where(eq(sessionNodes.rootSessionId, oldRootSessionId));
-            await tx
-              .update(sessionEvents)
-              .set({ sessionId: sessionRow!.id })
-              .where(eq(sessionEvents.sessionId, oldRootSessionId));
+            await moveSessionEventsForMerge(tx, oldRootSessionId, sessionRow!.id);
             await tx
               .update(modelUsageEvents)
               .set({ sessionId: sessionRow!.id })

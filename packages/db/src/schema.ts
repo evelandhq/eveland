@@ -1032,6 +1032,11 @@ export const sessionEvents = pgTable(
   (table) => [
     uniqueIndex("session_events_node_telemetry_idx").on(table.sessionNodeId, table.telemetryEventId),
     uniqueIndex("session_events_node_fingerprint_idx").on(table.sessionNodeId, table.eventFingerprint),
+    // `index` is the replay/transcript ordering key, so a duplicate silently
+    // corrupts event order. Appends serialize on the parent Session row; this
+    // constraint is the backstop that makes any path which forgets to do so
+    // fail loudly instead. It also serves `where session_id = ? order by index`.
+    uniqueIndex("session_events_session_index_idx").on(table.sessionId, table.index),
   ],
 );
 
