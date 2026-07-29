@@ -576,6 +576,11 @@ describe("web application shell", () => {
     const activity = source("../components/agent-activity.tsx")
 
     expect(page).toContain("<SessionReplay")
+    // Built-in stores no raw Agent spans, so the detail page has no span tree; the
+    // node list and usage read models are what remain.
+    expect(page).toContain("getSessionNodes(sessionId)")
+    expect(page).toContain("getSessionUsage(sessionId)")
+    expect(page).not.toContain("SessionTraceView")
     expect(replay).toContain("buildSessionTranscript")
     expect(replay).toContain("groupTranscriptItems")
     expect(replay).toContain("<AgentActivity")

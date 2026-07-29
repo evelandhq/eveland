@@ -97,7 +97,7 @@ export function DeleteProjectAction({
           <AlertDialogTitle>{retry ? "Retry permanent deletion?" : "Permanently delete this project?"}</AlertDialogTitle>
           <AlertDialogDescription>
             This stops every deployment and removes routes, source snapshots, releases, sessions, usage, secrets, logs,
-            observability policy, and sandbox workspaces. This action cannot be undone.
+            telemetry data, and sandbox workspaces. This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <form className="flex flex-col gap-6" onSubmit={submit}>
