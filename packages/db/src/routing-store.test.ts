@@ -151,7 +151,7 @@ describe("routing repository", () => {
     });
 
     const policy = await store.getDeploymentRetention(project.id, 3, {
-      now: new Date("2026-07-30T00:00:00.000Z"),
+      now: new Date(Date.now() + 86_400_001),
       playgroundIdleTtlMs: 86_400_000,
       apiIdleTtlMs: 604_800_000,
     });
