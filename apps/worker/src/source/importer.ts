@@ -10,9 +10,11 @@ export type ImportGitInput = {
   retryDelayMs?: number;
   onRetry?: (nextAttempt: number, detail: string) => void | Promise<void>;
   credential?: { host: string; token: string };
+  signal?: AbortSignal;
 };
 
 export async function importGitSource(input: ImportGitInput): Promise<void> {
+  input.signal?.throwIfAborted();
   const credentialEnv = gitCredentialEnv(input.gitUrl, input.credential);
   await mkdir(path.dirname(input.targetDir), { recursive: true });
   const timeoutMs = input.timeoutMs ?? Number(process.env.EVELAND_GIT_CLONE_TIMEOUT_MS ?? 120_000);
@@ -21,19 +23,24 @@ export async function importGitSource(input: ImportGitInput): Promise<void> {
   const configuredDelay = input.retryDelayMs ?? Number(process.env.EVELAND_GIT_CLONE_RETRY_DELAY_MS ?? 1_000);
   const retryDelayMs = Number.isFinite(configuredDelay) ? Math.max(0, configuredDelay) : 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    input.signal?.throwIfAborted();
     try {
       await execa("git", ["clone", "--depth", "1", input.gitUrl, input.targetDir], {
         all: true,
         env: { GIT_TERMINAL_PROMPT: "0", ...credentialEnv },
         timeout: timeoutMs,
+        ...(input.signal ? { cancelSignal: input.signal } : {}),
       });
+      input.signal?.throwIfAborted();
       return;
     } catch (error) {
       await rm(input.targetDir, { recursive: true, force: true });
+      input.signal?.throwIfAborted();
       const detail = gitErrorOutput(error, input.credential?.token);
       if (attempt < maxAttempts && isTransientGitError(error, detail)) {
         await input.onRetry?.(attempt + 1, detail || `timeout after ${timeoutMs}ms`);
-        await delay(retryDelayMs * 2 ** (attempt - 1));
+        input.signal?.throwIfAborted();
+        await delay(retryDelayMs * 2 ** (attempt - 1), input.signal);
         continue;
       }
       if (isTimedOutError(error)) {
@@ -49,11 +56,17 @@ export async function importGitSource(input: ImportGitInput): Promise<void> {
   }
 }
 
-export async function getGitCommitSha(sourceDir: string): Promise<string | null> {
+export async function getGitCommitSha(
+  sourceDir: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  signal?.throwIfAborted();
   const result = await execa("git", ["rev-parse", "HEAD"], {
     cwd: sourceDir,
     reject: false,
+    ...(signal ? { cancelSignal: signal } : {}),
   });
+  signal?.throwIfAborted();
   return result.exitCode === 0 ? result.stdout.trim() : null;
 }
 
@@ -98,6 +111,17 @@ function isTransientGitError(error: unknown, detail: string): boolean {
   return isTimedOutError(error) || /could not resolve host|failed to connect|connection (?:reset|timed out)|tls|http (?:500|502|503|504)/i.test(detail);
 }
 
-function delay(durationMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, durationMs));
+function delay(durationMs: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, durationMs);
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }

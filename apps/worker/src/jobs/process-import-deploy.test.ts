@@ -5,12 +5,14 @@ import {
   allocateAvailableHostPort,
   cleanupExpiredSourcePreflights,
   invalidateGatewayRouteCache,
+  JobLeaseLostError,
   processNextJob,
   processNextSourcePreflight,
   runWithJobHeartbeat,
   resolveSandboxCacheDirs,
   type ScheduleDispatchInput,
 } from "./process.js";
+import { processJob } from "./process-job.js";
 import { processSafeName, type RuntimeAdapter } from "../runtime/types.js";
 import { deriveProjectWorkflowUrl } from "../runtime/workflow-world-bootstrap.js";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -21,8 +23,76 @@ import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { DeploymentRecord } from "@eveland/core/contracts";
 import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
 import { createFixtureEveProject } from "./process.test-support.js";
+import { execa } from "execa";
 
 describe("processNextJob", () => {
+  test("a fenced import attempt creates no source revision", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Fenced Import Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const job = await store.claimNextJob("worker-old");
+    const controller = new AbortController();
+    const leaseLost = new JobLeaseLostError();
+    controller.abort(leaseLost);
+
+    await expect(
+      processJob(store, job!, { signal: controller.signal }),
+    ).rejects.toBe(leaseLost);
+    await expect(
+      store.getCurrentSourceRevision(project.id),
+    ).resolves.toBeNull();
+    await expect(store.listLogs(project.id, "build")).resolves.toEqual([]);
+  });
+
+  test("isolates Git source directories by claim attempt", async () => {
+    const store = createTestStore();
+    const dataDir = await mkdtemp(
+      path.join(os.tmpdir(), "eveland-attempt-import-"),
+    );
+    const gitSource = await createFixtureEveProject();
+    await execa("git", ["init", "--initial-branch=main"], { cwd: gitSource });
+    await execa("git", ["config", "user.email", "worker@example.test"], {
+      cwd: gitSource,
+    });
+    await execa("git", ["config", "user.name", "Worker Test"], {
+      cwd: gitSource,
+    });
+    await execa("git", ["add", "."], { cwd: gitSource });
+    await execa("git", ["commit", "-m", "fixture"], { cwd: gitSource });
+    const project = await store.createProject({
+      name: "Attempt-isolated Import Agent",
+      importKind: "git",
+      gitUrl: gitSource,
+    });
+    const job = await store.claimNextJob("worker-attempt");
+    const previousDataDir = process.env.EVELAND_DATA_DIR;
+    process.env.EVELAND_DATA_DIR = dataDir;
+
+    try {
+      await processJob(store, job!, {});
+
+      await expect(
+        store.getCurrentSourceRevision(project.id),
+      ).resolves.toMatchObject({
+        sourcePath: path.join(
+          dataDir,
+          "sources",
+          project.id,
+          job!.id,
+          `attempt-${job!.attempts}`,
+        ),
+      });
+    } finally {
+      if (previousDataDir === undefined) delete process.env.EVELAND_DATA_DIR;
+      else process.env.EVELAND_DATA_DIR = previousDataDir;
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("processes import_source jobs into imported project state", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();

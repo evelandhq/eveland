@@ -38,7 +38,9 @@ export async function processJob(
 ): Promise<void> {
   switch (job.type) {
     case "import_source": {
+      options.signal?.throwIfAborted();
       const project = await store.getProject(job.projectId);
+      options.signal?.throwIfAborted();
       if (!project) {
         throw new Error(`Project ${job.projectId} not found.`);
       }
@@ -64,10 +66,12 @@ export async function processJob(
           "sources",
           job.projectId,
           job.id,
+          `attempt-${job.attempts}`,
         );
         await importGitSource({
           gitUrl,
           targetDir: sourcePath,
+          ...(options.signal ? { signal: options.signal } : {}),
           ...(gitCredential
             ? {
                 credential: {
@@ -82,16 +86,19 @@ export async function processJob(
               }
             : {}),
           onRetry: async (attempt, detail) => {
+            options.signal?.throwIfAborted();
             await store.appendLog({
               projectId: job.projectId,
               type: "build",
               line: `Retrying repository fetch (attempt ${attempt}): ${detail}`,
             });
+            options.signal?.throwIfAborted();
           },
         });
-        commitSha = await getGitCommitSha(sourcePath);
+        commitSha = await getGitCommitSha(sourcePath, options.signal);
       }
 
+      options.signal?.throwIfAborted();
       if (!sourcePath) {
         throw new Error("Source import missing sourcePath.");
       }
@@ -101,22 +108,26 @@ export async function processJob(
         sourcePath,
         commitSha,
       });
+      options.signal?.throwIfAborted();
       await store.recordSourceRevision({
         projectId: job.projectId,
         ...scan,
       });
+      options.signal?.throwIfAborted();
       if (gitCredential?.persistAfterImport) {
         await store.upsertGitCredential(
           gitCredential.userId,
           gitCredential.host,
           gitCredential.encryptedToken,
         );
+        options.signal?.throwIfAborted();
       }
       await store.appendLog({
         projectId: job.projectId,
         type: "build",
         line: `Source import completed for ${project.name}.`,
       });
+      options.signal?.throwIfAborted();
 
       // A re-sync can opt into deploying the freshly imported source in one step;
       // enqueued only after a successful import so a failed pull never deploys.
@@ -124,11 +135,13 @@ export async function processJob(
         await store.enqueueJob(job.projectId, "build_deploy", {
           promoteAfterDeploy: job.payload.promoteAfterDeploy === true,
         });
+        options.signal?.throwIfAborted();
         await store.appendLog({
           projectId: job.projectId,
           type: "build",
           line: `Queued deploy of the latest source for ${project.name}.`,
         });
+        options.signal?.throwIfAborted();
       }
       return;
     }

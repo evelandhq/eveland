@@ -13,6 +13,30 @@ afterEach(async () => {
 });
 
 describe("git source importer", () => {
+  test("cancels an in-flight clone when its job lease is lost", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-abort-"));
+    temporaryDirectories.push(root);
+    const startedPath = path.join(root, "clone-started");
+    await useFakeGit(
+      root,
+      `mkdir -p "$5"\ntouch "${startedPath}"\nsleep 1`,
+    );
+    const controller = new AbortController();
+    const leaseLost = new Error("job lease lost");
+
+    const importing = importGitSource({
+      gitUrl: "https://example.com/agent.git",
+      targetDir: path.join(root, "source"),
+      timeoutMs: 2_000,
+      maxAttempts: 1,
+      signal: controller.signal,
+    });
+    await waitForPath(startedPath);
+    controller.abort(leaseLost);
+
+    await expect(importing).rejects.toBe(leaseLost);
+  });
+
   test("fails with an actionable error when git clone exceeds its timeout", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "eveland-git-timeout-"));
     temporaryDirectories.push(root);
@@ -142,4 +166,17 @@ async function useFakeGit(root: string, body: string): Promise<void> {
   await writeFile(gitPath, `#!/bin/sh\n${body}\n`, { flag: "wx" });
   await chmod(gitPath, 0o755);
   process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+}
+
+async function waitForPath(filePath: string): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (Date.now() < deadline) {
+    try {
+      await access(filePath);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  throw new Error(`Timed out waiting for ${filePath}.`);
 }

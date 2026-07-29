@@ -84,6 +84,15 @@ export async function ingestPostgresAgentEvent(
       .limit(1);
     let sessionRow;
 
+    if (node) {
+      [sessionRow] = await tx
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, node.rootSessionId))
+        .for("update")
+        .limit(1);
+    }
+
     // Delivery is at least once and the Collector retries with several
     // consumers, so an older event can arrive after a newer one. Ordering --
     // not the status itself -- decides whether an observation may move the
@@ -113,11 +122,6 @@ export async function ingestPostgresAgentEvent(
         })
         .where(eq(sessionNodes.id, node.id))
         .returning();
-      [sessionRow] = await tx
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, node!.rootSessionId))
-        .limit(1);
       if (sessionRow && node!.parentNodeId === null) {
         const discoveredTrigger = triggerFromAgentChannel(
           observation.channelKind,

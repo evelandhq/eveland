@@ -1,4 +1,5 @@
 import type { AgentEventObservation } from "@eveland/core/observability";
+import { sql } from "drizzle-orm";
 import { afterAll, describe, expect, test } from "vitest";
 import { createDatabase } from "./client.js";
 import { createPostgresStore } from "./postgres-store.js";
@@ -110,6 +111,97 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       resolutionStatus: "unresolved",
     });
     await expect(store.listModelUsageEvents(gatewaySession.id)).resolves.toHaveLength(2);
+  }, 30_000);
+
+  test("serializes concurrent out-of-order projection updates", async () => {
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({
+      name: `Observer ordering ${Date.now()}`,
+      importKind: "zip",
+    });
+    let releaseSessionLock = () => {};
+    let sessionLockHeld = () => {};
+    const waitForSessionLock = new Promise<void>((resolve) => {
+      sessionLockHeld = resolve;
+    });
+    const waitForRelease = new Promise<void>((resolve) => {
+      releaseSessionLock = resolve;
+    });
+    let lockTransaction: Promise<void> | null = null;
+
+    try {
+      const revision = await store.recordSourceRevision({
+        projectId: project.id,
+        kind: "zip",
+        sourcePath: "/tmp/observer-ordering-integration",
+        summary: {},
+        envVars: [],
+        files: [],
+        schedules: [],
+      });
+      const deployment = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: "observer-ordering-integration",
+        containerName: `observer-ordering-${Date.now()}`,
+        internalPort: 3000,
+        hostPort: 41998,
+        runtimeKind: "docker",
+      });
+      const started = await store.ingestAgentEvent(
+        envelope(deployment.id, {
+          telemetryEventId: "ordering-started",
+          eventFingerprint: "ordering-started-fingerprint",
+          sourceSequence: 1,
+        }),
+      );
+
+      // Hold the parent Session lock used by event append so the newer
+      // transaction reaches that boundary first, while the older transaction
+      // can still read the stale max(source_sequence). The old implementation
+      // then lets both transactions project and the late lower sequence wins.
+      lockTransaction = database!.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select id from sessions where id = ${started.session.id} for update`,
+        );
+        sessionLockHeld();
+        await waitForRelease;
+      });
+      await waitForSessionLock;
+
+      const newer = store.ingestAgentEvent(
+        envelope(deployment.id, {
+          telemetryEventId: "ordering-completed",
+          eventFingerprint: "ordering-completed-fingerprint",
+          sourceSequence: 10,
+          event: { type: "session.completed", data: {} },
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const older = store.ingestAgentEvent(
+        envelope(deployment.id, {
+          telemetryEventId: "ordering-late-turn",
+          eventFingerprint: "ordering-late-turn-fingerprint",
+          sourceSequence: 5,
+          event: { type: "turn.started", data: {} },
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      releaseSessionLock();
+
+      await Promise.all([lockTransaction, newer, older]);
+
+      await expect(store.listSessions(project.id)).resolves.toEqual([
+        expect.objectContaining({ status: "completed" }),
+      ]);
+      await expect(
+        store.listSessionEvents(started.session.id),
+      ).resolves.toHaveLength(3);
+    } finally {
+      releaseSessionLock();
+      await lockTransaction?.catch(() => undefined);
+      await store.deleteProject(project.id);
+    }
   }, 30_000);
 });
 
