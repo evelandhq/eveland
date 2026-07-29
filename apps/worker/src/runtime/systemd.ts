@@ -44,11 +44,24 @@ export function buildDynamicUserAccessRepairScript(input: {
   releaseDir: string;
   sandboxCacheDir: string;
 }): string {
+  // systemd registers every DynamicUser= allocation under
+  // /run/systemd/dynamic-uid/ before ExecStartPre= runs, with
+  // `direct:<name>` a symlink whose target is the allocated uid. That registry
+  // is read directly rather than via `id -u`/`getent` because those go through
+  // NSS, and resolving a transient name needs nss-systemd enabled in
+  // /etc/nsswitch.conf -- Amazon Linux 2023 ships `passwd: sss files`, where
+  // the name resolves nowhere, not even for the process running as it. An
+  // unreadable uid falls back to repairing unconditionally: the marker is only
+  // an optimization that skips a recursive chmod, so losing it costs one extra
+  // pass per start, while skipping the chmod would leave the new identity
+  // unable to write files the previous one created outside the group umask.
   return `#!/bin/sh
 set -eu
-current_uid="$(id -u ${shellQuote(input.deploymentUser)})"
+current_uid="$(readlink ${
+    shellQuote(`/run/systemd/dynamic-uid/direct:${input.deploymentUser}`)
+  } 2>/dev/null || true)"
 previous_uid="$(cat ${dynamicUserUidMarkerMount} 2>/dev/null || true)"
-if [ "$current_uid" != "$previous_uid" ]; then
+if [ -z "$current_uid" ] || [ "$current_uid" != "$previous_uid" ]; then
   chmod -R g+rwX,g-s -- ${shellQuote(input.releaseDir)} ${shellQuote(input.sandboxCacheDir)}
   printf '%s\\n' "$current_uid" > ${dynamicUserUidMarkerMount}
 fi
