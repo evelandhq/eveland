@@ -42,6 +42,11 @@ import {
   sourceFiles,
   sourceRevisions,
 } from "./schema.js";
+import {
+  DeploymentNotFoundError,
+  DeploymentNotPromotableError,
+  ProjectRouteNotFoundError,
+} from "./store-shared.js";
 
 const defaultOwner = {
   id: "user_local_admin",
@@ -423,10 +428,11 @@ export function createPostgresDeploymentRoutingStore({
             ),
           )
           .limit(1);
-        if (!route) throw new Error("Project route not found.");
-        if (!deployment || deployment.status !== "running")
-          throw new Error(
-            "A promoted deployment must be running and belong to the project.",
+        if (!route) throw new ProjectRouteNotFoundError();
+        if (!deployment) throw new DeploymentNotFoundError();
+        if (deployment.status !== "running")
+          throw new DeploymentNotPromotableError(
+            `A promoted deployment must be running, but this one is ${deployment.status}.`,
           );
         await tx.delete(routeTargets).where(eq(routeTargets.routeId, route.id));
         await tx

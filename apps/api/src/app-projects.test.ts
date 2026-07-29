@@ -1097,3 +1097,81 @@ describe("zip upload hardening", () => {
     }
   });
 });
+
+describe("promote failure handling", () => {
+  async function promotableFixture() {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Promote Errors Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("promote-fixture");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/promote-errors",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "promote-errors:1",
+      containerName: "promote-errors-1",
+      internalPort: 3000,
+      hostPort: 41300,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
+    return { store, project, deployment };
+  }
+
+  test("returns 404 for a deployment that does not belong to the project", async () => {
+    const { store, project } = await promotableFixture();
+    const app = createApp(store, { invalidateGatewayRoutes: async () => {} });
+
+    const response = await app.request(
+      `/projects/${project.id}/deployments/dep_missing/promote`,
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  test("returns 409 for a deployment that is not running", async () => {
+    const { store, project, deployment } = await promotableFixture();
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const app = createApp(store, { invalidateGatewayRoutes: async () => {} });
+
+    const response = await app.request(
+      `/projects/${project.id}/deployments/${deployment.id}/promote`,
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(409);
+  });
+
+  test("still reports success when Gateway cache invalidation fails after the route change committed", async () => {
+    const { store, project, deployment } = await promotableFixture();
+    await store.updateDeploymentStatus(deployment.id, "running");
+    const app = createApp(store, {
+      invalidateGatewayRoutes: async () => {
+        throw new Error("Gateway returned 503 while invalidating.");
+      },
+    });
+
+    const response = await app.request(
+      `/projects/${project.id}/deployments/${deployment.id}/promote`,
+      { method: "POST" },
+    );
+
+    // The promote is already committed; answering 500 told the operator it
+    // failed while the stable route had in fact moved. Gateway picks the
+    // change up at its cache TTL.
+    expect(response.status).toBe(200);
+    const stable = await store.findProjectRoute(project.id);
+    expect(stable!.targets).toEqual([
+      expect.objectContaining({ deploymentId: deployment.id, weight: 10_000 }),
+    ]);
+  });
+});
