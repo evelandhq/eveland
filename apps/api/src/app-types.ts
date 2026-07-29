@@ -32,6 +32,7 @@ export type AppOptions = {
   schedulerDispatchSecret?: string;
   schedulerRuntimeSecret?: string;
   gatewayServiceToken?: string;
+  otlpServiceToken?: string;
   runtimeActivationLeaseTtlMs?: number;
   runtimeActivationWaitTimeoutMs?: number;
   sourcePreflightTtlMs?: number;

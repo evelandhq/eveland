@@ -260,6 +260,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     buildInfo,
     runtimeActivationLeaseTtlMs,
     runtimeActivationWaitTimeoutMs,
+    appSecretKey,
   });
   registerPublicIdentityRoutes(identityRouteContext, identityRouteServices);
   registerAgentCatalogRoutes({

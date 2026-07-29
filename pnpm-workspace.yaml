@@ -4,6 +4,7 @@ packages:
 allowBuilds:
   cbor-extract: true
   esbuild: true
+  protobufjs: true
   sharp: true
   workerd: true
 overrides:
