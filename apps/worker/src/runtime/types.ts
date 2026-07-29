@@ -19,6 +19,8 @@ export type ReleaseBuildInput = {
   commandContext: RuntimeCommandContext;
   /** Platform-owned durable world injected only into the prepared Release. */
   workflowWorld?: WorkflowWorldBuildConfig;
+  /** Aborts the build (the job's lease was fenced away); adapters cancel the build command. */
+  signal?: AbortSignal;
 };
 
 export type ReleaseBuildResult = {

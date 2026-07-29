@@ -204,12 +204,14 @@ export async function processJob(
 
       let build;
       try {
+        options.signal?.throwIfAborted();
         build = await runtime.buildRelease({
           projectId: project.id,
           releaseId,
           sourcePath: revision.sourcePath,
           buildDir,
           commandContext,
+          ...(options.signal ? { signal: options.signal } : {}),
           ...(workflowPostgresUrl && commandContext.isEveProject
             ? { workflowWorld: PLATFORM_WORKFLOW_WORLD }
             : {}),
@@ -256,6 +258,7 @@ export async function processJob(
       let startedProcess: string | null = null;
       let deploymentRecorded = false;
       try {
+        options.signal?.throwIfAborted();
         const started = await runtime.startProcess({
           processName,
           releaseRef: build.releaseRef,
@@ -281,6 +284,7 @@ export async function processJob(
           ...(options.waitForDeployment ? { waitForHealth: options.waitForDeployment } : {}),
         });
 
+        options.signal?.throwIfAborted();
         const deployment = await store.recordDeployment({
           releaseId,
           deploymentId,
@@ -304,6 +308,7 @@ export async function processJob(
             .trim(),
         );
         if (job.payload.promoteAfterDeploy === true) {
+          options.signal?.throwIfAborted();
           await store.promoteDeployment(
             project.id,
             deployment.id,

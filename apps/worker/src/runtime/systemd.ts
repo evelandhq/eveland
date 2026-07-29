@@ -376,6 +376,10 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         PATH: process.env.PATH ?? "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         npm_config_cache: npmCacheDir,
       };
+      // cancelSignal kills the untrusted build if this job's lease is fenced
+      // away mid-build -- a second execution of the same job is already
+      // building, and letting both finish races their host side effects.
+      const cancelOptions = input.signal ? { cancelSignal: input.signal } : {};
       const execution =
         config.buildSandbox === "bwrap"
           ? // Running bwrap as the unprivileged build user relies on the same
@@ -385,7 +389,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
             await execa(
               "runuser",
               buildRunAsUserArgs(config.buildUser, ["bwrap", ...buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command })]),
-              { all: true, env: buildEnv, extendEnv: false },
+              { all: true, env: buildEnv, extendEnv: false, ...cancelOptions },
             )
           : await execa(
               "runuser",
@@ -395,6 +399,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
                 cwd: releaseDir,
                 env: buildEnv,
                 extendEnv: false,
+                ...cancelOptions,
               },
             );
 

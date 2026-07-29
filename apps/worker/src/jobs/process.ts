@@ -71,7 +71,7 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
               process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000,
             ),
           heartbeat: () => store.heartbeatJob(job.id, job.attempts),
-          work: () => processJob(store, job, options),
+          work: (signal) => processJob(store, job, { ...options, signal }),
         });
         await clearTemporaryGitCredential(store, job);
         await store.completeJob(job.id, job.attempts);
@@ -240,17 +240,39 @@ async function clearTemporaryGitCredential(store: Store, job: Job): Promise<void
   await store.replaceJobPayload(job.id, payload, job.attempts);
 }
 
+/** The job row was fenced away from this execution (recovered as stale and re-claimed). */
+export class JobLeaseLostError extends Error {
+  constructor(message = "Job lease lost; another execution owns this job now.") {
+    super(message);
+    this.name = "JobLeaseLostError";
+  }
+}
+
 export async function runWithJobHeartbeat<T>(input: {
   intervalMs: number;
   heartbeat: () => Promise<boolean>;
-  work: () => Promise<T>;
+  work: (signal: AbortSignal) => Promise<T>;
 }): Promise<T> {
+  const controller = new AbortController();
   const timer = setInterval(() => {
-    void input.heartbeat().catch(() => undefined);
+    void input
+      .heartbeat()
+      .then((held) => {
+        // `false` means the attempt-fenced row rejected our heartbeat: the job
+        // was recovered as stale and re-claimed. The row itself is safe, but
+        // this execution's host side effects (build, start, promote) are not
+        // fenced -- abort them instead of racing the new execution. A thrown
+        // heartbeat (transient DB failure) is NOT a lost lease and stays
+        // swallowed; only an explicit rejection aborts.
+        if (!held && !controller.signal.aborted) {
+          controller.abort(new JobLeaseLostError());
+        }
+      })
+      .catch(() => undefined);
   }, input.intervalMs);
   timer.unref();
   try {
-    return await input.work();
+    return await input.work(controller.signal);
   } finally {
     clearInterval(timer);
   }
