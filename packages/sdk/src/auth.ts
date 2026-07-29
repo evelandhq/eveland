@@ -18,6 +18,15 @@ export type EvelandIdentityOptions = {
   jwksUrl?: string;
   fetch?: FetchLike;
   now?: () => Date;
+  /**
+   * Realm ids (`irlm_...`) whose users this Agent accepts. Eveland's identity
+   * broker authenticates callers but does not decide which realm may reach
+   * which Agent, so a token from ANY enabled realm verifies here by default.
+   * Set this when the Agent is meant for specific realms; tokens from other
+   * realms are then rejected as unauthenticated. Defaults to
+   * EVELAND_ALLOWED_REALM_IDS (comma-separated) when unset.
+   */
+  allowedRealms?: readonly string[];
 };
 
 export type EvelandAuthenticationChallenge = {
@@ -43,6 +52,13 @@ export function evelandIdentity(
     (issuer ? `${issuer}/.well-known/jwks.json` : "");
   const fetcher = options.fetch ?? fetch;
   const now = options.now ?? (() => new Date());
+  const allowedRealms = new Set(
+    (options.allowedRealms ??
+      (process.env.EVELAND_ALLOWED_REALM_IDS ?? "")
+        .split(",")
+        .map((realm) => realm.trim())
+        .filter(Boolean)) as readonly string[],
+  );
   let cache:
     | { expiresAt: number; keys: Array<Record<string, unknown>> }
     | undefined;
@@ -145,6 +161,13 @@ export function evelandIdentity(
       typeof claims.jti !== "string" ||
       !claims.jti
     ) {
+      return null;
+    }
+
+    // Realm scoping is the Agent's call: the broker mints a valid token for
+    // any enabled realm, so an Agent that serves a specific audience must say
+    // so. An empty allowlist keeps the previous accept-any behavior.
+    if (allowedRealms.size > 0 && !allowedRealms.has(claims.realm_id)) {
       return null;
     }
 

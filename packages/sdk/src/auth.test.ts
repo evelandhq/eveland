@@ -41,6 +41,69 @@ describe("evelandIdentity", () => {
     });
   });
 
+  test("accepts a Caller Token from an allowed realm and rejects other realms", async () => {
+    const fixture = tokenFixture();
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: fixture.fetch,
+      now: () => new Date("2029-01-01T00:00:30.000Z"),
+      allowedRealms: ["irlm_members"],
+    });
+
+    await expect(auth(request(fixture.token()))).resolves.toMatchObject({
+      attributes: expect.objectContaining({ realmId: "irlm_members" }),
+    });
+    // The broker mints a structurally valid token for any enabled realm, so
+    // this one verifies -- only the Agent's own allowlist rejects it.
+    await expect(
+      auth(request(fixture.token({ realm_id: "irlm_contractors" }))),
+    ).resolves.toBeNull();
+  });
+
+  test("reads the realm allowlist from EVELAND_ALLOWED_REALM_IDS", async () => {
+    const previous = process.env.EVELAND_ALLOWED_REALM_IDS;
+    process.env.EVELAND_ALLOWED_REALM_IDS = " irlm_staff , irlm_members ";
+    try {
+      const fixture = tokenFixture();
+      const auth = evelandIdentity({
+        issuer,
+        projectId,
+        jwksUrl: `${issuer}/.well-known/jwks.json`,
+        fetch: fixture.fetch,
+        now: () => new Date("2029-01-01T00:00:30.000Z"),
+      });
+
+      await expect(auth(request(fixture.token()))).resolves.toMatchObject({
+        attributes: expect.objectContaining({ realmId: "irlm_members" }),
+      });
+      await expect(
+        auth(request(fixture.token({ realm_id: "irlm_contractors" }))),
+      ).resolves.toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env.EVELAND_ALLOWED_REALM_IDS;
+      else process.env.EVELAND_ALLOWED_REALM_IDS = previous;
+    }
+  });
+
+  test("accepts every realm when no allowlist is configured", async () => {
+    const fixture = tokenFixture();
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: fixture.fetch,
+      now: () => new Date("2029-01-01T00:00:30.000Z"),
+    });
+
+    await expect(
+      auth(request(fixture.token({ realm_id: "irlm_contractors" }))),
+    ).resolves.toMatchObject({
+      attributes: expect.objectContaining({ realmId: "irlm_contractors" }),
+    });
+  });
+
   test("rejects a Caller Token carrying a raw external Realm value", async () => {
     const fixture = tokenFixture();
     const auth = evelandIdentity({

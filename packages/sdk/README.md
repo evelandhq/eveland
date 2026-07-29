@@ -27,6 +27,18 @@ authentication produces an Eve `user` principal with `name`, optional `email`,
 and internal `realmId` attributes. It never accepts Better Auth sessions or
 upstream provider tokens.
 
+Eveland's identity broker authenticates callers; it does not decide which Realm
+may reach which Agent. A token minted for any enabled Realm therefore verifies
+here by default. If your Agent serves a specific audience, scope it explicitly:
+
+```ts
+evelandIdentity({ allowedRealms: ["irlm_staff"] });
+```
+
+Tokens from other Realms are then rejected as unauthenticated. The allowlist
+also reads `EVELAND_ALLOWED_REALM_IDS` (comma-separated) when the option is
+omitted; leaving both unset keeps the accept-any-Realm behavior.
+
 When issuer and Project configuration are present, the helper also advertises a
 standard Bearer `WWW-Authenticate` challenge containing Eveland's
 `authorization_uri`, `project_id`, and display name. A capable client can follow
