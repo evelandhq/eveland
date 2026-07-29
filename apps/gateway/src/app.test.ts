@@ -390,3 +390,69 @@ describe("Gateway", () => {
   });
 
 });
+
+describe("Gateway resource bounds", () => {
+  test("evicts old route cache entries instead of growing without limit", async () => {
+    const lookups: string[] = [];
+    const base = repository([]);
+    const counting: GatewayRepository = {
+      ...base,
+      async findRouteByHostname(hostname: string) {
+        lookups.push(hostname);
+        return base.findRouteByHostname(hostname);
+      },
+    };
+    const app = createGatewayApp(counting, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      routeCacheTtlMs: 60_000,
+      routeCacheMaxEntries: 4,
+    });
+
+    const host = (index: number) => `probe-${index}.agent.localhost`;
+    for (let index = 0; index < 6; index += 1) {
+      await app.request("/", { headers: { host: host(index) } });
+    }
+    // Cached: repeating a recent hostname must not hit the repository again.
+    const beforeRepeat = lookups.length;
+    await app.request("/", { headers: { host: host(5) } });
+    expect(lookups.length).toBe(beforeRepeat);
+
+    // Evicted: the oldest hostname is gone even though its TTL has not expired,
+    // which is what keeps unknown-subdomain traffic from growing the Map.
+    await app.request("/", { headers: { host: host(0) } });
+    expect(lookups.filter((hostname) => hostname === host(0))).toHaveLength(2);
+  });
+
+  test("gives up on an upstream that accepts the connection and never responds", async () => {
+    const upstream = createServer(() => {
+      // Accept and hang: no status line, no body, ever.
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP address.");
+
+    try {
+      const app = createGatewayApp(
+        repository([route({ hostPort: address.port })]),
+        {
+          allowedBaseDomains: ["agent.localhost"],
+          affinitySecret,
+          upstreamTimeoutMs: 300,
+        },
+      );
+
+      const started = Date.now();
+      const response = await app.request("/eve/v1/health", {
+        headers: { host: "p-alpha.agent.localhost" },
+      });
+
+      // Without an idle timeout this request holds the client, the socket, and
+      // the deployment's renewing activation lease indefinitely.
+      expect(response.status).toBeGreaterThanOrEqual(500);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
+    }
+  });
+});

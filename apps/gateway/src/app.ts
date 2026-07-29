@@ -67,6 +67,25 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   const configurationSnapshot = options.configurationSnapshot ?? createConfigurationSnapshot("gateway", process.env);
   const routeCache = new Map<string, { route: ResolvedAgentRoute | null; expiresAt: number }>();
   const routeCacheTtlMs = options.routeCacheTtlMs ?? 5_000;
+  // Every hostname under an allowed base domain is cacheable, including ones
+  // that resolve to no route, so an unbounded Map grows for as long as someone
+  // sends requests with fresh subdomains. Expired entries are dropped first;
+  // insertion order then evicts the oldest.
+  const routeCacheMaxEntries = options.routeCacheMaxEntries ?? 1_000;
+  const cacheRoute = (hostname: string, route: ResolvedAgentRoute | null) => {
+    if (routeCache.size >= routeCacheMaxEntries) {
+      const evictedAt = Date.now();
+      for (const [key, entry] of routeCache) {
+        if (entry.expiresAt <= evictedAt) routeCache.delete(key);
+      }
+      while (routeCache.size >= routeCacheMaxEntries) {
+        const oldest = routeCache.keys().next();
+        if (oldest.done) break;
+        routeCache.delete(oldest.value);
+      }
+    }
+    routeCache.set(hostname, { route, expiresAt: Date.now() + routeCacheTtlMs });
+  };
   const maxRequestBodyBytes = options.maxRequestBodyBytes ?? 10_485_760;
   const now = options.now ?? (() => new Date());
   const sessionIdlePolicy = {
@@ -227,7 +246,10 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     }
 
     const responseMetadata =
-      upstream.ok && (isInitial || isContinuation || isReset)
+      // Cloning tees the body: the unread branch buffers the whole upstream
+      // response for as long as the client streams the original, so only
+      // clone when the metadata reader will actually consume it.
+      upstream.ok && (isInitial || isContinuation || isReset) && isEveJsonResponse(upstream)
         ? await eveSessionResponseMetadata(upstream.clone())
         : null;
     if (isInitial && upstream.ok) {
@@ -406,7 +428,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
 
     const cached = routeCache.get(hostname);
     const route = cached && cached.expiresAt > Date.now() ? cached.route : await repository.findRouteByHostname(hostname);
-    if (!cached || cached.expiresAt <= Date.now()) routeCache.set(hostname, { route, expiresAt: Date.now() + routeCacheTtlMs });
+    if (!cached || cached.expiresAt <= Date.now()) cacheRoute(hostname, route);
     if (!route?.enabled) return context.json({ error: "Route not found" }, 404);
 
     const requestUrl = new URL(context.req.url);
@@ -511,6 +533,11 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
         headers: buildUpstreamHeaders(context.req.raw.headers, authority, requestUrl.protocol, requestId, remoteIp),
         body,
         signal: context.req.raw.signal,
+        // Socket idle timeout, not a total deadline: streaming NDJSON keeps
+        // resetting it, so a long turn is unaffected while a wedged deployment
+        // that accepts the connection and never answers stops holding the
+        // client, the socket, and its renewing activation lease forever.
+        timeoutMs: options.upstreamTimeoutMs ?? Number(process.env.EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS ?? 120_000),
       });
     } catch (error) {
       if (activation && options.activationClient) await options.activationClient.release(activation.leaseId).catch(() => undefined);
@@ -529,7 +556,10 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       context.req.method === "POST" &&
       /^\/eve\/v1\/session\/[^/]+$/.test(requestUrl.pathname);
     const responseMetadata =
-      upstream.ok && (isInitial || isContinuation || isReset)
+      // Cloning tees the body: the unread branch buffers the whole upstream
+      // response for as long as the client streams the original, so only
+      // clone when the metadata reader will actually consume it.
+      upstream.ok && (isInitial || isContinuation || isReset) && isEveJsonResponse(upstream)
         ? await eveSessionResponseMetadata(upstream.clone())
         : null;
     if (isInitial && upstream.ok) {
@@ -717,6 +747,10 @@ function continuationTokenFromBody(
   if (!body || body.byteLength === 0) return null;
   const parsed = parseJsonRecord(new TextDecoder().decode(body));
   return stringValue(parsed?.continuationToken);
+}
+
+function isEveJsonResponse(response: Response): boolean {
+  return response.headers.get("content-type")?.includes("application/json") ?? false;
 }
 
 async function eveSessionResponseMetadata(response: Response): Promise<{
