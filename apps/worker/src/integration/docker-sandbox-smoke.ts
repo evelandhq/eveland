@@ -23,7 +23,7 @@ const processName = "eveland-local-sandbox-smoke-" + Date.now().toString(36);
 const root = await mkdtemp(path.join(os.tmpdir(), "eveland-local-sandbox-smoke-"));
 const sandboxCacheDir = path.join(root, "sandbox");
 const observabilityPolicyDir = path.join(root, "observability");
-const adapter = createDockerAdapter({ internalPort: 3000, backendDistDir: resolveBackendDistDir });
+const adapter = createDockerAdapter({ internalPort: 3000, dataDir: process.env.EVELAND_DATA_DIR ?? ".eveland-data", backendDistDir: resolveBackendDistDir });
 let started = false;
 
 async function runTypeScriptTurn(hostPort: number): Promise<void> {

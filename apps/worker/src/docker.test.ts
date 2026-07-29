@@ -1,10 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 import { execa } from "execa";
-import { access, mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
   buildDockerBuildArgs,
+  buildDockerEnvFileContent,
   buildDockerRunArgs,
   buildDockerSandboxVerifyArgs,
   buildDockerStartCommand,
@@ -41,8 +42,12 @@ vi.mock("./runtime/sandbox-inject.js", () => ({
   injectSandboxModules: vi.fn(async () => ({ generated: ["agent/sandbox.js"], replaced: [] })),
 }));
 
+// A real (temporary) data dir: startProcess writes the deployment's 0600 env
+// file before invoking the mocked docker CLI, so this must be writable.
+const dockerAdapterDataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-docker-data-"));
 const dockerAdapterConfig = {
   internalPort: 3000,
+  dataDir: dockerAdapterDataDir,
   backendDistDir: () => "/opt/eveland/sandbox-bwrap",
 };
 
@@ -122,7 +127,7 @@ describe("buildDockerRunArgs", () => {
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
       observabilityPolicyDir:
         "/host/eveland/observability/proj_123/dep_456",
-      env: { OPENAI_API_KEY: "sk-test-123456" },
+      envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       command: "npm run start",
     });
 
@@ -157,8 +162,8 @@ describe("buildDockerRunArgs", () => {
       "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
       "--env",
       "EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_456",
-      "--env",
-      "OPENAI_API_KEY=sk-test-123456",
+      "--env-file",
+      "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       "eveland/proj_123:rel_456",
       "sh",
       "-lc",
@@ -177,7 +182,7 @@ describe("buildDockerRunArgs", () => {
       sandboxCacheDir: "/host/eveland/sandbox/plain",
       observabilityPolicyDir:
         "/host/eveland/observability/plain/dep_1",
-      env: {},
+      envFilePath: "/var/lib/eveland-data/deployment-env/eveland-plain-node.env",
       command: "npm start",
     });
 
@@ -199,7 +204,7 @@ describe("buildDockerRunArgs", () => {
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
       observabilityPolicyDir:
         "/host/eveland/observability/proj_123/dep_456",
-      env: { EVELAND_SANDBOX_TEMPLATE_REVISION: "project-controlled" },
+      envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       command: "npm run start",
     });
 
@@ -808,5 +813,72 @@ describe("createDockerAdapter inspectProcess", () => {
     // A paused container never becomes ready on its own; "starting" made
     // activation poll health until timeout instead of replacing it.
     await expect(adapter.inspectProcess!("eveland-proj_p-dep_p1")).resolves.toBe("failed");
+  });
+});
+
+describe("docker deployment secrets", () => {
+  test("writes project secrets to a 0600 env file and keeps them off the argv", async () => {
+    vi.mocked(execa).mockClear();
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    await adapter.startProcess({
+      processName: "eveland-proj_sec-dep_sec1",
+      releaseRef: "eveland/proj_sec:rel_1",
+      port: 43200,
+      env: { OPENAI_API_KEY: "sk-secret-value", WORKFLOW_POSTGRES_URL: "postgres://u:p@host/db" },
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      sandboxCacheDir: "/host/sandbox/proj_sec",
+      observabilityPolicyDir: "/host/observability/proj_sec",
+    });
+
+    // /proc/<pid>/cmdline and `docker inspect` must never carry the values.
+    const runCall = vi.mocked(execa).mock.calls.find(([, args]) =>
+      Array.isArray(args) && args[0] === "run",
+    );
+    const runArgs = (runCall?.[1] ?? []) as string[];
+    expect(runArgs.join(" ")).not.toContain("sk-secret-value");
+    expect(runArgs.join(" ")).not.toContain("postgres://u:p@host/db");
+    expect(runArgs).toContain("--env-file");
+
+    const envFilePath = path.join(dockerAdapterDataDir, "deployment-env", "eveland-proj_sec-dep_sec1.env");
+    await expect(readFile(envFilePath, "utf8")).resolves.toBe(
+      'OPENAI_API_KEY=sk-secret-value\nWORKFLOW_POSTGRES_URL=postgres://u:p@host/db\n',
+    );
+    const { mode } = await stat(envFilePath);
+    expect(mode & 0o777).toBe(0o600);
+  });
+
+  test("deletes the decrypted env file when the container is stopped", async () => {
+    vi.mocked(execa).mockClear();
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+    await adapter.startProcess({
+      processName: "eveland-proj_sec-dep_sec2",
+      releaseRef: "eveland/proj_sec:rel_2",
+      port: 43201,
+      env: { OPENAI_API_KEY: "sk-secret-value" },
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      sandboxCacheDir: "/host/sandbox/proj_sec",
+      observabilityPolicyDir: "/host/observability/proj_sec",
+    });
+    const envFilePath = path.join(dockerAdapterDataDir, "deployment-env", "eveland-proj_sec-dep_sec2.env");
+    await expect(access(envFilePath)).resolves.toBeUndefined();
+
+    await adapter.stopProcess("eveland-proj_sec-dep_sec2");
+
+    await expect(access(envFilePath)).rejects.toThrow();
+  });
+});
+
+describe("buildDockerEnvFileContent", () => {
+  test("writes sorted unquoted assignments", () => {
+    // Docker reads the value literally to end of line -- shell-style quotes
+    // would become part of the value.
+    expect(buildDockerEnvFileContent({ B_KEY: 'va"lue', A_KEY: "plain" })).toBe(
+      'A_KEY=plain\nB_KEY=va"lue\n',
+    );
+  });
+
+  test("rejects newline values a --env-file cannot represent", () => {
+    expect(() => buildDockerEnvFileContent({ BAD: "line1\nline2" })).toThrow(/newline/);
   });
 });
