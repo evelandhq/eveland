@@ -966,6 +966,15 @@ Deployment 端口上的监听 socket 属于它自己的进程：端口被其他�
 RuntimeInstance 同样执行该归属核查，发现端口被外来进程持有即把实例与 Deployment 纠正为
 failed，防止 Gateway 继续把流量代理给错误的 Agent。
 
+监听端口是 RuntimeInstance 的属性：激活的 starter 在任何进程 bind 之前先把端口预留写入
+实例行，数据库以活跃状态（starting/ready/draining）上的唯一约束保证同一端口至多一个
+活实例；实例离开活跃状态即自动释放预留。systemd 唤醒优先收养仍被自己 unit 持有的上一代
+端口，收养不成则重新分配；Docker 的发布端口在容器创建时固定，预留失败必须大声失败而非
+换端口。`deployments.host_port` 从此是首次部署的偏好提示，不是权威端口——Gateway 与
+内部激活路由以 activation 返回的 `endpointPort` 为准，仅在无激活数据时回退到
+`host_port`。build_deploy 的端口分配发生在 build 之后、启动之前，并在 worker 进程内
+维持 in-flight 预留直到 Deployment 记录落库。
+
 Worker 还按独立周期执行 orphan sweep，把主机上实际运行的 `eveland-*-dep_*` 进程与
 控制面对账：持有活跃 lease 或 live RuntimeInstance 的进程不受影响；属于合法
 Deployment 但失管的进程（早于 RuntimeInstance 机制部署、restart 后未激活等）被收养为

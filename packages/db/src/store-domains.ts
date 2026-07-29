@@ -655,6 +655,13 @@ export interface RuntimeStore {
     },
     now?: Date,
   ): Promise<RuntimeInstance | null>;
+  /**
+   * Claims a loopback port for a starting RuntimeInstance before the process
+   * binds it. Returns false when another live instance already holds the port
+   * (the live-port unique index rejected it); the caller tries the next
+   * candidate. Leaving the live statuses releases the claim automatically.
+   */
+  reserveRuntimeInstancePort(runtimeInstanceId: string, port: number): Promise<boolean>;
   getActivationLease(leaseId: string): Promise<ActivationLease | null>;
   renewActivationLease(leaseId: string, expiresAt: Date, now?: Date): Promise<ActivationLease | null>;
   releaseActivationLease(leaseId: string, now?: Date): Promise<ActivationLease | null>;

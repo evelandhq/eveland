@@ -585,20 +585,27 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
           processName: input.processName,
           port: input.port,
         });
-        if (ownership.status !== "foreign") {
-          // "unbound" is a legitimate reuse: an activating unit that has not
-          // bound yet. The readiness gate keeps polling ownership afterwards.
+        if (ownership.status === "owned" || (ownership.status === "unbound" && status === "starting")) {
+          // An activating unit that has not bound yet is a legitimate reuse;
+          // the readiness gate keeps polling ownership afterwards.
           return { internalPort: input.port, log: `Reused ${status} systemd process ${input.processName}.` };
         }
-        // The unit is alive but can never become the listener while another
-        // process holds its port; left running it would flap in auto-restart
-        // and its traffic would be served by the foreign holder.
+        if (ownership.status === "foreign") {
+          // The unit is alive but can never become the listener while another
+          // process holds its port; left running it would flap in auto-restart
+          // and its traffic would be served by the foreign holder.
+          await adapter.stopProcess(input.processName);
+          throw new Error(
+            `systemd process ${input.processName} cannot bind port ${input.port}: ` +
+              `the listening socket is held by ${ownership.holder}. Stopped the unit instead of ` +
+              "reusing it against another process's socket.",
+          );
+        }
+        // Active but not listening on the requested port: a long-running
+        // process never rebinds, so reuse would time out. Restart it onto the
+        // requested port.
         await adapter.stopProcess(input.processName);
-        throw new Error(
-          `systemd process ${input.processName} cannot bind port ${input.port}: ` +
-            `the listening socket is held by ${ownership.holder}. Stopped the unit instead of ` +
-            "reusing it against another process's socket.",
-        );
+        return adapter.startProcess(input);
       }
       if (status !== "missing") await adapter.stopProcess(input.processName);
       return adapter.startProcess(input);
