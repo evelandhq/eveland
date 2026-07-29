@@ -737,7 +737,10 @@ describe("api app", () => {
       affinitySource: null,
     });
     const app = createApp(store, {
-      sessionBindingNow: () => new Date("2026-07-30T12:00:00.000Z"),
+      // Relative to the binding's real bind time: a fixed calendar date here
+      // silently stops exceeding playgroundSessionIdleTtlMs once the wall
+      // clock catches up to it, turning this test into a time bomb.
+      sessionBindingNow: () => new Date(Date.now() + 2 * 86_400_000),
       playgroundSessionIdleTtlMs: 86_400_000,
       apiSessionIdleTtlMs: 604_800_000,
     });
