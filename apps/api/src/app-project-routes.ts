@@ -8,7 +8,13 @@ import {
   DEFAULT_API_SESSION_IDLE_TTL_MS,
   DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
 } from "@eveland/core/routing";
-import { ProjectSlugConflictError, type Store } from "@eveland/db";
+import {
+  DeploymentNotFoundError,
+  DeploymentNotPromotableError,
+  ProjectRouteNotFoundError,
+  ProjectSlugConflictError,
+  type Store,
+} from "@eveland/db";
 import type { MiddlewareHandler } from "hono";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import {
@@ -28,6 +34,7 @@ import {
   extractZipUpload,
   InvalidZipUploadError,
   invalidateGateway,
+  invalidateGatewayAfterCommit,
   isMultipartRequest,
   publicGatewayUrl,
   resolveProjectEveVersion,
@@ -518,11 +525,23 @@ export function registerProjectRoutes(input: {
   app.post(
     "/projects/:projectId/deployments/:deploymentId/promote",
     async (c) => {
-      const route = await store.promoteDeployment(
-        c.req.param("projectId"),
-        c.req.param("deploymentId"),
-      );
-      await invalidateGateway(options, [route.hostname]);
+      let route;
+      try {
+        route = await store.promoteDeployment(
+          c.req.param("projectId"),
+          c.req.param("deploymentId"),
+        );
+      } catch (error) {
+        if (
+          error instanceof ProjectRouteNotFoundError ||
+          error instanceof DeploymentNotFoundError
+        )
+          return c.json({ error: error.message }, 404);
+        if (error instanceof DeploymentNotPromotableError)
+          return c.json({ error: error.message }, 409);
+        throw error;
+      }
+      await invalidateGatewayAfterCommit(options, [route.hostname]);
       return c.json({ route });
     },
   );
@@ -610,7 +629,7 @@ export function registerProjectRoutes(input: {
       c.req.param("routeId"),
       input.data.targets,
     );
-    await invalidateGateway(options, [route.hostname]);
+    await invalidateGatewayAfterCommit(options, [route.hostname]);
     return c.json({ route });
   });
 
@@ -632,7 +651,7 @@ export function registerProjectRoutes(input: {
       baseDomain,
       input.data.targets,
     );
-    await invalidateGateway(options, [route.hostname]);
+    await invalidateGatewayAfterCommit(options, [route.hostname]);
     return c.json({ route }, 201);
   });
 

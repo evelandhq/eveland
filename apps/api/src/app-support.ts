@@ -73,6 +73,27 @@ export function authErrorResponse(c: Context, error: unknown): Response {
   return c.json({ error: message }, 400);
 }
 
+/**
+ * Invalidates Gateway's route cache after a route change has already been
+ * committed. A failure here must not be reported as a failed request: the
+ * route really did move, and Gateway converges at its cache TTL anyway.
+ * Answering 500 told the operator the opposite of what happened.
+ */
+export async function invalidateGatewayAfterCommit(
+  options: AppOptions,
+  hostnames: string[],
+): Promise<void> {
+  try {
+    await invalidateGateway(options, hostnames);
+  } catch (error) {
+    console.warn(
+      `Gateway cache invalidation deferred to TTL for ${hostnames.join(", ")}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
 export async function invalidateGateway(
   options: AppOptions,
   hostnames: string[],
