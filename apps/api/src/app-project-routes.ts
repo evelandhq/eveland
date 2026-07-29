@@ -21,10 +21,12 @@ import {
   syncSourceSchema,
   updateProjectMetadataSchema,
 } from "./app-schemas.js";
+import { bodyLimit } from "hono/body-limit";
 import {
   createZipProjectFromUpload,
   currentUserId,
   extractZipUpload,
+  InvalidZipUploadError,
   invalidateGateway,
   isMultipartRequest,
   publicGatewayUrl,
@@ -136,7 +138,15 @@ export function registerProjectRoutes(input: {
       : c.json({ error: "Git credential not found" }, 404);
   });
 
-  app.post("/source-preflights", async (c) => {
+  // Uploads were previously unbounded: c.req.formData() buffers the archive
+  // in memory, so a single request could exhaust the API process. Playground
+  // and OTLP bodies already have caps; this closes the last unbounded route.
+  const uploadBodyLimit = bodyLimit({
+    maxSize: Number(process.env.EVELAND_MAX_UPLOAD_BYTES ?? 104_857_600),
+    onError: (c) => c.json({ error: "Upload too large" }, 413),
+  });
+
+  app.post("/source-preflights", uploadBodyLimit, async (c) => {
     const expiresAt = new Date(Date.now() + sourcePreflightTtlMs);
     if (isMultipartRequest(c)) {
       const form = await c.req.formData();
@@ -152,10 +162,19 @@ export function registerProjectRoutes(input: {
           400,
         );
       }
-      const { sourcePath, uploadDir } = await extractZipUpload(
-        archive,
-        dataDir,
-      );
+      let extracted;
+      try {
+        extracted = await extractZipUpload(archive, dataDir);
+      } catch (error) {
+        if (error instanceof InvalidZipUploadError) {
+          return c.json(
+            { error: "Invalid zip upload", issues: [{ path: ["archive"], message: error.message }] },
+            400,
+          );
+        }
+        throw error;
+      }
+      const { sourcePath, uploadDir } = extracted;
       try {
         const preflight = await store.createSourcePreflight({
           userId: currentUserId(c),
@@ -234,7 +253,7 @@ export function registerProjectRoutes(input: {
       : c.json({ error: "Source preflight not found" }, 404);
   });
 
-  app.post("/projects", async (c) => {
+  app.post("/projects", uploadBodyLimit, async (c) => {
     if (isMultipartRequest(c)) {
       return createZipProjectFromUpload(c, store, dataDir);
     }

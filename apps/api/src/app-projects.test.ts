@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createServer, type ServerResponse } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -17,6 +17,7 @@ import { createTestStore } from "@eveland/db/vitest";
 
 import {
   createScheduleRunFixture,
+  createSymlinkZipArchiveFixture,
   createZipArchiveFixture,
 } from "./app.test-support.js";
 
@@ -1033,5 +1034,66 @@ describe("api app", () => {
         }),
       ],
     });
+  });
+});
+
+describe("zip upload hardening", () => {
+  test("rejects a zip containing a symlink entry with 400 and cleans up the upload dir", async () => {
+    const store = createTestStore();
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
+    const archivePath = await createSymlinkZipArchiveFixture();
+    const archive = new File([await readFile(archivePath)], "evil.zip", { type: "application/zip" });
+    const form = new FormData();
+    form.set("name", "evil-agent");
+    form.set("archive", archive);
+    const app = createApp(store, { dataDir });
+
+    const response = await app.request("/projects", { method: "POST", body: form });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid zip upload",
+      issues: [expect.objectContaining({ message: expect.stringContaining("symbolic links") })],
+    });
+    // The rejected upload leaves nothing behind for later steps to trip on.
+    const uploads = await readdir(path.join(dataDir, "uploads")).catch(() => []);
+    expect(uploads).toEqual([]);
+  });
+
+  test("rejects a symlink zip on the source-preflight path too", async () => {
+    const store = createTestStore();
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
+    const archivePath = await createSymlinkZipArchiveFixture();
+    const archive = new File([await readFile(archivePath)], "evil.zip", { type: "application/zip" });
+    const form = new FormData();
+    form.set("archive", archive);
+    const app = createApp(store, { dataDir });
+
+    const response = await app.request("/source-preflights", { method: "POST", body: form });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects an upload above EVELAND_MAX_UPLOAD_BYTES with 413", async () => {
+    const previous = process.env.EVELAND_MAX_UPLOAD_BYTES;
+    process.env.EVELAND_MAX_UPLOAD_BYTES = "512";
+    try {
+      const store = createTestStore();
+      const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
+      const archivePath = await createZipArchiveFixture();
+      const archive = new File([await readFile(archivePath)], "agent.zip", { type: "application/zip" });
+      const form = new FormData();
+      form.set("name", "big-agent");
+      form.set("archive", archive);
+      const app = createApp(store, { dataDir });
+
+      const response = await app.request("/projects", { method: "POST", body: form });
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toEqual({ error: "Upload too large" });
+    } finally {
+      if (previous === undefined) delete process.env.EVELAND_MAX_UPLOAD_BYTES;
+      else process.env.EVELAND_MAX_UPLOAD_BYTES = previous;
+    }
   });
 });
