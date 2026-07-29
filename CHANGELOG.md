@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.16.0](https://github.com/evelandhq/eveland/compare/v0.15.0...v0.16.0) (2026-07-29)
+
+
+### Features
+
+* support Eve 0.27.12 ([#192](https://github.com/evelandhq/eveland/issues/192)) ([720c3b0](https://github.com/evelandhq/eveland/commit/720c3b07bb06672874093b469b171dbc19532d84))
+
+
+### Performance Improvements
+
+* **db:** stop loading whole rows to build usage and variant rollups ([#187](https://github.com/evelandhq/eveland/issues/187)) ([f90ec32](https://github.com/evelandhq/eveland/commit/f90ec3225eb59cfee43423271d2b6b3b97d9ad52))
+* **gateway:** bound the route cache, the response tee, and upstream waits ([#189](https://github.com/evelandhq/eveland/issues/189)) ([6e13767](https://github.com/evelandhq/eveland/commit/6e1376774b783a3fc4b877c9f1f1060713f155b2))
+
 ## [0.15.0](https://github.com/evelandhq/eveland/compare/v0.14.0...v0.15.0) (2026-07-29)
 
 
