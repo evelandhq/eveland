@@ -1,3 +1,4 @@
+import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
 import { platformObservability } from "./observability.js";
 import { serve } from "@hono/node-server";
 import { formatBuildInfo } from "@eveland/core/build-info";
@@ -42,9 +43,11 @@ serve({
     auth,
     buildInfo,
     configurationDiagnostics: () => collectSystemConfigurationDiagnostics(process.env),
-    gatewayServiceToken:
-      process.env.EVELAND_GATEWAY_SERVICE_TOKEN ??
-      (process.env.NODE_ENV === "production" ? undefined : "eveland-dev-gateway-token"),
+    gatewayServiceToken: resolveSecretWithDevFallback(
+      process.env,
+      process.env.EVELAND_GATEWAY_SERVICE_TOKEN,
+      "eveland-dev-gateway-token",
+    ),
   }).fetch,
   port,
 });

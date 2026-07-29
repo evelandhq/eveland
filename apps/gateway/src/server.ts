@@ -3,6 +3,7 @@ import { serve } from "@hono/node-server";
 import { formatBuildInfo } from "@eveland/core/build-info";
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
+import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import { createGatewayApp } from "./app.js";
 import { createApiActivationClient } from "./activation-client.js";
@@ -13,13 +14,22 @@ const allowedBaseDomains = (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.loc
   .split(",")
   .map((value) => value.trim().toLowerCase())
   .filter(Boolean);
-const affinitySecret =
-  process.env.EVELAND_GATEWAY_AFFINITY_SECRET ??
-  (process.env.NODE_ENV === "production" ? null : "eveland-dev-affinity-secret");
-if (!affinitySecret) throw new Error("EVELAND_GATEWAY_AFFINITY_SECRET is required in production.");
-const internalServiceToken =
-  process.env.EVELAND_GATEWAY_SERVICE_TOKEN ??
-  (process.env.NODE_ENV === "production" ? undefined : "eveland-dev-gateway-token");
+// Fail closed: the publicly known dev secrets apply only under an explicit
+// NODE_ENV=development/test. A production host that forgot to set NODE_ENV
+// must refuse to start, not serve /internal/* behind a token anyone can read
+// in this repository.
+const affinitySecret = resolveSecretWithDevFallback(
+  process.env,
+  process.env.EVELAND_GATEWAY_AFFINITY_SECRET,
+  "eveland-dev-affinity-secret",
+);
+if (!affinitySecret)
+  throw new Error("EVELAND_GATEWAY_AFFINITY_SECRET is required unless NODE_ENV is explicitly development.");
+const internalServiceToken = resolveSecretWithDevFallback(
+  process.env,
+  process.env.EVELAND_GATEWAY_SERVICE_TOKEN,
+  "eveland-dev-gateway-token",
+);
 const { store, close } = createStoreFromEnv();
 await store.reconcileAgentRoutes(allowedBaseDomains[0] ?? "agent.localhost");
 const app = createGatewayApp(store, {

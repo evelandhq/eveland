@@ -15,13 +15,17 @@ const payload = {
 };
 
 describe("schedule dispatch credentials", () => {
-  test("uses explicit secrets, development fallbacks, and no production fallback", () => {
+  test("uses explicit secrets, explicit-development fallbacks, and fails closed otherwise", () => {
     expect(resolveSchedulerRuntimeSecret({ EVELAND_SCHEDULER_RUNTIME_SECRET: "explicit-runtime" })).toBe("explicit-runtime");
     expect(resolveSchedulerDispatchSecret({ EVELAND_SCHEDULER_DISPATCH_SECRET: "explicit-dispatch" })).toBe("explicit-dispatch");
-    expect(resolveSchedulerRuntimeSecret({})).toBe("eveland-dev-scheduler-runtime-secret");
-    expect(resolveSchedulerDispatchSecret({})).toBe("eveland-dev-scheduler-dispatch-secret");
+    expect(resolveSchedulerRuntimeSecret({ NODE_ENV: "development" })).toBe("eveland-dev-scheduler-runtime-secret");
+    expect(resolveSchedulerDispatchSecret({ NODE_ENV: "development" })).toBe("eveland-dev-scheduler-dispatch-secret");
     expect(resolveSchedulerRuntimeSecret({ NODE_ENV: "production" })).toBeUndefined();
     expect(resolveSchedulerDispatchSecret({ NODE_ENV: "production" })).toBeUndefined();
+    // An unset NODE_ENV must fail closed: a host that forgot to set it would
+    // otherwise guard privileged surfaces with publicly known dev secrets.
+    expect(resolveSchedulerRuntimeSecret({})).toBeUndefined();
+    expect(resolveSchedulerDispatchSecret({})).toBeUndefined();
   });
 
   test("round-trips a deployment- and schedule-bound credential", () => {

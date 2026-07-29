@@ -1,3 +1,4 @@
+import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
 import type { DeploymentRecord, Project, SessionStatus } from "@eveland/core/contracts";
 import { AGENT_AUTH_ENVELOPE_HEADER } from "@eveland/core/agent-auth";
 
@@ -51,8 +52,7 @@ export async function proxyGatewayPlayground(
   const gatewayUrl = (options.gatewayUrl ?? process.env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(/\/$/, "");
   const serviceToken =
     options.serviceToken ??
-    process.env.EVELAND_GATEWAY_SERVICE_TOKEN ??
-    (process.env.NODE_ENV === "production" ? undefined : "eveland-dev-gateway-token");
+    resolveSecretWithDevFallback(process.env, process.env.EVELAND_GATEWAY_SERVICE_TOKEN, "eveland-dev-gateway-token");
   if (!serviceToken) throw new Error("EVELAND_GATEWAY_SERVICE_TOKEN is required for Playground requests.");
 
   const headers: Record<string, string> = { authorization: `Bearer ${serviceToken}` };
@@ -91,8 +91,7 @@ export async function runGatewayPlayground(
   const gatewayUrl = (options.gatewayUrl ?? process.env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(/\/$/, "");
   const serviceToken =
     options.serviceToken ??
-    process.env.EVELAND_GATEWAY_SERVICE_TOKEN ??
-    (process.env.NODE_ENV === "production" ? undefined : "eveland-dev-gateway-token");
+    resolveSecretWithDevFallback(process.env, process.env.EVELAND_GATEWAY_SERVICE_TOKEN, "eveland-dev-gateway-token");
   if (!serviceToken) throw new Error("EVELAND_GATEWAY_SERVICE_TOKEN is required for Playground requests.");
   const fetchImplementation = options.fetchImplementation ?? fetch;
   const response = await fetchImplementation(`${gatewayUrl}/internal/projects/${encodeURIComponent(input.project.id)}/playground`, {

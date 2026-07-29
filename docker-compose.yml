@@ -59,6 +59,8 @@ services:
       - postgres
     environment:
       CI: "true"
+      # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
+      NODE_ENV: development
       PORT: 4000
       WEB_ORIGIN: http://localhost:3000
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
@@ -99,6 +101,8 @@ services:
       - postgres
     environment:
       CI: "true"
+      # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
+      NODE_ENV: development
       GATEWAY_PORT: 4080
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
@@ -130,6 +134,8 @@ services:
       - api
     environment:
       CI: "true"
+      # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
+      NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:4000
       API_URL: http://api:4000
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
@@ -150,6 +156,8 @@ services:
       - postgres
     environment:
       CI: "true"
+      # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
+      NODE_ENV: development
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       WORKFLOW_POSTGRES_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
       # The worker bootstraps the same database through its Compose-reachable address;
