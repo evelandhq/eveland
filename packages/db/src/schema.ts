@@ -568,21 +568,40 @@ export const otlpBatches = pgTable(
   ],
 );
 
-export const jobs = pgTable("jobs", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id").notNull().references(() => projects.id),
-  type: text("type").notNull(),
-  status: text("status").notNull(),
-  payload: jsonb("payload").notNull().default({}),
-  attempts: integer("attempts").notNull().default(0),
-  lastError: text("last_error"),
-  lockedAt: timestamp("locked_at", { withTimezone: true }),
-  // FIFO tiebreaker: created_at has finite resolution, so two jobs enqueued in
-  // the same instant would otherwise claim in plan-dependent order.
-  sequence: bigint("sequence", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    type: text("type").notNull(),
+    status: text("status").notNull(),
+    payload: jsonb("payload").notNull().default({}),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    // FIFO tiebreaker: created_at has finite resolution, so two jobs enqueued in
+    // the same instant would otherwise claim in plan-dependent order.
+    sequence: bigint("sequence", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Completed jobs are never pruned (only project deletion removes rows), so
+    // this table grows for the life of the install while the claim scan runs
+    // every worker tick. Both hot predicates are partial indexes over the few
+    // rows that are not already terminal.
+    index("jobs_queued_claim_idx")
+      .on(table.createdAt, table.sequence)
+      .where(sql`${table.status} = 'queued'`),
+    // Serves both the claim query's per-project mutual-exclusion subquery and
+    // recoverStaleJobs' locked_at scan.
+    index("jobs_running_project_idx")
+      .on(table.projectId, table.lockedAt)
+      .where(sql`${table.status} = 'running'`),
+    // listProjectJobs: newest-first per project, over the full history.
+    index("jobs_project_created_idx").on(table.projectId, table.createdAt),
+  ],
+);
 
 export const schedules = pgTable("schedules", {
   id: text("id").primaryKey(),
@@ -884,6 +903,9 @@ export const sessions = pgTable(
   (table) => [
     index("sessions_schedule_run_idx").on(table.scheduleRunId),
     index("sessions_project_started_idx").on(table.projectId, table.startedAt),
+    // Durable Eve session identity is project-scoped: every OTLP ingest and
+    // every continuation resolves a Session through this pair.
+    index("sessions_project_eve_session_idx").on(table.projectId, table.eveSessionId),
   ],
 );
 
@@ -951,6 +973,8 @@ export const sessionNodes = pgTable(
   (table) => [
     uniqueIndex("session_nodes_project_eve_idx").on(table.projectId, table.eveSessionId),
     index("session_nodes_project_model_idx").on(table.projectId, table.modelId),
+    // Every node listing, prune, and subagent re-parent walks a root Session.
+    index("session_nodes_root_session_idx").on(table.rootSessionId, table.createdAt),
     index("session_nodes_last_runtime_idx").on(
       table.lastObservedRuntimeInstanceId,
       table.status,
@@ -1011,11 +1035,19 @@ export const sessionEvents = pgTable(
   ],
 );
 
-export const logs = pgTable("logs", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id").notNull().references(() => projects.id),
-  deploymentId: text("deployment_id"),
-  type: text("type").notNull(),
-  line: text("line").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const logs = pgTable(
+  "logs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    deploymentId: text("deployment_id"),
+    type: text("type").notNull(),
+    line: text("line").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // listLogs is always project-scoped and ordered by time; the optional type
+    // filter stays a residual on top of this.
+    index("logs_project_created_idx").on(table.projectId, table.createdAt),
+  ],
+);
