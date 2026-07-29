@@ -4,6 +4,42 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.15.0](https://github.com/evelandhq/eveland/compare/v0.14.0...v0.15.0) (2026-07-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **gateway:** a deployment without NODE_ENV set no longer receives development fallback secrets; set NODE_ENV=development explicitly for local development or configure the real secrets.
+* **worker:** deployments.host_port is no longer authoritative for a running Deployment's endpoint; consumers must use the RuntimeInstance endpointPort (Gateway and API already do). Migration 0037 marks duplicate live RuntimeInstances failed.
+
+### Features
+
+* **sdk:** let an Agent scope Eveland Identity to specific Realms ([#178](https://github.com/evelandhq/eveland/issues/178)) ([715b1ce](https://github.com/evelandhq/eveland/commit/715b1ce8dda2b0206ae971fc26a40a91212659fc))
+* **worker:** make the loopback port a RuntimeInstance property with DB-enforced reservation ([#170](https://github.com/evelandhq/eveland/issues/170)) ([69771fd](https://github.com/evelandhq/eveland/commit/69771fdb661565cfc572bbec83c3a492d6d29e04))
+
+
+### Bug Fixes
+
+* **api:** expose Better Auth through an allowlist instead of a denylist ([#175](https://github.com/evelandhq/eveland/issues/175)) ([ad2913a](https://github.com/evelandhq/eveland/commit/ad2913a9fa1bfc36a6c3b447190b955e9e6364fd))
+* **api:** map promote failures to 404/409 and stop failing a committed promote ([#183](https://github.com/evelandhq/eveland/issues/183)) ([84943dc](https://github.com/evelandhq/eveland/commit/84943dc09f9ef64425fad81d3b8941de273b5a5e))
+* **api:** reject symlink zip entries and cap upload size ([#174](https://github.com/evelandhq/eveland/issues/174)) ([02fca8f](https://github.com/evelandhq/eveland/commit/02fca8f27068852b0a2328ab9497fa51b8eb01c4))
+* **db:** advance projections by event order, not arrival order ([#181](https://github.com/evelandhq/eveland/issues/181)) ([acd4cee](https://github.com/evelandhq/eveland/commit/acd4cee6df18932913b292eb082325dd53e374e2))
+* **db:** make session_events.index a per-Session sequence, not a count ([#180](https://github.com/evelandhq/eveland/issues/180)) ([179442e](https://github.com/evelandhq/eveland/commit/179442e0103b869a8a4ceabd9b1faeee28a73fe1))
+* **db:** record a source revision atomically ([#182](https://github.com/evelandhq/eveland/issues/182)) ([c94a525](https://github.com/evelandhq/eveland/commit/c94a5255eead73bc18e39ef38202db54c03b1f33))
+* **gateway:** fail closed on missing NODE_ENV instead of serving dev secrets ([#172](https://github.com/evelandhq/eveland/issues/172)) ([64a8738](https://github.com/evelandhq/eveland/commit/64a8738aa164fef7bd397d7f3fd9f9e7007416ac))
+* **gateway:** fail over to the surviving target of a partially-degraded route ([#173](https://github.com/evelandhq/eveland/issues/173)) ([9d9adee](https://github.com/evelandhq/eveland/commit/9d9adee2e5f55635079af138ae1553e974fa02fc))
+* **sdk:** accept a Caller Token whose IdP supplied no display name ([#184](https://github.com/evelandhq/eveland/issues/184)) ([bb11ad7](https://github.com/evelandhq/eveland/commit/bb11ad73efd372773c969c4c77359fbc7052e3b2))
+* **worker:** pass Docker deployment secrets via a 0600 env file, not argv ([#177](https://github.com/evelandhq/eveland/issues/177)) ([ba8db6c](https://github.com/evelandhq/eveland/commit/ba8db6ceb9d94ca65567bcd98bf33c01306c57ed))
+* **worker:** read the dynamic uid from systemd, not NSS ([16691c1](https://github.com/evelandhq/eveland/commit/16691c19d0e0158abf2d972d6af8a32fbacc3039))
+* **worker:** reap control-plane-stopped processes and clean up start failures ([#171](https://github.com/evelandhq/eveland/issues/171)) ([a581c04](https://github.com/evelandhq/eveland/commit/a581c0421251208b09989ead43d9d0aa9b11224d))
+* **worker:** serialize jobs per project and abort work on a lost lease ([#169](https://github.com/evelandhq/eveland/issues/169)) ([f3e727f](https://github.com/evelandhq/eveland/commit/f3e727fd940c8042668616515ab3380112107026))
+* **worker:** verify a deployment owns its port before marking it ready ([#168](https://github.com/evelandhq/eveland/issues/168)) ([b134eba](https://github.com/evelandhq/eveland/commit/b134ebacdeddc0ba5fc581f96482c4b3d62884da))
+
+
+### Performance Improvements
+
+* **db:** index the hot session, node, log, and job read paths ([#179](https://github.com/evelandhq/eveland/issues/179)) ([c9fd288](https://github.com/evelandhq/eveland/commit/c9fd28814e3e53eb7d4bc9f4cebe92174379cac4))
+
 ## [0.14.0](https://github.com/evelandhq/eveland/compare/v0.13.0...v0.14.0) (2026-07-29)
 
 
