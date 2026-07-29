@@ -22,6 +22,7 @@
     "@workflow/world-postgres": "5.0.0-beta.25",
     "execa": "^9.6.1",
     "postgres": "^3.4.9",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -167,13 +167,15 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   // 5. Required binaries. The sandbox toolchain is platform-owned on systemd:
   // bwrap mounts the host root read-only, so a project cannot repair a missing
   // command after deployment. `git` also serves the worker's import_source
-  // jobs. `runuser` is unconditional because builds execute under it even when
+  // jobs. Docker validates and reloads the platform Collector configuration.
+  // `runuser` is unconditional because builds execute under it even when
   // EVELAND_BUILD_SANDBOX=none; only the bwrap build wrapper is optional.
   const requiredBinaries = [
     ...new Set([
       "systemd-run",
       "systemctl",
       "runuser",
+      "docker",
       ...SANDBOX_TOOLCHAIN_COMMANDS,
       ...(deps.env.EVELAND_BUILD_SANDBOX === "none" ? [] : ["bwrap"]),
     ]),

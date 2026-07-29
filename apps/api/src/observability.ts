@@ -18,7 +18,10 @@ export const platformObservability = startPlatformObservability({
   otlpEndpoint:
     process.env.EVELAND_OTLP_ENDPOINT ?? "http://127.0.0.1:4318",
   otlpServiceToken: resolvePlatformOtlpServiceToken(process.env),
-  ignoredIncomingPaths: ["/internal/otel/"],
+  ignoredIncomingPaths: [
+    "/internal/otel/",
+    "/internal/observability/destinations/",
+  ],
   metricExportIntervalMs: Number(
     process.env.EVELAND_OTEL_METRIC_INTERVAL_MS ?? 60_000,
   ),

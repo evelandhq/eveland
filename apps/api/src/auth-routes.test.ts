@@ -128,6 +128,21 @@ describe("control-plane auth routes", () => {
     await expect(adminResponse.json()).resolves.toEqual({ components: [] });
     expect(memberResponse.status).toBe(403);
     await expect(memberResponse.json()).resolves.toEqual({ error: "Admin access required" });
+    expect((await app.request("/system/observability")).status).toBe(401);
+    expect(
+      (
+        await app.request("/system/observability", {
+          headers: { cookie: adminCookie },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request("/system/observability", {
+          headers: { cookie: memberCookie },
+        })
+      ).status,
+    ).toBe(403);
   });
 
   test("allows only administrators to read instance health diagnostics", async () => {

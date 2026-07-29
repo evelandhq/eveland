@@ -792,7 +792,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     appSecretKey,
     enqueueLiveDeploymentRestarts,
   });
-  registerObservabilityRoutes({ app, store, options });
+  registerObservabilityRoutes({ app, store, options, appSecretKey });
   registerQueryRoutes(app, store);
 
   return app;

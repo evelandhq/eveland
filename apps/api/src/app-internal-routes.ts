@@ -10,6 +10,7 @@ import { runtimeActivationSchema, schedulerDispatchSchema } from "./app-schemas.
 import { isServiceRequest, safeSecretEqual, waitForRuntimeActivation } from "./app-support.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { registerOtlpRoutes } from "./app-otel-routes.js";
+import { registerObservabilityProxyRoute } from "./app-observability-proxy-routes.js";
 
 export function registerInternalRoutes(input: {
   app: ApiApp;
@@ -23,7 +24,8 @@ export function registerInternalRoutes(input: {
   const { app, store, options, buildInfo, runtimeActivationLeaseTtlMs, runtimeActivationWaitTimeoutMs } = input;
   app.get("/health", (c) => c.json({ ok: true, ...buildInfo }));
 
-  registerOtlpRoutes({
+  registerOtlpRoutes({ app, store, options, appSecretKey: input.appSecretKey });
+  registerObservabilityProxyRoute({
     app,
     store,
     options,

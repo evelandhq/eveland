@@ -536,6 +536,445 @@ describe("Built-in OTLP ingest", () => {
   });
 });
 
+describe("external OTLP egress proxy", () => {
+  /**
+   * Production always configures `options.auth`; before this test nothing in
+   * apps/api did, so the catch-all session middleware never ran under test and
+   * a route registered behind it would 401 the Collector only in production.
+   */
+  test("stays reachable with the Collector service token when session auth is enabled", async () => {
+    const store = createTestStore();
+    const authenticate = vi.fn().mockResolvedValue(null);
+    const app = createApp(store, {
+      appSecretKey: "0123456789abcdef0123456789abcdef",
+      otlpServiceToken: "collector-service-token",
+      auth: { authenticate } as unknown as NonNullable<
+        Parameters<typeof createApp>[1]
+      >["auth"],
+    });
+
+    const response = await app.request(
+      "/internal/observability/destinations/dst_missing/v1/logs",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ resourceLogs: [] }),
+      },
+    );
+
+    // 404 is the route's own "no such destination" answer, proving the handler
+    // ran. A 401 here would mean the session middleware intercepted it.
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "Not found" });
+    expect(authenticate).not.toHaveBeenCalled();
+  });
+
+  test("authenticates Collector traffic and forwards through the validated requester", async () => {
+    const store = createTestStore();
+    const forwardExternalObservabilityRequest = vi.fn().mockResolvedValue({
+      status: 202,
+      contentType: "application/json",
+      body: new Uint8Array(),
+    });
+    const app = createApp(store, {
+      appSecretKey: "0123456789abcdef0123456789abcdef",
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    const created = await app.request(
+      "/system/observability/destinations",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          config: {
+            kind: "custom_otlp",
+            endpoint: "https://collector.example",
+            supportedSignals: ["logs"],
+            domains: ["agent"],
+            headers: { "x-api-key": "destination-secret" },
+          },
+        }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const destinationId = (
+      await store.getObservabilityPolicy("team_local")
+    ).externalDestinations[0]!.id;
+    const body = JSON.stringify({ resourceLogs: [] });
+
+    const hidden = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      },
+    );
+    expect(hidden.status).toBe(404);
+
+    const response = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body,
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(forwardExternalObservabilityRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          endpoint: "https://collector.example",
+          headers: { "x-api-key": "destination-secret" },
+        }),
+        signal: "logs",
+        contentType: "application/json",
+        body: new Uint8Array(Buffer.from(body)),
+      }),
+    );
+  });
+
+  test("enforces the current destination domains while Collector configuration is stale", async () => {
+    const store = createTestStore();
+    const forwardExternalObservabilityRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      contentType: "application/json",
+      body: new Uint8Array(),
+    });
+    const app = createApp(store, {
+      appSecretKey: devSecretKey,
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    const created = await app.request(
+      "/system/observability/destinations",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          config: {
+            kind: "custom_otlp",
+            endpoint: "https://collector.example",
+            supportedSignals: ["logs"],
+            domains: ["platform", "capacity"],
+            headers: {},
+          },
+        }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const destinationId = (
+      await store.getObservabilityPolicy("team_local")
+    ).externalDestinations[0]!.id;
+    const updated = await app.request(
+      `/system/observability/destinations/${destinationId}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 2,
+          config: {
+            kind: "custom_otlp",
+            endpoint: "https://collector.example",
+            supportedSignals: ["logs"],
+            domains: ["capacity"],
+          },
+        }),
+      },
+    );
+    expect(updated.status).toBe(200);
+
+    const response = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          resourceLogs: [
+            platformLogBatch().resourceLogs[0],
+            {
+              resource: {
+                attributes: [
+                  attribute("service.name", "eveland-worker"),
+                  attribute("eveland.telemetry.domain", "capacity"),
+                ],
+              },
+              scopeLogs: [],
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const forwarded = JSON.parse(
+      new TextDecoder().decode(
+        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
+      ),
+    );
+    expect(
+      forwarded.resourceLogs.map(
+        (resourceLog: {
+          resource: {
+            attributes: Array<{
+              key: string;
+              value: { stringValue?: string };
+            }>;
+          };
+        }) =>
+          readStringAttributes(resourceLog.resource.attributes)[
+            "eveland.telemetry.domain"
+          ],
+      ),
+    ).toEqual(["capacity"]);
+  });
+
+  test("binds Agent telemetry to the signed Deployment and strips the credential before forwarding", async () => {
+    const store = createTestStore();
+    const attackerProject = await store.createProject({
+      name: "Attacker",
+      importKind: "zip",
+    });
+    const attackerRevision = await store.recordSourceRevision({
+      projectId: attackerProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/otlp-attacker",
+      summary: { eveVersion: "0.27.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const attacker = await store.recordDeployment({
+      projectId: attackerProject.id,
+      sourceRevisionId: attackerRevision.id,
+      imageTag: "eveland/otlp-attacker:test",
+      containerName: "eveland-otlp-attacker",
+      internalPort: 3000,
+      hostPort: 41000,
+      runtimeKind: "systemd",
+    });
+    const victimProject = await store.createProject({
+      name: "Victim",
+      importKind: "zip",
+    });
+    const victimRevision = await store.recordSourceRevision({
+      projectId: victimProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/otlp-victim",
+      summary: { eveVersion: "0.27.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const victim = await store.recordDeployment({
+      projectId: victimProject.id,
+      sourceRevisionId: victimRevision.id,
+      imageTag: "eveland/otlp-victim:test",
+      containerName: "eveland-otlp-victim",
+      internalPort: 3000,
+      hostPort: 41001,
+      runtimeKind: "docker",
+    });
+    const forwardExternalObservabilityRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      contentType: "application/json",
+      body: new Uint8Array(),
+    });
+    const app = createApp(store, {
+      appSecretKey: devSecretKey,
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    await app.request("/system/observability/destinations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        config: {
+          kind: "custom_otlp",
+          endpoint: "https://collector.example",
+          supportedSignals: ["logs"],
+          domains: ["agent"],
+          headers: {},
+        },
+      }),
+    });
+    const destinationId = (
+      await store.getObservabilityPolicy("team_local")
+    ).externalDestinations[0]!.id;
+    const payload = {
+      resourceLogs: [
+        {
+          resource: {
+            attributes: [
+              attribute("service.name", "eveland-agent"),
+              attribute("eveland.telemetry.domain", "agent"),
+              attribute("eveland.team.id", "team_victim"),
+              attribute("eveland.project.id", victim.projectId),
+              attribute("eveland.release.id", victim.releaseId),
+              attribute("eveland.deployment.id", victim.id),
+              attribute("eveland.runtime.kind", "docker"),
+              attribute(
+                "eveland.deployment.credential",
+                agentCredential(attacker.id),
+              ),
+            ],
+          },
+          scopeLogs: [
+            {
+              scope: { name: "@eveland/eve-runtime" },
+              logRecords: [
+                {
+                  attributes: [
+                    attribute("eveland.project.id", victim.projectId),
+                    attribute(
+                      "langfuse.observation.metadata.eveland.project_id",
+                      victim.projectId,
+                    ),
+                    attribute(
+                      "eveland.deployment.credential",
+                      agentCredential(attacker.id),
+                    ),
+                  ],
+                  body: { stringValue: "event" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const response = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const forwarded = JSON.parse(
+      new TextDecoder().decode(
+        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
+      ),
+    );
+    const resourceAttributes =
+      forwarded.resourceLogs[0].resource.attributes;
+    expect(readStringAttributes(resourceAttributes)).toMatchObject({
+      "service.name": "eveland-agent",
+      "eveland.telemetry.domain": "agent",
+      "eveland.team.id": "team_local",
+      "eveland.project.id": attacker.projectId,
+      "eveland.release.id": attacker.releaseId,
+      "eveland.deployment.id": attacker.id,
+      "eveland.runtime.kind": "systemd",
+    });
+    expect(readStringAttributes(resourceAttributes)).not.toHaveProperty(
+      "eveland.deployment.credential",
+    );
+    expect(
+      readStringAttributes(
+        forwarded.resourceLogs[0].scopeLogs[0].logRecords[0].attributes,
+      ),
+    ).toMatchObject({
+      "eveland.project.id": attacker.projectId,
+      "langfuse.observation.metadata.eveland.project_id":
+        attacker.projectId,
+    });
+    expect(JSON.stringify(forwarded)).not.toContain(
+      "eveland.deployment.credential",
+    );
+  });
+
+  test("drops Agent resources whose deployment credential cannot be verified", async () => {
+    const store = createTestStore();
+    const forwardExternalObservabilityRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      contentType: "application/json",
+      body: new Uint8Array(),
+    });
+    const app = createApp(store, {
+      appSecretKey: devSecretKey,
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    await app.request("/system/observability/destinations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        config: {
+          kind: "custom_otlp",
+          endpoint: "https://collector.example",
+          supportedSignals: ["logs"],
+          domains: ["agent"],
+          headers: {},
+        },
+      }),
+    });
+    const destinationId = (
+      await store.getObservabilityPolicy("team_local")
+    ).externalDestinations[0]!.id;
+
+    const response = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          resourceLogs: [
+            {
+              resource: {
+                attributes: [
+                  attribute("eveland.telemetry.domain", "agent"),
+                  attribute(
+                    "eveland.deployment.credential",
+                    "forged.signature",
+                  ),
+                ],
+              },
+              scopeLogs: [],
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const forwarded = JSON.parse(
+      new TextDecoder().decode(
+        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
+      ),
+    );
+    expect(forwarded).toEqual({ resourceLogs: [] });
+  });
+});
+
 function agentLogBatch(deploymentId: string) {
   return {
     resourceLogs: [
@@ -663,6 +1102,14 @@ function logRecord(eventId: string, event: unknown) {
 
 function attribute(key: string, value: string) {
   return { key, value: { stringValue: value } };
+}
+
+function readStringAttributes(
+  attributes: Array<{ key: string; value: { stringValue?: string } }>,
+) {
+  return Object.fromEntries(
+    attributes.map(({ key, value }) => [key, value.stringValue]),
+  );
 }
 
 function anyValue(value: unknown): Record<string, unknown> {
