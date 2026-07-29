@@ -7,6 +7,11 @@ import type {
 import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity";
 import type { PublicIdentityProvider } from "./server-api";
+import type {
+  AgentCapturePolicy,
+  ExternalDestinationConfigPatch,
+  PublicObservabilityPolicy,
+} from "@eveland/core/observability";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -157,6 +162,80 @@ export async function saveSharedAgentEnvironment(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ entries }),
   });
+}
+
+export async function saveObservabilitySettings(input: {
+  expectedRevision: number;
+  agentCapture: AgentCapturePolicy;
+}): Promise<PublicObservabilityPolicy> {
+  return clientRequest("/system/observability", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createObservabilityDestination(input: {
+  expectedRevision: number;
+  config: ExternalDestinationConfigPatch;
+}): Promise<PublicObservabilityPolicy> {
+  return clientRequest("/system/observability/destinations", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateObservabilityDestination(input: {
+  destinationId: string;
+  expectedRevision: number;
+  config: ExternalDestinationConfigPatch;
+}): Promise<PublicObservabilityPolicy> {
+  return clientRequest(
+    `/system/observability/destinations/${input.destinationId}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: input.expectedRevision,
+        config: input.config,
+      }),
+    },
+  );
+}
+
+export async function toggleObservabilityDestination(input: {
+  destinationId: string;
+  expectedRevision: number;
+  enabled: boolean;
+}): Promise<PublicObservabilityPolicy> {
+  return clientRequest(
+    `/system/observability/destinations/${input.destinationId}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: input.expectedRevision,
+        enabled: input.enabled,
+      }),
+    },
+  );
+}
+
+export async function deleteObservabilityDestination(input: {
+  destinationId: string;
+  expectedRevision: number;
+}): Promise<PublicObservabilityPolicy> {
+  return clientRequest(
+    `/system/observability/destinations/${input.destinationId}`,
+    {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: input.expectedRevision,
+      }),
+    },
+  );
 }
 
 export async function createProjectEnvironmentEntry(

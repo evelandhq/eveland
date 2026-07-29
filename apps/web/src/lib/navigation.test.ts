@@ -49,6 +49,7 @@ describe("sidebar navigation", () => {
           { href: "/settings/members", label: "Members" },
           { href: "/settings/identity", label: "Identity" },
           { href: "/settings/shared-agent-environment", label: "Shared agent environment" },
+          { href: "/settings/observability", label: "Observability" },
           { href: "/settings/health", label: "Instance health" },
           { href: "/settings/about", label: "About" },
         ],
