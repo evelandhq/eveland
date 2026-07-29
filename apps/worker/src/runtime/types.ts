@@ -54,6 +54,17 @@ export type ProcessDiagnostics = {
   logs: string;
 };
 
+/**
+ * Whether the listening socket on a deployment's loopback port is held by the
+ * adapter's own process. "foreign" means another process answers on that port,
+ * so any HTTP readiness probe against it would be proven by the wrong
+ * responder -- the exact failure mode behind cross-project misrouting.
+ */
+export type PortOwnership =
+  | { status: "owned" }
+  | { status: "unbound" }
+  | { status: "foreign"; holder: string };
+
 export type RuntimeAdapter = {
   // Structural match for the shared RuntimeKind contract. Keeping the adapter
   // name narrow makes each deployment's persisted runtime owner unambiguous.
@@ -65,6 +76,8 @@ export type RuntimeAdapter = {
   getProcessDiagnostics?(processName: string): Promise<ProcessDiagnostics>;
   /** Names of currently running processes this runtime owns whose name starts with the prefix. */
   listProcesses?(namePrefix: string): Promise<string[]>;
+  /** Whether the process this adapter manages is the one holding the port's listening socket. */
+  verifyPortOwnership?(input: { processName: string; port: number }): Promise<PortOwnership>;
   ensureProcess?(input: ProcessStartInput): Promise<ProcessStartResult>;
   stopProcess(processName: string): Promise<void>;
   removeRelease?(releaseRef: string): Promise<void>;

@@ -533,9 +533,15 @@ describe("createSystemdAdapter startProcess", () => {
     );
   });
 
-  test("ensureProcess reuses an active unit without invoking systemd-run", async () => {
+  test("ensureProcess reuses an active unit that owns its port without invoking systemd-run", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({ failed: false, stdout: "active\n", all: "active\n" } as never);
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false, stdout: "active\n", all: "active\n" } as never)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: 'LISTEN 0 511 127.0.0.1:41000 0.0.0.0:* users:(("node",pid=1234,fd=20))',
+      } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_123-dep_456.service\n" } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     const result = await adapter.ensureProcess!({
@@ -552,7 +558,65 @@ describe("createSystemdAdapter startProcess", () => {
     expect(result.log).toContain("Reused ready systemd process");
     expect(vi.mocked(execa).mock.calls).toEqual([
       ["systemctl", ["show", "eveland-proj_123-dep_456.service", "--property=ActiveState", "--value"], { all: true, reject: false }],
+      ["ss", ["-H", "-t", "-l", "-n", "-p", "sport", "=", ":41000"], { all: true, reject: false }],
+      ["ps", ["-o", "unit=", "-p", "1234"], { all: true, reject: false }],
     ]);
+  });
+
+  test("ensureProcess reuses a starting unit that has not bound its port yet", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false, stdout: "activating\n", all: "activating\n" } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "", all: "" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    const result = await adapter.ensureProcess!({
+      processName: "eveland-proj_123-dep_456",
+      releaseRef: "/data/builds/proj_123/rel_456",
+      port: 41000,
+      env: {},
+      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
+    });
+
+    expect(result.log).toContain("Reused starting systemd process");
+    expect(vi.mocked(execa).mock.calls.some(([command]) => command === "systemd-run")).toBe(false);
+  });
+
+  test("ensureProcess stops the unit and fails loudly when another process holds its port", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false, stdout: "active\n", all: "active\n" } as never)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: 'LISTEN 0 511 127.0.0.1:41000 0.0.0.0:* users:(("node",pid=9876,fd=20))',
+      } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_other-dep_999.service\n" } as never)
+      .mockResolvedValueOnce({ failed: false } as never)
+      .mockResolvedValueOnce({ failed: false } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(
+      adapter.ensureProcess!({
+        processName: "eveland-proj_123-dep_456",
+        releaseRef: "/data/builds/proj_123/rel_456",
+        port: 41000,
+        env: {},
+        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+        sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        observabilityPolicyDir:
+          "/var/lib/eveland-data/observability/proj_123/dep_456",
+      }),
+    ).rejects.toThrow(/eveland-proj_other-dep_999\.service/);
+
+    expect(vi.mocked(execa).mock.calls).toContainEqual([
+      "systemctl",
+      ["stop", "eveland-proj_123-dep_456.service"],
+      { reject: false },
+    ]);
+    expect(vi.mocked(execa).mock.calls.some(([command]) => command === "systemd-run")).toBe(false);
   });
 
   test("collects unit state and recent journal output before cleanup", async () => {
@@ -1053,5 +1117,79 @@ describe("buildEnvFileContent", () => {
 
   test("rejects values containing newlines", () => {
     expect(() => buildEnvFileContent({ BAD: "line1\nline2" })).toThrow(/newline/);
+  });
+});
+
+describe("createSystemdAdapter verifyPortOwnership", () => {
+  const ownershipInput = { processName: "eveland-proj_123-dep_456", port: 41032 };
+
+  test("reports owned when a listener pid belongs to the unit", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: [
+          'LISTEN 0 511 127.0.0.1:41032 0.0.0.0:* users:(("npm",pid=1200,fd=18))',
+          'LISTEN 0 511 127.0.0.1:41032 0.0.0.0:* users:(("node",pid=1234,fd=20))',
+        ].join("\n"),
+      } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_other-dep_9.service\n" } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_123-dep_456.service\n" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({ status: "owned" });
+    expect(vi.mocked(execa).mock.calls[0]).toEqual([
+      "ss",
+      ["-H", "-t", "-l", "-n", "-p", "sport", "=", ":41032"],
+      { all: true, reject: false },
+    ]);
+  });
+
+  test("reports foreign with the holding unit when only another process listens", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: 'LISTEN 0 511 127.0.0.1:41032 0.0.0.0:* users:(("node",pid=9876,fd=20))',
+      } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_other-dep_9.service\n" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({
+      status: "foreign",
+      holder: "pid 9876 (unit eveland-proj_other-dep_9.service)",
+    });
+  });
+
+  test("reports foreign even when the holder's unit cannot be resolved", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: 'LISTEN 0 511 127.0.0.1:41032 0.0.0.0:* users:(("node",pid=9876,fd=20))',
+      } as never)
+      .mockResolvedValueOnce({ failed: true, stdout: "" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({
+      status: "foreign",
+      holder: "pid 9876",
+    });
+  });
+
+  test("reports unbound when nothing listens on the port", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: false, stdout: "" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({ status: "unbound" });
+  });
+
+  test("fails loudly instead of passing silently when ss itself fails", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa).mockResolvedValueOnce({ failed: true, all: "ss: command not found" } as never);
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(adapter.verifyPortOwnership!(ownershipInput)).rejects.toThrow(/ss.*command not found/);
   });
 });

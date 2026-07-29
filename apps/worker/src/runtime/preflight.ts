@@ -176,6 +176,10 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
       "systemctl",
       "runuser",
       "docker",
+      // Deployment readiness verifies the listening socket's owner (ss) and
+      // maps the holding pid back to its systemd unit (ps -o unit=).
+      "ss",
+      "ps",
       ...SANDBOX_TOOLCHAIN_COMMANDS,
       ...(deps.env.EVELAND_BUILD_SANDBOX === "none" ? [] : ["bwrap"]),
     ]),

@@ -16,7 +16,7 @@ import {
   ensureDeploymentActive,
   startRuntimeInstance,
 } from "../runtime/activation-manager.js";
-import { waitForHttpHealth } from "../runtime/health.js";
+import { waitForOwnedHttpHealth } from "../runtime/health.js";
 import {
   createRuntimeAdapterForKind,
   createRuntimeAdapterFromEnv,
@@ -166,10 +166,13 @@ export async function processRuntimeJob(
               : observability.workerDir,
         });
         restarted = true;
-        await (options.waitForDeployment ?? waitForHttpHealth)({
+        await waitForOwnedHttpHealth({
           host: "127.0.0.1",
           port: deployment.hostPort,
           timeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
+          processName: deployment.containerName,
+          runtime: adapter,
+          ...(options.waitForDeployment ? { waitForHealth: options.waitForDeployment } : {}),
         });
       } catch (error) {
         if (restarted) {
