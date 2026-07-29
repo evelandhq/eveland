@@ -148,10 +148,12 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 > invalidation and route changes only take effect after the cache TTL. This pair has no
 > dev fallback.
 
-## Observability (collector + observer)
+## Observability (OpenTelemetry Collector + legacy observer)
 
 | Variable | Purpose | Default | Read by |
 | --- | --- | --- | --- |
+| `EVELAND_OTLP_SERVICE_TOKEN` | Shared credential used by the managed OpenTelemetry Collector when it sends Built-in OTLP requests to the API. Never expose it to Agent Deployments. | dev-only value in Compose; required by the production overlay | API + Collector |
+| `EVELAND_OTEL_COLLECTOR_CONTAINER` | Stable container name for the managed OpenTelemetry Collector. | `eveland-otel-collector` | Compose |
 | `EVELAND_COLLECTOR_MODE` | Embedded session collector switch: `embedded` or `disabled`. | `embedded` | `apps/api/src/server.ts` |
 | `EVELAND_OBSERVER_ROOT` | Root directory the collector reads events from. | `<EVELAND_DATA_DIR>/observer` | `apps/api/src/server.ts` |
 | `EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS` | Collector concurrency cap. | `100` | `apps/api/src/server.ts` |

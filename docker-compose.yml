@@ -10,6 +10,43 @@ services:
     volumes:
       - eveland-postgres:/var/lib/postgresql/data
 
+  otel-config-init:
+    image: alpine:3.22
+    command:
+      - sh
+      - -c
+      - >-
+        install -d -m 0700 /var/lib/eveland/otel &&
+        if [ ! -f /var/lib/eveland/otel/collector.yaml ]; then
+          install -m 0600 /seed/collector.yaml /var/lib/eveland/otel/collector.yaml;
+        fi
+    volumes:
+      - ./infra/otel/collector.yaml:/seed/collector.yaml:ro
+      - ./.eveland-data/otel:/var/lib/eveland/otel
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.149.0
+    container_name: ${EVELAND_OTEL_COLLECTOR_CONTAINER:-eveland-otel-collector}
+    user: "0:0"
+    command:
+      - --config=/var/lib/eveland/otel/collector.yaml
+    depends_on:
+      otel-config-init:
+        condition: service_completed_successfully
+    environment:
+      EVELAND_BUILTIN_OTLP_ENDPOINT: http://host.docker.internal:4000/internal/otel
+      EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:4327:4327"
+      - "127.0.0.1:4328:4328"
+    volumes:
+      - ./.eveland-data/otel:/var/lib/eveland/otel:ro
+      - eveland-otel-collector:/var/lib/otelcol
+
   api:
     image: node:24-alpine
     working_dir: /workspace
@@ -39,6 +76,7 @@ services:
       EVELAND_COLLECTOR_MODE: embedded
       EVELAND_GATEWAY_INTERNAL_URL: http://gateway:4080
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
+      EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
       EVELAND_ACTIVATION_LEASE_TTL_MS: ${EVELAND_ACTIVATION_LEASE_TTL_MS:-180000}
       EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS: ${EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS:-86400000}
       EVELAND_API_SESSION_IDLE_TTL_MS: ${EVELAND_API_SESSION_IDLE_TTL_MS:-604800000}
@@ -78,7 +116,7 @@ services:
     volumes:
       - .:/workspace
       # The repository bind is for live application code only. Hide imported project
-      # sources, observer outboxes, and encrypted secret material from the public proxy.
+      # sources, runtime state, and encrypted secret material from the public proxy.
       - eveland-gateway-data-mask:/workspace/.eveland-data
 
   web:
@@ -157,4 +195,5 @@ services:
 
 volumes:
   eveland-postgres:
+  eveland-otel-collector:
   eveland-gateway-data-mask:

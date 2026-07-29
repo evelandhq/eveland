@@ -1,0 +1,140 @@
+extensions:
+  bearertokenauth/platform:
+    token: ${env:EVELAND_OTLP_SERVICE_TOKEN}
+  file_storage:
+    directory: /var/lib/otelcol/storage
+    create_directory: true
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp/platform:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: bearertokenauth/platform
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth/platform
+  otlp/agent:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4327
+      http:
+        endpoint: 0.0.0.0:4328
+  prometheus/collector_self:
+    config:
+      scrape_configs:
+        - job_name: eveland-otel-collector
+          scrape_interval: 15s
+          static_configs:
+            - targets:
+                - 127.0.0.1:8888
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  resource/trusted_agent:
+    attributes:
+      - key: service.name
+        value: eveland-agent
+        action: upsert
+      - key: eveland.telemetry.domain
+        value: agent
+        action: upsert
+  filter/trusted_agent:
+    error_mode: ignore
+    trace_conditions:
+      - 'scope.name != "@eveland/eve-runtime"'
+    log_conditions:
+      - 'scope.name != "@eveland/eve-runtime"'
+    metric_conditions:
+      - 'scope.name != "@eveland/eve-runtime"'
+  filter/builtin_capacity:
+    error_mode: ignore
+    metric_conditions:
+      - 'resource.attributes["service.name"] != "eveland-worker" or resource.attributes["eveland.telemetry.domain"] != "capacity"'
+      - 'metric.name != "eveland.worker.heartbeat" and metric.name != "eveland.worker.tick.duration" and metric.name != "system.cpu.utilization" and metric.name != "system.memory.usage" and metric.name != "system.filesystem.usage" and metric.name != "system.filesystem.limit" and metric.name != "eveland.system.filesystem.inodes.usage" and metric.name != "eveland.system.filesystem.inodes.limit" and metric.name != "eveland.host.load.1m"'
+      - 'metric.name == "system.cpu.utilization" and datapoint.attributes["cpu.mode"] == "idle"'
+      - 'metric.name == "system.memory.usage" and datapoint.attributes["system.memory.state"] != "used" and datapoint.attributes["system.memory.state"] != "free"'
+      - 'metric.name == "system.filesystem.usage" and datapoint.attributes["system.filesystem.state"] != "free"'
+      - 'metric.name == "eveland.system.filesystem.inodes.usage" and datapoint.attributes["eveland.system.filesystem.inodes.state"] != "free"'
+  resource/collector_self:
+    attributes:
+      - key: service.name
+        value: eveland-otel-collector
+        action: upsert
+      - key: service.instance.id
+        value: ${env:HOSTNAME}
+        action: upsert
+      - key: eveland.team.id
+        value: team_local
+        action: upsert
+      - key: eveland.telemetry.domain
+        value: platform
+        action: upsert
+
+exporters:
+  otlp_http/builtin:
+    endpoint: ${env:EVELAND_BUILTIN_OTLP_ENDPOINT}
+    compression: none
+    headers:
+      authorization: "Bearer ${env:EVELAND_OTLP_SERVICE_TOKEN}"
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 0s
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      queue_size: 10000
+
+service:
+  extensions:
+    - bearertokenauth/platform
+    - file_storage
+    - health_check
+  pipelines:
+    logs:
+      receivers:
+        - otlp/agent
+      processors:
+        - memory_limiter
+        - resource/trusted_agent
+        - filter/trusted_agent
+        - batch
+      exporters:
+        - otlp_http/builtin
+    metrics:
+      receivers:
+        - otlp/platform
+      processors:
+        - memory_limiter
+        - filter/builtin_capacity
+        - batch
+      exporters:
+        - otlp_http/builtin
+  telemetry:
+    resource:
+      service.name: eveland-otel-collector
+      service.instance.id: ${env:HOSTNAME}
+      eveland.team.id: team_local
+      eveland.telemetry.domain: platform
+    metrics:
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8888
+                without_type_suffix: true
+                without_units: true
