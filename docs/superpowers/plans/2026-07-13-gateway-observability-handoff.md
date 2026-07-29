@@ -6,11 +6,6 @@
 >
 > 本文件记录 2026-07-10 至 2026-07-13 的架构讨论结论。除“Required investigation”明确标出的项目外，不要重新发散已确定的产品和架构边界。
 
-> 2026-07-27 更新：本文的 Gateway、版本化 Deployment 与 push-first Session 收集背景仍可
-> 参考；其中 observability 产品范围、Managed Collector 拓扑、Built-in 存储/页面以及隐私
-> 默认值属于历史设计，已由当前 `docs/spec.md` 与
-> `2026-07-23-private-agent-observability-design.md` 顶部的 supersession 说明取代。
-
 ## 0. 先读这些文件
 
 开始实现前，按顺序阅读：

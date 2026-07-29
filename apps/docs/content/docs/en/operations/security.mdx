@@ -1,6 +1,6 @@
 ---
 title: Security model
-description: Understand authentication, secret, build, runtime, network, and observer trust boundaries.
+description: Understand authentication, secret, build, runtime, network, and telemetry trust boundaries.
 ---
 
 Eveland minimizes the number of components that can cross each privilege boundary.
@@ -22,7 +22,7 @@ Project dependency lifecycle scripts execute as the unprivileged build user insi
 
 ## Secret lifecycle
 
-Secrets never enter source snapshots, Release layers, logs, observer filenames, events, fixtures, or client responses. API and Worker must share the production application encryption key; Gateway never receives it.
+Secrets never enter source snapshots, Release layers, logs, telemetry signals, events, fixtures, or client responses. API and Worker must share the production application encryption key; Gateway never receives it.
 
 ## Network boundary
 

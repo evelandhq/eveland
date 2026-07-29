@@ -23,4 +23,4 @@ Missing usage remains explicitly missing; Eveland does not estimate it. At-least
 
 ## Telemetry health
 
-Telemetry failure must not make an Agent turn fail. The Collector gives Built-in and every external exporter an independent persistent retry queue. Built-in receive health is visible in System observability settings.
+Telemetry failure must not make an Agent turn fail. The Collector gives Built-in and every external exporter an independent persistent retry queue. Collector/Built-in liveness is part of **Settings → Instance health**; external destination probe state is shown under **Settings → Observability**.

@@ -23,4 +23,4 @@ Usage 只来自 Eve Provider 报告的 `step.completed.data.usage`：
 
 ## Telemetry 健康
 
-Telemetry 故障不能让 Agent Turn 失败。Collector 为 Built-in 与每个外部 Exporter 提供相互独立的持久化 Retry Queue；System Observability 设置会显示 Built-in 接收状态。
+Telemetry 故障不能让 Agent Turn 失败。Collector 为 Built-in 与每个外部 Exporter 提供相互独立的持久化 Retry Queue；**Settings → Instance health** 展示 Collector/Built-in 存活状态，**Settings → Observability** 展示外部 Destination Probe 状态。

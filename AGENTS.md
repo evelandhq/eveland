@@ -11,12 +11,11 @@ Before changing code:
 2. Read `README.md` for the current repository shape and local workflow.
 3. For Linux, systemd, sandbox, or host-worker work, also read
    `docs/deploy/linux.md`.
-4. For Gateway, observability, routing, or versioned Deployment work, read the
-   relevant decisions in
+4. For Gateway, routing, or versioned Deployment work, read the relevant
+   decisions in
    `docs/superpowers/plans/2026-07-13-gateway-observability-handoff.md`.
-   Treat completed phase checklists in planning documents as history, not as a
-   current backlog.
-5. Inspect the implementation, nearby tests, and `git status` before proposing
+5. For observability work, read `docs/observability.md`.
+6. Inspect the implementation, nearby tests, and `git status` before proposing
    or making changes.
 
 `docs/spec.md` is the product truth source. Tests and current code are the truth
@@ -211,7 +210,7 @@ corresponding tests and docs are updated.
 
 ### Secrets and privilege boundaries
 
-- Never put secrets in source snapshots, releases, logs, observer filenames,
+- Never put secrets in source snapshots, releases, logs, telemetry signals,
   events, fixtures, or client responses. Do not log raw API keys or affinity
   material.
 - Gateway must not receive the Docker socket, source tree, telemetry policy data, or
@@ -337,7 +336,7 @@ Additional expectations:
 - Validate the merged Compose configuration after Compose/env changes.
 - Run `bash -n infra/integration/run.sh` after editing the integration harness.
 - Run `bash infra/integration/run.sh` for systemd, bwrap, build isolation,
-  observer, private-port, or Gateway behavior that requires the real Linux
+  observability, private-port, or Gateway behavior that requires the real Linux
   topology. It is intentionally heavier than unit tests and requires Lima.
 - For multi-connection locking, driver behavior, and migration compatibility,
   exercise the relevant real Postgres integration path; single-connection

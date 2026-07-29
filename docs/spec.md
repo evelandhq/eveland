@@ -734,14 +734,15 @@ running 的 ScheduleRun 对其 pinned Deployment 提供硬性回收保护。
 credential 不得重复执行 authored side effect。
 返回零个 Session 的成功 dispatch 立即完成；返回 Session ID 的 dispatch 只表示
 authored handler 已启动，ScheduleRun 必须保持 `running`，其 ActivationLease 也必须
-继续保护对应 RuntimeInstance。Observer 以每个返回 Session 的 root `turn.completed`、
+继续保护对应 RuntimeInstance。Built-in 从 Eveland 私有 OTLP LogRecord 投影出的每个返回
+Session 的 root `turn.completed`、
 `turn.failed`、`turn.cancelled` 或 `session.waiting` 作为本次 schedule execution 的边界；
 所有返回 Session 都到达边界后才结算 ScheduleRun 并释放 lease。`session.waiting` 可以
 让持久化对话继续等待后续输入，但不能无限保持进程常驻。
-Observer envelope 必须携带启动它的 RuntimeInstance generation，并把该 provenance
+私有 OTLP observation 必须携带启动它的 RuntimeInstance generation，并把该 provenance
 保存在 SessionNode 与 SessionEvent 上。Worker 发现该 generation 已停止或丢失时，必须
 把仍在运行的关联 Session/ScheduleRun 标记失败并记录平台事件；不得让它们永久显示
-`running`。如果 Observer 边界永久缺失，Worker 还必须在
+`running`。如果 terminal turn boundary 永久缺失，Worker 还必须在
 `EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS`（默认 24 小时）的硬截止时间失败关闭。该截止时间
 是故障保险，与默认 5 分钟的 activation idle TTL 相互独立。
 若旧 RuntimeInstance 正在 `draining`，activation 在 credential 兑换前按健康检查预算

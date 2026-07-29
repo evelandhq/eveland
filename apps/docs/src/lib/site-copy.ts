@@ -136,7 +136,7 @@ const copy = {
     proof: {
       label: "刻意设计的生产边界",
       title: "公开流量永远不会变成宿主机控制权。",
-      body: "Gateway 在没有 Docker Socket、源码、解密 Secrets 或 Observer 数据的情况下路由 Agent 请求。只有宿主机 Worker 能构建 Release 并控制 systemd Deployment。",
+      body: "Gateway 在没有 Docker Socket、源码、解密 Secrets 或 Telemetry Policy 数据的情况下路由 Agent 请求。只有宿主机 Worker 能构建 Release 并控制 systemd Deployment。",
     },
     foundations: {
       label: "为团队自有平台而构建",

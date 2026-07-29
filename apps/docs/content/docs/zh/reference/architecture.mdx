@@ -40,4 +40,4 @@ Client
 
 ## Observation Path
 
-注入 Eve Hook 使用 Eveland 私有 OpenTelemetry Provider，不修改用户 Instrumentation。API、Gateway、Worker 与 Agent 信号通过 OTLP 进入托管 Collector。Built-in 始终启用，并将标准 OTLP 投影为 Sessions、Usage 与 Instance Health；Elastic 接收全部 Eveland 信号，Langfuse 只接收 Agent Trace。外部目的地拥有独立 Queue 与空 OTLP Health Probe。Built-in 不存储原始 Span、LogRecord 或 Metric 数据点；Capacity 数据保留 30 天，派生 Session 与 Usage 保留 90 天。Playground Streaming 不是权威采集路径。
+注入 Eve Hook 使用 Eveland 私有 OpenTelemetry Provider，不修改用户 Instrumentation。API、Gateway、Worker 与 Agent 信号通过 OTLP 进入托管 Collector。Built-in 始终启用，将 Agent Log 与 Worker Capacity Metric 投影为 Sessions、Usage 与 Instance Health，不存储原始 Span、LogRecord 或 Metric Point。Elastic 接收全部 Eveland 信号，Langfuse 只接收 Agent Trace。外部目的地拥有独立 Queue 与空 OTLP Health Probe。Capacity Sample 保留 30 天，派生 Session 与 Usage 保留 90 天，Batch Receipt 保留 24 小时。Playground Streaming 不是权威采集路径。
