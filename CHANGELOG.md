@@ -4,6 +4,24 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.14.0](https://github.com/evelandhq/eveland/compare/v0.13.0...v0.14.0) (2026-07-29)
+
+
+### Features
+
+* **observability:** add destination settings UI ([#163](https://github.com/evelandhq/eveland/issues/163)) ([b456985](https://github.com/evelandhq/eveland/commit/b4569857ff492a77b7bd2147345cd69b10261299))
+* **observability:** add standard OTLP built-in ingest ([#158](https://github.com/evelandhq/eveland/issues/158)) ([3f6f50b](https://github.com/evelandhq/eveland/commit/3f6f50be729f117b7b1d36a8baac73e63a7569ee))
+* **observability:** cut agents over to private OTLP ([#160](https://github.com/evelandhq/eveland/issues/160)) ([44cdbd3](https://github.com/evelandhq/eveland/commit/44cdbd333163cf72a1789287785b2f12ee74204d))
+* **observability:** define private agent telemetry runtime ([#157](https://github.com/evelandhq/eveland/issues/157)) ([a5c6e8c](https://github.com/evelandhq/eveland/commit/a5c6e8c1af2e9835bbb45c1fb1dfc027e5df2bb1))
+* **observability:** emit platform and capacity telemetry ([#161](https://github.com/evelandhq/eveland/issues/161)) ([1c4bf09](https://github.com/evelandhq/eveland/commit/1c4bf0980dc8344800ba4c38d00430904733a226))
+* **observability:** route telemetry to external destinations ([#162](https://github.com/evelandhq/eveland/issues/162)) ([82af344](https://github.com/evelandhq/eveland/commit/82af344a6d2f5b993e85d8c9e6913d7e3b91690d))
+* **observability:** run managed OpenTelemetry Collector ([#159](https://github.com/evelandhq/eveland/issues/159)) ([15ca18b](https://github.com/evelandhq/eveland/commit/15ca18bafb2cc3dc6b1a71d461a6365ea5707cca))
+
+
+### Bug Fixes
+
+* list only acceptable invitations ([#154](https://github.com/evelandhq/eveland/issues/154)) ([0685d44](https://github.com/evelandhq/eveland/commit/0685d44a9d3215e70d7492880eac52f03c4d8bb8))
+
 ## [0.13.0](https://github.com/evelandhq/eveland/compare/v0.12.0...v0.13.0) (2026-07-28)
 
 
