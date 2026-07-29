@@ -1,4 +1,13 @@
 {
   "title": "运营平台",
-  "pages": ["runtime", "diagnostics", "upgrades", "upgrade-0-13-to-0-14", "upgrade-0-12-to-0-13", "upgrade-0-11-to-0-12", "security"]
+  "pages": [
+    "runtime",
+    "diagnostics",
+    "upgrades",
+    "upgrade-0-14-to-0-15",
+    "upgrade-0-13-to-0-14",
+    "upgrade-0-12-to-0-13",
+    "upgrade-0-11-to-0-12",
+    "security"
+  ]
 }
