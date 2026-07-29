@@ -13,6 +13,11 @@ const compatibilityMatrix = [
   { version: "0.27.8", fixtureName: "eve-0.25-schedules", packageName: "eve" },
 ] as const;
 
+// Every test here copies a fixture, symlinks a real Eve release into it, and
+// shells out to that Eve to compile the project. Vitest's 5s default is a
+// build budget, not a test budget: it passes on an idle machine and times out
+// when the whole repository suite runs in parallel, so each test states its
+// own.
 describe("Eve schedule compatibility matrix", () => {
   test.each(compatibilityMatrix)("keeps Eve $version runtime state out of the checked-in fixture", async (entry) => {
     const { fixtureDir, sourceFixtureDir } = await prepareFixture(entry);
@@ -25,7 +30,7 @@ describe("Eve schedule compatibility matrix", () => {
     } finally {
       await rm(fixtureDir, { recursive: true, force: true });
     }
-  });
+  }, 120_000);
 
   test.each(compatibilityMatrix)(
     "Eve $version discovers nested markdown, markdown definitions, and zero/multi-session handlers",
@@ -52,6 +57,7 @@ describe("Eve schedule compatibility matrix", () => {
         await rm(fixtureDir, { recursive: true, force: true });
       }
     },
+    120_000,
   );
 
   test.each(compatibilityMatrix)("Eve $version dev dispatch returns zero or multiple sessions", async (entry) => {
