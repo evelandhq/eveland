@@ -466,7 +466,7 @@ pnpm 版本执行 frozen install，存在 `package-lock.json` 时使用 `npm ci`
 到 `npm install`。pnpm frozen install 仍校验 lockfile 与 package integrity，但不得因为平台
 自身的 package minimum-release-age 策略拒绝项目已经提交的锁定版本。Docker 与 systemd
 runtime 必须使用相同选择，不能改用 npm 重新解析 pnpm 项目并绕过其 lockfile。
-Eve 0.27.8 的 `eve add` / `eve registry` 只属于源码作者主动执行的 CLI；Eveland 的 import、
+Eve 0.27.12 的 `eve add` / `eve registry` 只属于源码作者主动执行的 CLI；Eveland 的 import、
 build 与 deploy 不得运行这些命令、访问 registry 或修改不可变 Source Revision。
 
 Git 拉取由 worker 以非交互方式执行，默认最多等待 120 秒；可通过
@@ -574,7 +574,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 * `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
 * `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
 * `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
-* `vercel-oidc`：镜像 Eve 0.27.8 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
+* `vercel-oidc`：镜像 Eve 0.27.12 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
 * `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
@@ -583,7 +583,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
 verifier 建立的 Caller 做隐式映射。
 
-`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.27.8
+`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.27.12
 `ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
 `x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
 Connection 只保存 token Secret reference/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。

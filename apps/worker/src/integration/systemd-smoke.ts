@@ -183,7 +183,7 @@ try {
   await writeFile(path.join(failSourcePath, "agent", "instructions.md"), "Smoke fixture (never healthy).\n");
   await writeFile(
     path.join(failSourcePath, "package.json"),
-    JSON.stringify({ name: "eveland-smoke-fail", version: "0.0.0", dependencies: { eve: "0.27.8" } }, null, 2),
+    JSON.stringify({ name: "eveland-smoke-fail", version: "0.0.0", dependencies: { eve: "0.27.12" } }, null, 2),
   );
 
   const failProject = await store.createProject({ name: "Systemd Smoke Fail", importKind: "zip", sourcePath: failSourcePath });
