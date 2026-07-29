@@ -7,6 +7,7 @@ import {
   sessionRowToSession,
 } from "./mappers.js";
 import { ingestPostgresObserverEnvelope } from "./postgres-observer-store.js";
+import { ingestPostgresAgentEvent } from "./postgres-agent-observability-store.js";
 import {
   logs,
   modelUsageEvents,
@@ -118,6 +119,10 @@ export function createPostgresSessionQueryStore({
 
     async ingestObserverEnvelope(envelope) {
       return ingestPostgresObserverEnvelope(database, envelope);
+    },
+
+    async ingestAgentEvent(observation) {
+      return ingestPostgresAgentEvent(database, observation);
     },
 
     async listModelUsageEvents(sessionId) {

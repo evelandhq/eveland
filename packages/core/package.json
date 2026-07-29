@@ -24,6 +24,7 @@
     "./schedules": "./src/schedules.ts",
     "./source": "./src/source.ts",
     "./transcript": "./src/transcript.ts",
+    "./server/agent-telemetry-credential": "./src/server/agent-telemetry-credential.ts",
     "./server/archive": "./src/server/archive.ts",
     "./server/build-info": "./src/server/build-info.ts",
     "./server/config-diagnostics": "./src/server/config-diagnostics.ts",

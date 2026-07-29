@@ -6,6 +6,8 @@ import { createCollectorHealth, type CollectorHealth } from "./health.js";
 import { parseObserverEnvelope } from "./ingest.js";
 import { listOutboxFiles } from "./outbox.js";
 
+export * from "./otlp.js";
+
 export type CollectorRuntimeOptions = {
   rootDir: string;
   ingest(envelope: ObserverEnvelopeV1): Promise<void>;

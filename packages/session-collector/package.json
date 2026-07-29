@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@eveland/core": "workspace:*",
-    "@eveland/db": "workspace:*"
+    "@eveland/db": "workspace:*",
+    "protobufjs": "^7.6.5"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

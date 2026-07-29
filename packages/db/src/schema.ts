@@ -494,6 +494,80 @@ export const sharedAgentEnvironment = pgTable(
   ],
 );
 
+export const observabilityPolicies = pgTable(
+  "observability_policies",
+  {
+    teamId: text("team_id")
+      .primaryKey()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull(),
+    document: jsonb("document").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "observability_policies_revision_check",
+      sql`${table.revision} > 0`,
+    ),
+  ],
+);
+
+export const observabilityDestinationHealth = pgTable(
+  "observability_destination_health",
+  {
+    destinationId: text("destination_id").primaryKey(),
+    status: text("status").notNull(),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "observability_destination_health_status_check",
+      sql`${table.status} in ('pending', 'healthy', 'degraded', 'paused')`,
+    ),
+  ],
+);
+
+/**
+ * Batch receipts, not archives. The `(signal, payload_hash)` unique index records
+ * Collector redelivery without retaining the telemetry payload. Retention only has
+ * to cover the Collector's retry window.
+ */
+export const otlpBatches = pgTable(
+  "otlp_batches",
+  {
+    id: text("id").primaryKey(),
+    signal: text("signal").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "otlp_batches_signal_check",
+      sql`${table.signal} in ('traces', 'logs', 'metrics')`,
+    ),
+    uniqueIndex("otlp_batches_signal_hash_idx").on(
+      table.signal,
+      table.payloadHash,
+    ),
+    index("otlp_batches_signal_received_idx").on(
+      table.signal,
+      table.receivedAt,
+    ),
+  ],
+);
+
 export const jobs = pgTable("jobs", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id),
@@ -678,7 +752,7 @@ export const hostMetricSamples = pgTable(
     diskInodesAvailable: bigint("disk_inodes_available", { mode: "number" }),
   },
   (table) => [
-    index("host_metric_samples_worker_observed_idx").on(table.workerId, table.observedAt),
+    uniqueIndex("host_metric_samples_worker_observed_idx").on(table.workerId, table.observedAt),
     index("host_metric_samples_observed_idx").on(table.observedAt),
   ],
 );

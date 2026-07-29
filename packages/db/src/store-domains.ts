@@ -53,6 +53,10 @@ import type {
 } from "@eveland/core/contracts";
 import type { ModelStepUsage } from "@eveland/core/eve";
 import type { AgentCatalogRecord } from "@eveland/core/catalog";
+import type {
+  AgentEventObservation,
+  TelemetryDomain,
+} from "@eveland/core/observability";
 import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { EveVersionInfo } from "@eveland/core/source";
 import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
@@ -73,6 +77,13 @@ import type {
   IdentitySigningKey,
   IdentitySigningKeyStatus,
 } from "@eveland/core/identity";
+import type {
+  AgentCapturePolicy,
+  ExternalObservabilityDestination,
+  ExternalDestinationHealth,
+  ObservabilitySignal,
+  ObservabilityPolicy,
+} from "@eveland/core/observability";
 
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
@@ -545,6 +556,9 @@ export interface SessionStore {
   ): Promise<CursorPage<Session>>;
   listSessionEvents(sessionId: string): Promise<SessionEvent[]>;
   listSessionNodes(sessionId: string): Promise<SessionNode[]>;
+  ingestAgentEvent(
+    observation: AgentEventObservation,
+  ): Promise<{ session: Session; node: SessionNode; event: SessionEvent; duplicate: boolean }>;
   ingestObserverEnvelope(
     envelope: ObserverEnvelopeV1,
   ): Promise<{ session: Session; node: SessionNode; event: SessionEvent; duplicate: boolean }>;
@@ -676,6 +690,46 @@ export interface InstanceHealthStore {
   getInstanceWorkload(): Promise<InstanceWorkload>;
 }
 
+export interface ObservabilityStore {
+  getObservabilityPolicy(teamId: string): Promise<ObservabilityPolicy>;
+  saveObservabilityPolicy(input: {
+    teamId: string;
+    expectedRevision: number;
+    agentCapture: AgentCapturePolicy;
+    externalDestinations: ExternalObservabilityDestination[];
+  }): Promise<ObservabilityPolicy | null>;
+  listExternalObservabilityDestinationHealth(): Promise<
+    ExternalDestinationHealth[]
+  >;
+  upsertExternalObservabilityDestinationHealth(
+    health: ExternalDestinationHealth,
+  ): Promise<ExternalDestinationHealth>;
+  /**
+   * Records a batch receipt. `duplicate: true` means the Collector redelivered a
+   * batch it had already sent, and the caller must skip accumulation.
+   */
+  ingestOtlpBatch(input: {
+    signal: ObservabilitySignal;
+    payload: Record<string, unknown>;
+  }): Promise<{
+    id: string;
+    accepted: true;
+    duplicate: boolean;
+  }>;
+  latestOtlpBatchReceivedAt(input?: {
+    signal?: ObservabilitySignal;
+  }): Promise<string | null>;
+  pruneOtlpTelemetry(input: {
+    receiptsBefore: Date;
+  }): Promise<{ receipts: number }>;
+  pruneDerivedAgentTelemetry(before: Date): Promise<{
+    sessions: number;
+    nodes: number;
+    events: number;
+    usageEvents: number;
+  }>;
+}
+
 export type Store = ProjectStore &
   CatalogStore &
   SourceStore &
@@ -691,4 +745,5 @@ export type Store = ProjectStore &
   ScheduleStore &
   RuntimeStore &
   InstanceHealthStore &
+  ObservabilityStore &
   LogStore;
