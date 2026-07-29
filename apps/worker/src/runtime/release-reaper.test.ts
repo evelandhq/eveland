@@ -183,7 +183,10 @@ describe("sweepReleaseRetention", () => {
       sweepReleaseRetention(store, {
         keepRecent: 3,
         limit: 25,
-        now: new Date("2026-07-30T12:00:00.000Z"),
+        // Relative to the binding's real bind time: a fixed calendar date here
+        // silently stops exceeding playgroundIdleTtlMs once the wall clock
+        // catches up to it, turning this test into a time bomb.
+        now: new Date(Date.now() + 2 * 86_400_000),
         playgroundIdleTtlMs: 86_400_000,
         apiIdleTtlMs: 604_800_000,
       }),
