@@ -160,6 +160,7 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 | `EVELAND_GATEWAY_PUBLIC_SCHEME` | `http` or `https`; sets the `Secure` flag on the affinity cookie. | `http` | `apps/gateway/src/server.ts` |
 | `EVELAND_GATEWAY_PUBLIC_PORT` | Publicly advertised port (used to build playground URLs). | — | gateway app options |
 | `EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES` | Cap on proxied request-body size. | `10485760` (10 MiB) | `apps/gateway/src/server.ts` |
+| `EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS` | Socket idle timeout for public upstream proxying. Streaming resets it, so a long turn is unaffected; a deployment that accepts the connection and never answers is dropped instead of holding the client, the socket, and its renewing activation lease. | `120000` (2 min) | `apps/gateway/src/app.ts` |
 | `EVELAND_GATEWAY_SERVICE_TOKEN` | Protects the gateway's `/internal` routes (cache invalidation, playground). In production without it, `/internal` has no token guard. | dev-only `eveland-dev-gateway-token` | `apps/gateway/src/server.ts` |
 | `EVELAND_GATEWAY_INTERNAL_URL` | The API's callback URL to the gateway's `/internal` routes. | — | worker (`process.ts`) |
 | `EVELAND_PLAYGROUND_TIMEOUT_MS` | Timeout for a gateway playground request. | — | `apps/gateway/src/app.ts` |
