@@ -30,6 +30,13 @@ export function registerInternalRoutes(input: {
     appSecretKey: input.appSecretKey,
   });
 
+  registerOtlpRoutes({
+    app,
+    store,
+    options,
+    appSecretKey: input.appSecretKey,
+  });
+
   app.post("/internal/scheduler/dispatch", async (c) => {
     const runtimeSecret = options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
     const dispatchSecret = options.schedulerDispatchSecret ?? resolveSchedulerDispatchSecret(process.env);
