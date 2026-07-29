@@ -298,6 +298,14 @@ Trace/Span ID 必须规范化为与 OTLP/JSON 相同的小写十六进制表示�
 trace/log correlation。重复投递的批次按 signal 与 payload 摘要去重。
 不得定义 Eveland 私有 envelope。
 
+投递至少一次且可乱序，因此投影必须按事件顺序而非到达顺序推进：晚到的、序号更旧的事件
+仍要完整入库，但不得回退 SessionNode/Session 的状态投影，也不得改写 last-observed
+Deployment/RuntimeInstance provenance。判据是 Eve 自带的 per-session `data.sequence`；
+缺少该序号时（旧版 Eve）无从排序，保持 last-writer-wins。终态不是"粘住"的——continuation
+唤醒会话时 completed → running 是合法转换，必须依据序号而非状态本身来判断。Worker 心跳
+与 host metric 同理：重放的旧批次不得让 `observedAt` 倒退，否则健康的 worker 会被显示为
+失联。
+
 Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
 
 * Agent capture 开关、trace sampling、input/output content 与 reasoning policy 只作用于

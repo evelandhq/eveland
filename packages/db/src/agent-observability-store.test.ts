@@ -396,6 +396,100 @@ describe("Agent observability ingestion repository", () => {
   });
 });
 
+describe("out-of-order delivery", () => {
+  test("a late lower-sequence event does not reopen a terminal Session", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "completed",
+        sourceSequence: 10,
+        event: { type: "session.completed", data: {} },
+      }),
+    );
+    const [terminal] = await store.listSessions(projectId);
+    expect(terminal).toMatchObject({ status: "completed" });
+
+    // The Collector retries with multiple consumers, so an older event can
+    // legitimately arrive after a newer one. It must still be stored, but it
+    // must not move the projection backwards -- a Session stuck in "running"
+    // is also excluded from retention pruning, so the regression leaks.
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "late-turn",
+        sourceSequence: 5,
+        event: { type: "turn.started", data: {} },
+      }),
+    );
+
+    const [session] = await store.listSessions(projectId);
+    expect(session).toMatchObject({ status: "completed" });
+    expect(session!.completedAt).not.toBeNull();
+    // History stays complete even though the projection ignored it.
+    await expect(store.listSessionEvents(session!.id)).resolves.toHaveLength(3);
+  });
+
+  test("a genuine continuation after completion still reopens the Session", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "completed",
+        sourceSequence: 10,
+        event: { type: "session.completed", data: {} },
+      }),
+    );
+
+    // Eve sessions resume: completed -> running is legitimate when the event
+    // is genuinely newer. The guard must be about ordering, not stickiness.
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "resumed",
+        sourceSequence: 11,
+        event: { type: "turn.started", data: {} },
+      }),
+    );
+
+    const [session] = await store.listSessions(projectId);
+    expect(session).toMatchObject({ status: "running" });
+    expect(session!.completedAt).toBeNull();
+  });
+
+  test("a late lower-sequence event does not rewrite last-observed provenance", async () => {
+    const { store, projectId, deploymentId, revisionId } = await createStore();
+    const redeployed = await store.recordDeployment({
+      projectId,
+      sourceRevisionId: revisionId,
+      imageTag: "fixture-2",
+      containerName: "fixture-2",
+      internalPort: 3000,
+      hostPort: 41001,
+      runtimeKind: "docker",
+    });
+    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }));
+    await store.ingestAgentEvent(
+      envelope(redeployed.id, {
+        telemetryEventId: "newer",
+        sourceSequence: 9,
+        event: { type: "turn.started", data: {} },
+      }),
+    );
+
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "stale-replay",
+        sourceSequence: 4,
+        event: { type: "turn.started", data: {} },
+      }),
+    );
+
+    const [session] = await store.listSessions(projectId);
+    await expect(store.listSessionNodes(session!.id)).resolves.toEqual([
+      expect.objectContaining({ lastObservedDeploymentId: redeployed.id }),
+    ]);
+  });
+});
+
 async function createStore() {
   const store = createTestStore();
   const project = await store.createProject({ name: "fixture", importKind: "zip" });
@@ -417,7 +511,7 @@ async function createStore() {
     hostPort: 41000,
     runtimeKind: "docker",
   });
-  return { store, projectId: project.id, deploymentId: deployment.id };
+  return { store, projectId: project.id, deploymentId: deployment.id, revisionId: revision.id };
 }
 
 function envelope(deploymentId: string, overrides: Partial<AgentEventObservation> = {}): AgentEventObservation {
