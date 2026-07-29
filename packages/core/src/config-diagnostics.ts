@@ -50,7 +50,13 @@ const productionSecretWarning = (env: Environment, _value: string, source: Confi
   !production(env) && source === "default";
 const allComponents: EvelandComponent[] = ["web", "api", "gateway", "worker"];
 
-const definitions: ConfigurationDefinition[] = [
+/**
+ * Every environment variable the platform reads, with the component that reads
+ * it and what it is for. Exported so `docs/environment-variables.md` can be
+ * checked against it: that reference drifted to 22 undocumented variables
+ * because nothing tied the two together.
+ */
+export const configurationDefinitions: ConfigurationDefinition[] = [
   { ...entry("NODE_ENV", allComponents, "Controls production-only validation and runtime defaults.", "development"), emptyUsesFallback: true },
   { ...entry("EVELAND_RELEASE_CHANNEL", allComponents, "Labels this Eveland build as dev, edge, prerelease, or stable.", "dev"), emptyUsesFallback: true },
   {
@@ -314,7 +320,7 @@ export function createConfigurationSnapshot(
   env: Environment,
   observedAt = new Date(),
 ): ConfigurationSnapshot {
-  const entries = definitions
+  const entries = configurationDefinitions
     .filter((definition) => definition.components.includes(component))
     .map((definition) => resolveEntry(definition, component, env))
     .sort((left, right) => left.name.localeCompare(right.name));

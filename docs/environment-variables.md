@@ -47,6 +47,14 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `WEB_ORIGIN` | API CORS `allow-origin`. | `http://localhost:3000` | `apps/api/src/app.ts` |
 | `NEXT_PUBLIC_API_URL` | API base URL used from the **browser** (Next.js, baked in at build time). | `http://localhost:4000` | web |
 | `API_URL` | API base URL used from the web app's **server side** (SSR). | `http://localhost:4000` | web |
+| `BETTER_AUTH_SECRET` | Signs and encrypts Better Auth sessions; independent from application and Gateway secrets. | — (required) | api (`apps/api/src/auth-config.ts`) |
+| `BETTER_AUTH_URL` | Browser-visible API origin used by Better Auth. | Derived from `PORT` | api (`apps/api/src/auth-config.ts`) |
+| `EVELAND_COOKIE_DOMAIN` | Optional shared parent domain for the control-plane session cookie. Set only when Web and API intentionally share a parent domain. | *(unset)* | api (`apps/api/src/auth-config.ts`) |
+| `EVELAND_ADMIN_EMAIL` | Email address of the default bootstrapped administrator. | `admin@example.com` | api (`apps/api/src/auth-config.ts`) |
+| `EVELAND_ADMIN_NAME` | Display name of the default bootstrapped administrator. | `Admin` | api (`apps/api/src/auth-config.ts`) |
+| `EVELAND_ADMIN_PASSWORD` | Initial password used to bootstrap the default administrator. Minimum 12 characters. | — (required) | api (`apps/api/src/auth-config.ts`) |
+| `EVELAND_RELEASE_CHANNEL` | Labels this Eveland build as dev, edge, prerelease, or stable. | `dev` | web, api, gateway, worker (`packages/core/src/server/build-info.ts`) |
+| `EVELAND_REVISION` | Identifies the exact Git revision running this component. | `unknown` | web, api, gateway, worker (`packages/core/src/server/build-info.ts`) |
 
 > **`WEB_ORIGIN` must exactly match the origin the browser uses to reach the web app**
 > (scheme, host, and port). A mismatch makes the browser's calls fail CORS
@@ -110,6 +118,20 @@ site.
 | `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | Interval between orphan-process sweeps that reconcile running `eveland-*-dep_*` host processes with the control plane (adopt into RuntimeInstance lifecycle, or stop unknown/archived/wrong-runtime leftovers). `0` disables the sweep. | `3600000` (1 hour) | `apps/worker/src/worker.ts` |
 | `EVELAND_ORPHAN_GRACE_MS` | How long a running process may stay out-of-model before the sweep stops it; covers the window where `build_deploy` starts a process before its Deployment row exists. | `300000` | `apps/worker/src/runtime/orphan-reaper.ts` |
 | `PATH` | Passed through (allowlisted) to build and sandbox child processes. | system `PATH` | worker (`systemd.ts`) |
+| `EVELAND_SOURCE_PREFLIGHT_TTL_MS` | Lifetime of an unconsumed validated source snapshot. | `3600000` | api (`apps/api/src/app.ts`) |
+| `EVELAND_ACTIVATION_LEASE_TTL_MS` | Lifetime of request, stream, turn, and ScheduleRun activation leases. | `180000` | api (`apps/api/src/app.ts`) |
+| `EVELAND_COLD_START_TIMEOUT_MS` | Maximum time Gateway may wait for a dormant Deployment to become ready. | `30000` | api (`apps/api/src/app.ts`) |
+| `EVELAND_ACTIVATION_IDLE_TTL_MS` | Idle time after the final lease before a ready RuntimeInstance is stopped. | `300000` | worker (`apps/worker/src/worker.ts`) |
+| `EVELAND_ACTIVATION_REAPER_BATCH_SIZE` | Maximum idle RuntimeInstances claimed in one reaper tick. | `25` | worker (`apps/worker/src/worker.ts`) |
+| `EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE` | Maximum starting RuntimeInstances recovered in one worker tick. | `25` | worker (`apps/worker/src/worker.ts`) |
+| `EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE` | Maximum ready RuntimeInstances checked against their owning runtime per tick. | `100` | worker (`apps/worker/src/worker.ts`) |
+| `EVELAND_ACTIVATION_START_STALE_MS` | Age after which a running activation job may be reclaimed after a crash. | `300000` | worker (`apps/worker/src/worker.ts`) |
+| `EVELAND_SCHEDULER_RUNTIME_SECRET` | Authenticates the private injected Scheduler Channel and its API callback. Required unless `NODE_ENV` is explicitly `development`. | *(dev fallback only under explicit `NODE_ENV=development`)* | api, worker (`packages/core/src/server/scheduler-dispatch.ts`) |
+| `EVELAND_SCHEDULER_DISPATCH_SECRET` | Signs short-lived Deployment- and ScheduleRun-bound dispatch credentials. Never injected into an Agent. | *(dev fallback only under explicit `NODE_ENV=development`)* | api, worker (`packages/core/src/server/scheduler-dispatch.ts`) |
+| `EVELAND_SCHEDULER_REDEEM_URL` | API callback used by the injected Scheduler Channel to claim and complete dispatches. | — (required) | worker (`apps/worker/src/jobs/process-support.ts`) |
+| `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | Maximum due schedules claimed in one planner tick. | `25` | worker (`apps/worker/src/worker.ts`) |
+| `EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS` | Maximum private Scheduler Channel dispatch duration. | `120000` | worker (`apps/worker/src/jobs/process-support.ts`) |
+| `EVELAND_SCHEDULER_PREWARM_MS` | How far before `nextRunAt` a scheduler target is kept warm or proactively activated. | `60000` | worker (`apps/worker/src/worker.ts`) |
 
 ## systemd runtime (Linux / production only)
 
@@ -141,6 +163,8 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 | `EVELAND_GATEWAY_SERVICE_TOKEN` | Protects the gateway's `/internal` routes (cache invalidation, playground). In production without it, `/internal` has no token guard. | dev-only `eveland-dev-gateway-token` | `apps/gateway/src/server.ts` |
 | `EVELAND_GATEWAY_INTERNAL_URL` | The API's callback URL to the gateway's `/internal` routes. | — | worker (`process.ts`) |
 | `EVELAND_PLAYGROUND_TIMEOUT_MS` | Timeout for a gateway playground request. | — | `apps/gateway/src/app.ts` |
+| `EVELAND_API_INTERNAL_URL` | Private API origin used for service-authenticated runtime activation. | `http://127.0.0.1:4000` | gateway (`apps/gateway/src/server.ts`) |
+| `EVELAND_ACTIVATION_RENEW_INTERVAL_MS` | Interval for renewing a lease while an upstream response stream remains active. | `60000` | gateway (`apps/gateway/src/server.ts`) |
 
 > **Route-cache invalidation needs both `EVELAND_GATEWAY_INTERNAL_URL` and
 > `EVELAND_GATEWAY_SERVICE_TOKEN`.** If either is missing, the API silently skips
