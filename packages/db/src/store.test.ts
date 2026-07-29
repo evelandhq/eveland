@@ -355,6 +355,65 @@ describe("SQL Store jobs", () => {
     await expect(store.listSchedules(project.id)).resolves.toEqual([expect.objectContaining({ name: "daily" })]);
   });
 
+  test("leaves the previous revision and schedules intact when a later step fails", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Atomic Source Agent", importKind: "git" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      commitSha: "good-commit",
+      sourcePath: "/tmp/source-good",
+      summary: {},
+      envVars: [],
+      files: [{ path: "agent/instructions.md", content: "Keep me." }],
+      schedules: [
+        {
+          name: "daily",
+          kind: "markdown",
+          cron: "0 8 * * *",
+          timezone: "UTC",
+          enabled: true,
+          executable: true,
+          sourcePath: "agent/schedules/daily.md",
+          nextRunAt: "2026-07-01T08:00:00.000Z",
+        },
+      ],
+    });
+
+    // The import contract is all-or-nothing. Recording a revision deletes the
+    // project's schedules before reinserting them, so a failure after that
+    // point used to leave the project with no schedules and a source pointer
+    // that disagrees with what is actually stored.
+    await expect(
+      store.recordSourceRevision({
+        projectId: project.id,
+        kind: "git",
+        commitSha: "bad-commit",
+        sourcePath: "/tmp/source-bad",
+        summary: {},
+        envVars: [],
+        files: [],
+        schedules: [
+          {
+            name: "broken",
+            kind: "markdown",
+            cron: "0 9 * * *",
+            timezone: "UTC",
+            enabled: true,
+            executable: true,
+            sourcePath: null as unknown as string,
+            nextRunAt: null,
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+
+    await expect(store.getProject(project.id)).resolves.toMatchObject({ sourceRevisionId: revision.id });
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({ commitSha: "good-commit" });
+    await expect(store.listSchedules(project.id)).resolves.toEqual([expect.objectContaining({ name: "daily" })]);
+    await expect(store.listSourceRevisions(project.id)).resolves.toHaveLength(1);
+  });
+
   test("advances current source without replacing an existing deployment", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Resync Agent", importKind: "git" });
