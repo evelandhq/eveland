@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
   { version: "0.25.3", packageName: "eve-0-25" },
   { version: "0.26.2", packageName: "eve-0-26" },
-  { version: "0.27.8", packageName: "eve" },
+  { version: "0.27.12", packageName: "eve" },
 ] as const;
 const eveBin = eveBinFor("eve");
 
@@ -24,7 +24,7 @@ describe("injectSchedulerAdapter", () => {
 
     expect(packageJson.devDependencies["eve-0-25"]).toBe("npm:eve@0.25.3");
     expect(packageJson.devDependencies["eve-0-26"]).toBe("npm:eve@0.26.2");
-    expect(packageJson.devDependencies.eve).toBe("0.27.8");
+    expect(packageJson.devDependencies.eve).toBe("0.27.12");
   });
 
   test("fails closed outside the latest three verified Eve minors", async () => {

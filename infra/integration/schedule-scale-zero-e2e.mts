@@ -177,7 +177,7 @@ try {
   assert.equal((await store.findSessionBinding(project.id, initialSessionId))?.deploymentId, deployment.id);
 
   console.log(
-    `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=0.27.8 dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1`,
+    `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=0.27.12 dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1`,
   );
 } finally {
   if (deploymentName) await runtime.stopProcess(deploymentName).catch(() => undefined);

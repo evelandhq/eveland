@@ -295,7 +295,7 @@ localhost, literal private addresses, and redirects; the network layer must addi
 resolved private/link-local destinations. Never expose OIDC tokens, authorization codes, state, client secrets, or
 PKCE verifiers through reverse-proxy access logs or runtime diagnostics.
 
-The explicit Vercel OIDC Connection method mirrors Eve 0.27.8 by resolving its configured Secret reference and
+The explicit Vercel OIDC Connection method mirrors Eve 0.27.12 by resolving its configured Secret reference and
 sending the token in both `Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short
 lived; rotate the referenced Secret before expiry. Eveland does not infer this method from a Vercel deployment,
 Agent source, or a 401 response.

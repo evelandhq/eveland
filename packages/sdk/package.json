@@ -26,7 +26,7 @@
     "eve": ">=0.25.0 <0.28.0"
   },
   "devDependencies": {
-    "eve": "0.27.8",
+    "eve": "0.27.12",
     "vitest": "^4.1.9"
   },
   "engines": {
