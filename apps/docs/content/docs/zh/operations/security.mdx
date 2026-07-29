@@ -11,7 +11,7 @@ Invite-only 控制面使用 Better Auth Session 与 Team Membership。公开 Age
 
 ## 组件权限
 
-- Gateway 接收公开 Agent 流量，但没有 Source Tree、Observer Data、Decrypted Secret 或 Runtime Controller。
+- Gateway 接收公开 Agent 流量，但没有 Source Tree、Telemetry Policy Data、Decrypted Secret 或 Runtime Controller。
 - API 拥有需要认证的控制面状态与加密能力，但没有宿主机 Runtime 权限。
 - Worker 是唯一 Docker/systemd Controller，并且没有公开 Service Endpoint。
 - Agent Unit 使用非特权用户和严格的 systemd Filesystem/Resource Control。

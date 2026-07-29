@@ -23,6 +23,6 @@ Configure independent runtime and dispatch secrets, the private redeem URL, prew
 
 ## Observability
 
-Configure the observer data root and collector timing only when changing the documented defaults. Observer degradation must remain separate from Agent-turn success.
+Configure only the documented OpenTelemetry topology values needed by the deployment. Agent capture, privacy, and external destinations belong to System settings; telemetry degradation must remain separate from Agent-turn success.
 
 Never copy a development fallback into production. Admins can compare the allowlisted effective component configuration under **Settings → About**; secret values remain masked.

@@ -11,7 +11,7 @@ The invite-only control plane uses Better Auth sessions and Team membership. Pub
 
 ## Component privilege
 
-- Gateway receives public Agent traffic but no source tree, observer data, decrypted secrets, or runtime controller.
+- Gateway receives public Agent traffic but no source tree, telemetry policy data, decrypted secrets, or runtime controller.
 - API owns authenticated control-plane state and encryption but no host runtime privilege.
 - Worker is the only Docker/systemd controller and has no public service endpoint.
 - Agent units run as an unprivileged user with strict systemd filesystem and resource controls.
