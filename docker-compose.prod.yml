@@ -27,16 +27,16 @@
 # `pnpm install` skip devDependencies (tsx / the next build toolchain) and the stack fails to start.
 services:
   otel-config-init:
-    volumes:
+    volumes: !override
       - ./infra/otel/collector.yaml:/seed/collector.yaml:ro
-      - /var/lib/eveland:/var/lib/eveland
+      - /var/lib/eveland/otel:/var/lib/eveland/otel
 
   otel-collector:
     restart: unless-stopped
     environment:
       EVELAND_OTLP_SERVICE_TOKEN: "${EVELAND_OTLP_SERVICE_TOKEN:?set EVELAND_OTLP_SERVICE_TOKEN}"
-    volumes:
-      - /var/lib/eveland:/var/lib/eveland:ro
+    volumes: !override
+      - /var/lib/eveland/otel:/var/lib/eveland/otel:ro
       - eveland-otel-collector:/var/lib/otelcol
 
   postgres:

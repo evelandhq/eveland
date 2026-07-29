@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   OBSERVABILITY_SIGNALS,
   TELEMETRY_DOMAINS,
+  type TelemetryDomain,
 } from "@eveland/core/observability/shared";
 
 export const EXTERNAL_DESTINATION_KINDS = [
@@ -251,6 +252,13 @@ export type ExternalDestinationConfig = z.infer<
 export type ExternalDestinationConfigPatch = z.infer<
   typeof externalDestinationConfigPatchSchema
 >;
+
+export function externalDestinationDomains(
+  destination: ExternalObservabilityDestination,
+): readonly TelemetryDomain[] {
+  if (destination.kind === "custom_otlp") return destination.domains;
+  return EXTERNAL_DESTINATION_CAPABILITIES[destination.kind].domains;
+}
 
 export const COLLECTOR_SELF_SERVICE_NAME = "eveland-otel-collector";
 

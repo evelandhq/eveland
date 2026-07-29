@@ -157,4 +157,3 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 }
-

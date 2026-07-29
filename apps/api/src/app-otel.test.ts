@@ -644,6 +644,106 @@ describe("external OTLP egress proxy", () => {
     );
   });
 
+  test("enforces the current destination domains while Collector configuration is stale", async () => {
+    const store = createTestStore();
+    const forwardExternalObservabilityRequest = vi.fn().mockResolvedValue({
+      status: 200,
+      contentType: "application/json",
+      body: new Uint8Array(),
+    });
+    const app = createApp(store, {
+      appSecretKey: devSecretKey,
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    const created = await app.request(
+      "/system/observability/destinations",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          config: {
+            kind: "custom_otlp",
+            endpoint: "https://collector.example",
+            supportedSignals: ["logs"],
+            domains: ["platform", "capacity"],
+            headers: {},
+          },
+        }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const destinationId = (
+      await store.getObservabilityPolicy("team_local")
+    ).externalDestinations[0]!.id;
+    const updated = await app.request(
+      `/system/observability/destinations/${destinationId}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 2,
+          config: {
+            kind: "custom_otlp",
+            endpoint: "https://collector.example",
+            supportedSignals: ["logs"],
+            domains: ["capacity"],
+          },
+        }),
+      },
+    );
+    expect(updated.status).toBe(200);
+
+    const response = await app.request(
+      `/internal/observability/destinations/${destinationId}/v1/logs`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          resourceLogs: [
+            platformLogBatch().resourceLogs[0],
+            {
+              resource: {
+                attributes: [
+                  attribute("service.name", "eveland-worker"),
+                  attribute("eveland.telemetry.domain", "capacity"),
+                ],
+              },
+              scopeLogs: [],
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const forwarded = JSON.parse(
+      new TextDecoder().decode(
+        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
+      ),
+    );
+    expect(
+      forwarded.resourceLogs.map(
+        (resourceLog: {
+          resource: {
+            attributes: Array<{
+              key: string;
+              value: { stringValue?: string };
+            }>;
+          };
+        }) =>
+          readStringAttributes(resourceLog.resource.attributes)[
+            "eveland.telemetry.domain"
+          ],
+      ),
+    ).toEqual(["capacity"]);
+  });
+
   test("binds Agent telemetry to the signed Deployment and strips the credential before forwarding", async () => {
     const store = createTestStore();
     const attackerProject = await store.createProject({

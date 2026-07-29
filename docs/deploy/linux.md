@@ -112,8 +112,10 @@ standard OTLP/HTTP JSON and protobuf for all three signals. The Worker writes
 revisioned Collector configuration below
 `/var/lib/eveland/otel`, validates it with the pinned official Collector image,
 and restarts only the Collector container when an admin changes an external
-destination. Each exporter has an independent persistent queue below the
-Collector volume. External queues send to the API egress proxy, which revalidates
+destination. Compose mounts only that configuration directory read-only into
+the Collector; sources, releases, deployment environments, and the rest of
+`/var/lib/eveland` remain unavailable to it. Each exporter has an independent
+persistent queue below the Collector volume. External queues send to the API egress proxy, which revalidates
 DNS, pins the approved address, disables redirects, and attaches the stored
 destination credential. Collector self-metrics stay on its loopback Prometheus
 endpoint and go only to external destinations that accept platform metrics.

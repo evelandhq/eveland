@@ -321,7 +321,9 @@ Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destinatio
   空批探测和每次实际转发都必须执行相同的 SSRF 策略。默认只允许 HTTPS 且 DNS 全部解析到
   public IP，禁止自动跟随 redirect，并把本次连接固定到已经校验的地址以抵抗 DNS rebinding；
   loopback、private、link-local、metadata 与其他非公网地址默认拒绝。确需私网 OTLP 时只能
-  通过运维配置的精确 hostname/IP allowlist 放行 HTTP 或私网解析，不能使用通配符
+  通过运维配置的精确 hostname/IP allowlist 放行 HTTP 或私网解析，不能使用通配符。API
+  每次转发还必须按 Store 中当前 Destination 的 signal 与 domain policy 过滤 OTLP resource；
+  Collector 尚未加载新配置时不能继续发送已经移除的 domain
 * 平台自身遥测的观测完全由外部 Destination 承担。未启用 Elastic 或 Custom OTLP 时，
   platform/runtime domain 的 trace 与 log 不在任何地方留存；Built-in 只保留 capacity 读模型
   （Instance Health）与 Session/Usage 读模型。Langfuse 只承接 Agent traces，不能作为平台
@@ -337,7 +339,9 @@ Destination 的 URL 与凭据形态——authorization 模式与转发 Header �
 Worker 将 revisioned 设置渲染为官方 OpenTelemetry Collector 配置，先使用同版本 Collector
 校验，再原子应用并只重启 Collector；不能为了监控设置重启 Agent Deployment。外部
 Destination 凭据只在加密存储以及执行安全探测/转发的可信 API、Worker 内存中出现，不能进入
-Collector 配置、日志或 Agent policy。
+Collector 配置、日志或 Agent policy。Collector 只能只读挂载
+`EVELAND_DATA_DIR/otel` 配置目录和自己的持久化 queue volume，不能读取
+deployment environment、Source、Release、sandbox 或其他平台数据。
 
 Agent 源码中的 instrumentation 是独立边界：Eveland 不修改用户监控代码，不注册或替换全局
 TracerProvider、LoggerProvider、MeterProvider，也不截获用户 exporter。Release 准备仅在

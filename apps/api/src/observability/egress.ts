@@ -1,4 +1,7 @@
-import type { ObservabilitySignal } from "@eveland/core/observability";
+import type {
+  ObservabilitySignal,
+  TelemetryDomain,
+} from "@eveland/core/observability";
 import { verifyAgentTelemetryCredential } from "@eveland/core/server/agent-telemetry-credential";
 import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
 
@@ -13,6 +16,7 @@ export async function prepareExternalOtlpJson(input: {
   signal: ObservabilitySignal;
   store: Store;
   telemetrySecret: string;
+  allowedDomains: readonly TelemetryDomain[];
   environment: string;
 }): Promise<Uint8Array | null> {
   const payload = parseOtlpJson(input.body, input.signal);
@@ -24,7 +28,26 @@ export async function prepareExternalOtlpJson(input: {
     telemetrySecret: input.telemetrySecret,
     environment: input.environment,
   });
+  filterDomains(payload, input.signal, input.allowedDomains);
   return new TextEncoder().encode(JSON.stringify(payload));
+}
+
+function filterDomains(
+  payload: Record<string, unknown>,
+  signal: ObservabilitySignal,
+  allowedDomains: readonly TelemetryDomain[],
+): void {
+  const allowed = new Set<string>(allowedDomains);
+  const field = signalFields[signal];
+  payload[field] = (payload[field] as unknown[]).filter((candidate) => {
+    const group = asRecord(candidate);
+    const resource = asRecord(group?.resource);
+    const domain = readStringAttribute(
+      attributeRecords(resource?.attributes),
+      "eveland.telemetry.domain",
+    );
+    return domain !== undefined && allowed.has(domain);
+  });
 }
 
 async function bindAgentTelemetry(input: {

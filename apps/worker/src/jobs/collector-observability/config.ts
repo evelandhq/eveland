@@ -1,7 +1,7 @@
 import {
   COLLECTOR_SELF_SERVICE_NAME,
   collectorExporterComponentId,
-  TELEMETRY_DOMAINS,
+  externalDestinationDomains,
   type ExternalDestinationConfig,
   type ObservabilityPolicy,
   type ObservabilitySignal,
@@ -72,12 +72,7 @@ export function renderCollectorConfig(input: {
       destination.kind,
     );
 
-    const domains =
-      destination.kind === "langfuse"
-        ? (["agent"] satisfies TelemetryDomain[])
-        : destination.kind === "custom_otlp"
-          ? destination.domains
-          : [...TELEMETRY_DOMAINS];
+    const domains = externalDestinationDomains(destination);
     const filterId = `filter/${componentId}`;
     config.processors[filterId] = domainFilter(
       domains,
@@ -381,7 +376,7 @@ function reliableExporterDelivery() {
 }
 
 function domainFilter(
-  domains: TelemetryDomain[],
+  domains: readonly TelemetryDomain[],
   signals: ObservabilitySignal[],
 ) {
   const dropCondition = domains

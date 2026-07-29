@@ -1,4 +1,7 @@
-import type { ExternalDestinationConfig } from "@eveland/core/observability";
+import {
+  externalDestinationDomains,
+  type ExternalDestinationConfig,
+} from "@eveland/core/observability";
 import { deriveAgentTelemetrySecret } from "@eveland/core/server/agent-telemetry-credential";
 import {
   decryptDestinationConfig,
@@ -58,19 +61,6 @@ export function registerObservabilityProxyRoute(input: {
       if (receivedBody.byteLength > maxExternalOtlpRequestBytes) {
         return c.json({ error: "OTLP request is too large" }, 413);
       }
-      const body = await prepareExternalOtlpJson({
-        body: receivedBody,
-        signal,
-        store,
-        telemetrySecret,
-        environment:
-          process.env.NODE_ENV === "production"
-            ? "production"
-            : "development",
-      });
-      if (!body) {
-        return c.json({ error: "Invalid OTLP request" }, 400);
-      }
       const policy = await store.getObservabilityPolicy(DEFAULT_TEAM_ID);
       const destination = policy.externalDestinations.find(
         (candidate) =>
@@ -79,6 +69,20 @@ export function registerObservabilityProxyRoute(input: {
           (candidate.supportedSignals as readonly string[]).includes(signal),
       );
       if (!destination) return c.json({ error: "Not found" }, 404);
+      const body = await prepareExternalOtlpJson({
+        body: receivedBody,
+        signal,
+        store,
+        telemetrySecret,
+        allowedDomains: externalDestinationDomains(destination),
+        environment:
+          process.env.NODE_ENV === "production"
+            ? "production"
+            : "development",
+      });
+      if (!body) {
+        return c.json({ error: "Invalid OTLP request" }, 400);
+      }
       let config: ExternalDestinationConfig;
       try {
         config = decryptDestinationConfig(

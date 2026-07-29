@@ -179,6 +179,9 @@ function isInputKey(eventType: string, keyName: string): boolean {
   if (eventType === "actions.requested") {
     return keyName === "input";
   }
+  if (eventType === "input.requested") {
+    return keyName === "requests";
+  }
   return keyName === "clientContext";
 }
 

@@ -1,6 +1,7 @@
 import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/sdk-metrics";
 import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
+import type { InputRequestedStreamEvent } from "eve/client";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   createPrivateAgentTelemetryRuntime,
@@ -284,6 +285,32 @@ describe("private Agent telemetry runtime", () => {
       },
       context,
     );
+    const inputRequestedEvent = {
+      type: "input.requested",
+      data: {
+        sequence: 3,
+        turnId: "turn_1",
+        stepIndex: 0,
+        requests: [
+          {
+            requestId: "request_1",
+            prompt: "Approve the private deployment?",
+            display: "confirmation",
+            options: [
+              { id: "approve", label: "Approve private deployment" },
+              { id: "deny", label: "Deny private deployment" },
+            ],
+            action: {
+              kind: "tool-call",
+              callId: "call_private",
+              toolName: "deploy",
+              input: { environment: "private-production" },
+            },
+          },
+        ],
+      },
+    } satisfies InputRequestedStreamEvent;
+    await runtime.capture(inputRequestedEvent, context);
     await runtime.forceFlush();
 
     const serializedLogs = JSON.stringify(
@@ -297,8 +324,14 @@ describe("private Agent telemetry runtime", () => {
     expect(serializedLogs).not.toContain("secret-key");
     expect(serializedLogs).not.toContain("secret-token");
     expect(serializedLogs).not.toContain("private chain of thought");
+    expect(serializedLogs).not.toContain("Approve the private deployment?");
+    expect(serializedLogs).not.toContain("Approve private deployment");
+    expect(serializedLogs).not.toContain("private-production");
     expect(serializedLogs).toContain("inputTokens");
     expect(serializedLogs).toContain("call_1");
+    expect(
+      logs.getFinishedLogRecords().map((record) => record.eventName),
+    ).toContain("eve.input.requested");
     expect(logs.getFinishedLogRecords().map((record) => record.eventName)).not.toContain(
       "eve.reasoning.completed",
     );

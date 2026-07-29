@@ -9,7 +9,7 @@ Self-hosted control plane for importing, deploying, and observing `eve` projects
 - `packages/sandbox-bwrap`: bubblewrap-based eve `SandboxBackend` giving agents deployed on the systemd runtime a real exec sandbox without Docker/KVM. The worker injects it into each eve project's release at build time — the deployed project never declares it (see `packages/sandbox-bwrap/README.md`).
 - `packages/agent-observer`: release-time Eve hook injection for root and directory-form subagents. The injected hook owns private OpenTelemetry providers and never registers or mutates a user's global providers.
 - `packages/agent-auth`: Node-only generic Agent Connection registry plus Authorization Code + PKCE OIDC acquisition, encrypted transaction/credential state, verification, refresh, and Basic/Bearer/Vercel-OIDC/custom-header materialization.
-- `packages/identity-broker`: provider-neutral Agent-user identity finalization, separate Identity Sessions, Realm → Project authorization, short-lived ES256 Caller Token issuance, signing-key rotation, and public JWKS.
+- `packages/identity-broker`: provider-neutral Agent-user identity finalization, separate Identity Sessions, short-lived project-audience ES256 Caller Token issuance, signing-key rotation, and public JWKS.
 - `packages/platform-observability`: shared OpenTelemetry SDK bootstrap for Eveland API, Gateway, and Worker signals.
 - `packages/session-collector`: standard OTLP JSON/protobuf decoding and projection into Eveland's built-in Session, usage, and instance-health read models.
 - `apps/api`: Hono control-plane API with Better Auth email/password sessions and Organization-based team membership/invitations, plus the authenticated Built-in OTLP ingest endpoint. Its thin app entrypoint composes focused route modules; persistence is supplied by `packages/db`.
@@ -136,7 +136,9 @@ the Cloudflare account must have an active `eveland.ai` zone before deployment.
 
 Docker Compose runs the full stack (Postgres + OpenTelemetry Collector + API + Gateway + web + worker) in **development mode**.
 Only the worker receives the Docker controller socket; Gateway masks `.eveland-data` so the public
-proxy cannot read imported project sources, Collector configuration, or encrypted project secrets:
+proxy cannot read imported project sources, Collector configuration, or encrypted project secrets.
+The Collector mounts only `.eveland-data/otel` for its generated configuration and keeps its
+persistent queues on a dedicated volume:
 
 ```bash
 docker compose up

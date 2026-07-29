@@ -22,7 +22,7 @@ services:
         fi
     volumes:
       - ./infra/otel/collector.yaml:/seed/collector.yaml:ro
-      - ./.eveland-data:/var/lib/eveland
+      - ./.eveland-data/otel:/var/lib/eveland/otel
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.149.0
@@ -45,7 +45,7 @@ services:
       - "127.0.0.1:4327:4327"
       - "127.0.0.1:4328:4328"
     volumes:
-      - ./.eveland-data:/var/lib/eveland:ro
+      - ./.eveland-data/otel:/var/lib/eveland/otel:ro
       - eveland-otel-collector:/var/lib/otelcol
 
   api:
