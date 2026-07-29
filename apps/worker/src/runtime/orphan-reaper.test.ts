@@ -229,3 +229,49 @@ describe("createOrphanProcessReaper", () => {
     expect(stopProcess).toHaveBeenCalledWith("eveland-proj_gone-dep_gone321");
   });
 });
+
+describe("control-plane-stopped deployments", () => {
+  test("reaps -- never adopts -- a surviving process of a stopped deployment", async () => {
+    const store = createTestStore();
+    const containerName = "eveland-proj_stop-dep_stop77";
+    const { project, deployment } = await deploymentFixture(store, "Stopped Sweep Agent", 41984, containerName);
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const { adapter, stopProcess } = fakeAdapter("docker", [containerName]);
+    const reap = createOrphanProcessReaper(store, {
+      kinds: ["docker"],
+      graceMs: 60_000,
+      runtimeForKind: () => adapter,
+    });
+
+    await reap(new Date("2026-07-16T11:00:00.000Z"));
+    expect(stopProcess).not.toHaveBeenCalled();
+    // Grace elapsed: the control plane decided this must not run.
+    await reap(new Date("2026-07-16T11:01:00.000Z"));
+
+    expect(stopProcess).toHaveBeenCalledExactlyOnceWith(containerName);
+    // Never resurrected into a live RuntimeInstance.
+    const instances = await store.listDeploymentRuntimeInstances(deployment.id);
+    expect(instances.filter((instance) => instance.status === "ready")).toHaveLength(0);
+    const logs = await store.listLogs(project.id);
+    expect(logs.some((log) => log.line.includes("stopped Deployment"))).toBe(true);
+  });
+
+  test("still adopts a running deployment's unmanaged process", async () => {
+    const store = createTestStore();
+    const containerName = "eveland-proj_run-dep_run88";
+    const { deployment } = await deploymentFixture(store, "Running Sweep Agent", 41985, containerName);
+    await store.updateDeploymentStatus(deployment.id, "running");
+    const { adapter, stopProcess } = fakeAdapter("docker", [containerName]);
+    const reap = createOrphanProcessReaper(store, {
+      kinds: ["docker"],
+      graceMs: 60_000,
+      runtimeForKind: () => adapter,
+    });
+
+    await reap(new Date("2026-07-16T12:00:00.000Z"));
+
+    expect(stopProcess).not.toHaveBeenCalled();
+    const instances = await store.listDeploymentRuntimeInstances(deployment.id);
+    expect(instances.some((instance) => instance.status === "ready")).toBe(true);
+  });
+});
