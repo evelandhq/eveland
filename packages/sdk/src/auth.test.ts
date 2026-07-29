@@ -104,6 +104,44 @@ describe("evelandIdentity", () => {
     });
   });
 
+  test("accepts a Caller Token whose IdP supplied no display name", async () => {
+    const fixture = tokenFixture();
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: fixture.fetch,
+      now: () => new Date("2029-01-01T00:00:30.000Z"),
+    });
+
+    // Eveland omits the claim when the IdP supplies no display name. Refusing
+    // a cryptographically valid, correctly-audienced token over a cosmetic
+    // claim turned those users into a silent 401 with nothing to diagnose.
+    const principal = await auth(request(fixture.token({ name: undefined })));
+
+    expect(principal).toMatchObject({
+      subject: "iprn_user",
+      principalType: "user",
+      attributes: { realmId: "irlm_members", email: "user@example.com" },
+    });
+    expect(principal?.attributes).not.toHaveProperty("name");
+  });
+
+  test("still rejects a Caller Token whose name claim is the wrong type", async () => {
+    const fixture = tokenFixture();
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: fixture.fetch,
+      now: () => new Date("2029-01-01T00:00:30.000Z"),
+    });
+
+    await expect(
+      auth(request(fixture.token({ name: 42 }))),
+    ).resolves.toBeNull();
+  });
+
   test("rejects a Caller Token carrying a raw external Realm value", async () => {
     const fixture = tokenFixture();
     const auth = evelandIdentity({
