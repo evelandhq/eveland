@@ -144,3 +144,56 @@ describe("instance health store", () => {
     });
   });
 });
+
+describe("worker heartbeat replay", () => {
+  test("a replayed older heartbeat does not move observedAt backwards", async () => {
+    const store = createTestStore();
+    const current = {
+      workerId: "worker-a",
+      startedAt: "2026-07-28T00:00:00.000Z",
+      observedAt: "2026-07-28T00:05:00.000Z",
+      intervalMs: 5_000,
+      lastTickDurationMs: 12,
+      lastError: null,
+    };
+    await store.upsertWorkerHeartbeat(current);
+
+    // OTLP delivery is at least once: an older metrics batch can be redelivered
+    // and would otherwise make a healthy worker look stale.
+    const replayed = await store.upsertWorkerHeartbeat({
+      ...current,
+      observedAt: "2026-07-28T00:01:00.000Z",
+      lastTickDurationMs: 999,
+    });
+
+    expect(replayed.observedAt).toBe(current.observedAt);
+    expect(replayed.lastTickDurationMs).toBe(current.lastTickDurationMs);
+    await expect(store.listWorkerHeartbeats()).resolves.toEqual([
+      expect.objectContaining({ observedAt: current.observedAt }),
+    ]);
+  });
+
+  test("a newer heartbeat still advances the record", async () => {
+    const store = createTestStore();
+    const base = {
+      workerId: "worker-a",
+      startedAt: "2026-07-28T00:00:00.000Z",
+      observedAt: "2026-07-28T00:05:00.000Z",
+      intervalMs: 5_000,
+      lastTickDurationMs: 12,
+      lastError: null,
+    };
+    await store.upsertWorkerHeartbeat(base);
+
+    const advanced = await store.upsertWorkerHeartbeat({
+      ...base,
+      observedAt: "2026-07-28T00:06:00.000Z",
+      lastTickDurationMs: 34,
+    });
+
+    expect(advanced).toMatchObject({
+      observedAt: "2026-07-28T00:06:00.000Z",
+      lastTickDurationMs: 34,
+    });
+  });
+});

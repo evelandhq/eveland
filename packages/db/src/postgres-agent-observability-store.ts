@@ -84,13 +84,27 @@ export async function ingestPostgresAgentEvent(
       .limit(1);
     let sessionRow;
 
+    // Delivery is at least once and the Collector retries with several
+    // consumers, so an older event can arrive after a newer one. Ordering --
+    // not the status itself -- decides whether an observation may move the
+    // projection: an Eve session legitimately goes completed -> running when a
+    // continuation resumes it, so terminal states must not simply stick.
+    // Without a source sequence (older Eve builds) there is nothing to order
+    // by, so the previous last-writer-wins behavior is kept.
+    const isLatestObservation = node
+      ? await isNewestNodeObservation(tx, node.id, observation.sourceSequence)
+      : true;
+
     if (node) {
       [node] = await tx
         .update(sessionNodes)
         .set({
-          lastObservedDeploymentId: observation.deploymentId,
-          lastObservedRuntimeInstanceId:
-            runtimeInstanceId ?? node.lastObservedRuntimeInstanceId,
+          lastObservedDeploymentId: isLatestObservation
+            ? observation.deploymentId
+            : node.lastObservedDeploymentId,
+          lastObservedRuntimeInstanceId: isLatestObservation
+            ? runtimeInstanceId ?? node.lastObservedRuntimeInstanceId
+            : node.lastObservedRuntimeInstanceId,
           agentName: observation.agent.name ?? node.agentName,
           nodeId: observation.agent.nodeId ?? node.nodeId,
           channelKind: observation.channelKind ?? node.channelKind,
@@ -323,7 +337,9 @@ export async function ingestPostgresAgentEvent(
       eventAt: new Date(observation.eventAt),
     });
 
-    const projectedStatus = eventStatus(type, node.status);
+    const projectedStatus = isLatestObservation
+      ? eventStatus(type, node.status)
+      : null;
     const runtime =
       type === "session.started"
         ? recordValue(recordValue(payload)?.runtime)
@@ -641,4 +657,23 @@ function recordValue(value: unknown): Record<string, unknown> | null {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+/**
+ * Whether this observation is at least as new as everything already recorded
+ * for the node. Eve stamps its own per-session `data.sequence`; when it is
+ * absent there is no ordering to enforce and the caller keeps last-writer-wins.
+ */
+async function isNewestNodeObservation(
+  tx: StoreDatabase["db"],
+  sessionNodeId: string,
+  sourceSequence: number | null | undefined,
+): Promise<boolean> {
+  if (sourceSequence === null || sourceSequence === undefined) return true;
+  const [row] = await tx
+    .select({ value: sql<number | null>`max(${sessionEvents.sourceSequence})` })
+    .from(sessionEvents)
+    .where(eq(sessionEvents.sessionNodeId, sessionNodeId));
+  const highest = row?.value ?? null;
+  return highest === null || sourceSequence >= highest;
 }

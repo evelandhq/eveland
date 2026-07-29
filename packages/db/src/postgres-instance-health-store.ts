@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { createId } from "@eveland/core/ids";
 import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
 import { hostMetricSamples, jobs, runtimeInstances, workerHeartbeats } from "./schema.js";
@@ -11,12 +11,23 @@ export function createPostgresInstanceHealthStore(
   const { db } = context;
   return {
     async upsertWorkerHeartbeat(heartbeat) {
-      const [row] = await db.insert(workerHeartbeats).values(toHeartbeatRow(heartbeat)).onConflictDoUpdate({
+      const values = toHeartbeatRow(heartbeat);
+      const [row] = await db.insert(workerHeartbeats).values(values).onConflictDoUpdate({
         target: workerHeartbeats.workerId,
-        set: toHeartbeatRow(heartbeat),
+        set: values,
+        // Metrics delivery is at least once, so an older batch can be
+        // redelivered. Letting it win would move observedAt backwards and make
+        // a healthy worker look stale on the health page.
+        setWhere: lte(workerHeartbeats.observedAt, values.observedAt),
       }).returning();
-      if (!row) throw new Error("Failed to publish Worker heartbeat.");
-      return heartbeatRowToRecord(row);
+      if (row) return heartbeatRowToRecord(row);
+      const [current] = await db
+        .select()
+        .from(workerHeartbeats)
+        .where(eq(workerHeartbeats.workerId, heartbeat.workerId))
+        .limit(1);
+      if (!current) throw new Error("Failed to publish Worker heartbeat.");
+      return heartbeatRowToRecord(current);
     },
 
     async listWorkerHeartbeats() {
