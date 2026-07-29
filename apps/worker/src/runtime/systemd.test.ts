@@ -464,7 +464,7 @@ describe("createSystemdAdapter startProcess", () => {
     expect(writeFile).toHaveBeenCalledWith(
       "/var/lib/eveland-data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
       expect.stringContaining(
-        'if [ "$current_uid" != "$previous_uid" ]; then',
+        'if [ -z "$current_uid" ] || [ "$current_uid" != "$previous_uid" ]; then',
       ),
       { mode: 0o700 },
     );
@@ -483,7 +483,7 @@ describe("createSystemdAdapter startProcess", () => {
     });
 
     expect(script).toContain(
-      'if [ "$current_uid" != "$previous_uid" ]; then',
+      'if [ -z "$current_uid" ] || [ "$current_uid" != "$previous_uid" ]; then',
     );
     expect(script.match(/chmod -R/g)).toHaveLength(1);
     expect(script).toContain(
@@ -492,6 +492,20 @@ describe("createSystemdAdapter startProcess", () => {
     expect(script.indexOf("chmod -R")).toBeLessThan(
       script.indexOf("printf '%s\\n'"),
     );
+  });
+
+  test("reads the dynamic uid from systemd's registry, not from NSS", () => {
+    const script = buildDynamicUserAccessRepairScript({
+      deploymentUser: "eveland-d-123",
+      releaseDir: "/data/release",
+      sandboxCacheDir: "/data/cache",
+    });
+
+    expect(script).toContain(
+      "readlink '/run/systemd/dynamic-uid/direct:eveland-d-123'",
+    );
+    expect(script).not.toContain("id -u");
+    expect(script).not.toContain("getent");
   });
 
   test("does not let project env override the platform template revision", async () => {
