@@ -255,7 +255,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_AGENT_BASE_DOMAINS` | `agent.localhost` | Comma-separated Host suffix allowlist used by Gateway; the first value is the canonical domain materialized into routes. Production normally uses one value such as `agents.example.com`. |
 | `EVELAND_GATEWAY_INTERNAL_URL` | `http://127.0.0.1:4080` | Private API/worker control URL for Playground and route-cache invalidation. |
 | `EVELAND_GATEWAY_SERVICE_TOKEN` | *(unset)* | Required shared secret for API/Gateway `/internal/*` calls, including runtime activation; use a long random value and configure it identically on API, worker, and Gateway. |
-| `EVELAND_GATEWAY_AFFINITY_SECRET` | *(dev fallback outside production)* | Required in production. HMAC-signs the HttpOnly affinity cookie; keep it independent from the internal service token. |
+| `EVELAND_GATEWAY_AFFINITY_SECRET` | *(dev fallback only under explicit `NODE_ENV=development`)* | Required whenever `NODE_ENV` is not explicitly `development` (an unset `NODE_ENV` fails closed). HMAC-signs the HttpOnly affinity cookie; keep it independent from the internal service token. |
 | `EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES` | `10485760` | Maximum buffered public request body accepted before Gateway returns 413 without contacting a deployment. |
 | `EVELAND_API_INTERNAL_URL` | `http://127.0.0.1:4000` | Private API origin used by Gateway for service-authenticated dormant Deployment activation. Compose uses `http://api:4000`. |
 | `EVELAND_ACTIVATION_LEASE_TTL_MS` | `180000` | API lease lifetime for public requests, turns, streams, and ScheduleRuns. Keep it longer than the Gateway renewal interval. |
@@ -263,7 +263,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_API_SESSION_IDLE_TTL_MS` | `604800000` | Public API SessionBinding idle lifetime. Set the same value on API, Gateway, and worker. |
 | `EVELAND_COLD_START_TIMEOUT_MS` | `30000` | Maximum time Gateway waits for API/Worker to make a dormant Deployment ready before returning 503/504. |
 | `EVELAND_ACTIVATION_RENEW_INTERVAL_MS` | `60000` | Gateway renewal interval while an upstream response stream is still active. |
-| `EVELAND_SCHEDULER_RUNTIME_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Authenticates the injected private Scheduler Channel and its API callback; keep it independent from Gateway and Better Auth secrets. |
+| `EVELAND_SCHEDULER_RUNTIME_SECRET` | *(dev fallback only under explicit `NODE_ENV=development`)* | Required in production on API and worker. Authenticates the injected private Scheduler Channel and its API callback; keep it independent from Gateway and Better Auth secrets. |
 
 ### Agent Connection credential boundary
 
@@ -321,7 +321,7 @@ typically as sibling HTTPS subdomains. The separate `eveland_identity` cookie is
 scoped to `/identity` and protects only the Identity API; `/agent-catalog` is public.
 The cookie uses `SameSite=Lax`, so an unrelated site cannot use it for credentialed
 token requests even when its exact origin is present in the CORS allowlist.
-| `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback outside production)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
+| `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback only under explicit `NODE_ENV=development`)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
 | `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
 | `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
 | `EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS` | `120000` | Maximum private Scheduler Channel dispatch duration before the Worker treats the result as failed or unknown. |

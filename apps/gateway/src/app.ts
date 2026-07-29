@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import { Readable } from "node:stream";
 import {
@@ -745,7 +746,12 @@ function stringValue(value: unknown): string | null {
 }
 
 function isInternalRequest(authorization: string | undefined, token: string | undefined): boolean {
-  return Boolean(token && authorization === `Bearer ${token}`);
+  if (!token || !authorization) return false;
+  // Sole gate on the privileged /internal/* surface -- compare in constant
+  // time, matching the affinity-cookie verification.
+  const expected = createHash("sha256").update(`Bearer ${token}`).digest();
+  const provided = createHash("sha256").update(authorization).digest();
+  return timingSafeEqual(expected, provided);
 }
 
 function proxyToDeployment(input: {

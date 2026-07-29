@@ -1,3 +1,4 @@
+import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
 import {
   createConfigurationSnapshot,
   type ConfigurationSnapshot,
@@ -30,8 +31,7 @@ export async function collectSystemConfigurationDiagnostics(
 async function readGatewaySnapshot(env: Environment, fetchDiagnostics: Fetch) {
   const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(/\/$/, "");
   const serviceToken =
-    env.EVELAND_GATEWAY_SERVICE_TOKEN ??
-    (env.NODE_ENV === "production" ? undefined : "eveland-dev-gateway-token");
+    resolveSecretWithDevFallback(env, env.EVELAND_GATEWAY_SERVICE_TOKEN, "eveland-dev-gateway-token");
   if (!serviceToken) return unavailable("gateway", "Gateway diagnostics credentials are not configured.");
 
   try {

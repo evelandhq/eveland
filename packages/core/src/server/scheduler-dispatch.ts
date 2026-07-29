@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { resolveSecretWithDevFallback } from "./dev-secrets.js";
 
 const developmentRuntimeSecret = "eveland-dev-scheduler-runtime-secret";
 const developmentDispatchSecret = "eveland-dev-scheduler-dispatch-secret";
@@ -11,11 +12,11 @@ export type ScheduleDispatchCredential = {
 };
 
 export function resolveSchedulerRuntimeSecret(env: NodeJS.ProcessEnv): string | undefined {
-  return env.EVELAND_SCHEDULER_RUNTIME_SECRET || (env.NODE_ENV === "production" ? undefined : developmentRuntimeSecret);
+  return resolveSecretWithDevFallback(env, env.EVELAND_SCHEDULER_RUNTIME_SECRET, developmentRuntimeSecret);
 }
 
 export function resolveSchedulerDispatchSecret(env: NodeJS.ProcessEnv): string | undefined {
-  return env.EVELAND_SCHEDULER_DISPATCH_SECRET || (env.NODE_ENV === "production" ? undefined : developmentDispatchSecret);
+  return resolveSecretWithDevFallback(env, env.EVELAND_SCHEDULER_DISPATCH_SECRET, developmentDispatchSecret);
 }
 
 export function createScheduleDispatchCredential(payload: ScheduleDispatchCredential, secret: string): string {
