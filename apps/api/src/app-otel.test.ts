@@ -7,6 +7,7 @@ import {
   createAgentTelemetryCredential,
   deriveAgentTelemetrySecret,
 } from "@eveland/core/server/agent-telemetry-credential";
+import { resolvePlatformOtlpServiceToken } from "@eveland/platform-observability";
 import { createApp } from "./app.js";
 
 // `createApp` falls back to this key when no APP_SECRET_KEY is configured, so
@@ -24,6 +25,31 @@ function agentCredential(
 }
 
 describe("Built-in OTLP ingest", () => {
+  test("uses the development OTLP token when the environment leaves it unset", async () => {
+    const previousToken = process.env.EVELAND_OTLP_SERVICE_TOKEN;
+    delete process.env.EVELAND_OTLP_SERVICE_TOKEN;
+
+    try {
+      const app = createApp(createTestStore());
+      const response = await app.request("/internal/otel/v1/traces", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${resolvePlatformOtlpServiceToken({})}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ resourceSpans: [] }),
+      });
+
+      expect(response.status).toBe(200);
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.EVELAND_OTLP_SERVICE_TOKEN;
+      } else {
+        process.env.EVELAND_OTLP_SERVICE_TOKEN = previousToken;
+      }
+    }
+  });
+
   test("accepts authenticated OTLP/HTTP JSON and hides the route otherwise", async () => {
     const store = createTestStore();
     const app = createApp(store, {

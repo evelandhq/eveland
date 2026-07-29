@@ -108,6 +108,13 @@ API、Gateway 和 Worker 是 Eveland 完全拥有的进程，由
 LoggerProvider 和 MeterProvider 标记 `runtime` 与 `capacity` domain，避免把不同
 信号来源混为一个 Resource。
 
+API 和 Gateway 都是纯 ESM HTTP 服务。它们的启动命令必须在应用入口之前预加载
+`@eveland/platform-observability/register`，注册 OpenTelemetry ESM module hook；
+否则 Node 会先完成 `node:http` 等静态依赖的模块链接，HTTP instrumentation 无法
+生成 server span 和 `http.server.request.duration`。启动器在支持的 Node 版本上
+使用同步的 `module.registerHooks()` 路径，并为较早的 Node 24 小版本保留异步 hook
+回退。
+
 ## Agent runtime policy
 
 Admin 配置保存在 Postgres 的 revisioned observability policy 中。Worker 为每个
