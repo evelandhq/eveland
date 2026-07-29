@@ -23,6 +23,6 @@ description: 查找生产配置分组以及每个值所属的组件。
 
 ## Observability
 
-只有需要改变文档默认值时才配置 Observer Data Root 与 Collector Timing。Observer Degradation 必须继续与 Agent Turn Success 分离。
+部署时只配置文档要求的 OpenTelemetry 拓扑值。Agent Capture、隐私与外部目的地属于 System Settings；Telemetry Degradation 必须继续与 Agent Turn Success 分离。
 
 不要将开发 Fallback 复制到生产。管理员可以在 **Settings → About** 比较 Allowlisted Effective Configuration；Secret Value 始终 Masked。

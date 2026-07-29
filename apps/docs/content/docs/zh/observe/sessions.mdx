@@ -3,7 +3,7 @@ title: Sessions 与 Usage
 description: 用 Deployment Provenance 与 Provider 报告的 Usage 追踪 Root/Child Eve Session。
 ---
 
-Session 采集独立于 Playground。注入的 Eve Hook 将 Durable Envelope 写入文件系统 Outbox，Collector 再将其投影到 Postgres。直接 Agent 请求、Playground、Schedule 与 Child Session 都可以进入同一历史。
+Session 采集独立于 Playground。注入的 Eve Hook 使用 Eveland 私有 OpenTelemetry Provider，将标准 OTLP 发送到托管 Collector；Built-in 再把 Agent LogRecord 投影到 Postgres。直接 Agent 请求、Playground、Schedule 与 Child Session 都可以进入同一历史。用户 Instrumentation 与 Exporter 保持不变。
 
 ## Session 模型
 
@@ -19,8 +19,8 @@ Usage 只来自 Eve Provider 报告的 `step.completed.data.usage`：
 - Cache Read 与 Cache Write Token
 - Provider 或 Gateway 在有报告时提供的 Cost
 
-缺失 Usage 会明确保持缺失，Eveland 不做估算。At-least-once Envelope Delivery 不会重复累计已投影 Usage。
+缺失 Usage 会明确保持缺失，Eveland 不做估算。At-least-once OTLP Delivery 不会重复累计已投影 Usage。
 
-## Observer 健康
+## Telemetry 健康
 
-Observer 故障不能让 Agent Turn 失败。Envelope 会保留等待恢复，Collector Health 则与控制面 Health 分开报告 Degraded 状态。
+Telemetry 故障不能让 Agent Turn 失败。Collector 为 Built-in 与每个外部 Exporter 提供相互独立的持久化 Retry Queue；System Observability 设置会显示 Built-in 接收状态。

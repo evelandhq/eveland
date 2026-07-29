@@ -9,7 +9,7 @@ Start with the state that actually failed. Eveland keeps component health, async
 
 - API and Gateway public `/health` report product version, revision, channel, and component.
 - Worker reports startup identity and writes an already-masked configuration snapshot.
-- Collector degradation is separate from control-plane health because queued observer envelopes can recover.
+- Built-in OTLP receive health is separate from control-plane health; Collector exporter queues retry independently.
 - **Settings → About** compares Web/API identity and shows allowlisted masked configuration to admins.
 - **Settings → Instance health** uses a continuous Worker heartbeat, a live Gateway probe, and Postgres queries to show component availability plus Worker-host CPU, memory, data-filesystem, and workload trends. An old Worker configuration snapshot is never treated as liveness evidence.
 

@@ -85,8 +85,8 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
 - `apps/web`: authenticated Next.js App Router control panel.
 - `apps/docs`: bilingual public website and Fumadocs documentation, separate
   from the authenticated control panel.
-- `apps/api`: Hono control-plane API, Better Auth/team host, and the current
-  embedded collector host. `app.ts` composes focused route, schema, and support
+- `apps/api`: Hono control-plane API, Better Auth/team host, and Built-in OTLP
+  ingest. `app.ts` composes focused route, schema, and support
   modules.
 - `apps/gateway`: public Agent data plane and internal privileged Playground
   path. Request lifecycle orchestration is separate from pure routing rules.
@@ -97,9 +97,12 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
   browser-safe and Node-only subpath exports.
 - `packages/db`: Drizzle schema, migrations, repositories, mappers, and one
   domain-oriented SQL Store used by production Postgres and PGlite tests.
-- `packages/agent-observer`: release-time Eve hook injection.
-- `packages/session-collector`: observer outbox claiming, validation,
-  ingestion, and projection.
+- `packages/agent-observer`: release-time Eve hook injection with private
+  OpenTelemetry providers that do not modify user provider registration.
+- `packages/platform-observability`: shared OpenTelemetry SDK bootstrap for
+  Eveland services.
+- `packages/session-collector`: standard OTLP projection into Eveland
+  Session, usage, and instance-health read models.
 - `packages/sandbox-bwrap`: the systemd runtime's Eve exec sandbox backend.
 - `infra`: Compose, Traefik, systemd, Lima, and real integration-smoke assets.
 
@@ -180,21 +183,25 @@ corresponding tests and docs are updated.
   worker with a shared absolute data root. Do not globally flip runtime or path
   defaults without updating preflight, Compose, env examples, and deployment
   docs.
-- API and worker must agree on absolute source/release/outbox paths. Treat
+- API and worker must agree on absolute source, release, and telemetry policy paths. Treat
   build lifecycle scripts and imported project code as untrusted across the
   documented sandbox boundary.
 
 ### Observability and usage
 
-- Session collection is push-first: injected Eve hooks write a durable
-  filesystem outbox and the collector projects it to Postgres. Playground
-  streaming is not the authoritative collection path.
-- Observer failure must not make an Agent turn fail. Catch and rate-limit
-  observer I/O failures, expose degraded collector health, and preserve queued
-  envelopes for recovery.
-- Delivery is at least once. Claims, event projection, usage aggregation, and
-  replay must be idempotent and safe under child-before-parent and discovery
-  races.
+- Session collection is OTLP push-first: injected Eve hooks use private
+  providers, the managed OpenTelemetry Collector owns retry/persistent queues,
+  and Built-in projects standard OTLP into Postgres. Playground streaming is
+  not the authoritative collection path.
+- User instrumentation is untouched. Never replace or register user global
+  tracer, logger, or meter providers; Eveland capture settings control only
+  Eveland's injected private providers.
+- Observability failure must not make an Agent turn or Worker control-loop
+  operation fail. Catch and rate-limit telemetry failures, keep Built-in
+  always enabled, and isolate every external exporter's retry queue.
+- Delivery is at least once. OTLP batch storage, event projection, usage
+  aggregation, and replay must be idempotent and safe under
+  child-before-parent and discovery races.
 - A platform Session is the root conversation; each root or subagent Eve
   session is a SessionNode. Durable Eve session identity is project-scoped,
   while individual observations retain Deployment provenance.
@@ -207,7 +214,7 @@ corresponding tests and docs are updated.
 - Never put secrets in source snapshots, releases, logs, observer filenames,
   events, fixtures, or client responses. Do not log raw API keys or affinity
   material.
-- Gateway must not receive the Docker socket, source tree, observer data, or
+- Gateway must not receive the Docker socket, source tree, telemetry policy data, or
   decrypted project secrets.
 - API/collector must not receive host runtime-controller privileges. Worker is
   the only Docker/systemd controller and is not a public service.
@@ -282,9 +289,9 @@ healthy. When a Compose worker controls the host Docker daemon,
   internal/public route separation. Pure Host/header/affinity/target rules
   belong in `gateway-routing.ts`; socket and response lifecycle orchestration
   stays in `app.ts`.
-- Observer/collector changes: test replay, duplicate usage, claim recovery,
-  provenance merge, child-before-parent arrival, degraded health, and real Eve
-  event coverage when the protocol surface changes.
+- Observability/Collector changes: test OTLP replay, duplicate usage,
+  exporter isolation, provenance merge, child-before-parent arrival, degraded
+  health, and real Eve event coverage when the protocol surface changes.
 - Runtime/sandbox changes: cover runtime selection and startup preflight, then
   use the real Lima/systemd/bwrap smoke path when behavior depends on Linux.
 - Web changes: preserve App Router conventions and existing shadcn/Tailwind

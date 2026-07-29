@@ -10,9 +10,10 @@ description: 查看应用 Ownership、Dependency Direction、Data Path 与 Publi
 | 组件 | 职责 |
 | --- | --- |
 | Web | 经过认证的团队控制面 |
-| API | Control-plane Contract、Persistence、Auth、Import Handling 与 Collector Host |
+| API | Control-plane Contract、Persistence、Auth、Import Handling 与 Built-in OTLP Ingest |
 | Gateway | Public Agent Data Plane、Trusted Routing、Affinity、Streaming 与 Private Playground Path |
 | Worker | Import、Build、systemd Runtime Control、Schedule、Recovery 与 Cleanup |
+| OpenTelemetry Collector | OTLP 接收、Domain Filter、Retry Queue 与 Destination Fan-out |
 | Postgres | 控制面状态与平台管理的 Durable Workflow Database |
 
 ## Dependency Direction
@@ -39,4 +40,4 @@ Client
 
 ## Observation Path
 
-注入 Hook 将 Durable Envelope 写入 Deployment Outbox。API Collector Claim、Validate 并将 Envelope 投影为 Session 与 Usage。Playground Streaming 不是权威采集路径。
+注入 Eve Hook 使用 Eveland 私有 OpenTelemetry Provider，不修改用户 Instrumentation。API、Gateway、Worker 与 Agent 信号通过 OTLP 进入托管 Collector。Built-in 始终启用，并将标准 OTLP 投影为 Sessions、Usage 与 Instance Health；Elastic 接收全部 Eveland 信号，Langfuse 只接收 Agent Trace。外部目的地拥有独立 Queue 与空 OTLP Health Probe。Raw Telemetry 与 Capacity 保留 30 天，派生 Session 与 Usage 保留 90 天。Playground Streaming 不是权威采集路径。

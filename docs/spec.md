@@ -149,7 +149,7 @@ Project 标记为 `deleting` 并创建唯一的 `delete_project` job。Projects 
 
 删除 job 必须等待同一 Project 已运行的 job 结束，再停止所有 `running` 或
 `draining` Deployment。随后按各 Deployment 记录的 `runtimeKind` 删除 Release，
-清理平台管理的 source、build、observer outbox 与 durable sandbox workspace，最后
+清理平台管理的 source、build、Agent observability policy 与 durable sandbox workspace，最后
 级联删除 routes、SessionBindings、Sessions、usage、Schedules、Secrets、日志和
 Project 数据。平台不得删除 `EVELAND_DATA_DIR` 之外的外部源码路径。外部资源清理
 无法与 Postgres 组成同一事务；失败时部分进程或 artifact 可能已经停止或移除，
@@ -225,20 +225,154 @@ Gateway configuration 只能通过现有 service-authenticated `/internal/*` 边
 Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：前者标识控制面
 软件本身，后者仍表示某个导入 Agent 的不可变构建产物与运行目标。
 
+#### Observability (/settings/observability)
+
+Eveland 的监控以 OpenTelemetry/OTLP 为唯一传输标准。这个页面的职责是让 Admin 配置外部
+监控目标与 Agent 采集策略，不承担观测数据的展示。
+
+Built-in 是平台内置且始终启用的 Destination，不提供配置或关闭入口。它的职责只是把 Eveland
+原有的运行数据——CPU、memory、disk 等宿主容量，token usage 与成本，Session 事件，组件
+心跳——改用标准 OTLP 协议收集，投影为 Sessions、Usage 与 Instance Health 必需的读模型。
+Built-in 不存储原始明细，不提供统计视图，也不引入任何原本不存在的监控项。页面因此只展示
+外部 Destination 配置与 Agent capture 策略；不展示 Built-in 自身的状态，不展示
+spans/logs/metrics 明细，不展示平台操作统计、build/deploy 时间线或投递统计，也不查询 Agent
+进程或外部监控产品。Built-in 是否在接收遥测属于 Instance Health 的组件状态，不在这个页面
+重复。任何 Span、LogRecord、Metric Point 级别的观测与下钻都由外部 Destination 承担，
+Eveland 不做本地兜底。
+
+Managed Collector 只向 Built-in 发送 logs 与 metrics：logs 投影 Session/Usage 读模型，
+metrics 投影 Instance Health 的容量与心跳读模型。traces 没有 Built-in 读模型，只发往外部
+Destination。
+
+Collector 使用两个互不共享信任的 OTLP receiver。Platform receiver 的 gRPC/HTTP 端口为
+4317/4318，API、Gateway 与 Worker 必须携带 Agent 无法获得的 service token；Agent receiver
+的端口为 4327/4328，只能通过宿主 loopback 或每个活跃 Deployment 独占、仅连接该 Agent
+与 Collector 的私有 Docker network 访问。不同 Deployment 不共享 Docker network；Collector
+缺失不得阻断 Agent 启动或 cold activation，容器恢复或被重建后 Worker 必须按新身份把它
+重新接入仍存活且仍有 Agent 容器的受管 network。orphan sweep 必须回收宽限期后仍没有对应
+Agent 容器的受管 network。Docker runtime 启动 preflight 必须实际探测 bridge subnet 分配，
+耗尽时在接收部署任务前指出 `default-address-pools` 运维修复。
+Agent receiver 必须覆盖 `service.name=eveland-agent` 与
+`eveland.telemetry.domain=agent`，并只接受 `@eveland/eve-runtime` scope，不能让 Agent
+提交 platform/runtime/capacity 身份。这个进程外边界可以阻止 Agent 伪造平台与容量状态；
+同一 Agent 进程中的 authored code 仍可能模仿私有 scope，因此不能把 scope allowlist 描述为
+同进程内的密码学 provenance。
+
+Agent receiver 无法认证调用方，因此 Deployment 归属不能取自 Agent 提交的
+`eveland.deployment.id`。Worker 为每个 Deployment 签发一个凭据，随 Agent runtime policy
+文件只读投递，Agent 把它作为 `eveland.deployment.credential` resource attribute 上报；
+Built-in 与 external Destination 的 API egress proxy 只接受验签通过的凭据，并用 Store 中该
+Deployment 的 Team、Project、Release、Deployment 与 runtimeKind 覆盖 payload 声明的值；
+验签失败或缺失的 resource 不投影或外发。external proxy 在完成归属后删除凭据，只把不含凭据的
+OTLP/HTTP JSON 发送给 Destination。凭据按 resource 而非按请求生效，因为 Collector 会把
+多个 Agent 的数据批量合并；凭据不设过期，因为持久化 sending queue 可能在 Collector 恢复后
+重放很早以前的批次，代价是泄漏的凭据在轮换 `APP_SECRET_KEY` 之前一直有效，且轮换会同时作废
+全部 Deployment 的凭据。轮换后必须用新 key 重新部署所有 Agent Deployment，之后采集才恢复；
+这是支持的运维流程，不要求运行中的 Agent 热加载签名 key。凭据随 traces、logs 与 metrics
+全部私有信号上报，因为外部 Destination 可以消费三种信号。
+
+Deployment 之间必须无法读到彼此的凭据。Docker runtime 靠每个容器只挂载自己的 policy 目录
+达成；systemd runtime 为每个 Deployment 分配不同的 `DynamicUser`，隐藏其他 uid 的 `/proc`
+条目，并遮蔽共享 data root，只重新暴露该 Deployment 自己的 release、sandbox cache、policy
+与 environment file。单元使用固定 access group 与 group-write umask；policy 中的 root-only
+marker 记录上一次动态 uid，只有 uid 变化时，root `ExecStartPre` 才对 release 与 sandbox
+cache 做一次递归 group-access 修复。因此 Agent 显式创建的 `0600`/`0700` 条目在重启或 cold
+activation 后仍可使用，同时同一 uid 的常规唤醒不承担全量目录扫描。共享 group 只提供这些
+重新暴露路径所需的权限，不能替代独立 uid。
+
+由此可以界定信任边界：Agent 无法伪造平台状态，也无法把遥测写入其他 Deployment 或
+Project；但它仍可以伪造自己 Deployment 名下的 Session、事件与 usage。要抵抗这一点需要由
+进程外的可信边界赋予 provenance，当前实现不提供该保证。
+
+Built-in 的 service-authenticated OTLP/HTTP 入口仍必须对 traces、logs、metrics 同时接受标准
+`application/json` 与 `application/x-protobuf`，并按请求编码返回对应的标准 success
+response；同一批次中缺少必要 Eveland Resource 或 signal 字段的 item 通过标准
+`partial_success` 拒绝计数反馈，其余 item 继续投影。拒绝计数由标准投影结果得出，与是否
+存储明细无关：缺少 Session 字段、引用非受管 Deployment 或没有形成 Instance Health
+读模型的 item 必须计为 rejected，不能因通用 OTLP 解析成功就 ACK。Managed Collector 默认以
+protobuf 向 Built-in 发送；protobuf bytes 形式的
+Trace/Span ID 必须规范化为与 OTLP/JSON 相同的小写十六进制表示，以保持跨编码幂等与
+trace/log correlation。重复投递的批次按 signal 与 payload 摘要去重。
+不得定义 Eveland 私有 envelope。
+
+Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
+
+* Agent capture 开关、trace sampling、input/output content 与 reasoning policy 只作用于
+  Eveland 注入的私有 provider，并由运行中的 Agent 动态加载，不重启 Deployment；
+  input、output 与 reasoning content 默认开启，Admin 可以分别关闭
+* Session 完成与私有 Provider revision 切换最多等待两秒完成 flush/shutdown；超时或失败只
+  产生限频降级告警，不能使 Eve event hook 或 Agent turn 失败
+* Elastic 固定接收 Eveland 的全部 traces、logs、metrics 和 agent/platform/runtime/capacity domain
+* Langfuse 固定只接收 Eveland 注入的 Agent traces；Collector 按直连 OTLP v4 contract
+  将 model call 映射为 generation，将 Agent/Tool/Subagent 保持为带 operation metadata 的
+  span，并映射 input/output、model、标准 usage 与 provider-reported cost。管理员只配置
+  Langfuse Base URL，例如 `https://us.cloud.langfuse.com`；Eveland 生成
+  `/api/public/otel/v1/traces` signal endpoint
+* Custom OTLP/HTTP 可以选择 signals、domains 与加密 Header
+* 已配置的 Destination 必须可以修改：页面展示 Admin 配置的那个远端 URL，不展示 Eveland
+  派生的 signal endpoint。Admin 可以改 URL、Custom OTLP 的 signals/domains 与 Header，也
+  可以更换凭据。凭据不回浏览器，因此提交时留空表示保留已存储的值，只有首次配置必须提供；
+  Destination 的产品类型创建后不可更改。无法用当前 `APP_SECRET_KEY` 解开配置的 Destination
+  仍要列出并可编辑替换，不能静默隐藏
+* 每个外部 exporter 使用独立 retry 与持久化 sending queue；一个目标失败不能阻塞 Built-in
+  或其他目标
+* Collector 的外部 exporter 只连接 service-authenticated API egress proxy，生成的 Collector
+  配置不包含远端 URL 或凭据。API 按 Destination id 读取加密配置后转发；保存配置、Worker
+  空批探测和每次实际转发都必须执行相同的 SSRF 策略。默认只允许 HTTPS 且 DNS 全部解析到
+  public IP，禁止自动跟随 redirect，并把本次连接固定到已经校验的地址以抵抗 DNS rebinding；
+  loopback、private、link-local、metadata 与其他非公网地址默认拒绝。确需私网 OTLP 时只能
+  通过运维配置的精确 hostname/IP allowlist 放行 HTTP 或私网解析，不能使用通配符。API
+  每次转发还必须按 Store 中当前 Destination 的 signal 与 domain policy 过滤 OTLP resource；
+  Collector 尚未加载新配置时不能继续发送已经移除的 domain
+* 平台自身遥测的观测完全由外部 Destination 承担。未启用 Elastic 或 Custom OTLP 时，
+  platform/runtime domain 的 trace 与 log 不在任何地方留存；Built-in 只保留 capacity 读模型
+  （Instance Health）与 Session/Usage 读模型。Langfuse 只承接 Agent traces，不能作为平台
+  自身遥测的目标
+* Worker 每五分钟使用不含业务数据的标准 OTLP 请求独立探测外部 Destination；Settings 展示
+  pending、healthy、degraded 或 paused，不把某个外部目标故障解释为 Built-in 故障
+* Collector 自身的 internal metrics 只发往接收 metrics 与 platform domain 的外部
+  Destination，不进入 Built-in。Collector 的投递量、发送失败与 queue 压力属于第三方监控
+  产品的职责；Eveland 不为它建立本地视图
+
+系统设置中的外部凭据使用 `APP_SECRET_KEY` 加密，保存后不返回浏览器；可以再次展示的只有
+Destination 的 URL 与凭据形态——authorization 模式与转发 Header 的名称，凭据值本身不可读回。
+Worker 将 revisioned 设置渲染为官方 OpenTelemetry Collector 配置，先使用同版本 Collector
+校验，再原子应用并只重启 Collector；不能为了监控设置重启 Agent Deployment。外部
+Destination 凭据只在加密存储以及执行安全探测/转发的可信 API、Worker 内存中出现，不能进入
+Collector 配置、日志或 Agent policy。Collector 只能只读挂载
+`EVELAND_DATA_DIR/otel` 配置目录和自己的持久化 queue volume，不能读取
+deployment environment、Source、Release、sandbox 或其他平台数据。
+
+Agent 源码中的 instrumentation 是独立边界：Eveland 不修改用户监控代码，不注册或替换全局
+TracerProvider、LoggerProvider、MeterProvider，也不截获用户 exporter。Release 准备仅在
+Eve 的平台保留 hook slot 注入使用私有 provider 的 Eveland hook；用户 provider 继续按源码
+配置向用户自己的目标发送。API、Gateway、Worker 使用 Eveland 平台 SDK 产生 platform/runtime/
+capacity 信号；CPU、memory、disk、workload 与 component health 均使用标准 OTel metrics。
+Worker 还把已经脱敏并写入产品日志的 build、deploy 与 runtime lifecycle 日志通过独立
+runtime-domain LoggerProvider 发为 OTel LogRecord。
+
+Built-in retention 不是可配置项。capacity sample 默认保留 30 天；Session/Usage read model
+默认保留 90 天；批次去重收据只保留覆盖 Collector 重试窗口所需的时长。Worker 每日清理过期
+数据，运行中的 Session 不参与清理，外部 Destination 已接收的数据不受影响。Built-in 不存储
+原始 span、LogRecord 与 metric point，也不保留任何观测聚合，因此不存在明细层面的 retention。
+
 #### Instance Health (/settings/health)
 
 Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“当前是否可用”与
 “是否正在接近容量风险”分开呈现，并至少展示：
 
-* API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间
+* API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间；Collector
+  状态来自最近一次 OTLP 批次的到达时间（它是 Built-in 的唯一发送方），过期的批次不能继续
+  证明 Collector 在线
 * Worker 持续 heartbeat；启动时配置 snapshot 不能替代在线状态
 * Worker 宿主机的 CPU、load、可用内存、`EVELAND_DATA_DIR` 所在文件系统容量与 inode
 * queued/running Job 数量、最老 queued Job，以及 RuntimeInstance 状态分布
 * 24 小时与 7 天趋势；有足够增长历史时给出磁盘预计耗尽天数
 
-Worker 是唯一采集宿主机指标的特权组件；它把脱敏后的 heartbeat 与 metric sample 写入
-Postgres，API 只读取并聚合，Web 只读展示。默认每 60 秒采样、保留 30 天，并每日清理过期
-sample。Worker heartbeat 独立于长时间 build/deploy Job 持续发布，不能因为 Job 正在执行而
+Worker 是唯一采集宿主机指标的特权组件；它把 heartbeat 与 metric sample 作为 capacity
+domain 的标准 OTLP metrics 发送，Built-in 投影到 Postgres，API 只读取并聚合，Web 只读展示。
+默认每 60 秒采样、保留 30 天，并每日清理过期 sample。Worker heartbeat 独立于长时间
+build/deploy Job 持续发布，不能因为 Job 正在执行而
 被误判离线。`stopped` RuntimeInstance 是正常 scale-to-zero 状态，不得单独视为故障；
 Collector delayed/degraded 使实例显示降级，但不等价于 Agent Traffic 已中断。
 
@@ -469,7 +603,7 @@ token 后读取 envelope：`local-dev` 构造 loopback Host，其他方法构造
 最后写入 credential Header。Gateway 不保存、解密或刷新 provider credential；public path 的
 Authorization、Cookie、Origin、Host、abort 与 NDJSON streaming 继续透明转发。
 
-每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。用户点击 New conversation 时，Web 必须先完成 canonical session reset，再清空本地对话；离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Observer/Collector 的权威观测路径。
+每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。用户点击 New conversation 时，Web 必须先完成 canonical session reset，再清空本地对话；离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Eveland 私有 OTLP 信号的权威观测路径。
 
 平台记录该 Session 的来源：
 
@@ -521,6 +655,10 @@ message
 → step complete
 → final response / failure
 ```
+
+详情页不展示 span tree 与 LogRecord 明细。Built-in 不存储原始 Agent span 与 LogRecord，
+span 级别的下钻在启用接收 Agent traces 的外部 Destination 后由该 Destination 提供；
+用户源码 instrumentation 发送到其自有 backend 的数据不由 Eveland 读取或合并。
 
 同时按实际执行的 Eve agent / subagent 展示：
 
@@ -738,7 +876,7 @@ Web 以 Type、Name、Value 状态和行级操作组成的表格展示 Entry；�
 Shared Agent Environment < Project Secret < Eveland 保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。
 共享值只在 deploy、restart、cold activation
 或 schedule activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、
-generated Dockerfile、observer envelope、日志或 Web payload。完整 Project/Shared Environment 值集合必须
+generated Dockerfile、OTLP signal、日志或 Web payload。完整 Project/Shared Environment 值集合必须
 参与 runtime/build diagnostic 脱敏。
 
 Entry 语义变化才递增内部 revision。更新或清空共享环境时，API 对所有 Project 的
@@ -781,7 +919,7 @@ Control API
   ├─ Source import
   ├─ Build
   ├─ Secret injection
-  ├─ Session provenance
+  ├─ Built-in OTLP ingest and Session provenance
   └─ Schedule trigger
   ↓
 Public Agent Gateway (stable/preview Host routing)
@@ -825,7 +963,8 @@ Deployment 但失管的进程（早于 RuntimeInstance 机制部署、restart �
 ready RuntimeInstance，从此由 idle 生命周期接管；没有 Deployment 记录、Deployment 已
 archived、或运行在非 Deployment 所属 runtimeKind 下的进程在宽限期后被停止。清扫只
 匹配完整的 Deployment 命名形态，平台自身的 Compose 容器（`eveland-postgres-1` 等）
-永远不在清扫范围内。
+永远不在清扫范围内。带平台 telemetry 标签但已无对应 Agent 容器的 Docker network 使用
+同一宽限期回收；回收前必须再次确认容器仍不存在，不能与并发启动竞争。
 
 容器运行 Eve 项目，平台负责：
 
@@ -836,6 +975,7 @@ archived、或运行在非 Deployment 所属 runtimeKind 下的进程在宽限�
 * 日志收集
 * cron 触发
 * Session 来源归因
+* Eveland 私有 OpenTelemetry 信号
 * 容器重启
 
 新启动或重启的进程在 HTTP 健康检查失败时，worker 必须先采集 runtime diagnostics 再清理

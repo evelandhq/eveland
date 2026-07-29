@@ -15,7 +15,7 @@ Use a Linux host with systemd; Eveland is verified on Ubuntu 24.04. Production r
 
 ## Plan storage and database access
 
-Keep source revisions, releases, observer outboxes, and sandbox caches below the data root. Configure a Postgres role for Eveland and a production `WORKFLOW_POSTGRES_URL` whose role can create the isolated per-project workflow databases.
+Keep source revisions, releases, Agent observability policies, managed Collector configuration, and sandbox caches below the data root. Configure a Postgres role for Eveland and a production `WORKFLOW_POSTGRES_URL` whose role can create the isolated per-project workflow databases.
 
 ## Plan capacity
 
