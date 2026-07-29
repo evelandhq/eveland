@@ -459,67 +459,9 @@ export function registerProjectRoutes(input: {
   });
 
   app.get("/projects/:projectId/variant-metrics", async (c) => {
-    const sessions = await store.listSessions(c.req.param("projectId"));
-    const groups = new Map<
-      string,
-      {
-        deploymentId: string | null;
-        experimentId: string | null;
-        variantName: string;
-        sessions: number;
-        success: number;
-        failure: number;
-        latencyMs: number;
-        latencySamples: number;
-        tokens: number;
-        costUsd: number;
-      }
-    >();
-    for (const session of sessions) {
-      const variantName = session.variantName ?? "unassigned";
-      const groupKey = JSON.stringify([
-        session.deploymentId,
-        session.experimentId,
-        variantName,
-      ]);
-      const group = groups.get(groupKey) ?? {
-        deploymentId: session.deploymentId,
-        experimentId: session.experimentId,
-        variantName,
-        sessions: 0,
-        success: 0,
-        failure: 0,
-        latencyMs: 0,
-        latencySamples: 0,
-        tokens: 0,
-        costUsd: 0,
-      };
-      group.sessions += 1;
-      if (session.status === "completed") group.success += 1;
-      if (session.status === "failed") group.failure += 1;
-      if (session.completedAt) {
-        group.latencyMs += Math.max(
-          0,
-          Date.parse(session.completedAt) - Date.parse(session.startedAt),
-        );
-        group.latencySamples += 1;
-      }
-      group.tokens +=
-        session.usage.inputTokens +
-        session.usage.outputTokens +
-        session.usage.cacheReadTokens +
-        session.usage.cacheWriteTokens;
-      group.costUsd += session.usage.costUsd ?? 0;
-      groups.set(groupKey, group);
-    }
-    return c.json({
-      variants: [...groups.values()].map(
-        ({ latencyMs, latencySamples, ...group }) => ({
-          ...group,
-          averageLatencyMs: latencySamples ? latencyMs / latencySamples : 0,
-        }),
-      ),
-    });
+    // Aggregated in SQL: this used to load every Session the Project had ever
+    // recorded and fold them on the request path.
+    return c.json({ variants: await store.getVariantMetrics(c.req.param("projectId")) });
   });
 
   app.post(

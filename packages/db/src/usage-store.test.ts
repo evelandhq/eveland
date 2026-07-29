@@ -309,6 +309,35 @@ describe("SQL Store usage analytics", () => {
       expect(model.recentSessions).toEqual([
         expect.objectContaining({ id: supportSession.id }),
       ]);
+
+      // Pin the dimensions a future SQL push-down could silently change: which
+      // bucket each event lands in, that a model filter narrows agentModels
+      // but not models, and that recentSessions stays newest-first and capped.
+      const supportBucket = workspace.series.findIndex(
+        (point: { modelSteps: number }) => point.modelSteps === 2,
+      );
+      const researchBucket = workspace.series.findIndex(
+        (point: { modelSteps: number }) => point.modelSteps === 1,
+      );
+      expect(supportBucket).toBeGreaterThanOrEqual(0);
+      expect(researchBucket).toBe(supportBucket + 1);
+      expect(workspace.series[supportBucket]).toMatchObject({ sessions: 1, inputTokens: 100 });
+      expect(workspace.series[researchBucket]).toMatchObject({ sessions: 1, inputTokens: 50 });
+
+      expect(model.agentModels).toEqual([
+        expect.objectContaining({ agentId: "agent_triage", modelId: "openai/gpt-5-mini" }),
+      ]);
+      expect(workspace.recentSessions.map((session: { id: string }) => session.id)).toEqual([
+        researchSession.id,
+        supportSession.id,
+      ]);
+      expect(
+        workspace.recentSessions.every(
+          (session: { startedAt: string }) =>
+            Date.parse(session.startedAt) >= Date.parse(workspace.from) &&
+            Date.parse(session.startedAt) < Date.parse(workspace.to),
+        ),
+      ).toBe(true);
     } finally {
       await fixture.close();
     }

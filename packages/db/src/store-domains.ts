@@ -567,6 +567,23 @@ export interface SessionStore {
 }
 
 export interface UsageStore {
+  /**
+   * Per-variant rollup for a Project's experiment view. Aggregated in SQL:
+   * the route used to fold every Session the Project had ever recorded.
+   */
+  getVariantMetrics(projectId: string): Promise<
+    Array<{
+      deploymentId: string | null;
+      experimentId: string | null;
+      variantName: string;
+      sessions: number;
+      success: number;
+      failure: number;
+      tokens: number;
+      costUsd: number;
+      averageLatencyMs: number;
+    }>
+  >;
   getUsageAnalytics(input: {
     range: UsageRange;
     projectId?: string;
