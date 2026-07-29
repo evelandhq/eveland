@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -73,5 +73,22 @@ export async function createZipArchiveFixture(
   );
   const archivePath = path.join(root, "agent.zip");
   await execFileAsync("zip", ["-qr", archivePath, "."], { cwd: sourceDir });
+  return archivePath;
+}
+
+/**
+ * A zip whose entry NAMES are all safe but which contains a symlink pointing
+ * outside the extraction dir, followed by a file path THROUGH the link --
+ * the archive shape name-only validation cannot catch.
+ */
+export async function createSymlinkZipArchiveFixture(): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eveland-zip-symlink-"));
+  const sourceDir = path.join(root, "source");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(path.join(sourceDir, "package.json"), JSON.stringify({ name: "evil-agent" }));
+  await symlink("/tmp", path.join(sourceDir, "escape"));
+  const archivePath = path.join(root, "evil.zip");
+  // -y stores the symlink as a symlink instead of resolving it.
+  await execFileAsync("zip", ["-qry", archivePath, "."], { cwd: sourceDir });
   return archivePath;
 }

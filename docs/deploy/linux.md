@@ -257,6 +257,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_GATEWAY_SERVICE_TOKEN` | *(unset)* | Required shared secret for API/Gateway `/internal/*` calls, including runtime activation; use a long random value and configure it identically on API, worker, and Gateway. |
 | `EVELAND_GATEWAY_AFFINITY_SECRET` | *(dev fallback only under explicit `NODE_ENV=development`)* | Required whenever `NODE_ENV` is not explicitly `development` (an unset `NODE_ENV` fails closed). HMAC-signs the HttpOnly affinity cookie; keep it independent from the internal service token. |
 | `EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES` | `10485760` | Maximum buffered public request body accepted before Gateway returns 413 without contacting a deployment. |
+| `EVELAND_MAX_UPLOAD_BYTES` | `104857600` | Maximum zip upload accepted by `POST /projects` and `POST /source-preflights` before the API returns 413. Uploads are buffered in memory, so keep this bounded. |
 | `EVELAND_API_INTERNAL_URL` | `http://127.0.0.1:4000` | Private API origin used by Gateway for service-authenticated dormant Deployment activation. Compose uses `http://api:4000`. |
 | `EVELAND_ACTIVATION_LEASE_TTL_MS` | `180000` | API lease lifetime for public requests, turns, streams, and ScheduleRuns. Keep it longer than the Gateway renewal interval. |
 | `EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS` | `86400000` | Playground SessionBinding idle lifetime. Set the same value on API, Gateway, and worker. |

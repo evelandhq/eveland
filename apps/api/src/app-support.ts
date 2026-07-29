@@ -336,7 +336,19 @@ export async function createZipProjectFromUpload(
     return c.json({ error: "Project name is already in use." }, 409);
   }
 
-  const { sourcePath, uploadDir } = await extractZipUpload(archive, dataDir);
+  let extracted;
+  try {
+    extracted = await extractZipUpload(archive, dataDir);
+  } catch (error) {
+    if (error instanceof InvalidZipUploadError) {
+      return c.json(
+        { error: "Invalid zip upload", issues: [{ path: ["archive"], message: error.message }] },
+        400,
+      );
+    }
+    throw error;
+  }
+  const { sourcePath, uploadDir } = extracted;
   try {
     const project = await store.createProject({
       name: parsedName.data,
@@ -355,6 +367,14 @@ export async function createZipProjectFromUpload(
   }
 }
 
+/** A rejected upload: hostile or malformed archive content, reported as 400. */
+export class InvalidZipUploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidZipUploadError";
+  }
+}
+
 export async function extractZipUpload(
   archive: File,
   dataDir: string,
@@ -362,22 +382,59 @@ export async function extractZipUpload(
   const uploadsDir = path.resolve(dataDir, "uploads");
   await mkdir(uploadsDir, { recursive: true });
   const uploadDir = await mkdtemp(path.join(uploadsDir, "zip-"));
-  const archivePath = path.join(uploadDir, "source.zip");
-  const extractDir = path.join(uploadDir, "source");
-  await mkdir(extractDir, { recursive: true });
-  await writeFile(archivePath, Buffer.from(await archive.arrayBuffer()));
+  try {
+    const archivePath = path.join(uploadDir, "source.zip");
+    const extractDir = path.join(uploadDir, "source");
+    await mkdir(extractDir, { recursive: true });
+    await writeFile(archivePath, Buffer.from(await archive.arrayBuffer()));
 
-  const entries = await listZipEntries(archivePath);
-  for (const entry of entries) {
-    assertSafeZipEntry(entry);
+    const entries = await listZipEntries(archivePath);
+    for (const entry of entries) {
+      try {
+        assertSafeZipEntry(entry);
+      } catch (error) {
+        throw new InvalidZipUploadError(error instanceof Error ? error.message : String(error));
+      }
+    }
+    await assertNoSymlinkZipEntries(archivePath);
+
+    await execFileAsync("unzip", ["-q", archivePath, "-d", extractDir]);
+    await rm(archivePath, { force: true });
+    // Defense in depth behind the listing check: whatever Info-ZIP actually
+    // materialized, a symlink inside the extracted tree can redirect every
+    // later read/write (imports, builds) outside the upload directory.
+    await assertNoSymlinksOnDisk(extractDir);
+    return {
+      sourcePath: await resolveExtractedSourceRoot(extractDir),
+      uploadDir,
+    };
+  } catch (error) {
+    await rm(uploadDir, { recursive: true, force: true });
+    throw error;
   }
+}
 
-  await execFileAsync("unzip", ["-q", archivePath, "-d", extractDir]);
-  await rm(archivePath, { force: true });
-  return {
-    sourcePath: await resolveExtractedSourceRoot(extractDir),
-    uploadDir,
-  };
+/**
+ * Rejects archives containing symlink entries before extraction. Entry-name
+ * validation alone cannot catch them: `link -> /outside` followed by
+ * `link/file` has only "safe" names, yet Info-ZIP recreates the symlink and
+ * then writes the second entry through it, outside the extraction dir.
+ */
+export async function assertNoSymlinkZipEntries(archivePath: string): Promise<void> {
+  const { stdout } = await execFileAsync("unzip", ["-Z", archivePath]);
+  // `unzip -Z` entry lines begin with a unix mode string; symlinks are `l...`.
+  if (stdout.split(/\r?\n/).some((line) => /^l[rwxst-]{9}/.test(line))) {
+    throw new InvalidZipUploadError("Zip archives must not contain symbolic links.");
+  }
+}
+
+async function assertNoSymlinksOnDisk(extractDir: string): Promise<void> {
+  const entries = await readdir(extractDir, { recursive: true, withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) {
+      throw new InvalidZipUploadError("Zip archives must not contain symbolic links.");
+    }
+  }
 }
 
 export async function listZipEntries(archivePath: string): Promise<string[]> {
