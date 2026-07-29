@@ -47,6 +47,10 @@ export type GatewayAppOptions = {
   configurationSnapshot?: ConfigurationSnapshot;
   internalServiceToken?: string;
   routeCacheTtlMs?: number;
+  /** Bounds the hostname route cache so unknown-subdomain traffic cannot grow it without limit. */
+  routeCacheMaxEntries?: number;
+  /** Socket idle timeout for public upstream proxying; streaming resets it. */
+  upstreamTimeoutMs?: number;
   maxRequestBodyBytes?: number;
   affinityCookieSecure?: boolean;
   activationClient?: GatewayActivationClient;
