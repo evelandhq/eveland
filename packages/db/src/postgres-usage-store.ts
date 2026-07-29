@@ -8,7 +8,7 @@ import type {
   UsageSeriesPoint,
   UsageTotals,
 } from "@eveland/core/contracts";
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { sessionRowToSession } from "./mappers.js";
 import {
   modelUsageEvents,
@@ -128,6 +128,42 @@ export function createPostgresUsageStore({
   db,
 }: PostgresStoreContext): PostgresDomain {
   return {
+    async getVariantMetrics(projectId) {
+      const rows = await db
+        .select({
+          deploymentId: sessions.deploymentId,
+          experimentId: sessions.experimentId,
+          variantName: sql<string>`coalesce(${sessions.variantName}, 'unassigned')`,
+          sessions: sql<number>`count(*)::int`,
+          success: sql<number>`count(*) filter (where ${sessions.status} = 'completed')::int`,
+          failure: sql<number>`count(*) filter (where ${sessions.status} = 'failed')::int`,
+          tokens: sql<number>`coalesce(sum(
+            ${sessions.inputTokens} + ${sessions.outputTokens}
+              + ${sessions.cacheReadTokens} + ${sessions.cacheWriteTokens}
+          ), 0)::double precision`,
+          costUsd: sql<number>`coalesce(sum(${sessions.costUsd}), 0)::double precision`,
+          // Latency only counts Sessions that finished, matching the previous
+          // per-row guard; a negative clock skew still floors at zero.
+          averageLatencyMs: sql<number>`coalesce(avg(
+            greatest(0, extract(epoch from (${sessions.completedAt} - ${sessions.startedAt})) * 1000)
+          ) filter (where ${sessions.completedAt} is not null), 0)::double precision`,
+        })
+        .from(sessions)
+        .where(eq(sessions.projectId, projectId))
+        .groupBy(sessions.deploymentId, sessions.experimentId, sql`coalesce(${sessions.variantName}, 'unassigned')`);
+      return rows.map((row) => ({
+        deploymentId: row.deploymentId,
+        experimentId: row.experimentId,
+        variantName: row.variantName,
+        sessions: row.sessions,
+        success: row.success,
+        failure: row.failure,
+        tokens: row.tokens,
+        costUsd: row.costUsd,
+        averageLatencyMs: row.averageLatencyMs,
+      }));
+    },
+
     async getUsageAnalytics(input): Promise<UsageAnalytics> {
       const range = input.range;
       const window = usageWindow(range, input.now ?? new Date());
@@ -135,8 +171,21 @@ export function createPostgresUsageStore({
         ? eq(sessions.projectId, input.projectId)
         : undefined;
 
+      // Only the columns the aggregation below actually reads. The previous
+      // shape selected whole `sessions` rows and repeated one per usage event,
+      // so a busy window transferred the same twenty-column row hundreds of
+      // times. `recentSessions` needs full rows, but only twenty of them, so
+      // it gets its own bounded query instead of keeping every row in memory.
       const sessionRows = await db
-        .select({ session: sessions, projectName: projects.name })
+        .select({
+          session: {
+            id: sessions.id,
+            projectId: sessions.projectId,
+            status: sessions.status,
+            startedAt: sessions.startedAt,
+          },
+          projectName: projects.name,
+        })
         .from(sessions)
         .innerJoin(projects, eq(projects.id, sessions.projectId))
         .where(
@@ -149,8 +198,24 @@ export function createPostgresUsageStore({
 
       const usageRows = await db
         .select({
-          usage: modelUsageEvents,
-          session: sessions,
+          usage: {
+            createdAt: modelUsageEvents.createdAt,
+            inputTokens: modelUsageEvents.inputTokens,
+            outputTokens: modelUsageEvents.outputTokens,
+            cacheReadTokens: modelUsageEvents.cacheReadTokens,
+            cacheWriteTokens: modelUsageEvents.cacheWriteTokens,
+            costUsd: modelUsageEvents.costUsd,
+            usageReported: modelUsageEvents.usageReported,
+            agentId: modelUsageEvents.agentId,
+            agentName: modelUsageEvents.agentName,
+            eveSessionId: modelUsageEvents.eveSessionId,
+          },
+          session: {
+            id: sessions.id,
+            projectId: sessions.projectId,
+            status: sessions.status,
+            startedAt: sessions.startedAt,
+          },
           projectName: projects.name,
           modelId: sessionNodes.modelId,
         })
@@ -348,16 +413,34 @@ export function createPostgresUsageStore({
         ),
       );
 
-      const recentSessions = selectedCurrentSessions
-        .map((row) => ({
-          ...sessionRowToSession(row.session),
-          projectName: row.projectName,
-        }))
-        .sort(
-          (left, right) =>
-            Date.parse(right.startedAt) - Date.parse(left.startedAt),
-        )
-        .slice(0, 20);
+      // Bounded in SQL rather than sorting every session in the window and
+      // discarding all but twenty. When a model filter is active the eligible
+      // set is the sessions that actually used it, which the aggregation
+      // above has already resolved.
+      const recentSessionIds = input.modelId
+        ? selectedCurrentSessions.map((row) => row.session.id)
+        : null;
+      const recentRows =
+        recentSessionIds && recentSessionIds.length === 0
+          ? []
+          : await db
+              .select({ session: sessions, projectName: projects.name })
+              .from(sessions)
+              .innerJoin(projects, eq(projects.id, sessions.projectId))
+              .where(
+                and(
+                  projectCondition,
+                  gte(sessions.startedAt, window.from),
+                  lt(sessions.startedAt, window.to),
+                  recentSessionIds ? inArray(sessions.id, recentSessionIds) : undefined,
+                ),
+              )
+              .orderBy(desc(sessions.startedAt))
+              .limit(20);
+      const recentSessions = recentRows.map((row) => ({
+        ...sessionRowToSession(row.session),
+        projectName: row.projectName,
+      }));
 
       return {
         range,
