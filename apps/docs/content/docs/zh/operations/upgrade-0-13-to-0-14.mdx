@@ -1,0 +1,175 @@
+---
+title: 从 0.13 升级到 0.14
+description: 用受管 OpenTelemetry 管线替换文件系统 Observer，应用 0.14 的 Migration 与宿主机前置条件，重新部署 Agent 恢复遥测，并保留唯一安全的 0.13 回滚路径。
+---
+
+Eveland 0.14 用 OpenTelemetry 替换文件系统 Observer Outbox 与内嵌 Collector：Eveland 私有 Agent Provider、受管 OpenTelemetry Collector、标准 Built-in OTLP Ingest、Platform 与 Capacity 遥测，以及由 Admin 配置的外部目的地。本文说明如何将生产环境从 `v0.13.0` 升级到 `v0.14.0`。
+
+## 运维影响
+
+请安排维护窗口。两个数据库 Migration 必须先于任何 0.14 进程执行，`EVELAND_OTLP_SERVICE_TOKEN` 成为必填项，Compose 栈新增受管 Collector，宿主机也新增前置条件。
+
+其中三项后果无法通过重新 Checkout 0.13 撤销：
+
+- Migration `0035` 重命名 `session_events.observer_event_id`，0.13 控制面无法读取迁移后的表。
+- Built-in Retention 现在是固定平台默认值。0.14 Worker 第一次 Retention 会删除结束时间早于 90 天的已完成 Session，连同其 Node、Event 与 Usage 行。0.13 会无限期保留 Session。升级前请导出仍需要的更早历史。
+- Agent Capture 默认开启，并且同时记录 Input、Output 与 Reasoning。0.13 采集 Reasoning 需要显式设置 `EVELAND_OBSERVER_INCLUDE_REASONING=true`。如果这些内容不允许保存，请在升级后立即检查 **Settings → Observability**。
+
+升级期间 Agent 继续服务流量，但在每个 Deployment 被重新部署之前，没有任何组件记录它们的 Session。遥测 Hook 是在构建 Release 时注入的，既有 Release 中的 0.13 Hook 面对已废弃的 Outbox 只会静默失败。
+
+本次升级不会改变 Project ID、Slug、Stable 或 Preview Endpoint、Route Weight，也不会改变 Deployment 的 Runtime Ownership。Eve 兼容窗口没有变化：仍接受使用 `0.25.x`、`0.26.x` 与 `0.27.x` 的导入 Agent，验证到 `0.27.8`。用户自己编写的 instrumentation、Provider 和 Exporter 不受影响。
+
+## 1. 备份并检查 0.13
+
+按照现有基础设施流程备份 Postgres 与 `EVELAND_DATA_DIR`。记录当前 Tag 和 Revision，确认 API 与 Gateway Health 正常，并等待重要的 Import、Build、Deployment、Schedule 或 Delete Job 完成。
+
+修改两个 Checkout 前先停止宿主机 Worker：
+
+```bash
+sudo systemctl stop eveland-worker
+```
+
+预先拉取被固定的 Collector 镜像。Compose 会启动它，Worker 也会运行同一镜像来校验每次生成的配置：
+
+```bash
+docker pull otel/opentelemetry-collector-contrib:0.149.0
+```
+
+在确认接受 0.14 之前保留 `<EVELAND_DATA_DIR>/observer`。0.14 不再读取该目录，0.13 Collector 尚未投影的 Envelope 也不会被恢复，它只在回滚时还有意义。
+
+## 2. 满足新的宿主机前置条件
+
+每个 Deployment 现在运行在各自的 systemd `DynamicUser` 下，`eveland-app` 只作为访问组授予该 Deployment 显式绑定的 Release、Cache 与 Policy 路径。缺少同名组时 Worker Preflight 会拒绝启动：
+
+```bash
+getent group eveland-app || sudo groupadd --system eveland-app
+sudo usermod --gid eveland-app eveland-app
+```
+
+Worker 现在即使运行 systemd Runtime 也需要 Docker CLI，因为它要校验生成的 Collector 配置并重启 Collector 容器：
+
+```bash
+sudo apt-get install -y docker.io
+```
+
+仅 Docker Runtime 宿主机需要注意：每个活跃 Deployment 会为自己的私有遥测网络占用一个 Bridge 子网。请在 `/etc/docker/daemon.json` 配置不冲突的地址池并重启 Docker：
+
+```json
+{
+  "default-address-pools": [
+    { "base": "10.201.0.0/16", "size": 24 }
+  ]
+}
+```
+
+Docker Runtime 启动 Preflight 会创建并删除一个临时 Bridge，因此地址池耗尽会在接受任何 Deployment Job 之前被报出。
+
+## 3. 替换监控相关配置
+
+生成一个共享平台 Token（例如 `openssl rand -hex 32`），写入控制面 `.env`。Compose 自己设置 OTLP Endpoint，但缺少该 Token 时 `config` 与 `up` 都会失败：
+
+```dotenv
+EVELAND_OTLP_SERVICE_TOKEN=<生成的 Token>
+EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST=
+```
+
+在 `/etc/eveland/eveland-worker.env` 中加入 Endpoint 与同一个 Token：
+
+```dotenv
+EVELAND_OTLP_ENDPOINT=http://127.0.0.1:4318
+EVELAND_OTLP_SERVICE_TOKEN=<同一个 Token>
+EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST=
+```
+
+生产环境下缺少该 Token 时，API、Gateway 与 Worker 都会拒绝启动。三者与 Collector 必须使用完全相同的值，并且绝不能让 Agent 拿到它。Allowlist 也必须在 API 与 Worker 上保持一致：API 负责校验外发，Worker 负责探测目的地健康，因此 Worker 缺少某个已放行的私有 Host 时，实际投递正常的目的地会显示 `degraded`。`APP_SECRET_KEY` 现在还用于派生 Agent 遥测签名密钥，Worker 的值必须与 API 相同，否则 Built-in 会拒绝所有 Agent 信号。
+
+从两个文件中删除已废弃的变量：
+
+```dotenv
+EVELAND_COLLECTOR_MODE
+EVELAND_OBSERVER_ROOT
+EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS
+EVELAND_COLLECTOR_MAX_BACKLOG_BYTES
+EVELAND_OBSERVER_OUTBOX_DIR
+EVELAND_OBSERVER_INCLUDE_REASONING
+EVELAND_HOST_METRIC_RETENTION_MS
+```
+
+Built-in Retention 不再可配置：Capacity Sample 30 天，Session 与 Usage 读模型 90 天，OTLP Batch Receipt 24 小时。Agent Capture、Sampling、内容策略与外部目的地都是保存在 Postgres 中的 Revisioned System Settings，不再由环境变量控制。
+
+## 4. 安装 0.14 并执行 Migration
+
+在控制面 Checkout 中执行：
+
+```bash
+git fetch --tags origin
+git checkout v0.14.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/api db:migrate
+git rev-parse --short=12 HEAD
+```
+
+将输出的 Revision 写入共享生产环境的 `EVELAND_REVISION`，并保持 `EVELAND_RELEASE_CHANNEL=stable`。
+
+Migration 命令会应用：
+
+- `0034_talented_plazm`：新增 Revisioned Observability Policy、外部目的地健康与 OTLP Batch Receipt 表，并删除重复的 `(worker_id, observed_at)` Host Metric Sample，使新的唯一索引能在既有数据库上创建。
+- `0035_majestic_bromley`：把 `session_events.observer_event_id` 重命名为 `telemetry_event_id` 并替换其唯一索引。既有 Session、Node、Event 与 Usage 行都会保留。
+
+必须在 API、Gateway 或 Worker 0.14 启动前完成 Migration。
+
+将独立的 Worker Checkout 更新到同一 Tag，并重新构建会被注入 Release 的 Sandbox Backend：
+
+```bash
+cd /opt/eveland
+git fetch --tags origin
+git checkout v0.14.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/sandbox-bwrap build
+git rev-parse --short=12 HEAD
+```
+
+在 `/etc/eveland/eveland-worker.env` 中设置相同 Revision 与 `stable` Channel。
+
+## 5. 协调启动 Release
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+sudo systemctl start eveland-worker
+sudo journalctl -u eveland-worker -n 100 --no-pager
+```
+
+`up` 会先运行 `otel-config-init`：只有当 `/var/lib/eveland/otel/collector.yaml` 不存在时，才从 Checkout 中的 `infra/otel/collector.yaml` 播种，随后启动 Collector。之后这个文件由 Worker 拥有：Admin 修改监控设置时，Worker 生成并校验新 Revision，然后只重启 Collector 容器。设置变更不会重启 Deployment。
+
+Collector 在宿主机 Loopback 上发布 Service 认证的 Platform Receiver `4317`/`4318` 与 Agent Receiver `4327`/`4328`。两者都不要暴露到任何公网接口，也不要加入 Traefik。
+
+## 6. 重新部署 Agent 以恢复 Session 采集
+
+重新部署所有需要观测的 Project。由于 Hook 在构建 Release 时注入，只 Restart 既有 Deployment 会继续使用 0.13 Hook：Turn 仍然成功、Agent 仍然服务请求，但 Hook 只会写出限频警告，不会产生任何 Session、Event 或 Usage 行。
+
+之后轮换 `APP_SECRET_KEY` 也有同样要求，这样每个 Deployment Policy 才会携带用新密钥签发的 Credential。
+
+## 7. 验收 0.14
+
+完成以下全部检查：
+
+1. API 与 Gateway `/health` 返回 `version: 0.14.0`、`channel: stable` 和相同 Revision。
+2. **Settings → About** 中 Web、API、Gateway 与 Worker 的 Build Identity 一致。
+3. `docker ps` 显示 Collector 正在运行、`otel-config-init` 已完成，其日志没有配置错误，并且 `ss -lntp` 显示 `4317`、`4318`、`4327`、`4328` 只绑定在 Loopback 上。
+4. **Settings → Instance health** 在一个 `EVELAND_HOST_METRIC_INTERVAL_MS` 内出现新的 Worker Heartbeat 与 Host Capacity Sample。这证明 Worker → Collector → Built-in 链路与共享 Token 正常。数据陈旧说明 Token 不一致或 Collector 已停止；由于这些只是展示投影，Job 执行不受影响。
+5. 重新部署一个测试 Project，执行一次 Turn，确认 Session 及其 Node、Event 与 Provider 上报的 Usage 都出现。
+6. 如果使用外部目的地，在 **Settings → Observability** 中添加，并确认其探测在约五分钟内变为 `healthy`。除非精确 Host 同时在 API 与 Worker 的 Allowlist 中，HTTP 与非公网地址仍会被拒绝。
+7. 修改 Agent Capture 策略，确认它无需重启 Deployment 即生效；同时确认自带 instrumentation 的 Project 仍然按原样向自己的后端导出。
+
+## 回滚到 0.13
+
+不要让 0.13 进程连接已经执行 `0035` 的数据库。0.13 控制面仍然依赖 `observer_event_id`。
+
+回滚时，先停止 Worker 和所有 0.14 控制面 Service，恢复升级前的 Postgres 备份；如果现有备份流程要求数据库与文件系统时间点一致，也要恢复 `EVELAND_DATA_DIR`。随后在两个位置 Checkout `v0.13.0`，重新安装 Frozen Lockfile、构建 `@eveland/sandbox-bwrap`、恢复 0.13 的环境变量与 Revision，用 `--remove-orphans` 启动 Compose 以移除已废弃的 Collector Service，最后启动 Worker。
+
+之后需要再次重新部署所有 Agent：0.14 构建出的 Release 带的是私有 OTLP Hook，0.13 无法接收。
+
+数据库恢复会丢弃备份后产生的变更，包括新的 0.14 Session、Job 与监控设置。已经投递到外部目的地的遥测不会因回滚而撤回。
+
+通用升级约束请阅读[升级与回滚](/zh/docs/operations/upgrades)，本文提到的每个变量请查阅[配置参考](/zh/docs/reference/configuration)。

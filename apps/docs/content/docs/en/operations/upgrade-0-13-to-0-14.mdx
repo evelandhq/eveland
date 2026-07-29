@@ -1,0 +1,175 @@
+---
+title: Upgrade from 0.13 to 0.14
+description: Replace the filesystem observer with the managed OpenTelemetry pipeline, apply the 0.14 migrations and host prerequisites, redeploy Agents for telemetry, and preserve the only safe 0.13 rollback path.
+---
+
+Eveland 0.14 replaces the filesystem observer outbox and embedded collector with OpenTelemetry: Eveland-private Agent providers, a managed OpenTelemetry Collector, standard Built-in OTLP ingest, platform and capacity telemetry, and admin-configured external destinations. This guide covers a production upgrade from `v0.13.0` to `v0.14.0`.
+
+## Operational impact
+
+Plan a maintenance window. Two database migrations must run before any 0.14 process starts, `EVELAND_OTLP_SERVICE_TOKEN` becomes required, the Compose stack gains a managed Collector, and the host gains new prerequisites.
+
+Three consequences are not undone by checking out 0.13 again:
+
+- Migration `0035` renames `session_events.observer_event_id`, so the 0.13 control plane cannot read the migrated table.
+- Built-in retention is now a fixed platform default. The first 0.14 Worker retention pass deletes finished Sessions — with their nodes, events, and usage rows — older than 90 days. 0.13 retained Sessions indefinitely. Export older history you still need before upgrading.
+- Agent capture defaults to enabled with inputs, outputs, and reasoning all recorded. In 0.13, reasoning collection required `EVELAND_OBSERVER_INCLUDE_REASONING=true`. Review **Settings → Observability** immediately after the upgrade if that content must not be stored.
+
+Agents keep serving traffic throughout the upgrade, but nothing records their Sessions until each Deployment is redeployed. The telemetry hook is injected when a Release is built, and the 0.13 hook inside an existing Release fails silently against the retired outbox.
+
+The upgrade does not change Project IDs, slugs, Stable or Preview endpoints, route weights, or Deployment runtime ownership. The verified Eve compatibility window is unchanged: imported Agents on `0.25.x`, `0.26.x`, and `0.27.x` remain accepted, verified through `0.27.8`. User-authored instrumentation, providers, and exporters are untouched.
+
+## 1. Back up and inspect 0.13
+
+Back up Postgres and `EVELAND_DATA_DIR` with your normal infrastructure procedure. Record the current tag and revision, confirm API and Gateway health, and wait for important import, build, deployment, schedule, or deletion jobs to finish.
+
+Stop the host Worker before changing either checkout:
+
+```bash
+sudo systemctl stop eveland-worker
+```
+
+Pre-pull the pinned Collector image. Compose starts it, and the Worker validates every generated configuration by running the same image:
+
+```bash
+docker pull otel/opentelemetry-collector-contrib:0.149.0
+```
+
+Keep `<EVELAND_DATA_DIR>/observer` until 0.14 is accepted. Nothing in 0.14 reads it, envelopes the 0.13 collector had not yet projected are not recovered, and the directory is only useful if you roll back.
+
+## 2. Meet the new host prerequisites
+
+Each Deployment now runs under its own systemd `DynamicUser` and uses `eveland-app` only as an access group for its explicitly bound release, cache, and policy paths. Worker preflight refuses to start when that same-named group is missing:
+
+```bash
+getent group eveland-app || sudo groupadd --system eveland-app
+sudo usermod --gid eveland-app eveland-app
+```
+
+The Worker now requires the Docker CLI even on the systemd runtime, because it validates generated Collector configuration and restarts the Collector container:
+
+```bash
+sudo apt-get install -y docker.io
+```
+
+On Docker-runtime hosts only, each active Deployment consumes one bridge subnet for its private telemetry network. Configure a non-overlapping pool in `/etc/docker/daemon.json` and restart Docker:
+
+```json
+{
+  "default-address-pools": [
+    { "base": "10.201.0.0/16", "size": 24 }
+  ]
+}
+```
+
+Docker-runtime startup preflight creates and removes one temporary bridge, so pool exhaustion is reported before any deployment job is accepted.
+
+## 3. Replace the observability configuration
+
+Generate one shared platform token, for example with `openssl rand -hex 32`, and add it to the control-plane `.env`. Compose sets the OTLP endpoints itself and fails `config` and `up` when the token is missing:
+
+```dotenv
+EVELAND_OTLP_SERVICE_TOKEN=<generated token>
+EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST=
+```
+
+Add the endpoint and the same token to `/etc/eveland/eveland-worker.env`:
+
+```dotenv
+EVELAND_OTLP_ENDPOINT=http://127.0.0.1:4318
+EVELAND_OTLP_SERVICE_TOKEN=<the same token>
+EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST=
+```
+
+API, Gateway, and Worker refuse to start in production without the token. Keep it identical across all three and the Collector, and never expose it to an Agent. Keep the allowlist identical on API and Worker: the API validates external egress while the Worker probes destination health, so a Worker missing an allowlisted private host reports `degraded` for a destination that is in fact delivering. `APP_SECRET_KEY` now also derives the Agent telemetry signing key, so the Worker value must equal the API value or Built-in rejects every Agent signal.
+
+Remove the retired variables from both files:
+
+```dotenv
+EVELAND_COLLECTOR_MODE
+EVELAND_OBSERVER_ROOT
+EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS
+EVELAND_COLLECTOR_MAX_BACKLOG_BYTES
+EVELAND_OBSERVER_OUTBOX_DIR
+EVELAND_OBSERVER_INCLUDE_REASONING
+EVELAND_HOST_METRIC_RETENTION_MS
+```
+
+Built-in retention is no longer configurable: capacity samples 30 days, Session and usage read models 90 days, OTLP batch receipts 24 hours. Agent capture, sampling, content policy, and external destinations are revisioned System settings stored in Postgres, not environment variables.
+
+## 4. Install 0.14 and apply migrations
+
+In the control-plane checkout:
+
+```bash
+git fetch --tags origin
+git checkout v0.14.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/api db:migrate
+git rev-parse --short=12 HEAD
+```
+
+Put the printed revision in the shared production environment as `EVELAND_REVISION` and keep `EVELAND_RELEASE_CHANNEL=stable`.
+
+The migration command applies:
+
+- `0034_talented_plazm`: adds the revisioned observability policy, external destination health, and OTLP batch receipt tables, then deletes duplicate `(worker_id, observed_at)` host metric samples so the new unique index can be created on an existing database.
+- `0035_majestic_bromley`: renames `session_events.observer_event_id` to `telemetry_event_id` and replaces its unique index. Existing Sessions, nodes, events, and usage rows are preserved.
+
+Complete the migration command before API, Gateway, or Worker 0.14 starts.
+
+Update the separate Worker checkout to the same tag and rebuild the vendored sandbox backend:
+
+```bash
+cd /opt/eveland
+git fetch --tags origin
+git checkout v0.14.0
+pnpm install --frozen-lockfile
+pnpm --filter @eveland/sandbox-bwrap build
+git rev-parse --short=12 HEAD
+```
+
+Set the same revision and `stable` channel in `/etc/eveland/eveland-worker.env`.
+
+## 5. Start the coordinated release
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+sudo systemctl start eveland-worker
+sudo journalctl -u eveland-worker -n 100 --no-pager
+```
+
+`up` first runs `otel-config-init`, which seeds `/var/lib/eveland/otel/collector.yaml` from `infra/otel/collector.yaml` in the checkout only when that file is absent, and then starts the Collector. Afterwards the Worker owns that file: it regenerates and validates a new revision when an admin changes observability settings, then restarts only the Collector container. Deployments are not restarted by a settings change.
+
+The Collector publishes the service-authenticated platform receiver on `4317`/`4318` and the Agent receiver on `4327`/`4328`, all on host loopback. Keep both off every public interface and out of Traefik.
+
+## 6. Redeploy Agents to restore Session capture
+
+Redeploy every Project you observe. Because hooks are injected when a Release is built, restarting an existing Deployment reuses the 0.13 hook: the turn still succeeds and the Agent still serves requests, but the hook only writes a rate-limited warning and no Session, event, or usage row appears.
+
+A later `APP_SECRET_KEY` rotation has the same requirement, so each Deployment policy carries a credential signed by the new key.
+
+## 7. Verify 0.14
+
+Complete all of these checks:
+
+1. API and Gateway `/health` return `version: 0.14.0`, `channel: stable`, and the same revision.
+2. **Settings → About** reports matching Web, API, Gateway, and Worker build identity.
+3. `docker ps` shows the Collector running and `otel-config-init` completed, its log contains no configuration error, and `ss -lntp` shows `4317`, `4318`, `4327`, and `4328` bound to loopback only.
+4. **Settings → Instance health** shows a fresh Worker heartbeat and host capacity sample within one `EVELAND_HOST_METRIC_INTERVAL_MS`. This proves the Worker → Collector → Built-in path with the shared token. Stale values mean a token mismatch or a stopped Collector; job execution is unaffected because these are display projections.
+5. Redeploy a test Project, run one turn, and confirm the Session appears with its nodes, events, and provider-reported usage.
+6. If you use an external destination, add it in **Settings → Observability** and confirm its probe reaches `healthy` within about five minutes. HTTP and non-public addresses stay rejected unless the exact host is allowlisted on both API and Worker.
+7. Change the Agent capture policy and confirm it takes effect without restarting Deployments, and that a Project with its own instrumentation still exports to its own backend unchanged.
+
+## Roll back to 0.13
+
+Do not point 0.13 processes at a database that has applied `0035`. The 0.13 control plane still expects `observer_event_id`.
+
+To roll back, stop Worker and all 0.14 control-plane services, restore the pre-upgrade Postgres backup, restore `EVELAND_DATA_DIR` if your backup procedure requires a matched database/filesystem point, check out `v0.13.0` in both locations, reinstall the frozen lockfile, rebuild `@eveland/sandbox-bwrap`, restore the 0.13 environment variables and revision, then start Compose with `--remove-orphans` so the retired Collector services are removed, and start Worker last.
+
+Then redeploy every Agent again: a Release built by 0.14 carries the private OTLP hook, which 0.13 cannot ingest.
+
+The restore discards database changes made after the backup, including new 0.14 Sessions, Jobs, and observability settings. Telemetry already delivered to an external destination is not recalled by a rollback.
+
+For the invariant upgrade procedure, see [Upgrade and rollback](/docs/operations/upgrades). For every variable named here, see [Configuration](/docs/reference/configuration).

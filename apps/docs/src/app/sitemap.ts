@@ -21,6 +21,7 @@ const pages = [
   "/docs/operations/upgrades",
   "/docs/operations/upgrade-0-11-to-0-12",
   "/docs/operations/upgrade-0-12-to-0-13",
+  "/docs/operations/upgrade-0-13-to-0-14",
   "/docs/operations/security",
   "/docs/reference/configuration",
   "/docs/reference/eve-compatibility",
