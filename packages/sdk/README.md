@@ -23,8 +23,9 @@ EVELAND_PROJECT_ID
 
 The helper validates ES256 signatures, issuer, project audience, token timing,
 and Eveland's internal Principal and Realm identifiers. Successful
-authentication produces an Eve `user` principal with `name`, optional `email`,
-and internal `realmId` attributes. It never accepts Better Auth sessions or
+authentication produces an Eve `user` principal with an internal `realmId`
+attribute, plus `name` and `email` when the upstream IdP supplied them —
+neither is guaranteed, so treat both as optional. It never accepts Better Auth sessions or
 upstream provider tokens.
 
 Eveland's identity broker authenticates callers; it does not decide which Realm

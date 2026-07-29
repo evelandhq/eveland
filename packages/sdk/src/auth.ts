@@ -148,8 +148,12 @@ export function evelandIdentity(
       !/^iprn_[0-9A-Za-z_-]+$/.test(claims.sub) ||
       typeof claims.realm_id !== "string" ||
       !/^irlm_[0-9A-Za-z_-]+$/.test(claims.realm_id) ||
-      typeof claims.name !== "string" ||
-      !claims.name.trim() ||
+      // `name` is a display claim: Eveland omits it when the IdP supplies no
+      // display name. Rejecting an otherwise valid, correctly-audienced token
+      // over it turned those users into an undiagnosable 401. Its type is
+      // still checked when present.
+      (claims.name !== undefined &&
+        (typeof claims.name !== "string" || !claims.name.trim())) ||
       (claims.email !== undefined &&
         (typeof claims.email !== "string" || !claims.email.trim())) ||
       typeof claims.iat !== "number" ||
@@ -179,7 +183,7 @@ export function evelandIdentity(
       principalType: "user",
       attributes: {
         realmId: claims.realm_id,
-        name: claims.name,
+        ...(typeof claims.name === "string" ? { name: claims.name } : {}),
         ...(typeof claims.email === "string" ? { email: claims.email } : {}),
       },
     };
