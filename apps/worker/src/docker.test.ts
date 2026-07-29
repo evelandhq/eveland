@@ -13,6 +13,12 @@ import {
   verifyDockerSandbox,
   writeGeneratedDockerfile,
 } from "./runtime/docker.js";
+import {
+  ensureAgentTelemetryNetwork,
+  listOrphanAgentTelemetryNetworks,
+  removeOrphanAgentTelemetryNetwork,
+  resolveAgentTelemetryNetworkName,
+} from "./runtime/docker/agent-network.js";
 import { injectSandboxModules } from "./runtime/sandbox-inject.js";
 import { processSafeName } from "./runtime/types.js";
 
@@ -114,7 +120,8 @@ describe("buildDockerRunArgs", () => {
       hostPort: 43123,
       sandboxEnabled: true,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
-      observerOutboxDir: "/host/eveland/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/host/eveland/observability/proj_123/dep_456",
       env: { OPENAI_API_KEY: "sk-test-123456" },
       command: "npm run start",
     });
@@ -126,6 +133,8 @@ describe("buildDockerRunArgs", () => {
       "eveland-proj_123",
       "--restart",
       "unless-stopped",
+      "--network",
+      resolveAgentTelemetryNetworkName("eveland-proj_123"),
       "--cap-drop",
       "ALL",
       "--cap-add",
@@ -141,11 +150,9 @@ describe("buildDockerRunArgs", () => {
       "--publish",
       "127.0.0.1:43123:3000",
       "--volume",
-      "/host/eveland/observer/proj_123/dep_456:/var/lib/eveland-observer",
+      "/host/eveland/observability/proj_123/dep_456:/run/eveland/observability:ro",
       "--volume",
       "/host/eveland/sandbox/proj_123:/var/lib/eveland-sandbox",
-      "--env",
-      "EVELAND_OBSERVER_OUTBOX_DIR=/var/lib/eveland-observer",
       "--env",
       "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
       "--env",
@@ -168,7 +175,8 @@ describe("buildDockerRunArgs", () => {
       hostPort: 43124,
       sandboxEnabled: false,
       sandboxCacheDir: "/host/eveland/sandbox/plain",
-      observerOutboxDir: "/host/eveland/observer/plain/dep_1",
+      observabilityPolicyDir:
+        "/host/eveland/observability/plain/dep_1",
       env: {},
       command: "npm start",
     });
@@ -189,7 +197,8 @@ describe("buildDockerRunArgs", () => {
       hostPort: 43125,
       sandboxEnabled: true,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
-      observerOutboxDir: "/host/eveland/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/host/eveland/observability/proj_123/dep_456",
       env: { EVELAND_SANDBOX_TEMPLATE_REVISION: "project-controlled" },
       command: "npm run start",
     });
@@ -432,12 +441,32 @@ describe("createDockerAdapter", () => {
       env: { OPENAI_API_KEY: "sk-test-123456" },
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir,
-      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.internalPort).toBe(3000);
-    expect(vi.mocked(execa).mock.calls).toHaveLength(1);
-    const [command, args] = vi.mocked(execa).mock.calls[0]!;
+    const networkName =
+      resolveAgentTelemetryNetworkName("eveland-proj_123");
+    expect(vi.mocked(execa).mock.calls[0]).toEqual([
+      "docker",
+      ["network", "inspect", networkName],
+      { all: true, reject: false },
+    ]);
+    expect(vi.mocked(execa).mock.calls[1]).toEqual([
+      "docker",
+      [
+        "network",
+        "connect",
+        "--alias",
+        "eveland-otel-collector",
+        networkName,
+        "eveland-otel-collector",
+      ],
+      { all: true, reject: false },
+    ]);
+    expect(vi.mocked(execa).mock.calls).toHaveLength(3);
+    const [command, args] = vi.mocked(execa).mock.calls[2]!;
     expect(command).toBe("docker");
     expect(args).toContain("--publish");
     expect(args).toContain("127.0.0.1:43123:3000");
@@ -446,6 +475,130 @@ describe("createDockerAdapter", () => {
     expect(args as string[]).toContain("EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox");
     const runCommand = (args as string[]).at(-1);
     expect(runCommand).toContain("exec npx eve start --host 0.0.0.0 --port 3000");
+  });
+
+  test("creates and connects a deployment-isolated Agent telemetry network when it is missing", async () => {
+    vi.mocked(execa).mockClear();
+    const processName = "eveland-proj_123-dep_456";
+    const networkName =
+      resolveAgentTelemetryNetworkName(processName);
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: true,
+        all: `Error: No such network: ${networkName}`,
+      } as never)
+      .mockResolvedValueOnce({ failed: false, all: "" } as never)
+      .mockResolvedValueOnce({ failed: false, all: "" } as never);
+
+    await expect(
+      ensureAgentTelemetryNetwork(
+        processName,
+        "custom-otel-collector",
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(vi.mocked(execa).mock.calls).toEqual([
+      [
+        "docker",
+        ["network", "inspect", networkName],
+        { all: true, reject: false },
+      ],
+      [
+        "docker",
+        [
+          "network",
+          "create",
+          "--label",
+          "com.eveland.managed=agent-telemetry",
+          "--label",
+          `com.eveland.process=${processName}`,
+          networkName,
+        ],
+        { all: true, reject: false },
+      ],
+      [
+        "docker",
+        [
+          "network",
+          "connect",
+          "--alias",
+          "eveland-otel-collector",
+          networkName,
+          "custom-otel-collector",
+        ],
+        { all: true, reject: false },
+      ],
+    ]);
+  });
+
+  test("starts without the Collector and leaves the network for reconciliation", async () => {
+    vi.mocked(execa).mockClear();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false, all: "" } as never)
+      .mockResolvedValueOnce({
+        failed: true,
+        all: "Error response from daemon: No such container: eveland-otel-collector",
+      } as never)
+      .mockResolvedValueOnce({ failed: false, all: "agent started" } as never);
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    await expect(
+      adapter.startProcess({
+        processName: "eveland-proj_123-dep_456",
+        releaseRef: "eveland/proj_123:rel_456",
+        port: 43123,
+        env: {},
+        commandContext: {
+          isEveProject: true,
+          hasLockfile: true,
+          scripts: {},
+        },
+        sandboxCacheDir:
+          "/var/lib/eveland-data/sandbox/proj_123",
+        observabilityPolicyDir:
+          "/var/lib/eveland-data/observability/proj_123/dep_456",
+      }),
+    ).resolves.toMatchObject({ log: "agent started" });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Collector"),
+    );
+    warn.mockRestore();
+  });
+
+  test("finds and removes a managed network only while its Agent container is absent", async () => {
+    vi.mocked(execa).mockClear();
+    const processName = "eveland-proj_orphan-dep_orphan";
+    const networkName =
+      resolveAgentTelemetryNetworkName(processName);
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: `${networkName}\t${processName}\n`,
+      } as never)
+      .mockResolvedValueOnce({
+        failed: true,
+        all: `Error: No such container: ${processName}`,
+      } as never);
+
+    await expect(
+      listOrphanAgentTelemetryNetworks(),
+    ).resolves.toEqual([{ name: networkName, processName }]);
+
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: true,
+        all: `Error: No such container: ${processName}`,
+      } as never)
+      .mockResolvedValueOnce({ failed: false, all: "" } as never)
+      .mockResolvedValueOnce({ failed: false, all: "" } as never);
+
+    await expect(
+      removeOrphanAgentTelemetryNetwork({
+        name: networkName,
+        processName,
+      }),
+    ).resolves.toBe(true);
   });
 
   test("ensureProcess reuses a running container without starting another process", async () => {
@@ -460,7 +613,8 @@ describe("createDockerAdapter", () => {
       env: {},
       commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observerOutboxDir: "/var/lib/eveland-data/observer/proj_123/dep_456",
+      observabilityPolicyDir:
+        "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.log).toContain("Reused ready Docker process");
@@ -507,7 +661,27 @@ describe("createDockerAdapter", () => {
 
     await adapter.stopProcess("eveland-proj_123");
 
-    expect(vi.mocked(execa).mock.calls).toEqual([["docker", ["rm", "--force", "eveland-proj_123"], { reject: false }]]);
+    const networkName =
+      resolveAgentTelemetryNetworkName("eveland-proj_123");
+    expect(vi.mocked(execa).mock.calls).toEqual([
+      ["docker", ["rm", "--force", "eveland-proj_123"], { reject: false }],
+      [
+        "docker",
+        [
+          "network",
+          "disconnect",
+          "--force",
+          networkName,
+          "eveland-otel-collector",
+        ],
+        { all: true, reject: false },
+      ],
+      [
+        "docker",
+        ["network", "rm", networkName],
+        { all: true, reject: false },
+      ],
+    ]);
   });
 
   test("stopProcess tolerates 'No such container' as a benign not-found (idempotent re-run)", async () => {
@@ -521,6 +695,27 @@ describe("createDockerAdapter", () => {
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123")).resolves.toBeUndefined();
+  });
+
+  test("stopProcess succeeds when telemetry network cleanup still has active endpoints", async () => {
+    vi.mocked(execa).mockClear();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false } as never)
+      .mockResolvedValueOnce({ failed: false, all: "" } as never)
+      .mockResolvedValueOnce({
+        failed: true,
+        all: "Error response from daemon: network has active endpoints",
+      } as never);
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    await expect(
+      adapter.stopProcess("eveland-proj_123"),
+    ).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("orphan sweep will retry"),
+    );
+    warn.mockRestore();
   });
 
   test("stopProcess throws naming the command and stderr when the docker daemon is unreachable", async () => {

@@ -1,6 +1,16 @@
 import { describe, expect, test, vi } from "vitest";
-import { assertWorkerPreflight, collectSystemdPreflightIssues, type PreflightDeps } from "./preflight.js";
+import { execa } from "execa";
+import {
+  assertWorkerPreflight,
+  collectSystemdPreflightIssues,
+  probeDockerNetworkPool,
+  type PreflightDeps,
+} from "./preflight.js";
 import { SANDBOX_TOOLCHAIN_COMMANDS } from "./sandbox-toolchain.js";
+
+vi.mock("execa", () => ({
+  execa: vi.fn(),
+}));
 
 /**
  * Every dep passing by default so each test only needs to override the one
@@ -20,8 +30,10 @@ function makePassingDeps(env: NodeJS.ProcessEnv = { EVELAND_RUNTIME: "systemd", 
     mkdir: vi.fn(async () => {}),
     commandExists: vi.fn(async () => true),
     userExists: vi.fn(async () => true),
+    groupExists: vi.fn(async () => true),
     canTraverseAs: vi.fn(async () => true),
     backendDistDir: vi.fn(() => "/opt/eveland/dist"),
+    probeDockerNetworkPool: vi.fn(async () => undefined),
   };
 }
 
@@ -32,21 +44,58 @@ const productionSchedulerEnv = {
 };
 
 describe("assertWorkerPreflight", () => {
-  test("is a no-op when EVELAND_RUNTIME is not systemd, invoking no dep", async () => {
+  test("allocates and removes one disposable Docker bridge", async () => {
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false, all: "" } as never)
+      .mockResolvedValueOnce({ failed: false, all: "" } as never);
+
+    await expect(probeDockerNetworkPool()).resolves.toBeUndefined();
+
+    const [create, remove] = vi.mocked(execa).mock.calls.slice(-2);
+    expect(create?.[0]).toBe("docker");
+    expect(create?.[1]).toEqual(
+      expect.arrayContaining(["network", "create"]),
+    );
+    const networkName = (create?.[1] as string[]).at(-1);
+    expect(remove).toEqual([
+      "docker",
+      ["network", "rm", networkName],
+      { all: true, reject: false },
+    ]);
+  });
+
+  test("checks Docker bridge allocation without running systemd host probes", async () => {
     const deps = makePassingDeps({});
     await assertWorkerPreflight({}, deps);
+    expect(deps.probeDockerNetworkPool).toHaveBeenCalledOnce();
     expect(deps.getuid).not.toHaveBeenCalled();
     expect(deps.pathExists).not.toHaveBeenCalled();
     expect(deps.commandExists).not.toHaveBeenCalled();
     expect(deps.userExists).not.toHaveBeenCalled();
+    expect(deps.groupExists).not.toHaveBeenCalled();
     expect(deps.canTraverseAs).not.toHaveBeenCalled();
     expect(deps.backendDistDir).not.toHaveBeenCalled();
   });
 
-  test("is a no-op for the docker runtime specifically", async () => {
+  test("checks Docker bridge allocation for an explicit docker runtime", async () => {
     const deps = makePassingDeps({ EVELAND_RUNTIME: "docker" });
     await expect(assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps)).resolves.toBeUndefined();
+    expect(deps.probeDockerNetworkPool).toHaveBeenCalledOnce();
     expect(deps.commandExists).not.toHaveBeenCalled();
+  });
+
+  test("fails before deployment when Docker cannot allocate another bridge subnet", async () => {
+    const deps = makePassingDeps({ EVELAND_RUNTIME: "docker" });
+    deps.probeDockerNetworkPool = vi.fn(async () =>
+      "all predefined address pools have been fully subnetted"
+    );
+
+    await expect(
+      assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps),
+    ).rejects.toThrow(/default-address-pools/);
+    await expect(
+      assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps),
+    ).rejects.toThrow(/fully subnetted/);
   });
 
   test("rejects an invalid APP_SECRET_KEY before a docker worker starts", async () => {
@@ -105,7 +154,7 @@ describe("assertWorkerPreflight", () => {
     await expect(assertWorkerPreflight(env, deps)).rejects.toThrow(/^systemd runtime preflight failed:/);
   });
 
-  test("stays a no-op when NODE_ENV=production but EVELAND_RUNTIME=docker is explicit", async () => {
+  test("uses Docker-only preflight when NODE_ENV=production but EVELAND_RUNTIME=docker is explicit", async () => {
     const env: NodeJS.ProcessEnv = {
       NODE_ENV: "production",
       EVELAND_RUNTIME: "docker",
@@ -115,6 +164,7 @@ describe("assertWorkerPreflight", () => {
     };
     const deps = makePassingDeps(env);
     await expect(assertWorkerPreflight(env, deps)).resolves.toBeUndefined();
+    expect(deps.probeDockerNetworkPool).toHaveBeenCalledOnce();
     expect(deps.getuid).not.toHaveBeenCalled();
     expect(deps.commandExists).not.toHaveBeenCalled();
     expect(deps.backendDistDir).not.toHaveBeenCalled();
@@ -254,6 +304,25 @@ describe("collectSystemdPreflightIssues", () => {
     deps.userExists = vi.fn(async () => false);
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("custom-app"))).toBe(true);
+  });
+
+  test("requires a same-named access group for dynamic Deployment users", async () => {
+    const deps = makePassingDeps({
+      EVELAND_RUNTIME: "systemd",
+      EVELAND_DATA_DIR: "/var/lib/eveland",
+      EVELAND_APP_USER: "custom-app",
+    });
+    deps.groupExists = vi.fn(async () => false);
+
+    const issues = await collectSystemdPreflightIssues(deps);
+
+    expect(
+      issues.some(
+        (issue) =>
+          issue.includes('Access group "custom-app"') &&
+          issue.includes("--user-group"),
+      ),
+    ).toBe(true);
   });
 
   test("flags a missing build user, defaulting the name to eveland-build, and names EVELAND_BUILD_USER plus the useradd fix", async () => {

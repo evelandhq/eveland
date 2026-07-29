@@ -14,7 +14,6 @@
     "./ids": "./src/ids.ts",
     "./instance-health": "./src/instance-health.ts",
     "./identity": "./src/identity.ts",
-    "./observer": "./src/observer.ts",
     "./observability": "./src/observability.ts",
     "./observability/agent-runtime": "./src/observability/agent-runtime.ts",
     "./observability/destinations": "./src/observability/destinations.ts",

@@ -1,14 +1,18 @@
 import { execa } from "execa";
+import { createHash } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
-import { verifyObserverOutbox } from "./observer-verify.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
+import {
+  AGENT_OBSERVABILITY_MOUNT_DIR,
+  AGENT_OBSERVABILITY_POLICY_FILE_NAME,
+} from "./observability/policy.js";
 
 export type SystemdStartInput = {
   unitName: string;
@@ -19,9 +23,37 @@ export type SystemdStartInput = {
   memoryMax: string;
   cpuQuota: string;
   sandboxCacheDir: string;
-  observerOutboxDir: string;
+  dataDir: string;
+  observabilityPolicyDir: string;
+  accessRepairScriptPath: string;
+  dynamicUserUidMarkerPath: string;
   command: string;
 };
+
+const dynamicUserAccessRepairScriptMount =
+  "/run/eveland/prepare-dynamic-user-access";
+const dynamicUserUidMarkerMount =
+  "/run/eveland/dynamic-user-uid";
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\"'\"'`)}'`;
+}
+
+export function buildDynamicUserAccessRepairScript(input: {
+  deploymentUser: string;
+  releaseDir: string;
+  sandboxCacheDir: string;
+}): string {
+  return `#!/bin/sh
+set -eu
+current_uid="$(id -u ${shellQuote(input.deploymentUser)})"
+previous_uid="$(cat ${dynamicUserUidMarkerMount} 2>/dev/null || true)"
+if [ "$current_uid" != "$previous_uid" ]; then
+  chmod -R g+rwX,g-s -- ${shellQuote(input.releaseDir)} ${shellQuote(input.sandboxCacheDir)}
+  printf '%s\\n' "$current_uid" > ${dynamicUserUidMarkerMount}
+fi
+`;
+}
 
 /**
  * Every project's sandbox cache lives at `<root>/<processSafeName(projectId)>`.
@@ -46,6 +78,11 @@ export function resolveSandboxCacheRoot(env: NodeJS.ProcessEnv): string {
   return path.resolve(env.EVELAND_SANDBOX_CACHE_DIR ?? path.join(env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox"));
 }
 
+export function resolveSystemdDeploymentUser(unitName: string): string {
+  const digest = createHash("sha256").update(unitName).digest("hex").slice(0, 20);
+  return `eveland-d-${digest}`;
+}
+
 export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
   return [
     "--unit",
@@ -54,13 +91,16 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     "--service-type=exec",
     "--property=Restart=on-failure",
     "--property=RestartSec=2",
-    `--property=User=${input.user}`,
+    `--property=User=${resolveSystemdDeploymentUser(input.unitName)}`,
+    "--property=DynamicUser=yes",
+    `--property=Group=${input.user}`,
+    "--property=UMask=0002",
     `--property=WorkingDirectory=${input.releaseDir}`,
     `--property=EnvironmentFile=${input.envFilePath}`,
     `--property=Environment=PORT=${input.port}`,
+    `--property=Environment=HOME=${input.releaseDir}`,
     `--property=Environment=EVELAND_SANDBOX_CACHE_DIR=${input.sandboxCacheDir}`,
     `--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=${input.releaseDir}`,
-    `--property=Environment=EVELAND_OBSERVER_OUTBOX_DIR=${input.observerOutboxDir}`,
     `--property=MemoryMax=${input.memoryMax}`,
     `--property=CPUQuota=${input.cpuQuota}`,
     "--property=ProtectSystem=strict",
@@ -70,9 +110,26 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     // --property=ReadWritePaths=/tmp --property=ReadWritePaths=/var/tmp` followed by
     // `systemctl show -p ReadWritePaths`, which reported "ReadWritePaths=/tmp /var/tmp".
     `--property=ReadWritePaths=${input.sandboxCacheDir}`,
-    `--property=ReadWritePaths=${input.observerOutboxDir}`,
+    `--property=ReadWritePaths=${dynamicUserUidMarkerMount}`,
+    // Each unit gets a distinct dynamic UID. The data-root mask then limits the
+    // paths visible to that identity to this Deployment's own release, cache,
+    // environment file, and observability policy.
+    `--property=TemporaryFileSystem=${input.dataDir}:ro`,
+    `--property=BindPaths=${input.releaseDir}`,
+    `--property=BindPaths=${input.sandboxCacheDir}`,
+    `--property=BindPaths=${input.dynamicUserUidMarkerPath}:${dynamicUserUidMarkerMount}`,
+    // EnvironmentFile= also lives under the masked data root. Whether systemd
+    // resolves it before or inside the unit's namespace varies with the other
+    // namespacing options in play, and losing it would strip every project
+    // secret from the Deployment, so reopen it explicitly. It stays root-owned
+    // 0600 (see startProcess), unreadable by the unprivileged unit user.
+    `--property=BindReadOnlyPaths=${input.envFilePath}`,
+    `--property=BindReadOnlyPaths=${input.accessRepairScriptPath}:${dynamicUserAccessRepairScriptMount}`,
+    `--property=BindReadOnlyPaths=${input.observabilityPolicyDir}:${AGENT_OBSERVABILITY_MOUNT_DIR}`,
+    "--property=ProtectProc=invisible",
     "--property=PrivateTmp=yes",
     "--property=NoNewPrivileges=yes",
+    `--property=ExecStartPre=+/bin/sh ${dynamicUserAccessRepairScriptMount}`,
     "sh",
     "-lc",
     input.command,
@@ -250,9 +307,8 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         ? await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir() })
         : undefined;
       const cacheDir = projectCacheDir(input.projectId);
-      // The service user runs unprivileged under ProtectSystem=strict and cannot
-      // create this directory itself, so build time (running as this process's
-      // own, more privileged user) must create and hand it over.
+      // The dynamic runtime user runs under ProtectSystem=strict and cannot
+      // create this directory itself, so the worker creates it before start.
       await mkdir(cacheDir, { recursive: true });
 
       // Hand the release and the shared npm cache to the unprivileged build user
@@ -316,9 +372,10 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
               },
             );
 
-      // The unit's fixed service user needs to own the release dir: eve's default
-      // local workflow world writes .eve/.workflow-data/ (pre-0.24.4:
-      // .workflow-data/) into the working directory.
+      // The artifact-access group needs write access to the release: eve's
+      // default local workflow world writes .eve/.workflow-data/ (pre-0.24.4:
+      // .workflow-data/) into the working directory, and each dynamic runtime
+      // user receives this group only inside its own masked mount namespace.
       await execa("chown", ["-R", `${config.user}:`, releaseDir]);
       await execa("chown", ["-R", `${config.user}:`, cacheDir]);
 
@@ -330,6 +387,8 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       if (isEveProject) {
         await verifySandbox({ releaseDir, user: config.user, cacheDir });
       }
+      await execa("chmod", ["-R", "g+rwX,g-s", releaseDir]);
+      await execa("chmod", ["-R", "g+rwX,g-s", cacheDir]);
 
       const injectionLog = injection
         ? [
@@ -367,13 +426,47 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
       await mkdir(envDir, { recursive: true });
-      await mkdir(input.observerOutboxDir, { recursive: true });
-      await execa("chown", ["-R", `${config.user}:`, input.observerOutboxDir]);
-      await verifyObserverOutbox({ user: config.user, outboxDir: input.observerOutboxDir });
       const envFilePath = path.join(envDir, `${input.processName}.env`);
+      const accessRepairScriptPath = path.join(
+        envDir,
+        `${input.processName}.prepare-access.sh`,
+      );
+      const dynamicUserUidMarkerPath = path.join(
+        input.observabilityPolicyDir,
+        ".dynamic-user-uid",
+      );
       const deploymentEnv = { ...input.env };
       delete deploymentEnv.EVELAND_SANDBOX_TEMPLATE_REVISION;
       await writeFile(envFilePath, buildEnvFileContent(deploymentEnv), { mode: 0o600 });
+
+      await execa("chown", [
+        "-R",
+        `root:${config.user}`,
+        input.observabilityPolicyDir,
+      ]);
+      await execa("chmod", ["2750", input.observabilityPolicyDir]);
+      await execa("chmod", [
+        "0640",
+        path.join(
+          input.observabilityPolicyDir,
+          AGENT_OBSERVABILITY_POLICY_FILE_NAME,
+        ),
+      ]);
+      await writeFile(dynamicUserUidMarkerPath, "", {
+        flag: "a",
+        mode: 0o600,
+      });
+      await writeFile(
+        accessRepairScriptPath,
+        buildDynamicUserAccessRepairScript({
+          deploymentUser: resolveSystemdDeploymentUser(
+            input.processName,
+          ),
+          releaseDir: input.releaseRef,
+          sandboxCacheDir: input.sandboxCacheDir,
+        }),
+        { mode: 0o700 },
+      );
 
       const result = await execa(
         "systemd-run",
@@ -386,7 +479,10 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
           memoryMax: config.memoryMax,
           cpuQuota: config.cpuQuota,
           sandboxCacheDir: input.sandboxCacheDir,
-          observerOutboxDir: input.observerOutboxDir,
+          dataDir,
+          observabilityPolicyDir: input.observabilityPolicyDir,
+          accessRepairScriptPath,
+          dynamicUserUidMarkerPath,
           command: buildSystemdStartCommand(input.commandContext, input.port),
         }),
         { all: true },
@@ -460,6 +556,13 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       // Release directories are removed separately when retention archives the
       // stopped Deployment.
       await rm(path.join(envDir, `${processName}.env`), { force: true });
+      await rm(
+        path.join(
+          envDir,
+          `${processName}.prepare-access.sh`,
+        ),
+        { force: true },
+      );
     },
     async removeRelease(releaseRef: string): Promise<void> {
       await rm(path.resolve(releaseRef), { recursive: true, force: true });

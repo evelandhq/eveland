@@ -1,4 +1,5 @@
 import { createPgliteTestStore } from "@eveland/db/test";
+import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
 import { execa } from "execa";
 import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -88,6 +89,15 @@ try {
     throw new Error(`Unexpected health response after restart: ${restartResponse.status} ${await restartResponse.text()}`);
   }
   console.log("RESTART OK");
+  await assertDeploymentCredentialIsolation({
+    dataDir: path.resolve(
+      process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+    ),
+    projectId: project.id,
+    deploymentId: deployment.id,
+    victimPid: pidAfter,
+  });
+  console.log("DEPLOYMENT CREDENTIAL ISOLATION OK");
 
   // --- automatic Release retention: create four real systemd Releases, move the
   // stable route to the newest one, stop the oldest, sweep it, and prove both
@@ -269,4 +279,58 @@ try {
   await execa("systemctl", ["stop", "eveland-*"], { reject: false });
   await execa("systemctl", ["reset-failed", "eveland-*"], { reject: false });
   await close();
+}
+
+async function assertDeploymentCredentialIsolation(input: {
+  dataDir: string;
+  projectId: string;
+  deploymentId: string;
+  victimPid: string;
+}): Promise<void> {
+  const directPolicyPath = path.join(
+    input.dataDir,
+    "observability",
+    processSafeName(input.projectId),
+    processSafeName(input.deploymentId),
+    path.posix.basename(AGENT_RUNTIME_POLICY_PATH),
+  );
+  const procPolicyPath = path.posix.join(
+    "/proc",
+    input.victimPid,
+    "root",
+    AGENT_RUNTIME_POLICY_PATH,
+  );
+  const probeSuffix = `${process.pid}-${Date.now().toString(36)}`;
+  const result = await execa(
+    "systemd-run",
+    [
+      "--unit",
+      `eveland-isolation-probe-${probeSuffix}`,
+      "--wait",
+      "--pipe",
+      "--collect",
+      "--service-type=exec",
+      "--property=DynamicUser=yes",
+      `--property=User=eveland-p-${probeSuffix}`,
+      "--property=Group=eveland-app",
+      "--property=UMask=0002",
+      `--property=TemporaryFileSystem=${input.dataDir}:ro`,
+      "--property=ProtectProc=invisible",
+      "--property=NoNewPrivileges=yes",
+      "sh",
+      "-c",
+      'for candidate in "$1" "$2"; do if cat "$candidate" >/dev/null 2>&1; then exit 42; fi; done',
+      "credential-isolation",
+      directPolicyPath,
+      procPolicyPath,
+    ],
+    { all: true, reject: false },
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(
+      result.exitCode === 42
+        ? "A sibling Deployment identity could read another Deployment's telemetry credential."
+        : `Credential isolation probe failed: ${result.all || `exit ${result.exitCode}`}`,
+    );
+  }
 }

@@ -23,20 +23,12 @@ export function registerInternalRoutes(input: {
   const { app, store, options, buildInfo, runtimeActivationLeaseTtlMs, runtimeActivationWaitTimeoutMs } = input;
   app.get("/health", (c) => c.json({ ok: true, ...buildInfo }));
 
-  app.get("/internal/collector/health", (c) =>
-    c.json(
-      options.collectorHealth?.() ?? {
-        status: "healthy",
-        lastProcessedAt: null,
-        backlogEvents: 0,
-        backlogBytes: 0,
-        oldestEventAge: 0,
-        quarantinedEvents: 0,
-        lastError: null,
-        mode: "disabled",
-      },
-    ),
-  );
+  registerOtlpRoutes({
+    app,
+    store,
+    options,
+    appSecretKey: input.appSecretKey,
+  });
 
   registerOtlpRoutes({
     app,

@@ -8,7 +8,6 @@ import {
   processNextJob,
   processNextSourcePreflight,
   runWithJobHeartbeat,
-  resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
   type ScheduleDispatchInput,
 } from "./process.js";
@@ -329,9 +328,6 @@ describe("processNextJob", () => {
             OPENAI_API_KEY: "sk-test-123456",
             EVELAND_DEPLOYMENT_ID: expect.stringMatching(/^dep_/),
           }),
-          observerOutboxDir: expect.stringContaining(
-            path.join("observer", project.id.toLowerCase()),
-          ),
         }),
       },
     ]);

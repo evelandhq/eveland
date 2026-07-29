@@ -246,6 +246,13 @@
       "when": 1785296429442,
       "tag": "0034_talented_plazm",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1785297613506,
+      "tag": "0035_majestic_bromley",
+      "breakpoints": true
     }
   ]
 }

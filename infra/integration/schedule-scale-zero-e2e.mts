@@ -7,14 +7,20 @@ import { createApp } from "../../apps/api/src/app.js";
 import { createApiActivationClient } from "../../apps/gateway/src/activation-client.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import {
+  deriveAgentTelemetrySecret,
+  verifyAgentTelemetryCredential,
+} from "../../packages/core/src/server/agent-telemetry-credential.js";
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
-import { createCollectorRuntime } from "../../packages/session-collector/src/runner.js";
-import { processNextJob, resolveObserverOutboxDirs, type ProcessJobOptions } from "../../apps/worker/src/jobs/process.js";
+import { projectAgentEventsFromOtlpLogs } from "../../packages/session-collector/src/otlp.js";
+import { processNextJob, type ProcessJobOptions } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 import { reapIdleDeployments } from "../../apps/worker/src/runtime/idle-reaper.js";
 import { planDueSchedules } from "../../apps/worker/src/scheduler/planner.js";
+import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
 
 const APP_SECRET_KEY = "eveland-dev-secret-key-000000000";
+const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
 const GATEWAY_SERVICE_TOKEN = "schedule-e2e-gateway-service-token-00000000";
 const SCHEDULER_RUNTIME_SECRET = "schedule-e2e-runtime-secret-000000000000";
 const SCHEDULER_DISPATCH_SECRET = "schedule-e2e-dispatch-secret-0000000000";
@@ -26,6 +32,7 @@ process.env.EVELAND_HEALTH_TIMEOUT_MS ??= "30000";
 
 const { store, close } = await createPgliteTestStore();
 const runtime = createRuntimeAdapterFromEnv();
+const otlpReceiver = await startOtlpTestReceiver();
 let jobOptions: ProcessJobOptions;
 let deploymentName: string | null = null;
 let releaseRef: string | null = null;
@@ -132,19 +139,18 @@ try {
     "idle reaping stopped a RuntimeInstance before its scheduled Sessions reached a turn boundary",
   );
 
-  const observerRoot = resolveObserverOutboxDirs(process.env, project.id, deployment.id).workerDir;
-  const collector = createCollectorRuntime({
-    rootDir: observerRoot,
-    ingest: async (envelope) => { await store.ingestObserverEnvelope(envelope); },
-  });
-  const observed = await waitForObservedUsage(store, collector, runId);
-  assert.equal(observed.status, "succeeded", observed.error ?? "Observer did not settle ScheduleRun");
+  const observed = await waitForObservedUsage(store, otlpReceiver, runId);
+  assert.equal(
+    observed.status,
+    "succeeded",
+    observed.error ?? "OTLP telemetry did not settle ScheduleRun",
+  );
   assert.equal(observed.sessions.length, 2);
   assert.ok(observed.usage.reportedSteps >= 2, "schedule Session usage was not projected");
 
   const beforeNativeTick = await store.listSessions(project.id);
   await waitPastNextMinute();
-  await collector.processOnce();
+  await projectPendingOtlpLogs(store, otlpReceiver);
   const afterNativeTick = await store.listSessions(project.id);
   assert.equal(afterNativeTick.length, beforeNativeTick.length, "native Eve cron duplicated authored execution");
   assert.equal((await store.getScheduleRunDetail(runId))?.sessions.length, 2);
@@ -177,6 +183,7 @@ try {
   if (deploymentName) await runtime.stopProcess(deploymentName).catch(() => undefined);
   if (releaseRef && runtime.removeRelease) await runtime.removeRelease(releaseRef).catch(() => undefined);
   if (apiServer) await new Promise<void>((resolve) => apiServer!.close(() => resolve()));
+  await otlpReceiver.close();
   if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = priorNodeEnv;
   await close();
@@ -232,11 +239,11 @@ async function consumeTurn(gateway: ReturnType<typeof createGatewayApp>, url: st
 
 async function waitForObservedUsage(
   candidateStore: typeof store,
-  collector: ReturnType<typeof createCollectorRuntime>,
+  receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>>,
   scheduleRunId: string,
 ) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    await collector.processOnce();
+    await projectPendingOtlpLogs(candidateStore, receiver);
     const detail = await candidateStore.getScheduleRunDetail(scheduleRunId);
     if (
       detail?.status === "succeeded" &&
@@ -246,7 +253,30 @@ async function waitForObservedUsage(
       return detail;
     await delay(250);
   }
-  throw new Error("Observer did not project both scheduled Sessions and their provider usage.");
+  throw new Error(
+    "OTLP logs did not project both scheduled Sessions and their provider usage.",
+  );
+}
+
+async function projectPendingOtlpLogs(
+  candidateStore: typeof store,
+  receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>>,
+) {
+  for (const payload of receiver.drain("logs")) {
+    for (
+      const observation of projectAgentEventsFromOtlpLogs(payload, {
+        resolveDeploymentId: (credential) =>
+          credential
+            ? verifyAgentTelemetryCredential(
+                credential,
+                AGENT_TELEMETRY_SECRET,
+              )?.deploymentId
+            : undefined,
+      })
+    ) {
+      await candidateStore.ingestAgentEvent(observation);
+    }
+  }
 }
 
 async function waitPastNextMinute(): Promise<void> {

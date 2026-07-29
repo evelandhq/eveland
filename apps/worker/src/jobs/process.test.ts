@@ -8,7 +8,6 @@ import {
   processNextJob,
   processNextSourcePreflight,
   runWithJobHeartbeat,
-  resolveObserverOutboxDirs,
   resolveSandboxCacheDirs,
   type ScheduleDispatchInput,
 } from "./process.js";
@@ -549,19 +548,6 @@ describe("processNextJob", () => {
       JSON.stringify({ hostname: "p-one.agent.localhost" }),
       JSON.stringify({ hostname: "d-one--p-one.agent.localhost" }),
     ]);
-  });
-
-  test("maps the worker-visible observer outbox to its Docker-host path", () => {
-    expect(
-      resolveObserverOutboxDirs(
-        { EVELAND_DATA_DIR: "/workspace/.eveland-data", EVELAND_HOST_DATA_DIR: "/host/eveland/.eveland-data" },
-        "proj_123",
-        "dep_456",
-      ),
-    ).toEqual({
-      workerDir: "/workspace/.eveland-data/observer/proj_123/dep_456",
-      hostDir: "/host/eveland/.eveland-data/observer/proj_123/dep_456",
-    });
   });
 
   test("maps the durable sandbox cache to worker-visible and Docker-host paths", () => {

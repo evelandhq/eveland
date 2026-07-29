@@ -23,7 +23,7 @@ provision:
       apt-get install -y nodejs
       corepack enable
       corepack install --global pnpm@11.7.0
-      id eveland-app || useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app
+      id eveland-app || useradd --system --user-group --home-dir /var/lib/eveland-app --create-home eveland-app
       id eveland-build || useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
 
       # Ubuntu 24.04 sets kernel.apparmor_restrict_unprivileged_userns=1,

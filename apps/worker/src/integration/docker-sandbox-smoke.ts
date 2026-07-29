@@ -12,6 +12,7 @@ import path from "node:path";
 import { allocateAvailableHostPort } from "../jobs/process.js";
 import { createDockerAdapter } from "../runtime/docker.js";
 import { waitForHttpHealth } from "../runtime/health.js";
+import { writeAgentRuntimePolicy } from "../runtime/observability/policy.js";
 import { resolveBackendDistDir } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
 
@@ -21,7 +22,7 @@ const imageTag = "eveland/" + processSafeName(projectId) + ":" + processSafeName
 const processName = "eveland-local-sandbox-smoke-" + Date.now().toString(36);
 const root = await mkdtemp(path.join(os.tmpdir(), "eveland-local-sandbox-smoke-"));
 const sandboxCacheDir = path.join(root, "sandbox");
-const observerOutboxDir = path.join(root, "observer");
+const observabilityPolicyDir = path.join(root, "observability");
 const adapter = createDockerAdapter({ internalPort: 3000, backendDistDir: resolveBackendDistDir });
 let started = false;
 
@@ -86,7 +87,30 @@ async function runTypeScriptTurn(hostPort: number): Promise<void> {
 try {
   await Promise.all([
     mkdir(sandboxCacheDir, { recursive: true }),
-    mkdir(observerOutboxDir, { recursive: true }),
+    writeAgentRuntimePolicy({
+      directory: observabilityPolicyDir,
+      policy: {
+        schemaVersion: 1,
+        revision: 1,
+        capture: {
+          enabled: false,
+          sampleRatio: 1,
+          recordInputs: false,
+          recordOutputs: false,
+          includeReasoning: false,
+        },
+        otlp: { endpoint: "http://eveland-otel-collector:4328" },
+        deploymentCredential: "credential.signature",
+        resource: {
+          teamId: "team_default",
+          projectId,
+          releaseId,
+          deploymentId: "dep_local",
+          runtimeKind: "docker",
+          environment: "development",
+        },
+      },
+    }),
   ]);
   const result = await adapter.buildRelease({
     projectId,
@@ -111,7 +135,7 @@ try {
     env: { EVE_MOCK_AUTHORED_MODELS: "1", NODE_ENV: "development" },
     commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
     sandboxCacheDir,
-    observerOutboxDir,
+    observabilityPolicyDir,
   });
   started = true;
   await waitForHttpHealth({ host: "127.0.0.1", port: hostPort, timeoutMs: 30_000 });

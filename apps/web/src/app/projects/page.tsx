@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { SiGit, SiGithub, SiGitlab } from '@icons-pack/react-simple-icons';
 import {
-  AlertTriangleIcon,
   ArrowUpRightIcon,
   FolderArchiveIcon,
   FolderPlusIcon,
@@ -11,7 +10,6 @@ import { ProjectDeletionPoller } from '@/components/project-deletion-poller';
 import { CompactDateTime } from '@/components/compact-date-time';
 import { EveVersionCardStatus } from '@/components/eve-version-status';
 import { StatusBadge } from '@/components/status-badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import {
@@ -31,7 +29,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty';
-import { getCollectorHealth, getProjects } from '@/lib/server-api';
+import { getProjects } from '@/lib/server-api';
 import { describeProjectSource } from '@/lib/project-source';
 import { formatCompactDateTime } from '@/lib/date-time';
 import { Spinner } from '@/components/ui/spinner';
@@ -50,25 +48,13 @@ const projectSourceIconByKind = {
 };
 
 export default async function ProjectsPage() {
-  const [projects, collector] = await Promise.all([getProjects(), getCollectorHealth()]);
+  const projects = await getProjects();
   const renderedAt = new Date();
 
   return (
     <div className="min-h-[calc(100svh-3rem)] bg-background">
       <ProjectDeletionPoller active={projects.some((project) => project.deletionStatus === 'deleting')} />
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
-        {collector.status !== 'healthy' ? (
-          <Alert>
-            <AlertTriangleIcon />
-            <AlertTitle>Session collector {collector.status}</AlertTitle>
-            <AlertDescription>
-              {collector.backlogEvents} queued events · {collector.backlogBytes} bytes · oldest{' '}
-              {collector.oldestEventAge} ms · {collector.quarantinedEvents} quarantined
-              {collector.lastError ? ` · ${collector.lastError}` : ''}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-normal">Projects</h1>

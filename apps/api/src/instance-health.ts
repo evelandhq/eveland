@@ -5,7 +5,6 @@ import {
   type InstanceComponentHealth,
   type InstanceHealthReport,
 } from "@eveland/core/instance-health";
-import type { CollectorHealth } from "@eveland/session-collector/health";
 
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type ComponentObservation = Omit<InstanceComponentHealth, "key" | "label">;
@@ -16,38 +15,49 @@ export async function collectInstanceHealth(
     now?: () => Date;
     historyHours: number;
     gatewayHealth: () => Promise<ComponentObservation>;
-    collectorHealth: () => CollectorHealth | null;
   },
 ): Promise<InstanceHealthReport> {
   const now = options.now?.() ?? new Date();
   const since = new Date(now.getTime() - options.historyHours * 3_600_000);
-  const [heartbeats, metrics, workload, gateway] = await Promise.all([
-    store.listWorkerHeartbeats(),
-    store.listHostMetrics({ since, limit: Math.min(10_100, options.historyHours * 60 + 100) }),
-    store.getInstanceWorkload(),
-    options.gatewayHealth(),
-  ]);
+  const [heartbeats, metrics, workload, gateway, lastBatchAt] =
+    await Promise.all([
+      store.listWorkerHeartbeats(),
+      store.listHostMetrics({
+        since,
+        limit: Math.min(10_100, options.historyHours * 60 + 100),
+      }),
+      store.getInstanceWorkload(),
+      options.gatewayHealth(),
+      store.latestOtlpBatchReceivedAt(),
+    ]);
   const worker = summarizeWorkerHealth(heartbeats[0] ?? null, now);
-  const collector = options.collectorHealth();
-  const collectorObservation: ComponentObservation = collector
-    ? {
-        status: collector.status === "healthy" ? "healthy" : "warning",
-        message: collector.status === "healthy"
-          ? "Session collection is current."
-          : `${collector.backlogEvents} observer events are queued${collector.lastError ? `: ${collector.lastError}` : "."}`,
-        observedAt: collector.lastProcessedAt ?? now.toISOString(),
-      }
-    : {
-        status: "warning",
-        message: "Session collector is disabled or unavailable.",
-        observedAt: null,
-      };
+  // The Collector is the only sender to Built-in, so a recent batch is what proves it
+  // is alive. Eveland keeps no monitoring of the Collector beyond this liveness fact;
+  // its own metrics go to whichever external destination the Admin configures.
+  const collectorObservation: ComponentObservation =
+    lastBatchAt === null
+      ? {
+          status: "warning",
+          message: "No telemetry batch has been received yet.",
+          observedAt: null,
+        }
+      : now.getTime() - Date.parse(lastBatchAt) > 90_000
+        ? {
+            status: "unavailable",
+            message: "No telemetry batch received recently.",
+            observedAt: lastBatchAt,
+          }
+        : {
+            status: "healthy",
+            message: "Telemetry batches are arriving.",
+            observedAt: lastBatchAt,
+          };
   const components: InstanceComponentHealth[] = [
     { key: "api", label: "API", status: "healthy", message: "Control-plane API is serving this report.", observedAt: now.toISOString() },
     { key: "postgres", label: "Postgres", status: "healthy", message: "Health and workload queries succeeded.", observedAt: now.toISOString() },
     { key: "gateway", label: "Gateway", ...gateway },
     { key: "worker", label: "Worker", ...worker },
-    { key: "collector", label: "Collector", ...collectorObservation },
+    { key: "collector", label: "OpenTelemetry", ...collectorObservation },
   ];
   const capacity = analyzeHostCapacity(metrics);
   return {

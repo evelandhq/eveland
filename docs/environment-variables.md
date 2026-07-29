@@ -1,7 +1,7 @@
 # Environment variables
 
 This is a reference for every environment variable the **eveland platform** reads
-(API, worker, gateway, DB, and the embedded observer/collector). Defaults and the
+(API, worker, gateway, DB, and the managed OpenTelemetry Collector). Defaults and the
 reading site are listed so an operator can see what is optional and where a value
 takes effect.
 
@@ -88,8 +88,8 @@ site.
 | --- | --- | --- | --- |
 | `NODE_ENV` | When `production`: the runtime defaults to `systemd`, `NODE_ENV=production` is injected into the agent, deploy gates are enforced, and the gateway's dev fallbacks are disabled. | — | multiple |
 | `EVELAND_RUNTIME` | Explicitly select `docker` or `systemd`; **overrides** the `NODE_ENV` inference. | inferred from `NODE_ENV` | `apps/worker/src/runtime/select.ts` |
-| `EVELAND_DATA_DIR` | Data root (sources, builds, observer, sandbox, deployment-env). API and worker must agree on it; the systemd runtime requires an absolute path. | `.eveland-data` | API + worker |
-| `EVELAND_HOST_DATA_DIR` | Host-side real path when the worker runs inside Compose but drives the host Docker daemon (used to bind the observer outbox into agent containers). | same as `EVELAND_DATA_DIR` | worker (`apps/worker/src/jobs/process-support.ts`) |
+| `EVELAND_DATA_DIR` | Data root (sources, builds, Agent observability policy, sandbox, deployment-env). API and worker must agree on it; the systemd runtime requires an absolute path. | `.eveland-data` | API + worker |
+| `EVELAND_HOST_DATA_DIR` | Host-side real path when the worker runs inside Compose but drives the host Docker daemon (used to bind Agent policy and sandbox state into containers). | same as `EVELAND_DATA_DIR` | worker (`apps/worker/src/jobs/process-support.ts`) |
 | `EVELAND_INTERNAL_PORT` | Container-internal port for the docker adapter. | `3000` | `apps/worker/src/runtime/select.ts` |
 | `EVELAND_DEPLOYMENT_PORT` | Start of the host-port allocation range (scans the next 100 ports for a free one). | `41000` | `apps/worker/src/jobs/process-support.ts` |
 | `EVELAND_GIT_CLONE_TIMEOUT_MS` | Maximum duration of a non-interactive Git source clone before the worker fails the import and removes its partial source directory. | `120000` | worker (`source/importer.ts`) |
@@ -117,13 +117,12 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `EVELAND_APP_USER` | Unix service user that runs the deployed agent process. | `eveland-app` |
+| `EVELAND_APP_USER` | Unix access group used by each deployment's isolated systemd DynamicUser. The user and same-named group must exist. | `eveland-app` |
 | `EVELAND_BUILD_USER` | Unprivileged Unix user that runs `npm ci` / `npx eve build`. | `eveland-build` |
 | `EVELAND_MEMORY_MAX` | systemd unit `MemoryMax`. | `2G` |
 | `EVELAND_CPU_QUOTA` | systemd unit `CPUQuota`. | `200%` |
 | `EVELAND_BUILD_SANDBOX` | `none` disables the bwrap wrapper around the build; also drops `bwrap` from the preflight's required-binary list. | `bwrap` |
 | `EVELAND_SANDBOX_CACHE_DIR` | Root for bwrap template/session persistent caches (one subdirectory per project). | `<EVELAND_DATA_DIR>/sandbox` |
-| `EVELAND_OBSERVER_OUTBOX_DIR` | Observer event outbox directory, passed into the agent via the unit environment. | derived at deploy time |
 
 > **`EVELAND_SANDBOX_CACHE_DIR` must live outside the release directory.** Since eve
 > 0.22 keys session sandboxes per durable session, a cache inside the release dir would
@@ -148,18 +147,12 @@ These take effect only on the systemd runtime; the docker runtime ignores them.
 > invalidation and route changes only take effect after the cache TTL. This pair has no
 > dev fallback.
 
-## Observability (OpenTelemetry Collector + legacy observer)
+## Observability (OpenTelemetry Collector)
 
 | Variable | Purpose | Default | Read by |
 | --- | --- | --- | --- |
 | `EVELAND_OTLP_SERVICE_TOKEN` | Shared credential used by the managed OpenTelemetry Collector when it sends Built-in OTLP requests to the API. Never expose it to Agent Deployments. | dev-only value in Compose; required by the production overlay | API + Collector |
-| `EVELAND_OTEL_COLLECTOR_CONTAINER` | Stable container name for the managed OpenTelemetry Collector. | `eveland-otel-collector` | Compose |
-| `EVELAND_COLLECTOR_MODE` | Embedded session collector switch: `embedded` or `disabled`. | `embedded` | `apps/api/src/server.ts` |
-| `EVELAND_OBSERVER_ROOT` | Root directory the collector reads events from. | `<EVELAND_DATA_DIR>/observer` | `apps/api/src/server.ts` |
-| `EVELAND_COLLECTOR_MAX_CONCURRENT_SESSIONS` | Collector concurrency cap. | `100` | `apps/api/src/server.ts` |
-| `EVELAND_COLLECTOR_MAX_BACKLOG_BYTES` | Collector backlog byte cap. | `1073741824` (1 GiB) | `apps/api/src/server.ts` |
-| `EVELAND_OBSERVER_INCLUDE_REASONING` | Set to `"true"` to also collect `reasoning.completed` events. | not collected | `packages/agent-observer/src/injector.ts` |
-| `EVELAND_DEPLOYMENT_ID` | Current deployment id, injected into the agent for observer event tagging. | injected at deploy time | worker (`process.ts`) |
+| `EVELAND_OTEL_COLLECTOR_CONTAINER` | Stable container name for the managed OpenTelemetry Collector attached to Docker Agent telemetry networks. | `eveland-otel-collector` | Compose + worker |
 
 ---
 

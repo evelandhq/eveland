@@ -57,7 +57,6 @@ import type {
   AgentEventObservation,
   TelemetryDomain,
 } from "@eveland/core/observability";
-import type { ObserverEnvelopeV1 } from "@eveland/core/observer";
 import type { EveVersionInfo } from "@eveland/core/source";
 import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
 import type {
@@ -558,9 +557,6 @@ export interface SessionStore {
   listSessionNodes(sessionId: string): Promise<SessionNode[]>;
   ingestAgentEvent(
     observation: AgentEventObservation,
-  ): Promise<{ session: Session; node: SessionNode; event: SessionEvent; duplicate: boolean }>;
-  ingestObserverEnvelope(
-    envelope: ObserverEnvelopeV1,
   ): Promise<{ session: Session; node: SessionNode; event: SessionEvent; duplicate: boolean }>;
   listModelUsageEvents(sessionId: string): Promise<ModelUsageEvent[]>;
   failRunningSessionsForRuntimeInstance(

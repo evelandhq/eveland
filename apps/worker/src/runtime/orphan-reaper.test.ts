@@ -47,6 +47,36 @@ async function deploymentFixture(
 }
 
 describe("createOrphanProcessReaper", () => {
+  test("removes an orphaned Agent telemetry network after the same grace period", async () => {
+    const store = createTestStore();
+    const { adapter } = fakeAdapter("docker", []);
+    const network = {
+      name: "eveland-agent-orphan",
+      processName: "eveland-proj_gone-dep_gone123",
+    };
+    const listOrphanDockerNetworks = vi.fn(async () => [network]);
+    const removeOrphanDockerNetwork = vi.fn(async () => true);
+    const reap = createOrphanProcessReaper(store, {
+      kinds: ["docker"],
+      graceMs: 60_000,
+      runtimeForKind: () => adapter,
+      listOrphanDockerNetworks,
+      removeOrphanDockerNetwork,
+    });
+
+    await expect(
+      reap(new Date("2026-07-16T10:00:00.000Z")),
+    ).resolves.toBe(0);
+    expect(removeOrphanDockerNetwork).not.toHaveBeenCalled();
+
+    await expect(
+      reap(new Date("2026-07-16T10:01:00.000Z")),
+    ).resolves.toBe(1);
+    expect(removeOrphanDockerNetwork).toHaveBeenCalledExactlyOnceWith(
+      network,
+    );
+  });
+
   test("never touches platform processes that do not match the deployment name shape", async () => {
     const store = createTestStore();
     const { adapter, stopProcess } = fakeAdapter("docker", ["eveland-postgres-1", "eveland-api-1", "eveland-gateway-1"]);
