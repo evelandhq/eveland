@@ -210,7 +210,9 @@ or `NODE_ENV=production` with `EVELAND_RUNTIME` unset — the worker refuses to
 start until every host
 prerequisite checks out (`apps/worker/src/runtime/preflight.ts`): Linux with
 systemd, running as root, `EVELAND_DATA_DIR` set to an absolute path,
-`systemd-run`, `systemctl`, `runuser`, and `docker`, plus the complete platform sandbox
+`systemd-run`, `systemctl`, `runuser`, `docker`, `ss`, and `ps` (the last two
+verify that a deployment's loopback port is actually held by its own unit
+before the deployment is marked ready), plus the complete platform sandbox
 toolchain (`bash`, `node`, `npm`, `pnpm`, `rg`, GNU `grep`/`find`, `git`, `curl`,
 `jq`, `python`/`python3`, `pip`/`pip3`, `unzip`, and `zstd`) on `PATH`
 unconditionally, plus `bwrap` unless `EVELAND_BUILD_SANDBOX=none`, the app user

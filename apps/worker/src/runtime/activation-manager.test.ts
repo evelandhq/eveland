@@ -223,6 +223,130 @@ describe("ensureDeploymentActive", () => {
     await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
   });
 
+  test("fails activation loudly when the deployment's port is held by a foreign process", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Crossed Port Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/crossed-port-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:crossed-port",
+      containerName: "fixture-crossed-port",
+      internalPort: 3000,
+      hostPort: 41996,
+      runtimeKind: "systemd",
+    });
+    const runtime = {
+      name: "systemd",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      ensureProcess: vi.fn(async () => ({ internalPort: 41996, log: "started" })),
+      verifyPortOwnership: vi.fn(async () => ({
+        status: "foreign" as const,
+        holder: "pid 4242 (unit eveland-proj_other-dep_7.service)",
+      })),
+    } as unknown as RuntimeAdapter;
+    const waitForHealth = vi.fn();
+
+    await expect(
+      ensureDeploymentActive(store, {
+        deployment,
+        runtime,
+        startInput: {
+          processName: deployment.containerName,
+          releaseRef: "fixture:crossed-port",
+          port: deployment.hostPort,
+          env: {},
+          commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
+          sandboxCacheDir: "/tmp/cache",
+          observabilityPolicyDir: "/tmp/observability",
+        },
+        kind: "public_request",
+        ownerId: "req_crossed_port",
+      }, { waitForHealth, pollIntervalMs: 1 }),
+    ).rejects.toThrow(/eveland-proj_other-dep_7\.service/);
+
+    // Readiness must never be proven by the foreign process's HTTP responses.
+    expect(waitForHealth).not.toHaveBeenCalled();
+    const [failed] = await store.listRuntimeInstances(["failed"], 10);
+    expect(failed?.lastError).toMatch(/eveland-proj_other-dep_7\.service/);
+    await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(false);
+  });
+
+  test("reconciles a ready RuntimeInstance whose port is held by a foreign process", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Crossed Ready Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/crossed-ready-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:crossed-ready",
+      containerName: "fixture-crossed-ready",
+      internalPort: 3000,
+      hostPort: 41994,
+      runtimeKind: "systemd",
+    });
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_crossed_ready",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    });
+    await store.releaseActivationLease(claim.lease.id);
+    const runtime = {
+      name: "systemd",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      inspectProcess: vi.fn(async () => "ready" as const),
+      verifyPortOwnership: vi.fn(async () => ({
+        status: "foreign" as const,
+        holder: "pid 4242 (unit eveland-proj_other-dep_7.service)",
+      })),
+    } as unknown as RuntimeAdapter;
+
+    await expect(reconcileRuntimeInstances(store, {
+      limit: 10,
+      runtimeForKind: () => runtime,
+    })).resolves.toBe(1);
+
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "failed",
+      lastError: expect.stringContaining("eveland-proj_other-dep_7.service"),
+    });
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "failed" });
+    expect(runtime.verifyPortOwnership).toHaveBeenCalledWith({
+      processName: deployment.containerName,
+      port: deployment.hostPort,
+    });
+  });
+
   test("reconciles a ready RuntimeInstance whose process disappeared", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Crashed Agent", importKind: "zip" });

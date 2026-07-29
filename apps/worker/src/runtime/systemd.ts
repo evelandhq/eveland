@@ -7,7 +7,7 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { verifySandbox } from "./sandbox-verify.js";
-import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
+import { processSafeName, type PortOwnership, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
 import {
   AGENT_OBSERVABILITY_MOUNT_DIR,
@@ -253,6 +253,19 @@ export function isBenignSystemctlStopFailure(outcome: SystemctlCommandOutcome): 
   }
   const stderr = outcome.stderr ?? "";
   return /not loaded/i.test(stderr) || /not found/i.test(stderr) || /no such/i.test(stderr);
+}
+
+/**
+ * Extracts the pids of every process holding a listening socket from
+ * `ss -H -t -l -n -p` output lines, e.g.
+ * `LISTEN 0 511 127.0.0.1:41032 0.0.0.0:* users:(("node",pid=1234,fd=20))`.
+ */
+export function parseSsListenerPids(output: string): number[] {
+  const pids = new Set<number>();
+  for (const match of output.matchAll(/pid=(\d+)/g)) {
+    pids.add(Number(match[1]));
+  }
+  return [...pids];
 }
 
 async function runSystemctl(subcommand: string, unit: string): Promise<void> {
@@ -537,10 +550,50 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         logs: diagnosticCommandOutput(logs, "journalctl"),
       };
     },
+    async verifyPortOwnership({ processName, port }): Promise<PortOwnership> {
+      const unit = `${processName}.service`;
+      const listeners = await execa(
+        "ss",
+        ["-H", "-t", "-l", "-n", "-p", "sport", "=", `:${port}`],
+        { all: true, reject: false },
+      );
+      if (listeners.failed) {
+        // Silently passing here would reintroduce blind trust in whatever
+        // answers on the port, so an unusable ss fails the activation loudly.
+        throw new Error(`ss listener lookup for port ${port} failed: ${listeners.all || "no output captured"}`);
+      }
+      const pids = parseSsListenerPids(listeners.stdout ?? "");
+      if (pids.length === 0) return { status: "unbound" };
+      const holders: string[] = [];
+      for (const pid of pids) {
+        const owner = await execa("ps", ["-o", "unit=", "-p", String(pid)], { all: true, reject: false });
+        const owningUnit = owner.failed ? "" : (owner.stdout ?? "").trim();
+        if (owningUnit === unit) return { status: "owned" };
+        holders.push(`pid ${pid}${owningUnit ? ` (unit ${owningUnit})` : ""}`);
+      }
+      return { status: "foreign", holder: holders.join(", ") };
+    },
     async ensureProcess(input) {
       const status = await adapter.inspectProcess!(input.processName);
       if (status === "ready" || status === "starting") {
-        return { internalPort: input.port, log: `Reused ${status} systemd process ${input.processName}.` };
+        const ownership = await adapter.verifyPortOwnership!({
+          processName: input.processName,
+          port: input.port,
+        });
+        if (ownership.status !== "foreign") {
+          // "unbound" is a legitimate reuse: an activating unit that has not
+          // bound yet. The readiness gate keeps polling ownership afterwards.
+          return { internalPort: input.port, log: `Reused ${status} systemd process ${input.processName}.` };
+        }
+        // The unit is alive but can never become the listener while another
+        // process holds its port; left running it would flap in auto-restart
+        // and its traffic would be served by the foreign holder.
+        await adapter.stopProcess(input.processName);
+        throw new Error(
+          `systemd process ${input.processName} cannot bind port ${input.port}: ` +
+            `the listening socket is held by ${ownership.holder}. Stopped the unit instead of ` +
+            "reusing it against another process's socket.",
+        );
       }
       if (status !== "missing") await adapter.stopProcess(input.processName);
       return adapter.startProcess(input);

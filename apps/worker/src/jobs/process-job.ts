@@ -7,7 +7,7 @@ import {
 import type { Store } from "@eveland/db";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { waitForHttpHealth } from "../runtime/health.js";
+import { waitForOwnedHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
 import { PLATFORM_WORKFLOW_WORLD } from "../runtime/workflow-world.js";
@@ -272,10 +272,13 @@ export async function processJob(
               : observability.workerDir,
         });
         startedProcess = processName;
-        await (options.waitForDeployment ?? waitForHttpHealth)({
+        await waitForOwnedHttpHealth({
           host: "127.0.0.1",
           port: hostPort,
           timeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
+          processName,
+          runtime,
+          ...(options.waitForDeployment ? { waitForHealth: options.waitForDeployment } : {}),
         });
 
         const deployment = await store.recordDeployment({

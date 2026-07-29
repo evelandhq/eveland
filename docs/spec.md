@@ -956,7 +956,11 @@ limit、abort 和 NDJSON streaming。continuation 与 session reset 必须按 Se
 Deployment，不能重新执行 route weighting。最后一个 lease 释放或过期后默认 idle
 5 分钟再停进程；停机前必须事务式复查是否出现新 lease。Worker 启动后的 recovery 与
 reconciliation 会重排中断的 activation job，并把实际已消失的 transient process 状态
-纠正为 stopped/failed。
+纠正为 stopped/failed。在能识别 socket 归属的 runtime（systemd）上，就绪判定必须先确认
+Deployment 端口上的监听 socket 属于它自己的进程：端口被其他进程持有时激活立刻失败，
+不得依据别的进程的 HTTP 响应把 Deployment 标记为 ready；reconciliation 对 ready
+RuntimeInstance 同样执行该归属核查，发现端口被外来进程持有即把实例与 Deployment 纠正为
+failed，防止 Gateway 继续把流量代理给错误的 Agent。
 
 Worker 还按独立周期执行 orphan sweep，把主机上实际运行的 `eveland-*-dep_*` 进程与
 控制面对账：持有活跃 lease 或 live RuntimeInstance 的进程不受影响；属于合法

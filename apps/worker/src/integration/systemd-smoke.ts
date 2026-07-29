@@ -220,12 +220,16 @@ try {
     throw new Error(`Expected the failed deploy to mark the project failed: ${JSON.stringify({ failedProject, logs })}`);
   }
 
-  // Pin WHY it failed: only a health timeout exercises the started-process cleanup
-  // path this step exists to prove. A deploy that died earlier (e.g. in the build)
-  // also ends "failed" with no unit/env-file/port residue, and every assertion below
-  // would pass without the cleanup code ever running.
+  // Pin WHY it failed: only a readiness timeout exercises the started-process
+  // cleanup path this step exists to prove. A deploy that died earlier (e.g. in
+  // the build) also ends "failed" with no unit/env-file/port residue, and every
+  // assertion below would pass without the cleanup code ever running. With the
+  // port-ownership readiness gate the 1ms deadline expires while the port is
+  // still unbound ("did not bind"); a host that races past the ownership poll
+  // fails in the HTTP probe instead ("did not respond") -- both are the same
+  // readiness-timeout condition.
   const failRuntimeLogs = await store.listLogs(failProject.id, "runtime");
-  if (!failRuntimeLogs.some((log) => log.line.includes("did not respond within"))) {
+  if (!failRuntimeLogs.some((log) => log.line.includes("did not respond within") || log.line.includes("did not bind"))) {
     throw new Error(`Expected a health-timeout failure, got: ${JSON.stringify(failRuntimeLogs.map((log) => log.line))}`);
   }
   const diagnosticIndex = failRuntimeLogs.findIndex((log) =>
@@ -234,7 +238,9 @@ try {
       && log.line.includes("ActiveState=")
       && log.line.includes("Recent logs:"),
   );
-  const failureIndex = failRuntimeLogs.findIndex((log) => log.line.includes("did not respond within"));
+  const failureIndex = failRuntimeLogs.findIndex(
+    (log) => log.line.includes("did not respond within") || log.line.includes("did not bind"),
+  );
   if (diagnosticIndex < 0 || diagnosticIndex >= failureIndex) {
     throw new Error(
       `Expected systemd diagnostics before the health failure log, got: ${JSON.stringify(failRuntimeLogs.map((log) => log.line))}`,

@@ -1,6 +1,6 @@
 import type { ActivationLeaseClaim, ActivationLeaseKind, DeploymentRecord, RuntimeInstance, RuntimeKind } from "@eveland/core/contracts";
 import { RuntimeInstanceDrainingError, type Store } from "@eveland/db";
-import { waitForHttpHealth } from "./health.js";
+import { waitForOwnedHttpHealth } from "./health.js";
 import { createRuntimeAdapterForKind } from "./select.js";
 import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
 
@@ -111,10 +111,13 @@ export async function startRuntimeInstance(
         EVELAND_RUNTIME_INSTANCE_ID: runtimeInstanceId,
       },
     });
-    await (options.waitForHealth ?? waitForHttpHealth)({
+    await waitForOwnedHttpHealth({
       host: "127.0.0.1",
       port: input.deployment.hostPort,
       timeoutMs: options.readyTimeoutMs ?? 30_000,
+      processName: input.startInput.processName,
+      runtime: input.runtime,
+      ...(options.waitForHealth ? { waitForHealth: options.waitForHealth } : {}),
     });
     const ready = await store.updateRuntimeInstance(runtimeInstanceId, {
       status: "ready",
@@ -208,7 +211,30 @@ export async function reconcileRuntimeInstances(
     const runtime = (input.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
     if (!runtime.inspectProcess) continue;
     const status = await runtime.inspectProcess(deployment.containerName);
-    if (status === "ready" || status === "starting") continue;
+    if (status === "ready" || status === "starting") {
+      if (!runtime.verifyPortOwnership) continue;
+      // A live process is not enough: the incident mode behind cross-project
+      // misrouting is a "ready" instance whose port is actually served by
+      // another Deployment's process. Detect it and fail the instance loudly
+      // instead of letting Gateway keep proxying to the wrong Agent.
+      const ownership = await runtime.verifyPortOwnership({
+        processName: deployment.containerName,
+        port: instance.endpointPort ?? deployment.hostPort,
+      });
+      if (ownership.status !== "foreign") continue;
+      const foreignReason =
+        `RuntimeInstance ${instance.id} port ${instance.endpointPort ?? deployment.hostPort} is held by ` +
+        `${ownership.holder}; its traffic was being served by a foreign process.`;
+      await store.updateRuntimeInstance(instance.id, {
+        status: "failed",
+        error: foreignReason,
+      }, now);
+      await store.updateDeploymentStatus(deployment.id, "failed");
+      await store.failScheduleExecutionsForRuntimeInstance(instance.id, foreignReason, now);
+      await store.failRunningSessionsForRuntimeInstance(instance.id, foreignReason, now);
+      reconciled += 1;
+      continue;
+    }
     const failed = status === "failed";
     await store.updateRuntimeInstance(instance.id, {
       status: failed ? "failed" : "stopped",
