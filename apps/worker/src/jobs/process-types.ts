@@ -1,4 +1,5 @@
 import type { RuntimeAdapter } from "../runtime/types.js";
+import type { Tracer } from "@opentelemetry/api";
 
 export type ProcessJobOptions = {
   runtime?: RuntimeAdapter;
@@ -19,6 +20,7 @@ export type ProcessJobOptions = {
   identityJwksUrl?: string;
   jobHeartbeatIntervalMs?: number;
   dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
+  tracer?: Tracer;
 };
 
 export type ScheduleDispatchInput = {

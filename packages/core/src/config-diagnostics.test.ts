@@ -77,12 +77,13 @@ describe("configuration diagnostics", () => {
     ]));
   });
 
-  test("reports host telemetry sampling and retention defaults", () => {
+  test("reports OpenTelemetry emission defaults", () => {
     const snapshot = createConfigurationSnapshot("worker", {});
 
     expect(snapshot.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "EVELAND_HOST_METRIC_INTERVAL_MS", value: "60000" }),
-      expect.objectContaining({ name: "EVELAND_HOST_METRIC_RETENTION_MS", value: "2592000000" }),
+      expect.objectContaining({ name: "EVELAND_OTLP_ENDPOINT", value: "http://127.0.0.1:4318" }),
+      expect.objectContaining({ name: "EVELAND_OTEL_METRIC_INTERVAL_MS", value: "60000" }),
     ]));
   });
 

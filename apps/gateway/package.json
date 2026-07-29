@@ -13,6 +13,7 @@
   "dependencies": {
     "@eveland/core": "workspace:*",
     "@eveland/db": "workspace:*",
+    "@eveland/platform-observability": "workspace:*",
     "@hono/node-server": "^2.0.6",
     "hono": "^4.12.27"
   },
