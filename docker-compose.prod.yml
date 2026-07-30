@@ -97,7 +97,7 @@ services:
     restart: unless-stopped
     network_mode: host
     ports: !override []
-    command: sh -lc "corepack enable && pnpm install && pnpm --filter @eveland/web build && pnpm --filter @eveland/web exec next start --port 3000"
+    command: sh -lc "corepack enable && pnpm install && NODE_ENV=production pnpm --filter @eveland/web build && NODE_ENV=production pnpm --filter @eveland/web exec next start --port 3000"
     environment:
       CI: "true"
       API_URL: http://localhost:4000

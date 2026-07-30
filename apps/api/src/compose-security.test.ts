@@ -47,3 +47,18 @@ describe("Compose controller security boundaries", () => {
     expect(api).toContain("BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}");
   });
 });
+
+describe("Compose production runtime environment", () => {
+  it("runs the production web build and server under NODE_ENV=production", () => {
+    const web = serviceBlock(productionCompose, "web");
+
+    // The base file's NODE_ENV=development merges into the production web service,
+    // so both steps need an explicit override on the command.
+    expect(web).toContain("NODE_ENV=production pnpm --filter @eveland/web build");
+    expect(web).toContain("NODE_ENV=production pnpm --filter @eveland/web exec next start");
+
+    // Never container-wide: NODE_ENV=production makes `pnpm install` skip the
+    // devDependencies the Next build needs (see the overlay header comment).
+    expect(web).not.toContain("NODE_ENV:");
+  });
+});
