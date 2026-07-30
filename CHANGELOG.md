@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.16.2](https://github.com/evelandhq/eveland/compare/v0.16.1...v0.16.2) (2026-07-30)
+
+
+### Bug Fixes
+
+* restore OpenTelemetry golden metrics ([c569630](https://github.com/evelandhq/eveland/commit/c569630e53fb230f7320e4a78d936d1607cff63b))
+* run the production web build and server under NODE_ENV=production ([0ca0c4b](https://github.com/evelandhq/eveland/commit/0ca0c4bea5c1af5b7310c7d52a8247ac352c683b))
+
 ## [0.16.1](https://github.com/evelandhq/eveland/compare/v0.16.0...v0.16.1) (2026-07-29)
 
 
