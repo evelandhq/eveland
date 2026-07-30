@@ -1,5 +1,8 @@
+import Link from "next/link"
+import { describeScheduleCron } from "@eveland/core/schedules"
 import { SessionReplay } from "@/components/session-replay"
-import { getSession, getSessionEvents, getSessionNodes, getSessionUsage } from "@/lib/server-api"
+import { StatusBadge } from "@/components/status-badge"
+import { getScheduleRun, getSession, getSessionEvents, getSessionNodes, getSessionUsage } from "@/lib/server-api"
 import { formatTokenCount, formatUsd, groupModelUsageByAgent } from "@/lib/usage"
 
 export async function generateMetadata({
@@ -25,12 +28,18 @@ export default async function SessionTimelinePage({
   ])
   const usage = session.usage
   const agentUsage = groupModelUsageByAgent(usageEvents)
+  const scheduleRun = session.scheduleRunId
+    ? await getScheduleRun(session.scheduleRunId)
+    : null
 
   return (
     <section className="rounded-md border border-border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-4 py-3">
         <div>
-          <h2 className="text-sm font-semibold">Session replay</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold">Session replay</h2>
+            <StatusBadge status={session.status} variant="outline" />
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">{sessionId}</p>
         </div>
         {usage ? (
@@ -56,6 +65,43 @@ export default async function SessionTimelinePage({
           </dl>
         ) : null}
       </div>
+      {scheduleRun ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 text-xs">
+          <span className="font-medium">
+            {scheduleRun.trigger === "cron" ? "Cron" : "Manual"} · {scheduleRun.scheduleKey}
+          </span>
+          {scheduleRun.trigger === "cron" ? (
+            <>
+              <span className="text-muted-foreground">
+                {describeScheduleCron(scheduleRun.version.cron)}
+              </span>
+              <span className="font-mono text-muted-foreground">
+                {scheduleRun.version.cron}
+              </span>
+            </>
+          ) : null}
+          <span className="text-muted-foreground">
+            Run {scheduleRun.status.replaceAll("_", " ")}
+          </span>
+          <span className="text-muted-foreground">
+            {new Date(scheduleRun.startedAt ?? scheduleRun.dueAt).toLocaleString()}
+          </span>
+          {scheduleRun.missedTicks > 0 ? (
+            <span className="text-muted-foreground">
+              {scheduleRun.missedTicks} missed {scheduleRun.missedTicks === 1 ? "tick" : "ticks"}
+            </span>
+          ) : null}
+          {scheduleRun.error ? (
+            <span className="text-destructive">{scheduleRun.error}</span>
+          ) : null}
+          <Link
+            href={`/projects/${projectId}/schedule-runs/${scheduleRun.id}`}
+            className="font-medium underline-offset-4 hover:underline"
+          >
+            Run details
+          </Link>
+        </div>
+      ) : null}
       {agentUsage.length > 0 ? (
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Usage by agent</h3>

@@ -7,21 +7,33 @@ function source(relativePath: string): string {
 }
 
 describe("schedule history surfaces", () => {
-  test("renders ScheduleRun envelopes, linked Sessions, filters, and detail provenance", () => {
+  test("keeps Sessions session-only and renders recent Schedule runs under Schedules", () => {
     const sessions = source("./projects/[projectId]/sessions/page.tsx");
     const schedules = source("./projects/[projectId]/schedules/page.tsx");
+    const sessionDetail = source("./projects/[projectId]/sessions/[sessionId]/page.tsx");
     const detailPath = new URL("./projects/[projectId]/schedule-runs/[scheduleRunId]/page.tsx", import.meta.url);
 
     expect(existsSync(fileURLToPath(detailPath))).toBe(true);
-    expect(sessions).toContain("getScheduleRuns");
-    expect(sessions).toContain("run.sessions.map");
-    expect(sessions).toContain("run.sessionCount");
-    expect(sessions).toContain("Runs remain visible even when a successful handler creates zero Sessions");
-    expect(sessions).toContain("query.schedule");
+    expect(sessions).toContain("getSessionsPage");
+    expect(sessions).toContain("sessionPage.sessions.map");
+    expect(sessions).toContain("scheduleId: query.schedule");
     expect(sessions).toContain("<Table");
+    expect(sessions).toContain(
+      '<TableCell className="text-xs">\n                    <span>{triggerLabel(session.trigger)}</span>',
+    );
+    expect(schedules).toContain("getScheduleRuns");
+    expect(schedules).toContain("Recent runs");
+    expect(schedules).toContain("describeScheduleCron");
+    expect(schedules).toContain("run.sessions.length === 1");
+    expect(schedules).toContain(
+      'href={`/projects/${projectId}/schedules#recent-runs`}',
+    );
     expect(schedules).toContain("Markdown and TypeScript schedules");
     expect(schedules).toContain("<RunScheduleAction");
     expect(schedules).toContain("<Card");
+    expect(sessionDetail).toContain("getScheduleRun");
+    expect(sessionDetail).toContain("describeScheduleCron");
+    expect(sessionDetail).toContain("Run details");
     const detail = source("./projects/[projectId]/schedule-runs/[scheduleRunId]/page.tsx");
     expect(detail).toContain("run.release.id");
     expect(detail).toContain("run.deployment.id");
@@ -29,7 +41,7 @@ describe("schedule history surfaces", () => {
     expect(detail).toContain("run.error");
   });
 
-  test("uses the filtered paginated API instead of filtering full history in the browser", () => {
+  test("uses filtered paginated APIs instead of filtering full history in the browser", () => {
     const serverApi = source("../lib/server-api.ts");
     expect(serverApi).toContain("export const getScheduleRuns");
     expect(serverApi).toContain("export const getSessionsPage");

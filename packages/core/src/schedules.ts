@@ -1,5 +1,6 @@
 import path from "node:path";
 import { CronExpressionParser } from "cron-parser";
+import cronstrue from "cronstrue";
 
 const moduleExtensions = [".cts", ".mts", ".cjs", ".mjs", ".ts", ".js"] as const;
 
@@ -60,6 +61,17 @@ export const parseMarkdownSchedule = parseScheduleSource;
 export function getNextRunAt(cron: string, currentDate = new Date()): Date {
   validateFiveFieldCron(cron);
   return CronExpressionParser.parse(cron, { currentDate, tz: "UTC" }).next().toDate();
+}
+
+export function describeScheduleCron(cron: string): string {
+  validateFiveFieldCron(cron);
+  const description = cronstrue
+    .toString(cron, {
+      use24HourTimeFormat: true,
+      verbose: true,
+    })
+    .replace(/, every hour, every day$/, "");
+  return `${description} (UTC)`;
 }
 
 export function validateFiveFieldCron(cron: string): void {

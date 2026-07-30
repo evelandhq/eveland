@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 const variantByStatus: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   running: "default",
   deployed: "default",
-  completed: "default",
+  completed: "secondary",
   succeeded: "default",
   queued: "secondary",
   activating: "secondary",
