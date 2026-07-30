@@ -229,7 +229,7 @@ export function mapAgentTelemetryLifecycle(input: {
             serializeAttribute(result.output),
           );
         }
-        if (data.status !== "success" || data.error !== undefined) {
+        if (data.status !== "completed" || data.error !== undefined) {
           setErrorStatus(span, data);
         }
         span.end();
