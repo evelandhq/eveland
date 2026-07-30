@@ -27,6 +27,7 @@ export type TeamInvitation = {
 
 export type AuthPrincipal = TeamMember & {
   image: string | null;
+  displayTimezone: string | null;
 };
 
 export type Project = {

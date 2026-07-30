@@ -3,6 +3,7 @@ import { ShieldCheckIcon, TriangleAlertIcon } from "lucide-react"
 import { isSameBuild } from "@eveland/core/build-info"
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics"
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info"
+import { DateTime } from "@/components/date-time"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -183,7 +184,9 @@ export default async function AboutSettingsPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="secondary">{component.component}</Badge>
                             <span className="text-xs text-muted-foreground">
-                              {component.observedAt ? `Observed ${new Date(component.observedAt).toLocaleString()}` : "Unavailable"}
+                              {component.observedAt ? (
+                                <>Observed <DateTime value={component.observedAt} /></>
+                              ) : "Unavailable"}
                             </span>
                           </div>
                         </TableCell>

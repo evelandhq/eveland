@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { DateTime } from "@/components/date-time";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InviteMemberForm } from "@/components/invite-member-form";
 import { InvitationActions } from "@/components/invitation-actions";
@@ -70,7 +71,7 @@ export default async function MembersSettingsPage() {
                     </div>
                   </TableCell>
                   <TableCell><Badge variant={member.role === "admin" ? "default" : "secondary"}>{member.role}</Badge></TableCell>
-                  <TableCell>{new Date(member.joinedAt).toLocaleDateString()}</TableCell>
+                  <TableCell><DateTime value={member.joinedAt} display="date" /></TableCell>
                   {current.role === "admin" ? (
                     <TableCell className="text-right">
                       <MemberActions member={member} isLastAdmin={member.role === "admin" && adminCount === 1} />
@@ -102,7 +103,7 @@ export default async function MembersSettingsPage() {
                 {invitations.map((invitation) => (
                   <TableRow key={invitation.id}>
                     <TableCell>{invitation.email}</TableCell>
-                    <TableCell>{new Date(invitation.expiresAt).toLocaleString()}</TableCell>
+                    <TableCell><DateTime value={invitation.expiresAt} /></TableCell>
                     <TableCell className="text-right"><InvitationActions invitationId={invitation.id} /></TableCell>
                   </TableRow>
                 ))}

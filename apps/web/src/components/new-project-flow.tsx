@@ -27,6 +27,7 @@ import {
   PROJECT_SLUG_PATTERN,
 } from "@eveland/core/ids";
 import type { PublicGitCredential, SourcePreflight } from "@eveland/core/contracts";
+import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -839,9 +840,11 @@ export function NewProjectFlow() {
                 {logs.length === 0 ? <p className="text-background/65">{progress.detail}</p> : null}
                 {logs.map((log) => (
                   <p key={log.id} className="grid grid-cols-[5.5rem_1fr] gap-3">
-                    <time className="text-background/45" dateTime={log.createdAt}>
-                      {new Date(log.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                    </time>
+                    <DateTime
+                      className="text-background/45"
+                      value={log.createdAt}
+                      display="time"
+                    />
                     <span className="whitespace-pre-wrap break-words">{log.line}</span>
                   </p>
                 ))}

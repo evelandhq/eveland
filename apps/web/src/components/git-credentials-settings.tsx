@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { KeyRoundIcon, Trash2Icon } from "lucide-react";
 import type { PublicGitCredential } from "@eveland/core/contracts";
+import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,7 +76,7 @@ export function GitCredentialsSettings({ initialCredentials }: { initialCredenti
                 <TableRow key={credential.id}>
                   <TableCell className="font-medium">{credential.host}</TableCell>
                   <TableCell><Badge variant="secondary">Encrypted</Badge></TableCell>
-                  <TableCell>{new Date(credential.updatedAt).toLocaleString()}</TableCell>
+                  <TableCell><DateTime value={credential.updatedAt} /></TableCell>
                   <TableCell className="text-right">
                     <Button
                       type="button"

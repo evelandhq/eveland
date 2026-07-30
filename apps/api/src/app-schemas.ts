@@ -211,6 +211,14 @@ export const profileImageSchema = z.string().superRefine((value, context) => {
 export const profileSchema = z.object({
   name: z.string().trim().min(1).max(80),
   image: profileImageSchema.nullable(),
+  displayTimezone: z.string().trim().min(1).max(100).refine((value) => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Display timezone must be a valid IANA timezone.").optional(),
 });
 
 export const passwordChangeSchema = z.object({

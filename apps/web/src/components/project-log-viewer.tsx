@@ -2,6 +2,7 @@
 
 import { ChevronDownIcon, ChevronsUpDownIcon, SearchIcon, TerminalIcon, XIcon } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
+import { useDisplayTimezone } from "@/components/time-zone-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -15,6 +16,7 @@ import {
   type ProjectLogFilter,
   type ProjectLogOrder,
 } from "@/lib/api";
+import { formatDateTime } from "@/lib/date-time";
 
 const LOG_FILTERS = [
   { value: "all", label: "All" },
@@ -144,24 +146,24 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
 }
 
 function ProjectLogRow({ log }: { log: LogLine }) {
+  const timeZone = useDisplayTimezone();
   const compactLine = log.line.replace(/\s+/g, " ").trim();
   const isExpandable = log.line.includes("\n") || compactLine.length > 220;
-  const timestamp = new Date(log.createdAt);
+  const fullTimestamp = formatDateTime(log.createdAt, timeZone);
+  const compactTimestamp = formatDateTime(log.createdAt, timeZone, {
+    year: undefined,
+    month: "2-digit",
+    day: "2-digit",
+  });
   const row = (
     <>
       <time
         className="truncate text-muted-foreground tabular-nums"
         dateTime={log.createdAt}
-        title={timestamp.toLocaleString()}
+        title={fullTimestamp}
         suppressHydrationWarning
       >
-        {timestamp.toLocaleString([], {
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        })}
+        {compactTimestamp}
       </time>
       <span>
         <Badge variant="outline">{log.type}</Badge>
@@ -179,7 +181,7 @@ function ProjectLogRow({ log }: { log: LogLine }) {
         <Collapsible>
           <CollapsibleTrigger
             className="group/trigger grid w-full grid-cols-[6.5rem_4.75rem_minmax(0,1fr)] items-start gap-3 px-4 py-2.5 text-left sm:grid-cols-[9.5rem_5.5rem_minmax(0,1fr)]"
-            aria-label={`Show full log from ${timestamp.toLocaleString()}`}
+            aria-label={`Show full log from ${fullTimestamp}`}
           >
             {row}
           </CollapsibleTrigger>

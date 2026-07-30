@@ -138,6 +138,8 @@ describe("team management web surfaces", () => {
     expect(profileForm).toContain("<Avatar");
     expect(profileForm).toContain("<FieldGroup");
     expect(profileForm).toContain('type="file"');
+    expect(profileForm).toContain("Display timezone");
+    expect(profileForm).toContain("displayTimezone");
     expect(profileForm).toContain('autoComplete="current-password"');
     expect(profileForm).toContain('autoComplete="new-password"');
     expect(members).toContain("<Table");

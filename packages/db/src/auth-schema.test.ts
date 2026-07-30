@@ -14,7 +14,7 @@ import {
 describe("Better Auth team schema", () => {
   test("uses Better Auth user, account, session, and verification fields", () => {
     expect(Object.keys(getTableColumns(users))).toEqual(expect.arrayContaining([
-      "id", "email", "emailVerified", "name", "image", "role", "banned",
+      "id", "email", "emailVerified", "name", "image", "displayTimezone", "role", "banned",
     ]));
     expect(Object.keys(getTableColumns(authAccounts))).toEqual(expect.arrayContaining([
       "id", "accountId", "providerId", "userId", "password", "accessToken", "refreshToken",

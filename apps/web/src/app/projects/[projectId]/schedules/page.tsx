@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { describeScheduleCron } from "@eveland/core/schedules";
+import { DateTime } from "@/components/date-time";
 import { getScheduleRuns, getSchedules } from "@/lib/server-api";
 import { RunScheduleAction } from "@/components/run-schedule-action";
 import { StatusBadge } from "@/components/status-badge";
@@ -46,7 +47,7 @@ export default async function SchedulesPage({
         <CardTitle>Schedules</CardTitle>
         <CardDescription>
           Eveland executes Markdown and TypeScript schedules from the promoted
-          scheduler target. All schedule times use UTC.
+          scheduler target. Cron definitions use UTC; run timestamps use your display timezone.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
@@ -103,7 +104,7 @@ export default async function SchedulesPage({
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {schedule.nextRunAt
-                        ? new Date(schedule.nextRunAt).toLocaleString()
+                        ? <DateTime value={schedule.nextRunAt} />
                         : "Not scheduled"}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
@@ -219,8 +220,8 @@ export default async function SchedulesPage({
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {run.startedAt
-                          ? new Date(run.startedAt).toLocaleString()
-                          : `Due ${new Date(run.dueAt).toLocaleString()}`}
+                          ? <DateTime value={run.startedAt} />
+                          : <>Due <DateTime value={run.dueAt} /></>}
                       </TableCell>
                     </TableRow>
                   );

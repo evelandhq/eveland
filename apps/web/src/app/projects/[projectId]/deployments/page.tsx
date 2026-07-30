@@ -1,4 +1,5 @@
 import { BadgeCheckIcon } from "lucide-react"
+import { DateTime } from "@/components/date-time"
 import { DeploymentActions } from "@/components/deployment-actions"
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions"
 import { EveVersionStatus } from "@/components/eve-version-status"
@@ -145,9 +146,7 @@ export default async function ProjectDeploymentsPage({
                     <StatusBadge status={deployment.status} />
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    <time dateTime={deployment.createdAt}>
-                      Deployed {new Date(deployment.createdAt).toLocaleString()}
-                    </time>
+                    Deployed <DateTime value={deployment.createdAt} />
                     {" · "}
                     {deployment.runtimeKind}
                     {" · "}

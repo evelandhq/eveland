@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DateTime } from "@/components/date-time";
 import { getSchedules, getSessionsPage } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -133,7 +134,7 @@ export default async function SessionsPage({
                     {tokenTotal(session.usage)}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {new Date(session.startedAt).toLocaleString()}
+                    <DateTime value={session.startedAt} />
                   </TableCell>
                 </TableRow>
               ))}

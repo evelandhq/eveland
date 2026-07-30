@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertTriangleIcon, CheckCircle2Icon, ShieldCheckIcon } from "lucide-react";
 import type { InstanceHealthStatus } from "@eveland/core/instance-health";
 import { CapacityTrend } from "@/components/capacity-trend";
+import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -120,7 +121,7 @@ export default async function InstanceHealthPage({
                   <TableCell className="font-medium">{component.label}</TableCell>
                   <TableCell><HealthBadge status={component.status} /></TableCell>
                   <TableCell className="max-w-md text-muted-foreground">{component.message}</TableCell>
-                  <TableCell className="text-muted-foreground">{component.observedAt ? new Date(component.observedAt).toLocaleString() : "No observation"}</TableCell>
+                  <TableCell className="text-muted-foreground">{component.observedAt ? <DateTime value={component.observedAt} /> : "No observation"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -167,8 +168,8 @@ export default async function InstanceHealthPage({
           <WorkloadValue label="Starting runtimes" value={report.workload.runtimeInstances.starting} />
         </dl>
         <p className="text-xs text-muted-foreground">
-          Oldest queued job: {report.workload.oldestQueuedAt ? new Date(report.workload.oldestQueuedAt).toLocaleString() : "None"}
-          {latest ? ` · Latest host sample ${new Date(latest.observedAt).toLocaleString()}` : " · No host samples yet"}
+          Oldest queued job: {report.workload.oldestQueuedAt ? <DateTime value={report.workload.oldestQueuedAt} /> : "None"}
+          {latest ? <> · Latest host sample <DateTime value={latest.observedAt} /></> : " · No host samples yet"}
         </p>
       </section>
     </div>

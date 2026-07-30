@@ -17,6 +17,7 @@ import {
   type TranscriptToolCall,
   type TranscriptTurn,
 } from "@eveland/core/transcript"
+import { DateTime } from "@/components/date-time"
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message"
 import {
   AgentActivity,
@@ -97,7 +98,7 @@ function TurnView({ nested = false, turn }: { nested?: boolean; turn: Transcript
     <div className={cn("flex flex-col", nested ? "gap-3" : "gap-4")}>
       <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
         <Separator className="flex-1" />
-        <time>{new Date(turn.startedAt).toLocaleString()}</time>
+        <DateTime value={turn.startedAt} />
         {turn.status === "failed" ? <span className="font-medium text-destructive">failed</span> : null}
         {turn.status === "cancelled" ? <span className="font-medium">cancelled</span> : null}
         <Separator className="flex-1" />
@@ -273,7 +274,7 @@ function RawView({ events }: { events: SessionEvent[] }) {
         <article className="rounded-md border border-border bg-background p-3" key={event.id}>
           <div className="flex items-center justify-between gap-4">
             <h3 className="text-xs font-semibold uppercase tracking-normal">{event.type}</h3>
-            <time className="text-xs text-muted-foreground">{new Date(event.eventAt).toLocaleString()}</time>
+            <DateTime className="text-xs text-muted-foreground" value={event.eventAt} />
           </div>
           <pre className="mt-3 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-sm bg-muted p-3 text-xs leading-5">{formatPayload(event.payload)}</pre>
         </article>

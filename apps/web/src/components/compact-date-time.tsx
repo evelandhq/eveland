@@ -1,26 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { formatCompactDateTime } from "@/lib/date-time";
+import { useDisplayTimezone } from "@/components/time-zone-provider";
+import { formatCompactDateTime, formatDateTime } from "@/lib/date-time";
 
 export function CompactDateTime({
   value,
-  fallback,
 }: {
   value: string;
-  fallback: string;
 }) {
-  const [label, setLabel] = useState(fallback);
-  const [title, setTitle] = useState(value);
-
-  useEffect(() => {
-    const date = new Date(value);
-    setLabel(formatCompactDateTime(value, new Date()));
-    setTitle(Number.isNaN(date.getTime()) ? value : date.toLocaleString());
-  }, [value]);
+  const timeZone = useDisplayTimezone();
+  const date = new Date(value);
+  const label = timeZone
+    ? formatCompactDateTime(value, new Date(), timeZone)
+    : "—";
+  const title = Number.isNaN(date.getTime()) || !timeZone
+    ? value
+    : formatDateTime(value, timeZone, { timeZoneName: "short" });
 
   return (
-    <time dateTime={value} title={title}>
+    <time dateTime={value} title={title} suppressHydrationWarning>
       {label}
     </time>
   );
