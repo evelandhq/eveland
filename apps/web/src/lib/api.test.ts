@@ -11,7 +11,7 @@ describe("web api helpers", () => {
     vi.unstubAllGlobals();
   });
 
-  test("enqueues a build deploy job for a project", async () => {
+  test("enqueues a current-source preview build for a project", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response(JSON.stringify({ job: { id: "job_123", type: "build_deploy", status: "queued" } }), {
         status: 202,
@@ -28,6 +28,28 @@ describe("web api helpers", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/build-deploy", {
       method: "POST",
       credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ promote: false }),
+    });
+  });
+
+  test("enqueues a current-source build with promotion", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ job: { id: "job_promote", type: "build_deploy", status: "queued" } }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(enqueueBuildDeploy("proj_123", { promote: true })).resolves.toMatchObject({
+      id: "job_promote",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/build-deploy", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ promote: true }),
     });
   });
 

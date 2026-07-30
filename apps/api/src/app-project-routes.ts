@@ -19,6 +19,7 @@ import type { MiddlewareHandler } from "hono";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import {
   aliasSchema,
+  buildDeploySchema,
   createGitSourcePreflightSchema,
   createProjectFromPreflightSchema,
   createProjectSchema,
@@ -613,7 +614,21 @@ export function registerProjectRoutes(input: {
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
-    const job = await store.enqueueJob(projectId, "build_deploy");
+    const deployOptions = buildDeploySchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
+    if (!deployOptions.success) {
+      return c.json(
+        {
+          error: "Invalid deployment options",
+          detail: deployOptions.error.flatten(),
+        },
+        400,
+      );
+    }
+    const job = await store.enqueueJob(projectId, "build_deploy", {
+      promoteAfterDeploy: deployOptions.data.promote,
+    });
     return c.json({ job }, 202);
   });
 

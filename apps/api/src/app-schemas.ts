@@ -98,6 +98,10 @@ export const syncSourceSchema = z
     path: ["promote"],
   });
 
+export const buildDeploySchema = z.object({
+  promote: z.boolean().default(false),
+});
+
 export const secretSchema = environmentVariableSchema;
 
 export const batchSecretSchema = z

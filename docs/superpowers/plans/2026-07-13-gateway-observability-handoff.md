@@ -802,7 +802,7 @@ session_bindings
 - `projects.currentDeploymentId` 只是过渡兼容字段，最终 production project route 才是权威；
 - build+deploy 不再默认停止旧 Deployment；新 Deployment 首先是 preview target；
 - promote/rollback/traffic split 通过 route target transaction 完成。
-- 当前 Web 为 Git Project 提供两个显式同步意图：主操作 `Sync, deploy & promote` 在该次 build 的新 Deployment 健康且 preview route 创建后，promote 该确切 target；次操作 `Sync & create preview` 不改变 stable route。这个产品默认不改变裸 `build_deploy` 的 preview-first 语义，也不能通过查询“最新 Deployment”来选择 promote target。
+- 当前 Web 通过单一 `Create deployment` Dialog 组合两个显式维度：Source 选择当前不可变 Revision（默认）或先同步 Git，结果选择健康后 promote（默认）或保留 preview。四种组合复用相同的 preview-first `build_deploy` 语义；选择 promote 时必须切换该次 build 创建的确切 target，不能通过查询“最新 Deployment”来选择。
 - Project Secrets 是可变运行时凭据，不属于 Release 内容；Secret 新增、替换或删除后必须为每个 `running` / `draining` Deployment 排入带 `deploymentId` 的 restart，不能只刷新 `projects.currentDeploymentId`，否则 stable、preview 或 A/B target 会继续持有旧进程环境。
 - Scheduler scale-to-zero 使用持久化 `nextRunAt`：进入 `EVELAND_SCHEDULER_PREWARM_MS` 窗口的 target 保持 warm，已停止的 target 提前排入 coalesced activation；non-terminal ScheduleRun 提供硬性回收保护，`draining` 在 dispatch credential 兑换前有界重试。
 
