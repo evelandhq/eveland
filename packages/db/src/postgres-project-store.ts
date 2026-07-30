@@ -89,7 +89,11 @@ export function createPostgresProjectStore({
           ),
         )
         .groupBy(projects.id)
-        .orderBy(desc(projects.updatedAt));
+        .orderBy(
+          desc(projects.createdAt),
+          asc(projects.name),
+          asc(projects.id),
+        );
       return rows.map(projectRowToProject);
     },
 

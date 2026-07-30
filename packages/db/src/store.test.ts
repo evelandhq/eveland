@@ -1,7 +1,72 @@
+import { eq, inArray } from "drizzle-orm";
 import { describe, expect, test } from "vitest";
+import { projects } from "./schema.js";
+import { createPgliteTestStore } from "./test-store.js";
 import { createTestStore } from "./vitest-store.js";
 
 describe("SQL Store project creation", () => {
+  test("lists newest-created projects first with deterministic name and id tie-breakers", async () => {
+    const database = await createPgliteTestStore();
+
+    try {
+      const beta = await database.store.createProject({
+        name: "beta-agent",
+        importKind: "zip",
+      });
+      const alpha = await database.store.createProject({
+        name: "alpha-agent",
+        importKind: "zip",
+      });
+      const recent = await database.store.createProject({
+        name: "recent-agent",
+        importKind: "zip",
+      });
+      const firstDuplicate = await database.store.createProject({
+        name: "duplicate-one",
+        importKind: "zip",
+      });
+      const secondDuplicate = await database.store.createProject({
+        name: "duplicate-two",
+        importKind: "zip",
+      });
+      const sharedCreatedAt = new Date("2026-07-29T08:00:00.000Z");
+      const duplicateIds = [firstDuplicate.id, secondDuplicate.id].sort();
+
+      await database.db
+        .update(projects)
+        .set({
+          createdAt: sharedCreatedAt,
+          updatedAt: sharedCreatedAt,
+        });
+      await database.db
+        .update(projects)
+        .set({ name: "duplicate-agent" })
+        .where(inArray(projects.id, duplicateIds));
+      await database.db
+        .update(projects)
+        .set({
+          createdAt: new Date("2026-07-30T08:00:00.000Z"),
+          updatedAt: new Date("2026-07-30T08:00:00.000Z"),
+        })
+        .where(eq(projects.id, recent.id));
+      await database.db
+        .update(projects)
+        .set({ updatedAt: new Date("2026-07-31T08:00:00.000Z") })
+        .where(eq(projects.id, beta.id));
+
+      const listedProjects = await database.store.listProjects();
+
+      expect(listedProjects.map((project) => project.id)).toEqual([
+        recent.id,
+        alpha.id,
+        beta.id,
+        ...duplicateIds,
+      ]);
+    } finally {
+      await database.close();
+    }
+  });
+
   test("reserves an exact slug and carries the initial auto-deploy intent into the import job", async () => {
     const store = createTestStore();
 
