@@ -4,6 +4,21 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.18.0](https://github.com/evelandhq/eveland/compare/v0.17.0...v0.18.0) (2026-07-30)
+
+
+### Features
+
+* add configurable deployment dialog ([59e232e](https://github.com/evelandhq/eveland/commit/59e232e336438ff87b5085ba7f842fe88518c27e))
+* add personal display timezone ([704b9d2](https://github.com/evelandhq/eveland/commit/704b9d2beaea81a8e9be80dfe2c2130eb10dc918))
+* clarify session and schedule history ([#203](https://github.com/evelandhq/eveland/issues/203)) ([3796981](https://github.com/evelandhq/eveland/commit/3796981dcf6e1509e36337d2a926c6239264202a))
+
+
+### Bug Fixes
+
+* preload the OTel ESM register hook in production compose commands ([1c7f20e](https://github.com/evelandhq/eveland/commit/1c7f20e4550bf50ea7895b07a4e63a1d4439a07d))
+* stabilize project list order ([#206](https://github.com/evelandhq/eveland/issues/206)) ([26b136d](https://github.com/evelandhq/eveland/commit/26b136d4ffc3702aabebcb468ab5e646044cc0cb))
+
 ## [0.17.0](https://github.com/evelandhq/eveland/compare/v0.16.2...v0.17.0) (2026-07-30)
 
 
