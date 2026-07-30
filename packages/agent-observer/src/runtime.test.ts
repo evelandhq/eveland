@@ -1,3 +1,4 @@
+import { SpanStatusCode } from "@opentelemetry/api";
 import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/sdk-metrics";
 import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
@@ -64,7 +65,10 @@ describe("private Agent telemetry runtime", () => {
           sequence: 4,
           turnId: "turn_1",
           stepIndex: 0,
-          actions: [{ kind: "tool-call", callId: "call_1", toolName: "search", input: { q: "otel" } }],
+          actions: [
+            { kind: "tool-call", callId: "call_1", toolName: "search", input: { q: "otel" } },
+            { kind: "tool-call", callId: "call_2", toolName: "fetch", input: { url: "https://example.com" } },
+          ],
         },
       },
       context,
@@ -76,8 +80,22 @@ describe("private Agent telemetry runtime", () => {
           sequence: 5,
           turnId: "turn_1",
           stepIndex: 0,
-          status: "success",
+          status: "completed",
           result: { kind: "tool-result", callId: "call_1", output: "found" },
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "action.result",
+        data: {
+          sequence: 6,
+          turnId: "turn_1",
+          stepIndex: 0,
+          status: "failed",
+          error: { code: "tool_error", message: "fetch exploded" },
+          result: { kind: "tool-result", callId: "call_2", output: "boom", isError: true },
         },
       },
       context,
@@ -86,7 +104,7 @@ describe("private Agent telemetry runtime", () => {
       {
         type: "message.completed",
         data: {
-          sequence: 6,
+          sequence: 7,
           turnId: "turn_1",
           stepIndex: 0,
           finishReason: "stop",
@@ -99,7 +117,7 @@ describe("private Agent telemetry runtime", () => {
       {
         type: "step.completed",
         data: {
-          sequence: 7,
+          sequence: 8,
           turnId: "turn_1",
           stepIndex: 0,
           finishReason: "stop",
@@ -115,7 +133,7 @@ describe("private Agent telemetry runtime", () => {
       context,
     );
     await runtime.capture(
-      { type: "turn.completed", data: { sequence: 8, turnId: "turn_1" } },
+      { type: "turn.completed", data: { sequence: 9, turnId: "turn_1" } },
       context,
     );
     await runtime.forceFlush();
@@ -123,12 +141,14 @@ describe("private Agent telemetry runtime", () => {
     const finishedSpans = traces.getFinishedSpans();
     expect(finishedSpans.map((span) => span.name).sort()).toEqual([
       "chat openai/gpt-5",
+      "execute_tool fetch",
       "execute_tool search",
       "invoke_agent Researcher",
     ]);
     const turnSpan = finishedSpans.find((span) => span.name === "invoke_agent Researcher");
     const modelSpan = finishedSpans.find((span) => span.name === "chat openai/gpt-5");
     const toolSpan = finishedSpans.find((span) => span.name === "execute_tool search");
+    const failedToolSpan = finishedSpans.find((span) => span.name === "execute_tool fetch");
     expect(turnSpan?.attributes).toMatchObject({
       "gen_ai.operation.name": "invoke_agent",
       "gen_ai.agent.name": "Researcher",
@@ -162,6 +182,9 @@ describe("private Agent telemetry runtime", () => {
       "gen_ai.tool.call.arguments": JSON.stringify({ q: "otel" }),
       "gen_ai.tool.call.result": JSON.stringify("found"),
     });
+    expect(toolSpan?.status.code).toBe(SpanStatusCode.UNSET);
+    expect(failedToolSpan?.status.code).toBe(SpanStatusCode.ERROR);
+    expect(failedToolSpan?.status.message).toBe("fetch exploded");
     expect(turnSpan?.resource.attributes).toMatchObject({
       "service.name": "eveland-agent",
       "deployment.environment.name": "production",
@@ -272,7 +295,7 @@ describe("private Agent telemetry runtime", () => {
         type: "action.result",
         data: {
           turnId: "turn_1",
-          status: "success",
+          status: "completed",
           result: { callId: "call_1", output: "do not export", continuationToken: "secret-token" },
         },
       },
