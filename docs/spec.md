@@ -647,7 +647,9 @@ Eve 0.27.7+ Client 可以通过 `follow: false` 做有界 Catch-up Read：请求
 
 ### Sessions (/projects/proj_xxxxxxxxxx/sessions)
 
-Sessions 是核心运行历史。
+Sessions 是核心运行历史。列表只展示实际 Eve Session，不把 ScheduleRun execution
+envelope 作为同级行混入；cron/manual 创建的 Session 仍与其他来源的 Session 一起按
+`startedAt` 倒序排列。
 
 每个 Session 展示：
 
@@ -659,6 +661,11 @@ Sessions 是核心运行历史。
 * 当前 Deployment
 * Input / Output / Total token 消耗
 * Usage 完整性（完整 / 部分缺失 / Provider 未报告）
+
+由 ScheduleRun 创建的 Session 在详情页标题区下方以单行紧凑 provenance 展示 Schedule
+key、cron/manual trigger、ScheduleRun 状态与开始时间。cron run 同时展示 24 小时制、
+明确标注 UTC 的人类可读周期和原始五字段表达式；missed tick 与错误仅在存在时显示。
+完整 Release、Deployment 与多 Session 关系继续通过 ScheduleRun 详情查看。
 
 进入 Session 后展示 Eve 的事件时间线：
 
@@ -775,7 +782,7 @@ promote、rollback 或 stable route 权重变化不得重选其 target。
 每个 Schedule 展示：
 
 * 名称
-* Cron 表达式
+* 人类可读的 UTC 执行周期，以及作为精确依据的原始 Cron 表达式
 * 时区
 * 是否启用
 * 下一次触发时间
@@ -783,18 +790,23 @@ promote、rollback 或 stable route 权重变化不得重选其 target。
 
 每次 cron 或 manual 执行都持久化独立 ScheduleRun；成功且没有创建 Session 也是
 合法结果。ScheduleRun 保留 Release/Deployment provenance、状态、attempt、missed
-tick、错误和关联 Sessions，供 Sessions/Schedules 历史读取。
+tick、错误和关联 Sessions，供 Schedules 历史与 Session 详情 provenance 读取。
 Worker 同时在 Runtime Logs 中按 ScheduleRun ID 记录 pinned Release/Deployment/runtime、
 activation、Scheduler Channel dispatch 和最终结果阶段，以及端到端耗时。dispatch 超时必须
 把实际超时预算和目标 Deployment 写入 ScheduleRun 错误与日志，不能只保留底层
 `AbortError` 文案；日志不得包含 dispatch credential、runtime secret 或 Project Secret。
 
-点击“查看历史”后，跳转到 Sessions，并自动筛选：
+Schedule 定义表下方展示最近 50 条 ScheduleRun，并可继续分页。列表默认覆盖全部
+Schedule；点击某个 Schedule 的“查看历史”后仍停留在 Schedules 页面，筛选该 Schedule
+并滚动到 Recent runs：
 
 ```text
-trigger = cron
 schedule_id = 当前 schedule
 ```
+
+一条 ScheduleRun 恰好关联一个 Session 时，主链接直接进入该 Session 详情。零 Session
+run 没有可跳转的 Session；多 Session run 也不能任意选择其中一个，因此这两种情况进入
+ScheduleRun 详情查看完整执行结果与关联 Sessions。
 
 ---
 

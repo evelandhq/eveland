@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "cron-parser": "^5.6.1",
+    "cronstrue": "^3.24.0",
     "nanoid": "^5.1.16",
     "zod": "^4.4.3"
   },

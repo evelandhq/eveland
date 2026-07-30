@@ -1497,3 +1497,17 @@ Eve 0.27.7 与 0.27.8 已完成 GitHub release notes、`eve@0.27.6..eve@0.27.8` 
 schedule discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox
 public type compatibility。Agent 项目需刷新 lockfile 并重新部署才能确定取得 0.27.8；仅改
 `package.json` range 不会改变现有 immutable Release。
+
+---
+
+## 34. 2026-07-30 follow-up：Session 与 ScheduleRun 历史归属
+
+Web 的 Sessions 列表只展示实际 Eve Session，并按 `startedAt` 倒序分页；ScheduleRun
+execution envelope 不再作为同级行混入，也不再用独立 cursor 与 Session 结果拼接伪造全局
+顺序。cron/manual Session 详情在 replay 标题下方显示紧凑 ScheduleRun provenance，包括
+Schedule key、run 状态/时间，以及 cron 的人类可读 UTC 周期和原始五字段表达式；完整
+Release、Deployment、missed tick、错误与多 Session 关系仍由 ScheduleRun 详情承载。
+
+Schedules 页面在定义表下方拥有最近 50 条、可分页且可按 Schedule 筛选的 ScheduleRun
+历史。恰好一个关联 Session 的 run 直接链接该 Session；零 Session 与多 Session run 进入
+ScheduleRun 详情，不能隐藏合法的零 Session 执行，也不能任意选择多个 Session 中的一个。

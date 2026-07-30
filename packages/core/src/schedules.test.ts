@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { getNextRunAt, parseScheduleSource } from "./schedules.js";
+import * as scheduleUtilities from "./schedules.js";
+
+const { getNextRunAt, parseScheduleSource } = scheduleUtilities;
 
 describe("parseScheduleSource", () => {
   test("derives a nested schedule key from the complete path under agent/schedules", () => {
@@ -80,5 +82,24 @@ describe("getNextRunAt", () => {
 
   test("rejects cron expressions that do not contain exactly five fields", () => {
     expect(() => getNextRunAt("0 0 8 * * *")).toThrow(/five fields/);
+  });
+});
+
+describe("describeScheduleCron", () => {
+  test.each([
+    ["*/15 * * * *", "Every 15 minutes (UTC)"],
+    ["0 1 * * *", "At 01:00, every day (UTC)"],
+    ["30 9 * * 1-5", "At 09:30, Monday through Friday (UTC)"],
+    ["0 0 1 * *", "At 00:00, on day 1 of the month (UTC)"],
+  ])("describes %s in concise 24-hour UTC language", (cron, expected) => {
+    const describeScheduleCron = (
+      scheduleUtilities as typeof scheduleUtilities & {
+        describeScheduleCron?: (value: string) => string;
+      }
+    ).describeScheduleCron;
+
+    expect(describeScheduleCron).toBeTypeOf("function");
+    if (!describeScheduleCron) return;
+    expect(describeScheduleCron(cron)).toBe(expected);
   });
 });
