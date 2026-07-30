@@ -32,10 +32,23 @@ export async function reapIdleDeployments(
       continue;
     }
     const runtime = (input.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+    // claimIdleRuntimeInstances handed this instance over in "draining"; a
+    // restart_deployment job retires live instances of its Deployment as it goes,
+    // so a different status now means the restart owns this process. Stopping it
+    // would kill a freshly restarted Agent and report the Deployment stopped.
+    const claimed = await store.getRuntimeInstance(instance.id);
+    if (claimed?.status !== "draining") continue;
     try {
       await runtime.stopProcess(deployment.containerName);
       await store.updateRuntimeInstance(instance.id, { status: "stopped", error: null }, now);
-      await store.updateDeploymentStatus(deployment.id, "stopped");
+      // Only a live row is this sweeper's to write: archive_deployment leaves its
+      // RuntimeInstance rows in place, so an unguarded write un-archives a
+      // retired Deployment.
+      await store.transitionDeploymentStatus({
+        deploymentId: deployment.id,
+        to: "stopped",
+        from: ["running", "draining"],
+      });
       await store.appendLog({
         projectId: deployment.projectId,
         deploymentId: deployment.id,
@@ -46,7 +59,11 @@ export async function reapIdleDeployments(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await store.updateRuntimeInstance(instance.id, { status: "failed", error: message }, now);
-      await store.updateDeploymentStatus(deployment.id, "failed");
+      await store.transitionDeploymentStatus({
+        deploymentId: deployment.id,
+        to: "failed",
+        from: ["running", "draining"],
+      });
       await store.appendLog({
         projectId: deployment.projectId,
         deploymentId: deployment.id,

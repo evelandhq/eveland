@@ -480,6 +480,17 @@ export interface DeploymentStore {
   getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
   getDeploymentByContainerName(containerName: string): Promise<DeploymentRecord | null>;
   updateDeploymentStatus(deploymentId: string, status: DeploymentStatus): Promise<DeploymentRecord | null>;
+  /**
+   * Compare-and-set on a Deployment's status: writes `to` only while the row
+   * still reads one of `from`, and returns null when it does not. Callers that
+   * race the runtime sweepers use this instead of updateDeploymentStatus so
+   * they can never overwrite a status that is no longer theirs to write.
+   */
+  transitionDeploymentStatus(input: {
+    deploymentId: string;
+    to: DeploymentStatus;
+    from: DeploymentStatus[];
+  }): Promise<DeploymentRecord | null>;
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
   getDeploymentRetention(
     projectId: string,

@@ -241,6 +241,21 @@ export function createPostgresDeploymentRoutingStore({
       return deployment ? deploymentRowToDeployment(deployment) : null;
     },
 
+    async transitionDeploymentStatus({ deploymentId, to, from }) {
+      if (from.length === 0) return null;
+      const [deployment] = await db
+        .update(deployments)
+        .set({ status: to, updatedAt: new Date() })
+        .where(
+          and(
+            eq(deployments.id, deploymentId),
+            inArray(deployments.status, from),
+          ),
+        )
+        .returning();
+      return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
     async getRelease(releaseId) {
       const [release] = await db
         .select()
