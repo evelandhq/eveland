@@ -42,7 +42,10 @@ import {
   stopStartedProcessOnFailure,
 } from "./process-support.js";
 import type { ProcessJobOptions } from "./process-types.js";
-import { prepareDeploymentObservability } from "./process-observability.js";
+import {
+  prepareDeploymentObservability,
+  warnStaleObserverRelease,
+} from "./process-observability.js";
 
 export async function processRuntimeJob(
   store: Store,
@@ -158,6 +161,11 @@ export async function processRuntimeJob(
         deploymentId: deployment.id,
         runtimeKind: adapter.name,
         nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+      });
+      await warnStaleObserverRelease(store, {
+        projectId: project.id,
+        deploymentId: deployment.id,
+        release,
       });
       // Tracks whether the restart's own startProcess (above stop notwithstanding)
       // actually came up, so a startProcess failure -- nothing running under this
@@ -441,6 +449,11 @@ export async function processRuntimeJob(
         runtimeKind: runtime.name,
         nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
       });
+      await warnStaleObserverRelease(store, {
+        projectId: job.projectId,
+        deploymentId: deployment.id,
+        release,
+      });
       await startRuntimeInstance(
         store,
         {
@@ -587,6 +600,11 @@ export async function processRuntimeJob(
           deploymentId: deployment.id,
           runtimeKind: runtime.name,
           nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+        });
+        await warnStaleObserverRelease(store, {
+          projectId: job.projectId,
+          deploymentId: deployment.id,
+          release,
         });
         const activation = await ensureDeploymentActive(
           store,

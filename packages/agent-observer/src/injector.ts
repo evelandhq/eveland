@@ -2,9 +2,37 @@ import { access, mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
 
 const observerFileName = "eveland-observer.js";
 const runtimeRelativePath = ".eveland/observability/runtime.mjs";
+
+export const OBSERVER_RUNTIME_FILE_NAME = "runtime.mjs";
+
+/**
+ * Container-absolute path of the Worker-delivered observer runtime: it lives
+ * next to agent-policy.json in the read-only observability mount every
+ * deployment receives. Shims baked into releases import this path first, so
+ * the observer logic always matches the running Eveland instead of being
+ * frozen at release build time. The file's default export is a plain Eve hook
+ * configuration; that contract must hold for every shim ever shipped, so an
+ * incompatible runtime change requires a NEW file name (leaving this one
+ * absent so old shims fall back to their baked bundle), never a changed
+ * export shape.
+ */
+export const PLATFORM_OBSERVER_RUNTIME_PATH = path.posix.join(
+  path.posix.dirname(AGENT_RUNTIME_POLICY_PATH),
+  OBSERVER_RUNTIME_FILE_NAME,
+);
+
+/**
+ * Version of the observer delivery contract embedded in a release. Bump only
+ * when a release must be REBUILT to keep observability working (i.e. the shim
+ * contract itself changes). Version 1 is implicit: releases built before this
+ * constant existed embed a fully self-contained observer that ignores the
+ * platform-delivered runtime and goes stale as the platform moves.
+ */
+export const OBSERVER_RUNTIME_CONTRACT = 2;
 
 export type ObserverCoverageGap = {
   kind: "file-form-subagent";
@@ -15,8 +43,40 @@ export type ObserverCoverageGap = {
 export type ObserverInjectionResult = {
   injectedFiles: string[];
   runtimeFile?: string;
+  observerContract: number;
   coverageGaps: ObserverCoverageGap[];
 };
+
+let bundledRuntime: Promise<string> | undefined;
+
+/**
+ * Bundles the observer hook runtime into a single self-contained ESM file
+ * (no imports left to resolve), memoized for the process lifetime: the same
+ * artifact is baked into release builds as the offline fallback and written
+ * into every deployment's observability mount by the Worker.
+ */
+export function bundleObserverRuntime(): Promise<string> {
+  bundledRuntime ??= build({
+    entryPoints: [
+      fileURLToPath(new URL("./hook-runtime.ts", import.meta.url)),
+    ],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    legalComments: "none",
+  }).then((result) => {
+    const file = result.outputFiles[0];
+    if (!file) throw new Error("Observer runtime bundle produced no output.");
+    return file.text;
+  });
+  bundledRuntime.catch(() => {
+    // Do not cache a failed build; the next caller retries.
+    bundledRuntime = undefined;
+  });
+  return bundledRuntime;
+}
 
 export async function injectObserverHooks(input: {
   releaseDir: string;
@@ -30,7 +90,13 @@ export async function injectObserverHooks(input: {
     rootAgentRoot === nestedAgentRoot ||
     (await hasRootInstructions(rootAgentRoot));
 
-  if (!hasAgentRoot) return { injectedFiles: [], coverageGaps: [] };
+  if (!hasAgentRoot) {
+    return {
+      injectedFiles: [],
+      observerContract: OBSERVER_RUNTIME_CONTRACT,
+      coverageGaps: [],
+    };
+  }
 
   const agentRoots: string[] = [rootAgentRoot];
   const coverageGaps: ObserverCoverageGap[] = [];
@@ -49,18 +115,7 @@ export async function injectObserverHooks(input: {
 
   const runtimePath = path.join(releaseDir, runtimeRelativePath);
   await mkdir(path.dirname(runtimePath), { recursive: true });
-  await build({
-    entryPoints: [
-      fileURLToPath(new URL("./hook-runtime.ts", import.meta.url)),
-    ],
-    outfile: runtimePath,
-    bundle: true,
-    platform: "node",
-    format: "esm",
-    target: "node22",
-    external: ["eve/hooks"],
-    legalComments: "none",
-  });
+  await writeFile(runtimePath, await bundleObserverRuntime(), "utf8");
 
   const injectedFiles: string[] = [];
   for (const observerPath of observerPaths) {
@@ -76,6 +131,7 @@ export async function injectObserverHooks(input: {
   return {
     injectedFiles,
     runtimeFile: runtimeRelativePath,
+    observerContract: OBSERVER_RUNTIME_CONTRACT,
     coverageGaps,
   };
 }
@@ -88,7 +144,23 @@ function createObserverShim(observerPath: string, runtimePath: string): string {
   if (!relativeRuntimePath.startsWith(".")) {
     relativeRuntimePath = `./${relativeRuntimePath}`;
   }
-  return `export { default } from ${JSON.stringify(relativeRuntimePath)};\n`;
+  return [
+    `import { defineHook } from "eve/hooks";`,
+    ``,
+    `// Prefer the observer runtime the Eveland Worker delivers into the`,
+    `// observability mount, so captured telemetry always matches the running`,
+    `// platform; fall back to the bundle baked into this release when the Agent`,
+    `// runs outside an Eveland deployment.`,
+    `let runtime;`,
+    `try {`,
+    `  runtime = await import(${JSON.stringify(`file://${PLATFORM_OBSERVER_RUNTIME_PATH}`)});`,
+    `} catch {`,
+    `  runtime = await import(${JSON.stringify(relativeRuntimePath)});`,
+    `}`,
+    ``,
+    `export default defineHook(runtime.default);`,
+    ``,
+  ].join("\n");
 }
 
 async function discoverSubagentRoots(

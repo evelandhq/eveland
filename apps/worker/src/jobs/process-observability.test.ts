@@ -8,6 +8,7 @@ import { resolveAgentObservabilityDirs } from "../runtime/observability/policy.j
 import {
   createDeploymentObservabilityReconciler,
   prepareDeploymentObservability,
+  warnStaleObserverRelease,
 } from "./process-observability.js";
 
 const temporaryDirectories: string[] = [];
@@ -89,6 +90,103 @@ describe("Deployment observability policy", () => {
     ).toEqual(prepared.policy);
     expect(JSON.stringify(prepared.policy)).not.toContain(
       "externalDestinations",
+    );
+  });
+
+  test("delivers the current observer runtime bundle next to the policy", async () => {
+    const store = createTestStore();
+    await store.createProject({
+      name: "Runtime Delivery Agent",
+      importKind: "zip",
+    });
+    const dataDir = path.join(
+      os.tmpdir(),
+      `eveland-runtime-delivery-${Date.now()}`,
+    );
+    temporaryDirectories.push(dataDir);
+
+    const prepared = await prepareDeploymentObservability({
+      store,
+      env: { EVELAND_DATA_DIR: dataDir },
+      projectId: "proj_1",
+      releaseId: "rel_1",
+      deploymentId: "dep_1",
+      runtimeKind: "docker",
+      nodeEnv: "production",
+    });
+
+    const runtime = await readFile(
+      path.join(prepared.workerDir, "runtime.mjs"),
+      "utf8",
+    );
+    // The mount-delivered bundle must be self-contained: the Agent cannot
+    // resolve platform packages from inside the observability mount.
+    expect(runtime).toContain("OTLPTraceExporter");
+    expect(runtime).not.toContain('from "eve/hooks"');
+    expect(runtime).not.toContain('from "@eveland/');
+  });
+
+  test("flags a release whose baked observer predates the delivery contract", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Stale Observer Agent",
+      importKind: "zip",
+    });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/stale-observer-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // No observerContract: mirrors every release built before the column existed.
+    const legacyDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:stale-observer",
+      containerName: "fixture-stale-observer",
+      internalPort: 3000,
+      hostPort: 41996,
+      runtimeKind: "docker",
+    });
+    const legacyRelease = await store.getRelease(legacyDeployment.releaseId);
+
+    await warnStaleObserverRelease(store, {
+      projectId: project.id,
+      deploymentId: legacyDeployment.id,
+      release: legacyRelease!,
+    });
+
+    const runtimeLogs = await store.listLogs(project.id, "runtime");
+    expect(runtimeLogs).toHaveLength(1);
+    expect(runtimeLogs[0]!.line).toContain(legacyRelease!.id);
+    expect(runtimeLogs[0]!.line).toContain("Rebuild the release");
+
+    const currentDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:current-observer",
+      observerContract: 2,
+      containerName: "fixture-current-observer",
+      internalPort: 3000,
+      hostPort: 41997,
+      runtimeKind: "docker",
+    });
+    const currentRelease = await store.getRelease(currentDeployment.releaseId);
+    expect(currentRelease!.observerContract).toBe(2);
+
+    await warnStaleObserverRelease(store, {
+      projectId: project.id,
+      deploymentId: currentDeployment.id,
+      release: currentRelease!,
+    });
+
+    await expect(store.listLogs(project.id, "runtime")).resolves.toHaveLength(
+      1,
     );
   });
 

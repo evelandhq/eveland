@@ -197,6 +197,10 @@ export type ReleaseRecord = {
   projectId: string;
   sourceRevisionId: string;
   imageTag: string;
+  // Observer delivery contract embedded at build time; null for releases
+  // built before the contract was recorded (their baked observer goes stale
+  // as the platform moves and needs a rebuild to refresh).
+  observerContract: number | null;
   createdAt: string;
 };
 

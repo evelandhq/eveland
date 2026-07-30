@@ -632,6 +632,8 @@ export const releases = pgTable("releases", {
   projectId: text("project_id").notNull().references(() => projects.id),
   sourceRevisionId: text("source_revision_id").notNull().references(() => sourceRevisions.id),
   imageTag: text("image_tag").notNull(),
+  // Null marks releases built before the observer delivery contract existed.
+  observerContract: integer("observer_contract"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
