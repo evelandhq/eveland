@@ -210,17 +210,37 @@ describe("web application shell", () => {
     expect(overview).not.toContain("<DeploymentTrafficActions")
   })
 
-  test("makes promoted Git sync primary and preview sync secondary", () => {
+  test("composes source and destination choices in one deployment dialog", () => {
     const actions = source("../components/deployment-actions.tsx")
+    const deploymentsPage = source("./projects/[projectId]/deployments/page.tsx")
 
+    expect(actions).toContain("Create deployment")
+    expect(actions).toContain("<Dialog")
+    expect(actions).toContain("<FieldSet")
+    expect(actions).toContain("<ToggleGroup")
+    expect(actions).toContain("Current revision")
+    expect(actions).toContain("Sync latest from Git first")
+    expect(actions).toContain("Keep as preview")
+    expect(actions).toContain("Promote to production")
+    expect(actions).toContain("Build & deploy")
+    expect(actions).toContain("Build, deploy & promote")
     expect(actions).toContain("Sync, deploy & promote")
     expect(actions).toContain("Sync & create preview")
-    expect(actions).toContain('run("sync-promote")')
-    expect(actions).toContain('run("sync-preview")')
-    expect(actions).toContain('promote: deploy && action === "sync-promote"')
-    expect(actions).toMatch(
-      /variant="outline"[\s\S]*Sync & create preview/,
-    )
+    expect(actions.match(/Create deployment/g)).toHaveLength(1)
+    expect(actions).toContain("max-h-[calc(100svh-2rem)] overflow-y-auto")
+    expect(deploymentsPage).toContain("getSourceRevision(projectId)")
+    expect(deploymentsPage).toContain("sourceRevisionId={sourceRevision?.id ?? null}")
+    expect(deploymentsPage).toContain("sourceCommitSha={sourceRevision?.commitSha ?? null}")
+    expect(deploymentsPage).toContain("sourceRecordedAt={sourceRevision?.createdAt ?? null}")
+    expect(deploymentsPage).not.toContain("sourceRevision={sourceRevision}")
+  })
+
+  test("defaults new deployments to the current revision and production", () => {
+    const actions = source("../components/deployment-actions.tsx")
+
+    expect(actions).toContain('canDeploy ? "current" : "sync"')
+    expect(actions).toContain('useState<DeploymentDestination>("production")')
+    expect(actions).toContain('setDestination("production")')
   })
 
   test("provides populated global deployment and usage pages plus project usage", () => {

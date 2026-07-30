@@ -454,8 +454,15 @@ export function resetPlaygroundOnPageLeave(input: {
   return true;
 }
 
-export async function enqueueBuildDeploy(projectId: string): Promise<Job> {
-  const data = await clientRequest<{ job: Job }>(`/projects/${projectId}/build-deploy`, { method: "POST" });
+export async function enqueueBuildDeploy(
+  projectId: string,
+  options: { promote?: boolean } = {},
+): Promise<Job> {
+  const data = await clientRequest<{ job: Job }>(`/projects/${projectId}/build-deploy`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ promote: options.promote ?? false }),
+  });
   return data.job;
 }
 

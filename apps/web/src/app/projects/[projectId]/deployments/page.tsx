@@ -10,6 +10,7 @@ import {
   getEveVersion,
   getProject,
   getProjectJobs,
+  getSourceRevision,
 } from "@/lib/server-api"
 
 export const dynamic = "force-dynamic"
@@ -23,12 +24,13 @@ export default async function ProjectDeploymentsPage({
   params: Promise<{ projectId: string }>
 }) {
   const { projectId } = await params
-  const [project, jobs, endpoints, eveVersion, overview] = await Promise.all([
+  const [project, jobs, endpoints, eveVersion, overview, sourceRevision] = await Promise.all([
     getProject(projectId),
     getProjectJobs(projectId),
     getAgentEndpoints(projectId),
     getEveVersion(projectId),
     getDeploymentOverview(projectId),
+    getSourceRevision(projectId),
   ])
   const latestImportJob =
     jobs.find((job) => job.type === "import_source") ?? null
@@ -46,10 +48,12 @@ export default async function ProjectDeploymentsPage({
         </div>
         <DeploymentActions
           projectId={projectId}
-          importKind={project?.importKind === "git" ? "git" : "zip"}
           canSync={project?.importKind === "git" && Boolean(project?.gitUrl)}
           canDeploy={Boolean(project?.sourceRevisionId)}
           importJob={latestImportJob}
+          sourceRevisionId={sourceRevision?.id ?? null}
+          sourceCommitSha={sourceRevision?.commitSha ?? null}
+          sourceRecordedAt={sourceRevision?.createdAt ?? null}
         />
       </header>
 

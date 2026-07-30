@@ -88,6 +88,55 @@ describe("api app", () => {
     });
   });
 
+  test("builds the current source and promotes the exact new deployment", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Current Source Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/current.git",
+    });
+    const app = createApp(store);
+
+    const response = await app.request(
+      `/projects/${project.id}/build-deploy`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ promote: true }),
+      },
+    );
+
+    expect(response.status).toBe(202);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      job: expect.objectContaining({ type: "build_deploy" }),
+    });
+    expect(body.job.payload).toEqual({ promoteAfterDeploy: true });
+  });
+
+  test("rejects invalid current-source deployment options", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Invalid Deploy Agent",
+      importKind: "zip",
+      sourcePath: "/tmp/invalid-deploy",
+    });
+
+    const response = await createApp(store).request(
+      `/projects/${project.id}/build-deploy`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ promote: "yes" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid deployment options",
+    });
+  });
+
   test("rejects promotion when the synced source is not being deployed", async () => {
     const store = createTestStore();
     const project = await store.createProject({
