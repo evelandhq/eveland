@@ -32,6 +32,12 @@ export async function reapIdleDeployments(
       continue;
     }
     const runtime = (input.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+    // claimIdleRuntimeInstances handed this instance over in "draining"; a
+    // restart_deployment job retires live instances of its Deployment as it goes,
+    // so a different status now means the restart owns this process. Stopping it
+    // would kill a freshly restarted Agent and report the Deployment stopped.
+    const claimed = await store.getRuntimeInstance(instance.id);
+    if (claimed?.status !== "draining") continue;
     try {
       await runtime.stopProcess(deployment.containerName);
       await store.updateRuntimeInstance(instance.id, { status: "stopped", error: null }, now);

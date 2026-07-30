@@ -423,6 +423,65 @@ describe("ensureDeploymentActive", () => {
     );
   });
 
+  test("leaves the Deployment status alone when a restart retires the RuntimeInstance during inspection", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Restarted Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/restarted-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:restarted",
+      containerName: "fixture-restarted",
+      internalPort: 3000,
+      hostPort: 41997,
+      runtimeKind: "docker",
+    });
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_restarted",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: deployment.hostPort,
+    });
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      // A restart_deployment job retires the live instances of its Deployment
+      // while this inspection is in flight, then starts a healthy process again.
+      inspectProcess: vi.fn(async () => {
+        await store.updateRuntimeInstance(claim.runtimeInstance.id, {
+          status: "stopped",
+          endpointHost: null,
+          endpointPort: null,
+        });
+        return "missing" as const;
+      }),
+    } as unknown as RuntimeAdapter;
+
+    await expect(reconcileRuntimeInstances(store, {
+      limit: 10,
+      runtimeForKind: () => runtime,
+    })).resolves.toBe(0);
+
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "running" });
+  });
+
   test("fails an active scheduled execution when its RuntimeInstance disappears", async () => {
     const store = createTestStore();
     const project = await store.createProject({

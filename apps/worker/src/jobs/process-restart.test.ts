@@ -116,6 +116,251 @@ describe("processNextJob", () => {
     ]);
   });
 
+  test("restores the Deployment status when runtime reconciliation races with a successful restart", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Reconciled Restart Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_reconciled_restart",
+      deploymentId: "dep_reconciled_restart",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_reconciled_restart",
+      containerName: "eveland-reconciled-restart",
+      internalPort: 3000,
+      hostPort: 41054,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment", {
+      deploymentId: deployment.id,
+    });
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            await store.updateDeploymentStatus(deployment.id, "failed");
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {},
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({
+      status: "running",
+    });
+  });
+
+  test("keeps a draining Deployment draining across a fanned-out restart", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Draining Restart Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_draining_restart",
+      deploymentId: "dep_draining_restart",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_draining_restart",
+      containerName: "eveland-draining-restart",
+      internalPort: 3000,
+      hostPort: 41055,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "draining");
+    await store.enqueueJob(project.id, "restart_deployment", {
+      deploymentId: deployment.id,
+      reason: "shared_agent_environment_changed",
+    });
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {},
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({
+      status: "draining",
+    });
+    await expect(store.listLogs(project.id, "deploy")).resolves.toEqual([
+      expect.objectContaining({ line: "Restart requested." }),
+      expect.objectContaining({
+        line: `Deployment running on 127.0.0.1:${deployment.hostPort}.`,
+      }),
+    ]);
+  });
+
+  test("skips a restart of an archived deployment instead of resurrecting its process", async () => {
+    const runtimeCalls: string[] = [];
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Archived Restart Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_archived_restart",
+      deploymentId: "dep_archived_restart",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_archived_restart",
+      containerName: "eveland-archived-restart",
+      internalPort: 3000,
+      hostPort: 41056,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "archived");
+    await store.enqueueJob(project.id, "restart_deployment", {
+      deploymentId: deployment.id,
+      reason: "secret_changed",
+    });
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            runtimeCalls.push("startProcess");
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {
+            runtimeCalls.push("stopProcess");
+          },
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(runtimeCalls).toEqual([]);
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({
+      status: "archived",
+    });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      deploymentStatus: "archived",
+    });
+    await expect(store.listLogs(project.id, "deploy")).resolves.toEqual([
+      expect.objectContaining({ line: "Restart requested." }),
+      expect.objectContaining({
+        line: `Restart skipped: deployment ${deployment.deploymentKey} is archived.`,
+      }),
+    ]);
+  });
+
+  test("marks the Deployment failed when a restart cannot bring the process back", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Failed Restart Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_failed_restart",
+      deploymentId: "dep_failed_restart",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_failed_restart",
+      containerName: "eveland-failed-restart",
+      internalPort: 3000,
+      hostPort: 41057,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment", {
+      deploymentId: deployment.id,
+    });
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            throw new Error("image is gone");
+          },
+          async stopProcess() {},
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({
+      status: "failed",
+    });
+  });
+
   test("restarts the deployment targeted by the job instead of the current project deployment", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createTestStore();

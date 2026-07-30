@@ -224,6 +224,22 @@ export async function recoverStartingRuntimeInstances(
   return recovered;
 }
 
+/**
+ * Re-reads a RuntimeInstance the caller inspected earlier and reports whether it
+ * is still the live one. Inspection is slow (a Docker or systemd round trip), and
+ * a restart_deployment job retires its live instances between its stop and its
+ * health check -- so an instance that is no longer "ready" now belongs to whoever
+ * retired it, and writing its Deployment status from a pre-inspection snapshot
+ * would overwrite a healthy restart with a verdict about the process it replaced.
+ */
+async function stillReadyRuntimeInstance(
+  store: Store,
+  runtimeInstanceId: string,
+): Promise<boolean> {
+  const current = await store.getRuntimeInstance(runtimeInstanceId);
+  return current?.status === "ready";
+}
+
 export async function reconcileRuntimeInstances(
   store: Store,
   input: {
@@ -276,6 +292,7 @@ export async function reconcileRuntimeInstances(
         port: instance.endpointPort ?? deployment.hostPort,
       });
       if (ownership.status !== "foreign") continue;
+      if (!(await stillReadyRuntimeInstance(store, instance.id))) continue;
       const foreignReason =
         `RuntimeInstance ${instance.id} port ${instance.endpointPort ?? deployment.hostPort} is held by ` +
         `${ownership.holder}; its traffic was being served by a foreign process.`;
@@ -289,6 +306,7 @@ export async function reconcileRuntimeInstances(
       reconciled += 1;
       continue;
     }
+    if (!(await stillReadyRuntimeInstance(store, instance.id))) continue;
     const failed = status === "failed";
     await store.updateRuntimeInstance(instance.id, {
       status: failed ? "failed" : "stopped",
