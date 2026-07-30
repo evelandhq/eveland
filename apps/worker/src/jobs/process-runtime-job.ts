@@ -232,9 +232,14 @@ export async function processRuntimeJob(
           );
         }
         // processNextJob's generic failure path only writes project state, so the
-        // Deployment row is this job's to settle. Swallowed like the cleanup
-        // above: a store failure here must never mask the restart error.
-        await settleRestartedDeploymentStatus(store, deployment.id, "failed").catch(
+        // Deployment row is this job's to settle. "stopped", not "failed": the
+        // process is down either way, but the activation gate refuses to wake a
+        // "failed" Deployment and a fanned-out restart only targets
+        // running/draining rows, so "failed" would strand this Deployment with no
+        // way back -- the failure itself is recorded in project state and the
+        // deploy log. Swallowed like the cleanup above: a store failure here must
+        // never mask the restart error.
+        await settleDeploymentStatus(store, deployment.id, "stopped").catch(
           () => undefined,
         );
         throw error;
@@ -245,7 +250,7 @@ export async function processRuntimeJob(
       // existing deployment row, so a store failure here must not stop a
       // healthy, known process the way build_deploy must reap its own
       // untracked new one.
-      await settleRestartedDeploymentStatus(store, deployment.id, "running");
+      await settleDeploymentStatus(store, deployment.id, "running");
       await store.updateProjectState(job.projectId, {
         deploymentStatus: "running",
       });
@@ -512,7 +517,11 @@ export async function processRuntimeJob(
           ),
         },
       );
-      await store.updateDeploymentStatus(deployment.id, "running");
+      // Guarded like the restart above: the activation gate only screens the
+      // Deployment when the lease is acquired, so an operator can drain or
+      // archive it while this job is still starting the process -- writing
+      // "running" back would silently cancel that decision.
+      await settleDeploymentStatus(store, deployment.id, "running");
       await store.appendLog({
         projectId: job.projectId,
         deploymentId: deployment.id,
@@ -776,32 +785,32 @@ export async function processRuntimeJob(
 }
 
 /**
- * The only statuses a restart may rewrite. The runtime reconciler and the idle
- * reaper both write this column while a restart sits between its stop and its
- * health check, so the restart has to overwrite their verdict -- otherwise a
- * healthy process keeps a "failed"/"stopped" row that blocks promotion, drops
- * the Deployment out of every secret roll-out, and gets the unit reaped as an
- * orphan. Every other status is somebody else's: `draining` and `archived` are
- * control-plane decisions about whether this Deployment may serve at all, and a
- * restart -- which secret and identity changes fan out automatically -- must not
- * quietly cancel one.
+ * The only statuses a runtime job may rewrite. The runtime reconciler and the
+ * idle reaper both write this column while a job sits between its stop and its
+ * health check, so a job that owns the process has to overwrite their verdict --
+ * otherwise a healthy process keeps a "failed"/"stopped" row that blocks
+ * promotion, drops the Deployment out of every secret roll-out, and gets the
+ * unit reaped as an orphan. Every other status is somebody else's: `draining`
+ * and `archived` are control-plane decisions about whether this Deployment may
+ * serve at all, and neither a restart -- which secret and identity changes fan
+ * out automatically -- nor a wake may quietly cancel one.
  */
-const RESTART_OWNED_DEPLOYMENT_STATUSES: DeploymentStatus[] = [
+const RUNTIME_JOB_OWNED_DEPLOYMENT_STATUSES: DeploymentStatus[] = [
   "running",
   "stopped",
   "failed",
 ];
 
-/** Settles the outcome of a restart on the Deployment row, or abstains. */
-async function settleRestartedDeploymentStatus(
+/** Settles a runtime job's outcome on the Deployment row, or abstains. */
+async function settleDeploymentStatus(
   store: Store,
   deploymentId: string,
-  status: Extract<DeploymentStatus, "running" | "failed">,
+  status: Extract<DeploymentStatus, "running" | "stopped">,
 ): Promise<void> {
   await store.transitionDeploymentStatus({
     deploymentId,
     to: status,
-    from: RESTART_OWNED_DEPLOYMENT_STATUSES,
+    from: RUNTIME_JOB_OWNED_DEPLOYMENT_STATUSES,
   });
 }
 

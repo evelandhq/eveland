@@ -306,7 +306,7 @@ describe("processNextJob", () => {
     ]);
   });
 
-  test("marks the Deployment failed when a restart cannot bring the process back", async () => {
+  test("marks the Deployment stopped when a restart cannot bring the process back", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
@@ -356,8 +356,15 @@ describe("processNextJob", () => {
       }),
     ).resolves.toBe(true);
 
+    // "stopped", not "failed": a failed Deployment is refused by the activation
+    // gate and skipped by every restart fan-out, which would leave this one with
+    // no way back. The failure is recorded on the project instead.
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({
+      status: "stopped",
+    });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "failed",
+      deploymentStatus: "failed",
     });
   });
 
