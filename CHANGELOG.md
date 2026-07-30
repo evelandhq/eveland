@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.18.1](https://github.com/evelandhq/eveland/compare/v0.18.0...v0.18.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* make a restart own its Deployment status ([#210](https://github.com/evelandhq/eveland/issues/210)) ([0e6b874](https://github.com/evelandhq/eveland/commit/0e6b874ab5a009b7086d5a4bd6a336dc957b3dbf))
+* stop marking successful tool spans as errors ([6dd8ef8](https://github.com/evelandhq/eveland/commit/6dd8ef8862ac1218ca685f51ccbcaf6794ff1fce))
+
 ## [0.18.0](https://github.com/evelandhq/eveland/compare/v0.17.0...v0.18.0) (2026-07-30)
 
 
