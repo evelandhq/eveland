@@ -12,12 +12,46 @@ import {
   type Store,
 } from "@eveland/db";
 import {
+  bundleObserverRuntime,
+  OBSERVER_RUNTIME_CONTRACT,
+} from "@eveland/agent-observer";
+import type { ReleaseRecord } from "@eveland/core/contracts";
+import {
   resolveAgentObservabilityDirs,
+  writeAgentObserverRuntime,
   writeAgentRuntimePolicy,
 } from "../runtime/observability/policy.js";
 import type { RuntimeAdapter } from "../runtime/types.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
+
+/**
+ * Surfaces (in the project's runtime log) a release whose baked-in observer
+ * predates the delivery contract: its hook shim never loads the
+ * Worker-delivered runtime, so its telemetry pipeline is whatever the
+ * platform shipped when the release was built -- likely a no-op by now.
+ * Called at activation, where a stale release is about to serve sessions.
+ */
+export async function warnStaleObserverRelease(
+  store: Store,
+  input: {
+    projectId: string;
+    deploymentId: string;
+    release: ReleaseRecord;
+  },
+): Promise<void> {
+  const contract = input.release.observerContract ?? 0;
+  if (contract >= OBSERVER_RUNTIME_CONTRACT) return;
+  await store.appendLog({
+    projectId: input.projectId,
+    deploymentId: input.deploymentId,
+    type: "runtime",
+    line:
+      `Release ${input.release.id} embeds an Eveland observer older than this platform ` +
+      `(contract ${contract || "unrecorded"} < ${OBSERVER_RUNTIME_CONTRACT}); session transcripts and usage ` +
+      `may not be captured. Rebuild the release (redeploy the project) to refresh it.`,
+  });
+}
 
 export async function prepareDeploymentObservability(input: {
   store: Store;
@@ -69,6 +103,12 @@ export async function prepareDeploymentObservability(input: {
   await writeAgentRuntimePolicy({
     directory: directories.workerDir,
     policy,
+  });
+  // Delivered on every prepare so release-baked shims always load an observer
+  // that matches this Worker, not the platform version the release was built on.
+  await writeAgentObserverRuntime({
+    directory: directories.workerDir,
+    code: await bundleObserverRuntime(),
   });
   return { policy, ...directories };
 }

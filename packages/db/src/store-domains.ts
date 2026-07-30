@@ -464,6 +464,10 @@ export interface DeploymentStore {
     projectId: string;
     sourceRevisionId: string;
     imageTag: string;
+    // Omitted records the release as legacy (null): its baked observer
+    // predates the delivery contract. Real builds always pass the current
+    // contract via ReleaseBuildResult.
+    observerContract?: number;
     containerName: string;
     internalPort: number;
     hostPort: number;

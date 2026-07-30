@@ -73,6 +73,7 @@ export function createPostgresDeploymentRoutingStore({
           projectId: input.projectId,
           sourceRevisionId: input.sourceRevisionId,
           imageTag: input.imageTag,
+          observerContract: input.observerContract ?? null,
         })
         .returning();
 

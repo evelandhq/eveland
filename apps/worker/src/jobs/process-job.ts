@@ -1,3 +1,4 @@
+import { OBSERVER_RUNTIME_CONTRACT } from "@eveland/agent-observer";
 import type { Job } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
 import {
@@ -310,6 +311,9 @@ export async function processJob(
           projectId: job.projectId,
           sourceRevisionId: revision.id,
           imageTag: build.releaseRef,
+          // The delivery contract is a property of this Worker's agent-observer,
+          // embedded by prepareReleaseTree inside every adapter build.
+          observerContract: OBSERVER_RUNTIME_CONTRACT,
           containerName: processName,
           internalPort: started.internalPort,
           hostPort,

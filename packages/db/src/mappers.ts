@@ -693,6 +693,7 @@ export function releaseRowToRelease(row: {
   projectId: string;
   sourceRevisionId: string;
   imageTag: string;
+  observerContract: number | null;
   createdAt: Date;
 }): ReleaseRecord {
   return {
@@ -700,6 +701,7 @@ export function releaseRowToRelease(row: {
     projectId: row.projectId,
     sourceRevisionId: row.sourceRevisionId,
     imageTag: row.imageTag,
+    observerContract: row.observerContract,
     createdAt: timestampToIso(row.createdAt),
   };
 }

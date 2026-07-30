@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
-import { defineHook } from "eve/hooks";
 import { createPolicyManagedAgentTelemetry } from "./policy-runtime.js";
+import type {
+  AgentTelemetryEvent,
+  AgentTelemetryHookContext,
+} from "./runtime.js";
 
 let lastWarningAt = 0;
 
@@ -11,9 +14,22 @@ const telemetry = createPolicyManagedAgentTelemetry({
   warn: warnRateLimited,
 });
 
-export default defineHook({
+/**
+ * A plain Eve hook configuration, deliberately NOT wrapped in `defineHook`:
+ * this module is bundled fully self-contained so the Worker can deliver the
+ * current build into the observability mount of every deployment, where the
+ * Agent's `eve/hooks` is not resolvable. The shim baked into each release
+ * imports `defineHook` from the Agent's own Eve installation and wraps this
+ * default export. Every shim ever shipped consumes this shape, so the default
+ * export must remain a plain hook configuration; an incompatible change needs
+ * a new mounted file name, not a new export shape.
+ */
+export default {
   events: {
-    async "*"(event, context) {
+    async "*"(
+      event: AgentTelemetryEvent,
+      context: AgentTelemetryHookContext,
+    ): Promise<void> {
       await telemetry.capture(event, context);
       if (
         event.type === "session.completed" ||
@@ -23,7 +39,7 @@ export default defineHook({
       }
     },
   },
-});
+};
 
 function warnRateLimited(error: unknown): void {
   const now = Date.now();

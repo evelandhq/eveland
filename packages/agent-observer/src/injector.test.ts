@@ -1,8 +1,11 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
-import { injectObserverHooks } from "./injector.js";
+import { bundleObserverRuntime, injectObserverHooks } from "./injector.js";
 
+const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, "..");
 const temporaryDirectories: string[] = [];
 
@@ -27,9 +30,16 @@ describe("injectObserverHooks", () => {
       ".eveland/observability/runtime.mjs",
     );
     expect(result.coverageGaps.map((gap) => path.basename(gap.path))).toEqual(["file-child.ts", "remote-child.ts"]);
-    await expect(
-      readFile(path.join(releaseDir, result.injectedFiles[0]!), "utf8"),
-    ).resolves.toContain("../../.eveland/observability/runtime.mjs");
+    expect(result.observerContract).toBe(2);
+    const rootShim = await readFile(
+      path.join(releaseDir, result.injectedFiles[0]!),
+      "utf8",
+    );
+    expect(rootShim).toContain(
+      "file:///run/eveland/observability/runtime.mjs",
+    );
+    expect(rootShim).toContain("../../.eveland/observability/runtime.mjs");
+    expect(rootShim).toContain('import { defineHook } from "eve/hooks"');
     await expect(
       readFile(path.join(releaseDir, result.injectedFiles[1]!), "utf8"),
     ).resolves.toContain(
@@ -75,9 +85,41 @@ describe("injectObserverHooks", () => {
     expect(runtime).toContain(
       "/run/eveland/observability/agent-policy.json",
     );
-    expect(runtime).toContain('from "eve/hooks"');
+    // The bundle must load from the observability mount, where the Agent's
+    // node_modules is not resolvable: nothing but node builtins may survive.
+    expect(runtime).not.toContain('from "eve/hooks"');
     expect(runtime).not.toContain("EVELAND_TELEMETRY_ENABLED");
     expect(runtime).not.toContain('from "@eveland/');
+  });
+
+  test("shim falls back to the baked runtime when no platform runtime is mounted", async () => {
+    const releaseDir = await createRelease();
+    const result = await injectObserverHooks({ releaseDir });
+
+    // Import the shim in a plain Node process, as Eve would -- vitest's module
+    // pipeline would paper over bundling defects like an unshimmed CJS
+    // require. /run/eveland is absent here, so this exercises the
+    // baked-bundle fallback end to end.
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `const shim = await import(${JSON.stringify(
+        path.join(releaseDir, result.injectedFiles[0]!),
+      )}); console.log(typeof shim.default?.events?.["*"]);`,
+    ]);
+
+    expect(stdout.trim()).toBe("function");
+  });
+
+  test("bakes the identical bundle the Worker delivers into deployments", async () => {
+    const releaseDir = await createRelease();
+    const result = await injectObserverHooks({ releaseDir });
+    const baked = await readFile(
+      path.join(releaseDir, result.runtimeFile!),
+      "utf8",
+    );
+
+    await expect(bundleObserverRuntime()).resolves.toBe(baked);
   });
 });
 
