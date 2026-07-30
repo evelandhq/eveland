@@ -245,6 +245,68 @@ describe("processNextJob", () => {
     await tracerProvider.shutdown();
   });
 
+  // The activation gate screens the Deployment status when the lease is
+  // acquired, but the job that starts the process runs later -- an operator can
+  // drain or archive it in between, and this job must not undo that.
+  for (const retired of [
+    { status: "draining", hostPort: 41984 },
+    { status: "archived", hostPort: 41985 },
+  ] as const) {
+    test(`leaves a Deployment ${retired.status} mid-activation alone instead of writing it back to running`, async () => {
+      const store = createTestStore();
+      const sourcePath = await createFixtureEveProject();
+      const project = await store.createProject({ name: `Retired ${retired.status} Wake`, importKind: "zip" });
+      const importJob = await store.claimNextJob("fixture-import");
+      await store.completeJob(importJob!.id);
+      const revision = await store.recordSourceRevision({
+        projectId: project.id,
+        kind: "zip",
+        sourcePath,
+        summary: {},
+        envVars: [],
+        files: [],
+        schedules: [],
+      });
+      const deployment = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `fixture:retired-${retired.status}`,
+        containerName: `fixture-retired-${retired.status}`,
+        internalPort: 3000,
+        hostPort: retired.hostPort,
+        runtimeKind: "docker",
+      });
+      await store.updateDeploymentStatus(deployment.id, "stopped");
+      const claim = await store.acquireActivationLease({
+        deploymentId: deployment.id,
+        kind: "public_request",
+        ownerId: `req_retired_${retired.status}`,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await store.enqueueJob(project.id, "ensure_deployment_running", {
+        deploymentId: deployment.id,
+        runtimeInstanceId: claim.runtimeInstance.id,
+      });
+      const runtime: RuntimeAdapter = {
+        name: "docker",
+        async buildRelease() { throw new Error("not used"); },
+        async startProcess() { return { internalPort: 3000, log: "started" }; },
+        async ensureProcess() {
+          await store.updateDeploymentStatus(deployment.id, retired.status);
+          return { internalPort: 3000, log: "started" };
+        },
+        async stopProcess() {},
+      };
+
+      await expect(processNextJob(store, "wake-worker", {
+        runtime,
+        waitForDeployment: async () => {},
+      })).resolves.toBe(true);
+
+      await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: retired.status });
+    });
+  }
+
   test("starts a prebuilt Release from persisted SourceRevision files when its source directory is gone", async () => {
     const store = createTestStore();
     const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-persisted-activation-source-"));

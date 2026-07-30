@@ -83,6 +83,40 @@ describe("routing repository", () => {
     await expect(store.listReservedDeploymentHostPorts()).resolves.not.toContain(41091);
   });
 
+  test("transitions a Deployment status only from the statuses the caller expects", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Transition Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/transition", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "transition", containerName: "transition", internalPort: 3000,
+      hostPort: 41092, runtimeKind: "docker",
+    });
+    const owned: DeploymentRecord["status"][] = ["running", "stopped", "failed"];
+
+    await store.updateDeploymentStatus(deployment.id, "failed");
+    await expect(store.transitionDeploymentStatus({
+      deploymentId: deployment.id, to: "running", from: owned,
+    })).resolves.toMatchObject({ status: "running" });
+
+    await store.updateDeploymentStatus(deployment.id, "draining");
+    await expect(store.transitionDeploymentStatus({
+      deploymentId: deployment.id, to: "running", from: owned,
+    })).resolves.toBeNull();
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "draining" });
+
+    await store.updateDeploymentStatus(deployment.id, "archived");
+    await expect(store.transitionDeploymentStatus({
+      deploymentId: deployment.id, to: "failed", from: owned,
+    })).resolves.toBeNull();
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "archived" });
+
+    await expect(store.transitionDeploymentStatus({
+      deploymentId: "dep_missing", to: "running", from: owned,
+    })).resolves.toBeNull();
+  });
+
   test("creates named aliases and reports retention protection from routes and active sessions", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Retention Agent", importKind: "zip" });

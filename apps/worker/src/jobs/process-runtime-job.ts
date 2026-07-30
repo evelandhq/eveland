@@ -1,4 +1,4 @@
-import type { Job } from "@eveland/core/contracts";
+import type { DeploymentStatus, Job } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
 import {
   createScheduleDispatchCredential,
@@ -89,6 +89,24 @@ export async function processRuntimeJob(
           `Deployment ${deployment.id} does not belong to project ${job.projectId}.`,
         );
       }
+      // A queued restart that lost the race to an archive must not resurrect the
+      // process: archive already removed the Release image and build directory,
+      // and the orphan reaper would reap whatever came up anyway. Skipping is not
+      // a failure -- failing here would mark the whole project failed over a
+      // Deployment the control plane already retired.
+      if (deployment.status === "archived") {
+        const production = await store.getCurrentDeployment(job.projectId);
+        await store.updateProjectState(job.projectId, {
+          deploymentStatus: production?.status ?? "not_deployed",
+        });
+        await store.appendLog({
+          projectId: job.projectId,
+          deploymentId: deployment.id,
+          type: "deploy",
+          line: `Restart skipped: deployment ${deployment.deploymentKey} is archived.`,
+        });
+        return;
+      }
       // A deployment always points at a release and a source revision; either
       // being gone is corrupt state, not a recoverable condition -- fail loudly
       // rather than restart with guessed values.
@@ -136,42 +154,46 @@ export async function processRuntimeJob(
       );
 
       await adapter.stopProcess(deployment.containerName);
-      // The restarted process binds deployment.hostPort directly; any live
-      // RuntimeInstance rows (possibly holding a reallocated port reservation)
-      // no longer describe a running process. Retire them with their port
-      // claims so the next activation adopts the actually-bound port instead
-      // of trusting a stale endpoint.
-      for (const instance of await store.listDeploymentRuntimeInstances(deployment.id)) {
-        if (instance.status === "starting" || instance.status === "ready" || instance.status === "draining") {
-          await store.updateRuntimeInstance(instance.id, {
-            status: "stopped",
-            endpointHost: null,
-            endpointPort: null,
-          });
-        }
-      }
-      // Same worker/Docker-host path pairing build_deploy uses.
-      const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
-      await mkdir(sandboxCache.workerDir, { recursive: true });
-      const observability = await prepareDeploymentObservability({
-        store,
-        env: process.env,
-        projectId: project.id,
-        releaseId: release.id,
-        deploymentId: deployment.id,
-        runtimeKind: adapter.name,
-        nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
-      });
-      await warnStaleObserverRelease(store, {
-        projectId: project.id,
-        deploymentId: deployment.id,
-        release,
-      });
       // Tracks whether the restart's own startProcess (above stop notwithstanding)
       // actually came up, so a startProcess failure -- nothing running under this
       // name -- doesn't trigger a pointless (or misleading) extra stop call.
       let restarted = false;
+      // Everything from here on runs with the old process already stopped, so
+      // every exit path owes the Deployment row an outcome: leaving it on
+      // "running" tells the orphan reaper the unit must stay up and keeps
+      // Gateway routing to a port nothing is bound to.
       try {
+        // The restarted process binds deployment.hostPort directly; any live
+        // RuntimeInstance rows (possibly holding a reallocated port reservation)
+        // no longer describe a running process. Retire them with their port
+        // claims so the next activation adopts the actually-bound port instead
+        // of trusting a stale endpoint.
+        for (const instance of await store.listDeploymentRuntimeInstances(deployment.id)) {
+          if (instance.status === "starting" || instance.status === "ready" || instance.status === "draining") {
+            await store.updateRuntimeInstance(instance.id, {
+              status: "stopped",
+              endpointHost: null,
+              endpointPort: null,
+            });
+          }
+        }
+        // Same worker/Docker-host path pairing build_deploy uses.
+        const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
+        await mkdir(sandboxCache.workerDir, { recursive: true });
+        const observability = await prepareDeploymentObservability({
+          store,
+          env: process.env,
+          projectId: project.id,
+          releaseId: release.id,
+          deploymentId: deployment.id,
+          runtimeKind: adapter.name,
+          nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+        });
+        await warnStaleObserverRelease(store, {
+          projectId: project.id,
+          deploymentId: deployment.id,
+          release,
+        });
         await adapter.startProcess({
           processName: deployment.containerName,
           releaseRef: release.imageTag,
@@ -209,6 +231,17 @@ export async function processRuntimeJob(
             secretValues,
           );
         }
+        // processNextJob's generic failure path only writes project state, so the
+        // Deployment row is this job's to settle. "stopped", not "failed": the
+        // process is down either way, but the activation gate refuses to wake a
+        // "failed" Deployment and a fanned-out restart only targets
+        // running/draining rows, so "failed" would strand this Deployment with no
+        // way back -- the failure itself is recorded in project state and the
+        // deploy log. Swallowed like the cleanup above: a store failure here must
+        // never mask the restart error.
+        await settleDeploymentStatus(store, deployment.id, "stopped").catch(
+          () => undefined,
+        );
         throw error;
       }
 
@@ -217,6 +250,7 @@ export async function processRuntimeJob(
       // existing deployment row, so a store failure here must not stop a
       // healthy, known process the way build_deploy must reap its own
       // untracked new one.
+      await settleDeploymentStatus(store, deployment.id, "running");
       await store.updateProjectState(job.projectId, {
         deploymentStatus: "running",
       });
@@ -483,7 +517,11 @@ export async function processRuntimeJob(
           ),
         },
       );
-      await store.updateDeploymentStatus(deployment.id, "running");
+      // Guarded like the restart above: the activation gate only screens the
+      // Deployment when the lease is acquired, so an operator can drain or
+      // archive it while this job is still starting the process -- writing
+      // "running" back would silently cancel that decision.
+      await settleDeploymentStatus(store, deployment.id, "running");
       await store.appendLog({
         projectId: job.projectId,
         deploymentId: deployment.id,
@@ -744,6 +782,36 @@ export async function processRuntimeJob(
     default:
       throw new Error(`Unsupported runtime job type: ${job.type}`);
   }
+}
+
+/**
+ * The only statuses a runtime job may rewrite. The runtime reconciler and the
+ * idle reaper both write this column while a job sits between its stop and its
+ * health check, so a job that owns the process has to overwrite their verdict --
+ * otherwise a healthy process keeps a "failed"/"stopped" row that blocks
+ * promotion, drops the Deployment out of every secret roll-out, and gets the
+ * unit reaped as an orphan. Every other status is somebody else's: `draining`
+ * and `archived` are control-plane decisions about whether this Deployment may
+ * serve at all, and neither a restart -- which secret and identity changes fan
+ * out automatically -- nor a wake may quietly cancel one.
+ */
+const RUNTIME_JOB_OWNED_DEPLOYMENT_STATUSES: DeploymentStatus[] = [
+  "running",
+  "stopped",
+  "failed",
+];
+
+/** Settles a runtime job's outcome on the Deployment row, or abstains. */
+async function settleDeploymentStatus(
+  store: Store,
+  deploymentId: string,
+  status: Extract<DeploymentStatus, "running" | "stopped">,
+): Promise<void> {
+  await store.transitionDeploymentStatus({
+    deploymentId,
+    to: status,
+    from: RUNTIME_JOB_OWNED_DEPLOYMENT_STATUSES,
+  });
 }
 
 function scheduleRunMaxRuntimeMs(options: ProcessJobOptions): number {

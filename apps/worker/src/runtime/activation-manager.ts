@@ -224,6 +224,22 @@ export async function recoverStartingRuntimeInstances(
   return recovered;
 }
 
+/**
+ * Re-reads a RuntimeInstance the caller inspected earlier and reports whether it
+ * is still the live one. Inspection is slow (a Docker or systemd round trip), and
+ * a restart_deployment job retires its live instances between its stop and its
+ * health check -- so an instance that is no longer "ready" now belongs to whoever
+ * retired it, and writing its Deployment status from a pre-inspection snapshot
+ * would overwrite a healthy restart with a verdict about the process it replaced.
+ */
+async function stillReadyRuntimeInstance(
+  store: Store,
+  runtimeInstanceId: string,
+): Promise<boolean> {
+  const current = await store.getRuntimeInstance(runtimeInstanceId);
+  return current?.status === "ready";
+}
+
 export async function reconcileRuntimeInstances(
   store: Store,
   input: {
@@ -276,6 +292,7 @@ export async function reconcileRuntimeInstances(
         port: instance.endpointPort ?? deployment.hostPort,
       });
       if (ownership.status !== "foreign") continue;
+      if (!(await stillReadyRuntimeInstance(store, instance.id))) continue;
       const foreignReason =
         `RuntimeInstance ${instance.id} port ${instance.endpointPort ?? deployment.hostPort} is held by ` +
         `${ownership.holder}; its traffic was being served by a foreign process.`;
@@ -283,18 +300,31 @@ export async function reconcileRuntimeInstances(
         status: "failed",
         error: foreignReason,
       }, now);
-      await store.updateDeploymentStatus(deployment.id, "failed");
+      // Only a live row is a sweeper's to write. archive_deployment leaves its
+      // RuntimeInstance rows in place, so an unguarded write here un-archives a
+      // retired Deployment; `draining` stays writable because a drained process
+      // that dies is still this sweeper's to report.
+      await store.transitionDeploymentStatus({
+        deploymentId: deployment.id,
+        to: "failed",
+        from: ["running", "draining"],
+      });
       await store.failScheduleExecutionsForRuntimeInstance(instance.id, foreignReason, now);
       await store.failRunningSessionsForRuntimeInstance(instance.id, foreignReason, now);
       reconciled += 1;
       continue;
     }
+    if (!(await stillReadyRuntimeInstance(store, instance.id))) continue;
     const failed = status === "failed";
     await store.updateRuntimeInstance(instance.id, {
       status: failed ? "failed" : "stopped",
       error: failed ? "Runtime process inspection reported failure." : null,
     }, now);
-    await store.updateDeploymentStatus(deployment.id, failed ? "failed" : "stopped");
+    await store.transitionDeploymentStatus({
+      deploymentId: deployment.id,
+      to: failed ? "failed" : "stopped",
+      from: ["running", "draining"],
+    });
     const reason = `RuntimeInstance ${instance.id} ${failed ? "failed" : "stopped"} before its active Sessions reached a terminal boundary.`;
     await store.failScheduleExecutionsForRuntimeInstance(
       instance.id,
