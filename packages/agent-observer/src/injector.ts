@@ -66,6 +66,13 @@ export function bundleObserverRuntime(): Promise<string> {
     format: "esm",
     target: "node22",
     legalComments: "none",
+    banner: {
+      // The OTel SDK ships CJS modules that require() node builtins; in an ESM
+      // bundle esbuild routes those through a shim that needs a real require.
+      // Without this, importing the bundle in plain Node throws
+      // "Dynamic require of 'util' is not supported".
+      js: 'import { createRequire as __eveland_createRequire } from "node:module"; const require = __eveland_createRequire(import.meta.url);',
+    },
   }).then((result) => {
     const file = result.outputFiles[0];
     if (!file) throw new Error("Observer runtime bundle produced no output.");

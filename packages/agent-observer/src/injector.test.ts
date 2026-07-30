@@ -1,8 +1,11 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
 import { bundleObserverRuntime, injectObserverHooks } from "./injector.js";
 
+const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, "..");
 const temporaryDirectories: string[] = [];
 
@@ -93,13 +96,19 @@ describe("injectObserverHooks", () => {
     const releaseDir = await createRelease();
     const result = await injectObserverHooks({ releaseDir });
 
-    // Import the shim as Eve would; /run/eveland is absent here, so this
-    // exercises the baked-bundle fallback end to end.
-    const shim = (await import(
-      path.join(releaseDir, result.injectedFiles[0]!)
-    )) as { default: { events: Record<string, unknown> } };
+    // Import the shim in a plain Node process, as Eve would -- vitest's module
+    // pipeline would paper over bundling defects like an unshimmed CJS
+    // require. /run/eveland is absent here, so this exercises the
+    // baked-bundle fallback end to end.
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `const shim = await import(${JSON.stringify(
+        path.join(releaseDir, result.injectedFiles[0]!),
+      )}); console.log(typeof shim.default?.events?.["*"]);`,
+    ]);
 
-    expect(typeof shim.default.events["*"]).toBe("function");
+    expect(stdout.trim()).toBe("function");
   });
 
   test("bakes the identical bundle the Worker delivers into deployments", async () => {
