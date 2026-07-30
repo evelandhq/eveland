@@ -242,6 +242,48 @@ describe("control-plane auth routes", () => {
     expect((await signIn(app, "admin@example.com", "new-admin-password")).response.status).toBe(200);
   });
 
+  test("persists a valid personal display timezone and returns it with the session", async () => {
+    const { app } = await createAuthApp();
+    const { cookie } = await signIn(app);
+
+    const profile = await app.request("/profile", {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Admin",
+        image: null,
+        displayTimezone: "Asia/Shanghai",
+      }),
+    });
+
+    expect(profile.status).toBe(200);
+    await expect(profile.json()).resolves.toEqual({
+      member: expect.objectContaining({ displayTimezone: "Asia/Shanghai" }),
+    });
+    await expect(
+      (await app.request("/auth/session", { headers: { cookie } })).json(),
+    ).resolves.toEqual({
+      member: expect.objectContaining({ displayTimezone: "Asia/Shanghai" }),
+    });
+  });
+
+  test("rejects an invalid personal display timezone", async () => {
+    const { app } = await createAuthApp();
+    const { cookie } = await signIn(app);
+
+    const profile = await app.request("/profile", {
+      method: "PATCH",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Admin",
+        image: null,
+        displayTimezone: "Mars/Olympus_Mons",
+      }),
+    });
+
+    expect(profile.status).toBe(400);
+  });
+
   test("rejects unsupported or oversized profile images", async () => {
     const { app } = await createAuthApp();
     const { cookie } = await signIn(app);

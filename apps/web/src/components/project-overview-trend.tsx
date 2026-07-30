@@ -2,12 +2,14 @@
 
 import type { UsageSeriesPoint } from "@eveland/core/contracts"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import { useDisplayTimezone } from "@/components/time-zone-provider"
 import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
+import { formatDate } from "@/lib/date-time"
 
 const chartConfig = {
   sessions: {
@@ -21,6 +23,8 @@ export function ProjectOverviewTrend({
 }: {
   series: UsageSeriesPoint[]
 }) {
+  const timeZone = useDisplayTimezone()
+
   return (
     <ChartContainer config={chartConfig} className="h-56 w-full">
       <AreaChart
@@ -36,9 +40,10 @@ export function ProjectOverviewTrend({
           tickMargin={10}
           minTickGap={24}
           tickFormatter={(value: string) =>
-            new Date(value).toLocaleDateString([], {
+            formatDate(value, timeZone, {
               month: "short",
               day: "numeric",
+              year: undefined,
             })
           }
         />
@@ -55,7 +60,7 @@ export function ProjectOverviewTrend({
               labelFormatter={(_label, payload) => {
                 const bucketStart = payload[0]?.payload?.bucketStart
                 return bucketStart
-                  ? new Date(bucketStart).toLocaleDateString()
+                  ? formatDate(bucketStart, timeZone)
                   : ""
               }}
             />

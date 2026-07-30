@@ -1,6 +1,7 @@
 "use client"
 
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
+import { useDisplayTimezone } from "@/components/time-zone-provider"
 import {
   type ChartConfig,
   ChartContainer,
@@ -29,6 +30,7 @@ export function CapacityTrend({
   hours: number
   detail?: string
 }) {
+  const timeZone = useDisplayTimezone()
   const chartData = points.map((point) => ({
     ...point,
     timestamp: Date.parse(point.observedAt),
@@ -50,7 +52,7 @@ export function CapacityTrend({
         <div>
           <p className="text-sm font-medium">{label}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Last {hours === 168 ? "7 days" : `${hours} hours`} · UTC
+            Last {hours === 168 ? "7 days" : `${hours} hours`} · {timeZone ?? "Local timezone"}
           </p>
         </div>
         <div className="text-right">
@@ -83,7 +85,7 @@ export function CapacityTrend({
               minTickGap={28}
               interval="preserveStartEnd"
               tickFormatter={(timestamp: number) =>
-                formatCapacityTimelineTick(new Date(timestamp).toISOString(), hours)
+                formatCapacityTimelineTick(new Date(timestamp).toISOString(), hours, timeZone)
               }
             />
             <YAxis
@@ -102,7 +104,7 @@ export function CapacityTrend({
                   indicator="line"
                   labelFormatter={(_label, payload) => {
                     const observedAt = payload[0]?.payload?.observedAt
-                    return observedAt ? formatCapacityTooltipTimestamp(observedAt) : ""
+                    return observedAt ? formatCapacityTooltipTimestamp(observedAt, timeZone) : ""
                   }}
                   formatter={(metricValue) => (
                     <>

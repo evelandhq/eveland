@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { describeScheduleCron } from "@eveland/core/schedules"
+import { DateTime } from "@/components/date-time"
 import { SessionReplay } from "@/components/session-replay"
 import { StatusBadge } from "@/components/status-badge"
 import { getScheduleRun, getSession, getSessionEvents, getSessionNodes, getSessionUsage } from "@/lib/server-api"
@@ -84,7 +85,7 @@ export default async function SessionTimelinePage({
             Run {scheduleRun.status.replaceAll("_", " ")}
           </span>
           <span className="text-muted-foreground">
-            {new Date(scheduleRun.startedAt ?? scheduleRun.dueAt).toLocaleString()}
+            <DateTime value={scheduleRun.startedAt ?? scheduleRun.dueAt} />
           </span>
           {scheduleRun.missedTicks > 0 ? (
             <span className="text-muted-foreground">

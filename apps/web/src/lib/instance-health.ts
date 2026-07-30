@@ -1,3 +1,5 @@
+import { formatDateTime } from "./date-time";
+
 export function formatBytes(value: number | null): string {
   if (value === null) return "Unavailable";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -10,20 +12,24 @@ export function formatBytes(value: number | null): string {
   return `${amount.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-export function formatCapacityTimelineTick(observedAt: string, hours: number): string {
+export function formatCapacityTimelineTick(
+  observedAt: string,
+  hours: number,
+  timeZone?: string,
+): string {
   const date = new Date(observedAt);
   const time = new Intl.DateTimeFormat("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-    timeZone: "UTC",
+    timeZone,
   }).format(date);
   if (hours !== 168) return time;
 
   const day = new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
-    timeZone: "UTC",
+    timeZone,
   }).format(date);
   return `${day} ${time}`;
 }
@@ -50,7 +56,12 @@ export function capacityTimelineScale(
   return { domain: [domainStart, domainEnd], ticks };
 }
 
-export function formatCapacityTooltipTimestamp(observedAt: string): string {
-  const iso = new Date(observedAt).toISOString();
-  return `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+export function formatCapacityTooltipTimestamp(
+  observedAt: string,
+  timeZone?: string,
+): string {
+  return formatDateTime(observedAt, timeZone, {
+    month: "short",
+    day: "numeric",
+  });
 }

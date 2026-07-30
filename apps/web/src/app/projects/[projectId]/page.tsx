@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { ArrowRightIcon, PlayIcon } from "lucide-react"
+import { DateTime } from "@/components/date-time"
 import { EveVersionStatus } from "@/components/eve-version-status"
 import { ProjectOverviewTrend } from "@/components/project-overview-trend"
 import { StatusBadge } from "@/components/status-badge"
@@ -109,7 +110,7 @@ export default async function ProjectOverviewPage({
           label="Next schedule"
           value={
             nextSchedule?.schedule.nextRunAt
-              ? new Date(nextSchedule.schedule.nextRunAt).toLocaleString()
+              ? <DateTime value={nextSchedule.schedule.nextRunAt} />
               : "None scheduled"
           }
           detail={nextSchedule?.schedule.key ?? `${schedules.length} discovered`}
@@ -218,7 +219,7 @@ export default async function ProjectOverviewPage({
                         )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(session.startedAt).toLocaleString()}
+                    <DateTime value={session.startedAt} />
                   </TableCell>
                 </TableRow>
               ))}

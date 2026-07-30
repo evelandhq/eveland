@@ -22,6 +22,8 @@ describe("web application shell", () => {
     const appShell = source("../components/app-shell.tsx")
 
     expect(layout).toContain("<AppShell")
+    expect(layout).toContain("<TimeZoneProvider")
+    expect(layout).toContain("getCurrentMemberOrNull")
     expect(appShell).toContain('pathname === "/new"')
     expect(appShell).toContain("<SidebarProvider")
     expect(appShell).toContain("<AppSidebar")
@@ -482,8 +484,15 @@ describe("web application shell", () => {
   test("shows deployment timestamps in the project traffic list", () => {
     const projectDeployments = source("./projects/[projectId]/deployments/page.tsx")
 
-    expect(projectDeployments).toContain("<time dateTime={deployment.createdAt}>")
-    expect(projectDeployments).toContain("Deployed {new Date(deployment.createdAt).toLocaleString()}")
+    expect(projectDeployments).toContain("<DateTime value={deployment.createdAt}")
+    expect(projectDeployments).not.toContain("deployment.createdAt).toLocaleString()")
+  })
+
+  test("does not preformat project schedule times in the server timezone", () => {
+    const projects = source("./projects/page.tsx")
+
+    expect(projects).not.toContain("formatCompactDateTime")
+    expect(projects).toContain("<CompactDateTime value={project.nextScheduleAt}")
   })
 
   test("marks stable route targets with their production traffic weight", () => {

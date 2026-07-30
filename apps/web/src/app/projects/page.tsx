@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { ProjectDeletionPoller } from '@/components/project-deletion-poller';
 import { CompactDateTime } from '@/components/compact-date-time';
+import { DateTime } from '@/components/date-time';
 import { EveVersionCardStatus } from '@/components/eve-version-status';
 import { StatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +32,6 @@ import {
 } from '@/components/ui/empty';
 import { getProjects } from '@/lib/server-api';
 import { describeProjectSource } from '@/lib/project-source';
-import { formatCompactDateTime } from '@/lib/date-time';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
@@ -49,7 +49,6 @@ const projectSourceIconByKind = {
 
 export default async function ProjectsPage() {
   const projects = await getProjects();
-  const renderedAt = new Date();
 
   return (
     <div className="min-h-[calc(100svh-3rem)] bg-background">
@@ -158,10 +157,7 @@ export default async function ProjectsPage() {
                       <dt className="text-xs text-muted-foreground">Next schedule</dt>
                       <dd className="mt-2 whitespace-nowrap text-xs font-medium">
                         {project.nextScheduleAt ? (
-                          <CompactDateTime
-                            value={project.nextScheduleAt}
-                            fallback={formatCompactDateTime(project.nextScheduleAt, renderedAt)}
-                          />
+                          <CompactDateTime value={project.nextScheduleAt} />
                         ) : 'None'}
                       </dd>
                     </div>
@@ -169,7 +165,7 @@ export default async function ProjectsPage() {
                 </CardContent>
                 <CardFooter className="justify-between border-t">
                   <span className="text-xs text-muted-foreground">
-                    Updated {new Date(project.updatedAt).toLocaleString()}
+                    Updated <DateTime value={project.updatedAt} />
                   </span>
 
                   {!deleting ? (

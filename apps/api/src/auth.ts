@@ -43,6 +43,15 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     session: {
       expiresIn: 30 * 24 * 60 * 60,
     },
+    user: {
+      additionalFields: {
+        displayTimezone: {
+          type: "string",
+          required: false,
+          defaultValue: null,
+        },
+      },
+    },
     advanced: {
       useSecureCookies: new URL(options.baseURL).protocol === "https:",
       cookies: {
@@ -160,6 +169,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
         userId: session.user.id,
         email: session.user.email,
         image: session.user.image ?? null,
+        displayTimezone: session.user.displayTimezone ?? null,
         name: session.user.name,
         role: membership.role,
         joinedAt: membershipRecord.createdAt.toISOString(),
@@ -265,7 +275,10 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     return true;
   }
 
-  async function updateProfile(request: Request, input: { name: string; image: string | null }) {
+  async function updateProfile(
+    request: Request,
+    input: { name: string; image: string | null; displayTimezone?: string },
+  ) {
     const response = await auth.api.updateUser({
       headers: request.headers,
       body: input,

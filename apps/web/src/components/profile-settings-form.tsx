@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { KeyRoundIcon, SaveIcon, Trash2Icon } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -9,16 +9,32 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { changePassword, updateProfile, type CurrentMember } from "@/lib/client-api"
 
 const avatarTypes = new Set(["image/png", "image/jpeg", "image/webp"])
 const maxAvatarBytes = 512 * 1024
 
+function currentBrowserTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+}
+
+function availableTimezones(): string[] {
+  const supportedValuesOf = (
+    Intl as typeof Intl & {
+      supportedValuesOf?: (key: "timeZone") => string[]
+    }
+  ).supportedValuesOf
+  const timezones = supportedValuesOf?.("timeZone") ?? []
+  return Array.from(new Set(["UTC", ...timezones])).sort()
+}
+
 export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
   const router = useRouter()
   const [name, setName] = useState(member.name ?? member.email)
   const [image, setImage] = useState<string | null>(member.image)
+  const [displayTimezone, setDisplayTimezone] = useState(member.displayTimezone ?? "")
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileSaved, setProfileSaved] = useState(false)
   const [profilePending, setProfilePending] = useState(false)
@@ -26,6 +42,11 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
   const [passwordSaved, setPasswordSaved] = useState(false)
   const [passwordPending, setPasswordPending] = useState(false)
   const initials = (name || member.email).slice(0, 2).toUpperCase()
+  const timezoneOptions = useMemo(availableTimezones, [])
+
+  useEffect(() => {
+    if (!member.displayTimezone) setDisplayTimezone(currentBrowserTimezone())
+  }, [member.displayTimezone])
 
   function chooseAvatar(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0]
@@ -54,7 +75,7 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
     setProfileSaved(false)
     setProfileError(null)
     try {
-      const updated = await updateProfile({ name, image })
+      const updated = await updateProfile({ name, image, displayTimezone })
       setProfileSaved(true)
       window.dispatchEvent(new CustomEvent("eveland:profile-updated", { detail: updated }))
       router.refresh()
@@ -127,11 +148,32 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
               <Input id="email" type="email" value={member.email} disabled />
               <FieldDescription>Your sign-in email cannot be changed here.</FieldDescription>
             </Field>
+            <Field>
+              <FieldLabel htmlFor="display-timezone">Display timezone</FieldLabel>
+              <Select
+                value={displayTimezone}
+                onValueChange={(value) => setDisplayTimezone(value ?? "")}
+              >
+                <SelectTrigger id="display-timezone" className="w-full">
+                  <SelectValue placeholder="Detecting your current timezone…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {timezoneOptions.map((timezone) => (
+                    <SelectItem key={timezone} value={timezone}>
+                      {timezone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                All dates and times in Eveland use this timezone. It defaults to your current browser timezone.
+              </FieldDescription>
+            </Field>
           </FieldGroup>
           {profileError ? <Alert variant="destructive"><AlertDescription>{profileError}</AlertDescription></Alert> : null}
           {profileSaved ? <Alert><AlertDescription>Profile saved.</AlertDescription></Alert> : null}
           <div>
-            <Button type="submit" disabled={profilePending || name.trim().length === 0}>
+            <Button type="submit" disabled={profilePending || name.trim().length === 0 || displayTimezone.length === 0}>
               {profilePending ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
               {profilePending ? "Saving…" : "Save profile"}
             </Button>

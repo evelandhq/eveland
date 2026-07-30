@@ -1,18 +1,112 @@
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
+type DateTimeParts = {
+  year: string;
+  month: string;
+  day: string;
+  hour: string;
+  minute: string;
+};
+
+type DateTimeValue = string | number | Date;
+
+function asDate(value: DateTimeValue): Date {
+  return value instanceof Date ? value : new Date(value);
 }
 
-export function formatCompactDateTime(value: string, now: Date): string {
+function formatWithOptions(
+  value: DateTimeValue,
+  timeZone: string | undefined,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  const date = asDate(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-US", {
+    ...options,
+    timeZone,
+  }).format(date);
+}
+
+export function formatDateTime(
+  value: DateTimeValue,
+  timeZone?: string,
+  options: Intl.DateTimeFormatOptions = {},
+): string {
+  return formatWithOptions(value, timeZone, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    ...options,
+  });
+}
+
+export function formatDate(
+  value: DateTimeValue,
+  timeZone?: string,
+  options: Intl.DateTimeFormatOptions = {},
+): string {
+  return formatWithOptions(value, timeZone, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    ...options,
+  });
+}
+
+export function formatTime(
+  value: DateTimeValue,
+  timeZone?: string,
+  options: Intl.DateTimeFormatOptions = {},
+): string {
+  return formatWithOptions(value, timeZone, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    ...options,
+  });
+}
+
+function dateTimeParts(value: Date, timeZone?: string): DateTimeParts {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return {
+    year: part("year"),
+    month: part("month"),
+    day: part("day"),
+    hour: part("hour"),
+    minute: part("minute"),
+  };
+}
+
+export function formatCompactDateTime(
+  value: string,
+  now: Date,
+  timeZone?: string,
+): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const formatted = dateTimeParts(date, timeZone);
+  const current = dateTimeParts(now, timeZone);
+  const time = `${formatted.hour}:${formatted.minute}`;
   const sameDay =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
+    formatted.year === current.year &&
+    formatted.month === current.month &&
+    formatted.day === current.day;
 
   return sameDay
     ? time
-    : `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}`;
+    : `${formatted.month}-${formatted.day} ${time}`;
 }

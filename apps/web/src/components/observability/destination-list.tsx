@@ -1,6 +1,7 @@
 "use client";
 
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -162,7 +163,7 @@ function DestinationRow({
           </p>
         ) : destination.health.checkedAt ? (
           <p className="text-xs text-muted-foreground">
-            Last checked {new Date(destination.health.checkedAt).toLocaleString()}
+            Last checked <DateTime value={destination.health.checkedAt} />
           </p>
         ) : null}
       </div>

@@ -25,7 +25,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
+import { DateTime } from "@/components/date-time"
 import { StatusBadge } from "@/components/status-badge"
+import { useDisplayTimezone } from "@/components/time-zone-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
@@ -63,6 +65,7 @@ import {
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
 import type { Project } from "@/lib/api"
+import { formatDate, formatDateTime, formatTime } from "@/lib/date-time"
 import {
   completionRate,
   costCoverage,
@@ -133,6 +136,7 @@ export function UsageExplorer({
   projects,
   scope,
 }: UsageExplorerProps) {
+  const timeZone = useDisplayTimezone()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -396,13 +400,15 @@ export function UsageExplorer({
                   minTickGap={24}
                   tickFormatter={(value: string) =>
                     analytics.bucket === "hour"
-                      ? new Date(value).toLocaleTimeString([], {
+                      ? formatTime(value, timeZone, {
                           hour: "2-digit",
                           minute: "2-digit",
+                          second: undefined,
                         })
-                      : new Date(value).toLocaleDateString([], {
+                      : formatDate(value, timeZone, {
                           month: "short",
                           day: "numeric",
+                          year: undefined,
                         })
                   }
                 />
@@ -424,7 +430,7 @@ export function UsageExplorer({
                       labelFormatter={(_label, payload) => {
                         const bucketStart = payload[0]?.payload?.bucketStart
                         return bucketStart
-                          ? new Date(bucketStart).toLocaleString()
+                          ? formatDateTime(bucketStart, timeZone)
                           : ""
                       }}
                     />
@@ -755,7 +761,7 @@ function RecentSessionsTable({
                 <TableCell><StatusBadge status={session.status} /></TableCell>
                 <TableCell className="text-right font-mono">{session.usage.status === "none" || session.usage.status === "missing" ? "—" : formatTokenCount(session.usage.inputTokens + session.usage.outputTokens)}</TableCell>
                 <TableCell className="text-right font-mono text-muted-foreground">{formatUsd(session.usage.costUsd)}</TableCell>
-                <TableCell className="text-muted-foreground">{new Date(session.startedAt).toLocaleString()}</TableCell>
+                <TableCell className="text-muted-foreground"><DateTime value={session.startedAt} /></TableCell>
               </TableRow>
             ))}
           </TableBody>

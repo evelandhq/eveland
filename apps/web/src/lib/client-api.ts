@@ -25,6 +25,7 @@ export type Member = {
 
 export type CurrentMember = Member & {
   image: string | null;
+  displayTimezone: string | null;
 };
 
 export type Invitation = {
@@ -117,7 +118,11 @@ export async function getCurrentMember(): Promise<CurrentMember> {
   return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then((data) => data.member);
 }
 
-export async function updateProfile(input: { name: string; image: string | null }): Promise<CurrentMember> {
+export async function updateProfile(input: {
+  name: string;
+  image: string | null;
+  displayTimezone: string;
+}): Promise<CurrentMember> {
   const data = await clientRequest<{ member: CurrentMember }>("/profile", {
     method: "PATCH",
     headers: { "content-type": "application/json" },

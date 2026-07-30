@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DateTime } from "@/components/date-time";
 import { getScheduleRun } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -34,10 +35,10 @@ export default async function ScheduleRunPage({ params }: {
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div><dt className="text-xs text-muted-foreground">Release</dt><dd className="mt-1 font-mono text-xs">{run.release.id}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Deployment</dt><dd className="mt-1 font-mono text-xs">{run.deployment.id}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Due</dt><dd className="mt-1 text-sm">{new Date(run.dueAt).toLocaleString()}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Due</dt><dd className="mt-1 text-sm"><DateTime value={run.dueAt} /></dd></div>
           <div><dt className="text-xs text-muted-foreground">Missed ticks</dt><dd className="mt-1 font-mono text-sm">{run.missedTicks}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Started</dt><dd className="mt-1 text-sm">{run.startedAt ? new Date(run.startedAt).toLocaleString() : "—"}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Completed</dt><dd className="mt-1 text-sm">{run.completedAt ? new Date(run.completedAt).toLocaleString() : "—"}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Started</dt><dd className="mt-1 text-sm">{run.startedAt ? <DateTime value={run.startedAt} /> : "—"}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Completed</dt><dd className="mt-1 text-sm">{run.completedAt ? <DateTime value={run.completedAt} /> : "—"}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Sessions</dt><dd className="mt-1 font-mono text-sm">{run.sessionCount}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Tokens</dt><dd className="mt-1 font-mono text-sm">{tokenTotal(run.usage)}</dd></div>
         </dl>
@@ -60,7 +61,7 @@ export default async function ScheduleRunPage({ params }: {
                     <TableCell><Link href={`/projects/${projectId}/sessions/${session.id}`} className="font-mono text-xs hover:underline">{session.id}</Link></TableCell>
                     <TableCell><StatusBadge status={session.status} /></TableCell>
                     <TableCell className="text-right font-mono text-xs">{tokenTotal(session.usage)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{new Date(session.startedAt).toLocaleString()}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground"><DateTime value={session.startedAt} /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>

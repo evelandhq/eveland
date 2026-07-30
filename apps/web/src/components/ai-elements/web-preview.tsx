@@ -1,5 +1,6 @@
 "use client";
 
+import { DateTime } from "@/components/date-time";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -249,7 +250,7 @@ export const WebPreviewConsole = ({
                 key={`${log.timestamp.getTime()}-${log.level}-${log.message}`}
               >
                 <span className="text-muted-foreground">
-                  {log.timestamp.toLocaleTimeString()}
+                  <DateTime value={log.timestamp} display="time" />
                 </span>{" "}
                 {log.message}
               </div>

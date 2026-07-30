@@ -12,11 +12,11 @@ describe("instance health presentation", () => {
     expect(formatBytes(null)).toBe("Unavailable");
   });
 
-  test("formats deterministic UTC timestamps for each health history range", () => {
+  test("formats health history timestamps in the configured timezone", () => {
     const observedAt = "2026-07-20T06:30:00.000Z";
 
-    expect(formatCapacityTimelineTick(observedAt, 24)).toBe("06:30");
-    expect(formatCapacityTimelineTick(observedAt, 168)).toBe("Jul 20 06:30");
+    expect(formatCapacityTimelineTick(observedAt, 24, "Asia/Shanghai")).toBe("14:30");
+    expect(formatCapacityTimelineTick(observedAt, 168, "America/Los_Angeles")).toBe("Jul 19 23:30");
   });
 
   test("aligns a 24-hour chart domain and ticks to half-hour boundaries", () => {
@@ -43,7 +43,7 @@ describe("instance health presentation", () => {
   });
 
   test("formats a full timestamp for the chart tooltip", () => {
-    expect(formatCapacityTooltipTimestamp("2026-07-20T06:30:45.000Z"))
-      .toBe("2026-07-20 06:30:45 UTC");
+    expect(formatCapacityTooltipTimestamp("2026-07-20T06:30:45.000Z", "Asia/Shanghai"))
+      .toContain("Jul 20, 2026, 14:30:45");
   });
 });

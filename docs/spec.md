@@ -132,7 +132,7 @@ Gateway 必须透明转发 challenge、请求 credential 与响应，不解释�
 * 最近一次更新时间
 * 当前 Eve 版本；落后于最新支持版本或不受支持时以红色显示，信息提示说明升级目标
 * 最近 Session 状态
-* 下一次 Schedule 时间（如有）；按浏览器本地时区显示，当天只显示 24 小时制的
+* 下一次 Schedule 时间（如有）；按个人 Display timezone 显示，当天只显示 24 小时制的
   `HH:mm`，其他日期显示 `MM-DD HH:mm`
 
 支持：
@@ -171,7 +171,13 @@ Personal 与 System 分组导航。
 * 修改姓名
 * 上传、替换或移除头像；只接受 PNG、JPEG、WebP，最大 512 KB
 * 查看登录邮箱；MVP 中邮箱只读
+* 配置 Display timezone；未保存偏好时默认使用浏览器当前 IANA 时区，保存后作为个人偏好跨页面和登录 Session 生效
 * 使用当前密码修改密码；新密码至少 12 个字符，成功后撤销当前 Session 之外的所有登录 Session
+
+Web 中所有绝对日期与时间——包括列表、详情、Logs、Session Timeline、ScheduleRun、
+Usage 与 Instance Health 图表坐标和 Tooltip——统一按当前用户的 Display timezone 展示，
+不得由 Next.js Server Component 的运行时默认时区决定。Schedule 的原始 cron 和其声明的
+`UTC` 时区仍按源码语义展示；`nextRunAt`、due/start/complete 等实际时间点使用个人时区。
 
 Profile 更新复用 Better Auth 用户记录。Better Auth 的 HTTP 面按 allowlist 暴露：仅
 `sign-in/email`、`sign-out`、`get-session` 公开可路由，其余端点（含 `update-user`、

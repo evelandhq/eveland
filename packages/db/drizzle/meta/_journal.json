@@ -288,6 +288,13 @@
       "when": 1785381519371,
       "tag": "0040_gorgeous_donald_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785387438830,
+      "tag": "0041_normal_lockjaw",
+      "breakpoints": true
     }
   ]
 }

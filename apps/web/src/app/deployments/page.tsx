@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { FolderIcon, RocketIcon } from "lucide-react"
+import { DateTime } from "@/components/date-time"
 import { StatusBadge } from "@/components/status-badge"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
@@ -108,7 +109,7 @@ export default async function DeploymentsPage() {
                     <StatusBadge status={deployment.status} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(deployment.createdAt).toLocaleString()}
+                    <DateTime value={deployment.createdAt} />
                   </TableCell>
                 </TableRow>
               ))}
