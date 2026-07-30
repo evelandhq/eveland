@@ -4,6 +4,17 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.17.0](https://github.com/evelandhq/eveland/compare/v0.16.2...v0.17.0) (2026-07-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **worker:** deliver the observer runtime at deployment prepare time ([#201](https://github.com/evelandhq/eveland/issues/201))
+
+### Bug Fixes
+
+* **worker:** deliver the observer runtime at deployment prepare time ([#201](https://github.com/evelandhq/eveland/issues/201)) ([d282689](https://github.com/evelandhq/eveland/commit/d282689554debcdd12f8e8f83f7f67ffd0b82321))
+
 ## [0.16.2](https://github.com/evelandhq/eveland/compare/v0.16.1...v0.16.2) (2026-07-30)
 
 
