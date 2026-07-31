@@ -454,7 +454,7 @@ Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使�
 
 * 拉取或解压源码
 * 检查是否为合法 Eve 项目
-* 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.25.x、0.26.x 或 0.27.x
+* 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.27.x、0.28.x 或 0.29.x
 * 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
   `capabilities.eveChat`
 * 创建 Source Revision
@@ -472,7 +472,7 @@ pnpm 版本执行 frozen install，存在 `package-lock.json` 时使用 `npm ci`
 到 `npm install`。pnpm frozen install 仍校验 lockfile 与 package integrity，但不得因为平台
 自身的 package minimum-release-age 策略拒绝项目已经提交的锁定版本。Docker 与 systemd
 runtime 必须使用相同选择，不能改用 npm 重新解析 pnpm 项目并绕过其 lockfile。
-Eve 0.27.12 的 `eve add` / `eve registry` 只属于源码作者主动执行的 CLI；Eveland 的 import、
+Eve 0.29.2 的 `eve add` / `eve registry` 只属于源码作者主动执行的 CLI；Eveland 的 import、
 build 与 deploy 不得运行这些命令、访问 registry 或修改不可变 Source Revision。
 
 Git 拉取由 worker 以非交互方式执行，默认最多等待 120 秒；可通过
@@ -490,9 +490,9 @@ Project 页面展示最近 Git import job 的 queued/running/failed 状态，在
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 
 Eveland 在 Eve 达到稳定产品兼容承诺前，支持“最新一个已经完成验证的 minor 与其前两个
-minor”的三版本滑动窗口；当前窗口是 0.25.x、0.26.x 与 0.27.x。允许精确的 0.25/0.26/0.27
-patch、锚定在对应 minor patch 上的 `~`/`^` range，以及 `0.25` / `0.25.x` / `0.25.*`、
-`0.26` / `0.26.x` / `0.26.*`、`0.27` / `0.27.x` / `0.27.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
+minor”的三版本滑动窗口；当前窗口是 0.27.x、0.28.x 与 0.29.x。允许精确的 0.25/0.26/0.27
+patch、锚定在对应 minor patch 上的 `~`/`^` range，以及 `0.27` / `0.27.x` / `0.27.*`、
+`0.28` / `0.28.x` / `0.28.*`、`0.29` / `0.29.x` / `0.29.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
 Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、reset 和 stream 请求，不能通过已有的
@@ -500,7 +500,7 @@ Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、res
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
 无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
-UI 仅将当前最新支持线 0.27.x 标为绿色；仍受支持但较旧的 0.25.x/0.26.x 使用红色状态与
+UI 仅将当前最新支持线 0.29.x 标为绿色；仍受支持但较旧的 0.27.x/0.28.x 使用红色状态与
 “尽快升级”提醒，但不阻断运行。窗口外或无法识别的版本同样使用红色状态，并继续阻断操作。
 
 用户随后确认自动猜测的项目名称并点击 `Deploy`。Project 与初始 import job 在同一数据库
@@ -581,7 +581,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 * `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
 * `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
 * `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
-* `vercel-oidc`：镜像 Eve 0.27.12 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
+* `vercel-oidc`：镜像 Eve 0.29.2 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
 * `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
@@ -590,7 +590,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
 verifier 建立的 Caller 做隐式映射。
 
-`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.27.12
+`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.29.2
 `ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
 `x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
 Connection 只保存 token Secret reference/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
@@ -643,7 +643,7 @@ Playground 中可查看当前 Session 的：
 * HITL：确认/拒绝、选项、自由文本和外部授权提示
 * 当前 turn 的图片、PDF、文本和代码附件
 
-Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.25.x、0.26.x 与 0.27.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
+Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.27.x、0.28.x 与 0.29.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
 Eve 0.27.7+ Client 可以通过 `follow: false` 做有界 Catch-up Read：请求使用
 `includeTailIndex=1`，Agent 返回 `x-eve-stream-tail-index`。Web rewrite、API Playground proxy、
 内部与公开 Gateway 必须原样保留该 query、响应 header 与 NDJSON body；只有 Client 与目标 Agent
@@ -736,8 +736,8 @@ Model 的 distinct root Sessions，Token、Cost 和 step 数按 model usage even
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
 Eveland 是生产 Schedule 的唯一调度器。与全局 Agent 版本门槛一致，当前 Release adapter 支持整个
-Eve 0.25.x、0.26.x 与 0.27.x 版本线（接受精确 patch、锚定其上的 ~/^ range，以及
-0.25 / 0.25.x / 0.25.*、0.26 / 0.26.x / 0.26.*、0.27 / 0.27.x / 0.27.* 整个 minor 的写法）；任何可能解析到
+Eve 0.27.x、0.28.x 与 0.29.x 版本线（接受精确 patch、锚定其上的 ~/^ range，以及
+0.27 / 0.27.x / 0.27.*、0.28 / 0.28.x / 0.28.*、0.29 / 0.29.x / 0.29.* 整个 minor 的写法）；任何可能解析到
 这三个 minor 之外的
 Eve 依赖必须在 build 时 fail closed 并返回明确的 adapter
 diagnostic，不能猜测或降级执行。导入源码时按 `agent/schedules/` 下的完整相对路径

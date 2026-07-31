@@ -35,9 +35,9 @@ export type EveProjectInspection = {
   errors: string[];
 };
 
-export const SUPPORTED_EVE_VERSION_RANGES = ["0.25.x", "0.26.x", "0.27.x"] as const;
+export const SUPPORTED_EVE_VERSION_RANGES = ["0.27.x", "0.28.x", "0.29.x"] as const;
 export type SupportedEveVersionRange = (typeof SUPPORTED_EVE_VERSION_RANGES)[number];
-export const SUPPORTED_EVE_VERSION_RANGE = "0.25.x, 0.26.x, or 0.27.x" as const;
+export const SUPPORTED_EVE_VERSION_RANGE = "0.27.x, 0.28.x, or 0.29.x" as const;
 
 export type EveVersionInfo = {
   version: string | null;

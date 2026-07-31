@@ -56,7 +56,7 @@ export default async function SchedulesPage({
             <EmptyHeader>
               <EmptyTitle>No schedules discovered</EmptyTitle>
               <EmptyDescription>
-                Deploy an Eve 0.25.x, 0.26.x, or 0.27.x project with definitions
+                Deploy an Eve 0.27.x, 0.28.x, or 0.29.x project with definitions
                 under agent/schedules.
               </EmptyDescription>
             </EmptyHeader>

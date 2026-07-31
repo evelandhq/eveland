@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import type { SandboxBackend as Eve025SandboxBackend } from "eve-0-25/sandbox";
+import type { SandboxBackend as Eve027SandboxBackend } from "eve-0-27/sandbox";
 import { createBwrapSandboxBackend } from "./backend.js";
 
 describe("published Eve compatibility", () => {
@@ -9,18 +9,18 @@ describe("published Eve compatibility", () => {
     const packageJson = JSON.parse(
       await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
     ) as {
-      devDependencies: { eve: string; "eve-0-25": string; "eve-0-26": string };
+      devDependencies: { eve: string; "eve-0-27": string; "eve-0-28": string };
       peerDependencies: { eve: string };
     };
 
-    expect(packageJson.devDependencies.eve).toBe("0.27.12");
-    expect(packageJson.devDependencies["eve-0-25"]).toBe("npm:eve@0.25.3");
-    expect(packageJson.devDependencies["eve-0-26"]).toBe("npm:eve@0.26.2");
-    expect(packageJson.peerDependencies.eve).toBe(">=0.25.0 <0.28.0");
+    expect(packageJson.devDependencies.eve).toBe("0.29.2");
+    expect(packageJson.devDependencies["eve-0-27"]).toBe("npm:eve@0.27.13");
+    expect(packageJson.devDependencies["eve-0-28"]).toBe("npm:eve@0.28.0");
+    expect(packageJson.peerDependencies.eve).toBe(">=0.27.0 <0.30.0");
   });
 
-  test("the backend remains structurally compatible with Eve 0.25", () => {
-    const legacyBackend: Eve025SandboxBackend = createBwrapSandboxBackend();
+  test("the backend remains structurally compatible with Eve 0.27", () => {
+    const legacyBackend: Eve027SandboxBackend = createBwrapSandboxBackend();
 
     expect(legacyBackend.name).toBe("bwrap");
   });

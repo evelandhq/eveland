@@ -21,7 +21,7 @@ describe.skipIf(!database)("Postgres source preflights", () => {
     await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
       sourcePath: `/tmp/preflight-${suffix}`,
       commitSha: null,
-      summary: { eveVersion: "0.25.1" },
+      summary: { eveVersion: "0.29.2" },
     });
 
     const created = await store.createProjectFromSourcePreflight({

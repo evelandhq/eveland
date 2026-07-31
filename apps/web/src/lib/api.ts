@@ -121,8 +121,8 @@ export type AgentEndpoints = {
 
 export type EveVersionInfo = {
   version: string | null;
-  expected: "0.25.x, 0.26.x, or 0.27.x";
-  supportedRanges: readonly ["0.25.x", "0.26.x", "0.27.x"];
+  expected: "0.27.x, 0.28.x, or 0.29.x";
+  supportedRanges: readonly ["0.27.x", "0.28.x", "0.29.x"];
   supported: boolean;
   sourceRevisionId: string | null;
 };

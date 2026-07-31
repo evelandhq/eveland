@@ -40,7 +40,7 @@ await mkdir(path.join(sourcePath, "agent"), { recursive: true });
 await writeFile(path.join(sourcePath, "agent", "instructions.md"), "Smoke fixture.\n");
 await writeFile(
   path.join(sourcePath, "package.json"),
-  JSON.stringify({ name: "eveland-smoke", version: "0.0.0", dependencies: { eve: "0.25.3" } }, null, 2),
+  JSON.stringify({ name: "eveland-smoke", version: "0.0.0", dependencies: { eve: "0.27.13" } }, null, 2),
 );
 
 const { store, close } = await createPgliteTestStore();
@@ -183,7 +183,7 @@ try {
   await writeFile(path.join(failSourcePath, "agent", "instructions.md"), "Smoke fixture (never healthy).\n");
   await writeFile(
     path.join(failSourcePath, "package.json"),
-    JSON.stringify({ name: "eveland-smoke-fail", version: "0.0.0", dependencies: { eve: "0.27.12" } }, null, 2),
+    JSON.stringify({ name: "eveland-smoke-fail", version: "0.0.0", dependencies: { eve: "0.29.2" } }, null, 2),
   );
 
   const failProject = await store.createProject({ name: "Systemd Smoke Fail", importKind: "zip", sourcePath: failSourcePath });

@@ -317,6 +317,7 @@ describe("private Agent telemetry runtime", () => {
         requests: [
           {
             requestId: "request_1",
+            kind: "tool-approval",
             prompt: "Approve the private deployment?",
             display: "confirmation",
             options: [

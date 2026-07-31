@@ -8,9 +8,9 @@ import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
-  { version: "0.25.3", fixtureName: "eve-0.25-schedules", packageName: "eve-0-25" },
-  { version: "0.26.2", fixtureName: "eve-0.25-schedules", packageName: "eve-0-26" },
-  { version: "0.27.12", fixtureName: "eve-0.25-schedules", packageName: "eve" },
+  { version: "0.27.13", fixtureName: "eve-0.25-schedules", packageName: "eve-0-27" },
+  { version: "0.28.0", fixtureName: "eve-0.25-schedules", packageName: "eve-0-28" },
+  { version: "0.29.2", fixtureName: "eve-0.25-schedules", packageName: "eve" },
 ] as const;
 
 // Every test here copies a fixture, symlinks a real Eve release into it, and
