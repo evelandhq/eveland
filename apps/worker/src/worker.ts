@@ -17,6 +17,7 @@ import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { sweepReleaseRetention } from "./runtime/release-reaper.js";
+import { sweepWorkflowStreamRetention } from "./runtime/workflow-world-reaper.js";
 import { reconcileRuntimeInstances, recoverStartingRuntimeInstances } from "./runtime/activation-manager.js";
 import { planDueSchedules } from "./scheduler/planner.js";
 import { createWorkerTelemetry } from "./runtime/worker-telemetry.js";
@@ -38,6 +39,9 @@ const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60
 const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_MS ?? 3_600_000);
 const releaseSweepIntervalMs = Number(
   process.env.EVELAND_RELEASE_SWEEP_INTERVAL_MS ?? 3_600_000,
+);
+const workflowSweepIntervalMs = Number(
+  process.env.EVELAND_WORKFLOW_SWEEP_INTERVAL_MS ?? 3_600_000,
 );
 const workerId = workerInstanceId;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
@@ -299,12 +303,32 @@ if (releaseSweepIntervalMs > 0) {
   releaseTimer = setInterval(sweepReleases, releaseSweepIntervalMs);
 }
 
+const sweepWorkflowWorlds = () => {
+  sweepWorkflowStreamRetention(process.env, {
+    retentionMs: Number(
+      process.env.EVELAND_WORKFLOW_STREAM_RETENTION_MS ?? 86_400_000,
+    ),
+    batchSize: Number(process.env.EVELAND_WORKFLOW_SWEEP_BATCH_SIZE ?? 50_000),
+  }).catch((error: unknown) =>
+    console.error(
+      "Workflow stream retention sweep failed:",
+      error instanceof Error ? error.message : String(error),
+    ),
+  );
+};
+let workflowSweepTimer: NodeJS.Timeout | undefined;
+if (workflowSweepIntervalMs > 0) {
+  sweepWorkflowWorlds();
+  workflowSweepTimer = setInterval(sweepWorkflowWorlds, workflowSweepIntervalMs);
+}
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     clearInterval(timer);
     clearInterval(telemetryTimer);
     if (orphanTimer) clearInterval(orphanTimer);
     if (releaseTimer) clearInterval(releaseTimer);
+    if (workflowSweepTimer) clearInterval(workflowSweepTimer);
     void Promise.all([
       storeFactory.close(),
       capacityObservability.shutdown(),

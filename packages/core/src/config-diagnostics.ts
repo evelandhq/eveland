@@ -181,6 +181,9 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry("EVELAND_RELEASE_RETENTION", ["api", "worker"], "Minimum number of newest Release artifacts protected from archival.", "3"),
   entry("EVELAND_RELEASE_SWEEP_INTERVAL_MS", ["worker"], "Interval between automatic Release retention sweeps.", "3600000"),
   entry("EVELAND_RELEASE_SWEEP_BATCH_SIZE", ["worker"], "Maximum archive jobs enqueued by one Release retention sweep.", "25"),
+  entry("EVELAND_WORKFLOW_SWEEP_INTERVAL_MS", ["worker"], "Interval between stream-chunk retention sweeps across per-project workflow databases. 0 disables the sweep.", "3600000"),
+  entry("EVELAND_WORKFLOW_STREAM_RETENTION_MS", ["worker"], "Resume window after a run turns terminal before its stream chunks become deletable.", "86400000"),
+  entry("EVELAND_WORKFLOW_SWEEP_BATCH_SIZE", ["worker"], "Maximum stream-chunk rows deleted per DELETE batch during a workflow retention sweep.", "50000"),
   { ...entry("EVELAND_GATEWAY_PUBLIC_SCHEME", ["api", "gateway"], "Public Agent URL scheme and affinity-cookie security mode.", "http"), emptyUsesFallback: true },
   {
     name: "EVELAND_GATEWAY_PUBLIC_PORT",

@@ -110,6 +110,9 @@ site.
 | `EVELAND_RELEASE_RETENTION` | Minimum newest Deployments/releases retained per project by the automatic archive policy. Route targets, non-expired SessionBindings, and active request leases remain protected independently of age. | `3` (minimum 3) | API + worker |
 | `EVELAND_RELEASE_SWEEP_INTERVAL_MS` | Interval between automatic scans that enqueue archive jobs for unprotected stopped Deployments. `0` disables the automatic sweep. | `3600000` (1 hour) | worker (`worker.ts`) |
 | `EVELAND_RELEASE_SWEEP_BATCH_SIZE` | Maximum new archive jobs enqueued by one automatic Release sweep. | `25` | worker (`runtime/release-reaper.ts`) |
+| `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS` | Interval between retention sweeps that delete terminal runs' durable stream chunks from every per-project workflow database. `0` disables the sweep. | `3600000` (1 hour) | worker (`worker.ts`) |
+| `EVELAND_WORKFLOW_STREAM_RETENTION_MS` | Resume window after a workflow run turns terminal before the sweep may delete its stream chunks. Within the window clients can still replay the run's stream from a stored cursor. | `86400000` (24 hours) | worker (`runtime/workflow-world-reaper.ts`) |
+| `EVELAND_WORKFLOW_SWEEP_BATCH_SIZE` | Maximum stream-chunk rows deleted per `DELETE` statement during a sweep; bounds lock time and WAL burst on busy databases. | `50000` | worker (`runtime/workflow-world-reaper.ts`) |
 | `WORKER_ID` | Worker instance identity, used when claiming jobs. | — | `apps/worker/src/worker.ts` |
 | `WORKER_POLL_INTERVAL_MS` | Interval between worker job-queue polls. | `5000` | `apps/worker/src/worker.ts` |
 | `WORKER_JOB_HEARTBEAT_INTERVAL_MS` | Interval between running job lease renewals. Keep it comfortably below `WORKER_JOB_STALE_MS`. | `30000` | worker (`jobs/process.ts`) |
