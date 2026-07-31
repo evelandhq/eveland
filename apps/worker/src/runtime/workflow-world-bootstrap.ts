@@ -82,12 +82,14 @@ async function runWorkflowWorldSetup(bootstrapPostgresUrl: string, deps: Workflo
  * startup re-enqueue *all* projects' active runs (reenqueueActiveRuns lists
  * runs unfiltered). Physical isolation closes both doors at once.
  */
+export const PROJECT_WORKFLOW_DATABASE_PREFIX = "eveland_wf_";
+
 export function deriveProjectWorkflowDatabaseName(projectId: string): string {
   // Project ids use a mixed-case alphabet while Postgres database names are
   // matched lowercase; the digest keeps case-variant ids collision-free.
   const safe = projectId.toLowerCase().replace(/[^a-z0-9_]/g, "_");
   const digest = createHash("sha256").update(projectId).digest("hex").slice(0, 6);
-  return `eveland_wf_${safe}_${digest}`;
+  return `${PROJECT_WORKFLOW_DATABASE_PREFIX}${safe}_${digest}`;
 }
 
 export function deriveProjectWorkflowUrl(baseUrl: string, projectId: string): string {
@@ -187,7 +189,7 @@ async function createDatabaseIfMissing(adminUrl: string, databaseName: string): 
   }
 }
 
-function resolveBootstrapPostgresUrl(env: NodeJS.ProcessEnv, workflowPostgresUrl: string): string {
+export function resolveBootstrapPostgresUrl(env: NodeJS.ProcessEnv, workflowPostgresUrl: string): string {
   if (env.WORKFLOW_POSTGRES_BOOTSTRAP_URL) return env.WORKFLOW_POSTGRES_BOOTSTRAP_URL;
   if (env.DATABASE_URL && isHostDatabaseAlias(workflowPostgresUrl, env.DATABASE_URL)) return env.DATABASE_URL;
   return workflowPostgresUrl;
