@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.19.0](https://github.com/evelandhq/eveland/compare/v0.18.1...v0.19.0) (2026-07-31)
+
+
+### Features
+
+* **worker:** sweep terminal runs' workflow stream chunks ([#214](https://github.com/evelandhq/eveland/issues/214)) ([144b1ce](https://github.com/evelandhq/eveland/commit/144b1ce11f6fd41e316458e50b313c319a7b53b9))
+
 ## [0.18.1](https://github.com/evelandhq/eveland/compare/v0.18.0...v0.18.1) (2026-07-30)
 
 
