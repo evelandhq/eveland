@@ -49,9 +49,9 @@ export default defineSandbox({
 
 ### eve version requirement
 
-This package requires `eve` `>=0.25.0 <0.28.0` (eve's 0.x releases use
+This package requires `eve` `>=0.27.0 <0.30.0` (eve's 0.x releases use
 caret-incompatible minor bumps, so the verified three-minor window is written explicitly).
-Compatibility is exercised against the pinned Eve 0.25.3, 0.26.2, and 0.27.12 releases. The backend implements the
+Compatibility is exercised against the pinned Eve 0.27.13, 0.28.0, and 0.29.2 releases. The backend implements the
 required `shutdown()` contract by killing every process the session has spawned that
 has not yet exited, honoring eve's requirement that nothing may be left running once
 the handle is shut down. The session's workspace directory is not touched by

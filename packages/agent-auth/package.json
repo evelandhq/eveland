@@ -18,7 +18,7 @@
   "dependencies": {
     "@eveland/core": "workspace:*",
     "@eveland/db": "workspace:*",
-    "eve": "0.27.12",
+    "eve": "0.29.2",
     "openid-client": "^6.8.4"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 export async function createFixtureEveProject(
-  eveVersion = "0.25.1",
+  eveVersion = "0.29.2",
 ): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-eve-"));
   await mkdir(path.join(root, "agent", "schedules"), { recursive: true });

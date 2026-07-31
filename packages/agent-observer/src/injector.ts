@@ -194,7 +194,7 @@ async function discoverSubagentRoots(
         kind: "file-form-subagent",
         path: entryPath,
         reason:
-          "Eve 0.25.x, 0.26.x, and 0.27.x discover file-form subagents but give them no independent hooks slot; the parent stream exposes only control-plane child events.",
+          "Eve 0.27.x, 0.28.x, and 0.29.x discover file-form subagents but give them no independent hooks slot; the parent stream exposes only control-plane child events.",
       });
     }
   }

@@ -618,16 +618,16 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source-new",
-      summary: { eveVersion: "0.25.1" },
+      summary: { eveVersion: "0.29.2" },
       envVars: [],
-      files: [{ path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.25.1" } }) }],
+      files: [{ path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.2" } }) }],
       schedules: [],
     });
 
     await expect(store.getDeploymentEveVersion(oldDeployment.id)).resolves.toEqual({
       version: "0.22.6",
-      expected: "0.25.x, 0.26.x, or 0.27.x",
-      supportedRanges: ["0.25.x", "0.26.x", "0.27.x"],
+      expected: "0.27.x, 0.28.x, or 0.29.x",
+      supportedRanges: ["0.27.x", "0.28.x", "0.29.x"],
       supported: false,
       sourceRevisionId: oldRevision.id,
     });

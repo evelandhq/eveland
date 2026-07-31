@@ -82,7 +82,7 @@ async function removeAuthoredSandboxModules(moduleDir: string, relativeDir: stri
  * however deeply nested.
  *
  * eve resolves subagents from `agent/subagents/<name>/` (confirmed against
- * eve 0.26.2's `discoverSubagents`, which defaults `subagentsDirectoryPath`
+ * eve 0.29.2's `discoverSubagents`, which defaults `subagentsDirectoryPath`
  * to `join(agentRoot, "subagents")`). `discoverLocalSubagentPackage` then
  * calls `discoverSandboxSource({ rootPath: subagentRoot })` *and*
  * `discoverSubagents({ agentRoot: subagentRoot })` for each directory-form
