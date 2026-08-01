@@ -134,9 +134,10 @@ export function buildDockerSandboxVerifyArgs(imageTag: string): string[] {
   ];
 }
 
-// eve build ran inside the image, so its discovery artifacts live in the image
-// filesystem, not on the host. One throwaway container prints them; failures
-// only cost the build-derived summary (the import-time static one remains).
+// eve build and the post-build eve info discovery pass ran inside the image,
+// so their discovery artifacts live in the image filesystem, not on the host.
+// One throwaway container prints them; failures only cost the build-derived
+// summary (the import-time static one remains).
 const readImageDiscoveryScript =
   'const fs=require("fs");let m=null,v=null;' +
   'try{m=JSON.parse(fs.readFileSync("/app/.eve/discovery/agent-discovery-manifest.json","utf8"))}catch{}' +
@@ -204,8 +205,9 @@ COPY package*.json pnpm-lock.yaml* pnpm-workspace.yaml* .npmrc* ./
 # Install all dependencies: eve projects need their build toolchain to compile.
 RUN if [ -f pnpm-lock.yaml ]; then ${PNPM_FROZEN_INSTALL_COMMAND}; elif [ -f package-lock.json ]; then npm ci; elif [ -f package.json ]; then npm install; fi
 ${workflowWorldInstall}COPY . .
-# Compile the eve application ahead of time so \`eve start\` can serve it.
-RUN npx eve build
+# Compile the eve application ahead of time, then materialize the full
+# discovery manifest from that exact installed dependency tree.
+RUN npx eve build && npx eve info --json > /dev/null
 EXPOSE 3000
 `,
   );

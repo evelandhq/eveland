@@ -315,6 +315,7 @@ describe("createDockerAdapter", () => {
     const dockerfilePath = path.join(buildDir, "Dockerfile");
     const contents = await readFile(dockerfilePath, "utf8");
     expect(contents).toContain("FROM node:24-alpine");
+    expect(contents).toContain("RUN npx eve build && npx eve info --json > /dev/null");
     await expect(readFile(path.join(buildDir, ".eveland", "verify-sandbox.mjs"), "utf8")).resolves.toContain(
       "node eveland-verify.ts",
     );

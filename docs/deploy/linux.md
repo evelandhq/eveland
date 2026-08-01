@@ -299,10 +299,10 @@ runs it against the Lima VM as part of the integration smoke test.
 | `NODE_ENV` | *(unset)* | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
 | `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
-### Agent Connection credential boundary
+### Playground authentication credential boundary
 
 Playground route-auth credentials are not control-plane cookies and are not Gateway configuration.
-API owns the encrypted Agent Connection config and uses `APP_SECRET_KEY` to open it for a single request.
+API owns the encrypted Playground authentication config and uses `APP_SECRET_KEY` to open it for a single request.
 It then sends a versioned credential envelope over the existing private `/internal/projects/:projectId/playground/eve/*`
 path. Gateway accepts that envelope only after `EVELAND_GATEWAY_SERVICE_TOKEN` succeeds, validates its authority
 and Header policy, applies the credential last, and never persists it.
@@ -311,16 +311,16 @@ Keep `/internal/*` excluded from every public Traefik route. A missing envelope 
 service-authenticated loopback behavior for rolling-upgrade compatibility, but current API instances always send an
 explicit envelope. `local-dev` is the only method that selects loopback authority; `none`, Basic, Bearer, Vercel
 OIDC, generic OIDC, and custom headers use the canonical Project hostname so Eve cannot mistake a public-style request for local development.
-Changing a normalized Connection method/config increments its security revision; unchanged re-saves do not.
-Connection password, token, and custom Header values must never be copied into Compose files, systemd env files,
+Changing a normalized Playground authentication method/config increments its security revision; unchanged re-saves do not.
+Playground authentication password, token, and custom Header values must never be copied into Compose files, systemd env files,
 runtime diagnostics, logs, Source Revisions, Releases, OTLP signals, or browser payloads.
 
 For generic OIDC, register `${WEB_ORIGIN}/agent-auth/oidc/callback` as an exact redirect URI. The callback page is
 owned by Web and completes through the authenticated API; API encrypts one-time ten-minute transactions and
-principal-scoped access/refresh tokens with `APP_SECRET_KEY`. A confidential client's Connection stores only a
+principal-scoped access/refresh tokens with `APP_SECRET_KEY`. A confidential client's Playground authentication config stores only a
 Project Secret reference, so create that Secret before saving a `client_secret_basic` or `client_secret_post`
-Connection. API resolves the current referenced value
-again for preflight, callback, verification, and refresh; rotating the Secret does not copy it into Connection config.
+method. API resolves the current referenced value
+again for preflight, callback, verification, and refresh; rotating the Secret does not copy it into Playground authentication config.
 
 Production network policy must allow API egress only to approved OIDC discovery, authorization metadata, JWKS,
 token, and UserInfo HTTPS endpoints. Application URL policy rejects userinfo/fragments, non-HTTPS endpoints,
@@ -328,7 +328,7 @@ localhost, literal private addresses, and redirects; the network layer must addi
 resolved private/link-local destinations. Never expose OIDC tokens, authorization codes, state, client secrets, or
 PKCE verifiers through reverse-proxy access logs or runtime diagnostics.
 
-The explicit Vercel OIDC Connection method mirrors Eve 0.29.4 by resolving its configured Secret reference and
+The explicit Vercel OIDC Playground authentication method mirrors Eve 0.29.4 by resolving its configured Secret reference and
 sending the token in both `Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short
 lived; rotate the referenced Secret before expiry. Eveland does not infer this method from a Vercel deployment,
 Agent source, or a 401 response.
@@ -343,7 +343,7 @@ verify the read-only `/agent-catalog` projection. The Catalog returns the same r
 configure Agent authorization. The worker reserves and injects issuer, JWKS URL, and
 `EVELAND_PROJECT_ID`; Project Secrets and Shared Agent Environment cannot override them.
 
-Do not reuse `BETTER_AUTH_SECRET`, Better Auth cookies, Playground Agent Connection credentials, or
+Do not reuse `BETTER_AUTH_SECRET`, Better Auth cookies, Playground authentication credentials, or
 provider tokens in EveChats or Agent configuration. When an Agent's route auth requires
 Eveland Identity, its `WWW-Authenticate` response identifies the Eveland login continuation and
 Project audience. The browser follows that continuation, obtains a short-lived Caller Token, and
@@ -383,7 +383,7 @@ build layer, OTLP signal, API response, Web payload, or worker configuration sna
 Changing or clearing the shared environment queues `restart_deployment` jobs for every
 `running`/`draining` Deployment so an old process cannot retain stale or deleted values.
 With no live target, the next deploy, restart, cold activation, or schedule activation reads
-the latest revision. Agent Connection credentials are separate and new configuration uses
+the latest revision. Playground authentication credentials are separate and new configuration uses
 Project Secret references resolved per request. There are no named Profile, runtime binding,
 or Platform Secret reference compatibility paths. API/worker `APP_SECRET_KEY` values must
 continue to match; worker preflight and Compose
@@ -785,6 +785,13 @@ executes the authored TypeScript definition once, exports standard OTLP logs, pr
 provider usage, observes no duplicate from the neutralized native tick, stops
 after idle TTL, and wakes the bound Deployment for a later public continuation.
 Success prints `SCHEDULE SCALE TO ZERO E2E OK`.
+
+The same real systemd/bwrap path also builds and runs the Managed Connections
+fixture. It verifies official Eve OpenAPI and MCP Connections on the root Agent,
+an MCP Connection owned by a directory-form subagent, distinct Project Secret
+Bearer credentials, restart, a second immutable Release, build-derived root
+Connection summary, and secret non-leakage. Success prints
+`MANAGED CONNECTIONS E2E OK runtime=systemd`.
 
 Eve 0.27.4+ session reset requires migration `0029_sparkling_hammerhead`: it backfills the latest known
 continuation token into each Gateway SessionBinding and adds the unique routing index used by public and

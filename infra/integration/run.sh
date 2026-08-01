@@ -18,7 +18,7 @@ limactl shell "$VM" -- sudo bash -c "
   # Lima provisions only when the VM is first created. Keep reused guests on
   # the current platform-owned sandbox command baseline before pnpm or the
   # worker preflight can fail on a tool added after that guest was created.
-  apt-get install -y apparmor bash bubblewrap ca-certificates curl docker.io findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
+  apt-get install -y apparmor bash bubblewrap ca-certificates curl docker.io findutils git grep jq openssl python-is-python3 python3 python3-pip ripgrep unzip zstd
   corepack enable
   corepack install --global pnpm@11.7.0
 
@@ -43,6 +43,13 @@ limactl shell "$VM" -- sudo bash -c "
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm exec tsx infra/integration/observer-e2e.mts
+
+  # Official Eve Connections under the managed runtime: root OpenAPI + MCP,
+  # a directory-form subagent MCP Connection, Project Secret Bearer auth,
+  # restart, a second immutable Release, and secret non-leakage.
+  EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
+    EVELAND_DATA_DIR=/var/lib/eveland-data \
+    corepack pnpm --filter @eveland/worker smoke:connections
 
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \

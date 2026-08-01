@@ -168,7 +168,11 @@ export function buildReleaseBuildCommand(
   const worldInstall = workflowWorld
     ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld, context.packageManager ?? "npm")}`
     : "";
-  return `${install}${worldInstall} && npx eve build`;
+  // `eve build` writes `.eve/agent-summary.json`, but the full discovery
+  // manifest (including hooks and remote subagents) is materialized by
+  // `eve info`. Run both inside the same secret-free build sandbox so the
+  // Release summary is derived from the exact dependency tree we deploy.
+  return `${install}${worldInstall} && npx eve build && npx eve info --json >/dev/null`;
 }
 
 export type BwrapBuildInput = {

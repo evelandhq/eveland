@@ -3,10 +3,11 @@ import path from "node:path";
 import type { ReleaseDiscovery } from "./types.js";
 
 /**
- * eve writes its discovery manifest into the app tree during `eve build`; once
- * a release is built this artifact -- not the platform's pre-install static file
- * scan -- is the authority on what the agent contains. Reading it is
- * informational: a release whose artifacts cannot be read still deploys.
+ * Eveland runs `eve info` after `eve build` to materialize the full discovery
+ * manifest in the built app tree. Once a Release is built this artifact -- not
+ * the platform's pre-install static file scan -- is the authority on what the
+ * agent contains. Reading it is informational: a Release whose artifacts
+ * cannot be read still deploys.
  */
 export const DISCOVERY_MANIFEST_RELEASE_PATH = ".eve/discovery/agent-discovery-manifest.json";
 

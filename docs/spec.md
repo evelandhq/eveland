@@ -586,6 +586,19 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 * `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
+Eveland 不增加独立的 Connections 配置页，也不接管 Eve 的 Connection 定义。项目源码中的官方
+Eve Connection 随 Source Revision 构建并随 Release 部署；当前受管集成明确验证：
+
+* `defineMcpClientConnection` 与 `defineOpenAPIConnection`；
+* 根 Agent 与目录型 Subagent 的 Connection；
+* `auth.getToken()` 在运行时读取 Project Secret，并以 app-scoped Bearer credential 调用外部服务；
+* deploy、restart 和新 Release 后继续可用，且 credential 不进入 Build Log 或 Release summary。
+
+Connection URL、inline OpenAPI spec 与模块结构仍是源码/构建输入；Project Secret 只在运行时注入，不能在
+build 时读取。Vercel Connect 是项目可以自行采用的外部 credential helper，不是 Eveland 托管
+Connection 的前置条件，也不要求 Eveland operator 或项目拥有 Vercel account。self-hosted interactive
+user authorization 尚未纳入端到端支持矩阵；Connection marketplace 仍是非目标。
+
 用户必须在 Playground authentication 设置中显式选择客户端方法；平台不得从 Eve verifier
 名称、源码 import、401 或 `WWW-Authenticate` 猜测 credential acquisition。Eveland member id
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
@@ -839,6 +852,10 @@ connections
 schedules
 sandbox
 ```
+
+Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘要展示，不提供独立的 Connections
+导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上依次执行的 `eve build` 与 `eve info`；
+只投影根 Agent 的 Connection path，Subagent-owned Connection 保持在自己的 manifest scope 内。
 
 不做在线编辑，不做 Git 写回。
 
