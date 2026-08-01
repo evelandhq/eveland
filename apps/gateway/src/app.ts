@@ -364,12 +364,11 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       const startText = await startResponse.text();
       if (!startResponse.ok) return context.json({ error: "Deployment rejected Playground request", detail: startText }, 502);
       const startValue = parseJsonRecord(startText);
-      const eveSessionId =
-        startResponse.headers.get("x-eve-session-id") ?? stringValue(startValue?.sessionId) ?? stringValue(startValue?.session_id);
-      const continuationToken = stringValue(startValue?.continuationToken) ?? stringValue(startValue?.continuation_token);
+      const eveSessionId = startResponse.headers.get("x-eve-session-id") ?? stringValue(startValue?.sessionId);
+      const continuationToken = stringValue(startValue?.continuationToken);
       if (!eveSessionId) {
         return context.json({
-          response: stringValue(startValue?.response) ?? stringValue(startValue?.message) ?? startText,
+          response: startText,
           eveSessionId: null,
           continuationToken,
           events: [],
@@ -699,15 +698,14 @@ async function readPlaygroundStream(
         const payload = isRecord(event.data) ? event.data : event;
         if (type === "message.appended") partialMessage = stringValue(payload.messageSoFar) ?? partialMessage;
         if (type === "message.completed") {
-          completedMessage =
-            stringValue(payload.message) ?? stringValue(payload.text) ?? stringValue(payload.content) ?? partialMessage;
+          completedMessage = stringValue(payload.message) ?? partialMessage;
         }
         if (type !== "message.appended" && type !== "reasoning.appended") {
           events.push({ type, payload, source: { eveSessionId, agentId: null, agentName: null } });
         }
         terminal = playgroundTerminalTypes.has(type);
         if (type === "session.completed") status = "completed";
-        else if (type === "session.failed" || type === "session.errored" || type === "turn.failed") status = "failed";
+        else if (type === "session.failed" || type === "turn.failed") status = "failed";
         if (terminal) break;
       }
     }
@@ -724,7 +722,6 @@ const playgroundTerminalTypes = new Set([
   "session.waiting",
   "session.completed",
   "session.failed",
-  "session.errored",
   "turn.failed",
 ]);
 
@@ -765,11 +762,8 @@ async function eveSessionResponseMetadata(response: Response): Promise<{
   const parsed = parseJsonRecord(await response.text());
   if (!parsed) return null;
   return {
-    sessionId:
-      stringValue(parsed.sessionId) ?? stringValue(parsed.session_id),
-    continuationToken:
-      stringValue(parsed.continuationToken) ??
-      stringValue(parsed.continuation_token),
+    sessionId: stringValue(parsed.sessionId),
+    continuationToken: stringValue(parsed.continuationToken),
     previousSessionId: stringValue(parsed.previousSessionId),
     status: stringValue(parsed.status),
   };

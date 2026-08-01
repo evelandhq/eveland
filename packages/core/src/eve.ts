@@ -113,10 +113,6 @@ export function getEveString(parsed: Record<string, unknown> | null, key: string
   return typeof value === "string" ? value : null;
 }
 
-export function extractEveResponseText(parsed: Record<string, unknown> | null, rawText: string): string {
-  return getEveString(parsed, "response") ?? getEveString(parsed, "content") ?? getEveString(parsed, "message") ?? rawText;
-}
-
 export function parseStepUsageEvent(type: string, payload: unknown): ModelStepUsage | null {
   if (type !== "step.completed" || !isEveRecord(payload)) {
     return null;

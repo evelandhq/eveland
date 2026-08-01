@@ -385,13 +385,9 @@ export async function resolveRuntimeCommandContext(
   const hasNpmLockfile =
     persistedPaths.has("package-lock.json") ||
     (await fileExists(path.join(sourcePath, "package-lock.json")));
-  return {
-    isEveProject: true,
-    ...(hasPnpmLockfile
-      ? { hasLockfile: true as const, packageManager: "pnpm" as const }
-      : { hasLockfile: hasNpmLockfile, packageManager: "npm" as const }),
-    scripts: packageJson?.scripts ?? {},
-  };
+  return hasPnpmLockfile
+    ? { hasLockfile: true as const, packageManager: "pnpm" as const }
+    : { hasLockfile: hasNpmLockfile, packageManager: "npm" as const };
 }
 
 export async function fileExists(filePath: string): Promise<boolean> {

@@ -587,8 +587,8 @@ does not inject a world and Eve keeps its local development world.
 
 On the supported systemd deployment host, eve agents get no Docker daemon and no KVM, so eve's default sandbox chain
 degrades to the `just-bash` interpreter (no real binaries). eve projects do not opt into
-a real exec sandbox themselves: for every eve project (`isEveProject`; a plain Node
-project is left alone entirely), Eveland's shared release-preparation step generates a sandbox
+a real exec sandbox themselves: for every deployed project (all of which are eve projects —
+the import gate rejects anything else), Eveland's shared release-preparation step generates a sandbox
 module — `agent/sandbox.js` for a flat agent, or `agent/sandbox/sandbox.js` when the agent
 has a sandbox folder, with one more for every subagent directory however deeply nested —
 into the release directory, and vendors this build's `@eveland/sandbox-bwrap`

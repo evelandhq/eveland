@@ -7,14 +7,13 @@ import { injectWorkflowWorld, type WorkflowWorldBuildConfig, type WorkflowWorldI
 
 export type PreparedReleaseResult = ObserverInjectionResult & {
   workflowWorld?: WorkflowWorldInjectionResult;
-  scheduler?: SchedulerInjectionResult;
+  scheduler: SchedulerInjectionResult;
 };
 
 export async function prepareReleaseTree(input: {
   sourcePath: string;
   buildDir: string;
   workflowWorld?: WorkflowWorldBuildConfig;
-  scheduler?: boolean;
 }): Promise<PreparedReleaseResult> {
   const sourcePath = path.resolve(input.sourcePath);
   const buildDir = path.resolve(input.buildDir);
@@ -26,6 +25,6 @@ export async function prepareReleaseTree(input: {
   const workflowWorld = input.workflowWorld
     ? await injectWorkflowWorld({ releaseDir: buildDir, config: input.workflowWorld })
     : undefined;
-  const scheduler = input.scheduler ? await injectSchedulerAdapter({ releaseDir: buildDir }) : undefined;
-  return { ...observer, ...(workflowWorld ? { workflowWorld } : {}), ...(scheduler ? { scheduler } : {}) };
+  const scheduler = await injectSchedulerAdapter({ releaseDir: buildDir });
+  return { ...observer, ...(workflowWorld ? { workflowWorld } : {}), scheduler };
 }

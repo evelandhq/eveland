@@ -123,7 +123,6 @@ describe("buildDockerRunArgs", () => {
       imageTag: "eveland/proj_123:rel_456",
       internalPort: 3000,
       hostPort: 43123,
-      sandboxEnabled: true,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
       observabilityPolicyDir:
         "/host/eveland/observability/proj_123/dep_456",
@@ -172,35 +171,12 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_456");
   });
 
-  test("does not elevate or mount a sandbox cache for plain Node deployments", () => {
-    const args = buildDockerRunArgs({
-      containerName: "eveland-plain-node",
-      imageTag: "eveland/plain:rel_1",
-      internalPort: 3000,
-      hostPort: 43124,
-      sandboxEnabled: false,
-      sandboxCacheDir: "/host/eveland/sandbox/plain",
-      observabilityPolicyDir:
-        "/host/eveland/observability/plain/dep_1",
-      envFilePath: "/var/lib/eveland-data/deployment-env/eveland-plain-node.env",
-      command: "npm start",
-    });
-
-    expect(args).not.toContain("SYS_ADMIN");
-    expect(args).not.toContain("NET_ADMIN");
-    expect(args).not.toContain("seccomp=unconfined");
-    expect(args).not.toContain("/host/eveland/sandbox/plain:/var/lib/eveland-sandbox");
-    expect(args).not.toContain("EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox");
-    expect(args.some((arg) => arg.startsWith("EVELAND_SANDBOX_TEMPLATE_REVISION="))).toBe(false);
-  });
-
   test("does not let project env override the platform template revision", () => {
     const args = buildDockerRunArgs({
       containerName: "eveland-proj_123",
       imageTag: "eveland/proj_123:rel_platform",
       internalPort: 3000,
       hostPort: 43125,
-      sandboxEnabled: true,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
       observabilityPolicyDir:
         "/host/eveland/observability/proj_123/dep_456",
@@ -271,15 +247,10 @@ describe("processSafeName", () => {
 });
 
 describe("buildDockerStartCommand", () => {
-  test("bridges Ollama and executes eve start for eve projects", () => {
-    const command = buildDockerStartCommand({ isEveProject: true, hasLockfile: true, scripts: {} }, 3000);
+  test("bridges Ollama and executes eve start", () => {
+    const command = buildDockerStartCommand({ hasLockfile: true }, 3000);
     expect(command).toContain("socat TCP-LISTEN:11434");
     expect(command).toContain("exec npx eve start --host 0.0.0.0 --port 3000");
-  });
-
-  test("falls back to the inferred runtime command for plain node projects", () => {
-    const command = buildDockerStartCommand({ isEveProject: false, hasLockfile: true, scripts: { start: "node server.js" } }, 3000);
-    expect(command).toBe("npm run start");
   });
 });
 
@@ -331,7 +302,7 @@ describe("createDockerAdapter", () => {
       releaseId: "Rel_456",
       sourcePath: "/workspace/source",
       buildDir,
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     const dockerfilePath = path.join(buildDir, "Dockerfile");
@@ -374,7 +345,7 @@ describe("createDockerAdapter", () => {
         releaseId: "Rel_456",
         sourcePath: "/workspace/source",
         buildDir,
-        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+        commandContext: { hasLockfile: true },
       }),
     ).rejects.toThrow(/Operation not permitted/);
 
@@ -401,7 +372,7 @@ describe("createDockerAdapter", () => {
       releaseId: "Rel_456",
       sourcePath: "/workspace/source",
       buildDir,
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     expect(result.log).toMatch(/WARNING.*no agent\/ directory/i);
@@ -426,7 +397,7 @@ describe("createDockerAdapter", () => {
       releaseId: "Rel_456",
       sourcePath: "/workspace/source",
       buildDir,
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     expect(result.log).toContain("bootstrap()");
@@ -444,7 +415,7 @@ describe("createDockerAdapter", () => {
       releaseRef: "eveland/proj_123:rel_456",
       port: 43123,
       env: { OPENAI_API_KEY: "sk-test-123456" },
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
       sandboxCacheDir,
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
@@ -555,9 +526,7 @@ describe("createDockerAdapter", () => {
         port: 43123,
         env: {},
         commandContext: {
-          isEveProject: true,
           hasLockfile: true,
-          scripts: {},
         },
         sandboxCacheDir:
           "/var/lib/eveland-data/sandbox/proj_123",
@@ -616,7 +585,7 @@ describe("createDockerAdapter", () => {
       releaseRef: "eveland/proj_123:rel_456",
       port: 43123,
       env: {},
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
@@ -826,7 +795,7 @@ describe("docker deployment secrets", () => {
       releaseRef: "eveland/proj_sec:rel_1",
       port: 43200,
       env: { OPENAI_API_KEY: "sk-secret-value", WORKFLOW_POSTGRES_URL: "postgres://u:p@host/db" },
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
       sandboxCacheDir: "/host/sandbox/proj_sec",
       observabilityPolicyDir: "/host/observability/proj_sec",
     });
@@ -856,7 +825,7 @@ describe("docker deployment secrets", () => {
       releaseRef: "eveland/proj_sec:rel_2",
       port: 43201,
       env: { OPENAI_API_KEY: "sk-secret-value" },
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
       sandboxCacheDir: "/host/sandbox/proj_sec",
       observabilityPolicyDir: "/host/observability/proj_sec",
     });

@@ -117,7 +117,7 @@ try {
     releaseId,
     sourcePath: path.resolve(import.meta.dirname, "fixtures/agent-sandbox-e2e"),
     buildDir: path.join(root, "release"),
-    commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
+    commandContext: { hasLockfile: false },
   });
 
   assert.equal(result.releaseRef, imageTag);
@@ -133,7 +133,7 @@ try {
     releaseRef: result.releaseRef,
     port: hostPort,
     env: { EVE_MOCK_AUTHORED_MODELS: "1", NODE_ENV: "development" },
-    commandContext: { isEveProject: true, hasLockfile: false, scripts: {} },
+    commandContext: { hasLockfile: false },
     sandboxCacheDir,
     observabilityPolicyDir,
   });

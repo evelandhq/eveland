@@ -1,15 +1,9 @@
 import type { WorkflowWorldBuildConfig } from "./workflow-world.js";
 import type { SchedulerDefinition } from "@eveland/agent-scheduler";
 
-type RuntimeCommandBase = {
-  isEveProject: boolean;
-  scripts: Record<string, string | undefined>;
-};
-
-export type RuntimeCommandContext = RuntimeCommandBase & (
+export type RuntimeCommandContext =
   | { packageManager: "pnpm"; hasLockfile: true }
-  | { packageManager?: "npm"; hasLockfile: boolean }
-);
+  | { packageManager?: "npm"; hasLockfile: boolean };
 
 export type ReleaseBuildInput = {
   projectId: string;

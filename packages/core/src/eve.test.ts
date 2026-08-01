@@ -1,16 +1,14 @@
 import { describe, expect, test } from "vitest";
 import * as Eve from "./eve.js";
-import { extractEveResponseText, getEveString, isEveRecord, parseEveJsonObject, parseStepUsageEvent } from "./eve.js";
+import { getEveString, isEveRecord, parseEveJsonObject, parseStepUsageEvent } from "./eve.js";
 
-test("Eve wire helpers parse object payloads and preserve raw response fallback", () => {
+test("Eve wire helpers parse object payloads", () => {
   const parsed = parseEveJsonObject('{"sessionId":"eve_123","response":"hello"}');
 
   expect(isEveRecord(parsed)).toBe(true);
   expect(getEveString(parsed, "sessionId")).toBe("eve_123");
-  expect(extractEveResponseText(parsed, "raw")).toBe("hello");
   expect(parseEveJsonObject("[]")).toBeNull();
   expect(parseEveJsonObject("not-json")).toBeNull();
-  expect(extractEveResponseText(null, "raw")).toBe("raw");
 });
 
 describe("parseStepUsageEvent", () => {

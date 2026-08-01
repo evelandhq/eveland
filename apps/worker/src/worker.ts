@@ -5,7 +5,6 @@ import {
   workerInstanceId,
 } from "./observability.js";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { formatBuildInfo } from "@eveland/core/build-info";
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
@@ -141,11 +140,6 @@ await writeConfigurationSnapshotFile(
 ).catch(() => console.warn("Worker configuration diagnostics are unavailable."));
 
 console.log(`${formatBuildInfo(buildInfo)} ready. Poll interval: ${intervalMs}ms`);
-console.log(
-  `Default eve runtime command: ${inferEveRuntimeCommand({
-    scripts: {},
-  })}`,
-);
 platformObservability.emitLog({
   severity: "info",
   eventName: "eveland.worker.ready",

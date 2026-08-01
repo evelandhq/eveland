@@ -2,7 +2,6 @@ import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { inferEveRuntimeCommand } from "@eveland/core/server/runtime-command";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
@@ -153,12 +152,9 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
   ];
 }
 
-export function buildSystemdStartCommand(context: RuntimeCommandContext, port: number): string {
-  if (context.isEveProject) {
-    // Host process: loopback binding is enough, and Ollama on localhost needs no bridge.
-    return `npx eve start --host 127.0.0.1 --port ${port}`;
-  }
-  return inferEveRuntimeCommand({ scripts: context.scripts });
+export function buildSystemdStartCommand(_context: RuntimeCommandContext, port: number): string {
+  // Host process: loopback binding is enough, and Ollama on localhost needs no bridge.
+  return `npx eve start --host 127.0.0.1 --port ${port}`;
 }
 
 export function buildReleaseBuildCommand(
@@ -168,7 +164,6 @@ export function buildReleaseBuildCommand(
   const install = context.packageManager === "pnpm"
     ? PNPM_FROZEN_INSTALL_COMMAND
     : context.hasLockfile ? "npm ci" : "npm install";
-  if (!context.isEveProject) return install;
   const worldInstall = workflowWorld
     ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld, context.packageManager ?? "npm")}`
     : "";
@@ -320,22 +315,12 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
         sourcePath: input.sourcePath,
         buildDir: releaseDir,
         workflowWorld: input.workflowWorld,
-        scheduler: input.commandContext.isEveProject,
       });
-
-      // Only eve projects ever run `npx eve start`/`npx eve build`, so only eve
-      // projects have an eve sandbox to inject a module into or self-check. A
-      // plain Node project gets neither: injecting would vendor a backend
-      // nothing imports, and verifying would run a check against a sandbox
-      // that will never exist in that release.
-      const isEveProject = input.commandContext.isEveProject;
 
       // Runs after cp -a (so it has a release to write into) and before the build
       // command (so `npx eve build` compiles the generated module). `npm ci` only
       // clears node_modules, so .eveland/ survives into the compiled output.
-      const injection = isEveProject
-        ? await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir() })
-        : undefined;
+      const injection = await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir() });
       const cacheDir = projectCacheDir(input.projectId);
       // The dynamic runtime user runs under ProtectSystem=strict and cannot
       // create this directory itself, so the worker creates it before start.
@@ -419,9 +404,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
       // never calls prewarm on a self-hosted release and /eve/v1/health returns
       // 200 regardless of sandbox health, so without this a host that cannot run
       // bwrap would deploy "successfully" and only fail on a user's first turn.
-      if (isEveProject) {
-        await verifySandbox({ releaseDir, user: config.user, cacheDir });
-      }
+      await verifySandbox({ releaseDir, user: config.user, cacheDir });
       await execa("chmod", ["-R", "g+rwX,g-s", releaseDir]);
       await execa("chmod", ["-R", "g+rwX,g-s", cacheDir]);
 
