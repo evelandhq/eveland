@@ -438,3 +438,29 @@ function envelope(deploymentId: string): AgentEventObservation {
     event: { type: "session.started", data: {} },
   };
 }
+
+describe("deployment recording atomicity", () => {
+  test("a failed deployment insert leaves no orphan release behind", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Atomic Deploy Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/atomic-deploy", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const first = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "atomic:one", containerName: "atomic-one", internalPort: 3000, hostPort: 41881, runtimeKind: "docker",
+    });
+
+    // Reusing an existing deployment id trips the primary key -- a failure
+    // claimDeploymentKey does not swallow -- after the release insert.
+    await expect(store.recordDeployment({
+      deploymentId: first.id,
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "atomic:two", containerName: "atomic-two", internalPort: 3000, hostPort: 41882, runtimeKind: "docker",
+    })).rejects.toThrow();
+
+    // The spec forbids releases the database cannot address: the failed call's
+    // release row must roll back with it.
+    const releases = Object.keys(await store.listReleaseSummaries(project.id));
+    expect(releases).toEqual([first.releaseId]);
+    await expect(store.listDeployments(project.id)).resolves.toHaveLength(1);
+  });
+});
