@@ -1,9 +1,13 @@
-import path from "node:path";
 import {
   isSupportedEveDependency,
   unsupportedEveVersionMessage,
 } from "./eve-compatibility.js";
 import { parseScheduleSource, type DiscoveredSchedule } from "./schedules.js";
+
+// Browser-safe module: pure string handling instead of node:path.
+function posixBasename(filePath: string): string {
+  return filePath.slice(filePath.lastIndexOf("/") + 1);
+}
 
 export {
   createEveVersionInfo,
@@ -202,7 +206,7 @@ function getSubagentId(filePath: string, root: string): string | null {
 }
 
 function collectEnvVars(filePath: string, content: string, envVars: Set<string>): void {
-  if (path.posix.basename(filePath).startsWith(".env")) {
+  if (posixBasename(filePath).startsWith(".env")) {
     for (const line of content.split(/\r?\n/)) {
       const match = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=/);
       if (match?.[1]) {

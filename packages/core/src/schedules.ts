@@ -1,6 +1,12 @@
-import path from "node:path";
 import { CronExpressionParser } from "cron-parser";
 import cronstrue from "cronstrue";
+
+// Browser-safe module: pure string handling instead of node:path.
+function posixExtname(filePath: string): string {
+  const base = filePath.slice(filePath.lastIndexOf("/") + 1);
+  const dot = base.lastIndexOf(".");
+  return dot <= 0 ? "" : base.slice(dot);
+}
 
 const moduleExtensions = [".cts", ".mts", ".cjs", ".mjs", ".ts", ".js"] as const;
 
@@ -25,7 +31,7 @@ export type DiscoveredSchedule = MarkdownSchedule | ModuleSchedule;
 export function parseScheduleSource(sourcePath: string, content: string): DiscoveredSchedule {
   const normalizedPath = sourcePath.replaceAll("\\", "/");
   const key = scheduleKeyFromPath(normalizedPath);
-  const extension = path.posix.extname(normalizedPath);
+  const extension = posixExtname(normalizedPath);
 
   if (moduleExtensions.includes(extension as (typeof moduleExtensions)[number])) {
     return { key, kind: "module", sourcePath: normalizedPath, executable: true };
@@ -94,7 +100,7 @@ function scheduleKeyFromPath(sourcePath: string): string {
   if (!relativePath || relativePath.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
     throw new Error(`Schedule ${sourcePath} has an invalid path under agent/schedules/.`);
   }
-  const extension = path.posix.extname(relativePath);
+  const extension = posixExtname(relativePath);
   return relativePath.slice(0, -extension.length);
 }
 

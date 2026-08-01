@@ -108,6 +108,10 @@ site.
 | `EVELAND_API_SESSION_IDLE_TTL_MS` | Idle time before a public API SessionBinding stops protecting its Deployment. Keep the value identical across API, Gateway, and worker. | `604800000` (7 days) | API + Gateway + worker |
 | `EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS` | Hard safety deadline for a dispatched ScheduleRun whose private OTLP observations never produce a terminal turn boundary. It is independent from the activation idle TTL. | `86400000` (24 hours) | worker |
 | `EVELAND_RELEASE_RETENTION` | Minimum newest Deployments/releases retained per project by the automatic archive policy. Route targets, non-expired SessionBindings, and active request leases remain protected independently of age. | `3` (minimum 3) | API + worker |
+| `EVELAND_MAX_UPLOAD_BYTES` | Maximum accepted source upload archive size in bytes; larger uploads return 413. | `104857600` | API (`apps/api/src/app-project-routes.ts`) |
+| `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | Interval between orphan runtime process sweeps. | `3600000` | worker (`apps/worker/src/worker.ts`) |
+| `EVELAND_ORPHAN_GRACE_MS` | Minimum age before the orphan sweep may adopt or stop an unmanaged runtime process. | `300000` | worker (`apps/worker/src/worker.ts`) |
+| `EVELAND_SANDBOX_TEMPLATE_REVISION` | Overrides the sandbox command template revision injected into prepared Releases. | — (platform default) | worker (`apps/worker/src/runtime/sandbox-inject.ts`) |
 | `EVELAND_RELEASE_SWEEP_INTERVAL_MS` | Interval between automatic scans that enqueue archive jobs for unprotected stopped Deployments. `0` disables the automatic sweep. | `3600000` (1 hour) | worker (`worker.ts`) |
 | `EVELAND_RELEASE_SWEEP_BATCH_SIZE` | Maximum new archive jobs enqueued by one automatic Release sweep. | `25` | worker (`runtime/release-reaper.ts`) |
 | `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS` | Interval between retention sweeps that delete terminal runs' durable stream chunks from every per-project workflow database. `0` disables the sweep. | `3600000` (1 hour) | worker (`worker.ts`) |
