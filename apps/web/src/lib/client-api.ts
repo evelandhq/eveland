@@ -1,12 +1,16 @@
 import type { FileUIPart, UserContent } from "ai";
 import type { Job, Project, PublicSecret, ScheduleRun } from "./api";
 import type {
+  AgentConnection,
+  AuthPrincipal,
   PublicGitCredential,
   SharedAgentEnvironment,
+  TeamInvitation,
+  TeamMember,
 } from "@eveland/core/contracts";
 import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity";
-import type { PublicIdentityProvider } from "./server-api";
+import type { PublicIdentityProvider } from "./api";
 import type {
   AgentCapturePolicy,
   ExternalDestinationConfigPatch,
@@ -15,37 +19,15 @@ import type {
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export type Member = {
-  userId: string;
-  email: string;
-  name: string | null;
-  role: "admin" | "member";
-  joinedAt: string;
-};
+// Aliases of the shared contracts, not copies: the api-contract typecheck
+// pins them, so a divergence fails to compile instead of drifting silently.
+export type Member = TeamMember;
+export type CurrentMember = AuthPrincipal;
+export type Invitation = TeamInvitation;
 
-export type CurrentMember = Member & {
-  image: string | null;
-  displayTimezone: string | null;
-};
-
-export type Invitation = {
-  id: string;
-  email: string;
-  role: "admin" | "member";
-  status: "pending" | "accepted" | "rejected" | "canceled";
-  expiresAt: string;
-  invitedByUserId: string;
-  createdAt: string;
-};
-
-export type AgentConnectionView = {
-  id: string;
-  target: { kind: "managed-project"; projectId: string };
-  method: string;
-  securityRevision: number;
+// The decrypted view the identity routes return in place of the sealed record.
+export type AgentConnectionView = Omit<AgentConnection, "configEncrypted"> & {
   config: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type AgentAuthStatus =

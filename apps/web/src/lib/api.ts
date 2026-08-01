@@ -1,5 +1,14 @@
 export type { EveVersionInfo } from "@eveland/core/eve-compatibility";
 
+import type { IdentityProviderConnection } from "@eveland/core/identity";
+
+// Wire shape of /system/identity/providers; shared here so client-api and
+// server-api both import it without importing each other.
+export type PublicIdentityProvider = Omit<
+  IdentityProviderConnection,
+  "clientSecretEncrypted"
+> & { clientSecretConfigured: boolean };
+
 import type {
   LogRecord,
   ModelUsageEvent as CoreModelUsageEvent,

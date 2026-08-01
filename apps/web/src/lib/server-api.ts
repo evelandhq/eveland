@@ -33,7 +33,13 @@ import type {
   SourceFile,
   SourceRevision,
 } from "./api";
-import type { CurrentMember, Invitation, Member } from "./client-api";
+import type { PublicIdentityProvider } from "./api";
+export type { PublicIdentityProvider } from "./api";
+import type {
+  AuthPrincipal as CurrentMember,
+  TeamInvitation as Invitation,
+  TeamMember as Member,
+} from "@eveland/core/contracts";
 
 const apiBaseUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -91,10 +97,6 @@ export const getGitCredentials = () =>
 export const getSharedAgentEnvironment = () =>
   apiGet<{ environment: SharedAgentEnvironment | null }>("/platform/shared-agent-environment")
     .then((data) => data.environment);
-export type PublicIdentityProvider = Omit<
-  IdentityProviderConnection,
-  "clientSecretEncrypted"
-> & { clientSecretConfigured: boolean };
 export const getIdentityProviders = () =>
   apiGet<{ providers: PublicIdentityProvider[] }>("/system/identity/providers")
     .then((data) => data.providers);

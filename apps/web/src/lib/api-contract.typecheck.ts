@@ -5,6 +5,7 @@ import type {
   Project as CoreProject,
   ProjectSchedule as CoreProjectSchedule,
   ProjectScheduleSummary as CoreProjectScheduleSummary,
+  AuthPrincipal as CoreAuthPrincipal,
   PublicJob as CorePublicJob,
   PublicSecret as CorePublicSecret,
   PublicSession as CorePublicSession,
@@ -16,6 +17,8 @@ import type {
   SessionNode as CoreSessionNode,
   SessionTokenUsage as CoreSessionTokenUsage,
   SourceFileRecord,
+  TeamInvitation as CoreTeamInvitation,
+  TeamMember as CoreTeamMember,
 } from "@eveland/core/contracts";
 import type { EveVersionInfo as CoreEveVersionInfo } from "@eveland/core/eve-compatibility";
 import type {
@@ -37,6 +40,7 @@ import type {
   SourceFile,
   SourceRevision,
 } from "./api";
+import type { CurrentMember, Invitation, Member } from "./client-api";
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends
@@ -72,6 +76,9 @@ type ControlPlaneDomainContracts = [
   Assert<Equal<LogLine, LogRecord>>,
   Assert<Equal<SourceRevision, CorePublicSourceRevision>>,
   Assert<Equal<SourceFile, SourceFileRecord>>,
+  Assert<Equal<Member, CoreTeamMember>>,
+  Assert<Equal<CurrentMember, CoreAuthPrincipal>>,
+  Assert<Equal<Invitation, CoreTeamInvitation>>,
 ];
 
 export type { ControlPlaneDomainContracts };

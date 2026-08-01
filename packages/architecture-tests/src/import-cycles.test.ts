@@ -9,11 +9,7 @@ import {
 
 // Known cycles, keyed by their sorted member files. Ratchet: a new cycle
 // fails, and breaking a listed cycle forces its removal here.
-const CYCLE_ALLOWLIST: string[][] = [
-  // Type-only today; scheduled to die when the web client types move onto the
-  // shared contract pins.
-  ["apps/web/src/lib/client-api.ts", "apps/web/src/lib/server-api.ts"],
-];
+const CYCLE_ALLOWLIST: string[][] = [];
 
 function findCycleGroups(files: string[]): string[][] {
   const fileSet = new Set(files);
