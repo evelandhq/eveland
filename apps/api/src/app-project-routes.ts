@@ -447,7 +447,11 @@ export function registerProjectRoutes(input: {
 
   app.get("/projects/:projectId/deployments", async (c) => {
     const projectId = c.req.param("projectId");
-    const [deployments, retention, routes] = await Promise.all([
+    // Build-derived read model: each release's summary projected from eve's
+    // discovery manifest (null for releases built before the projection or
+    // whose manifest was unreadable). One project-scoped query, not a lookup
+    // per (unbounded, archived-included) deployment.
+    const [deployments, retention, routes, releaseSummaries] = await Promise.all([
       store.listDeployments(projectId),
       store.getDeploymentRetention(
         projectId,
@@ -455,16 +459,8 @@ export function registerProjectRoutes(input: {
         deploymentRetentionOptions(),
       ),
       store.listProjectRoutes(projectId),
+      store.listReleaseSummaries(projectId),
     ]);
-    // Build-derived read model: each release's summary projected from eve's
-    // discovery manifest (null for releases built before the projection or
-    // whose manifest was unreadable).
-    const releaseIds = [...new Set(deployments.map((deployment) => deployment.releaseId))];
-    const releaseSummaries = Object.fromEntries(
-      (await Promise.all(releaseIds.map((releaseId) => store.getRelease(releaseId))))
-        .filter((release) => release !== null)
-        .map((release) => [release.id, release.summary]),
-    );
     return c.json({ deployments, retention, routes, releaseSummaries });
   });
 

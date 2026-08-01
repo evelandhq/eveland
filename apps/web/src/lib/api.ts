@@ -150,6 +150,12 @@ export type DeploymentOverview = {
   deployments: Deployment[];
   routes: AgentRoute[];
   retention: Array<{ deployment: Deployment; protected: boolean; reasons: string[] }>;
+  /**
+   * Release id -> build-derived summary projected from eve's discovery
+   * manifest; null for releases built before the projection existed or whose
+   * manifest was unreadable.
+   */
+  releaseSummaries: Record<string, Record<string, unknown> | null>;
 };
 
 export type VariantMetric = {

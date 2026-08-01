@@ -499,6 +499,8 @@ export interface DeploymentStore {
     from: DeploymentStatus[];
   }): Promise<DeploymentRecord | null>;
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
+  /** Release id -> build summary (null when absent) for a whole project, in one query. */
+  listReleaseSummaries(projectId: string): Promise<Record<string, Record<string, unknown> | null>>;
   getDeploymentRetention(
     projectId: string,
     keepRecent?: number,
