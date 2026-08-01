@@ -74,23 +74,59 @@ export type PortOwnership =
   | { status: "unbound" }
   | { status: "foreign"; holder: string };
 
+/** Reads a managed process's lifecycle state, plus its pre-removal forensics. */
+export type ProcessInspectionCapability = {
+  inspectProcess(processName: string): Promise<"missing" | "starting" | "ready" | "stopped" | "failed">;
+  /** Best-effort state and recent output captured before an unhealthy process is removed. */
+  getProcessDiagnostics(processName: string): Promise<ProcessDiagnostics>;
+};
+
+/** Enumerates the runtime's own managed processes (orphan adoption sweeps). */
+export type ProcessDirectoryCapability = {
+  /** Names of currently running processes this runtime owns whose name starts with the prefix. */
+  listProcesses(namePrefix: string): Promise<string[]>;
+};
+
+export type PortOwnershipCapability = {
+  /** Whether the process this adapter manages is the one holding the port's listening socket. */
+  verifyPortOwnership(input: { processName: string; port: number }): Promise<PortOwnership>;
+};
+
+/** Idempotent start used by scale-to-zero wakes that may race a still-live unit. */
+export type IdempotentStartCapability = {
+  ensureProcess(input: ProcessStartInput): Promise<ProcessStartResult>;
+};
+
+export type ReleaseRemovalCapability = {
+  removeRelease(releaseRef: string): Promise<void>;
+};
+
+export type RuntimeCapabilities = ProcessInspectionCapability &
+  ProcessDirectoryCapability &
+  IdempotentStartCapability &
+  ReleaseRemovalCapability;
+
 export type RuntimeAdapter = {
   // Structural match for the shared RuntimeKind contract. Keeping the adapter
   // name narrow makes each deployment's persisted runtime owner unambiguous.
   readonly name: "docker" | "systemd";
   buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult>;
   startProcess(input: ProcessStartInput): Promise<ProcessStartResult>;
-  inspectProcess?(processName: string): Promise<"missing" | "starting" | "ready" | "stopped" | "failed">;
-  /** Best-effort state and recent output captured before an unhealthy process is removed. */
-  getProcessDiagnostics?(processName: string): Promise<ProcessDiagnostics>;
-  /** Names of currently running processes this runtime owns whose name starts with the prefix. */
-  listProcesses?(namePrefix: string): Promise<string[]>;
-  /** Whether the process this adapter manages is the one holding the port's listening socket. */
-  verifyPortOwnership?(input: { processName: string; port: number }): Promise<PortOwnership>;
-  ensureProcess?(input: ProcessStartInput): Promise<ProcessStartResult>;
   stopProcess(processName: string): Promise<void>;
-  removeRelease?(releaseRef: string): Promise<void>;
-};
+} & Partial<RuntimeCapabilities> &
+  Partial<PortOwnershipCapability>;
+
+/**
+ * What every shipped adapter actually is. The factories return this type, so
+ * a future runtime that skips a capability fails to compile there instead of
+ * typechecking as a RuntimeAdapter and missing methods at runtime; consumers
+ * keep guarding only where an intentionally partial adapter (a test fake) is
+ * acceptable. Port-ownership proof is deliberately NOT part of the complete
+ * set: only systemd can attest that its own unit holds a loopback socket, so
+ * that capability is declared by the systemd factory alone and every consumer
+ * must keep handling its absence.
+ */
+export type CompleteRuntimeAdapter = RuntimeAdapter & RuntimeCapabilities;
 
 export function processSafeName(value: string): string {
   const sanitized = value.toLowerCase().replace(/[^a-z0-9_.-]/g, "-");

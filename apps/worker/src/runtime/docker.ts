@@ -6,7 +6,7 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
-import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type ReleaseDiscovery, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
+import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type ReleaseDiscovery, type CompleteRuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
 import { AGENT_OBSERVABILITY_MOUNT_DIR } from "./observability/policy.js";
 import {
@@ -290,12 +290,12 @@ export type DockerAdapterConfig = {
   backendDistDir: () => string;
 };
 
-export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter {
+export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntimeAdapter {
   const collectorContainerName =
     config.collectorContainerName ?? defaultCollectorContainerName;
   const envDir = path.resolve(config.dataDir, "deployment-env");
   const envFilePathFor = (processName: string) => path.join(envDir, `${processName}.env`);
-  const adapter: RuntimeAdapter = {
+  const adapter: CompleteRuntimeAdapter = {
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const imageTag = `eveland/${processSafeName(input.projectId)}:${processSafeName(input.releaseId)}`;

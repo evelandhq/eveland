@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { createDockerAdapter } from "./docker.js";
 import { createSystemdAdapter, resolveSandboxCacheRoot } from "./systemd.js";
-import type { RuntimeAdapter } from "./types.js";
+import type { CompleteRuntimeAdapter } from "./types.js";
 
 /**
  * Locates the built @eveland/sandbox-bwrap that gets vendored into each release.
@@ -29,7 +29,7 @@ export function resolveBackendDistDir(): string {
   return path.dirname(entry);
 }
 
-export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: NodeJS.ProcessEnv = process.env): RuntimeAdapter {
+export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: NodeJS.ProcessEnv = process.env): CompleteRuntimeAdapter {
   if (kind === "docker") {
     return createDockerAdapter({
       internalPort: Number(env.EVELAND_INTERNAL_PORT ?? 3000),
@@ -72,7 +72,7 @@ export function resolveRuntimeKind(env: NodeJS.ProcessEnv): string {
   return "docker";
 }
 
-export function createRuntimeAdapterFromEnv(env: NodeJS.ProcessEnv = process.env): RuntimeAdapter {
+export function createRuntimeAdapterFromEnv(env: NodeJS.ProcessEnv = process.env): CompleteRuntimeAdapter {
   const kind = resolveRuntimeKind(env);
 
   if (kind !== "docker" && kind !== "systemd") {
