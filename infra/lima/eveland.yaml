@@ -8,9 +8,10 @@ images:
 cpus: 4
 memory: "6GiB"
 disk: "30GiB"
-mounts:
-  - location: "~"
-    writable: false
+# No host filesystem is exposed to the guest: the smoke harness streams the
+# repository's tracked/non-ignored files over stdin instead (see
+# infra/integration/run.sh), so host secrets such as .env never enter the VM.
+mounts: []
 provision:
   - mode: system
     script: |
@@ -18,7 +19,7 @@ provision:
       set -eux
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
-      apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq python-is-python3 python3 python3-pip ripgrep rsync unzip zstd
+      apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
       curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
       apt-get install -y nodejs
       corepack enable

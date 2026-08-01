@@ -6,11 +6,33 @@ cd "$(dirname "$0")/../.."
 REPO_DIR="$(pwd)"
 VM=eveland-test
 
+# The guest runs imported project code and build scripts, so it must never see
+# host secrets: infra/lima/eveland.yaml mounts no host filesystem, and the
+# source tree is streamed in as an archive of tracked/non-ignored files only,
+# so .env, .git, and other ignored host state stay on the host. Guests created
+# by an older config still carry the host home mount; recreate those.
+if limactl list --format '{{.Name}}' | grep -qx "$VM" &&
+  grep -q 'location: "~"' "$HOME/.lima/$VM/lima.yaml"; then
+  echo "Recreating $VM: it was created with a host home mount." >&2
+  limactl delete -f "$VM"
+fi
+
 if ! limactl list --format '{{.Name}}' | grep -qx "$VM"; then
   limactl start --name "$VM" infra/lima/eveland.yaml --tty=false
 else
   limactl start "$VM" || true
 fi
+
+# Refresh /opt/eveland from the worktree, keeping the guest-installed
+# node_modules so pnpm install stays incremental across runs.
+limactl shell "$VM" -- sudo bash -c '
+  set -euo pipefail
+  install -d /opt/eveland
+  find /opt/eveland -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} +
+'
+git -C "$REPO_DIR" ls-files --cached --others --exclude-standard -z |
+  tar -czf - --null -T - |
+  limactl shell "$VM" -- sudo tar -xzf - -C /opt/eveland
 
 limactl shell "$VM" -- sudo bash -c "
   set -euo pipefail
@@ -22,7 +44,6 @@ limactl shell "$VM" -- sudo bash -c "
   corepack enable
   corepack install --global pnpm@11.7.0
 
-  rsync -a --delete --exclude node_modules --exclude .eveland-data --exclude .next '$REPO_DIR/' /opt/eveland/
   cd /opt/eveland
   corepack pnpm install --frozen-lockfile
   corepack pnpm --filter @eveland/sandbox-bwrap build
