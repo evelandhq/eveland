@@ -12,22 +12,31 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { describe, expect, onTestFinished, test } from "vitest";
 import { createBetterAuthRuntime, SESSION_COOKIE_NAME } from "./auth.js";
 
-async function createTestRuntime() {
+async function createTestRuntime(
+  interceptAdapter?: (adapter: Record<string, unknown>) => Record<string, unknown>,
+) {
   const database = await createPgliteTestStore();
   onTestFinished(() => database.close());
+  const baseAdapter = drizzleAdapter(database.db, {
+    provider: "pg",
+    schema: {
+      user: users,
+      session: authSessions,
+      account: authAccounts,
+      verification: authVerifications,
+      organization: teams,
+      member: teamMemberships,
+      invitation: invitations,
+    },
+  });
+  const databaseOption = interceptAdapter
+    ? (options: unknown) =>
+        interceptAdapter(
+          (baseAdapter as unknown as (options: unknown) => Record<string, unknown>)(options),
+        )
+    : baseAdapter;
   const runtime = createBetterAuthRuntime({
-    database: drizzleAdapter(database.db, {
-      provider: "pg",
-      schema: {
-        user: users,
-        session: authSessions,
-        account: authAccounts,
-        verification: authVerifications,
-        organization: teams,
-        member: teamMemberships,
-        invitation: invitations,
-      },
-    }),
+    database: databaseOption as Parameters<typeof createBetterAuthRuntime>[0]["database"],
     baseURL: "http://localhost:4000",
     webOrigin: "http://localhost:3000",
     secret: "test-secret-with-at-least-thirty-two-characters",
@@ -155,5 +164,103 @@ describe("Better Auth runtime", () => {
       expect.objectContaining({ id: live.invitation.id, email: "live@example.com", status: "pending" }),
     ]);
     await expect(database.db.select().from(invitations)).resolves.toHaveLength(4);
+  });
+});
+
+describe("last-admin concurrency", () => {
+  // Forces the classic check-then-act interleaving deterministically: while
+  // armed, writes against the member model wait until BOTH racing flows have
+  // arrived (so both already passed their pre-write admin count), then both
+  // proceed. Disarms after release so compensating writes pass through.
+  function createMemberWriteBarrier(expected = 2) {
+    let armed = false;
+    let arrived = 0;
+    const waiters: Array<() => void> = [];
+    return {
+      arm() {
+        armed = true;
+      },
+      async pass(model: unknown) {
+        if (!armed || model !== "member") return;
+        arrived += 1;
+        if (arrived >= expected) {
+          armed = false;
+          for (const release of waiters) release();
+          return;
+        }
+        await new Promise<void>((resolve) => waiters.push(resolve));
+      },
+    };
+  }
+
+  async function createTwoAdminFixture(barrier: ReturnType<typeof createMemberWriteBarrier>) {
+    const { database, runtime } = await createTestRuntime((adapter) => ({
+      ...adapter,
+      async update(input: { model: string }) {
+        await barrier.pass(input.model);
+        return (adapter.update as (input: unknown) => Promise<unknown>)(input);
+      },
+      async updateMany(input: { model: string }) {
+        await barrier.pass(input.model);
+        return (adapter.updateMany as (input: unknown) => Promise<unknown>)(input);
+      },
+      async delete(input: { model: string }) {
+        await barrier.pass(input.model);
+        return (adapter.delete as (input: unknown) => Promise<unknown>)(input);
+      },
+      async deleteMany(input: { model: string }) {
+        await barrier.pass(input.model);
+        return (adapter.deleteMany as (input: unknown) => Promise<unknown>)(input);
+      },
+    }));
+    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
+    const { cookie } = await signIn(runtime);
+    const adminRequest = new Request("http://localhost:4000/members", { headers: { cookie } });
+    const issued = await runtime.invite(adminRequest, "second-admin@example.com", "admin");
+    const accepted = await runtime.acceptInvitation({
+      token: issued.token,
+      name: "Second Admin",
+      password: "second-password-123",
+    });
+    const secondCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+    const secondRequest = new Request("http://localhost:4000/members", { headers: { cookie: secondCookie } });
+    const members = await runtime.listMembers(adminRequest);
+    const firstId = members.find((member) => member.email === "admin@example.com")!.userId;
+    const secondId = accepted.principal.userId;
+    return { database, runtime, adminRequest, secondRequest, firstId, secondId };
+  }
+
+  test("concurrent mutual demotions can never demote the last admin", async () => {
+    const barrier = createMemberWriteBarrier();
+    const fixture = await createTwoAdminFixture(barrier);
+
+    barrier.arm();
+    await Promise.allSettled([
+      fixture.runtime.updateMemberRole(fixture.adminRequest, fixture.secondId, "member"),
+      fixture.runtime.updateMemberRole(fixture.secondRequest, fixture.firstId, "member"),
+    ]);
+
+    const rows = await fixture.database.db.select().from(teamMemberships);
+    expect(
+      rows.filter((row) => row.role === "admin").length,
+      "the Team must keep at least one admin",
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  test("concurrent mutual removals can never remove the last admin", async () => {
+    const barrier = createMemberWriteBarrier();
+    const fixture = await createTwoAdminFixture(barrier);
+
+    barrier.arm();
+    await Promise.allSettled([
+      fixture.runtime.removeMember(fixture.adminRequest, fixture.secondId),
+      fixture.runtime.removeMember(fixture.secondRequest, fixture.firstId),
+    ]);
+
+    const rows = await fixture.database.db.select().from(teamMemberships);
+    expect(
+      rows.filter((row) => row.role === "admin").length,
+      "the Team must keep at least one admin",
+    ).toBeGreaterThanOrEqual(1);
   });
 });
