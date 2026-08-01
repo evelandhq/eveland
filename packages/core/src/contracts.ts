@@ -240,6 +240,9 @@ export type SourceRevision = {
   createdAt: string;
 };
 
+// The browser-facing shape: the host filesystem path stays on the server.
+export type PublicSourceRevision = Omit<SourceRevision, "sourcePath">;
+
 export type ReleaseRecord = {
   id: string;
   projectId: string;
@@ -255,6 +258,13 @@ export type ReleaseRecord = {
   createdAt: string;
 };
 
+// The browser-facing shape: registry refs and the observer delivery contract
+// are runtime-internal.
+export type PublicReleaseRecord = Omit<
+  ReleaseRecord,
+  "imageTag" | "observerContract"
+>;
+
 export type DeploymentRecord = {
   id: string;
   deploymentKey: string;
@@ -268,6 +278,14 @@ export type DeploymentRecord = {
   createdAt: string;
   updatedAt: string;
 };
+
+// The browser-facing shape: container naming and the container-internal port
+// are runtime-internal. hostPort stays -- the deployments page shows it as
+// the loopback upstream.
+export type PublicDeploymentRecord = Omit<
+  DeploymentRecord,
+  "containerName" | "internalPort"
+>;
 
 export type SourceFileRecord = {
   id: string;
@@ -295,6 +313,10 @@ export type Session = {
   completedAt: string | null;
   usage: SessionTokenUsage;
 };
+
+// The browser-facing shape: the continuation token is session-continuation
+// capability material and never leaves the server.
+export type PublicSession = Omit<Session, "continuationToken">;
 
 export type AgentRouteKind = "project" | "deployment" | "alias";
 

@@ -17,6 +17,7 @@ import {
   type Store,
 } from "@eveland/db";
 import type { MiddlewareHandler } from "hono";
+import { publicDeployment } from "./app-public-projections.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import {
   aliasSchema,
@@ -462,7 +463,15 @@ export function registerProjectRoutes(input: {
       store.listProjectRoutes(projectId),
       store.listReleaseSummaries(projectId),
     ]);
-    return c.json({ deployments, retention, routes, releaseSummaries });
+    return c.json({
+      deployments: deployments.map(publicDeployment),
+      retention: retention.map((entry) => ({
+        ...entry,
+        deployment: publicDeployment(entry.deployment),
+      })),
+      routes,
+      releaseSummaries,
+    });
   });
 
   app.get("/projects/:projectId/variant-metrics", async (c) => {
@@ -523,7 +532,9 @@ export function registerProjectRoutes(input: {
         deployment.id,
         "draining",
       );
-      return c.json({ deployment: updated });
+      return c.json({
+        deployment: updated ? publicDeployment(updated) : null,
+      });
     },
   );
 

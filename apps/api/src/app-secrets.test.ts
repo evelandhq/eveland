@@ -404,7 +404,7 @@ describe("api app", () => {
       (await app.request(`/projects/${project.id}/source/revision`)).json(),
     ).resolves.toMatchObject({
       revision: expect.objectContaining({
-        sourcePath: "/tmp/source",
+        kind: "zip",
         envVars: ["OPENAI_API_KEY"],
       }),
     });
