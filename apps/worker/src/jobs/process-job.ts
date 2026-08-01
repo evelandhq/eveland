@@ -247,29 +247,27 @@ export async function processJob(
           ),
         });
       }
-      if (build.discovery) {
-        // eve's own discovery manifest is the authority on what was actually
-        // built; the import-time static scan stays only as the pre-install
-        // preview. Informational: an unrecognized manifest keeps the static
-        // summary rather than failing a build that already succeeded.
-        const projection = projectDiscoveryManifest(build.discovery.manifest);
-        if (projection) {
-          await store.updateSourceRevisionSummary(revision.id, {
-            ...revision.summary,
-            ...projection,
-            ...(build.discovery.resolvedEveVersion
+      // eve's own discovery manifest is the authority on what was actually
+      // built; the import-time static scan stays as the pre-install preview.
+      // Release-scoped (the same revision can be rebuilt with different
+      // resolved dependencies) and persisted only below, with the release row,
+      // so a failed start never leaves summary from a nonexistent release.
+      const discoveryProjection = build.discovery
+        ? projectDiscoveryManifest(build.discovery.manifest)
+        : null;
+      const releaseSummary = discoveryProjection
+        ? {
+            ...discoveryProjection,
+            ...(build.discovery?.resolvedEveVersion
               ? { eveVersionResolved: build.discovery.resolvedEveVersion }
               : {}),
-          });
-        }
+          }
+        : null;
+      if (build.discovery && !discoveryProjection) {
         await store.appendLog({
           projectId: job.projectId,
           type: "build",
-          line: projection
-            ? `Refreshed the project summary from eve's discovery manifest (v${projection.manifestVersion}` +
-              (build.discovery.resolvedEveVersion ? `, eve ${build.discovery.resolvedEveVersion}` : "") +
-              ")."
-            : "WARNING: the release's eve discovery manifest was not recognized; keeping the import-time summary.",
+          line: "WARNING: the release's eve discovery manifest was not recognized; recording the release without a build summary.",
         });
       }
 
@@ -338,12 +336,23 @@ export async function processJob(
           // The delivery contract is a property of this Worker's agent-observer,
           // embedded by prepareReleaseTree inside every adapter build.
           observerContract: OBSERVER_RUNTIME_CONTRACT,
+          summary: releaseSummary,
           containerName: processName,
           internalPort: started.internalPort,
           hostPort,
           runtimeKind: runtime.name,
         });
         deploymentRecorded = true;
+        if (releaseSummary) {
+          await store.appendLog({
+            projectId: job.projectId,
+            type: "build",
+            line:
+              `Recorded the release summary from eve's discovery manifest (v${discoveryProjection!.manifestVersion}` +
+              (build.discovery?.resolvedEveVersion ? `, eve ${build.discovery.resolvedEveVersion}` : "") +
+              ").",
+          });
+        }
         if (!previousDeployment && build.schedulerDefinitions?.length) {
           await store.setProjectSchedulerTarget(project.id, deployment.id);
         }

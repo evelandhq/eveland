@@ -73,14 +73,32 @@ describe("Eve observer hook compatibility matrix", () => {
 
         // The platform's build-time summary projection must understand every
         // matrix version's real manifest -- this is the drift guard for
-        // @eveland/core/discovery against eve's discovery output.
+        // @eveland/core/discovery against eve's discovery output. The
+        // projection fails closed on unknown schema versions or missing entity
+        // arrays, so a non-null result here also proves the version allowlist
+        // and required-field expectations still match what eve writes; every
+        // projected field is asserted so a shape change in any of them fails
+        // the matrix, not production.
         const projection = projectDiscoveryManifest(manifest);
         expect(projection).toMatchObject({
           summarySource: "build-manifest",
           layout: "nested",
+          agentId: expect.any(String),
+          diagnostics: { errors: 0, warnings: 0 },
           instructions: ["agent/instructions.md"],
+          hooks: ["agent/hooks/root-observer.ts"],
+          tools: [],
+          connections: [],
+          schedules: [],
+          channels: [],
+          sandbox: [],
         });
         expect(projection?.skills).toContain("agent/skills/compatibility/SKILL.md");
+        expect(projection?.subagents).toEqual([
+          "agent/subagents/directory-child",
+          "agent/subagents/file-child.ts",
+          "agent/subagents/remote-child.ts",
+        ]);
         expect(projection?.subagentIds).toEqual(["directory-child", "file-child", "remote-child"]);
 
         const compileDir = path.join(path.dirname(info.artifacts.discoveryManifest), "../compile");

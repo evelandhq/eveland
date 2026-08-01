@@ -635,6 +635,11 @@ export const releases = pgTable("releases", {
   imageTag: text("image_tag").notNull(),
   // Null marks releases built before the observer delivery contract existed.
   observerContract: integer("observer_contract"),
+  // Build-derived summary projected from eve's discovery manifest. Release-
+  // scoped: the same source revision can be rebuilt into releases with
+  // different resolved dependencies. Null for releases whose manifest could
+  // not be read or predates this column.
+  summary: jsonb("summary"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
