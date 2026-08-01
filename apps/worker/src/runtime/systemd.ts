@@ -7,7 +7,8 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { verifySandbox } from "./sandbox-verify.js";
-import { processSafeName, type PortOwnership, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
+import { processSafeName, type PortOwnership, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type CompleteRuntimeAdapter,
+  type PortOwnershipCapability, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
 import {
   AGENT_OBSERVABILITY_MOUNT_DIR,
@@ -305,13 +306,13 @@ export type SystemdAdapterConfig = {
   backendDistDir: () => string;
 };
 
-export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapter {
+export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRuntimeAdapter & PortOwnershipCapability {
   const dataDir = path.resolve(config.dataDir);
   const npmCacheDir = path.resolve(dataDir, "npm-cache");
   const envDir = path.resolve(dataDir, "deployment-env");
   const projectCacheDir = (projectId: string) => resolveProjectSandboxCacheDir(config.sandboxCacheDir, projectId);
 
-  const adapter: RuntimeAdapter = {
+  const adapter: CompleteRuntimeAdapter & PortOwnershipCapability = {
     name: "systemd",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const releaseDir = path.resolve(input.buildDir);
