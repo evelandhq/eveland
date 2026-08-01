@@ -13,7 +13,13 @@ import {
   readDeclaredEveVersion,
   type EveVersionInfo,
 } from "@eveland/core/source";
-import { ProjectSlugConflictError, type Store } from "@eveland/db";
+import {
+  ProjectSlugConflictError,
+  type DeploymentStore,
+  type SessionStore,
+  type SourceStore,
+  type Store,
+} from "@eveland/db";
 import type { Context } from "hono";
 import { execFile } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -177,13 +183,12 @@ export async function parsePlaygroundResponse(
 }
 
 export type EveVersionStore = Pick<
-  Store,
-  | "getCurrentDeployment"
-  | "getCurrentSourceRevision"
-  | "getDeployment"
-  | "getDeploymentEveVersion"
-  | "getSourceFile"
->;
+  DeploymentStore,
+  "getCurrentDeployment" | "getDeployment" | "getDeploymentEveVersion"
+> &
+  Pick<SourceStore, "getCurrentSourceRevision" | "getSourceFile">;
+
+export type PlaygroundStreamStore = Pick<SessionStore, "completeSession">;
 
 export async function resolveProjectEveVersion(
   store: EveVersionStore,
@@ -216,7 +221,7 @@ export async function resolveProjectEveVersion(
 
 export function monitorPlaygroundStream(
   body: ReadableStream<Uint8Array>,
-  store: Store,
+  store: PlaygroundStreamStore,
   platformSessionId: string,
   eveSessionId: string,
 ): ReadableStream<Uint8Array> {
@@ -270,7 +275,7 @@ export function monitorPlaygroundStream(
 export async function projectPlaygroundStreamLine(
   line: string,
   currentStatus: SessionStatus,
-  store: Store,
+  store: PlaygroundStreamStore,
   platformSessionId: string,
   eveSessionId: string,
 ): Promise<SessionStatus> {

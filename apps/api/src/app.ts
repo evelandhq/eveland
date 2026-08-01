@@ -1,34 +1,8 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { encodeAgentAuthEnvelope, type AgentAuthSecretReference } from "@eveland/core/agent-auth";
-import {
-  agentAuthConfigsEqual,
-  createAgentAuthRegistry,
-  type AgentCredentialContext,
-  type AgentAuthProviderRegistration,
-} from "@eveland/agent-auth";
-import { openAgentAuthConfig, sealAgentAuthConfig } from "@eveland/agent-auth/sealed-config";
-import {
-  createOidcAgentAuthProvider,
-} from "@eveland/agent-auth/oidc";
 import type { AuthPrincipal } from "@eveland/core/contracts";
-import {
-  classifyEveSessionRequest,
-  getEveString,
-  isEveRecord,
-  PLAYGROUND_MAX_TRANSPORT_BYTES,
-  validatePlaygroundTurn,
-} from "@eveland/core/eve";
-import {
-  unsupportedEveVersionMessage,
-} from "@eveland/core/source";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import {
-  assertValidSecretKey,
-  decryptSecretValue,
-  type EncryptedSecret,
-} from "@eveland/core/server/secrets";
-import { createId } from "@eveland/core/ids";
+import { assertValidSecretKey } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
 import {
   proxyGatewayPlayground,
@@ -48,28 +22,22 @@ import { registerSecretRoutes } from "./app-secret-routes.js";
 import type { AppOptions } from "./app-types.js";
 import { collectInstanceHealth, probeGatewayHealth } from "./instance-health.js";
 import { registerObservabilityRoutes } from "./app-observability-routes.js";
+import { createAgentAuthService } from "./agent-auth-service.js";
+import { registerAgentAuthRoutes } from "./app-agent-auth-routes.js";
+import { registerCanonicalPlaygroundRoute } from "./app-canonical-playground-route.js";
 export type { AppOptions } from "./app-types.js";
 import {
-  agentAuthFailureStatus,
   authErrorResponse,
-  currentUserId,
   getSetCookies,
-  monitorPlaygroundStream,
-  parsePlaygroundBody,
-  parsePlaygroundResponse,
   positiveDuration,
   publicInvitation,
-  readLimitedPlaygroundBody,
-  resolveProjectEveVersion,
 } from "./app-support.js";
 import {
   acceptInvitationSchema,
-  agentAuthCallbackSchema,
   invitationSchema,
   memberRoleSchema,
   passwordChangeSchema,
   profileSchema,
-  updateAgentConnectionSchema,
 } from "./app-schemas.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
@@ -107,125 +75,25 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
   const identityRouteContext = { app, store, options, appSecretKey, webOrigin };
   const identityRouteServices = createIdentityRouteServices(identityRouteContext);
-  const ensureProjectAgentConnection = async (projectId: string) => {
-    const existing = await store.getProjectAgentConnection(projectId);
-    if (existing) return existing;
-    const id = createId("acon");
-    return store.createAgentConnection({
-      id,
-      target: { kind: "managed-project", projectId },
-      method: "local-dev",
-      configEncrypted: sealAgentAuthConfig({}, appSecretKey, {
-        agentConnectionId: id,
-        method: "local-dev",
-        securityRevision: 1,
-      }),
-    });
-  };
-  const readConnectionConfig = (connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>): unknown =>
-    openAgentAuthConfig(connection.configEncrypted, appSecretKey, {
-      agentConnectionId: connection.id,
-      method: connection.method,
-      securityRevision: connection.securityRevision,
-    });
-  const resolveAgentAuthSecret = async (
-    projectId: string,
-    reference: AgentAuthSecretReference,
-  ): Promise<string> => {
-    const encryptedValue = (await store.listSecretRecords(projectId))
-      .find((secret) => secret.key === reference.key)?.encryptedValue;
-    if (!encryptedValue) throw new Error("The configured Playground authentication secret reference is unavailable.");
-    try {
-      return decryptSecretValue(JSON.parse(encryptedValue) as EncryptedSecret, appSecretKey);
-    } catch {
-      throw new Error("The configured Playground authentication secret reference cannot be decrypted.");
-    }
-  };
-  const oidcRegistration = createOidcAgentAuthProvider({
+  const agentAuth = createAgentAuthService({
     store,
     appSecretKey,
-    callbackUrl: options.oidcCallbackUrl ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
-    resolveClientSecret: async (config, connection) => {
-      if (!config.clientSecretRef) return undefined;
-      return resolveAgentAuthSecret(connection.target.projectId, config.clientSecretRef);
-    },
-    ...(options.oidcProtocol ? { protocol: options.oidcProtocol } : {}),
-    ...(options.oidcVerifyAccessToken ? { verifyAccessToken: options.oidcVerifyAccessToken } : {}),
-    ...(options.agentAuthNow ? { now: options.agentAuthNow } : {}),
-    getConnection: async (connectionId) => {
-      const connection = await store.getAgentConnection(connectionId);
-      return connection ? { ...connection, config: readConnectionConfig(connection) } : null;
-    },
+    oidcCallbackUrl:
+      options.oidcCallbackUrl ??
+      `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
+    ...(options.agentAuthProviders
+      ? { agentAuthProviders: options.agentAuthProviders }
+      : {}),
+    ...(options.oidcProtocol
+      ? { oidcProtocol: options.oidcProtocol }
+      : {}),
+    ...(options.oidcVerifyAccessToken
+      ? { oidcVerifyAccessToken: options.oidcVerifyAccessToken }
+      : {}),
+    ...(options.agentAuthNow
+      ? { agentAuthNow: options.agentAuthNow }
+      : {}),
   });
-  const agentAuthRegistry = createAgentAuthRegistry([oidcRegistration, ...(options.agentAuthProviders ?? [])]);
-  const credentialContext = (
-    connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>,
-    callerPrincipalId: string,
-    returnPath?: string,
-  ): AgentCredentialContext => ({
-    connection: { ...connection, config: readConnectionConfig(connection) },
-    callerPrincipalId,
-    ...(returnPath ? { returnPath } : {}),
-    resolveSecret: (reference) => resolveAgentAuthSecret(connection.target.projectId, reference),
-  });
-  const publicConnection = async (
-    connection: Awaited<ReturnType<typeof ensureProjectAgentConnection>>,
-    callerPrincipalId?: string,
-  ) => {
-    const provider = agentAuthRegistry.get(connection.method);
-    if (!provider) {
-      return {
-        connection: { ...connection, configEncrypted: undefined, config: {} },
-        status: { state: "misconfigured" as const, message: `Unsupported Playground authentication method: ${connection.method}.` },
-      };
-    }
-    try {
-      const context = credentialContext(
-        connection,
-        callerPrincipalId ?? "",
-        `/projects/${connection.target.projectId}/playground`,
-      );
-      const config = context.connection.config;
-      const { configEncrypted: _configEncrypted, ...safe } = connection;
-      if (provider.descriptor.interactive && callerPrincipalId) {
-        const resolved = await provider.getCredential(context);
-        return {
-          connection: { ...safe, config: provider.redactConfig(config) },
-          status: "failure" in resolved
-            ? resolved.failure.code === "interaction_required"
-              ? {
-                  state: "interaction_required" as const,
-                  ...(resolved.failure.interaction ? { interaction: resolved.failure.interaction } : {}),
-                }
-              : { state: "misconfigured" as const, message: resolved.failure.message }
-            : { state: "credential_available" as const },
-        };
-      }
-      return {
-        connection: { ...safe, config: provider.redactConfig(config) },
-        status: {
-          state: provider.descriptor.interactive
-            ? "interaction_required" as const
-            : provider.method === "local-dev" || provider.method === "none"
-              ? "not_required" as const
-              : "credential_available" as const,
-        },
-      };
-    } catch {
-      const { configEncrypted: _configEncrypted, ...safe } = connection;
-      return {
-        connection: { ...safe, config: provider.redactConfig({}) },
-        status: { state: "misconfigured" as const, message: "The stored Playground authentication configuration cannot be decrypted." },
-      };
-    }
-  };
-  const resolveProjectAgentAuthCredential = async (projectId: string, callerPrincipalId: string) => {
-    const connection = await ensureProjectAgentConnection(projectId);
-    const provider = agentAuthRegistry.get(connection.method);
-    if (!provider) throw new Error(`Unsupported Playground authentication method: ${connection.method}.`);
-    const context = credentialContext(connection, callerPrincipalId, `/projects/${projectId}/playground`);
-    return { connection, provider, context, resolution: await provider.getCredential(context) };
-  };
   const enqueueLiveDeploymentRestarts = async (projectId: string) => {
     const deployments = (await store.listDeployments(projectId)).filter(
       (deployment) => deployment.status === "running" || deployment.status === "draining",
@@ -431,304 +299,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     });
   }
 
-  app.get("/agent-auth/methods", (c) => c.json({ methods: agentAuthRegistry.listDescriptors() }));
-
-  app.get("/agent-connections/:connectionId/auth/interactions/:method/start", async (c) => {
-    c.header("cache-control", "no-store");
-    const connection = await store.getAgentConnection(c.req.param("connectionId"));
-    const provider = agentAuthRegistry.get(c.req.param("method"));
-    if (!connection || !provider || connection.method !== provider.method || !provider.interaction) {
-      return c.json({ error: "Playground authentication interaction not found" }, 404);
-    }
-    const returnPath = c.req.query("returnPath");
-    if (!returnPath) return c.json({ error: "Playground authentication return path is required" }, 400);
-    try {
-      const interaction = await provider.interaction.start(
-        credentialContext(connection, currentUserId(c), returnPath) as AgentCredentialContext & { returnPath: string },
-      );
-      return c.redirect(interaction.authorizationUrl, 302);
-    } catch (error) {
-      return c.json({
-        error: "Playground authentication could not be started",
-        detail: error instanceof Error ? error.message : "Invalid Playground authentication configuration.",
-      }, 400);
-    }
-  });
-
-  app.post("/agent-auth/callback/:method", async (c) => {
-    c.header("cache-control", "no-store");
-    const parsed = agentAuthCallbackSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: "Invalid Playground authentication callback" }, 400);
-    const provider = agentAuthRegistry.get(c.req.param("method"));
-    if (!provider?.interaction) return c.json({ error: "Playground authentication interaction not found" }, 404);
-    try {
-      return c.json(await provider.interaction.callback({
-        search: parsed.data.search,
-        callerPrincipalId: currentUserId(c),
-      }));
-    } catch (error) {
-      return c.json({ error: "Playground authentication could not be completed" }, 400);
-    }
-  });
-
-  app.get("/projects/:projectId/agent-auth/secret-references", async (c) => {
-    const projectId = c.req.param("projectId");
-    const project = await store.getProject(projectId);
-    if (!project) return c.json({ error: "Project not found" }, 404);
-    const references = (await store.listSecrets(projectId))
-      .filter((secret) => secret.kind === "secret")
-      .map((secret) => ({
-        kind: "project-secret" as const,
-        key: secret.key,
-        label: `Project Secret · ${secret.key}`,
-      }))
-      .sort((left, right) => left.label.localeCompare(right.label));
-    return c.json({ references });
-  });
-
-  app.get("/projects/:projectId/playground/connection", async (c) => {
-    const project = await store.getProject(c.req.param("projectId"));
-    if (!project) return c.json({ error: "Project not found" }, 404);
-    return c.json(await publicConnection(await ensureProjectAgentConnection(project.id), currentUserId(c)));
-  });
-
-  app.put("/agent-connections/:connectionId", async (c) => {
-    const parsed = updateAgentConnectionSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: "Invalid Playground authentication configuration", issues: parsed.error.issues }, 400);
-    const connection = await store.getAgentConnection(c.req.param("connectionId"));
-    if (!connection) return c.json({ error: "Playground authentication configuration not found" }, 404);
-    if (connection.securityRevision !== parsed.data.expectedSecurityRevision) {
-      return c.json({ error: "Playground authentication was updated by another request" }, 409);
-    }
-    const provider = agentAuthRegistry.get(parsed.data.method);
-    if (!provider) return c.json({ error: `Unsupported Playground authentication method: ${parsed.data.method}.` }, 422);
-    let previous: unknown;
-    if (connection.method === parsed.data.method) {
-      try {
-        previous = readConnectionConfig(connection);
-      } catch {
-        previous = undefined;
-      }
-    }
-    let normalized: unknown;
-    try {
-      normalized = provider.normalizeConfig(parsed.data.config, previous);
-    } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : "Invalid Playground authentication configuration." }, 422);
-    }
-    const securityChanged = connection.method !== parsed.data.method || !agentAuthConfigsEqual(previous, normalized);
-    const securityRevision = connection.securityRevision + (securityChanged ? 1 : 0);
-    if (provider.preflight && securityChanged) {
-      try {
-        await provider.preflight({
-          connection: {
-            ...connection,
-            method: parsed.data.method,
-            securityRevision,
-            config: normalized,
-          },
-          callerPrincipalId: currentUserId(c),
-          resolveSecret: (reference) => resolveAgentAuthSecret(connection.target.projectId, reference),
-        });
-      } catch (error) {
-        return c.json({
-          error: "Playground authentication provider preflight failed",
-          detail: error instanceof Error ? error.message : "Invalid Playground authentication provider configuration.",
-        }, 422);
-      }
-    }
-    const updated = await store.updateAgentConnection({
-      id: connection.id,
-      expectedSecurityRevision: connection.securityRevision,
-      method: parsed.data.method,
-      configEncrypted: sealAgentAuthConfig(normalized, appSecretKey, {
-        agentConnectionId: connection.id,
-        method: parsed.data.method,
-        securityRevision,
-      }),
-      securityChanged,
-    });
-    if (!updated) return c.json({ error: "Playground authentication was updated by another request" }, 409);
-    if (securityChanged) await store.deleteStaleAgentAuthCredentials(updated.id, updated.securityRevision);
-    return c.json(await publicConnection(updated, currentUserId(c)));
-  });
+  registerAgentAuthRoutes({ app, store, agentAuth });
 
 
   registerProjectRoutes({ app, store, options, dataDir, appSecretKey, sourcePreflightTtlMs });
 
-  app.all("/projects/:projectId/playground/eve/*", async (c) => {
-    const projectId = c.req.param("projectId");
-    const requestUrl = new URL(c.req.url);
-    const playgroundMarker = "/playground";
-    const markerIndex = requestUrl.pathname.indexOf(playgroundMarker);
-    const evePath = markerIndex >= 0 ? requestUrl.pathname.slice(markerIndex + playgroundMarker.length) : "";
-    const eveRequest = classifyEveSessionRequest(c.req.method, evePath);
-    if (!eveRequest) {
-      return c.json({ error: "Playground route not found" }, 404);
-    }
-    const pathSessionId = eveRequest.sessionId;
-    const isInitial = eveRequest.kind === "initial";
-    const isContinuation = eveRequest.kind === "continuation";
-    const isCancel = eveRequest.kind === "cancel";
-    const isStream = eveRequest.kind === "stream";
-    const isReset = eveRequest.kind === "reset";
-
-    const project = await store.getProject(projectId);
-    if (!project) return c.json({ error: "Project not found" }, 404);
-    let agentAuthEnvelope: string;
-    let activeProvider: AgentAuthProviderRegistration;
-    let activeContext: AgentCredentialContext;
-    let credentialVersion: unknown;
-    try {
-      const resolved = await resolveProjectAgentAuthCredential(projectId, currentUserId(c));
-      if ("failure" in resolved.resolution) {
-        return c.json(resolved.resolution.failure, agentAuthFailureStatus(resolved.resolution.failure));
-      }
-      activeProvider = resolved.provider;
-      activeContext = resolved.context;
-      credentialVersion = resolved.resolution.version;
-      agentAuthEnvelope = encodeAgentAuthEnvelope(resolved.resolution.envelope);
-    } catch (error) {
-      return c.json({
-        error: "Playground authentication is not ready",
-        detail: error instanceof Error ? error.message : "Invalid Playground authentication configuration.",
-      }, 409);
-    }
-    let body: Uint8Array | null = null;
-    let resetContinuationToken: string | null = null;
-    if (isInitial || isContinuation || isCancel || isReset) {
-      try {
-        body = await readLimitedPlaygroundBody(c.req.raw, PLAYGROUND_MAX_TRANSPORT_BYTES);
-        if (isReset) {
-          const resetBody = parsePlaygroundBody(body);
-          resetContinuationToken = isEveRecord(resetBody)
-            ? getEveString(resetBody, "continuationToken")
-            : null;
-          if (!resetContinuationToken) {
-            throw new Error("Playground reset requires a continuationToken.");
-          }
-        } else if (!isCancel) {
-          validatePlaygroundTurn(parsePlaygroundBody(body));
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Invalid Playground request";
-        const status = message === "Playground request body is too large." ? 413 : 400;
-        return c.json({ error: message }, status);
-      }
-    }
-
-    const resetBinding = resetContinuationToken
-      ? await store.findSessionBindingByContinuationToken(projectId, resetContinuationToken)
-      : null;
-    let platformSession = pathSessionId
-      ? await store.getSessionByEveSessionId(projectId, pathSessionId)
-      : resetBinding
-        ? await store.getSessionByEveSessionId(projectId, resetBinding.eveSessionId)
-        : null;
-    if (pathSessionId && !platformSession) return c.json({ error: "Playground session not found" }, 404);
-    const eveVersion = platformSession?.deploymentId
-      ? await resolveProjectEveVersion(store, projectId, platformSession.deploymentId)
-      : null;
-    if (eveVersion && !eveVersion.supported) {
-      return c.json({
-        error: "Unsupported Eve version",
-        detail: unsupportedEveVersionMessage(eveVersion.version),
-        eveVersion,
-      }, 409);
-    }
-
-    if (isInitial) {
-      platformSession = await store.createSession({ projectId, deploymentId: null, trigger: "playground" });
-    }
-
-    let upstream: Response;
-    try {
-      const proxy = (envelope: string) => playgroundProxy({
-        projectId,
-        path: `${evePath}${requestUrl.search}`,
-        method: c.req.method,
-        headers: c.req.raw.headers,
-        body,
-        signal: c.req.raw.signal,
-        agentAuthEnvelope: envelope,
-      });
-      upstream = await proxy(agentAuthEnvelope);
-      if (upstream.status === 401 && activeProvider.recoverUnauthorized && credentialVersion !== undefined) {
-        await upstream.body?.cancel().catch(() => undefined);
-        const recovery = await activeProvider.recoverUnauthorized({
-          ...activeContext,
-          rejectedVersion: credentialVersion,
-          attempt: 0,
-        });
-        if (recovery.action === "give_up") return c.json(recovery.failure, agentAuthFailureStatus(recovery.failure));
-        const currentConnection = await store.getAgentConnection(activeContext.connection.id);
-        if (!currentConnection || currentConnection.method !== activeProvider.method) {
-          return c.json({ error: "Playground authentication changed; retry the request." }, 409);
-        }
-        const retryContext = credentialContext(currentConnection, currentUserId(c), `/projects/${projectId}/playground`);
-        const retryCredential = await activeProvider.getCredential(retryContext);
-        if ("failure" in retryCredential) return c.json(retryCredential.failure, agentAuthFailureStatus(retryCredential.failure));
-        upstream = await proxy(encodeAgentAuthEnvelope(retryCredential.envelope));
-        if (upstream.status === 401) {
-          await upstream.body?.cancel().catch(() => undefined);
-          const terminal = await activeProvider.recoverUnauthorized({
-            ...retryContext,
-            rejectedVersion: retryCredential.version,
-            attempt: 1,
-          });
-          const failure = terminal.action === "give_up"
-            ? terminal.failure
-            : {
-                code: "retry_required" as const,
-                method: activeProvider.method,
-                message: "The Agent credential was rejected twice; retry the request.",
-              };
-          return c.json(failure, agentAuthFailureStatus(failure));
-        }
-      }
-    } catch (error) {
-      if (platformSession && (isInitial || isContinuation)) {
-        await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      return c.json({ error: "Playground request failed", detail: message }, 502);
-    }
-
-    if (!upstream.ok && platformSession && (isInitial || isContinuation)) {
-      await store.completeSession(platformSession.id, { status: "failed", eveSessionId: pathSessionId });
-    }
-
-    if ((isInitial || isContinuation) && upstream.ok && platformSession) {
-      const parsed = await parsePlaygroundResponse(upstream.clone());
-      const eveSessionId = upstream.headers.get("x-eve-session-id") ?? getEveString(parsed, "sessionId") ?? pathSessionId;
-      await store.completeSession(platformSession.id, {
-        status: "running",
-        eveSessionId,
-        continuationToken: getEveString(parsed, "continuationToken"),
-      });
-    }
-    if (isReset && upstream.ok && platformSession) {
-      const parsed = await parsePlaygroundResponse(upstream.clone());
-      if (
-        getEveString(parsed, "status") === "reset" &&
-        getEveString(parsed, "previousSessionId") === platformSession.eveSessionId
-      ) {
-        await store.completeSession(platformSession.id, {
-          status: "completed",
-          eveSessionId: platformSession.eveSessionId,
-          continuationToken: null,
-        });
-      }
-    }
-
-    const responseBody = isStream && upstream.ok && upstream.body && platformSession && pathSessionId
-      ? monitorPlaygroundStream(upstream.body, store, platformSession.id, pathSessionId)
-      : upstream.body;
-    return new Response(responseBody, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: upstream.headers,
-    });
+  registerCanonicalPlaygroundRoute({
+    app,
+    store,
+    agentAuth,
+    playgroundProxy,
   });
 
   registerLegacyPlaygroundRoute({ app, store, playgroundRunner });

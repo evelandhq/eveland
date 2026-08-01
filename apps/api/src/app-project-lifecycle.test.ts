@@ -361,18 +361,32 @@ describe("api app", () => {
       name: "Deleting Agent",
       importKind: "zip",
     });
-    const app = createApp(store);
+    const playgroundProxy = vi.fn();
+    const app = createApp(store, { playgroundProxy });
     await app.request(`/projects/${project.id}`, { method: "DELETE" });
 
     const read = await app.request(`/projects/${project.id}`);
     const mutate = await app.request(`/projects/${project.id}/build-deploy`, {
       method: "POST",
     });
+    const canonicalPlayground = await app.request(
+      `/projects/${project.id}/playground/eve/v1/session`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "Do not enter the Gateway" }),
+      },
+    );
 
     expect(read.status).toBe(200);
     expect(mutate.status).toBe(409);
     await expect(mutate.json()).resolves.toEqual({
       error: "Project is being deleted",
     });
+    expect(canonicalPlayground.status).toBe(409);
+    await expect(canonicalPlayground.json()).resolves.toEqual({
+      error: "Project is being deleted",
+    });
+    expect(playgroundProxy).not.toHaveBeenCalled();
   });
 });
