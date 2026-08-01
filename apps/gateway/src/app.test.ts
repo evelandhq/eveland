@@ -500,3 +500,26 @@ describe("Gateway resource bounds", () => {
     }
   });
 });
+
+describe("internal surface gate", () => {
+  test("gates every /internal path, including unregistered ones, before the public pipeline", async () => {
+    const app = createGatewayApp(repository([]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-token",
+    });
+
+    // Unauthenticated: the masked internal 404, not a public-pipeline error.
+    const unauthenticated = await app.request("/internal/never-registered");
+    expect(unauthenticated.status).toBe(404);
+    await expect(unauthenticated.json()).resolves.toEqual({ error: "Not found" });
+
+    // Authenticated but unregistered: still terminated inside the internal
+    // surface -- it must never fall through to the public proxy catch-all.
+    const authenticated = await app.request("/internal/never-registered", {
+      headers: { authorization: "Bearer service-token" },
+    });
+    expect(authenticated.status).toBe(404);
+    await expect(authenticated.json()).resolves.toEqual({ error: "Not found" });
+  });
+});
