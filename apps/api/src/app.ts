@@ -135,11 +135,11 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   ): Promise<string> => {
     const encryptedValue = (await store.listSecretRecords(projectId))
       .find((secret) => secret.key === reference.key)?.encryptedValue;
-    if (!encryptedValue) throw new Error("The configured Agent Auth secret reference is unavailable.");
+    if (!encryptedValue) throw new Error("The configured Playground authentication secret reference is unavailable.");
     try {
       return decryptSecretValue(JSON.parse(encryptedValue) as EncryptedSecret, appSecretKey);
     } catch {
-      throw new Error("The configured Agent Auth secret reference cannot be decrypted.");
+      throw new Error("The configured Playground authentication secret reference cannot be decrypted.");
     }
   };
   const oidcRegistration = createOidcAgentAuthProvider({
@@ -177,7 +177,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     if (!provider) {
       return {
         connection: { ...connection, configEncrypted: undefined, config: {} },
-        status: { state: "misconfigured" as const, message: `Unsupported Agent Auth Method: ${connection.method}.` },
+        status: { state: "misconfigured" as const, message: `Unsupported Playground authentication method: ${connection.method}.` },
       };
     }
     try {
@@ -216,14 +216,14 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       const { configEncrypted: _configEncrypted, ...safe } = connection;
       return {
         connection: { ...safe, config: provider.redactConfig({}) },
-        status: { state: "misconfigured" as const, message: "The stored Agent Auth configuration cannot be decrypted." },
+        status: { state: "misconfigured" as const, message: "The stored Playground authentication configuration cannot be decrypted." },
       };
     }
   };
   const resolveProjectAgentAuthCredential = async (projectId: string, callerPrincipalId: string) => {
     const connection = await ensureProjectAgentConnection(projectId);
     const provider = agentAuthRegistry.get(connection.method);
-    if (!provider) throw new Error(`Unsupported Agent Auth Method: ${connection.method}.`);
+    if (!provider) throw new Error(`Unsupported Playground authentication method: ${connection.method}.`);
     const context = credentialContext(connection, callerPrincipalId, `/projects/${projectId}/playground`);
     return { connection, provider, context, resolution: await provider.getCredential(context) };
   };
@@ -439,10 +439,10 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const connection = await store.getAgentConnection(c.req.param("connectionId"));
     const provider = agentAuthRegistry.get(c.req.param("method"));
     if (!connection || !provider || connection.method !== provider.method || !provider.interaction) {
-      return c.json({ error: "Agent Auth interaction not found" }, 404);
+      return c.json({ error: "Playground authentication interaction not found" }, 404);
     }
     const returnPath = c.req.query("returnPath");
-    if (!returnPath) return c.json({ error: "Agent Auth return path is required" }, 400);
+    if (!returnPath) return c.json({ error: "Playground authentication return path is required" }, 400);
     try {
       const interaction = await provider.interaction.start(
         credentialContext(connection, currentUserId(c), returnPath) as AgentCredentialContext & { returnPath: string },
@@ -450,8 +450,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       return c.redirect(interaction.authorizationUrl, 302);
     } catch (error) {
       return c.json({
-        error: "Agent authorization could not be started",
-        detail: error instanceof Error ? error.message : "Invalid Agent Auth configuration.",
+        error: "Playground authentication could not be started",
+        detail: error instanceof Error ? error.message : "Invalid Playground authentication configuration.",
       }, 400);
     }
   });
@@ -459,16 +459,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   app.post("/agent-auth/callback/:method", async (c) => {
     c.header("cache-control", "no-store");
     const parsed = agentAuthCallbackSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: "Invalid Agent Auth callback" }, 400);
+    if (!parsed.success) return c.json({ error: "Invalid Playground authentication callback" }, 400);
     const provider = agentAuthRegistry.get(c.req.param("method"));
-    if (!provider?.interaction) return c.json({ error: "Agent Auth interaction not found" }, 404);
+    if (!provider?.interaction) return c.json({ error: "Playground authentication interaction not found" }, 404);
     try {
       return c.json(await provider.interaction.callback({
         search: parsed.data.search,
         callerPrincipalId: currentUserId(c),
       }));
     } catch (error) {
-      return c.json({ error: "Agent authorization could not be completed" }, 400);
+      return c.json({ error: "Playground authentication could not be completed" }, 400);
     }
   });
 
@@ -495,14 +495,14 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   app.put("/agent-connections/:connectionId", async (c) => {
     const parsed = updateAgentConnectionSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: "Invalid Agent Connection", issues: parsed.error.issues }, 400);
+    if (!parsed.success) return c.json({ error: "Invalid Playground authentication configuration", issues: parsed.error.issues }, 400);
     const connection = await store.getAgentConnection(c.req.param("connectionId"));
-    if (!connection) return c.json({ error: "Agent Connection not found" }, 404);
+    if (!connection) return c.json({ error: "Playground authentication configuration not found" }, 404);
     if (connection.securityRevision !== parsed.data.expectedSecurityRevision) {
-      return c.json({ error: "Agent Connection was updated by another request" }, 409);
+      return c.json({ error: "Playground authentication was updated by another request" }, 409);
     }
     const provider = agentAuthRegistry.get(parsed.data.method);
-    if (!provider) return c.json({ error: `Unsupported Agent Auth Method: ${parsed.data.method}.` }, 422);
+    if (!provider) return c.json({ error: `Unsupported Playground authentication method: ${parsed.data.method}.` }, 422);
     let previous: unknown;
     if (connection.method === parsed.data.method) {
       try {
@@ -515,7 +515,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     try {
       normalized = provider.normalizeConfig(parsed.data.config, previous);
     } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : "Invalid Agent Auth configuration." }, 422);
+      return c.json({ error: error instanceof Error ? error.message : "Invalid Playground authentication configuration." }, 422);
     }
     const securityChanged = connection.method !== parsed.data.method || !agentAuthConfigsEqual(previous, normalized);
     const securityRevision = connection.securityRevision + (securityChanged ? 1 : 0);
@@ -533,8 +533,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         });
       } catch (error) {
         return c.json({
-          error: "Agent Auth provider preflight failed",
-          detail: error instanceof Error ? error.message : "Invalid Agent Auth provider configuration.",
+          error: "Playground authentication provider preflight failed",
+          detail: error instanceof Error ? error.message : "Invalid Playground authentication provider configuration.",
         }, 422);
       }
     }
@@ -549,7 +549,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       }),
       securityChanged,
     });
-    if (!updated) return c.json({ error: "Agent Connection was updated by another request" }, 409);
+    if (!updated) return c.json({ error: "Playground authentication was updated by another request" }, 409);
     if (securityChanged) await store.deleteStaleAgentAuthCredentials(updated.id, updated.securityRevision);
     return c.json(await publicConnection(updated, currentUserId(c)));
   });
@@ -590,8 +590,8 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       agentAuthEnvelope = encodeAgentAuthEnvelope(resolved.resolution.envelope);
     } catch (error) {
       return c.json({
-        error: "Agent Connection is not ready",
-        detail: error instanceof Error ? error.message : "Invalid Agent Auth configuration.",
+        error: "Playground authentication is not ready",
+        detail: error instanceof Error ? error.message : "Invalid Playground authentication configuration.",
       }, 409);
     }
     let body: Uint8Array | null = null;
@@ -663,7 +663,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
         if (recovery.action === "give_up") return c.json(recovery.failure, agentAuthFailureStatus(recovery.failure));
         const currentConnection = await store.getAgentConnection(activeContext.connection.id);
         if (!currentConnection || currentConnection.method !== activeProvider.method) {
-          return c.json({ error: "Agent Connection changed; retry the request." }, 409);
+          return c.json({ error: "Playground authentication changed; retry the request." }, 409);
         }
         const retryContext = credentialContext(currentConnection, currentUserId(c), `/projects/${projectId}/playground`);
         const retryCredential = await activeProvider.getCredential(retryContext);

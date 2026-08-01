@@ -70,7 +70,7 @@ function parseEnvelope(value: string): SealedConfigEnvelope {
     || typeof parsed.authTag !== "string"
     || typeof parsed.ciphertext !== "string"
   ) {
-    throw new Error("Invalid sealed Agent Auth config.");
+    throw new Error("Invalid sealed Playground authentication config.");
   }
   return parsed as SealedConfigEnvelope;
 }

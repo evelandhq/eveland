@@ -98,21 +98,22 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
     >
       <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
         <Settings2Icon data-icon="inline-start" />
-        Connection
+        Playground authentication
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Agent Connection</DialogTitle>
+          <DialogTitle>Playground authentication</DialogTitle>
           <DialogDescription>
-            Configure the credential Eveland sends to this Agent&apos;s Eve route. This is separate from your Eveland login.
+            Configure how Eveland authenticates Playground requests to this Agent&apos;s Eve route. This is separate from Eve
+            Connections and your Eveland login.
           </DialogDescription>
         </DialogHeader>
         {loading ? (
-          <div className="flex items-center gap-2 text-muted-foreground"><Spinner /> Loading connection…</div>
+          <div className="flex items-center gap-2 text-muted-foreground"><Spinner /> Loading authentication…</div>
         ) : null}
         {error ? (
           <Alert variant="destructive">
-            <AlertTitle>Connection update failed</AlertTitle>
+            <AlertTitle>Authentication update failed</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
@@ -151,7 +152,7 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
             <DialogFooter>
               <Button type="submit" disabled={saving}>
                 {saving ? <Spinner data-icon="inline-start" /> : <Settings2Icon data-icon="inline-start" />}
-                {saving ? "Saving…" : "Save connection"}
+                {saving ? "Saving…" : "Save authentication"}
               </Button>
             </DialogFooter>
           </form>
@@ -170,5 +171,5 @@ function statusLabel(status: AgentAuthStatus | null): string {
 }
 
 function toMessage(value: unknown): string {
-  return value instanceof Error ? value.message : "Agent Connection request failed.";
+  return value instanceof Error ? value.message : "Playground authentication request failed.";
 }

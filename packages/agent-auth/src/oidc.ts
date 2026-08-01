@@ -186,7 +186,7 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
   const interactionRequired = (connectionId: string, returnPath?: string): AgentAuthFailure => ({
     code: "interaction_required",
     method: "oidc",
-    message: "Authorize this Agent Connection before sending a message.",
+    message: "Complete Playground authentication before sending a message.",
     ...(returnPath ? {
       interaction: {
         type: "redirect",
@@ -323,14 +323,14 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
       if (transaction.callerPrincipalId !== input.callerPrincipalId) throw new Error("OIDC authorization belongs to a different caller.");
       const connection = await input.getConnection(transaction.agentConnectionId);
       if (!connection || connection.method !== "oidc" || connection.securityRevision !== transaction.securityRevision) {
-        throw new Error("Agent Connection changed while OIDC authorization was in progress.");
+        throw new Error("Playground authentication changed while OIDC authorization was in progress.");
       }
       const clientSecret = await options.resolveClientSecret(connection.config, connection);
       const token = await protocol.exchangeAuthorizationCode(connection.config, clientSecret, transaction, input.currentUrl);
       const payload = await verifyCandidate(token, connection.config, clientSecret);
       const currentConnection = await input.getConnection(transaction.agentConnectionId);
       if (!currentConnection || currentConnection.method !== "oidc" || currentConnection.securityRevision !== transaction.securityRevision) {
-        throw new Error("Agent Connection changed while OIDC authorization was in progress.");
+        throw new Error("Playground authentication changed while OIDC authorization was in progress.");
       }
       const key = keyFor(connection, input.callerPrincipalId);
       await options.store.putAgentAuthCredential({
@@ -421,7 +421,7 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     }): Promise<{ action: "retry" } | { action: "give_up"; failure: AgentAuthFailure }> {
       const key = keyFor(input.connection, input.callerPrincipalId);
       if (input.rejectedVersion.securityRevision !== input.connection.securityRevision) {
-        return { action: "give_up", failure: { code: "retry_required", method: "oidc", message: "The Agent Connection changed; retry the request." } };
+        return { action: "give_up", failure: { code: "retry_required", method: "oidc", message: "Playground authentication changed; retry the request." } };
       }
       const credential = await options.store.getAgentAuthCredential(key);
       if (!credential) return { action: "give_up", failure: interactionRequired(input.connection.id, input.returnPath) };
@@ -466,7 +466,7 @@ export function createOidcAgentAuthProvider(
 ): AgentAuthProviderRegistration {
   const runtime = createOidcAuthorizationCodeProvider(options);
   const connection = (snapshot: AgentAuthConnectionSnapshot): OidcConnectionSnapshot => {
-    if (snapshot.method !== "oidc") throw new Error("OIDC Agent Connection is not available.");
+    if (snapshot.method !== "oidc") throw new Error("OIDC is not available for Playground authentication.");
     return snapshot as OidcConnectionSnapshot;
   };
   return {

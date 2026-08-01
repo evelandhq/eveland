@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Agent authorization",
+  title: "Playground authentication",
 };
 
 export default function AgentAuthCallbackLayout({ children }: Readonly<{ children: React.ReactNode }>) {

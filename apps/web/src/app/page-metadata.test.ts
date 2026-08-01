@@ -8,7 +8,7 @@ function source(relativePath: string): string {
 
 const titledPages = [
   ["./accept-invite/page.tsx", "Accept invitation"],
-  ["./agent-auth/oidc/callback/layout.tsx", "Agent authorization"],
+  ["./agent-auth/oidc/callback/layout.tsx", "Playground authentication"],
   ["./deployments/page.tsx", "Deployments"],
   ["./login/page.tsx", "Sign in"],
   ["./new/page.tsx", "New project"],

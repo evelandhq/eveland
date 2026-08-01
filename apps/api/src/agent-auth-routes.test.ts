@@ -63,6 +63,11 @@ describe("Agent Auth control-plane routes", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expectedSecurityRevision: 2, method: "bearer", config: {} }),
     });
+    const stale = await app.request(`/agent-connections/${initialBody.connection.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedSecurityRevision: 1, method: "bearer", config: {} }),
+    });
 
     expect(configured.status).toBe(200);
     await expect(configured.json()).resolves.toMatchObject({
@@ -70,6 +75,10 @@ describe("Agent Auth control-plane routes", () => {
     });
     expect(unchanged.status).toBe(200);
     await expect(unchanged.json()).resolves.toMatchObject({ connection: { securityRevision: 2 } });
+    expect(stale.status).toBe(409);
+    await expect(stale.json()).resolves.toEqual({
+      error: "Playground authentication was updated by another request",
+    });
     expect((await store.getProjectAgentConnection(project.id))?.configEncrypted).not.toContain("agent-token-must-stay-secret");
   });
 
