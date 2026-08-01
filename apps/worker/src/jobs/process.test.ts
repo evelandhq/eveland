@@ -206,7 +206,11 @@ describe("processNextJob", () => {
       deploymentId: deployment.id,
       runtimeInstanceId: claim.runtimeInstance.id,
     });
-    const ensureProcess = vi.fn(async () => ({ internalPort: 3000, log: "started" }));
+    const ensureProcess = vi.fn(
+      async (
+        _input: Parameters<NonNullable<RuntimeAdapter["ensureProcess"]>>[0],
+      ) => ({ internalPort: 3000, log: "started" }),
+    );
     const runtime: RuntimeAdapter = {
       name: "docker",
       async buildRelease() { throw new Error("not used"); },
@@ -226,6 +230,11 @@ describe("processNextJob", () => {
     })).resolves.toBe(true);
 
     expect(ensureProcess).toHaveBeenCalledTimes(1);
+    expect(ensureProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commandContext: { packageManager: "npm", hasLockfile: false },
+      }),
+    );
     await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
       status: "ready",
       endpointPort: deployment.hostPort,
@@ -307,7 +316,7 @@ describe("processNextJob", () => {
     });
   }
 
-  test("starts a prebuilt Release from persisted SourceRevision files when its source directory is gone", async () => {
+  test("starts a prebuilt Release from persisted SourceRevision metadata when its source directory is gone", async () => {
     const store = createTestStore();
     const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-persisted-activation-source-"));
     await rm(missingSourcePath, { recursive: true, force: true });
@@ -318,7 +327,13 @@ describe("processNextJob", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: missingSourcePath,
-      summary: { eveVersion: "^0.28.0" },
+      summary: {
+        eveVersion: "^0.28.0",
+        runtimeCommandContext: {
+          packageManager: "pnpm",
+          hasLockfile: true,
+        },
+      },
       envVars: [],
       files: [
         {
@@ -328,7 +343,6 @@ describe("processNextJob", () => {
             scripts: { start: "eve start" },
           }),
         },
-        { path: "package-lock.json", content: "{}" },
       ],
       schedules: [],
     });
@@ -352,7 +366,11 @@ describe("processNextJob", () => {
       deploymentId: deployment.id,
       runtimeInstanceId: claim.runtimeInstance.id,
     });
-    const ensureProcess = vi.fn(async () => ({ internalPort: 3000, log: "started" }));
+    const ensureProcess = vi.fn(
+      async (
+        _input: Parameters<NonNullable<RuntimeAdapter["ensureProcess"]>>[0],
+      ) => ({ internalPort: 3000, log: "started" }),
+    );
 
     await expect(processNextJob(store, "wake-worker", {
       runtime: {
@@ -366,6 +384,11 @@ describe("processNextJob", () => {
     })).resolves.toBe(true);
 
     expect(ensureProcess).toHaveBeenCalledTimes(1);
+    expect(ensureProcess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        commandContext: { packageManager: "pnpm", hasLockfile: true },
+      }),
+    );
     await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
       status: "ready",
       endpointPort: deployment.hostPort,
@@ -500,7 +523,7 @@ describe("processNextJob", () => {
     await rm(currentSourcePath, { recursive: true, force: true });
   });
 
-  test("dispatches a ScheduleRun once to its pinned Deployment and preserves returned Sessions", async () => {
+  test("dispatches a ScheduleRun once to its pinned Deployment from persisted SourceRevision metadata and preserves returned Sessions", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({ name: "Trigger Schedule", importKind: "zip" });
@@ -512,7 +535,16 @@ describe("processNextJob", () => {
       sourcePath,
       summary: {},
       envVars: [],
-      files: [],
+      files: [
+        {
+          path: "package.json",
+          content: JSON.stringify({
+            dependencies: { eve: "^0.29.0" },
+            scripts: { start: "eve start" },
+          }),
+        },
+        { path: "package-lock.json", content: "{}" },
+      ],
       schedules: [],
     });
     const versions = await store.recordScheduleVersions({
@@ -538,6 +570,7 @@ describe("processNextJob", () => {
       runtimeKind: "docker",
     });
     await store.setProjectSchedulerTarget(project.id, deployment.id);
+    await rm(sourcePath, { recursive: true, force: true });
     const run = await store.createManualScheduleRun(project.id, schedule.id, new Date("2026-07-15T01:02:03.000Z"));
     await store.enqueueJob(project.id, "trigger_schedule", { scheduleRunId: run.id });
     const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";

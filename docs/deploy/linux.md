@@ -555,7 +555,12 @@ does not inject a world and Eve keeps its local development world.
   SessionBindings while no transient unit exists. Cron or Gateway asks API for
   an ActivationLease; API coalesces `ensure_deployment_running`, Worker starts
   the exact Release with the Deployment's recorded `runtimeKind`, and the final
-  lease starts the configured idle deadline. Reaping stops only the process.
+  lease starts the configured idle deadline. If the imported source directory
+  has already been reclaimed, cold and schedule activation recover the package
+  manager selection from the immutable SourceRevision's persisted
+  `package.json` and lockfile metadata. An explicit restart remains
+  live-source-only and fails before stopping the current process when that
+  directory is missing. Reaping stops only the process.
 
 ## Agent exec sandbox
 

@@ -24,6 +24,9 @@ export async function scanEveSource(input: {
 }): Promise<SourceScanResult> {
   const files = await collectSourceFiles(input.sourcePath);
   const inspection = inspectEveProject(files);
+  const runtimeCommandContext = await inspectRuntimeCommandContext(
+    input.sourcePath,
+  );
 
   if (!inspection.valid) {
     throw new Error(`Invalid eve project: ${inspection.errors.join(" ")}`);
@@ -38,6 +41,7 @@ export async function scanEveSource(input: {
       projectName: inspection.projectName,
       eveVersion: inspection.eveVersion,
       capabilities: inspection.capabilities,
+      runtimeCommandContext,
       ...inspection.summary,
     },
     envVars: inspection.envVars,
@@ -111,4 +115,28 @@ async function collectSourceFiles(rootDir: string, relativeDir = ""): Promise<So
   }
 
   return files.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+async function inspectRuntimeCommandContext(rootDir: string): Promise<{
+  packageManager: "npm" | "pnpm";
+  hasLockfile: boolean;
+}> {
+  const [hasPnpmLockfile, hasNpmLockfile] = await Promise.all([
+    rootFileExists(rootDir, "pnpm-lock.yaml"),
+    rootFileExists(rootDir, "package-lock.json"),
+  ]);
+  return hasPnpmLockfile
+    ? { packageManager: "pnpm", hasLockfile: true }
+    : { packageManager: "npm", hasLockfile: hasNpmLockfile };
+}
+
+async function rootFileExists(
+  rootDir: string,
+  fileName: string,
+): Promise<boolean> {
+  try {
+    return (await stat(path.join(rootDir, fileName))).isFile();
+  } catch {
+    return false;
+  }
 }

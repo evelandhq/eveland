@@ -7,7 +7,7 @@ import {
   maskKnownSecrets,
 } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
-import { mkdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { waitForOwnedHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
@@ -16,18 +16,20 @@ import { PLATFORM_WORKFLOW_WORLD } from "../runtime/workflow-world.js";
 import { getGitCommitSha, importGitSource } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
 
+import {
+  createDeploymentStartInput,
+  ensureDeploymentLaunchSandbox,
+  materializeDeploymentLaunchContext,
+  resolveDeploymentLaunchPrerequisites,
+} from "./deployment-launch-context.js";
 import { processRuntimeJob } from "./process-runtime-job.js";
-import { prepareDeploymentObservability } from "./process-observability.js";
 import {
   allocateAvailableHostPort,
   claimInFlightPort,
-  composeDeploymentEnv,
   devSecretKey,
   invalidateGatewayRouteCache,
   parseEncryptedSecret,
   releaseInFlightPort,
-  resolveRuntimeCommandContext,
-  resolveSandboxCacheDirs,
   stopStartedProcessOnFailure,
 } from "./process-support.js";
 import type { ProcessJobOptions } from "./process-types.js";
@@ -182,15 +184,16 @@ export async function processJob(
         project.id,
         releaseId,
       );
-      const { env, secretValues } = await composeDeploymentEnv(
-        store,
-        project.id,
-        deploymentId,
-        options,
-      );
-      const commandContext = await resolveRuntimeCommandContext(
-        revision.sourcePath,
-      );
+      const launchPrerequisites =
+        await resolveDeploymentLaunchPrerequisites({
+          store,
+          workerEnv: process.env,
+          projectId: project.id,
+          deploymentId,
+          runtimeKind: runtime.name,
+          sourcePath: revision.sourcePath,
+          options,
+        });
 
       await store.updateProjectState(job.projectId, {
         status: "build_pending",
@@ -210,7 +213,7 @@ export async function processJob(
           releaseId,
           sourcePath: revision.sourcePath,
           buildDir,
-          commandContext,
+          commandContext: launchPrerequisites.commandContext,
           ...(options.signal ? { signal: options.signal } : {}),
           ...(workflowPostgresUrl ? { workflowWorld: PLATFORM_WORKFLOW_WORLD } : {}),
         });
@@ -222,7 +225,10 @@ export async function processJob(
         await store.appendLog({
           projectId: job.projectId,
           type: "build",
-          line: maskKnownSecrets(build.log.trim(), secretValues),
+          line: maskKnownSecrets(
+            build.log.trim(),
+            launchPrerequisites.secretValues,
+          ),
         });
       }
       if (build.schedulerDefinitions) {
@@ -264,16 +270,11 @@ export async function processJob(
         });
       }
 
-      const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
-      await mkdir(sandboxCache.workerDir, { recursive: true });
-      const observability = await prepareDeploymentObservability({
+      await ensureDeploymentLaunchSandbox(launchPrerequisites);
+      const launchContext = await materializeDeploymentLaunchContext({
         store,
-        env: process.env,
-        projectId: project.id,
         releaseId,
-        deploymentId,
-        runtimeKind: runtime.name,
-        nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
+        prerequisites: launchPrerequisites,
       });
       // A Deployment is an immutable previewable version. Never recycle a port
       // from the production target: old and new versions must be able to run
@@ -294,21 +295,14 @@ export async function processJob(
       let deploymentRecorded = false;
       try {
         options.signal?.throwIfAborted();
-        const started = await runtime.startProcess({
-          processName,
-          releaseRef: build.releaseRef,
-          port: hostPort,
-          env: { ...env, EVELAND_DEPLOYMENT_ID: deploymentId },
-          commandContext,
-          sandboxCacheDir:
-            runtime.name === "docker"
-              ? sandboxCache.hostDir
-              : sandboxCache.workerDir,
-          observabilityPolicyDir:
-            runtime.name === "docker"
-              ? observability.hostDir
-              : observability.workerDir,
-        });
+        const started = await runtime.startProcess(
+          createDeploymentStartInput({
+            processName,
+            releaseRef: build.releaseRef,
+            port: hostPort,
+            launchContext,
+          }),
+        );
         startedProcess = processName;
         await waitForOwnedHttpHealth({
           host: "127.0.0.1",
@@ -401,7 +395,7 @@ export async function processJob(
             runtime,
             startedProcess,
             "deploy",
-            secretValues,
+            launchContext.secretValues,
           );
         }
         if (!deploymentRecorded) {
@@ -432,7 +426,7 @@ export async function processJob(
               type: "deploy",
               line: maskKnownSecrets(
                 `Cleanup after failed deploy also failed: ${cleanupErrors.join("; ")}`,
-                secretValues,
+                launchContext.secretValues,
               ),
             });
           }

@@ -494,17 +494,19 @@ describe("processNextJob", () => {
     });
     await store.enqueueJob(project.id, "build_deploy");
 
-    let selectedPackageManager: unknown;
+    let buildCommandContext: unknown;
+    let startCommandContext: unknown;
     await expect(
       processNextJob(store, "worker-a", {
         workflowPostgresUrl: "",
         runtime: {
           name: "docker",
           async buildRelease(input) {
-            selectedPackageManager = input.commandContext.packageManager;
+            buildCommandContext = input.commandContext;
             return { releaseRef: "eveland/pnpm:rel", log: "build ok" };
           },
-          async startProcess() {
+          async startProcess(input) {
+            startCommandContext = input.commandContext;
             return { internalPort: 3000, log: "started" };
           },
           async stopProcess() {},
@@ -516,7 +518,11 @@ describe("processNextJob", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(selectedPackageManager).toBe("pnpm");
+    expect(buildCommandContext).toEqual({
+      packageManager: "pnpm",
+      hasLockfile: true,
+    });
+    expect(startCommandContext).toBe(buildCommandContext);
   });
 
   test("deploys a concurrent preview without stopping current or reusing its host port", async () => {

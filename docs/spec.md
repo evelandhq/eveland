@@ -513,6 +513,12 @@ source import job 重新扫描同一快照以建立不可变 Source Revision，�
 job 和持久化日志，自动跟随最新日志；部署进行中始终提供前往 Project 详情的入口。部署
 完成后展示可复制的 stable Agent endpoint 和 Project 详情链接。页面离开不取消后台 job。
 
+Source Revision 必须持久化启动既有 Release 所需的 `package.json` 与已识别 lockfile 元数据。
+源码目录已被回收时，cold activation 与 ScheduleRun activation 仍从这些不可变元数据恢复
+package manager/lockfile 选择并启动原 Deployment，不得要求重建 Release。restart 则保持
+live-source-only：必须在停止现有进程前确认源码目录仍存在；缺失时失败并要求重新导入部署，
+即使数据库中仍有持久化元数据也不得先中断正在运行的进程。
+
 ---
 
 ### 项目首页 (/projects/proj_xxxxxxxxxx)

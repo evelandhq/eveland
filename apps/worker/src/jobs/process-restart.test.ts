@@ -766,7 +766,13 @@ describe("processNextJob", () => {
       sourcePath: vanishedSourcePath,
       summary: {},
       envVars: [],
-      files: [],
+      files: [
+        {
+          path: "package.json",
+          content: JSON.stringify({ dependencies: { eve: "^0.29.0" } }),
+        },
+        { path: "package-lock.json", content: "{}" },
+      ],
       schedules: [],
     });
     await store.recordDeployment({

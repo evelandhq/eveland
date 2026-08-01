@@ -53,8 +53,11 @@ The main entrypoints are composers rather than homes for every implementation:
   `app.ts` owns cross-cutting auth services, middleware, and composition.
 - Worker queue claiming, heartbeats, and terminal fencing live in
   `apps/worker/src/jobs/process.ts`. Import/build and runtime job execution are
-  split across `process-job.ts` and `process-runtime-job.ts`; shared runtime,
-  secret, filesystem, and networking helpers live in `process-support.ts`.
+  split across `process-job.ts` and `process-runtime-job.ts`;
+  `deployment-launch-context.ts` owns the shared environment, command,
+  sandbox, and observability inputs while each job handler retains its own
+  build/stop/start/health/state lifecycle. Lower-level secret, filesystem, and
+  networking helpers live in `process-support.ts`.
 - Gateway request/response lifecycle handling lives in
   `apps/gateway/src/app.ts`; canonical Host validation, trusted forwarding
   headers, affinity cookies, and target selection live in

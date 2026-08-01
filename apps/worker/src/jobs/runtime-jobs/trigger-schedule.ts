@@ -4,23 +4,18 @@ import {
   resolveSchedulerRuntimeSecret,
 } from "@eveland/core/server/scheduler-dispatch";
 import type { Store } from "@eveland/db";
-import { mkdir } from "node:fs/promises";
 
 import { ensureDeploymentActive } from "../../runtime/activation-manager.js";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import {
-  composeDeploymentEnv,
-  dispatchScheduleToRuntime,
-  errorMessage,
-  resolveRuntimeCommandContext,
-  resolveSandboxCacheDirs,
-} from "../process-support.js";
+  createDeploymentStartInput,
+  ensureDeploymentLaunchSandbox,
+  materializeDeploymentLaunchContext,
+  resolveDeploymentLaunchPrerequisites,
+  resolveRecoverableRuntimeSource,
+} from "../deployment-launch-context.js";
+import { dispatchScheduleToRuntime, errorMessage } from "../process-support.js";
 import type { ProcessJobOptions } from "../process-types.js";
-import {
-  prepareDeploymentObservability,
-  warnStaleObserverRelease,
-} from "../process-observability.js";
-import { createDeploymentStartInput } from "./deployment-start-input.js";
 import type { RuntimeJob } from "./types.js";
 
 export async function handleTriggerScheduleJob(
@@ -93,22 +88,27 @@ export async function handleTriggerScheduleJob(
     const revision = await store.getSourceRevision(release.sourceRevisionId);
     if (!revision)
       throw new Error("ScheduleRun Release has no SourceRevision.");
+    const recoverableSource = await resolveRecoverableRuntimeSource(
+      store,
+      revision,
+    );
     const runtime =
       options.runtime ??
       (options.runtimeForKind ?? createRuntimeAdapterForKind)(
         deployment.runtimeKind,
       );
-    const { env } = await composeDeploymentEnv(
-      store,
-      job.projectId,
-      deployment.id,
-      options,
-    );
-    const commandContext = await resolveRuntimeCommandContext(
-      revision.sourcePath,
-    );
-    const sandboxCache = resolveSandboxCacheDirs(process.env, job.projectId);
-    await mkdir(sandboxCache.workerDir, { recursive: true });
+    const launchPrerequisites =
+      await resolveDeploymentLaunchPrerequisites({
+        store,
+        workerEnv: process.env,
+        projectId: job.projectId,
+        deploymentId: deployment.id,
+        runtimeKind: runtime.name,
+        sourcePath: revision.sourcePath,
+        ...recoverableSource,
+        options,
+      });
+    await ensureDeploymentLaunchSandbox(launchPrerequisites);
     const maxRuntimeMs = scheduleRunMaxRuntimeMs(options);
     failurePhase = "Deployment activation";
     await store.appendLog({
@@ -117,19 +117,11 @@ export async function handleTriggerScheduleJob(
       type: "runtime",
       line: `ScheduleRun ${run.id} activating ${schedule.key} on Deployment ${deployment.id} (Release ${release.id}, runtime=${deployment.runtimeKind}).`,
     });
-    const observability = await prepareDeploymentObservability({
+    const launchContext = await materializeDeploymentLaunchContext({
       store,
-      env: process.env,
-      projectId: job.projectId,
       releaseId: release.id,
-      deploymentId: deployment.id,
-      runtimeKind: runtime.name,
-      nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
-    });
-    await warnStaleObserverRelease(store, {
-      projectId: job.projectId,
-      deploymentId: deployment.id,
-      release,
+      prerequisites: launchPrerequisites,
+      staleRelease: release,
     });
     const activation = await ensureDeploymentActive(
       store,
@@ -142,12 +134,7 @@ export async function handleTriggerScheduleJob(
           processName: deployment.containerName,
           releaseRef: release.imageTag,
           port: deployment.hostPort,
-          deploymentId: deployment.id,
-          env,
-          commandContext,
-          runtimeKind: runtime.name,
-          sandboxCacheDirs: sandboxCache,
-          observabilityPolicyDirs: observability,
+          launchContext,
         }),
       },
       {
