@@ -66,6 +66,16 @@ The main entrypoints are composers rather than homes for every implementation:
 Large test suites are split by behavior. Reuse colocated `*.test-support.ts`
 fixtures rather than duplicating setup when adding coverage.
 
+Eve compatibility has one semantic owner:
+`packages/core/src/eve-compatibility.ts`. Workspace consumers reference the
+matching pnpm catalogs instead of copying patch versions into package
+manifests. Matrix packages use stable positional aliases (`eve-oldest`,
+`eve-middle`, and `eve`) so sliding the supported minor window does not rename
+consumer dependencies. Standalone integration fixtures keep the `catalog:`
+marker in source and are materialized into temporary directories through
+`@eveland/core/server/eve-fixture` before import, so an Eve patch upgrade does
+not require editing every fixture.
+
 ## Local development
 
 ```bash

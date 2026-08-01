@@ -1,4 +1,8 @@
 import { createPgliteTestStore } from "@eveland/db/test";
+import {
+  LATEST_VERIFIED_EVE_VERSION,
+  OLDEST_VERIFIED_EVE_VERSION,
+} from "@eveland/core/eve-compatibility";
 import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
 import { execa } from "execa";
 import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
@@ -40,7 +44,15 @@ await mkdir(path.join(sourcePath, "agent"), { recursive: true });
 await writeFile(path.join(sourcePath, "agent", "instructions.md"), "Smoke fixture.\n");
 await writeFile(
   path.join(sourcePath, "package.json"),
-  JSON.stringify({ name: "eveland-smoke", version: "0.0.0", dependencies: { eve: "0.27.13" } }, null, 2),
+  JSON.stringify(
+    {
+      name: "eveland-smoke",
+      version: "0.0.0",
+      dependencies: { eve: OLDEST_VERIFIED_EVE_VERSION },
+    },
+    null,
+    2,
+  ),
 );
 
 const { store, close } = await createPgliteTestStore();
@@ -183,7 +195,15 @@ try {
   await writeFile(path.join(failSourcePath, "agent", "instructions.md"), "Smoke fixture (never healthy).\n");
   await writeFile(
     path.join(failSourcePath, "package.json"),
-    JSON.stringify({ name: "eveland-smoke-fail", version: "0.0.0", dependencies: { eve: "0.29.4" } }, null, 2),
+    JSON.stringify(
+      {
+        name: "eveland-smoke-fail",
+        version: "0.0.0",
+        dependencies: { eve: LATEST_VERIFIED_EVE_VERSION },
+      },
+      null,
+      2,
+    ),
   );
 
   const failProject = await store.createProject({ name: "Systemd Smoke Fail", importKind: "zip", sourcePath: failSourcePath });

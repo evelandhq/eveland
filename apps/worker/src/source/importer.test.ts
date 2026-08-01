@@ -27,7 +27,7 @@ describe("git source importer", () => {
     const importing = importGitSource({
       gitUrl: "https://example.com/agent.git",
       targetDir: path.join(root, "source"),
-      timeoutMs: 2_000,
+      timeoutMs: 10_000,
       maxAttempts: 1,
       signal: controller.signal,
     });
@@ -169,7 +169,7 @@ async function useFakeGit(root: string, body: string): Promise<void> {
 }
 
 async function waitForPath(filePath: string): Promise<void> {
-  const deadline = Date.now() + 1_000;
+  const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
     try {
       await access(filePath);

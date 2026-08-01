@@ -24,13 +24,13 @@
     "node": ">=24.0.0"
   },
   "peerDependencies": {
-    "eve": ">=0.27.0 <0.30.0"
+    "eve": "catalog:eve-peer"
   },
   "devDependencies": {
     "ai": "^7.0.44",
-    "eve": "0.29.4",
-    "eve-0-27": "npm:eve@0.27.13",
-    "eve-0-28": "npm:eve@0.28.0",
+    "eve": "catalog:",
+    "eve-oldest": "catalog:eve-matrix",
+    "eve-middle": "catalog:eve-matrix",
     "vitest": "^4.1.9"
   }
 }

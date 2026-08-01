@@ -23,10 +23,10 @@
     "prepack": "pnpm build"
   },
   "peerDependencies": {
-    "eve": ">=0.27.0 <0.30.0"
+    "eve": "catalog:eve-peer"
   },
   "devDependencies": {
-    "eve": "0.29.4",
+    "eve": "catalog:",
     "vitest": "^4.1.9"
   },
   "engines": {

@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@eveland/core": "workspace:*",
-    "eve": "0.29.4",
+    "eve": "catalog:",
     "openid-client": "^6.8.4"
   },
   "devDependencies": {

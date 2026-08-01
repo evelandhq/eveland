@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:https";
 import type { AddressInfo } from "node:net";
@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
+import { materializeEveFixtureDirectory } from "@eveland/core/server/eve-fixture";
 import type { DeploymentRecord, ReleaseRecord } from "@eveland/core/contracts";
 import { createPgliteTestStore } from "@eveland/db/test";
 import { execa } from "execa";
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
   );
   const fixtureOrigin = `${runtime.name === "docker" ? "https://host.docker.internal" : "https://127.0.0.1"}:${connectionServer.port}`;
   const sourcePath = path.join(sourceRoot, "source");
-  await cp(FIXTURE_SOURCE_PATH, sourcePath, { recursive: true });
+  await materializeEveFixtureDirectory(FIXTURE_SOURCE_PATH, sourcePath);
   await materializeConnectionOrigin(sourcePath, fixtureOrigin);
 
   const { store, close } = await createPgliteTestStore();

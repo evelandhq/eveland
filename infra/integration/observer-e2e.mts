@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
 import {
   deriveAgentTelemetrySecret,
   verifyAgentTelemetryCredential,
@@ -15,7 +19,7 @@ import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
 const APP_SECRET_KEY =
   process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
-const FIXTURE_SOURCE_PATH = fileURLToPath(
+const FIXTURE_TEMPLATE_PATH = fileURLToPath(
   new URL(
     "../../apps/worker/src/integration/fixtures/observer-e2e",
     import.meta.url,
@@ -23,94 +27,133 @@ const FIXTURE_SOURCE_PATH = fileURLToPath(
 );
 
 async function main(): Promise<void> {
-  const { store, close } = await createPgliteTestStore();
-  const runtime = createRuntimeAdapterFromEnv();
-  const receiver = await startOtlpTestReceiver();
-  const project = await store.createProject({
-    name: `OTLP Agent E2E ${Date.now()}`,
-    importKind: "zip",
-    sourcePath: FIXTURE_SOURCE_PATH,
-  });
-  await store.upsertSecret(
-    project.id,
-    "EVE_MOCK_AUTHORED_MODELS",
-    JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+  const fixtureRoot = await mkdtemp(
+    path.join(os.tmpdir(), "eveland-observer-e2e-source-"),
   );
-
-  let processName: string | null = null;
   try {
-    assert.equal(
-      await processNextJob(store, "otel-agent-e2e", {
-        appSecretKey: APP_SECRET_KEY,
-      }),
-      true,
+    const fixtureSourcePath = path.join(fixtureRoot, "source");
+    await materializeEveFixtureDirectory(
+      FIXTURE_TEMPLATE_PATH,
+      fixtureSourcePath,
     );
-    await store.enqueueJob(project.id, "build_deploy");
-    assert.equal(
-      await processNextJob(store, "otel-agent-e2e", {
-        appSecretKey: APP_SECRET_KEY,
-      }),
-      true,
-    );
-    const deployment = await store.getCurrentDeployment(project.id);
-    assert.ok(deployment, "OTLP fixture deployment was not recorded");
-    processName = deployment.containerName;
+    const { store, close } = await createPgliteTestStore();
+    let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;
+    let receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>> | null = null;
+    let processName: string | null = null;
+    let primaryFailed = false;
+    let primaryError: unknown;
+    let cleanupFailed = false;
+    let cleanupError: unknown;
+    try {
+      runtime = createRuntimeAdapterFromEnv();
+      receiver = await startOtlpTestReceiver();
+      const project = await store.createProject({
+        name: `OTLP Agent E2E ${Date.now()}`,
+        importKind: "zip",
+        sourcePath: fixtureSourcePath,
+      });
+      await store.upsertSecret(
+        project.id,
+        "EVE_MOCK_AUTHORED_MODELS",
+        JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+      );
 
-    const eveSessionId = await runDirectTurn(deployment.hostPort);
-    const observations = await waitForAgentObservations(receiver);
-    assert.ok(
-      observations.some(
-        (observation) => observation.parentEveSessionId !== null,
-      ),
-      "directory subagent OTLP logs had no parent lineage",
-    );
-    for (const observation of observations) {
-      await store.ingestAgentEvent(observation);
+      assert.equal(
+        await processNextJob(store, "otel-agent-e2e", {
+          appSecretKey: APP_SECRET_KEY,
+        }),
+        true,
+      );
+      await store.enqueueJob(project.id, "build_deploy");
+      assert.equal(
+        await processNextJob(store, "otel-agent-e2e", {
+          appSecretKey: APP_SECRET_KEY,
+        }),
+        true,
+      );
+      const deployment = await store.getCurrentDeployment(project.id);
+      assert.ok(deployment, "OTLP fixture deployment was not recorded");
+      processName = deployment.containerName;
+
+      const eveSessionId = await runDirectTurn(deployment.hostPort);
+      const observations = await waitForAgentObservations(receiver);
+      assert.ok(
+        observations.some(
+          (observation) => observation.parentEveSessionId !== null,
+        ),
+        "directory subagent OTLP logs had no parent lineage",
+      );
+      for (const observation of observations) {
+        await store.ingestAgentEvent(observation);
+      }
+
+      let sessions = await store.listSessions(project.id);
+      assert.equal(
+        sessions.length,
+        1,
+        "root and subagent must aggregate into one platform session",
+      );
+      const session = sessions[0]!;
+      const nodes = await store.listSessionNodes(session.id);
+      const usage = await store.listModelUsageEvents(session.id);
+      assert.equal(session.eveSessionId, eveSessionId);
+      assert.ok(
+        nodes.length >= 2,
+        `expected root + directory subagent nodes, got ${nodes.length}`,
+      );
+      assert.ok(
+        usage.length >= 2,
+        `expected provider usage for root + directory subagent, got ${usage.length}`,
+      );
+      assert.ok(
+        session.usage.reportedSteps >= 2,
+        "session usage aggregate did not include both nodes",
+      );
+
+      const usageBeforeReplay = { ...session.usage };
+      for (const observation of observations) {
+        await store.ingestAgentEvent(observation);
+      }
+      sessions = await store.listSessions(project.id);
+      assert.deepEqual(
+        sessions[0]!.usage,
+        usageBeforeReplay,
+        "replayed OTLP LogRecords duplicated token usage",
+      );
+
+      console.log(
+        `OTLP AGENT E2E OK runtime=${runtime.name} session=${session.id} eve=${eveSessionId} nodes=${nodes.length} usageEvents=${usage.length}`,
+      );
+    } catch (error) {
+      primaryFailed = true;
+      primaryError = error;
+    } finally {
+      const attemptCleanup = async (action: () => Promise<void>): Promise<void> => {
+        try {
+          await action();
+        } catch (error) {
+          cleanupFailed = true;
+          cleanupError ??= error;
+        }
+      };
+      if (processName && runtime) {
+        await attemptCleanup(() => runtime!.stopProcess(processName!));
+      }
+      if (receiver) await attemptCleanup(() => receiver!.close());
+      await attemptCleanup(close);
     }
-
-    let sessions = await store.listSessions(project.id);
-    assert.equal(
-      sessions.length,
-      1,
-      "root and subagent must aggregate into one platform session",
-    );
-    const session = sessions[0]!;
-    const nodes = await store.listSessionNodes(session.id);
-    const usage = await store.listModelUsageEvents(session.id);
-    assert.equal(session.eveSessionId, eveSessionId);
-    assert.ok(
-      nodes.length >= 2,
-      `expected root + directory subagent nodes, got ${nodes.length}`,
-    );
-    assert.ok(
-      usage.length >= 2,
-      `expected provider usage for root + directory subagent, got ${usage.length}`,
-    );
-    assert.ok(
-      session.usage.reportedSteps >= 2,
-      "session usage aggregate did not include both nodes",
-    );
-
-    const usageBeforeReplay = { ...session.usage };
-    for (const observation of observations) {
-      await store.ingestAgentEvent(observation);
+    if (primaryFailed) {
+      if (cleanupFailed) {
+        throw new AggregateError(
+          [primaryError, cleanupError],
+          "Observer E2E scenario and cleanup both failed.",
+        );
+      }
+      throw primaryError;
     }
-    sessions = await store.listSessions(project.id);
-    assert.deepEqual(
-      sessions[0]!.usage,
-      usageBeforeReplay,
-      "replayed OTLP LogRecords duplicated token usage",
-    );
-
-    console.log(
-      `OTLP AGENT E2E OK runtime=${runtime.name} session=${session.id} eve=${eveSessionId} nodes=${nodes.length} usageEvents=${usage.length}`,
-    );
+    if (cleanupFailed) throw cleanupError;
   } finally {
-    if (processName) {
-      await runtime.stopProcess(processName).catch(() => undefined);
-    }
-    await receiver.close();
-    await close();
+    await rm(fixtureRoot, { recursive: true, force: true });
   }
 }
 

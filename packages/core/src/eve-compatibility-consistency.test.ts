@@ -29,8 +29,19 @@ describe("Eve compatibility repository contract", () => {
     );
   });
 
+  test("publishes the Node-only Eve fixture materializer subpath", () => {
+    const corePackage = JSON.parse(
+      repositoryFile("packages/core/package.json"),
+    ) as { exports?: Record<string, string> };
+
+    expect(corePackage.exports?.["./server/eve-fixture"]).toBe(
+      "./src/server/eve-fixture.ts",
+    );
+  });
+
   test("describes a valid sliding compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
+    const stableDependencyNames = ["eve-oldest", "eve-middle", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
       const rangeMatch = /^0\.(\d+)\.x$/.exec(line.range);
       const verifiedMatch = /^0\.(\d+)\.(\d+)$/.exec(line.verifiedVersion);
@@ -43,9 +54,7 @@ describe("Eve compatibility repository contract", () => {
       const minor = Number(rangeMatch[1]);
       expect(Number(verifiedMatch[1]), line.range).toBe(minor);
       expect(line.dependencyName, line.range).toBe(
-        index === supportedLines.length - 1
-          ? "eve"
-          : `eve-${line.range.replace(/\.x$/, "").replaceAll(".", "-")}`,
+        stableDependencyNames[index],
       );
       return minor;
     });
@@ -103,15 +112,24 @@ describe("Eve compatibility repository contract", () => {
     );
   });
 
-  test("keeps package pins, fixtures, and active references aligned with policy", () => {
-    const expectedDependencies = new Map<string, string>(
-      EVE_COMPATIBILITY_POLICY.supportedLines.map((line) => [
-        line.dependencyName,
-        line.dependencyName === "eve"
-          ? line.verifiedVersion
-          : `npm:eve@${line.verifiedVersion}`,
-      ]),
+  test("routes repository Eve dependencies through the compatibility catalogs", () => {
+    const workspace = repositoryFile("pnpm-workspace.yaml");
+    const [latestLine, ...legacyLines] = [
+      ...EVE_COMPATIBILITY_POLICY.supportedLines,
+    ].reverse();
+
+    expect(workspace).toContain(
+      `catalog:\n  eve: ${latestLine!.verifiedVersion}`,
     );
+    for (const line of legacyLines.reverse()) {
+      expect(workspace).toContain(
+        `    ${line.dependencyName}: npm:eve@${line.verifiedVersion}`,
+      );
+    }
+    expect(workspace).toContain(
+      `  eve-peer:\n    eve: "${EVE_COMPATIBILITY_POLICY.peerDependencyRange}"`,
+    );
+
     const packagePaths = globSync(
       ["apps/**/package.json", "packages/**/package.json", "infra/**/package.json"],
       {
@@ -119,52 +137,81 @@ describe("Eve compatibility repository contract", () => {
         exclude: ["**/node_modules/**", "**/.next/**"],
       },
     );
-    const checkedDependencies = new Set<string>();
-
+    const latestConsumers = new Set<string>();
+    const legacyMatrixConsumers = new Set<string>();
+    const standaloneFixtureConsumers = new Set<string>();
+    const peerConsumers = new Set<string>();
+    const matrixDependencyNames = new Set<string>(
+      EVE_COMPATIBILITY_POLICY.supportedLines.map(
+        ({ dependencyName }) => dependencyName,
+      ),
+    );
     for (const packagePath of packagePaths) {
       const packageJson = JSON.parse(repositoryFile(packagePath)) as {
         dependencies?: Record<string, string>;
         devDependencies?: Record<string, string>;
         peerDependencies?: Record<string, string>;
       };
+      const isWorkspacePackage = /^(?:apps|packages)\/[^/]+\/package\.json$/.test(
+        packagePath,
+      );
       for (const dependencies of [
         packageJson.dependencies,
         packageJson.devDependencies,
       ]) {
-        const declaredEvePackages = Object.keys(dependencies ?? {}).filter(
-          (dependencyName) =>
-            dependencyName === "eve" || /^eve-\d+-\d+$/.test(dependencyName),
-        );
-        for (const dependencyName of declaredEvePackages) {
-          expect(
-            expectedDependencies.has(dependencyName),
-            `${packagePath} declares an Eve package outside the compatibility policy: ${dependencyName}`,
-          ).toBe(true);
-        }
-        for (const [dependencyName, expectedVersion] of expectedDependencies) {
-          const actualVersion = dependencies?.[dependencyName];
-          if (actualVersion === undefined) continue;
-          checkedDependencies.add(dependencyName);
-          expect(actualVersion, packagePath).toBe(expectedVersion);
+        for (const dependencyName of Object.keys(dependencies ?? {}).filter(
+          (name) => matrixDependencyNames.has(name),
+        )) {
+          if (isWorkspacePackage && dependencyName === "eve") {
+            latestConsumers.add(packagePath);
+          } else if (isWorkspacePackage) {
+            legacyMatrixConsumers.add(packagePath);
+          } else {
+            standaloneFixtureConsumers.add(packagePath);
+          }
+          expect(dependencies?.[dependencyName], packagePath).toBe(
+            isWorkspacePackage
+              ? dependencyName === "eve"
+                ? "catalog:"
+                : "catalog:eve-matrix"
+              : "catalog:",
+          );
         }
       }
       if (packageJson.peerDependencies?.eve !== undefined) {
-        checkedDependencies.add("peer:eve");
+        peerConsumers.add(packagePath);
         expect(packageJson.peerDependencies.eve, packagePath).toBe(
-          EVE_COMPATIBILITY_POLICY.peerDependencyRange,
+          "catalog:eve-peer",
         );
       }
     }
 
-    expect(checkedDependencies).toEqual(
-      new Set([
-        ...EVE_COMPATIBILITY_POLICY.supportedLines.map(
-          ({ dependencyName }) => dependencyName,
-        ),
-        "peer:eve",
-      ]),
-    );
+    expect([...latestConsumers].sort()).toEqual([
+      "apps/web/package.json",
+      "packages/agent-auth/package.json",
+      "packages/agent-observer/package.json",
+      "packages/agent-scheduler/package.json",
+      "packages/sandbox-bwrap/package.json",
+      "packages/sdk/package.json",
+    ]);
+    expect([...legacyMatrixConsumers].sort()).toEqual([
+      "packages/agent-observer/package.json",
+      "packages/agent-scheduler/package.json",
+      "packages/sandbox-bwrap/package.json",
+    ]);
+    expect([...standaloneFixtureConsumers].sort()).toEqual([
+      "apps/worker/src/integration/fixtures/agent-sandbox-e2e/package.json",
+      "apps/worker/src/integration/fixtures/connections-e2e/package.json",
+      "apps/worker/src/integration/fixtures/observer-e2e/package.json",
+      "infra/integration/fixtures/schedule-scale-zero/package.json",
+    ]);
+    expect([...peerConsumers].sort()).toEqual([
+      "packages/sandbox-bwrap/package.json",
+      "packages/sdk/package.json",
+    ]);
+  });
 
+  test("keeps active documentation references aligned with policy", () => {
     const latestRange = SUPPORTED_EVE_VERSION_RANGES.at(-1)!;
     const quotedVerifiedVersions = VERIFIED_EVE_VERSIONS.map(
       (version) => `\`${version}\``,

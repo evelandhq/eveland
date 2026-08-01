@@ -3,12 +3,12 @@ export const EVE_COMPATIBILITY_POLICY = {
     {
       range: "0.27.x",
       verifiedVersion: "0.27.13",
-      dependencyName: "eve-0-27",
+      dependencyName: "eve-oldest",
     },
     {
       range: "0.28.x",
       verifiedVersion: "0.28.0",
-      dependencyName: "eve-0-28",
+      dependencyName: "eve-middle",
     },
     {
       range: "0.29.x",
@@ -31,6 +31,8 @@ export const VERIFIED_EVE_VERSIONS =
   EVE_COMPATIBILITY_POLICY.supportedLines.map(
     ({ verifiedVersion }) => verifiedVersion,
   );
+
+export const OLDEST_VERIFIED_EVE_VERSION = VERIFIED_EVE_VERSIONS[0]!;
 
 export const LATEST_VERIFIED_EVE_VERSION =
   VERIFIED_EVE_VERSIONS[VERIFIED_EVE_VERSIONS.length - 1]!;

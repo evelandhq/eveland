@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { serve } from "../../apps/gateway/node_modules/@hono/node-server/dist/index.mjs";
@@ -7,6 +10,8 @@ import { createApp } from "../../apps/api/src/app.js";
 import { createApiActivationClient } from "../../apps/gateway/src/activation-client.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
+import { LATEST_VERIFIED_EVE_VERSION } from "../../packages/core/src/eve-compatibility.js";
 import {
   deriveAgentTelemetrySecret,
   verifyAgentTelemetryCredential,
@@ -24,174 +29,236 @@ const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
 const GATEWAY_SERVICE_TOKEN = "schedule-e2e-gateway-service-token-00000000";
 const SCHEDULER_RUNTIME_SECRET = "schedule-e2e-runtime-secret-000000000000";
 const SCHEDULER_DISPATCH_SECRET = "schedule-e2e-dispatch-secret-0000000000";
-const FIXTURE = fileURLToPath(new URL("./fixtures/schedule-scale-zero", import.meta.url));
+const FIXTURE_TEMPLATE = fileURLToPath(new URL("./fixtures/schedule-scale-zero", import.meta.url));
+type TestStore = Awaited<ReturnType<typeof createPgliteTestStore>>["store"];
+type TestRuntime = ReturnType<typeof createRuntimeAdapterFromEnv>;
 
-const priorNodeEnv = process.env.NODE_ENV;
-process.env.NODE_ENV = "test";
-process.env.EVELAND_HEALTH_TIMEOUT_MS ??= "30000";
+async function main(): Promise<void> {
+  const fixtureRoot = await mkdtemp(
+    path.join(os.tmpdir(), "eveland-schedule-e2e-source-"),
+  );
+  const priorNodeEnv = process.env.NODE_ENV;
+  let cleanupStore: Awaited<ReturnType<typeof createPgliteTestStore>> | null = null;
+  let cleanupRuntime: TestRuntime | null = null;
+  let cleanupReceiver: Awaited<ReturnType<typeof startOtlpTestReceiver>> | null = null;
+  let deploymentName: string | null = null;
+  let releaseRef: string | null = null;
+  let apiServer: ReturnType<typeof serve> | null = null;
+  let primaryFailed = false;
+  let primaryError: unknown;
+  let cleanupFailed = false;
+  let cleanupError: unknown;
 
-const { store, close } = await createPgliteTestStore();
-const runtime = createRuntimeAdapterFromEnv();
-const otlpReceiver = await startOtlpTestReceiver();
-let jobOptions: ProcessJobOptions;
-let deploymentName: string | null = null;
-let releaseRef: string | null = null;
-let apiServer: ReturnType<typeof serve> | null = null;
+  try {
+    const fixture = path.join(fixtureRoot, "source");
+    await materializeEveFixtureDirectory(FIXTURE_TEMPLATE, fixture);
 
-try {
-  const api = createApp(store, {
-    appSecretKey: APP_SECRET_KEY,
-    gatewayServiceToken: GATEWAY_SERVICE_TOKEN,
-    schedulerRuntimeSecret: SCHEDULER_RUNTIME_SECRET,
-    schedulerDispatchSecret: SCHEDULER_DISPATCH_SECRET,
-    runtimeActivationLeaseTtlMs: 30_000,
-    runtimeActivationWaitTimeoutMs: 30_000,
-    runtimeActivationWaiter: async (claim) => {
-      if (claim.runtimeInstance.status === "starting") {
-        assert.equal(await processNextJob(store, "schedule-e2e-activation", jobOptions), true);
+    process.env.NODE_ENV = "test";
+    process.env.EVELAND_HEALTH_TIMEOUT_MS ??= "30000";
+
+    cleanupStore = await createPgliteTestStore();
+    const { store } = cleanupStore;
+    const runtime = createRuntimeAdapterFromEnv();
+    cleanupRuntime = runtime;
+    const otlpReceiver = await startOtlpTestReceiver();
+    cleanupReceiver = otlpReceiver;
+    let jobOptions: ProcessJobOptions;
+
+    const api = createApp(store, {
+      appSecretKey: APP_SECRET_KEY,
+      gatewayServiceToken: GATEWAY_SERVICE_TOKEN,
+      schedulerRuntimeSecret: SCHEDULER_RUNTIME_SECRET,
+      schedulerDispatchSecret: SCHEDULER_DISPATCH_SECRET,
+      runtimeActivationLeaseTtlMs: 30_000,
+      runtimeActivationWaitTimeoutMs: 30_000,
+      runtimeActivationWaiter: async (claim) => {
+        if (claim.runtimeInstance.status === "starting") {
+          assert.equal(await processNextJob(store, "schedule-e2e-activation", jobOptions), true);
+        }
+        const current = await store.getRuntimeInstance(claim.runtimeInstance.id);
+        assert.ok(current, "activation RuntimeInstance disappeared");
+        return current;
+      },
+    });
+    apiServer = serve({ fetch: api.fetch, port: 0 });
+    if (!apiServer.listening) await once(apiServer, "listening");
+    const apiAddress = apiServer.address();
+    if (!apiAddress || typeof apiAddress === "string") throw new Error("Schedule E2E API did not bind.");
+    const apiOrigin = `http://127.0.0.1:${apiAddress.port}`;
+    const deploymentApiHost = runtime.name === "docker" ? "host.docker.internal" : "127.0.0.1";
+    jobOptions = {
+      runtime,
+      appSecretKey: APP_SECRET_KEY,
+      nodeEnv: "development",
+      schedulerRuntimeSecret: SCHEDULER_RUNTIME_SECRET,
+      schedulerDispatchSecret: SCHEDULER_DISPATCH_SECRET,
+      schedulerRedeemUrl: `http://${deploymentApiHost}:${apiAddress.port}/internal/scheduler/dispatch`,
+    };
+
+    const project = await store.createProject({
+      name: `Schedule Scale Zero ${runtime.name} ${Date.now()}`,
+      importKind: "zip",
+      sourcePath: fixture,
+    });
+    await store.upsertSecret(
+      project.id,
+      "EVE_MOCK_AUTHORED_MODELS",
+      JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+    );
+    assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "import_source did not run");
+    await store.enqueueJob(project.id, "build_deploy");
+    assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "build_deploy did not run");
+
+    const deployment = await store.getCurrentDeployment(project.id);
+    assert.ok(deployment, "schedule fixture Deployment was not recorded");
+    deploymentName = deployment.containerName;
+    const release = await store.getRelease(deployment.releaseId);
+    assert.ok(release, "schedule fixture Release was not recorded");
+    releaseRef = release.imageTag;
+    const schedules = await store.listProjectScheduleSummaries(project.id);
+    assert.equal(schedules.length, 1);
+    const schedule = schedules[0]!.schedule;
+    assert.equal(schedule.key, "multi-session");
+
+    const gateway = createGatewayApp(store, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret: "schedule-e2e-affinity-secret",
+      activationClient: createApiActivationClient({ apiUrl: apiOrigin, serviceToken: GATEWAY_SERVICE_TOKEN }),
+      activationRenewIntervalMs: 5_000,
+      routeCacheTtlMs: 0,
+    });
+    const publicOrigin = `http://${project.slug}.agent.localhost`;
+
+    const initial = await gateway.request(`${publicOrigin}/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Create the continuation fixture." }),
+    });
+    const initialBody = await initial.text();
+    assert.ok(initial.ok, `initial public turn failed (${initial.status}): ${initialBody}`);
+    const initialResult = sessionResult(initialBody, initial.headers);
+    const initialSessionId = initialResult.sessionId;
+    assert.ok(initialSessionId, `initial public turn returned no Session ID: ${initialBody}`);
+    assert.ok(initialResult.continuationToken, `initial public turn returned no continuation token: ${initialBody}`);
+    await consumeTurn(gateway, `${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}/stream?startIndex=0`);
+    const binding = await store.findSessionBinding(project.id, initialSessionId);
+    assert.equal(binding?.deploymentId, deployment.id);
+
+    assert.equal(await stopAfterIdle(store, runtime), 1);
+    assert.equal((await store.getDeployment(deployment.id))?.status, "stopped");
+    assert.notEqual(await runtime.inspectProcess?.(deployment.containerName), "ready");
+
+    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date(Date.now() - 120_000));
+    assert.equal(await planDueSchedules(store, { now: new Date(), limit: 10 }), 1);
+    const planned = await store.listScheduleRuns(project.id, { trigger: "cron", limit: 10 });
+    assert.equal(planned.items.length, 1);
+    const runId = planned.items[0]!.id;
+    assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "trigger_schedule did not run");
+    const dispatched = await store.getScheduleRunDetail(runId);
+    assert.equal(dispatched?.status, "running", dispatched?.error ?? "ScheduleRun did not stay active");
+    assert.equal(dispatched?.attempt, 1);
+    assert.equal(dispatched?.sessions.length, 2);
+    assert.equal(
+      await stopAfterIdle(store, runtime),
+      0,
+      "idle reaping stopped a RuntimeInstance before its scheduled Sessions reached a turn boundary",
+    );
+
+    const observed = await waitForObservedUsage(store, otlpReceiver, runId);
+    assert.equal(
+      observed.status,
+      "succeeded",
+      observed.error ?? "OTLP telemetry did not settle ScheduleRun",
+    );
+    assert.equal(observed.sessions.length, 2);
+    assert.ok(observed.usage.reportedSteps >= 2, "schedule Session usage was not projected");
+
+    const beforeNativeTick = await store.listSessions(project.id);
+    await waitPastNextMinute();
+    await projectPendingOtlpLogs(store, otlpReceiver);
+    const afterNativeTick = await store.listSessions(project.id);
+    assert.equal(afterNativeTick.length, beforeNativeTick.length, "native Eve cron duplicated authored execution");
+    assert.equal((await store.getScheduleRunDetail(runId))?.sessions.length, 2);
+
+    assert.equal(await stopAfterIdle(store, runtime), 1);
+    assert.equal((await store.getDeployment(deployment.id))?.status, "stopped");
+
+    const continuation = await gateway.request(`${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        continuationToken: initialResult.continuationToken,
+        message: "Continue after the idle shutdown.",
+      }),
+    });
+    const continuationBody = await continuation.text();
+    assert.ok(continuation.ok, `continuation failed (${continuation.status}): ${continuationBody}`);
+    assert.ok(
+      sessionResult(continuationBody, continuation.headers).sessionId,
+      `continuation returned no accepted workflow run: ${continuationBody}`,
+    );
+    const readyInstances = await store.listRuntimeInstances(["ready"], 10);
+    assert.equal(readyInstances.at(-1)?.deploymentId, deployment.id);
+    assert.equal((await store.findSessionBinding(project.id, initialSessionId))?.deploymentId, deployment.id);
+
+    console.log(
+      `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=${LATEST_VERIFIED_EVE_VERSION} dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1`,
+    );
+  } catch (error) {
+    primaryFailed = true;
+    primaryError = error;
+  } finally {
+    const attemptCleanup = async (action: () => Promise<void>): Promise<void> => {
+      try {
+        await action();
+      } catch (error) {
+        cleanupFailed = true;
+        cleanupError ??= error;
       }
-      const current = await store.getRuntimeInstance(claim.runtimeInstance.id);
-      assert.ok(current, "activation RuntimeInstance disappeared");
-      return current;
-    },
-  });
-  apiServer = serve({ fetch: api.fetch, port: 0 });
-  if (!apiServer.listening) await once(apiServer, "listening");
-  const apiAddress = apiServer.address();
-  if (!apiAddress || typeof apiAddress === "string") throw new Error("Schedule E2E API did not bind.");
-  const apiOrigin = `http://127.0.0.1:${apiAddress.port}`;
-  const deploymentApiHost = runtime.name === "docker" ? "host.docker.internal" : "127.0.0.1";
-  jobOptions = {
-    runtime,
-    appSecretKey: APP_SECRET_KEY,
-    nodeEnv: "development",
-    schedulerRuntimeSecret: SCHEDULER_RUNTIME_SECRET,
-    schedulerDispatchSecret: SCHEDULER_DISPATCH_SECRET,
-    schedulerRedeemUrl: `http://${deploymentApiHost}:${apiAddress.port}/internal/scheduler/dispatch`,
-  };
+    };
 
-  const project = await store.createProject({
-    name: `Schedule Scale Zero ${runtime.name} ${Date.now()}`,
-    importKind: "zip",
-    sourcePath: FIXTURE,
-  });
-  await store.upsertSecret(
-    project.id,
-    "EVE_MOCK_AUTHORED_MODELS",
-    JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
-  );
-  assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "import_source did not run");
-  await store.enqueueJob(project.id, "build_deploy");
-  assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "build_deploy did not run");
-
-  const deployment = await store.getCurrentDeployment(project.id);
-  assert.ok(deployment, "schedule fixture Deployment was not recorded");
-  deploymentName = deployment.containerName;
-  const release = await store.getRelease(deployment.releaseId);
-  assert.ok(release, "schedule fixture Release was not recorded");
-  releaseRef = release.imageTag;
-  const schedules = await store.listProjectScheduleSummaries(project.id);
-  assert.equal(schedules.length, 1);
-  const schedule = schedules[0]!.schedule;
-  assert.equal(schedule.key, "multi-session");
-
-  const gateway = createGatewayApp(store, {
-    allowedBaseDomains: ["agent.localhost"],
-    affinitySecret: "schedule-e2e-affinity-secret",
-    activationClient: createApiActivationClient({ apiUrl: apiOrigin, serviceToken: GATEWAY_SERVICE_TOKEN }),
-    activationRenewIntervalMs: 5_000,
-    routeCacheTtlMs: 0,
-  });
-  const publicOrigin = `http://${project.slug}.agent.localhost`;
-
-  const initial = await gateway.request(`${publicOrigin}/eve/v1/session`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message: "Create the continuation fixture." }),
-  });
-  const initialBody = await initial.text();
-  assert.ok(initial.ok, `initial public turn failed (${initial.status}): ${initialBody}`);
-  const initialResult = sessionResult(initialBody, initial.headers);
-  const initialSessionId = initialResult.sessionId;
-  assert.ok(initialSessionId, `initial public turn returned no Session ID: ${initialBody}`);
-  assert.ok(initialResult.continuationToken, `initial public turn returned no continuation token: ${initialBody}`);
-  await consumeTurn(gateway, `${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}/stream?startIndex=0`);
-  const binding = await store.findSessionBinding(project.id, initialSessionId);
-  assert.equal(binding?.deploymentId, deployment.id);
-
-  assert.equal(await stopAfterIdle(store, runtime), 1);
-  assert.equal((await store.getDeployment(deployment.id))?.status, "stopped");
-  assert.notEqual(await runtime.inspectProcess?.(deployment.containerName), "ready");
-
-  await store.setProjectSchedulerTarget(project.id, deployment.id, new Date(Date.now() - 120_000));
-  assert.equal(await planDueSchedules(store, { now: new Date(), limit: 10 }), 1);
-  const planned = await store.listScheduleRuns(project.id, { trigger: "cron", limit: 10 });
-  assert.equal(planned.items.length, 1);
-  const runId = planned.items[0]!.id;
-  assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "trigger_schedule did not run");
-  const dispatched = await store.getScheduleRunDetail(runId);
-  assert.equal(dispatched?.status, "running", dispatched?.error ?? "ScheduleRun did not stay active");
-  assert.equal(dispatched?.attempt, 1);
-  assert.equal(dispatched?.sessions.length, 2);
-  assert.equal(
-    await stopAfterIdle(store, runtime),
-    0,
-    "idle reaping stopped a RuntimeInstance before its scheduled Sessions reached a turn boundary",
-  );
-
-  const observed = await waitForObservedUsage(store, otlpReceiver, runId);
-  assert.equal(
-    observed.status,
-    "succeeded",
-    observed.error ?? "OTLP telemetry did not settle ScheduleRun",
-  );
-  assert.equal(observed.sessions.length, 2);
-  assert.ok(observed.usage.reportedSteps >= 2, "schedule Session usage was not projected");
-
-  const beforeNativeTick = await store.listSessions(project.id);
-  await waitPastNextMinute();
-  await projectPendingOtlpLogs(store, otlpReceiver);
-  const afterNativeTick = await store.listSessions(project.id);
-  assert.equal(afterNativeTick.length, beforeNativeTick.length, "native Eve cron duplicated authored execution");
-  assert.equal((await store.getScheduleRunDetail(runId))?.sessions.length, 2);
-
-  assert.equal(await stopAfterIdle(store, runtime), 1);
-  assert.equal((await store.getDeployment(deployment.id))?.status, "stopped");
-
-  const continuation = await gateway.request(`${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      continuationToken: initialResult.continuationToken,
-      message: "Continue after the idle shutdown.",
-    }),
-  });
-  const continuationBody = await continuation.text();
-  assert.ok(continuation.ok, `continuation failed (${continuation.status}): ${continuationBody}`);
-  assert.ok(
-    sessionResult(continuationBody, continuation.headers).sessionId,
-    `continuation returned no accepted workflow run: ${continuationBody}`,
-  );
-  const readyInstances = await store.listRuntimeInstances(["ready"], 10);
-  assert.equal(readyInstances.at(-1)?.deploymentId, deployment.id);
-  assert.equal((await store.findSessionBinding(project.id, initialSessionId))?.deploymentId, deployment.id);
-
-  console.log(
-    `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=0.29.4 dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1`,
-  );
-} finally {
-  if (deploymentName) await runtime.stopProcess(deploymentName).catch(() => undefined);
-  if (releaseRef && runtime.removeRelease) await runtime.removeRelease(releaseRef).catch(() => undefined);
-  if (apiServer) await new Promise<void>((resolve) => apiServer!.close(() => resolve()));
-  await otlpReceiver.close();
-  if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
-  else process.env.NODE_ENV = priorNodeEnv;
-  await close();
+    const runtime = cleanupRuntime;
+    if (deploymentName && runtime) {
+      await attemptCleanup(() => runtime.stopProcess(deploymentName!));
+    }
+    if (releaseRef && runtime?.removeRelease) {
+      await attemptCleanup(() => runtime.removeRelease!(releaseRef!));
+    }
+    if (apiServer) {
+      await attemptCleanup(
+        () => new Promise<void>((resolve) => apiServer!.close(() => resolve())),
+      );
+    }
+    if (cleanupReceiver) {
+      await attemptCleanup(() => cleanupReceiver!.close());
+    }
+    if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = priorNodeEnv;
+    if (cleanupStore) {
+      await attemptCleanup(() => cleanupStore!.close());
+    }
+    await attemptCleanup(() => rm(fixtureRoot, { recursive: true, force: true }));
+  }
+  if (primaryFailed) {
+    if (cleanupFailed) {
+      throw new AggregateError(
+        [primaryError, cleanupError],
+        "Schedule scale-to-zero E2E scenario and cleanup both failed.",
+      );
+    }
+    throw primaryError;
+  }
+  if (cleanupFailed) throw cleanupError;
 }
 
+void main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+
 async function stopAfterIdle(
-  candidateStore: typeof store,
-  candidateRuntime: typeof runtime,
+  candidateStore: TestStore,
+  candidateRuntime: TestRuntime,
 ): Promise<number> {
   return reapIdleDeployments(candidateStore, {
     now: new Date(Date.now() + 600_000),
@@ -238,7 +305,7 @@ async function consumeTurn(gateway: ReturnType<typeof createGatewayApp>, url: st
 }
 
 async function waitForObservedUsage(
-  candidateStore: typeof store,
+  candidateStore: TestStore,
   receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>>,
   scheduleRunId: string,
 ) {
@@ -259,7 +326,7 @@ async function waitForObservedUsage(
 }
 
 async function projectPendingOtlpLogs(
-  candidateStore: typeof store,
+  candidateStore: TestStore,
   receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>>,
 ) {
   for (const payload of receiver.drain("logs")) {

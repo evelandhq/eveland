@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { httpBasic, routeAuth } from "eve/channels/auth";
 import { describe, expect, test } from "vitest";
 import {
@@ -10,14 +8,6 @@ import {
 } from "./registry.js";
 
 describe("Agent Auth provider registry", () => {
-  test("pins the Eve release whose client authentication behavior is mirrored", async () => {
-    const packageJson = JSON.parse(
-      await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
-    ) as { dependencies: Record<string, string> };
-
-    expect(packageJson.dependencies.eve).toBe("0.29.4");
-  });
-
   test("keeps provider keys, descriptors, and credential scopes consistent", () => {
     const registry = registryWithOidc();
 

@@ -1,8 +1,5 @@
 {
   "name": "eveland-observer-coverage-fixture",
   "private": true,
-  "type": "module",
-  "dependencies": {
-    "eve": "0.29.4"
-  }
+  "type": "module"
 }
