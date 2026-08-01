@@ -1,19 +1,15 @@
 import type { Store } from "@eveland/db";
-import { access, mkdir } from "node:fs/promises";
 
 import { startRuntimeInstance } from "../../runtime/activation-manager.js";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import {
-  composeDeploymentEnv,
-  resolveRuntimeCommandContext,
-  resolveSandboxCacheDirs,
-} from "../process-support.js";
+  createDeploymentStartInput,
+  ensureDeploymentLaunchSandbox,
+  materializeDeploymentLaunchContext,
+  resolveDeploymentLaunchPrerequisites,
+  resolveRecoverableRuntimeSource,
+} from "../deployment-launch-context.js";
 import type { ProcessJobOptions } from "../process-types.js";
-import {
-  prepareDeploymentObservability,
-  warnStaleObserverRelease,
-} from "../process-observability.js";
-import { createDeploymentStartInput } from "./deployment-start-input.js";
 import { settleDeploymentStatus } from "./deployment-status.js";
 import type { RuntimeJob } from "./types.js";
 
@@ -35,49 +31,32 @@ export async function handleEnsureDeploymentRunningJob(
   const revision = await store.getSourceRevision(release.sourceRevisionId);
   if (!revision)
     throw new Error("Deployment activation SourceRevision is missing.");
-  let persistedSourceFiles: Awaited<
-    ReturnType<Store["listSourceRevisionFiles"]>
-  > = [];
-  try {
-    await access(revision.sourcePath);
-  } catch {
-    persistedSourceFiles = await store.listSourceRevisionFiles(revision.id);
-    if (!persistedSourceFiles.some((file) => file.path === "package.json")) {
-      throw new Error(
-        `Source directory for revision ${revision.id} is missing: ${revision.sourcePath}. Re-import the source and deploy instead.`,
-      );
-    }
-  }
+  const recoverableSource = await resolveRecoverableRuntimeSource(
+    store,
+    revision,
+  );
   const runtime =
     options.runtime ??
     (options.runtimeForKind ?? createRuntimeAdapterForKind)(
       deployment.runtimeKind,
     );
-  const { env } = await composeDeploymentEnv(
+  const launchPrerequisites =
+    await resolveDeploymentLaunchPrerequisites({
+      store,
+      workerEnv: process.env,
+      projectId: job.projectId,
+      deploymentId: deployment.id,
+      runtimeKind: runtime.name,
+      sourcePath: revision.sourcePath,
+      ...recoverableSource,
+      options,
+    });
+  await ensureDeploymentLaunchSandbox(launchPrerequisites);
+  const launchContext = await materializeDeploymentLaunchContext({
     store,
-    job.projectId,
-    deployment.id,
-    options,
-  );
-  const commandContext = await resolveRuntimeCommandContext(
-    revision.sourcePath,
-    persistedSourceFiles,
-  );
-  const sandboxCache = resolveSandboxCacheDirs(process.env, job.projectId);
-  await mkdir(sandboxCache.workerDir, { recursive: true });
-  const observability = await prepareDeploymentObservability({
-    store,
-    env: process.env,
-    projectId: job.projectId,
     releaseId: release.id,
-    deploymentId: deployment.id,
-    runtimeKind: runtime.name,
-    nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
-  });
-  await warnStaleObserverRelease(store, {
-    projectId: job.projectId,
-    deploymentId: deployment.id,
-    release,
+    prerequisites: launchPrerequisites,
+    staleRelease: release,
   });
   await startRuntimeInstance(
     store,
@@ -88,12 +67,7 @@ export async function handleEnsureDeploymentRunningJob(
         processName: deployment.containerName,
         releaseRef: release.imageTag,
         port: deployment.hostPort,
-        deploymentId: deployment.id,
-        env,
-        commandContext,
-        runtimeKind: runtime.name,
-        sandboxCacheDirs: sandboxCache,
-        observabilityPolicyDirs: observability,
+        launchContext,
       }),
     },
     runtimeInstance.id,

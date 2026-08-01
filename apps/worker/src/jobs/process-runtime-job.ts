@@ -13,7 +13,7 @@ import type {
 } from "./runtime-jobs/types.js";
 import type { ProcessJobOptions } from "./process-types.js";
 
-export { createDeploymentStartInput } from "./runtime-jobs/deployment-start-input.js";
+export { createDeploymentStartInput } from "./deployment-launch-context.js";
 
 export const runtimeJobHandlers = {
   restart_deployment: handleRestartDeploymentJob,

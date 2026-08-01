@@ -216,15 +216,19 @@ export function errorMessage(error: unknown): string {
 // NOT part of this: build_deploy only calls this after deciding the deploy may
 // proceed, and restart never re-gates an already-deployed release.
 export async function composeDeploymentEnv(
-  store: Store,
+  store: Pick<
+    Store,
+    "listSecretRecords" | "getSharedAgentEnvironmentRecord"
+  >,
   projectId: string,
   deploymentId: string,
   options: ProcessJobOptions,
+  workerEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<{ env: Record<string, string>; secretValues: string[] }> {
-  const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
+  const nodeEnv = options.nodeEnv ?? workerEnv.NODE_ENV;
   const isProduction = nodeEnv === "production";
   const workflowPostgresUrl =
-    options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
+    options.workflowPostgresUrl ?? workerEnv.WORKFLOW_POSTGRES_URL;
   // Each project gets its own physical workflow database derived from the
   // platform base URL. A single shared database let any runtime claim any
   // project's queued turns and re-enqueue every project's active runs on
@@ -234,23 +238,23 @@ export async function composeDeploymentEnv(
     options.ensureProjectWorkflowWorld ?? ensureProjectWorkflowWorld;
   const projectWorkflowUrl = workflowPostgresUrl
     ? await ensureWorld(
-        { ...process.env, WORKFLOW_POSTGRES_URL: workflowPostgresUrl },
+        { ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl },
         projectId,
       )
     : undefined;
   const schedulerRuntimeSecret =
     options.schedulerRuntimeSecret ??
-    resolveSchedulerRuntimeSecret(process.env);
+    resolveSchedulerRuntimeSecret(workerEnv);
   const schedulerRedeemUrl =
-    options.schedulerRedeemUrl ?? process.env.EVELAND_SCHEDULER_REDEEM_URL;
+    options.schedulerRedeemUrl ?? workerEnv.EVELAND_SCHEDULER_REDEEM_URL;
   const appSecretKey =
-    options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
+    options.appSecretKey ?? workerEnv.APP_SECRET_KEY ?? devSecretKey;
   const identityConfiguration = resolveIdentityDeploymentConfiguration({
-    dataDir: options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+    dataDir: options.dataDir ?? workerEnv.EVELAND_DATA_DIR ?? ".eveland-data",
     nodeEnv,
-    issuer: options.identityIssuer || process.env.EVELAND_IDENTITY_ISSUER,
+    issuer: options.identityIssuer || workerEnv.EVELAND_IDENTITY_ISSUER,
     jwksUrl:
-      options.identityJwksUrl || process.env.EVELAND_IDENTITY_JWKS_URL,
+      options.identityJwksUrl || workerEnv.EVELAND_IDENTITY_JWKS_URL,
   });
   const identityIssuer = identityConfiguration?.issuer;
   const identityJwksUrl = identityConfiguration?.jwksUrl;
@@ -313,7 +317,7 @@ export function readSharedAgentEnvironmentValues(
 }
 
 export async function readRuntimeSecrets(
-  store: Store,
+  store: Pick<Store, "listSecretRecords">,
   projectId: string,
   appSecretKey: string,
 ): Promise<Record<string, string>> {
@@ -346,6 +350,7 @@ export function parseEncryptedSecret(value: string): EncryptedSecret {
 export async function resolveRuntimeCommandContext(
   sourcePath: string,
   persistedFiles: Array<{ path: string; content: string }> = [],
+  persistedCommandContext?: RuntimeCommandContext,
 ): Promise<RuntimeCommandContext> {
   const packageJson =
     (await readPackageJson(sourcePath)) ??
@@ -356,6 +361,7 @@ export async function resolveRuntimeCommandContext(
   if (!isSupportedEveDependency(eveVersion)) {
     throw new Error(unsupportedEveVersionMessage(eveVersion));
   }
+  if (persistedCommandContext) return persistedCommandContext;
   const persistedPaths = new Set(persistedFiles.map((file) => file.path));
   const hasPnpmLockfile =
     persistedPaths.has("pnpm-lock.yaml") ||

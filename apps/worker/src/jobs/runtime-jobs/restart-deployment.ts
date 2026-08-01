@@ -1,20 +1,16 @@
 import type { Store } from "@eveland/db";
-import { access, mkdir } from "node:fs/promises";
+import { access } from "node:fs/promises";
 
 import { waitForOwnedHttpHealth } from "../../runtime/health.js";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import {
-  composeDeploymentEnv,
-  resolveRuntimeCommandContext,
-  resolveSandboxCacheDirs,
-  stopStartedProcessOnFailure,
-} from "../process-support.js";
+  createDeploymentStartInput,
+  ensureDeploymentLaunchSandbox,
+  materializeDeploymentLaunchContext,
+  resolveDeploymentLaunchPrerequisites,
+} from "../deployment-launch-context.js";
+import { stopStartedProcessOnFailure } from "../process-support.js";
 import type { ProcessJobOptions } from "../process-types.js";
-import {
-  prepareDeploymentObservability,
-  warnStaleObserverRelease,
-} from "../process-observability.js";
-import { createDeploymentStartInput } from "./deployment-start-input.js";
 import { settleDeploymentStatus } from "./deployment-status.js";
 import type { RuntimeJob } from "./types.js";
 
@@ -95,15 +91,16 @@ export async function handleRestartDeploymentJob(
     (options.runtimeForKind ?? createRuntimeAdapterForKind)(
       deployment.runtimeKind,
     );
-  const { env, secretValues } = await composeDeploymentEnv(
-    store,
-    project.id,
-    deployment.id,
-    options,
-  );
-  const commandContext = await resolveRuntimeCommandContext(
-    revision.sourcePath,
-  );
+  const launchPrerequisites =
+    await resolveDeploymentLaunchPrerequisites({
+      store,
+      workerEnv: process.env,
+      projectId: project.id,
+      deploymentId: deployment.id,
+      runtimeKind: adapter.name,
+      sourcePath: revision.sourcePath,
+      options,
+    });
 
   await adapter.stopProcess(deployment.containerName);
   let restarted = false;
@@ -125,33 +122,19 @@ export async function handleRestartDeploymentJob(
         });
       }
     }
-    const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
-    await mkdir(sandboxCache.workerDir, { recursive: true });
-    const observability = await prepareDeploymentObservability({
+    await ensureDeploymentLaunchSandbox(launchPrerequisites);
+    const launchContext = await materializeDeploymentLaunchContext({
       store,
-      env: process.env,
-      projectId: project.id,
       releaseId: release.id,
-      deploymentId: deployment.id,
-      runtimeKind: adapter.name,
-      nodeEnv: options.nodeEnv ?? process.env.NODE_ENV,
-    });
-    await warnStaleObserverRelease(store, {
-      projectId: project.id,
-      deploymentId: deployment.id,
-      release,
+      prerequisites: launchPrerequisites,
+      staleRelease: release,
     });
     await adapter.startProcess(
       createDeploymentStartInput({
         processName: deployment.containerName,
         releaseRef: release.imageTag,
         port: deployment.hostPort,
-        deploymentId: deployment.id,
-        env,
-        commandContext,
-        runtimeKind: adapter.name,
-        sandboxCacheDirs: sandboxCache,
-        observabilityPolicyDirs: observability,
+        launchContext,
       }),
     );
     restarted = true;
@@ -173,7 +156,7 @@ export async function handleRestartDeploymentJob(
         adapter,
         deployment.containerName,
         "restart",
-        secretValues,
+        launchPrerequisites.secretValues,
       );
     }
     await settleDeploymentStatus(store, deployment.id, "stopped").catch(

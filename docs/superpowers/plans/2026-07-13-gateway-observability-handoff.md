@@ -1511,3 +1511,18 @@ Release、Deployment、missed tick、错误与多 Session 关系仍由 ScheduleR
 Schedules 页面在定义表下方拥有最近 50 条、可分页且可按 Schedule 筛选的 ScheduleRun
 历史。恰好一个关联 Session 的 run 直接链接该 Session；零 Session 与多 Session run 进入
 ScheduleRun 详情，不能隐藏合法的零 Session 执行，也不能任意选择多个 Session 中的一个。
+
+---
+
+## 35. 2026-08-01 follow-up：Worker Deployment Launch Context
+
+Worker 的 deploy、restart、cold activation 与 ScheduleRun activation 共用分阶段的
+Deployment Launch Context：第一阶段一次性解析当前 Project/Shared Environment、平台保留值、
+完整 secret masking 集合与 package-manager command context；第二阶段按 adapter 物化 sandbox
+目录和 Deployment observability policy。四条 job handler 继续分别拥有 build、stop、端口、
+RuntimeInstance、健康检查、lease 与持久化状态机，Launch Context 不接管这些生命周期。
+
+所有启动输入显式使用同一份 Worker environment 与 `ProcessJobOptions.appSecretKey`，避免 Secret
+解密和 telemetry credential 分别隐式读取不同的 `process.env`。cold/schedule activation 在源码
+目录消失后可从 SourceRevision 持久化的 `package.json`/lockfile 元数据恢复 command context；
+restart 仍要求 live source，并在停止当前进程之前 fail closed。

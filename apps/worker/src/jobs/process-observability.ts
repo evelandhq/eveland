@@ -33,7 +33,7 @@ const devSecretKey = "eveland-dev-secret-key-000000000";
  * Called at activation, where a stale release is about to serve sessions.
  */
 export async function warnStaleObserverRelease(
-  store: Store,
+  store: Pick<Store, "appendLog">,
   input: {
     projectId: string;
     deploymentId: string;
@@ -54,7 +54,7 @@ export async function warnStaleObserverRelease(
 }
 
 export async function prepareDeploymentObservability(input: {
-  store: Store;
+  store: Pick<Store, "getObservabilityPolicy">;
   env: NodeJS.ProcessEnv;
   projectId: string;
   releaseId: string;
@@ -63,6 +63,7 @@ export async function prepareDeploymentObservability(input: {
   nodeEnv?: string;
   policy?: ObservabilityPolicy;
   appSecretKey?: string;
+  directories?: { workerDir: string; hostDir: string };
 }): Promise<{
   policy: AgentRuntimePolicy;
   workerDir: string;
@@ -95,11 +96,13 @@ export async function prepareDeploymentObservability(input: {
         input.nodeEnv === "production" ? "production" : "development",
     },
   });
-  const directories = resolveAgentObservabilityDirs(
-    input.env,
-    input.projectId,
-    input.deploymentId,
-  );
+  const directories =
+    input.directories ??
+    resolveAgentObservabilityDirs(
+      input.env,
+      input.projectId,
+      input.deploymentId,
+    );
   await writeAgentRuntimePolicy({
     directory: directories.workerDir,
     policy,
