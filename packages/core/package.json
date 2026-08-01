@@ -30,7 +30,6 @@
     "./server/dev-secrets": "./src/server/dev-secrets.ts",
     "./server/observability": "./src/server/observability.ts",
     "./server/secrets": "./src/server/secrets.ts",
-    "./server/runtime-command": "./src/server/runtime-command.ts",
     "./server/scheduler-dispatch": "./src/server/scheduler-dispatch.ts"
   },
   "scripts": {

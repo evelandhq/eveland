@@ -7,9 +7,9 @@ import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
-  { version: "0.27.13", fixtureName: "eve-0.25-hooks", packageName: "eve-0-27" },
-  { version: "0.28.0", fixtureName: "eve-0.25-hooks", packageName: "eve-0-28" },
-  { version: "0.29.4", fixtureName: "eve-0.25-hooks", packageName: "eve" },
+  { version: "0.27.13", fixtureName: "matrix-hooks", packageName: "eve-0-27" },
+  { version: "0.28.0", fixtureName: "matrix-hooks", packageName: "eve-0-28" },
+  { version: "0.29.4", fixtureName: "matrix-hooks", packageName: "eve" },
 ] as const;
 
 describe("Eve observer hook compatibility matrix", () => {

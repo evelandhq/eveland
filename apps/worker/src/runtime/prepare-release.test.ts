@@ -16,6 +16,7 @@ test("copies source into a prepared release and injects observers without modify
   const sourcePath = path.join(root, "source");
   const buildDir = path.join(root, "build");
   await mkdir(path.join(sourcePath, "agent", "subagents", "child"), { recursive: true });
+  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(path.join(sourcePath, "agent", "subagents", "child", "agent.ts"), "export default {}");
 
@@ -37,7 +38,7 @@ test("copies source into a prepared release and injects observers without modify
   ).resolves.toBe("root");
 });
 
-test("injects the Eve 0.25.x scheduler adapter only into the disposable release", async () => {
+test("injects the scheduler adapter only into the disposable release", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
   roots.push(root);
   const sourcePath = path.join(root, "source");
@@ -50,9 +51,9 @@ test("injects the Eve 0.25.x scheduler adapter only into the disposable release"
     'export default { cron: "0 3 * * *", async run() {} };',
   );
 
-  const result = await prepareReleaseTree({ sourcePath, buildDir, scheduler: true });
+  const result = await prepareReleaseTree({ sourcePath, buildDir });
 
-  expect(result.scheduler?.definitions).toEqual([
+  expect(result.scheduler.definitions).toEqual([
     expect.objectContaining({ key: "cleanup", kind: "handler", cron: "0 3 * * *" }),
   ]);
   await expect(readFile(path.join(buildDir, "agent/channels/eveland-scheduler.ts"), "utf8")).resolves.toContain(
@@ -76,6 +77,7 @@ export default {
 };
 `;
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
+  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(path.join(sourcePath, "agent", "agent.ts"), authoredConfig);
 
@@ -113,6 +115,7 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
   const sourcePath = path.join(root, "source");
   const buildDir = path.join(root, "build");
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
+  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
 
   const result = await prepareReleaseTree({
@@ -138,6 +141,7 @@ test("wraps every Eve-supported authored agent module extension", async () => {
     const sourcePath = path.join(root, "source");
     const buildDir = path.join(root, "build");
     await mkdir(sourcePath, { recursive: true });
+    await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
     await writeFile(path.join(sourcePath, "instructions.md"), "root");
     await writeFile(path.join(sourcePath, `agent.${extension}`), "export default { model: 'openai/gpt-5.4' };\n");
 

@@ -232,7 +232,7 @@ export function sessionIdFromPath(pathname: string): string | null {
 export async function sessionIdFromJson(response: Response): Promise<string | null> {
   if (!response.headers.get("content-type")?.includes("application/json")) return null;
   const value = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-  const candidate = value?.sessionId ?? value?.session_id;
+  const candidate = value?.sessionId;
   return typeof candidate === "string" ? candidate : null;
 }
 

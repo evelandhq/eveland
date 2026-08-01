@@ -101,6 +101,89 @@ describe("Gateway", () => {
     );
   });
 
+  test("reads through a failed turn to the parked session instead of misreporting a continuable session as failed", async () => {
+    const upstream = await startUpstream((request, response) => {
+      if (request.method === "POST") {
+        response.writeHead(202, {
+          "content-type": "application/json",
+          "x-eve-session-id": "eve_recoverable",
+        });
+        response.end(
+          JSON.stringify({ sessionId: "eve_recoverable", continuationToken: "continue_recoverable" }),
+        );
+        return;
+      }
+      // Eve's recoverable failure sequence: the step and turn fail, then the
+      // durable session parks for the next user message.
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.write(`${JSON.stringify({ type: "step.failed", data: { turnId: "turn_0", stepIndex: 0 } })}\n`);
+      response.write(
+        `${JSON.stringify({ type: "turn.failed", data: { turnId: "turn_0", error: { code: "MODEL_ERROR", message: "Provider unavailable" } } })}\n`,
+      );
+      response.end(
+        `${JSON.stringify({ type: "session.waiting", data: { continuationToken: "continue_recoverable", wait: "next-user-message" } })}\n`,
+      );
+    });
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+    });
+
+    const response = await app.request("http://gateway/internal/projects/proj_1/playground", {
+      method: "POST",
+      headers: { authorization: "Bearer service-secret", "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "waiting",
+      response: "Provider unavailable",
+      continuationToken: "continue_recoverable",
+      events: [
+        expect.objectContaining({ type: "step.failed" }),
+        expect.objectContaining({ type: "turn.failed" }),
+        expect.objectContaining({ type: "session.waiting" }),
+      ],
+    });
+  });
+
+  test("reports failed only when the session itself fails", async () => {
+    const upstream = await startUpstream((request, response) => {
+      if (request.method === "POST") {
+        response.writeHead(202, {
+          "content-type": "application/json",
+          "x-eve-session-id": "eve_fatal",
+        });
+        response.end(JSON.stringify({ sessionId: "eve_fatal" }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.write(`${JSON.stringify({ type: "turn.failed", data: { turnId: "turn_0" } })}\n`);
+      response.end(
+        `${JSON.stringify({ type: "session.failed", data: { error: { code: "FATAL", message: "Session budget exhausted" } } })}\n`,
+      );
+    });
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+    });
+
+    const response = await app.request("http://gateway/internal/projects/proj_1/playground", {
+      method: "POST",
+      headers: { authorization: "Bearer service-secret", "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "failed",
+      response: "Session budget exhausted",
+    });
+  });
+
   test("activates a stopped Deployment for the legacy privileged Playground path", async () => {
     const upstream = await startUpstream((request, response) => {
       if (request.method === "POST") {

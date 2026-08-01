@@ -218,9 +218,7 @@ export async function processJob(
           buildDir,
           commandContext,
           ...(options.signal ? { signal: options.signal } : {}),
-          ...(workflowPostgresUrl && commandContext.isEveProject
-            ? { workflowWorld: PLATFORM_WORKFLOW_WORLD }
-            : {}),
+          ...(workflowPostgresUrl ? { workflowWorld: PLATFORM_WORKFLOW_WORLD } : {}),
         });
       } catch (error) {
         await rm(buildDir, { recursive: true, force: true });

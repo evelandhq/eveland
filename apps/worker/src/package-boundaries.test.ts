@@ -42,7 +42,6 @@ describe("package boundaries", () => {
       "./source": "./src/source.ts",
       "./server/archive": "./src/server/archive.ts",
       "./server/secrets": "./src/server/secrets.ts",
-      "./server/runtime-command": "./src/server/runtime-command.ts",
     });
     expect(Object.hasOwn(manifest?.exports as object, ".")).toBe(false);
   });

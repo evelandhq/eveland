@@ -122,10 +122,10 @@ export async function processRuntimeJob(
           `Source revision ${release.sourceRevisionId} not found for release ${release.id}.`,
         );
       }
-      // readPackageJson swallows a vanished sourcePath into {isEveProject:false}
-      // rather than throwing, so resolveRuntimeCommandContext below would silently
-      // resolve a wrong (non-eve) start command instead of failing -- checked here,
-      // before the pre-restart stopProcess, so a missing source dir never takes the
+      // resolveRuntimeCommandContext below falls back to the persisted files when
+      // the source dir is gone and only fails if package.json is missing there
+      // too, so a vanished sourcePath is checked explicitly here -- before the
+      // pre-restart stopProcess, so a missing source dir never takes the
       // currently running process down.
       try {
         await access(revision.sourcePath);

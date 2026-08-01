@@ -259,24 +259,18 @@ describe("resolveSandboxCacheRoot", () => {
 
 describe("buildSystemdStartCommand", () => {
   test("serves eve projects on loopback without any bridge hack", () => {
-    const command = buildSystemdStartCommand({ isEveProject: true, hasLockfile: true, scripts: {} }, 41000);
+    const command = buildSystemdStartCommand({ hasLockfile: true }, 41000);
     expect(command).toBe("npx eve start --host 127.0.0.1 --port 41000");
   });
 
-  test("falls back to the inferred runtime command for plain node projects", () => {
-    const command = buildSystemdStartCommand({ isEveProject: false, hasLockfile: false, scripts: { start: "node server.js" } }, 41000);
-    expect(command).toBe("npm run start");
-  });
 });
 
 describe("buildReleaseBuildCommand", () => {
   test("uses the frozen pnpm lockfile selected from the imported project", () => {
     expect(
       buildReleaseBuildCommand({
-        isEveProject: true,
         hasLockfile: true,
         packageManager: "pnpm",
-        scripts: {},
       }),
     ).toBe("pnpm install --frozen-lockfile --config.minimum-release-age=0 && npx eve build");
   });
@@ -284,10 +278,8 @@ describe("buildReleaseBuildCommand", () => {
   test("installs the platform-owned world through pnpm without leaving manifest or lockfile changes", () => {
     const command = buildReleaseBuildCommand(
       {
-        isEveProject: true,
         hasLockfile: true,
         packageManager: "pnpm",
-        scripts: {},
       },
       { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.25" },
     );
@@ -303,7 +295,7 @@ describe("buildReleaseBuildCommand", () => {
   test("installs the platform-owned world outside the project lock before building Eve", () => {
     expect(
       buildReleaseBuildCommand(
-        { isEveProject: true, hasLockfile: true, scripts: {} },
+        { hasLockfile: true },
         { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.25" },
       ),
     ).toBe(
@@ -311,8 +303,8 @@ describe("buildReleaseBuildCommand", () => {
     );
   });
 
-  test("uses npm install without eve build for plain projects without a lockfile", () => {
-    expect(buildReleaseBuildCommand({ isEveProject: false, hasLockfile: false, scripts: {} })).toBe("npm install");
+  test("uses npm install and eve build without a lockfile", () => {
+    expect(buildReleaseBuildCommand({ hasLockfile: false })).toBe("npm install && npx eve build");
   });
 });
 
@@ -406,7 +398,7 @@ describe("createSystemdAdapter backendDistDir laziness", () => {
         releaseId: "rel_789",
         sourcePath: "/data/sources/proj_123",
         buildDir: "/data/builds/proj_123/rel_789",
-        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+        commandContext: { hasLockfile: true },
       }),
     ).rejects.toThrow("@eveland/sandbox-bwrap is not resolvable.");
     expect(backendDistDir).toHaveBeenCalledTimes(1);
@@ -424,7 +416,7 @@ describe("createSystemdAdapter startProcess", () => {
       releaseRef: "/data/builds/proj_123/rel_platform",
       port: 41000,
       env: {},
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
@@ -522,7 +514,7 @@ describe("createSystemdAdapter startProcess", () => {
         EVELAND_SANDBOX_TEMPLATE_REVISION: "project-controlled",
         OPENAI_API_KEY: "test-key",
       },
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
@@ -551,7 +543,7 @@ describe("createSystemdAdapter startProcess", () => {
       releaseRef: "/data/builds/proj_123/rel_456",
       port: 41000,
       env: {},
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
@@ -577,7 +569,7 @@ describe("createSystemdAdapter startProcess", () => {
       releaseRef: "/data/builds/proj_123/rel_456",
       port: 41000,
       env: {},
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       observabilityPolicyDir:
         "/var/lib/eveland-data/observability/proj_123/dep_456",
@@ -606,7 +598,7 @@ describe("createSystemdAdapter startProcess", () => {
         releaseRef: "/data/builds/proj_123/rel_456",
         port: 41000,
         env: {},
-        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+        commandContext: { hasLockfile: true },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
         observabilityPolicyDir:
           "/var/lib/eveland-data/observability/proj_123/dep_456",
@@ -773,7 +765,7 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
       releaseId: "rel_789",
       sourcePath: "/data/sources/proj_123",
       buildDir: "/data/builds/proj_123/rel_789",
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     const execaCalls = vi.mocked(execa).mock.calls;
@@ -828,7 +820,7 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
       releaseId: "rel_789",
       sourcePath: "/data/sources/proj_123",
       buildDir: "/data/builds/proj_123/rel_789",
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     expect(result.log).toContain(
@@ -850,7 +842,7 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
       releaseId: "rel_789",
       sourcePath: "/data/sources/proj_123",
       buildDir: "/data/builds/proj_123/rel_789",
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     const releaseDir = path.resolve("/data/builds/proj_123/rel_789");
@@ -914,7 +906,7 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
       releaseId: "rel_789",
       sourcePath: "/data/sources/proj_123",
       buildDir: "/data/builds/proj_123/rel_789",
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     const releaseDir = path.resolve("/data/builds/proj_123/rel_789");
@@ -965,7 +957,7 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
           releaseId: "rel_789",
           sourcePath: "/data/sources/proj_123",
           buildDir: "/data/builds/proj_123/rel_789",
-          commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+          commandContext: { hasLockfile: true },
         });
 
         const calls = vi.mocked(execa).mock.calls;
@@ -995,26 +987,6 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
   });
 });
 
-describe("createSystemdAdapter buildRelease (non-eve projects)", () => {
-  test("calls neither injectSandboxModules nor verifySandbox for a non-eve project, and still succeeds", async () => {
-    vi.mocked(injectSandboxModules).mockClear();
-    vi.mocked(verifySandbox).mockClear();
-    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
-
-    const result = await adapter.buildRelease({
-      projectId: "proj_123",
-      releaseId: "rel_789",
-      sourcePath: "/data/sources/proj_123",
-      buildDir: "/data/builds/proj_123/rel_789",
-      commandContext: { isEveProject: false, hasLockfile: true, scripts: { start: "node server.js" } },
-    });
-
-    expect(injectSandboxModules).not.toHaveBeenCalled();
-    expect(verifySandbox).not.toHaveBeenCalled();
-    expect(result.releaseRef).toBe(path.resolve("/data/builds/proj_123/rel_789"));
-  });
-});
-
 describe("createSystemdAdapter buildRelease (no sandbox roots found)", () => {
   test("still vendors and verifies, but warns loudly instead of failing the build", async () => {
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({ generated: [], replaced: [] });
@@ -1026,7 +998,7 @@ describe("createSystemdAdapter buildRelease (no sandbox roots found)", () => {
       releaseId: "rel_789",
       sourcePath: "/data/sources/proj_123",
       buildDir: "/data/builds/proj_123/rel_789",
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     const cacheDir = path.resolve("/var/lib/eveland-data/sandbox", "proj_123");
@@ -1051,7 +1023,7 @@ describe("createSystemdAdapter buildRelease (sandbox verify)", () => {
       releaseId: "rel_789",
       sourcePath: "/data/sources/proj_123",
       buildDir: "/data/builds/proj_123/rel_789",
-      commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+      commandContext: { hasLockfile: true },
     });
 
     const cacheDir = path.resolve("/var/lib/eveland-data/sandbox", "proj_123");
@@ -1080,7 +1052,7 @@ describe("createSystemdAdapter buildRelease (sandbox verify)", () => {
         releaseId: "rel_789",
         sourcePath: "/data/sources/proj_123",
         buildDir: "/data/builds/proj_123/rel_789",
-        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+        commandContext: { hasLockfile: true },
       }),
     ).rejects.toThrow("sandbox self-check failed: bwrap missing");
   });
@@ -1212,7 +1184,7 @@ describe("createSystemdAdapter startProcess failure cleanup", () => {
         releaseRef: "/data/builds/proj_123/rel_456",
         port: 41000,
         env: { OPENAI_API_KEY: "secret" },
-        commandContext: { isEveProject: true, hasLockfile: true, scripts: {} },
+        commandContext: { hasLockfile: true },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
         observabilityPolicyDir:
           "/var/lib/eveland-data/observability/proj_123/dep_456",
