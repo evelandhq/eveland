@@ -3,6 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/pr
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { projectDiscoveryManifest } from "@eveland/core/discovery";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -69,6 +70,18 @@ describe("Eve observer hook compatibility matrix", () => {
         ).toContain("hooks/child-observer.ts");
         expect(manifest.subagents.find((subagent) => subagent.subagentId === "file-child")?.manifest.hooks ?? []).toEqual([]);
         expect(manifest.subagents.find((subagent) => subagent.subagentId === "remote-child")?.manifest.hooks ?? []).toEqual([]);
+
+        // The platform's build-time summary projection must understand every
+        // matrix version's real manifest -- this is the drift guard for
+        // @eveland/core/discovery against eve's discovery output.
+        const projection = projectDiscoveryManifest(manifest);
+        expect(projection).toMatchObject({
+          summarySource: "build-manifest",
+          layout: "nested",
+          instructions: ["agent/instructions.md"],
+        });
+        expect(projection?.skills).toContain("agent/skills/compatibility/SKILL.md");
+        expect(projection?.subagentIds).toEqual(["directory-child", "file-child", "remote-child"]);
 
         const compileDir = path.join(path.dirname(info.artifacts.discoveryManifest), "../compile");
         const compiledManifest = JSON.parse(

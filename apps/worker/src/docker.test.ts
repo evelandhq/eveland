@@ -293,7 +293,14 @@ describe("createDockerAdapter", () => {
     vi.mocked(execa)
       .mockResolvedValueOnce({ all: "" } as never)
       .mockResolvedValueOnce({ all: "docker build ok" } as never)
-      .mockResolvedValueOnce({ exitCode: 0, all: "SANDBOX VERIFY OK" } as never);
+      .mockResolvedValueOnce({ exitCode: 0, all: "SANDBOX VERIFY OK" } as never)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
+          resolvedEveVersion: "0.29.4",
+        }),
+      } as never);
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
@@ -319,10 +326,19 @@ describe("createDockerAdapter", () => {
     });
     expect(result.log).toContain("Injected eve sandbox modules: agent/sandbox.js");
     expect(result.log).toContain("Docker sandbox self-check passed");
+    expect(result.discovery).toEqual({
+      manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
+      resolvedEveVersion: "0.29.4",
+    });
     expect(vi.mocked(execa).mock.calls).toEqual([
       ["cp", ["-a", "/workspace/source/.", buildDir]],
       ["docker", ["build", "--file", dockerfilePath, "--tag", "eveland/proj_123:rel_456", buildDir], { all: true }],
       ["docker", buildDockerSandboxVerifyArgs("eveland/proj_123:rel_456"), { all: true, reject: false }],
+      [
+        "docker",
+        ["run", "--rm", "--network", "none", "eveland/proj_123:rel_456", "node", "-e", expect.any(String)],
+        { reject: false },
+      ],
     ]);
   });
 

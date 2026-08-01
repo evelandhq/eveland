@@ -1,5 +1,6 @@
 import { OBSERVER_RUNTIME_CONTRACT } from "@eveland/agent-observer";
 import type { Job } from "@eveland/core/contracts";
+import { projectDiscoveryManifest } from "@eveland/core/discovery";
 import { createId } from "@eveland/core/ids";
 import {
   decryptSecretValue,
@@ -244,6 +245,31 @@ export async function processJob(
               definitionHash,
             }),
           ),
+        });
+      }
+      if (build.discovery) {
+        // eve's own discovery manifest is the authority on what was actually
+        // built; the import-time static scan stays only as the pre-install
+        // preview. Informational: an unrecognized manifest keeps the static
+        // summary rather than failing a build that already succeeded.
+        const projection = projectDiscoveryManifest(build.discovery.manifest);
+        if (projection) {
+          await store.updateSourceRevisionSummary(revision.id, {
+            ...revision.summary,
+            ...projection,
+            ...(build.discovery.resolvedEveVersion
+              ? { eveVersionResolved: build.discovery.resolvedEveVersion }
+              : {}),
+          });
+        }
+        await store.appendLog({
+          projectId: job.projectId,
+          type: "build",
+          line: projection
+            ? `Refreshed the project summary from eve's discovery manifest (v${projection.manifestVersion}` +
+              (build.discovery.resolvedEveVersion ? `, eve ${build.discovery.resolvedEveVersion}` : "") +
+              ")."
+            : "WARNING: the release's eve discovery manifest was not recognized; keeping the import-time summary.",
         });
       }
 

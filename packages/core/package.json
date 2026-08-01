@@ -10,6 +10,7 @@
     "./catalog": "./src/catalog.ts",
     "./config-diagnostics": "./src/config-diagnostics.ts",
     "./contracts": "./src/contracts.ts",
+    "./discovery": "./src/discovery.ts",
     "./eve": "./src/eve.ts",
     "./ids": "./src/ids.ts",
     "./instance-health": "./src/instance-health.ts",
