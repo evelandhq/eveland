@@ -102,4 +102,19 @@ describe("projectDiscoveryManifest", () => {
     expect(projectDiscoveryManifest(withoutAgentRoot)).toBeNull();
     expect(projectDiscoveryManifest({ ...nestedManifest, sandbox: "sandbox.ts" })).toBeNull();
   });
+
+  test("fails closed on corrupt array elements instead of silently dropping them", () => {
+    // A well-formed envelope with one malformed element must not project the
+    // rest as an authoritative list.
+    expect(
+      projectDiscoveryManifest({ ...nestedManifest, tools: [{ path: "tool.ts" }] }),
+    ).toBeNull();
+    expect(
+      projectDiscoveryManifest({
+        ...nestedManifest,
+        instructions: [{ logicalPath: "instructions.md" }, { logicalPath: 42 }],
+      }),
+    ).toBeNull();
+    expect(projectDiscoveryManifest({ ...nestedManifest, hooks: ["hooks/observer.ts"] })).toBeNull();
+  });
 });

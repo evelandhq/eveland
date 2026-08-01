@@ -712,6 +712,10 @@ describe("api app", () => {
         projectId: project.id,
         sourceRevisionId: revision.id,
         imageTag: `expired-retention-${index}`,
+        summary:
+          index === 0
+            ? { summarySource: "build-manifest", eveVersionResolved: "0.29.4" }
+            : null,
         containerName: `expired-retention-${index}`,
         internalPort: 3000,
         hostPort: 41210 + index,
@@ -757,6 +761,15 @@ describe("api app", () => {
           reasons: [],
         }),
       ]),
+      // Each release's build-derived summary is part of the read model; a
+      // release built without one reports null rather than disappearing.
+      releaseSummaries: expect.objectContaining({
+        [deployments[0]!.releaseId]: expect.objectContaining({
+          summarySource: "build-manifest",
+          eveVersionResolved: "0.29.4",
+        }),
+        [deployments[1]!.releaseId]: null,
+      }),
     });
   });
 
