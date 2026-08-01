@@ -36,6 +36,7 @@ describe("package boundaries", () => {
     expect(manifest?.name).toBe("@eveland/core");
     expect(manifest?.exports).toMatchObject({
       "./contracts": "./src/contracts.ts",
+      "./discovery": "./src/discovery.ts",
       "./eve": "./src/eve.ts",
       "./ids": "./src/ids.ts",
       "./schedules": "./src/schedules.ts",

@@ -1,5 +1,6 @@
 import { OBSERVER_RUNTIME_CONTRACT } from "@eveland/agent-observer";
 import type { Job } from "@eveland/core/contracts";
+import { projectDiscoveryManifest } from "@eveland/core/discovery";
 import { createId } from "@eveland/core/ids";
 import {
   decryptSecretValue,
@@ -246,6 +247,29 @@ export async function processJob(
           ),
         });
       }
+      // eve's own discovery manifest is the authority on what was actually
+      // built; the import-time static scan stays as the pre-install preview.
+      // Release-scoped (the same revision can be rebuilt with different
+      // resolved dependencies) and persisted only below, with the release row,
+      // so a failed start never leaves summary from a nonexistent release.
+      const discoveryProjection = build.discovery
+        ? projectDiscoveryManifest(build.discovery.manifest)
+        : null;
+      const releaseSummary = discoveryProjection
+        ? {
+            ...discoveryProjection,
+            ...(build.discovery?.resolvedEveVersion
+              ? { eveVersionResolved: build.discovery.resolvedEveVersion }
+              : {}),
+          }
+        : null;
+      if (build.discovery && !discoveryProjection) {
+        await store.appendLog({
+          projectId: job.projectId,
+          type: "build",
+          line: "WARNING: the release's eve discovery manifest was not recognized; recording the release without a build summary.",
+        });
+      }
 
       const sandboxCache = resolveSandboxCacheDirs(process.env, project.id);
       await mkdir(sandboxCache.workerDir, { recursive: true });
@@ -312,12 +336,23 @@ export async function processJob(
           // The delivery contract is a property of this Worker's agent-observer,
           // embedded by prepareReleaseTree inside every adapter build.
           observerContract: OBSERVER_RUNTIME_CONTRACT,
+          summary: releaseSummary,
           containerName: processName,
           internalPort: started.internalPort,
           hostPort,
           runtimeKind: runtime.name,
         });
         deploymentRecorded = true;
+        if (releaseSummary) {
+          await store.appendLog({
+            projectId: job.projectId,
+            type: "build",
+            line:
+              `Recorded the release summary from eve's discovery manifest (v${discoveryProjection!.manifestVersion}` +
+              (build.discovery?.resolvedEveVersion ? `, eve ${build.discovery.resolvedEveVersion}` : "") +
+              ").",
+          });
+        }
         if (!previousDeployment && build.schedulerDefinitions?.length) {
           await store.setProjectSchedulerTarget(project.id, deployment.id);
         }

@@ -21,6 +21,19 @@ export type ReleaseBuildResult = {
   releaseRef: string;
   log: string;
   schedulerDefinitions?: SchedulerDefinition[];
+  /**
+   * eve's own build artifacts, read back from the built release. Informational:
+   * a release that built fine but whose artifacts could not be read still
+   * deploys, so adapters return undefined instead of failing here.
+   */
+  discovery?: ReleaseDiscovery;
+};
+
+export type ReleaseDiscovery = {
+  /** Parsed .eve/discovery/agent-discovery-manifest.json, shape owned by eve. */
+  manifest: unknown;
+  /** The eve version actually installed into the release, from node_modules/eve. */
+  resolvedEveVersion: string | null;
 };
 
 export type ProcessStartInput = {

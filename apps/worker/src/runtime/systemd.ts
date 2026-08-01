@@ -2,6 +2,7 @@ import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { readReleaseDiscovery } from "./discovery-artifacts.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
@@ -427,9 +428,11 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapt
             "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",
           ].join("\n")
         : undefined;
+      const discovery = await readReleaseDiscovery(releaseDir);
       return {
         releaseRef: releaseDir,
         schedulerDefinitions: observerInjection.scheduler?.definitions,
+        ...(discovery ? { discovery } : {}),
         log: [
           `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
           observerInjection.workflowWorld

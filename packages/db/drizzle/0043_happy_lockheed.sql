@@ -1,0 +1,1 @@
+CREATE INDEX "releases_project_idx" ON "releases" USING btree ("project_id");

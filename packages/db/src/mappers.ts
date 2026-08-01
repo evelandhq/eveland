@@ -694,6 +694,7 @@ export function releaseRowToRelease(row: {
   sourceRevisionId: string;
   imageTag: string;
   observerContract: number | null;
+  summary: unknown;
   createdAt: Date;
 }): ReleaseRecord {
   return {
@@ -702,6 +703,7 @@ export function releaseRowToRelease(row: {
     sourceRevisionId: row.sourceRevisionId,
     imageTag: row.imageTag,
     observerContract: row.observerContract,
+    summary: isRecord(row.summary) ? row.summary : null,
     createdAt: timestampToIso(row.createdAt),
   };
 }

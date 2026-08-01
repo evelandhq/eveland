@@ -633,6 +633,38 @@ describe("SQL Store jobs", () => {
     });
   });
 
+  test("prefers the release's resolved Eve version over the revision's declared specifier", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Resolved Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: { eveVersion: "~0.29.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:resolved",
+      summary: { summarySource: "build-manifest", eveVersionResolved: "0.29.4" },
+      containerName: "eveland-proj-resolved",
+      internalPort: 3000,
+      hostPort: 41014,
+      runtimeKind: "docker",
+    });
+
+    // The build installed a concrete version; the gate reads it instead of
+    // the declared range the import scan captured.
+    await expect(store.getDeploymentEveVersion(deployment.id)).resolves.toMatchObject({
+      version: "0.29.4",
+      supported: true,
+      sourceRevisionId: revision.id,
+    });
+  });
+
   test("getRelease returns the release by id and null when absent", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Release Agent", importKind: "zip" });

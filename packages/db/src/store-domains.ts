@@ -468,6 +468,13 @@ export interface DeploymentStore {
     // predates the delivery contract. Real builds always pass the current
     // contract via ReleaseBuildResult.
     observerContract?: number;
+    /**
+     * Build-derived summary from eve's discovery manifest. Release-scoped
+     * because the same immutable source revision can be rebuilt into releases
+     * with different resolved dependencies; persisted here, with the release
+     * row, so a failed start never leaves summary from a nonexistent release.
+     */
+    summary?: Record<string, unknown> | null;
     containerName: string;
     internalPort: number;
     hostPort: number;
@@ -492,6 +499,8 @@ export interface DeploymentStore {
     from: DeploymentStatus[];
   }): Promise<DeploymentRecord | null>;
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
+  /** Release id -> build summary (null when absent) for a whole project, in one query. */
+  listReleaseSummaries(projectId: string): Promise<Record<string, Record<string, unknown> | null>>;
   getDeploymentRetention(
     projectId: string,
     keepRecent?: number,

@@ -1,0 +1,118 @@
+import type { EveProjectLayout, EveProjectSummary } from "./source.js";
+
+/**
+ * Projection of eve's own build artifact `.eve/discovery/agent-discovery-manifest.json`
+ * onto the platform summary shape. Once a Release has been built, this manifest -- not
+ * Eveland's pre-install static file scan -- is the authority on what the agent contains:
+ * it is produced by the same discovery pass `eve build` compiles from, so it cannot
+ * drift from eve's layout rules the way re-derived heuristics can.
+ *
+ * Fail closed to null: this projection replaces the static entity lists wholesale, so
+ * a manifest with an unknown schema version or missing entity arrays must not become
+ * "authoritative emptiness". The caller keeps the static summary instead. The
+ * agent-observer compatibility matrix runs this projection on manifests generated live
+ * by every pinned eve binary, so a schema bump fails the matrix, not production.
+ */
+export type DiscoverySummaryProjection = {
+  summarySource: "build-manifest";
+  manifestVersion: number;
+  agentId: string | null;
+  layout: EveProjectLayout;
+  diagnostics: { errors: number; warnings: number } | null;
+  hooks: string[];
+  channels: string[];
+  subagentIds: string[];
+  // `agents` (the root agent config module) and `capabilities.eveChat` stay
+  // owned by the static scan: the manifest neither lists the root config
+  // module nor exposes what an authored channel module exports.
+} & Omit<EveProjectSummary, "agents">;
+
+const MANIFEST_KIND = "eve-agent-discovery-manifest";
+
+/** Verified against the manifests eve 0.27.13, 0.28.0, and 0.29.4 generate. */
+export const SUPPORTED_DISCOVERY_MANIFEST_VERSIONS: readonly number[] = [12];
+
+const ENTITY_ARRAY_KEYS = [
+  "instructions",
+  "tools",
+  "skills",
+  "subagents",
+  "connections",
+  "schedules",
+  "hooks",
+  "channels",
+] as const;
+
+export function projectDiscoveryManifest(manifest: unknown): DiscoverySummaryProjection | null {
+  if (!isRecord(manifest) || manifest.kind !== MANIFEST_KIND) return null;
+  const version = manifest.version;
+  if (typeof version !== "number" || !SUPPORTED_DISCOVERY_MANIFEST_VERSIONS.includes(version)) {
+    return null;
+  }
+  // Every entity list must be present as an actual array of well-formed
+  // entries, and sandbox must be the documented null-or-entry shape. A
+  // manifest missing them -- or carrying elements without a logicalPath -- is
+  // not "empty", it is unrecognized: silently dropping a corrupt element would
+  // still overwrite the static entity lists with authoritative-looking data.
+  for (const key of ENTITY_ARRAY_KEYS) {
+    const value = manifest[key];
+    if (!Array.isArray(value) || !value.every(isEntry)) return null;
+  }
+  if (manifest.sandbox !== null && !isEntry(manifest.sandbox)) return null;
+
+  const agentRoot = typeof manifest.agentRoot === "string" ? manifest.agentRoot : null;
+  const appRoot = typeof manifest.appRoot === "string" ? manifest.appRoot : null;
+  if (!agentRoot || !appRoot) return null;
+  const layout: EveProjectLayout = agentRoot === appRoot ? "flat" : "nested";
+  // Summary paths stay app-root-relative like the static scan's, so UI consumers
+  // need no awareness of which producer wrote the summary.
+  const root = layout === "nested" ? "agent/" : "";
+  const prefix = (paths: string[]) => paths.map((entry) => `${root}${entry}`);
+
+  const subagents = readEntries(manifest.subagents);
+
+  return {
+    summarySource: "build-manifest",
+    manifestVersion: version,
+    agentId: typeof manifest.agentId === "string" ? manifest.agentId : null,
+    layout,
+    diagnostics: readDiagnostics(manifest.diagnosticsSummary),
+    instructions: prefix(logicalPaths(manifest.instructions)),
+    tools: prefix(logicalPaths(manifest.tools)),
+    skills: prefix(logicalPaths(manifest.skills)),
+    subagents: prefix(subagents.map((entry) => entry.logicalPath)),
+    connections: prefix(logicalPaths(manifest.connections)),
+    schedules: prefix(logicalPaths(manifest.schedules)),
+    sandbox: prefix(logicalPaths(manifest.sandbox === null ? [] : [manifest.sandbox])),
+    hooks: prefix(logicalPaths(manifest.hooks)),
+    channels: prefix(logicalPaths(manifest.channels)),
+    subagentIds: subagents
+      .map((entry) => entry.subagentId)
+      .filter((value): value is string => typeof value === "string"),
+  };
+}
+
+function isEntry(value: unknown): value is { logicalPath: string } {
+  return isRecord(value) && typeof value.logicalPath === "string";
+}
+
+function readEntries(value: unknown): Array<{ logicalPath: string; subagentId?: unknown }> {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is { logicalPath: string; subagentId?: unknown } =>
+      isRecord(entry) && typeof entry.logicalPath === "string",
+  );
+}
+
+function logicalPaths(value: unknown): string[] {
+  return readEntries(Array.isArray(value) ? value : [value]).map((entry) => entry.logicalPath);
+}
+
+function readDiagnostics(value: unknown): { errors: number; warnings: number } | null {
+  if (!isRecord(value) || typeof value.errors !== "number" || typeof value.warnings !== "number") return null;
+  return { errors: value.errors, warnings: value.warnings };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

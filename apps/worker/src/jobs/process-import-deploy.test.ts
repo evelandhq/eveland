@@ -354,6 +354,26 @@ describe("processNextJob", () => {
                   modulePath: "agent/schedules/daily.ts",
                 },
               ],
+              discovery: {
+                manifest: {
+                  kind: "eve-agent-discovery-manifest",
+                  version: 12,
+                  agentId: "fixture-agent",
+                  agentRoot: `${input.sourcePath}/agent`,
+                  appRoot: input.sourcePath,
+                  instructions: [{ logicalPath: "instructions.md" }],
+                  tools: [],
+                  skills: [],
+                  subagents: [],
+                  connections: [],
+                  schedules: [{ logicalPath: "schedules/daily.md" }],
+                  hooks: [],
+                  channels: [],
+                  sandbox: null,
+                  diagnosticsSummary: { errors: 0, warnings: 0 },
+                },
+                resolvedEveVersion: "0.29.4",
+              },
             };
           },
           async startProcess(input) {
@@ -403,6 +423,29 @@ describe("processNextJob", () => {
     ]);
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
       expect.objectContaining({ line: "build ok" }),
+    );
+    // The built release's eve discovery manifest is recorded on the release --
+    // never on the shared source revision, which stays the import-time preview.
+    const recordedDeployment = await store.getCurrentDeployment(project.id);
+    await expect(store.getRelease(recordedDeployment!.releaseId)).resolves.toMatchObject({
+      summary: expect.objectContaining({
+        summarySource: "build-manifest",
+        manifestVersion: 12,
+        agentId: "fixture-agent",
+        layout: "nested",
+        eveVersionResolved: "0.29.4",
+        instructions: ["agent/instructions.md"],
+        schedules: ["agent/schedules/daily.md"],
+        diagnostics: { errors: 0, warnings: 0 },
+      }),
+    });
+    await expect(store.getSourceRevision(revision.id)).resolves.toMatchObject({
+      summary: {},
+    });
+    await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
+      expect.objectContaining({
+        line: expect.stringContaining("Recorded the release summary from eve's discovery manifest"),
+      }),
     );
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
       expect.objectContaining({

@@ -202,6 +202,9 @@ export type ReleaseRecord = {
   // built before the contract was recorded (their baked observer goes stale
   // as the platform moves and needs a rebuild to refresh).
   observerContract: number | null;
+  // Build-derived summary from eve's discovery manifest; null when the
+  // manifest could not be read or the release predates the column.
+  summary: Record<string, unknown> | null;
   createdAt: string;
 };
 
