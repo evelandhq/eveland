@@ -618,9 +618,9 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source-new",
-      summary: { eveVersion: "0.29.2" },
+      summary: { eveVersion: "0.29.4" },
       envVars: [],
-      files: [{ path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.2" } }) }],
+      files: [{ path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.4" } }) }],
       schedules: [],
     });
 

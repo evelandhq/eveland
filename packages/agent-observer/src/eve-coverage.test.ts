@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
   { version: "0.27.13", fixtureName: "eve-0.25-hooks", packageName: "eve-0-27" },
   { version: "0.28.0", fixtureName: "eve-0.25-hooks", packageName: "eve-0-28" },
-  { version: "0.29.2", fixtureName: "eve-0.25-hooks", packageName: "eve" },
+  { version: "0.29.4", fixtureName: "eve-0.25-hooks", packageName: "eve" },
 ] as const;
 
 describe("Eve observer hook compatibility matrix", () => {
@@ -20,7 +20,7 @@ describe("Eve observer hook compatibility matrix", () => {
 
     expect(packageJson.devDependencies["eve-0-27"]).toBe("npm:eve@0.27.13");
     expect(packageJson.devDependencies["eve-0-28"]).toBe("npm:eve@0.28.0");
-    expect(packageJson.devDependencies.eve).toBe("0.29.2");
+    expect(packageJson.devDependencies.eve).toBe("0.29.4");
   });
 
   test.each(compatibilityMatrix)("runs observer coverage against Eve $version", async ({ packageName, version }) => {

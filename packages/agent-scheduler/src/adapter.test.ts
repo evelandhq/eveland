@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 const compatibilityMatrix = [
   { version: "0.27.13", packageName: "eve-0-27" },
   { version: "0.28.0", packageName: "eve-0-28" },
-  { version: "0.29.2", packageName: "eve" },
+  { version: "0.29.4", packageName: "eve" },
 ] as const;
 const eveBin = eveBinFor("eve");
 
@@ -24,7 +24,7 @@ describe("injectSchedulerAdapter", () => {
 
     expect(packageJson.devDependencies["eve-0-27"]).toBe("npm:eve@0.27.13");
     expect(packageJson.devDependencies["eve-0-28"]).toBe("npm:eve@0.28.0");
-    expect(packageJson.devDependencies.eve).toBe("0.29.2");
+    expect(packageJson.devDependencies.eve).toBe("0.29.4");
   });
 
   test("fails closed outside the latest three verified Eve minors", async () => {
@@ -41,7 +41,7 @@ describe("injectSchedulerAdapter", () => {
     for (const eveVersion of [
       "0.27.0", "0.27.13", "~0.27.2", "^0.27.0", "0.27", "0.27.x", "0.27.*",
       "0.28.0", "~0.28.0", "^0.28.0", "0.28", "0.28.x", "0.28.*",
-      "0.29.0", "0.29.2", "~0.29.0", "^0.29.0", "0.29", "0.29.x", "0.29.*",
+      "0.29.0", "0.29.4", "~0.29.0", "^0.29.0", "0.29", "0.29.x", "0.29.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -53,7 +53,7 @@ describe("injectSchedulerAdapter", () => {
 
   test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.29.2",
+      eveVersion: "0.29.4",
       files: {
         "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
 import { helper } from "../../lib/helper";
@@ -102,7 +102,7 @@ Produce the daily report.
 
   test("generates a closed authenticated dispatch Channel without embedding secrets", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.29.2",
+      eveVersion: "0.29.4",
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
       },
@@ -129,7 +129,7 @@ Produce the daily report.
     async (extension) => {
       const sourcePath = `agent/schedules/nested/direct.${extension}`;
       const releaseDir = await fixture({
-        eveVersion: "0.29.2",
+        eveVersion: "0.29.4",
         files: { [sourcePath]: `export default { cron: "0 6 * * *", async run() {} };` },
       });
 
@@ -146,7 +146,7 @@ Produce the daily report.
 
   test("rejects reserved authored identifiers and the reserved Channel path", async () => {
     const identifierCollision = await fixture({
-      eveVersion: "0.29.2",
+      eveVersion: "0.29.4",
       files: {
         "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
       },
@@ -154,7 +154,7 @@ Produce the daily report.
     await expect(injectSchedulerAdapter({ releaseDir: identifierCollision })).rejects.toThrow(/reserved identifier/);
 
     const channelCollision = await fixture({
-      eveVersion: "0.29.2",
+      eveVersion: "0.29.4",
       files: {
         "agent/schedules/ok.ts": `export default { cron: "* * * * *", async run() {} };`,
         "agent/channels/eveland-scheduler.ts": `export default {};`,
@@ -163,7 +163,7 @@ Produce the daily report.
     await expect(injectSchedulerAdapter({ releaseDir: channelCollision })).rejects.toThrow(/reserved Channel/);
 
     const defaultReExport = await fixture({
-      eveVersion: "0.29.2",
+      eveVersion: "0.29.4",
       files: {
         "agent/lib/shared.ts": `export default { cron: "0 7 * * *", async run() {} };`,
         "agent/schedules/re-export.ts": `export { default } from "../lib/shared";`,
