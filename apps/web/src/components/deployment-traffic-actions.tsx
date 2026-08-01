@@ -50,7 +50,7 @@ export function DeploymentTrafficActions({
       <Button size="sm" variant="ghost" disabled={pending !== null || status !== "running"} onClick={() => run("drain", () => drainDeployment(projectId, deploymentId))}>
         Drain
       </Button>
-      <Button size="sm" variant="ghost" disabled={pending !== null || retentionProtected || status === "archived"} onClick={() => run("archive", () => archiveDeployment(projectId, deploymentId))}>
+      <Button size="sm" variant="ghost" disabled={pending !== null || retentionProtected || status === "archived" || status === "archiving"} onClick={() => run("archive", () => archiveDeployment(projectId, deploymentId))}>
         Archive
       </Button>
       {error ? <span className="text-xs text-destructive">{error}</span> : null}

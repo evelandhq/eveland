@@ -925,3 +925,58 @@ describe("port resolution during activation", () => {
     ).rejects.toThrow(/reserved by another live RuntimeInstance/);
   });
 });
+
+describe("archive claim gating", () => {
+  test("refuses to activate a deployment that is being archived", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Archiving Gate Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/archiving-gate",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:archiving-gate",
+      containerName: "fixture-archiving-gate",
+      internalPort: 3000,
+      hostPort: 41996,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "archiving");
+    const ensureProcess = vi.fn(async () => ({ internalPort: 3000, log: "started" }));
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess: vi.fn(),
+      ensureProcess,
+    } as unknown as RuntimeAdapter;
+
+    await expect(
+      ensureDeploymentActive(store, {
+        deployment,
+        runtime,
+        kind: "public_request",
+        ownerId: "req_archiving_gate",
+        startInput: {
+          processName: deployment.containerName,
+          releaseRef: "fixture:archiving-gate",
+          port: deployment.hostPort,
+          env: {},
+          commandContext: { hasLockfile: false },
+          sandboxCacheDir: "/tmp/cache",
+          observabilityPolicyDir: "/tmp/observability",
+        },
+      }, { waitForHealth: vi.fn() }),
+    ).rejects.toThrow(/archiving/);
+    expect(ensureProcess).not.toHaveBeenCalled();
+  });
+});
