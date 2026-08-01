@@ -43,7 +43,7 @@ test("injects the Eve 0.25.x scheduler adapter only into the disposable release"
   const sourcePath = path.join(root, "source");
   const buildDir = path.join(root, "build");
   await mkdir(path.join(sourcePath, "agent", "schedules"), { recursive: true });
-  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.2" } }));
+  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
     path.join(sourcePath, "agent", "schedules", "cleanup.ts"),

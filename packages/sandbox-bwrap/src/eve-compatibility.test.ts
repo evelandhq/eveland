@@ -13,7 +13,7 @@ describe("published Eve compatibility", () => {
       peerDependencies: { eve: string };
     };
 
-    expect(packageJson.devDependencies.eve).toBe("0.29.2");
+    expect(packageJson.devDependencies.eve).toBe("0.29.4");
     expect(packageJson.devDependencies["eve-0-27"]).toBe("npm:eve@0.27.13");
     expect(packageJson.devDependencies["eve-0-28"]).toBe("npm:eve@0.28.0");
     expect(packageJson.peerDependencies.eve).toBe(">=0.27.0 <0.30.0");

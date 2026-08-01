@@ -15,7 +15,7 @@ export const SANDBOX_VERIFY_SCRIPT_PATH = ".eveland/verify-sandbox.mjs";
  * prewarm -> create -> run -> shutdown against a scratch app root inside the
  * project's sandbox cache dir. `eve build` never calls `prewarm` on a
  * self-hosted release and `/eve/v1/health` returns 200 regardless of sandbox
- * health (both confirmed against eve 0.29.2), so this is the only point in
+ * health (both confirmed against eve 0.29.4), so this is the only point in
  * the pipeline that can catch a host that cannot run bwrap.
  */
 export function buildSandboxVerifyScript(): string {

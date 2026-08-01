@@ -4,7 +4,7 @@ import { createEveVersionInfo, inspectEveProject, isSupportedEveDependency } fro
 describe("inspectEveProject", () => {
   test("recognizes nested eve agent layout and summarizes authored slots", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.29.2" } }) },
+      { path: "package.json", content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.29.4" } }) },
       { path: "agent/agent.ts", content: `export default defineAgent({ model: process.env.DEFAULT_MODEL })` },
       { path: "agent/instructions.md", content: "You are a weather agent." },
       {
@@ -23,7 +23,7 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(true);
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
-    expect(result.eveVersion).toBe("0.29.2");
+    expect(result.eveVersion).toBe("0.29.4");
     expect(result.capabilities).toEqual({ eveChat: true });
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
@@ -40,7 +40,7 @@ describe("inspectEveProject", () => {
 
   test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.2" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.4" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       {
         path: "agent/channels/eve.ts",
@@ -53,7 +53,7 @@ describe("inspectEveProject", () => {
 
   test("uses Eve's authored skill extensions in the source summary", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.2" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.4" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       ...["md", "ts", "cts", "mts", "js", "cjs", "mjs"].map((extension) => ({
         path: `agent/skills/research.${extension}`,
@@ -102,7 +102,7 @@ describe("inspectEveProject", () => {
     for (const version of [
       "0.27.0", "0.27.13", "~0.27.2", "^0.27.0", "0.27", "0.27.x", "0.27.*",
       "0.28.0", "~0.28.0", "^0.28.0", "0.28", "0.28.x", "0.28.*",
-      "0.29.0", "0.29.2", "~0.29.0", "^0.29.0", "0.29", "0.29.x", "0.29.*",
+      "0.29.0", "0.29.4", "~0.29.0", "^0.29.0", "0.29", "0.29.x", "0.29.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }

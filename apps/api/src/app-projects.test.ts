@@ -50,7 +50,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/version-summary-agent",
-      summary: { eveVersion: "0.29.2" },
+      summary: { eveVersion: "0.29.4" },
       envVars: [],
       files: [],
       schedules: [],
@@ -64,7 +64,7 @@ describe("api app", () => {
         expect.objectContaining({
           id: project.id,
           eveVersion: {
-            version: "0.29.2",
+            version: "0.29.4",
             expected: "0.27.x, 0.28.x, or 0.29.x",
             supportedRanges: ["0.27.x", "0.28.x", "0.29.x"],
             supported: true,
@@ -246,7 +246,7 @@ describe("api app", () => {
       {
         sourcePath: "/data/preflights/source",
         commitSha: "abc123",
-        summary: { eveVersion: "0.29.2", layout: "single-agent" },
+        summary: { eveVersion: "0.29.4", layout: "single-agent" },
       },
     );
 
@@ -258,7 +258,7 @@ describe("api app", () => {
       preflight: expect.objectContaining({
         id: queued.preflight.id,
         status: "completed",
-        summary: { eveVersion: "0.29.2", layout: "single-agent" },
+        summary: { eveVersion: "0.29.4", layout: "single-agent" },
       }),
     });
 
