@@ -1,15 +1,24 @@
-import { afterAll, describe, expect, test } from "vitest";
-import { createDatabase } from "./client.js";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import {
+  createIsolatedPostgresDatabase,
+  type IsolatedPostgresDatabase,
+} from "./postgres-integration.test-support.js";
 import { createPostgresStore } from "./postgres-store.js";
 
 const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
-const database = databaseUrl ? createDatabase(databaseUrl) : null;
 
-afterAll(async () => database?.close());
+// Claims from the global source-preflight queue, so it needs its own
+// database; see postgres-integration.test-support.ts.
+describe.skipIf(!databaseUrl)("Postgres source preflights", () => {
+  let harness: IsolatedPostgresDatabase;
 
-describe.skipIf(!database)("Postgres source preflights", () => {
+  beforeAll(async () => {
+    harness = await createIsolatedPostgresDatabase(databaseUrl!);
+  });
+  afterAll(async () => harness?.drop());
+
   test("atomically consumes a validated snapshot into one Project import", async () => {
-    const store = createPostgresStore(database!);
+    const store = createPostgresStore(harness.database);
     const suffix = Date.now().toString(36);
     const preflight = await store.createSourcePreflight({
       userId: "user_local_admin",

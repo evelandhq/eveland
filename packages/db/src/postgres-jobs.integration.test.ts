@@ -1,15 +1,24 @@
-import { afterAll, describe, expect, test } from "vitest";
-import { createDatabase } from "./client.js";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import {
+  createIsolatedPostgresDatabase,
+  type IsolatedPostgresDatabase,
+} from "./postgres-integration.test-support.js";
 import { createPostgresStore } from "./postgres-store.js";
 
 const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
-const database = databaseUrl ? createDatabase(databaseUrl) : null;
 
-afterAll(async () => database?.close());
+// Claims and recovers from the global job queue, so it needs its own
+// database; see postgres-integration.test-support.ts.
+describe.skipIf(!databaseUrl)("Postgres job leases", () => {
+  let harness: IsolatedPostgresDatabase;
 
-describe.skipIf(!database)("Postgres job leases", () => {
+  beforeAll(async () => {
+    harness = await createIsolatedPostgresDatabase(databaseUrl!);
+  });
+  afterAll(async () => harness?.drop());
+
   test("recovers a stale job and fences its previous attempt", async () => {
-    const store = createPostgresStore(database!);
+    const store = createPostgresStore(harness.database);
     const project = await store.createProject({ name: `Lease integration ${Date.now()}`, importKind: "zip" });
     const first = await store.claimNextJob("worker-a", new Date("2026-07-17T00:00:00.000Z"));
     const firstAttempt = first!.attempts;
@@ -26,7 +35,7 @@ describe.skipIf(!database)("Postgres job leases", () => {
   });
 
   test("serializes concurrent archive enqueue attempts per deployment", async () => {
-    const store = createPostgresStore(database!);
+    const store = createPostgresStore(harness.database);
     const project = await store.createProject({
       name: `Archive concurrency ${Date.now()}`,
       importKind: "zip",
