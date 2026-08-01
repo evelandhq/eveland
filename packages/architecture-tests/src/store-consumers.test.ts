@@ -14,7 +14,14 @@ const FULL_STORE_ALLOWLIST: string[] = [
   "apps/api/src/app-observability-proxy-routes.ts",
   "apps/api/src/app-observability-routes.ts",
   "apps/api/src/app-otel-routes.ts",
+  // The four slices of the former app-project-routes monolith plus its
+  // composer: one prior entry became five, not new consumption. Their
+  // narrow ports land with the Store-narrowing pass.
+  "apps/api/src/app-project-deployment-routes.ts",
+  "apps/api/src/app-project-lifecycle-routes.ts",
+  "apps/api/src/app-project-metadata-routes.ts",
   "apps/api/src/app-project-routes.ts",
+  "apps/api/src/app-project-source-routes.ts",
   "apps/api/src/app-query-routes.ts",
   "apps/api/src/app-secret-routes.ts",
   "apps/api/src/app-support.ts",
