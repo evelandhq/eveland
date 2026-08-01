@@ -680,6 +680,7 @@ async function readPlaygroundStream(
   let buffer = "";
   let completedMessage = "";
   let partialMessage = "";
+  let failureText = "";
   let terminal = false;
   let status: "waiting" | "completed" | "failed" = "waiting";
   try {
@@ -703,27 +704,42 @@ async function readPlaygroundStream(
         if (type !== "message.appended" && type !== "reasoning.appended") {
           events.push({ type, payload, source: { eveSessionId, agentId: null, agentName: null } });
         }
+        if (type === "turn.failed") failureText = eveFailureText(payload) ?? failureText;
+        // Only session-level events settle the run: a failed turn is followed by
+        // session.waiting (the durable session parks for continuation), so
+        // stopping at turn.failed would misreport a continuable session as
+        // failed. turn.completed is likewise followed by session.waiting.
         terminal = playgroundTerminalTypes.has(type);
         if (type === "session.completed") status = "completed";
-        else if (type === "session.failed" || type === "turn.failed") status = "failed";
+        else if (type === "session.failed") {
+          status = "failed";
+          failureText = eveFailureText(payload) ?? failureText;
+        }
         if (terminal) break;
       }
     }
   } finally {
     await reader.cancel().catch(() => undefined);
   }
-  const response = completedMessage || partialMessage;
+  const response = completedMessage || partialMessage || failureText;
   if (!response) throw new Error("Eve Playground session produced no response.");
   return { response, status, events };
 }
 
 const playgroundTerminalTypes = new Set([
-  "turn.completed",
   "session.waiting",
   "session.completed",
   "session.failed",
-  "turn.failed",
 ]);
+
+function eveFailureText(payload: Record<string, unknown>): string | null {
+  const error = payload.error;
+  return (
+    stringValue(payload.message) ??
+    stringValue(error) ??
+    (isRecord(error) ? stringValue(error.message) : null)
+  );
+}
 
 function parseJsonRecord(value: string): Record<string, unknown> | null {
   try {
