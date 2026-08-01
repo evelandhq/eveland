@@ -251,3 +251,29 @@ function envelope(deploymentId: string, eveSessionId: string, parentEveSessionId
     event: { type: "session.started", data: {} },
   };
 }
+
+describe.skipIf(!database)("Postgres deployment recording atomicity", () => {
+  test("a failed deployment insert leaves no orphan release behind", async () => {
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({ name: `atomic-deploy-${Date.now()}`, importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id, kind: "zip", sourcePath: "/tmp/atomic-deploy-pg", summary: {}, envVars: [], files: [], schedules: [],
+    });
+    const first = await store.recordDeployment({
+      projectId: project.id, sourceRevisionId: revision.id, imageTag: "atomic-pg:one", containerName: "atomic-pg-one", internalPort: 3000, hostPort: 41883, runtimeKind: "docker",
+    });
+
+    try {
+      await expect(store.recordDeployment({
+        deploymentId: first.id,
+        projectId: project.id, sourceRevisionId: revision.id, imageTag: "atomic-pg:two", containerName: "atomic-pg-two", internalPort: 3000, hostPort: 41884, runtimeKind: "docker",
+      })).rejects.toThrow();
+
+      const releases = Object.keys(await store.listReleaseSummaries(project.id));
+      expect(releases).toEqual([first.releaseId]);
+      await expect(store.listDeployments(project.id)).resolves.toHaveLength(1);
+    } finally {
+      await store.deleteProject(project.id);
+    }
+  });
+});

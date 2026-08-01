@@ -200,64 +200,72 @@ export function createPostgresDeploymentRoutingStore({
 
   const domain: PostgresDeploymentRoutingDomain = {
     async recordDeployment(input) {
-      const [releaseRow] = await db
-        .insert(releases)
-        .values({
-          id: input.releaseId ?? createId("rel"),
-          projectId: input.projectId,
-          sourceRevisionId: input.sourceRevisionId,
-          imageTag: input.imageTag,
-          observerContract: input.observerContract ?? null,
-          summary: input.summary ?? null,
-        })
-        .returning();
+      // One transaction: a release the database cannot address through a
+      // deployment must never survive a failure between these writes.
+      return db.transaction(async (tx) => {
+        const [releaseRow] = await tx
+          .insert(releases)
+          .values({
+            id: input.releaseId ?? createId("rel"),
+            projectId: input.projectId,
+            sourceRevisionId: input.sourceRevisionId,
+            imageTag: input.imageTag,
+            observerContract: input.observerContract ?? null,
+            summary: input.summary ?? null,
+          })
+          .returning();
 
-      if (!releaseRow) {
-        throw new Error("Failed to create release.");
-      }
-
-      const deploymentRow = await claimDeploymentKey(async (deploymentKey) => {
-        try {
-          const [claimed] = await db
-            .insert(deployments)
-            .values({
-              id: input.deploymentId ?? createId("dep"),
-              deploymentKey,
-              projectId: input.projectId,
-              releaseId: releaseRow.id,
-              containerName: input.containerName,
-              internalPort: input.internalPort,
-              hostPort: input.hostPort,
-              status: "running",
-              runtimeKind: input.runtimeKind,
-            })
-            .returning();
-          if (!claimed) throw new Error("Failed to create deployment.");
-          return claimed;
-        } catch (error) {
-          if (isUniqueConstraint(error, "deployments_project_key_idx"))
-            return null;
-          throw error;
+        if (!releaseRow) {
+          throw new Error("Failed to create release.");
         }
+
+        const deploymentRow = await claimDeploymentKey(async (deploymentKey) => {
+          try {
+            // Savepoint per attempt: a unique-constraint rejection would
+            // otherwise poison the enclosing transaction and doom the retry.
+            return await tx.transaction(async (attempt) => {
+              const [claimed] = await attempt
+                .insert(deployments)
+                .values({
+                  id: input.deploymentId ?? createId("dep"),
+                  deploymentKey,
+                  projectId: input.projectId,
+                  releaseId: releaseRow.id,
+                  containerName: input.containerName,
+                  internalPort: input.internalPort,
+                  hostPort: input.hostPort,
+                  status: "running",
+                  runtimeKind: input.runtimeKind,
+                })
+                .returning();
+              if (!claimed) throw new Error("Failed to create deployment.");
+              return claimed;
+            });
+          } catch (error) {
+            if (isUniqueConstraint(error, "deployments_project_key_idx"))
+              return null;
+            throw error;
+          }
+        });
+
+        await tx
+          .update(projects)
+          .set({
+            status: "deployed",
+            deploymentStatus: "running",
+            releaseId: releaseRow.id,
+            deploymentId: deploymentRow.id,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(projects.id, input.projectId),
+              isNull(projects.deploymentId),
+            ),
+          );
+
+        return deploymentRowToDeployment(deploymentRow);
       });
-
-      await db
-        .update(projects)
-        .set({
-          status: "deployed",
-          deploymentStatus: "running",
-          releaseId: releaseRow.id,
-          deploymentId: deploymentRow.id,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(projects.id, input.projectId),
-            isNull(projects.deploymentId),
-          ),
-        );
-
-      return deploymentRowToDeployment(deploymentRow);
     },
 
     async getCurrentDeployment(projectId) {
