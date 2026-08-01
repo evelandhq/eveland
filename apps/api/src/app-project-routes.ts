@@ -456,7 +456,16 @@ export function registerProjectRoutes(input: {
       ),
       store.listProjectRoutes(projectId),
     ]);
-    return c.json({ deployments, retention, routes });
+    // Build-derived read model: each release's summary projected from eve's
+    // discovery manifest (null for releases built before the projection or
+    // whose manifest was unreadable).
+    const releaseIds = [...new Set(deployments.map((deployment) => deployment.releaseId))];
+    const releaseSummaries = Object.fromEntries(
+      (await Promise.all(releaseIds.map((releaseId) => store.getRelease(releaseId))))
+        .filter((release) => release !== null)
+        .map((release) => [release.id, release.summary]),
+    );
+    return c.json({ deployments, retention, routes, releaseSummaries });
   });
 
   app.get("/projects/:projectId/variant-metrics", async (c) => {

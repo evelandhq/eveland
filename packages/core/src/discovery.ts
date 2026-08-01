@@ -49,10 +49,15 @@ export function projectDiscoveryManifest(manifest: unknown): DiscoverySummaryPro
   if (typeof version !== "number" || !SUPPORTED_DISCOVERY_MANIFEST_VERSIONS.includes(version)) {
     return null;
   }
-  // Every entity list must be present as an actual array, and sandbox must be
-  // the documented null-or-entry shape. A manifest missing them is not "empty",
-  // it is unrecognized.
-  if (ENTITY_ARRAY_KEYS.some((key) => !Array.isArray(manifest[key]))) return null;
+  // Every entity list must be present as an actual array of well-formed
+  // entries, and sandbox must be the documented null-or-entry shape. A
+  // manifest missing them -- or carrying elements without a logicalPath -- is
+  // not "empty", it is unrecognized: silently dropping a corrupt element would
+  // still overwrite the static entity lists with authoritative-looking data.
+  for (const key of ENTITY_ARRAY_KEYS) {
+    const value = manifest[key];
+    if (!Array.isArray(value) || !value.every(isEntry)) return null;
+  }
   if (manifest.sandbox !== null && !isEntry(manifest.sandbox)) return null;
 
   const agentRoot = typeof manifest.agentRoot === "string" ? manifest.agentRoot : null;

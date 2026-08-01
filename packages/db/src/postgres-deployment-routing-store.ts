@@ -191,6 +191,7 @@ export function createPostgresDeploymentRoutingStore({
         .select({
           sourceRevisionId: sourceRevisions.id,
           summary: sourceRevisions.summary,
+          releaseSummary: releases.summary,
         })
         .from(deployments)
         .innerJoin(releases, eq(releases.id, deployments.releaseId))
@@ -205,8 +206,18 @@ export function createPostgresDeploymentRoutingStore({
         record.summary && typeof record.summary === "object"
           ? (record.summary as Record<string, unknown>)
           : {};
+      const releaseSummary =
+        record.releaseSummary && typeof record.releaseSummary === "object"
+          ? (record.releaseSummary as Record<string, unknown>)
+          : {};
+      // The build recorded the eve version actually installed into this
+      // release; it outranks the revision's declared specifier.
       let version =
-        typeof summary.eveVersion === "string" ? summary.eveVersion : null;
+        typeof releaseSummary.eveVersionResolved === "string"
+          ? releaseSummary.eveVersionResolved
+          : typeof summary.eveVersion === "string"
+            ? summary.eveVersion
+            : null;
       if (!version) {
         const [packageJson] = await db
           .select({ path: sourceFiles.path, content: sourceFiles.content })
