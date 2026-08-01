@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --maxWorkers=2 --testTimeout=30000",
+    "smoke:connections": "tsx src/integration/connections-e2e.ts",
     "smoke:docker-sandbox": "tsx src/integration/docker-sandbox-smoke.ts"
   },
   "dependencies": {

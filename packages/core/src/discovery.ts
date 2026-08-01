@@ -1,10 +1,10 @@
 import type { EveProjectLayout, EveProjectSummary } from "./source.js";
 
 /**
- * Projection of eve's own build artifact `.eve/discovery/agent-discovery-manifest.json`
+ * Projection of eve's own post-build artifact `.eve/discovery/agent-discovery-manifest.json`
  * onto the platform summary shape. Once a Release has been built, this manifest -- not
  * Eveland's pre-install static file scan -- is the authority on what the agent contains:
- * it is produced by the same discovery pass `eve build` compiles from, so it cannot
+ * it is produced by `eve info` from the same installed tree `eve build` compiled, so it cannot
  * drift from eve's layout rules the way re-derived heuristics can.
  *
  * Fail closed to null: this projection replaces the static entity lists wholesale, so

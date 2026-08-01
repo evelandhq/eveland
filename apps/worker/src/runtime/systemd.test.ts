@@ -272,7 +272,9 @@ describe("buildReleaseBuildCommand", () => {
         hasLockfile: true,
         packageManager: "pnpm",
       }),
-    ).toBe("pnpm install --frozen-lockfile --config.minimum-release-age=0 && npx eve build");
+    ).toBe(
+      "pnpm install --frozen-lockfile --config.minimum-release-age=0 && npx eve build && npx eve info --json >/dev/null",
+    );
   });
 
   test("installs the platform-owned world through pnpm without leaving manifest or lockfile changes", () => {
@@ -299,12 +301,14 @@ describe("buildReleaseBuildCommand", () => {
         { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.25" },
       ),
     ).toBe(
-      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.25 && npx eve build",
+      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.25 && npx eve build && npx eve info --json >/dev/null",
     );
   });
 
   test("uses npm install and eve build without a lockfile", () => {
-    expect(buildReleaseBuildCommand({ hasLockfile: false })).toBe("npm install && npx eve build");
+    expect(buildReleaseBuildCommand({ hasLockfile: false })).toBe(
+      "npm install && npx eve build && npx eve info --json >/dev/null",
+    );
   });
 });
 
@@ -885,7 +889,16 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
     // HOME rides as an `env` wrapper inside the runuser'd argv, not as an execa
     // env var: runuser (without -m) resets HOME to the build user's own passwd
     // entry after the user switch, so an execa-env HOME would never survive.
-    expect(runuserArgs).toEqual(["-u", "eveland-build", "--", "env", `HOME=${releaseDir}`, "sh", "-lc", "npm ci && npx eve build"]);
+    expect(runuserArgs).toEqual([
+      "-u",
+      "eveland-build",
+      "--",
+      "env",
+      `HOME=${releaseDir}`,
+      "sh",
+      "-lc",
+      "npm ci && npx eve build && npx eve info --json >/dev/null",
+    ]);
     expect(runuserOptions).toMatchObject({
       all: true,
       cwd: releaseDir,
@@ -924,7 +937,12 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
       "eveland-build",
       "--",
       "bwrap",
-      ...buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command: "npm ci && npx eve build" }),
+      ...buildBwrapArgs({
+        releaseDir,
+        npmCacheDir,
+        dataDir,
+        command: "npm ci && npx eve build && npx eve info --json >/dev/null",
+      }),
     ]);
     // buildBwrapArgs (asserted above) already carries `--setenv HOME
     // <releaseDir>` inside the sandbox -- runuser (without -m) would discard

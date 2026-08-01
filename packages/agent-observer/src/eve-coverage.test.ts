@@ -42,14 +42,24 @@ describe("Eve observer hook compatibility matrix", () => {
           artifacts: { discoveryManifest: string };
         };
         const manifest = JSON.parse(await readFile(info.artifacts.discoveryManifest, "utf8")) as {
+          connections: Array<{ connectionName: string; logicalPath: string }>;
           hooks: Array<{ logicalPath: string }>;
           skills: Array<{ name: string; logicalPath: string; sourceKind: string }>;
           subagents: Array<{
             subagentId: string;
-            manifest: { hooks: Array<{ logicalPath: string }> };
+            manifest: {
+              connections: Array<{ connectionName: string; logicalPath: string }>;
+              hooks: Array<{ logicalPath: string }>;
+            };
           }>;
         };
 
+        expect(manifest.connections).toContainEqual(
+          expect.objectContaining({
+            connectionName: "warehouse",
+            logicalPath: "connections/warehouse.ts",
+          }),
+        );
         expect(manifest.hooks.map((hook) => hook.logicalPath)).toContain("hooks/root-observer.ts");
         expect(manifest.skills).toContainEqual(
           expect.objectContaining({
@@ -68,6 +78,14 @@ describe("Eve observer hook compatibility matrix", () => {
             .find((subagent) => subagent.subagentId === "directory-child")
             ?.manifest.hooks.map((hook) => hook.logicalPath),
         ).toContain("hooks/child-observer.ts");
+        expect(
+          manifest.subagents.find((subagent) => subagent.subagentId === "directory-child")?.manifest.connections,
+        ).toContainEqual(
+          expect.objectContaining({
+            connectionName: "research",
+            logicalPath: "connections/research.ts",
+          }),
+        );
         expect(manifest.subagents.find((subagent) => subagent.subagentId === "file-child")?.manifest.hooks ?? []).toEqual([]);
         expect(manifest.subagents.find((subagent) => subagent.subagentId === "remote-child")?.manifest.hooks ?? []).toEqual([]);
 
@@ -88,7 +106,7 @@ describe("Eve observer hook compatibility matrix", () => {
           instructions: ["agent/instructions.md"],
           hooks: ["agent/hooks/root-observer.ts"],
           tools: [],
-          connections: [],
+          connections: ["agent/connections/warehouse.ts"],
           schedules: [],
           channels: [],
           sandbox: [],

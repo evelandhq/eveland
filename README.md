@@ -100,6 +100,16 @@ deployments, routing, and retention — is specified in [`docs/spec.md`](docs/sp
 Operational tunables such as Git clone timeouts and preflight TTLs are listed in
 [`docs/environment-variables.md`](docs/environment-variables.md).
 
+### Eve Connections
+
+Eveland deploys source-authored Eve Connections without a separate Connections
+configuration page. Managed integration covers MCP and OpenAPI Connections on root
+Agents and directory-form subagents, with app-scoped Bearer tokens read from Project
+Secrets at runtime. Vercel Connect remains an optional project-level credential helper;
+a Vercel account is not required for MCP/OpenAPI Connections on Eveland. Interactive
+self-hosted user authorization is not yet in the end-to-end support matrix, and a
+Connection marketplace remains out of scope.
+
 ### Full stack in Docker Compose
 
 Docker Compose runs the complete stack (Postgres + OpenTelemetry Collector + API +
@@ -240,8 +250,11 @@ pnpm build
 # Requires a running local Docker engine; builds a fixture, starts the Agent,
 # and proves a real HTTP turn can execute TypeScript through the bash tool.
 pnpm --filter @eveland/worker smoke:docker-sandbox
+# Requires Docker and openssl; verifies authenticated OpenAPI/MCP Connections,
+# a directory-form subagent, restart, a second Release, and secret non-leakage.
+EVELAND_RUNTIME=docker pnpm --filter @eveland/worker smoke:connections
 # Requires Lima. Exercises the complete systemd/bwrap topology, including a
-# dormant cron wake, OTLP usage, idle stop, and continuation wake.
+# dormant cron wake, Managed Connections, OTLP usage, idle stop, and continuation wake.
 bash infra/integration/run.sh
 ```
 
