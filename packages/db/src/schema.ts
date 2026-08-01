@@ -628,20 +628,26 @@ export const sourceRevisions = pgTable("source_revisions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const releases = pgTable("releases", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id").notNull().references(() => projects.id),
-  sourceRevisionId: text("source_revision_id").notNull().references(() => sourceRevisions.id),
-  imageTag: text("image_tag").notNull(),
-  // Null marks releases built before the observer delivery contract existed.
-  observerContract: integer("observer_contract"),
-  // Build-derived summary projected from eve's discovery manifest. Release-
-  // scoped: the same source revision can be rebuilt into releases with
-  // different resolved dependencies. Null for releases whose manifest could
-  // not be read or predates this column.
-  summary: jsonb("summary"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const releases = pgTable(
+  "releases",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id),
+    sourceRevisionId: text("source_revision_id").notNull().references(() => sourceRevisions.id),
+    imageTag: text("image_tag").notNull(),
+    // Null marks releases built before the observer delivery contract existed.
+    observerContract: integer("observer_contract"),
+    // Build-derived summary projected from eve's discovery manifest. Release-
+    // scoped: the same source revision can be rebuilt into releases with
+    // different resolved dependencies. Null for releases whose manifest could
+    // not be read or predates this column.
+    summary: jsonb("summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Postgres does not index foreign keys on its own; listReleaseSummaries
+  // filters by project on every deployment-overview request.
+  (table) => [index("releases_project_idx").on(table.projectId)],
+);
 
 export const deployments = pgTable(
   "deployments",
