@@ -4,7 +4,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { serve } from "@hono/node-server";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import type { GatewayRepository, ResolvedAgentRoute } from "./app.js";
 
 const servers: Array<ReturnType<typeof createServer>> = [];
@@ -189,4 +189,50 @@ export async function startUpstream(
   if (!address || typeof address === "string")
     throw new Error("Upstream fixture did not bind.");
   return { port: address.port };
+}
+
+export async function activatedSessionPersistenceFailureFixture(input: {
+  trigger: "api" | "playground";
+  eveSessionId: string;
+  continuationToken: string;
+  leaseId: string;
+  responseBody: unknown;
+}) {
+  const upstream = await startUpstream((_request, response) => {
+    response.writeHead(202, { "content-type": "application/json" });
+    response.end(JSON.stringify(input.responseBody));
+  });
+  const repo = repository([
+    route({ hostPort: upstream.port, deploymentStatus: "stopped" }),
+  ]);
+  repo.bindings.push({
+    id: `bind_persist_${input.trigger}`,
+    projectId: "proj_1",
+    eveSessionId: input.eveSessionId,
+    continuationToken: input.continuationToken,
+    routeId: "route_project",
+    deploymentId: "dep_1",
+    trigger: input.trigger,
+    variantName: null,
+    experimentId: null,
+    requestId: `request_persist_${input.trigger}`,
+    remoteIp: null,
+    affinityFingerprint: null,
+    affinitySource: null,
+    createdAt: "2026-07-28T10:00:00.000Z",
+    updatedAt: "2026-07-28T10:00:00.000Z",
+  });
+  const persistenceError = new Error("session token persistence failed");
+  repo.setSessionBindingContinuationToken = vi.fn(async () => {
+    throw persistenceError;
+  });
+  const activationClient = {
+    activate: vi.fn(async () => ({
+      leaseId: input.leaseId,
+      endpointPort: upstream.port,
+    })),
+    renew: vi.fn(async () => {}),
+    release: vi.fn(async () => {}),
+  };
+  return { repo, activationClient, persistenceError };
 }

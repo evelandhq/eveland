@@ -19,6 +19,7 @@ import {
   encodeAgentAuthEnvelope,
 } from "@eveland/core/agent-auth";
 import {
+  activatedSessionPersistenceFailureFixture,
   affinitySecret,
   gatewayServers,
   registerGatewayTestCleanup,
@@ -311,6 +312,84 @@ describe("Gateway", () => {
     });
     expect(activationClient.activate).not.toHaveBeenCalled();
   });
+
+  test.each([
+    {
+      operation: "continuation",
+      path: "/eve/v1/session/eve_persist_playground",
+      body: JSON.stringify({ message: "continue" }),
+      response: {
+        sessionId: "eve_persist_playground",
+        continuationToken: "continue_next_playground",
+      },
+      expectedToken: "continue_next_playground",
+    },
+    {
+      operation: "reset",
+      path: "/eve/v1/session/reset",
+      body: JSON.stringify({
+        continuationToken: "continue_current_playground",
+      }),
+      response: {
+        ok: true,
+        previousSessionId: "eve_persist_playground",
+        status: "reset",
+      },
+      expectedToken: null,
+    },
+  ])(
+    "cleans up an activated canonical Playground upstream when $operation binding persistence fails",
+    async ({ path, body, response: responseBody, expectedToken }) => {
+      const { repo, activationClient, persistenceError } =
+        await activatedSessionPersistenceFailureFixture({
+          trigger: "playground",
+          eveSessionId: "eve_persist_playground",
+          continuationToken: "continue_current_playground",
+          leaseId: "lease_persist_playground",
+          responseBody,
+        });
+      const cancel = vi.spyOn(ReadableStream.prototype, "cancel");
+      const errorLog = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      const app = createGatewayApp(repo, {
+        allowedBaseDomains: ["agent.localhost"],
+        affinitySecret,
+        internalServiceToken: "service-secret",
+        activationClient,
+        now: () => new Date("2026-07-28T12:00:00.000Z"),
+      });
+
+      try {
+        const result = await app.request(
+          `http://gateway/internal/projects/proj_1/playground${path}`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer service-secret",
+              "content-type": "application/json",
+            },
+            body,
+          },
+        );
+
+        expect(result.status).toBe(500);
+        expect(repo.setSessionBindingContinuationToken).toHaveBeenCalledWith(
+          "proj_1",
+          "eve_persist_playground",
+          expectedToken,
+        );
+        expect(cancel).toHaveBeenCalledWith(persistenceError);
+        expect(activationClient.release).toHaveBeenCalledTimes(1);
+        expect(activationClient.release).toHaveBeenCalledWith(
+          "lease_persist_playground",
+        );
+      } finally {
+        cancel.mockRestore();
+        errorLog.mockRestore();
+      }
+    },
+  );
 
   test("proxies the canonical Eve Playground protocol with streaming, attachments, and pinned continuations", async () => {
     const requests: Array<{

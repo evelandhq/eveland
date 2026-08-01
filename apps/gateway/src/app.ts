@@ -10,7 +10,6 @@ import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import {
   DEFAULT_API_SESSION_IDLE_TTL_MS,
   DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
-  isSessionBindingActive,
 } from "@eveland/core/routing";
 import type { ResolvedAgentRoute } from "@eveland/core/contracts";
 import {
@@ -28,6 +27,10 @@ import { Hono } from "hono";
 export type { ResolvedAgentRoute } from "@eveland/core/contracts";
 export type { GatewayActivationClient, GatewayAppOptions, GatewayRepository } from "./gateway-types.js";
 import type { GatewayActivationClient, GatewayAppOptions, GatewayRepository } from "./gateway-types.js";
+import {
+  applyGatewaySessionResponse,
+  resolveGatewaySessionBinding,
+} from "./gateway-session-lifecycle.js";
 import {
   DownstreamAbortedError,
   RequestBodyTooLargeError,
@@ -131,12 +134,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (!eveRequest) {
       return context.json({ error: "Not found" }, 404);
     }
-    const pathSessionId = eveRequest.sessionId;
-    const isInitial = eveRequest.kind === "initial";
-    const isContinuation = eveRequest.kind === "continuation";
-    const isCancel = eveRequest.kind === "cancel";
-    const isReset = eveRequest.kind === "reset";
-    const isStream = eveRequest.kind === "stream";
 
     const route = await repository.findProjectRoute(context.req.param("projectId"));
     if (!route?.enabled) return context.json({ error: "Project route not found" }, 404);
@@ -145,7 +142,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       return context.json({ error: "Request body too large" }, 413);
     }
     let routingBody: Uint8Array | null | undefined;
-    if (isInitial || isReset) {
+    if (eveRequest.kind === "initial" || eveRequest.kind === "reset") {
       try {
         routingBody = requestHasBody(context.req.method)
           ? await readLimitedBody(
@@ -170,28 +167,19 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
         throw error;
       }
     }
-    const requestContinuationToken = continuationTokenFromBody(routingBody);
-    const binding = pathSessionId
-      ? await repository.findSessionBinding(route.projectId, pathSessionId)
-      : requestContinuationToken
-        ? await repository.findSessionBindingByContinuationToken(
-            route.projectId,
-            requestContinuationToken,
-          )
-        : null;
-    if (pathSessionId && !binding) return context.json({ error: "Playground session not found" }, 404);
-    if (binding) {
-      const requestTime = now();
-      if (!isSessionBindingActive(binding, requestTime, sessionIdlePolicy)) {
-        return sessionExpiredResponse();
-      }
-      const touched = await repository.touchSessionBinding(
-        route.projectId,
-        binding.eveSessionId,
-        requestTime,
-      );
-      if (!touched) return sessionExpiredResponse();
+    const session = await resolveGatewaySessionBinding({
+      repository,
+      projectId: route.projectId,
+      request: eveRequest,
+      bufferedBody: routingBody,
+      now,
+      idlePolicy: sessionIdlePolicy,
+    });
+    if (session.state === "unbound" && session.lookup === "session_id") {
+      return context.json({ error: "Playground session not found" }, 404);
     }
+    if (session.state === "expired") return sessionExpiredResponse();
+    const binding = session.state === "active" ? session.binding : null;
     const activationOwnerId = crypto.randomUUID();
     const target = await resolveTarget(repository, route, binding, crypto.randomUUID(), Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
@@ -246,63 +234,32 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       throw error;
     }
 
-    const responseMetadata =
-      // Cloning tees the body: the unread branch buffers the whole upstream
-      // response for as long as the client streams the original, so only
-      // clone when the metadata reader will actually consume it.
-      upstream.ok && (isInitial || isContinuation || isReset) && isEveJsonResponse(upstream)
-        ? await eveSessionResponseMetadata(upstream.clone())
-        : null;
-    if (isInitial && upstream.ok) {
-      const eveSessionId =
-        upstream.headers.get("x-eve-session-id") ??
-        responseMetadata?.sessionId ??
-        null;
-      if (eveSessionId) {
-        try {
-          await repository.bindSession({
-            projectId: route.projectId,
-            eveSessionId,
-            continuationToken: responseMetadata?.continuationToken ?? null,
-            routeId: route.id,
-            deploymentId: target.deploymentId,
-            trigger: "playground",
-            variantName: target.variantName,
-            experimentId: routeExperimentId(route),
-            requestId: crypto.randomUUID(),
-            remoteIp: null,
-            affinityFingerprint: null,
-            affinitySource: null,
-          });
-        } catch (error) {
-          await upstream.body?.cancel(error).catch(() => undefined);
-          if (activation && options.activationClient) {
-            await options.activationClient.release(activation.leaseId).catch(() => undefined);
-          }
-          throw error;
-        }
-      }
-    } else if (
-      isContinuation &&
-      pathSessionId &&
-      responseMetadata?.continuationToken
-    ) {
-      await repository.setSessionBindingContinuationToken(
-        route.projectId,
-        pathSessionId,
-        responseMetadata.continuationToken,
+    try {
+      await applyGatewaySessionResponse({
+        repository,
+        projectId: route.projectId,
+        request: eveRequest,
+        binding,
+        upstream,
+        target: {
+          routeId: route.id,
+          deploymentId: target.deploymentId,
+          variantName: target.variantName,
+          experimentId: routeExperimentId(route),
+        },
+        provenance: {
+          kind: "playground",
+          requestId: crypto.randomUUID(),
+        },
+      });
+    } catch (error) {
+      await cancelUpstreamAndReleaseActivation(
+        upstream,
+        error,
+        activation,
+        options.activationClient,
       );
-    } else if (
-      isReset &&
-      binding &&
-      responseMetadata?.status === "reset" &&
-      responseMetadata.previousSessionId === binding.eveSessionId
-    ) {
-      await repository.setSessionBindingContinuationToken(
-        route.projectId,
-        binding.eveSessionId,
-        null,
-      );
+      throw error;
     }
 
     const response = new Response(upstream.body, {
@@ -436,10 +393,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (!eveRequest && isEveSessionNamespace(requestUrl.pathname)) {
       return context.json({ error: "Route not found" }, 404);
     }
-    const isInitial = eveRequest?.kind === "initial";
-    const isContinuation = eveRequest?.kind === "continuation";
-    const isReset = eveRequest?.kind === "reset";
-    const pathSessionId = eveRequest?.sessionId ?? null;
     const requestId = crypto.randomUUID();
     const remoteIp = remoteAddress(context);
     const affinity = affinityKey(context.req.raw.headers, options.affinitySecret);
@@ -448,7 +401,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       return context.json({ error: "Request body too large" }, 413);
     }
     let routingBody: Uint8Array | null | undefined;
-    if (isInitial || isReset) {
+    if (eveRequest?.kind === "initial" || eveRequest?.kind === "reset") {
       try {
         routingBody = requestHasBody(context.req.method)
           ? await readLimitedBody(
@@ -473,27 +426,16 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
         throw error;
       }
     }
-    const requestContinuationToken = continuationTokenFromBody(routingBody);
-    const binding = pathSessionId
-      ? await repository.findSessionBinding(route.projectId, pathSessionId)
-      : requestContinuationToken
-        ? await repository.findSessionBindingByContinuationToken(
-            route.projectId,
-            requestContinuationToken,
-          )
-        : null;
-    if (binding) {
-      const requestTime = now();
-      if (!isSessionBindingActive(binding, requestTime, sessionIdlePolicy)) {
-        return sessionExpiredResponse();
-      }
-      const touched = await repository.touchSessionBinding(
-        route.projectId,
-        binding.eveSessionId,
-        requestTime,
-      );
-      if (!touched) return sessionExpiredResponse();
-    }
+    const session = await resolveGatewaySessionBinding({
+      repository,
+      projectId: route.projectId,
+      request: eveRequest,
+      bufferedBody: routingBody,
+      now,
+      idlePolicy: sessionIdlePolicy,
+    });
+    if (session.state === "expired") return sessionExpiredResponse();
+    const binding = session.state === "active" ? session.binding : null;
     const target = await resolveTarget(repository, route, binding, affinity.key, Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
     if (eveRequest) {
@@ -550,63 +492,37 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       throw error;
     }
 
-    const responseMetadata =
-      // Cloning tees the body: the unread branch buffers the whole upstream
-      // response for as long as the client streams the original, so only
-      // clone when the metadata reader will actually consume it.
-      upstream.ok && (isInitial || isContinuation || isReset) && isEveJsonResponse(upstream)
-        ? await eveSessionResponseMetadata(upstream.clone())
-        : null;
-    if (isInitial && upstream.ok) {
-      const eveSessionId =
-        upstream.headers.get("x-eve-session-id") ??
-        responseMetadata?.sessionId ??
-        null;
-      if (eveSessionId) {
-        try {
-          await repository.bindSession({
-            projectId: route.projectId,
-            eveSessionId,
-            continuationToken: responseMetadata?.continuationToken ?? null,
-            routeId: route.id,
-            deploymentId: target.deploymentId,
-            trigger: "api",
-            variantName: target.variantName,
-            experimentId: routeExperimentId(route),
-            requestId,
-            remoteIp,
-            affinityFingerprint: affinity.fingerprint,
-            affinitySource: affinity.source,
-          });
-        } catch (error) {
-          await upstream.body?.cancel(error).catch(() => undefined);
-          if (activation && options.activationClient) {
-            await options.activationClient.release(activation.leaseId).catch(() => undefined);
-          }
-          throw error;
-        }
-      }
-    } else if (
-      isContinuation &&
-      pathSessionId &&
-      responseMetadata?.continuationToken
-    ) {
-      await repository.setSessionBindingContinuationToken(
-        route.projectId,
-        pathSessionId,
-        responseMetadata.continuationToken,
+    try {
+      await applyGatewaySessionResponse({
+        repository,
+        projectId: route.projectId,
+        request: eveRequest,
+        binding,
+        upstream,
+        target: {
+          routeId: route.id,
+          deploymentId: target.deploymentId,
+          variantName: target.variantName,
+          experimentId: routeExperimentId(route),
+        },
+        provenance: {
+          kind: "api",
+          requestId,
+          remoteIp,
+          affinity: {
+            fingerprint: affinity.fingerprint,
+            source: affinity.source,
+          },
+        },
+      });
+    } catch (error) {
+      await cancelUpstreamAndReleaseActivation(
+        upstream,
+        error,
+        activation,
+        options.activationClient,
       );
-    } else if (
-      isReset &&
-      binding &&
-      responseMetadata?.status === "reset" &&
-      responseMetadata.previousSessionId === binding.eveSessionId
-    ) {
-      await repository.setSessionBindingContinuationToken(
-        route.projectId,
-        binding.eveSessionId,
-        null,
-      );
+      throw error;
     }
 
     const responseHeaders = new Headers(upstream.headers);
@@ -741,37 +657,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function continuationTokenFromBody(
-  body: Uint8Array | null | undefined,
-): string | null {
-  if (!body || body.byteLength === 0) return null;
-  const parsed = parseJsonRecord(new TextDecoder().decode(body));
-  return stringValue(parsed?.continuationToken);
-}
-
-function isEveJsonResponse(response: Response): boolean {
-  return response.headers.get("content-type")?.includes("application/json") ?? false;
-}
-
-async function eveSessionResponseMetadata(response: Response): Promise<{
-  sessionId: string | null;
-  continuationToken: string | null;
-  previousSessionId: string | null;
-  status: string | null;
-} | null> {
-  if (!response.headers.get("content-type")?.includes("application/json")) {
-    return null;
-  }
-  const parsed = parseJsonRecord(await response.text());
-  if (!parsed) return null;
-  return {
-    sessionId: stringValue(parsed.sessionId),
-    continuationToken: stringValue(parsed.continuationToken),
-    previousSessionId: stringValue(parsed.previousSessionId),
-    status: stringValue(parsed.status),
-  };
-}
-
 function stringValue(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
@@ -844,6 +729,18 @@ function activationKind(method: string, pathname: string): "public_request" | "s
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function cancelUpstreamAndReleaseActivation(
+  upstream: Response,
+  error: unknown,
+  activation: { leaseId: string } | null,
+  client: GatewayActivationClient | undefined,
+): Promise<void> {
+  await upstream.body?.cancel(error).catch(() => undefined);
+  if (activation && client) {
+    await client.release(activation.leaseId).catch(() => undefined);
+  }
 }
 
 function manageActivationResponse(
