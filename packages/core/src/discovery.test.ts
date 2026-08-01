@@ -1,17 +1,35 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import { projectDiscoveryManifest } from "./discovery.js";
 
-const fixtureManifest = new URL(
-  "../../agent-observer/fixtures/eve-0.24-hooks/.eve/discovery/agent-discovery-manifest.json",
-  import.meta.url,
-);
+// Field-faithful copy of a manifest eve 0.24+ generates (fixture .eve/ artifacts
+// are gitignored, so the shape is inlined here). The drift guard against what
+// eve actually writes is the agent-observer compatibility matrix, which runs
+// this projection on manifests generated live by each pinned eve binary.
+const nestedManifest = {
+  kind: "eve-agent-discovery-manifest",
+  version: 12,
+  agentId: "eveland-observer-coverage-fixture",
+  agentRoot: "/srv/app/agent",
+  appRoot: "/srv/app",
+  channels: [],
+  connections: [],
+  diagnosticsSummary: { errors: 0, warnings: 0 },
+  hooks: [{ sourceKind: "module", logicalPath: "hooks/root-observer.ts", sourceId: "hooks/root-observer.ts" }],
+  instructions: [{ sourceKind: "markdown", logicalPath: "instructions.md", sourceId: "instructions.md" }],
+  sandbox: null,
+  schedules: [],
+  skills: [],
+  tools: [],
+  subagents: [
+    { logicalPath: "subagents/directory-child", subagentId: "directory-child", manifest: {} },
+    { logicalPath: "subagents/file-child.ts", subagentId: "file-child", manifest: {} },
+    { logicalPath: "subagents/remote-child.ts", subagentId: "remote-child", manifest: {} },
+  ],
+};
 
 describe("projectDiscoveryManifest", () => {
-  test("projects a real eve discovery manifest onto the platform summary shape", async () => {
-    const manifest = JSON.parse(await readFile(fixtureManifest, "utf8")) as unknown;
-
-    const projection = projectDiscoveryManifest(manifest);
+  test("projects a nested-layout eve discovery manifest onto the platform summary shape", () => {
+    const projection = projectDiscoveryManifest(nestedManifest);
 
     expect(projection).toMatchObject({
       summarySource: "build-manifest",
