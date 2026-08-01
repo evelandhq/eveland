@@ -54,18 +54,23 @@ const baseProject: Project = {
   updatedAt: "2026-07-17T00:00:00.000Z",
 };
 
-function job(type: Job["type"], status: Job["status"], lastError: string | null = null): Job {
-  return {
+function job(
+  type: "import_source" | "build_deploy",
+  status: Job["status"],
+  lastError: string | null = null,
+): Job {
+  const common = {
     id: `job_${type}`,
     projectId: baseProject.id,
-    type,
     status,
-    payload: {},
     attempts: status === "queued" ? 0 : 1,
     lastError,
     createdAt: "2026-07-17T00:00:00.000Z",
     updatedAt: "2026-07-17T00:00:01.000Z",
   };
+  return type === "import_source"
+    ? { ...common, type, payload: {} }
+    : { ...common, type, payload: {} };
 }
 
 describe("new project deployment progress", () => {

@@ -30,18 +30,13 @@ import {
 import { summarizeSessionUsage } from "./session-usage.js";
 
 
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { ScheduleStore } from "./store-domains.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 import { appendSessionEventRow } from "./postgres-store-support.js";
 
 export function createPostgresScheduleStore({
   db,
-  ensureDeploymentRoutes,
-  ensureDefaultOwner,
-  createJob,
-}: PostgresStoreContext): PostgresDomain {
+}: PostgresStoreContext): ScheduleStore {
   return {
     async listSchedules(projectId) {
       const rows = await db

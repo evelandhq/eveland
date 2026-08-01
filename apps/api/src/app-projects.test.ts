@@ -948,7 +948,10 @@ describe("api app", () => {
       }),
     });
     const job = await store.claimNextJob("test-worker");
-    const sourcePath = job?.payload.sourcePath;
+    if (job?.type !== "import_source") {
+      throw new Error("Expected a source import job.");
+    }
+    const sourcePath = job.payload.sourcePath;
     expect(sourcePath).toEqual(
       expect.stringContaining(path.join(dataDir, "uploads")),
     );
@@ -1018,7 +1021,10 @@ describe("api app", () => {
 
     expect(response.status).toBe(201);
     const job = await store.claimNextJob("test-worker");
-    const sourcePath = String(job?.payload.sourcePath);
+    if (job?.type !== "import_source") {
+      throw new Error("Expected a source import job.");
+    }
+    const sourcePath = String(job.payload.sourcePath);
     await expect(
       readFile(path.join(sourcePath, "agent", "instructions.md"), "utf8"),
     ).resolves.toBe("You are a helpful test agent.");

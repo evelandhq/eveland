@@ -12,10 +12,8 @@ import {
 } from "./schema.js";
 
 
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { AgentAuthStore } from "./store-domains.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 import {
   agentAuthCredentialWhere,
   isUniqueConstraint,
@@ -23,7 +21,7 @@ import {
 
 export function createPostgresAgentAuthStore({
   db,
-}: PostgresStoreContext): PostgresDomain {
+}: PostgresStoreContext): AgentAuthStore {
   return {
     async createAgentConnection(input) {
       try {

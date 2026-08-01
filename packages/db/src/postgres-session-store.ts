@@ -12,20 +12,23 @@ import {
   sessionNodes,
   sessions,
 } from "./schema.js";
-
-
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { SessionStore } from "./store-domains.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 import { appendSessionEventRow, modelUsageRowToModelUsageEvent, moveSessionEventsForMerge } from "./postgres-store-support.js";
+
+type PostgresSessionMutationDomain = Pick<
+  SessionStore,
+  | "createSession"
+  | "getSessionByEveSessionId"
+  | "appendSessionEvent"
+  | "recordModelUsage"
+  | "completeSession"
+  | "failRunningSessionsForRuntimeInstance"
+>;
 
 export function createPostgresSessionStore({
   db,
-  ensureDeploymentRoutes,
-  ensureDefaultOwner,
-  createJob,
-}: PostgresStoreContext): PostgresDomain {
+}: PostgresStoreContext): PostgresSessionMutationDomain {
   return {
     async createSession(input) {
       const [row] = await db

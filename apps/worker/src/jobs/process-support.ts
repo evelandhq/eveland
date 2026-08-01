@@ -343,28 +343,6 @@ export function parseEncryptedSecret(value: string): EncryptedSecret {
   return parsed as EncryptedSecret;
 }
 
-type GitCredentialPayload = {
-  userId: string;
-  host: string;
-  encryptedToken: string;
-  persistAfterImport: boolean;
-};
-
-export function readGitCredentialPayload(
-  value: unknown,
-): GitCredentialPayload | null {
-  if (typeof value !== "object" || value === null) return null;
-  const candidate = value as Partial<GitCredentialPayload>;
-  if (
-    typeof candidate.userId !== "string" ||
-    typeof candidate.host !== "string" ||
-    typeof candidate.encryptedToken !== "string" ||
-    typeof candidate.persistAfterImport !== "boolean"
-  )
-    return null;
-  return candidate as GitCredentialPayload;
-}
-
 export async function resolveRuntimeCommandContext(
   sourcePath: string,
   persistedFiles: Array<{ path: string; content: string }> = [],
@@ -491,4 +469,3 @@ export async function invalidateGatewayRouteCache(
       );
   }
 }
-

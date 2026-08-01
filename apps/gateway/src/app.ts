@@ -13,7 +13,11 @@ import {
   isSessionBindingActive,
 } from "@eveland/core/routing";
 import type { ResolvedAgentRoute } from "@eveland/core/contracts";
-import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
+import {
+  classifyEveSessionRequest,
+  isEveSessionNamespace,
+  PLAYGROUND_MAX_TRANSPORT_BYTES,
+} from "@eveland/core/eve";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import {
   createEveVersionInfo,
@@ -40,7 +44,6 @@ import {
   resolveTarget,
   routeExperimentId,
   serializeAffinityCookie,
-  sessionIdFromPath,
 } from "./gateway-routing.js";
 
 const hopByHopHeaders = new Set([
@@ -124,18 +127,16 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     const requestUrl = new URL(context.req.url);
     const playgroundPrefix = `/internal/projects/${encodeURIComponent(context.req.param("projectId"))}/playground`;
     const evePath = requestUrl.pathname.slice(playgroundPrefix.length);
-    const isInitial = context.req.method === "POST" && evePath === "/eve/v1/session";
-    const isReset = context.req.method === "POST" && evePath === "/eve/v1/session/reset";
-    const pathSessionId = isReset ? null : sessionIdFromPath(evePath);
-    const isContinuation =
-      !isReset &&
-      context.req.method === "POST" &&
-      /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
-    const isCancel = context.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+\/cancel$/.test(evePath);
-    const isStream = context.req.method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(evePath);
-    if (!isInitial && !isContinuation && !isCancel && !isReset && !isStream) {
+    const eveRequest = classifyEveSessionRequest(context.req.method, evePath);
+    if (!eveRequest) {
       return context.json({ error: "Not found" }, 404);
     }
+    const pathSessionId = eveRequest.sessionId;
+    const isInitial = eveRequest.kind === "initial";
+    const isContinuation = eveRequest.kind === "continuation";
+    const isCancel = eveRequest.kind === "cancel";
+    const isReset = eveRequest.kind === "reset";
+    const isStream = eveRequest.kind === "stream";
 
     const route = await repository.findProjectRoute(context.req.param("projectId"));
     if (!route?.enabled) return context.json({ error: "Project route not found" }, 404);
@@ -431,15 +432,14 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (!route?.enabled) return context.json({ error: "Route not found" }, 404);
 
     const requestUrl = new URL(context.req.url);
-    const isInitial =
-      context.req.method === "POST" &&
-      requestUrl.pathname === "/eve/v1/session";
-    const isReset =
-      context.req.method === "POST" &&
-      requestUrl.pathname === "/eve/v1/session/reset";
-    const pathSessionId = isReset
-      ? null
-      : sessionIdFromPath(requestUrl.pathname);
+    const eveRequest = classifyEveSessionRequest(context.req.method, requestUrl.pathname);
+    if (!eveRequest && isEveSessionNamespace(requestUrl.pathname)) {
+      return context.json({ error: "Route not found" }, 404);
+    }
+    const isInitial = eveRequest?.kind === "initial";
+    const isContinuation = eveRequest?.kind === "continuation";
+    const isReset = eveRequest?.kind === "reset";
+    const pathSessionId = eveRequest?.sessionId ?? null;
     const requestId = crypto.randomUUID();
     const remoteIp = remoteAddress(context);
     const affinity = affinityKey(context.req.raw.headers, options.affinitySecret);
@@ -496,7 +496,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     }
     const target = await resolveTarget(repository, route, binding, affinity.key, Boolean(options.activationClient));
     if (!target) return context.json({ error: "No running deployment target" }, 503);
-    if (isEveSessionRequest(context.req.method, requestUrl.pathname)) {
+    if (eveRequest) {
       const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
       if (versionFailure) return versionFailure;
     }
@@ -550,10 +550,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       throw error;
     }
 
-    const isContinuation =
-      !isReset &&
-      context.req.method === "POST" &&
-      /^\/eve\/v1\/session\/[^/]+$/.test(requestUrl.pathname);
     const responseMetadata =
       // Cloning tees the body: the unread branch buffers the whole upstream
       // response for as long as the client streams the original, so only
@@ -655,15 +651,6 @@ async function unsupportedDeploymentResponse(
     detail: unsupportedEveVersionMessage(eveVersion.version),
     eveVersion,
   }, { status: 409 });
-}
-
-function isEveSessionRequest(method: string, pathname: string): boolean {
-  return (
-    (method === "POST" && pathname === "/eve/v1/session") ||
-    (method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(pathname)) ||
-    (method === "POST" && /^\/eve\/v1\/session\/[^/]+\/cancel$/.test(pathname)) ||
-    (method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(pathname))
-  );
 }
 
 async function readPlaygroundStream(
@@ -849,8 +836,9 @@ function proxyToDeployment(input: {
 }
 
 function activationKind(method: string, pathname: string): "public_request" | "stream" | "turn" {
-  if (method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(pathname)) return "stream";
-  if (method === "POST" && /^\/eve\/v1\/session(?:\/[^/]+(?:\/cancel)?)?$/.test(pathname)) return "turn";
+  const request = classifyEveSessionRequest(method, pathname);
+  if (request?.kind === "stream") return "stream";
+  if (request) return "turn";
   return "public_request";
 }
 

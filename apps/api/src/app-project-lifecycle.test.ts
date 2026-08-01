@@ -45,16 +45,21 @@ describe("api app", () => {
     );
 
     expect(syncResponse.status).toBe(202);
-    await expect(syncResponse.json()).resolves.toMatchObject({
+    const syncBody = await syncResponse.json();
+    expect(syncBody).toMatchObject({
       job: expect.objectContaining({
         type: "import_source",
         status: "queued",
-        payload: expect.objectContaining({
-          gitUrl: "https://example.com/weather.git",
-          deployAfterImport: true,
-          promoteAfterDeploy: true,
-        }),
       }),
+    });
+    expect(syncBody.job.payload).toEqual({});
+    const [persistedSyncJob] = await store.listProjectJobs(project.id, {
+      type: "import_source",
+    });
+    expect(persistedSyncJob?.payload).toMatchObject({
+      gitUrl: "https://example.com/weather.git",
+      deployAfterImport: true,
+      promoteAfterDeploy: true,
     });
   });
 
@@ -77,14 +82,19 @@ describe("api app", () => {
     );
 
     expect(syncResponse.status).toBe(202);
-    await expect(syncResponse.json()).resolves.toMatchObject({
+    const syncBody = await syncResponse.json();
+    expect(syncBody).toMatchObject({
       job: expect.objectContaining({
         type: "import_source",
-        payload: expect.objectContaining({
-          deployAfterImport: true,
-          promoteAfterDeploy: false,
-        }),
       }),
+    });
+    expect(syncBody.job.payload).toEqual({});
+    const [persistedSyncJob] = await store.listProjectJobs(project.id, {
+      type: "import_source",
+    });
+    expect(persistedSyncJob?.payload).toMatchObject({
+      deployAfterImport: true,
+      promoteAfterDeploy: false,
     });
   });
 
@@ -111,7 +121,11 @@ describe("api app", () => {
     expect(body).toMatchObject({
       job: expect.objectContaining({ type: "build_deploy" }),
     });
-    expect(body.job.payload).toEqual({ promoteAfterDeploy: true });
+    expect(body.job.payload).toEqual({});
+    const [persistedBuildJob] = await store.listProjectJobs(project.id, {
+      type: "build_deploy",
+    });
+    expect(persistedBuildJob?.payload).toEqual({ promoteAfterDeploy: true });
   });
 
   test("rejects invalid current-source deployment options", async () => {
@@ -228,12 +242,17 @@ describe("api app", () => {
     );
 
     expect(syncResponse.status).toBe(202);
-    await expect(syncResponse.json()).resolves.toMatchObject({
+    const syncBody = await syncResponse.json();
+    expect(syncBody).toMatchObject({
       job: expect.objectContaining({
         type: "import_source",
-        payload: expect.objectContaining({ deployAfterImport: false }),
       }),
     });
+    expect(syncBody.job.payload).toEqual({});
+    const [persistedSyncJob] = await store.listProjectJobs(project.id, {
+      type: "import_source",
+    });
+    expect(persistedSyncJob?.payload.deployAfterImport).toBe(false);
   });
 
   test("rejects a source sync for a zip project", async () => {

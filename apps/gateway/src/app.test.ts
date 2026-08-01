@@ -88,6 +88,50 @@ describe("Gateway", () => {
     await expect(previewResponse.json()).resolves.toEqual({ path: "/custom", host: "d-v1--p-alpha.agent.localhost:4080" });
   });
 
+  test("fails closed on non-canonical requests in the public Eve session namespace", async () => {
+    let upstreamRequests = 0;
+    const upstream = await startUpstream((_request, response) => {
+      upstreamRequests += 1;
+      response.end("unexpected");
+    });
+    const activationClient = {
+      activate: vi.fn(async () => ({
+        leaseId: "lease_unexpected",
+        endpointPort: upstream.port,
+      })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(
+      repository([route({ hostPort: upstream.port })]),
+      {
+        allowedBaseDomains: ["agent.localhost"],
+        affinitySecret,
+        activationClient,
+      },
+    );
+
+    for (const request of [
+      { method: "POST", path: "/eve/v1/session/" },
+      { method: "GET", path: "/eve/v1/session/eve_1" },
+      { method: "POST", path: "/eve/v1/session/eve_1/" },
+      { method: "POST", path: "/eve/v1/session/eve_1/unknown" },
+      { method: "POST", path: "/eve/v1/session/%E0%A4%A" },
+    ]) {
+      const response = await app.request(
+        `http://p-alpha.agent.localhost${request.path}`,
+        {
+          method: request.method,
+          headers: { host: "p-alpha.agent.localhost" },
+        },
+      );
+      expect(response.status, `${request.method} ${request.path}`).toBe(404);
+    }
+
+    expect(activationClient.activate).not.toHaveBeenCalled();
+    expect(upstreamRequests).toBe(0);
+  });
+
   test("rejects public Eve session traffic for the selected unsupported deployment before proxy or activation", async () => {
     let upstreamRequests = 0;
     const upstream = await startUpstream((_request, response) => {

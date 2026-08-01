@@ -13,11 +13,11 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*",
-    "@eveland/db": "workspace:*"
+    "@eveland/core": "workspace:*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
+    "@eveland/db": "workspace:*",
     "vitest": "^4.1.9"
   }
 }

@@ -40,6 +40,11 @@ export type PlaygroundAttachmentLimits = {
   maxTotalFileBytes: number;
 };
 
+export type EveSessionRequest = {
+  kind: "initial" | "continuation" | "cancel" | "reset" | "stream";
+  sessionId: string | null;
+};
+
 const defaultPlaygroundAttachmentLimits: PlaygroundAttachmentLimits = {
   maxFiles: PLAYGROUND_MAX_FILES,
   maxFileBytes: PLAYGROUND_MAX_FILE_BYTES,
@@ -111,6 +116,41 @@ export function parseEveJsonObject(text: string): Record<string, unknown> | null
 export function getEveString(parsed: Record<string, unknown> | null, key: string): string | null {
   const value = parsed?.[key];
   return typeof value === "string" ? value : null;
+}
+
+export function classifyEveSessionRequest(method: string, pathname: string): EveSessionRequest | null {
+  if (method === "POST" && pathname === "/eve/v1/session") {
+    return { kind: "initial", sessionId: null };
+  }
+  if (method === "POST" && pathname === "/eve/v1/session/reset") {
+    return { kind: "reset", sessionId: null };
+  }
+
+  const match = /^\/eve\/v1\/session\/([^/]+)(?:\/(cancel|stream))?$/.exec(pathname);
+  if (!match?.[1]) return null;
+  const suffix = match[2] ?? null;
+  if ((suffix === "stream" && method !== "GET") || (suffix !== "stream" && method !== "POST")) {
+    return null;
+  }
+
+  let sessionId: string;
+  try {
+    sessionId = decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+
+  return {
+    kind: suffix === "cancel" ? "cancel" : suffix === "stream" ? "stream" : "continuation",
+    sessionId,
+  };
+}
+
+export function isEveSessionNamespace(pathname: string): boolean {
+  return (
+    pathname === "/eve/v1/session" ||
+    pathname.startsWith("/eve/v1/session/")
+  );
 }
 
 export function parseStepUsageEvent(type: string, payload: unknown): ModelStepUsage | null {

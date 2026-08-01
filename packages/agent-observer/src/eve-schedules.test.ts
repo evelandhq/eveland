@@ -4,14 +4,17 @@ import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { EVE_COMPATIBILITY_POLICY } from "@eveland/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const compatibilityMatrix = [
-  { version: "0.27.13", fixtureName: "matrix-schedules", packageName: "eve-0-27" },
-  { version: "0.28.0", fixtureName: "matrix-schedules", packageName: "eve-0-28" },
-  { version: "0.29.4", fixtureName: "matrix-schedules", packageName: "eve" },
-] as const;
+const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
+  ({ verifiedVersion, dependencyName }) => ({
+    version: verifiedVersion,
+    fixtureName: "matrix-schedules",
+    packageName: dependencyName,
+  }),
+);
 
 // Every test here copies a fixture, symlinks a real Eve release into it, and
 // shells out to that Eve to compile the project. Vitest's 5s default is a

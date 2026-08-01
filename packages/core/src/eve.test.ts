@@ -86,6 +86,49 @@ describe("parseStepUsageEvent", () => {
   });
 });
 
+describe("Eve session request classification", () => {
+  test("classifies every canonical session operation with its decoded session identity", () => {
+    const classify = (Eve as Record<string, unknown>).classifyEveSessionRequest;
+    expect(classify).toBeTypeOf("function");
+    if (typeof classify !== "function") return;
+
+    expect(classify("POST", "/eve/v1/session")).toEqual({ kind: "initial", sessionId: null });
+    expect(classify("POST", "/eve/v1/session/reset")).toEqual({ kind: "reset", sessionId: null });
+    expect(classify("POST", "/eve/v1/session/eve%2Fencoded")).toEqual({
+      kind: "continuation",
+      sessionId: "eve/encoded",
+    });
+    expect(classify("POST", "/eve/v1/session/eve_1/cancel")).toEqual({
+      kind: "cancel",
+      sessionId: "eve_1",
+    });
+    expect(classify("GET", "/eve/v1/session/eve_1/stream")).toEqual({
+      kind: "stream",
+      sessionId: "eve_1",
+    });
+  });
+
+  test("rejects non-canonical methods, suffixes, queries, and malformed session identities", () => {
+    const classify = (Eve as Record<string, unknown>).classifyEveSessionRequest;
+    expect(classify).toBeTypeOf("function");
+    if (typeof classify !== "function") return;
+
+    expect(classify("GET", "/eve/v1/session")).toBeNull();
+    expect(classify("POST", "/eve/v1/session/eve_1/stream")).toBeNull();
+    expect(classify("GET", "/eve/v1/session/eve_1/stream?startIndex=1")).toBeNull();
+    expect(classify("POST", "/eve/v1/session/eve_1/unknown")).toBeNull();
+    expect(classify("POST", "/eve/v1/session/%E0%A4%A")).toBeNull();
+    expect(classify("POST", "/other")).toBeNull();
+
+    expect(Eve.isEveSessionNamespace("/eve/v1/session/eve_1/unknown")).toBe(
+      true,
+    );
+    expect(Eve.isEveSessionNamespace("/eve/v1/session-like/eve_1")).toBe(
+      false,
+    );
+  });
+});
+
 describe("Playground turn validation", () => {
   test("accepts text and safe data-url attachments within the configured limits", () => {
     const validate = (Eve as Record<string, unknown>).validatePlaygroundTurn;

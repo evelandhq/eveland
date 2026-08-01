@@ -9,14 +9,19 @@ import {
   sessions,
 } from "./schema.js";
 import type { ObservabilityStore } from "./store-domains.js";
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
+
+type PostgresOtlpDomain = Pick<
+  ObservabilityStore,
+  | "ingestOtlpBatch"
+  | "latestOtlpBatchReceivedAt"
+  | "pruneOtlpTelemetry"
+  | "pruneDerivedAgentTelemetry"
+>;
 
 export function createPostgresOtlpStore(
   context: PostgresStoreContext,
-): PostgresDomain & Partial<ObservabilityStore> {
+): PostgresOtlpDomain {
   const { db } = context;
   return {
     async ingestOtlpBatch(input) {

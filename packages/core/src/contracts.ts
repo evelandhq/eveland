@@ -161,15 +161,62 @@ export type AgentAuthTransaction = {
   createdAt: string;
 };
 
-export type JobType = "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "ensure_deployment_running" | "archive_deployment" | "delete_project";
+export type ImportSourceJobPayload = {
+  importKind?: ProjectImportKind;
+  gitUrl?: string | null;
+  sourcePath?: string | null;
+  gitCredential?: {
+    userId: string;
+    host: string;
+    encryptedToken: string;
+    persistAfterImport: boolean;
+  };
+  deployAfterImport?: boolean;
+  promoteAfterDeploy?: boolean;
+};
+
+export type JobPayloadMap = {
+  import_source: ImportSourceJobPayload;
+  build_deploy: { promoteAfterDeploy?: boolean };
+  restart_deployment: {
+    deploymentId?: string;
+    reason?: string;
+  };
+  trigger_schedule: { scheduleRunId: string };
+  ensure_deployment_running: {
+    deploymentId: string;
+    runtimeInstanceId: string;
+  };
+  archive_deployment: { deploymentId: string; automatic?: boolean };
+  delete_project: { sourcePaths?: string[] };
+};
+
+export type JobType = keyof JobPayloadMap;
 export type JobStatus = "queued" | "running" | "completed" | "failed";
 
-export type Job = {
+type JobRecord<Type extends JobType> = {
+  id: string;
+  projectId: string;
+  type: Type;
+  status: JobStatus;
+  payload: JobPayloadMap[Type];
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Job<Type extends JobType = JobType> = {
+  [Candidate in Type]: JobRecord<Candidate>;
+}[Type];
+
+/** Browser-safe job status. Persisted payloads may contain sealed credentials. */
+export type PublicJob = {
   id: string;
   projectId: string;
   type: JobType;
   status: JobStatus;
-  payload: Record<string, unknown>;
+  payload: Record<string, never>;
   attempts: number;
   lastError: string | null;
   createdAt: string;

@@ -113,13 +113,22 @@ describe("shared Agent environment routes", () => {
       body: JSON.stringify({ entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "shared-key" }] }),
     });
     expect(savedResponse.status).toBe(200);
-    const saved = await savedResponse.json() as { jobs: Array<{ payload: { deploymentId: string; reason: string } }> };
-    expect(saved.jobs.map((job) => job.payload.deploymentId).sort()).toEqual([
+    const saved = await savedResponse.json() as {
+      jobs: Array<{ id: string; payload: Record<string, never> }>;
+    };
+    expect(saved.jobs).toHaveLength(3);
+    expect(saved.jobs.every((job) => Object.keys(job.payload).length === 0)).toBe(true);
+    const savedIds = new Set(saved.jobs.map((job) => job.id));
+    const savedInternalJobs = [
+      ...(await store.listProjectJobs(firstProject.id, { type: "restart_deployment" })),
+      ...(await store.listProjectJobs(secondProject.id, { type: "restart_deployment" })),
+    ].filter((job) => savedIds.has(job.id));
+    expect(savedInternalJobs.map((job) => job.payload.deploymentId).sort()).toEqual([
       firstDeployment.id,
       secondDeployment.id,
       otherLiveDeployment.id,
     ].sort());
-    expect(saved.jobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
+    expect(savedInternalJobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
 
     const unchangedResponse = await app.request("/platform/shared-agent-environment", {
       method: "PUT",
@@ -135,13 +144,22 @@ describe("shared Agent environment routes", () => {
       body: JSON.stringify({ entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "shared-key-v2" }] }),
     });
     expect(rotatedResponse.status).toBe(200);
-    const rotated = await rotatedResponse.json() as { jobs: Array<{ payload: { deploymentId: string; reason: string } }> };
-    expect(rotated.jobs.map((job) => job.payload.deploymentId).sort()).toEqual([
+    const rotated = await rotatedResponse.json() as {
+      jobs: Array<{ id: string; payload: Record<string, never> }>;
+    };
+    expect(rotated.jobs).toHaveLength(3);
+    expect(rotated.jobs.every((job) => Object.keys(job.payload).length === 0)).toBe(true);
+    const rotatedIds = new Set(rotated.jobs.map((job) => job.id));
+    const rotatedInternalJobs = [
+      ...(await store.listProjectJobs(firstProject.id, { type: "restart_deployment" })),
+      ...(await store.listProjectJobs(secondProject.id, { type: "restart_deployment" })),
+    ].filter((job) => rotatedIds.has(job.id));
+    expect(rotatedInternalJobs.map((job) => job.payload.deploymentId).sort()).toEqual([
       firstDeployment.id,
       secondDeployment.id,
       otherLiveDeployment.id,
     ].sort());
-    expect(rotated.jobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
+    expect(rotatedInternalJobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
   });
 
 });

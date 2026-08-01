@@ -9,14 +9,19 @@ import {
   observabilityPolicies,
 } from "./schema.js";
 import type { ObservabilityStore } from "./store-domains.js";
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
+
+type PostgresObservabilityPolicyDomain = Pick<
+  ObservabilityStore,
+  | "getObservabilityPolicy"
+  | "saveObservabilityPolicy"
+  | "listExternalObservabilityDestinationHealth"
+  | "upsertExternalObservabilityDestinationHealth"
+>;
 
 export function createPostgresObservabilityStore(
   context: PostgresStoreContext,
-): PostgresDomain & Partial<ObservabilityStore> {
+): PostgresObservabilityPolicyDomain {
   const { db } = context;
   return {
     async getObservabilityPolicy(teamId) {

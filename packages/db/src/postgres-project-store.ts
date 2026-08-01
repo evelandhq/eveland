@@ -45,9 +45,18 @@ import {
   sourceFiles,
   sourcePreflights,
   sourceRevisions,
+  teams,
+  users,
 } from "./schema.js";
-import { type CreateProjectInput } from "./store-domains.js";
+import type {
+  CreateProjectInput,
+  GitCredentialStore,
+  JobStore,
+  ProjectStore,
+  SourceStore,
+} from "./store-domains.js";
 import {
+  DEFAULT_TEAM_ID,
   ProjectSlugConflictError,
   projectDeletionSourcePaths,
 } from "./store-shared.js";
@@ -58,18 +67,44 @@ const defaultOwner = {
   name: "Local Admin",
 };
 
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 import { isUniqueConstraint } from "./postgres-store-support.js";
+
+type PostgresProjectDomain = Omit<ProjectStore, "updateProjectState"> &
+  Pick<
+    SourceStore,
+    | "createSourcePreflight"
+    | "getSourcePreflight"
+    | "claimNextSourcePreflight"
+    | "heartbeatSourcePreflight"
+    | "recoverStaleSourcePreflights"
+    | "completeSourcePreflight"
+    | "failSourcePreflight"
+    | "createProjectFromSourcePreflight"
+    | "expireSourcePreflights"
+  > &
+  GitCredentialStore;
+
+type PostgresProjectDependencies = Pick<JobStore, "enqueueJob">;
 
 export function createPostgresProjectStore({
   db,
-  ensureDeploymentRoutes,
-  ensureDefaultOwner,
-  createJob,
-}: PostgresStoreContext): PostgresDomain {
+}: PostgresStoreContext, {
+  enqueueJob,
+}: PostgresProjectDependencies): PostgresProjectDomain {
+  const ensureDefaultOwner = async () => {
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(teams)
+        .values({ id: DEFAULT_TEAM_ID, name: "Eveland", slug: "eveland" })
+        .onConflictDoNothing({ target: teams.id });
+      await tx
+        .insert(users)
+        .values(defaultOwner)
+        .onConflictDoNothing({ target: users.id });
+    });
+  };
+
   return {
     async listProjects() {
       const rows = await db
@@ -144,7 +179,7 @@ export function createPostgresProjectStore({
         throw error;
       });
 
-      await createJob(row.id, "import_source", {
+      await enqueueJob(row.id, "import_source", {
         importKind: input.importKind,
         gitUrl: input.gitUrl ?? null,
         sourcePath: input.sourcePath ?? null,

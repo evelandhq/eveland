@@ -1,112 +1,32 @@
-export type Project = {
-  id: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  importKind: "git" | "zip";
-  gitUrl: string | null;
-  status: string;
-  deploymentStatus: string;
-  deletionStatus: "deleting" | "failed" | null;
-  deletionError: string | null;
-  sourceRevisionId: string | null;
-  releaseId: string | null;
-  deploymentId: string | null;
-  latestSessionStatus: string | null;
-  nextScheduleAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+export type { EveVersionInfo } from "@eveland/core/eve-compatibility";
 
-export type PublicSecret = {
-  id: string;
-  projectId: string;
-  key: string;
-  kind: "variable" | "secret";
-  createdAt: string;
-  updatedAt: string;
-};
+import type {
+  LogRecord,
+  ModelUsageEvent as CoreModelUsageEvent,
+  Project as CoreProject,
+  ProjectSchedule as CoreProjectSchedule,
+  ProjectScheduleSummary as CoreProjectScheduleSummary,
+  PublicJob as CorePublicJob,
+  PublicSecret as CorePublicSecret,
+  ScheduleRecord,
+  ScheduleRunListItem,
+  ScheduleVersion as CoreScheduleVersion,
+  Session as CoreSession,
+  SessionEvent as CoreSessionEvent,
+  SessionNode as CoreSessionNode,
+  SessionTokenUsage as CoreSessionTokenUsage,
+  SourceFileRecord,
+  SourceRevision as CoreSourceRevision,
+} from "@eveland/core/contracts";
 
-export type Schedule = {
-  id: string;
-  projectId: string;
-  name: string;
-  kind: "markdown" | "typescript";
-  cron: string | null;
-  timezone: string | null;
-  enabled: boolean;
-  executable: boolean;
-  sourcePath: string;
-  nextRunAt: string | null;
-};
-
-export type ProjectSchedule = {
-  id: string;
-  projectId: string;
-  key: string;
-  enabled: boolean;
-  nextRunAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type ScheduleVersion = {
-  id: string;
-  scheduleId: string;
-  sourceRevisionId: string;
-  kind: "markdown" | "handler";
-  cron: string;
-  sourcePath: string;
-  definitionHash: string;
-  createdAt: string;
-};
-
-export type ProjectScheduleSummary = {
-  schedule: ProjectSchedule;
-  version: ScheduleVersion | null;
-  targetDeploymentId: string | null;
-};
-
-export type Session = {
-  id: string;
-  projectId: string;
-  deploymentId: string | null;
-  eveSessionId: string | null;
-  continuationToken: string | null;
-  rootNodeId: string | null;
-  routeId: string | null;
-  experimentId: string | null;
-  variantName: string | null;
-  trigger: string;
-  scheduleId: string | null;
-  scheduleRunId: string | null;
-  status: string;
-  startedAt: string;
-  completedAt: string | null;
-  usage: SessionTokenUsage;
-};
-
-export type ScheduleRun = {
-  id: string;
-  scheduleId: string;
-  scheduleVersionId: string;
-  releaseId: string;
-  deploymentId: string;
-  dueAt: string;
-  trigger: "cron" | "manual";
-  status: string;
-  attempt: number;
-  missedTicks: number;
-  error: string | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  scheduleKey: string;
-  sessionCount: number;
-  usage: SessionTokenUsage;
-  sessions: Session[];
-};
+export type Project = CoreProject;
+export type PublicSecret = CorePublicSecret;
+export type Schedule = ScheduleRecord;
+export type ProjectSchedule = CoreProjectSchedule;
+export type ScheduleVersion = CoreScheduleVersion;
+export type ProjectScheduleSummary = CoreProjectScheduleSummary;
+export type Session = CoreSession;
+export type ScheduleRun = ScheduleRunListItem;
 
 export type ScheduleRunDetail = ScheduleRun & {
   version: ScheduleVersion;
@@ -117,14 +37,6 @@ export type ScheduleRunDetail = ScheduleRun & {
 export type AgentEndpoints = {
   stable: string | null;
   previews: string[];
-};
-
-export type EveVersionInfo = {
-  version: string | null;
-  expected: "0.27.x, 0.28.x, or 0.29.x";
-  supportedRanges: readonly ["0.27.x", "0.28.x", "0.29.x"];
-  supported: boolean;
-  sourceRevisionId: string | null;
 };
 
 export type Deployment = {
@@ -170,81 +82,11 @@ export type VariantMetric = {
   costUsd: number;
 };
 
-export type SessionTokenUsage = {
-  status: "none" | "reported" | "partial" | "missing";
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  costUsd: number | null;
-  reportedSteps: number;
-  missingSteps: number;
-};
-
-export type SessionEvent = {
-  id: string;
-  sessionId: string;
-  index: number;
-  type: string;
-  payload: unknown;
-  sessionNodeId: string | null;
-  telemetryEventId: string | null;
-  eventFingerprint: string | null;
-  observedDeploymentId: string | null;
-  sourceSequence: number | null;
-  eventAt: string;
-  createdAt: string;
-};
-
-export type SessionNode = {
-  id: string;
-  rootSessionId: string;
-  projectId: string;
-  eveSessionId: string;
-  parentNodeId: string | null;
-  parentEveSessionId: string | null;
-  startedDeploymentId: string;
-  lastObservedDeploymentId: string;
-  agentId: string | null;
-  agentName: string | null;
-  nodeId: string | null;
-  channelKind: string | null;
-  modelId: string | null;
-  eveVersion: string | null;
-  remoteUrl: string | null;
-  resolutionStatus: "observed" | "unresolved";
-  status: string;
-};
-
-export type ModelUsageEvent = {
-  id: string;
-  sessionId: string;
-  eveSessionId: string;
-  agentId: string | null;
-  agentName: string | null;
-  turnId: string;
-  stepIndex: number;
-  finishReason: string | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cacheReadTokens: number | null;
-  cacheWriteTokens: number | null;
-  costUsd: number | null;
-  usageReported: boolean;
-  createdAt: string;
-};
-
-export type Job = {
-  id: string;
-  projectId: string;
-  type: "import_source" | "build_deploy" | "restart_deployment" | "trigger_schedule" | "ensure_deployment_running" | "archive_deployment" | "delete_project";
-  status: "queued" | "running" | "completed" | "failed";
-  payload: Record<string, unknown>;
-  attempts: number;
-  lastError: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+export type SessionTokenUsage = CoreSessionTokenUsage;
+export type SessionEvent = CoreSessionEvent;
+export type SessionNode = CoreSessionNode;
+export type ModelUsageEvent = CoreModelUsageEvent;
+export type Job = CorePublicJob;
 
 export type ProjectImportNotice = {
   active: boolean;
@@ -276,14 +118,7 @@ export function getProjectImportNotice(job: Job | null): ProjectImportNotice | n
   };
 }
 
-export type LogLine = {
-  id: string;
-  projectId: string;
-  deploymentId: string | null;
-  type: "build" | "deploy" | "runtime";
-  line: string;
-  createdAt: string;
-};
+export type LogLine = LogRecord;
 
 export type ProjectLogFilter = "all" | LogLine["type"];
 export type ProjectLogOrder = "asc" | "desc";
@@ -304,21 +139,5 @@ export function selectProjectLogs(
   });
 }
 
-export type SourceRevision = {
-  id: string;
-  projectId: string;
-  kind: "git" | "zip";
-  commitSha: string | null;
-  sourcePath: string;
-  summary: Record<string, unknown>;
-  envVars: string[];
-  createdAt: string;
-};
-
-export type SourceFile = {
-  id: string;
-  revisionId: string;
-  path: string;
-  content: string;
-  size: number;
-};
+export type SourceRevision = CoreSourceRevision;
+export type SourceFile = SourceFileRecord;

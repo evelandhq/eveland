@@ -47,24 +47,158 @@ import {
   DeploymentNotPromotableError,
   ProjectRouteNotFoundError,
 } from "./store-shared.js";
-
-
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { DeploymentStore, RoutingStore } from "./store-domains.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 import {
   isUniqueConstraint,
   normalizeBaseDomain,
 } from "./postgres-store-support.js";
 
+type PostgresDeploymentRoutingDomain = DeploymentStore & RoutingStore;
+
 export function createPostgresDeploymentRoutingStore({
   db,
-  ensureDeploymentRoutes,
-  ensureDefaultOwner,
-  createJob,
-}: PostgresStoreContext): PostgresDomain {
-  return {
+}: PostgresStoreContext): PostgresDeploymentRoutingDomain {
+  const ensureDeploymentRoutes: RoutingStore["ensureDeploymentRoutes"] = async (
+    projectId,
+    deploymentId,
+    baseDomain,
+  ) => {
+    const domain = normalizeBaseDomain(baseDomain);
+    return db.transaction(async (tx) => {
+      const [project] = await tx
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      const [deployment] = await tx
+        .select()
+        .from(deployments)
+        .where(
+          and(
+            eq(deployments.id, deploymentId),
+            eq(deployments.projectId, projectId),
+          ),
+        )
+        .limit(1);
+      if (!project || !deployment) {
+        throw new Error(
+          "Cannot create Agent routes for an unknown project or deployment.",
+        );
+      }
+
+      let [stable] = await tx
+        .select()
+        .from(agentRoutes)
+        .where(
+          and(
+            eq(agentRoutes.projectId, projectId),
+            eq(agentRoutes.kind, "project"),
+          ),
+        )
+        .limit(1);
+      if (stable) {
+        [stable] = await tx
+          .update(agentRoutes)
+          .set({
+            hostname: `${project.slug}.${domain}`,
+            enabled: true,
+            updatedAt: new Date(),
+          })
+          .where(eq(agentRoutes.id, stable.id))
+          .returning();
+      } else {
+        [stable] = await tx
+          .insert(agentRoutes)
+          .values({
+            id: createId("route"),
+            projectId,
+            hostname: `${project.slug}.${domain}`,
+            kind: "project",
+            enabled: true,
+            policyRevision: 1,
+          })
+          .returning();
+      }
+      if (!stable) {
+        throw new Error("Failed to materialize the stable Agent route.");
+      }
+
+      const [previewMatch] = await tx
+        .select({ route: agentRoutes })
+        .from(agentRoutes)
+        .innerJoin(routeTargets, eq(routeTargets.routeId, agentRoutes.id))
+        .where(
+          and(
+            eq(agentRoutes.projectId, projectId),
+            eq(agentRoutes.kind, "deployment"),
+            eq(routeTargets.deploymentId, deploymentId),
+          ),
+        )
+        .limit(1);
+      let preview = previewMatch?.route;
+      if (preview) {
+        [preview] = await tx
+          .update(agentRoutes)
+          .set({
+            hostname: `${deployment.deploymentKey}--${project.slug}.${domain}`,
+            enabled: true,
+            updatedAt: new Date(),
+          })
+          .where(eq(agentRoutes.id, preview.id))
+          .returning();
+      } else {
+        [preview] = await tx
+          .insert(agentRoutes)
+          .values({
+            id: createId("route"),
+            projectId,
+            hostname: `${deployment.deploymentKey}--${project.slug}.${domain}`,
+            kind: "deployment",
+            enabled: true,
+            policyRevision: 1,
+          })
+          .returning();
+      }
+      if (!preview) {
+        throw new Error(
+          "Failed to materialize the deployment preview route.",
+        );
+      }
+
+      const [existingStableTarget] = await tx
+        .select()
+        .from(routeTargets)
+        .where(eq(routeTargets.routeId, stable.id))
+        .limit(1);
+      if (!existingStableTarget) {
+        await tx.insert(routeTargets).values({
+          routeId: stable.id,
+          deploymentId,
+          weight: 10_000,
+          variantName: null,
+        });
+      }
+      await tx
+        .insert(routeTargets)
+        .values({
+          routeId: preview.id,
+          deploymentId,
+          weight: 10_000,
+          variantName: null,
+        })
+        .onConflictDoUpdate({
+          target: [routeTargets.routeId, routeTargets.deploymentId],
+          set: { weight: 10_000, variantName: null },
+        });
+      return [
+        agentRouteRowToAgentRoute(stable),
+        agentRouteRowToAgentRoute(preview),
+      ];
+    });
+  };
+
+  const domain: PostgresDeploymentRoutingDomain = {
     async recordDeployment(input) {
       const [releaseRow] = await db
         .insert(releases)
@@ -444,7 +578,7 @@ export function createPostgresDeploymentRoutingStore({
         .where(eq(agentRoutes.id, routeId))
         .limit(1);
       if (!route) throw new Error("Agent route not found after update.");
-      return (await this.findRouteByHostname(route.hostname))!;
+      return (await domain.findRouteByHostname(route.hostname))!;
     },
 
     async promoteDeployment(projectId, deploymentId) {
@@ -542,7 +676,7 @@ export function createPostgresDeploymentRoutingStore({
         }
         return route.hostname;
       });
-      return (await this.findRouteByHostname(hostname))!;
+      return (await domain.findRouteByHostname(hostname))!;
     },
 
     async ensureAliasRoute(projectId, alias, baseDomain, targets) {
@@ -604,13 +738,13 @@ export function createPostgresDeploymentRoutingStore({
           .values(targets.map((target) => ({ routeId: route.id, ...target })));
         return hostname;
       });
-      return (await this.findRouteByHostname(hostname))!;
+      return (await domain.findRouteByHostname(hostname))!;
     },
 
     async getDeploymentRetention(projectId, keepRecent = 3, options = {}) {
       const now = options.now ?? new Date();
-      const deploymentList = await this.listDeployments(projectId);
-      const routes = await this.listProjectRoutes(projectId);
+      const deploymentList = await domain.listDeployments(projectId);
+      const routes = await domain.listProjectRoutes(projectId);
       const targeted = new Set(
         routes
           .filter((route) => route.kind !== "deployment")
@@ -814,4 +948,6 @@ export function createPostgresDeploymentRoutingStore({
       return binding ? sessionBindingRowToSessionBinding(binding) : null;
     },
   };
+
+  return domain;
 }

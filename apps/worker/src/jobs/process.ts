@@ -87,16 +87,10 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
         const failed = await store.failJob(job.id, message, job.attempts);
         if (!failed) return true;
         if (job.type === "ensure_deployment_running") {
-          const runtimeInstanceId =
-            typeof job.payload.runtimeInstanceId === "string"
-              ? job.payload.runtimeInstanceId
-              : null;
-          if (runtimeInstanceId) {
-            await store.updateRuntimeInstance(runtimeInstanceId, {
-              status: "failed",
-              error: message,
-            });
-          }
+          await store.updateRuntimeInstance(job.payload.runtimeInstanceId, {
+            status: "failed",
+            error: message,
+          });
         }
         // A failed import never touches the running container, so it must not report a
         // live deployment as failed; only deploy/restart jobs change deployment status.
@@ -116,12 +110,8 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
               : { status: "failed", deploymentStatus: "failed" },
           );
         } else if (job.type === "ensure_deployment_running") {
-          const targetDeploymentId =
-            typeof job.payload.deploymentId === "string"
-              ? job.payload.deploymentId
-              : null;
           const production = await store.getCurrentDeployment(job.projectId);
-          if (production?.id === targetDeploymentId) {
+          if (production?.id === job.payload.deploymentId) {
             await store.updateProjectState(job.projectId, {
               status: "failed",
             });
@@ -235,9 +225,14 @@ export async function cleanupExpiredSourcePreflights(
 }
 
 async function clearTemporaryGitCredential(store: Store, job: Job): Promise<void> {
-  if (job.type !== "import_source" || !("gitCredential" in job.payload)) return;
+  if (job.type !== "import_source" || !job.payload.gitCredential) return;
   const { gitCredential: _gitCredential, ...payload } = job.payload;
-  await store.replaceJobPayload(job.id, payload, job.attempts);
+  await store.replaceJobPayload(
+    job.id,
+    "import_source",
+    payload,
+    job.attempts,
+  );
 }
 
 /** The job row was fenced away from this execution (recovered as stale and re-claimed). */

@@ -3,11 +3,11 @@ import { createId } from "@eveland/core/ids";
 import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
 import { hostMetricSamples, jobs, runtimeInstances, workerHeartbeats } from "./schema.js";
 import type { InstanceHealthStore } from "./store-domains.js";
-import type { PostgresDomain, PostgresStoreContext } from "./postgres-store-support.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 
 export function createPostgresInstanceHealthStore(
   context: PostgresStoreContext,
-): PostgresDomain & Partial<InstanceHealthStore> {
+): InstanceHealthStore {
   const { db } = context;
   return {
     async upsertWorkerHeartbeat(heartbeat) {

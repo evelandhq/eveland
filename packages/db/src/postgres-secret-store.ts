@@ -1,7 +1,8 @@
 import { createId } from "@eveland/core/ids";
 import { and, desc, eq } from "drizzle-orm";
 import { secretRowToPublicSecret, secretRowToSecretRecord } from "./mappers.js";
-import type { PostgresDomain, PostgresStoreContext } from "./postgres-store-support.js";
+import type { SecretStore } from "./store-domains.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 import {
   normalizeSharedAgentEnvironmentEntries,
   sharedAgentEnvironmentRowToPublic,
@@ -11,7 +12,7 @@ import { secrets, sharedAgentEnvironment } from "./schema.js";
 
 const globalEnvironmentKey = "global";
 
-export function createPostgresSecretStore({ db }: PostgresStoreContext): PostgresDomain {
+export function createPostgresSecretStore({ db }: PostgresStoreContext): SecretStore {
   return {
     async listSecrets(projectId) {
       const rows = await db
