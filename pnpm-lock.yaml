@@ -323,9 +323,6 @@ importers:
       '@eveland/core':
         specifier: workspace:*
         version: link:../core
-      '@eveland/db':
-        specifier: workspace:*
-        version: link:../db
       eve:
         specifier: 0.29.4
         version: 0.29.4(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.44(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
@@ -333,6 +330,9 @@ importers:
         specifier: ^6.8.4
         version: 6.8.4
     devDependencies:
+      '@eveland/db':
+        specifier: workspace:*
+        version: link:../db
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
@@ -454,10 +454,10 @@ importers:
       '@eveland/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
       '@eveland/db':
         specifier: workspace:*
         version: link:../db
-    devDependencies:
       '@electric-sql/pglite':
         specifier: ^0.5.4
         version: 0.5.4

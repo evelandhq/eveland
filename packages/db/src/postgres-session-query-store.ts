@@ -14,21 +14,25 @@ import {
   sessionNodes,
   sessions,
 } from "./schema.js";
-
-
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { LogStore, SessionStore } from "./store-domains.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 import { modelUsageRowToModelUsageEvent } from "./postgres-store-support.js";
+
+type PostgresSessionQueryDomain = Pick<
+  SessionStore,
+  | "listSessions"
+  | "getSession"
+  | "listSessionsPage"
+  | "listSessionEvents"
+  | "listSessionNodes"
+  | "ingestAgentEvent"
+  | "listModelUsageEvents"
+> & Pick<LogStore, "listLogs">;
 
 export function createPostgresSessionQueryStore({
   database,
   db,
-  ensureDeploymentRoutes,
-  ensureDefaultOwner,
-  createJob,
-}: PostgresStoreContext): PostgresDomain {
+}: PostgresStoreContext): PostgresSessionQueryDomain {
   return {
     async listSessions(projectId) {
       const rows = await db

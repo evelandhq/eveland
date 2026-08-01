@@ -1,5 +1,19 @@
 import path from "node:path";
+import {
+  isSupportedEveDependency,
+  unsupportedEveVersionMessage,
+} from "./eve-compatibility.js";
 import { parseScheduleSource, type DiscoveredSchedule } from "./schedules.js";
+
+export {
+  createEveVersionInfo,
+  isSupportedEveDependency,
+  SUPPORTED_EVE_VERSION_RANGE,
+  SUPPORTED_EVE_VERSION_RANGES,
+  unsupportedEveVersionMessage,
+  type EveVersionInfo,
+  type SupportedEveVersionRange,
+} from "./eve-compatibility.js";
 
 export type SourceFile = {
   path: string;
@@ -33,18 +47,6 @@ export type EveProjectInspection = {
   envVars: string[];
   schedules: DiscoveredSchedule[];
   errors: string[];
-};
-
-export const SUPPORTED_EVE_VERSION_RANGES = ["0.27.x", "0.28.x", "0.29.x"] as const;
-export type SupportedEveVersionRange = (typeof SUPPORTED_EVE_VERSION_RANGES)[number];
-export const SUPPORTED_EVE_VERSION_RANGE = "0.27.x, 0.28.x, or 0.29.x" as const;
-
-export type EveVersionInfo = {
-  version: string | null;
-  expected: typeof SUPPORTED_EVE_VERSION_RANGE;
-  supportedRanges: readonly SupportedEveVersionRange[];
-  supported: boolean;
-  sourceRevisionId: string | null;
 };
 
 const emptySummary = (): EveProjectSummary => ({
@@ -152,32 +154,6 @@ function detectsEveChatCapability(
     ) &&
     /export\s+default\s+eveChannel\s*\(/.test(channel.content)
   );
-}
-
-export function isSupportedEveDependency(specifier: string | null): boolean {
-  if (specifier === null) return false;
-  const match = specifier.trim().match(/^([~^]?)(0\.\d+)(?:\.(\d+|[x*]))?$/);
-  if (!match) return false;
-  const [, operator, minor, patch] = match;
-  if (operator && (patch === undefined || patch === "x" || patch === "*")) return false;
-  return SUPPORTED_EVE_VERSION_RANGES.includes(`${minor}.x` as SupportedEveVersionRange);
-}
-
-export function unsupportedEveVersionMessage(specifier: string | null): string {
-  if (specifier === null) {
-    return `Missing Eve dependency. Eveland requires Eve ${SUPPORTED_EVE_VERSION_RANGE}. Add the \"eve\" dependency before importing or deploying.`;
-  }
-  return `Unsupported Eve dependency \"${specifier}\". Eveland requires Eve ${SUPPORTED_EVE_VERSION_RANGE}. Upgrade the project's \"eve\" dependency before importing or deploying.`;
-}
-
-export function createEveVersionInfo(version: string | null, sourceRevisionId: string | null): EveVersionInfo {
-  return {
-    version,
-    expected: SUPPORTED_EVE_VERSION_RANGE,
-    supportedRanges: [...SUPPORTED_EVE_VERSION_RANGES],
-    supported: isSupportedEveDependency(version),
-    sourceRevisionId,
-  };
 }
 
 function detectLayout(paths: Set<string>): EveProjectLayout {

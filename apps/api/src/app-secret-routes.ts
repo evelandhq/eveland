@@ -1,4 +1,8 @@
-import type { SharedAgentEnvironmentRecord } from "@eveland/core/contracts";
+import type {
+  Job,
+  SharedAgentEnvironmentRecord,
+} from "@eveland/core/contracts";
+import { toPublicJob } from "@eveland/core/jobs";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
 import {
@@ -14,7 +18,7 @@ export function registerSecretRoutes(input: {
   store: Store;
   options: Pick<AppOptions, "auth">;
   appSecretKey: string;
-  enqueueLiveDeploymentRestarts(projectId: string): Promise<unknown>;
+  enqueueLiveDeploymentRestarts(projectId: string): Promise<Job[]>;
 }): void {
   const {
     app,
@@ -47,7 +51,7 @@ export function registerSecretRoutes(input: {
       parsed.data.kind,
     );
     const jobs = await enqueueLiveDeploymentRestarts(projectId);
-    return c.json({ secret, jobs }, 201);
+    return c.json({ secret, jobs: jobs.map(toPublicJob) }, 201);
   });
 
   app.post("/projects/:projectId/secrets/batch", async (c) => {
@@ -86,7 +90,7 @@ export function registerSecretRoutes(input: {
       })),
     );
     const jobs = await enqueueLiveDeploymentRestarts(projectId);
-    return c.json({ secrets, jobs }, 201);
+    return c.json({ secrets, jobs: jobs.map(toPublicJob) }, 201);
   });
 
   app.put("/projects/:projectId/secrets/:secretId", async (c) => {
@@ -107,7 +111,7 @@ export function registerSecretRoutes(input: {
     });
     if (!secret) return c.json({ error: "Environment entry not found" }, 404);
     const jobs = await enqueueLiveDeploymentRestarts(projectId);
-    return c.json({ secret, jobs });
+    return c.json({ secret, jobs: jobs.map(toPublicJob) });
   });
 
   app.delete("/projects/:projectId/secrets/:secretId", async (c) => {
@@ -117,7 +121,7 @@ export function registerSecretRoutes(input: {
       c.req.param("secretId"),
     );
     const jobs = deleted ? await enqueueLiveDeploymentRestarts(projectId) : [];
-    return c.json({ deleted, jobs });
+    return c.json({ deleted, jobs: jobs.map(toPublicJob) });
   });
 
   app.get("/platform/shared-agent-environment", async (c) => {
@@ -168,7 +172,7 @@ export function registerSecretRoutes(input: {
     const jobs = environment.revision === previousRevision
       ? []
       : await enqueueAllLiveDeploymentRestarts(store);
-    return c.json({ environment, jobs });
+    return c.json({ environment, jobs: jobs.map(toPublicJob) });
   });
 }
 

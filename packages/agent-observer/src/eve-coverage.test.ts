@@ -4,14 +4,17 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { projectDiscoveryManifest } from "@eveland/core/discovery";
+import { EVE_COMPATIBILITY_POLICY } from "@eveland/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const compatibilityMatrix = [
-  { version: "0.27.13", fixtureName: "matrix-hooks", packageName: "eve-0-27" },
-  { version: "0.28.0", fixtureName: "matrix-hooks", packageName: "eve-0-28" },
-  { version: "0.29.4", fixtureName: "matrix-hooks", packageName: "eve" },
-] as const;
+const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
+  ({ verifiedVersion, dependencyName }) => ({
+    version: verifiedVersion,
+    fixtureName: "matrix-hooks",
+    packageName: dependencyName,
+  }),
+);
 
 describe("Eve observer hook compatibility matrix", () => {
   test("pins the two previous Eve minors for the compatibility matrix", async () => {
@@ -19,9 +22,13 @@ describe("Eve observer hook compatibility matrix", () => {
       await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
     ) as { devDependencies: Record<string, string> };
 
-    expect(packageJson.devDependencies["eve-0-27"]).toBe("npm:eve@0.27.13");
-    expect(packageJson.devDependencies["eve-0-28"]).toBe("npm:eve@0.28.0");
-    expect(packageJson.devDependencies.eve).toBe("0.29.4");
+    for (const line of EVE_COMPATIBILITY_POLICY.supportedLines) {
+      expect(packageJson.devDependencies[line.dependencyName]).toBe(
+        line.dependencyName === "eve"
+          ? line.verifiedVersion
+          : `npm:eve@${line.verifiedVersion}`,
+      );
+    }
   });
 
   test.each(compatibilityMatrix)("runs observer coverage against Eve $version", async ({ packageName, version }) => {

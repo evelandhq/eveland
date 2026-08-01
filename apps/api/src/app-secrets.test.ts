@@ -137,24 +137,29 @@ describe("api app", () => {
     );
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
-      jobs: expect.arrayContaining([
-        expect.objectContaining({
-          type: "restart_deployment",
-          payload: expect.objectContaining({ deploymentId: stable.id }),
-        }),
-        expect.objectContaining({
-          type: "restart_deployment",
-          payload: expect.objectContaining({ deploymentId: preview.id }),
-        }),
+    const responseBody = await response.json();
+    expect(responseBody.jobs).toHaveLength(2);
+    expect(responseBody.jobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "restart_deployment", payload: {} }),
+        expect.objectContaining({ type: "restart_deployment", payload: {} }),
       ]),
-    });
+    );
+    expect(
+      responseBody.jobs.every(
+        (job: { payload: Record<string, unknown> }) =>
+          Object.keys(job.payload).length === 0,
+      ),
+    ).toBe(true);
     const queuedDeploymentIds: string[] = [];
     for (let index = 0; index < 2; index += 1) {
       const job = await store.claimNextJob("test-worker");
       expect(job).toMatchObject({ type: "restart_deployment" });
-      queuedDeploymentIds.push(String(job!.payload.deploymentId));
-      await store.completeJob(job!.id);
+      if (job?.type !== "restart_deployment") {
+        throw new Error("Expected a restart job.");
+      }
+      queuedDeploymentIds.push(String(job.payload.deploymentId));
+      await store.completeJob(job.id);
     }
     expect(queuedDeploymentIds).toEqual(
       expect.arrayContaining([stable.id, preview.id]),
@@ -219,9 +224,10 @@ describe("api app", () => {
     expect(body.jobs).toEqual([
       expect.objectContaining({
         type: "restart_deployment",
-        payload: expect.objectContaining({ deploymentId: deployment.id }),
+        payload: {},
       }),
     ]);
+    expect(Object.keys(body.jobs[0].payload)).toHaveLength(0);
     expect(JSON.stringify(body)).not.toContain("gpt-5.4");
     expect(JSON.stringify(body)).not.toContain("sk-batch-secret");
 
@@ -349,14 +355,21 @@ describe("api app", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
       deleted: true,
       jobs: [
         expect.objectContaining({
           type: "restart_deployment",
-          payload: expect.objectContaining({ deploymentId: deployment.id }),
+          payload: {},
         }),
       ],
+    });
+    expect(responseBody.jobs[0].payload).toEqual({});
+    const restart = await store.claimNextJob("test-worker");
+    expect(restart).toMatchObject({
+      type: "restart_deployment",
+      payload: expect.objectContaining({ deploymentId: deployment.id }),
     });
   });
 

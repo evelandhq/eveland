@@ -122,17 +122,6 @@ export async function invalidateGateway(
   }
 }
 
-export function playgroundSessionIdFromPath(pathname: string): string | null {
-  if (pathname === "/eve/v1/session/reset") return null;
-  const match = /^\/eve\/v1\/session\/([^/]+)(?:\/|$)/.exec(pathname);
-  if (!match?.[1]) return null;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return null;
-  }
-}
-
 export async function readLimitedPlaygroundBody(
   request: Request,
   maxBytes: number,
@@ -187,8 +176,17 @@ export async function parsePlaygroundResponse(
   return parseEveJsonObject(await response.text());
 }
 
+export type EveVersionStore = Pick<
+  Store,
+  | "getCurrentDeployment"
+  | "getCurrentSourceRevision"
+  | "getDeployment"
+  | "getDeploymentEveVersion"
+  | "getSourceFile"
+>;
+
 export async function resolveProjectEveVersion(
-  store: Store,
+  store: EveVersionStore,
   projectId: string,
   deploymentId?: string,
 ): Promise<EveVersionInfo> {

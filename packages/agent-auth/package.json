@@ -17,11 +17,11 @@
   },
   "dependencies": {
     "@eveland/core": "workspace:*",
-    "@eveland/db": "workspace:*",
     "eve": "0.29.4",
     "openid-client": "^6.8.4"
   },
   "devDependencies": {
+    "@eveland/db": "workspace:*",
     "vitest": "^4.1.9"
   }
 }

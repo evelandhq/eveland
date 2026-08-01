@@ -25,7 +25,6 @@ import {
   devSecretKey,
   invalidateGatewayRouteCache,
   parseEncryptedSecret,
-  readGitCredentialPayload,
   releaseInFlightPort,
   resolveRuntimeCommandContext,
   resolveSandboxCacheDirs,
@@ -47,19 +46,13 @@ export async function processJob(
         throw new Error(`Project ${job.projectId} not found.`);
       }
 
-      const sourcePathFromPayload =
-        typeof job.payload.sourcePath === "string"
-          ? job.payload.sourcePath
-          : null;
-      const gitCredential = readGitCredentialPayload(job.payload.gitCredential);
+      const sourcePathFromPayload = job.payload.sourcePath ?? null;
+      const gitCredential = job.payload.gitCredential ?? null;
       let sourcePath = sourcePathFromPayload;
       let commitSha: string | null = null;
 
       if (!sourcePath && project.importKind === "git") {
-        const gitUrl =
-          typeof job.payload.gitUrl === "string"
-            ? job.payload.gitUrl
-            : project.gitUrl;
+        const gitUrl = job.payload.gitUrl ?? project.gitUrl;
         if (!gitUrl) {
           throw new Error("Git import missing gitUrl.");
         }

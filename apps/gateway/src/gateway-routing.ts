@@ -223,12 +223,6 @@ export function requestHasBody(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
 }
 
-export function sessionIdFromPath(pathname: string): string | null {
-  if (pathname === "/eve/v1/session/reset") return null;
-  const match = /^\/eve\/v1\/session\/([^/]+)(?:\/|$)/.exec(pathname);
-  return match?.[1] ? decodeURIComponent(match[1]) : null;
-}
-
 export async function sessionIdFromJson(response: Response): Promise<string | null> {
   if (!response.headers.get("content-type")?.includes("application/json")) return null;
   const value = (await response.json().catch(() => null)) as Record<string, unknown> | null;

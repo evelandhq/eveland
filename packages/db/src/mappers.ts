@@ -2,8 +2,6 @@ import type {
   DeploymentStatus,
   DeploymentRecord,
   Job,
-  JobStatus,
-  JobType,
   LogRecord,
   Project,
   ProjectImportKind,
@@ -37,6 +35,18 @@ import type {
   AgentAuthCredential,
   AgentAuthTransaction,
 } from "@eveland/core/contracts";
+import {
+  decodeJobPayload,
+  isJobStatus,
+  isJobType,
+} from "@eveland/core/jobs";
+
+export class InvalidJobRecordError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "InvalidJobRecordError";
+  }
+}
 
 export function sourcePreflightRowToRecord(row: {
   id: string;
@@ -288,17 +298,36 @@ export function jobRowToJob(row: {
   createdAt: Date;
   updatedAt: Date;
 }): Job {
+  if (!isJobType(row.type)) {
+    throw new InvalidJobRecordError(
+      `Invalid job type ${JSON.stringify(row.type)} for ${row.id}.`,
+    );
+  }
+  if (!isJobStatus(row.status)) {
+    throw new InvalidJobRecordError(
+      `Invalid job status ${JSON.stringify(row.status)} for ${row.id}.`,
+    );
+  }
+  let payload: Job["payload"];
+  try {
+    payload = decodeJobPayload(row.type, row.payload);
+  } catch (error) {
+    throw new InvalidJobRecordError(
+      `Invalid job payload for ${row.id} (${row.type}).`,
+      { cause: error },
+    );
+  }
   return {
     id: row.id,
     projectId: row.projectId,
-    type: row.type as JobType,
-    status: row.status as JobStatus,
-    payload: isRecord(row.payload) ? row.payload : {},
+    type: row.type,
+    status: row.status,
+    payload,
     attempts: row.attempts,
     lastError: row.lastError,
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
-  };
+  } as Job;
 }
 
 export function scheduleRowToSchedule(row: {

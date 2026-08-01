@@ -5,15 +5,17 @@ import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { EVE_COMPATIBILITY_POLICY } from "@eveland/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 import { injectSchedulerAdapter } from "./adapter.js";
 
 const execFileAsync = promisify(execFile);
-const compatibilityMatrix = [
-  { version: "0.27.13", packageName: "eve-0-27" },
-  { version: "0.28.0", packageName: "eve-0-28" },
-  { version: "0.29.4", packageName: "eve" },
-] as const;
+const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
+  ({ verifiedVersion, dependencyName }) => ({
+    version: verifiedVersion,
+    packageName: dependencyName,
+  }),
+);
 const eveBin = eveBinFor("eve");
 
 describe("injectSchedulerAdapter", () => {
@@ -22,9 +24,13 @@ describe("injectSchedulerAdapter", () => {
       await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
     ) as { devDependencies: Record<string, string> };
 
-    expect(packageJson.devDependencies["eve-0-27"]).toBe("npm:eve@0.27.13");
-    expect(packageJson.devDependencies["eve-0-28"]).toBe("npm:eve@0.28.0");
-    expect(packageJson.devDependencies.eve).toBe("0.29.4");
+    for (const line of EVE_COMPATIBILITY_POLICY.supportedLines) {
+      expect(packageJson.devDependencies[line.dependencyName]).toBe(
+        line.dependencyName === "eve"
+          ? line.verifiedVersion
+          : `npm:eve@${line.verifiedVersion}`,
+      );
+    }
   });
 
   test("fails closed outside the latest three verified Eve minors", async () => {

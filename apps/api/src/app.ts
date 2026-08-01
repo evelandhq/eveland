@@ -13,6 +13,7 @@ import {
 } from "@eveland/agent-auth/oidc";
 import type { AuthPrincipal } from "@eveland/core/contracts";
 import {
+  classifyEveSessionRequest,
   getEveString,
   isEveRecord,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
@@ -32,8 +33,8 @@ import type { Store } from "@eveland/db";
 import {
   proxyGatewayPlayground,
   runGatewayPlayground,
-  type PlaygroundRunEvent,
 } from "./gateway-playground.js";
+import { registerLegacyPlaygroundRoute } from "./app-legacy-playground-route.js";
 import { registerInternalRoutes } from "./app-internal-routes.js";
 import {
   createIdentityRouteServices,
@@ -56,7 +57,6 @@ import {
   monitorPlaygroundStream,
   parsePlaygroundBody,
   parsePlaygroundResponse,
-  playgroundSessionIdFromPath,
   positiveDuration,
   publicInvitation,
   readLimitedPlaygroundBody,
@@ -68,7 +68,6 @@ import {
   invitationSchema,
   memberRoleSchema,
   passwordChangeSchema,
-  playgroundMessageSchema,
   profileSchema,
   updateAgentConnectionSchema,
 } from "./app-schemas.js";
@@ -563,15 +562,16 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     const playgroundMarker = "/playground";
     const markerIndex = requestUrl.pathname.indexOf(playgroundMarker);
     const evePath = markerIndex >= 0 ? requestUrl.pathname.slice(markerIndex + playgroundMarker.length) : "";
-    const isReset = c.req.method === "POST" && evePath === "/eve/v1/session/reset";
-    const pathSessionId = playgroundSessionIdFromPath(evePath);
-    const isInitial = c.req.method === "POST" && evePath === "/eve/v1/session";
-    const isContinuation = !isReset && c.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+$/.test(evePath);
-    const isCancel = c.req.method === "POST" && /^\/eve\/v1\/session\/[^/]+\/cancel$/.test(evePath);
-    const isStream = c.req.method === "GET" && /^\/eve\/v1\/session\/[^/]+\/stream$/.test(evePath);
-    if (!isInitial && !isContinuation && !isCancel && !isStream && !isReset) {
+    const eveRequest = classifyEveSessionRequest(c.req.method, evePath);
+    if (!eveRequest) {
       return c.json({ error: "Playground route not found" }, 404);
     }
+    const pathSessionId = eveRequest.sessionId;
+    const isInitial = eveRequest.kind === "initial";
+    const isContinuation = eveRequest.kind === "continuation";
+    const isCancel = eveRequest.kind === "cancel";
+    const isStream = eveRequest.kind === "stream";
+    const isReset = eveRequest.kind === "reset";
 
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
@@ -731,64 +731,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     });
   });
 
-  app.post("/projects/:projectId/playground", async (c) => {
-    const projectId = c.req.param("projectId");
-    const parsed = playgroundMessageSchema.safeParse(await c.req.json());
-    if (!parsed.success) {
-      return c.json({ error: "Invalid playground message", issues: parsed.error.issues }, 400);
-    }
-
-    const project = await store.getProject(projectId);
-    if (!project) {
-      return c.json({ error: "Project not found" }, 404);
-    }
-    const deployment = await store.getCurrentDeployment(projectId);
-    if (!deployment || (deployment.status !== "running" && deployment.status !== "stopped")) {
-      return c.json({ error: "No running deployment" }, 409);
-    }
-    const eveVersion = await resolveProjectEveVersion(store, projectId, deployment.id);
-    if (!eveVersion.supported) {
-      return c.json({
-        error: "Unsupported Eve version",
-        detail: unsupportedEveVersionMessage(eveVersion.version),
-        eveVersion,
-      }, 409);
-    }
-
-    const session = await store.createSession({
-      projectId,
-      deploymentId: deployment.id,
-      trigger: "playground",
-      scheduleId: null,
-    });
-    await store.appendSessionEvent(session.id, "message", { role: "user", content: parsed.data.message });
-
-    try {
-      let eventPersistence = Promise.resolve();
-      const persistEvent = (event: PlaygroundRunEvent) => {
-        const queued = eventPersistence.then(async () => {
-          await store.appendSessionEvent(session.id, event.type, event.payload);
-        });
-        eventPersistence = queued.catch(() => undefined);
-        return queued;
-      };
-      const result = await playgroundRunner({ project, deployment, message: parsed.data.message, onEvent: persistEvent });
-      for (const event of result.events ?? [{ type: "model_response", payload: { content: result.response } }]) {
-        await persistEvent(event);
-      }
-      const completed = await store.completeSession(session.id, {
-        status: result.status ?? "waiting",
-        eveSessionId: result.eveSessionId ?? null,
-        continuationToken: result.continuationToken ?? null,
-      });
-      return c.json({ session: completed, events: await store.listSessionEvents(session.id) }, 201);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await store.appendSessionEvent(session.id, "error", { message });
-      const failed = await store.completeSession(session.id, { status: "failed" });
-      return c.json({ error: "Playground request failed", detail: message, session: failed, events: await store.listSessionEvents(session.id) }, 502);
-    }
-  });
+  registerLegacyPlaygroundRoute({ app, store, playgroundRunner });
 
 
   registerSecretRoutes({

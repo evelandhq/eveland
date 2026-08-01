@@ -3,6 +3,7 @@ import {
   inferProjectSlugFromGitUrl,
   normalizeGitHttpHost,
 } from "@eveland/core/ids";
+import { toPublicJob } from "@eveland/core/jobs";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import {
   DEFAULT_API_SESSION_IDLE_TTL_MS,
@@ -423,7 +424,7 @@ export function registerProjectRoutes(input: {
         ? await store.listProjectJobs(projectId, { limit: 50 })
         : await store.listProjectJobs(projectId, { type: "import_source" });
     return c.json({
-      jobs: projectJobs.map((job) => ({ ...job, payload: {} })),
+      jobs: projectJobs.map(toPublicJob),
     });
   });
 
@@ -553,7 +554,7 @@ export function registerProjectRoutes(input: {
         projectId,
         deploymentId,
       );
-      return c.json({ job }, 202);
+      return c.json({ job: toPublicJob(job) }, 202);
     },
   );
 
@@ -610,7 +611,7 @@ export function registerProjectRoutes(input: {
       return c.json({ error: "Project not found" }, 404);
     if (request.outcome === "already_deleting")
       return c.json({ error: "Project is being deleted" }, 409);
-    return c.json({ job: { ...request.job, payload: {} } }, 202);
+    return c.json({ job: toPublicJob(request.job) }, 202);
   });
 
   app.post("/projects/:projectId/build-deploy", async (c) => {
@@ -634,7 +635,7 @@ export function registerProjectRoutes(input: {
     const job = await store.enqueueJob(projectId, "build_deploy", {
       promoteAfterDeploy: deployOptions.data.promote,
     });
-    return c.json({ job }, 202);
+    return c.json({ job: toPublicJob(job) }, 202);
   });
 
   app.post("/projects/:projectId/sync-source", async (c) => {
@@ -682,7 +683,7 @@ export function registerProjectRoutes(input: {
           }
         : {}),
     });
-    return c.json({ job }, 202);
+    return c.json({ job: toPublicJob(job) }, 202);
   });
 
   app.post("/projects/:projectId/restart", async (c) => {
@@ -692,6 +693,6 @@ export function registerProjectRoutes(input: {
       return c.json({ error: "Project not found" }, 404);
     }
     const job = await store.enqueueJob(projectId, "restart_deployment");
-    return c.json({ job }, 202);
+    return c.json({ job: toPublicJob(job) }, 202);
   });
 }

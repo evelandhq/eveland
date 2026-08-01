@@ -16,10 +16,8 @@ import {
   sessionNodes,
   sessions,
 } from "./schema.js";
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { UsageStore } from "./store-domains.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 
 const HOUR_MS = 60 * 60 * 1_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -126,7 +124,7 @@ function sortedBreakdown<T extends UsageTotals>(rows: T[]): T[] {
 
 export function createPostgresUsageStore({
   db,
-}: PostgresStoreContext): PostgresDomain {
+}: PostgresStoreContext): UsageStore {
   return {
     async getVariantMetrics(projectId) {
       const rows = await db

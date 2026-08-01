@@ -30,9 +30,9 @@ import {
 } from "@/components/ui/sidebar"
 import {
   getProjectIdFromPathname,
+  getSettingsNavigationGroups,
   globalNavigationItems,
   isNavigationItemActive,
-  settingsNavigationGroups,
 } from "@/lib/navigation"
 import { getCurrentMember, signOut, type CurrentMember } from "@/lib/client-api"
 
@@ -41,6 +41,7 @@ export function AppSidebar() {
   const projectId = getProjectIdFromPathname(pathname)
   const isSettings = pathname.startsWith("/settings")
   const [member, setMember] = useState<CurrentMember | null>(null)
+  const settingsNavigationGroups = getSettingsNavigationGroups(member?.role ?? null)
 
   useEffect(() => {
     if (pathname === "/login" || pathname.startsWith("/accept-invite")) return

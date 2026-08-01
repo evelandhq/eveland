@@ -11,6 +11,7 @@ import type {
   DeploymentStatus,
   GitCredentialRecord,
   Job,
+  JobPayloadMap,
   JobType,
   LogRecord,
   ModelUsageEvent,
@@ -434,9 +435,26 @@ export interface SecretStore {
   getSharedAgentEnvironmentRecord(): Promise<SharedAgentEnvironmentRecord | null>;
 }
 
+export type EnqueueJobArguments<Type extends JobType> =
+  Type extends JobType
+    ? {} extends JobPayloadMap[Type]
+      ? [type: Type, payload?: JobPayloadMap[Type]]
+      : [type: Type, payload: JobPayloadMap[Type]]
+    : never;
+
 export interface JobStore {
-  enqueueJob(projectId: string, type: JobType, payload?: Record<string, unknown>): Promise<Job>;
-  listProjectJobs(projectId: string, options?: { type?: JobType; limit?: number }): Promise<Job[]>;
+  enqueueJob<Type extends JobType>(
+    projectId: string,
+    ...job: EnqueueJobArguments<Type>
+  ): Promise<Job<Type>>;
+  listProjectJobs(
+    projectId: string,
+    options?: { limit?: number },
+  ): Promise<Job[]>;
+  listProjectJobs<Type extends JobType>(
+    projectId: string,
+    options: { type: Type; limit?: number },
+  ): Promise<Job<Type>[]>;
   enqueueDeploymentArchive(
     projectId: string,
     deploymentId: string,
@@ -451,7 +469,12 @@ export interface JobStore {
   ): Promise<Job>;
   claimNextJob(workerId: string, now?: Date): Promise<Job | null>;
   heartbeatJob(jobId: string, attempt: number, now?: Date): Promise<boolean>;
-  replaceJobPayload(jobId: string, payload: Record<string, unknown>, attempt: number): Promise<boolean>;
+  replaceJobPayload<Type extends JobType>(
+    jobId: string,
+    type: Type,
+    payload: JobPayloadMap[Type],
+    attempt: number,
+  ): Promise<boolean>;
   recoverStaleJobs(now?: Date, staleAfterMs?: number, limit?: number): Promise<number>;
   completeJob(jobId: string, attempt?: number): Promise<boolean>;
   failJob(jobId: string, error: string, attempt?: number): Promise<boolean>;

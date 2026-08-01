@@ -103,7 +103,10 @@ describe("planDueSchedules", () => {
       type: "ensure_deployment_running",
       payload: { deploymentId: deployment.id },
     });
-    const runtimeInstanceId = activationJob?.payload.runtimeInstanceId;
+    if (activationJob?.type !== "ensure_deployment_running") {
+      throw new Error("Expected an activation job.");
+    }
+    const runtimeInstanceId = activationJob.payload.runtimeInstanceId;
     expect(typeof runtimeInstanceId).toBe("string");
     await expect(store.getRuntimeInstance(String(runtimeInstanceId))).resolves.toMatchObject({
       deploymentId: deployment.id,

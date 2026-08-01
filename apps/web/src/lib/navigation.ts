@@ -18,7 +18,25 @@ import {
   SettingsIcon,
   ShieldUserIcon,
   UsersIcon,
+  type LucideIcon,
 } from 'lucide-react';
+
+export type NavigationRole = 'admin' | 'member';
+
+export type NavigationItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+};
+
+export type SettingsNavigationItem = NavigationItem & {
+  access: 'all' | 'admin';
+};
+
+export type SettingsNavigationGroup = {
+  label: string;
+  items: readonly SettingsNavigationItem[];
+};
 
 export const globalNavigationItems = [
   { href: '/projects', label: 'Projects', icon: LayoutGridIcon },
@@ -30,22 +48,33 @@ export const settingsNavigationGroups = [
   {
     label: 'Personal',
     items: [
-      { href: '/settings/profile', label: 'Profile', icon: ShieldUserIcon },
-      { href: '/settings/git-credentials', label: 'Git credentials', icon: KeyRoundIcon },
+      { href: '/settings/profile', label: 'Profile', icon: ShieldUserIcon, access: 'all' },
+      { href: '/settings/git-credentials', label: 'Git credentials', icon: KeyRoundIcon, access: 'all' },
     ],
   },
   {
     label: 'System',
     items: [
-      { href: '/settings/members', label: 'Members', icon: UsersIcon },
-      { href: '/settings/identity', label: 'Identity', icon: FingerprintIcon },
-      { href: '/settings/shared-agent-environment', label: 'Shared agent environment', icon: LockKeyholeIcon },
-      { href: '/settings/observability', label: 'Observability', icon: RadioTowerIcon },
-      { href: '/settings/health', label: 'Instance health', icon: HeartPulseIcon },
-      { href: '/settings/about', label: 'About', icon: InfoIcon },
+      { href: '/settings/members', label: 'Members', icon: UsersIcon, access: 'all' },
+      { href: '/settings/identity', label: 'Identity', icon: FingerprintIcon, access: 'admin' },
+      { href: '/settings/shared-agent-environment', label: 'Shared agent environment', icon: LockKeyholeIcon, access: 'admin' },
+      { href: '/settings/observability', label: 'Observability', icon: RadioTowerIcon, access: 'admin' },
+      { href: '/settings/health', label: 'Instance health', icon: HeartPulseIcon, access: 'admin' },
+      { href: '/settings/about', label: 'About', icon: InfoIcon, access: 'all' },
     ],
   },
-] as const;
+] as const satisfies readonly SettingsNavigationGroup[];
+
+export function getSettingsNavigationGroups(
+  role: NavigationRole | null,
+): readonly SettingsNavigationGroup[] {
+  return settingsNavigationGroups.map((group) => ({
+    label: group.label,
+    items: group.items.filter(
+      (item) => item.access === 'all' || role === 'admin',
+    ),
+  }));
+}
 
 export function getProjectNavigationItems(projectId: string) {
   const projectHref = `/projects/${projectId}`;

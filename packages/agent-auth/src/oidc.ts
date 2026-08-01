@@ -1,7 +1,10 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
-import type { AgentConnection, AgentAuthCredential } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type {
+  AgentAuthCredential,
+  AgentAuthTransaction,
+  AgentConnection,
+} from "@eveland/core/contracts";
 import { verifyOidc } from "eve/channels/auth";
 import * as oidc from "openid-client";
 import { sealAgentAuthCredential, openAgentAuthCredential, type AgentAuthCredentialBinding } from "./sealed-credential.js";
@@ -94,8 +97,69 @@ type CredentialPayload = ActiveCredential | PendingCredential;
 export class OidcAccessTokenRejectedError extends Error {}
 export class OidcReauthorizationRequiredError extends Error {}
 
+export type OidcAuthorizationCodePersistence = {
+  getAgentAuthCredential(
+    key: AgentAuthCredentialBinding,
+  ): Promise<AgentAuthCredential | null>;
+  putAgentAuthCredential(
+    input: AgentAuthCredentialBinding & {
+      payloadEncrypted: string;
+      expiresAt: Date | null;
+    },
+  ): Promise<AgentAuthCredential>;
+  deleteAgentAuthCredential(
+    key: AgentAuthCredentialBinding,
+    expectedRotationSeq: number,
+  ): Promise<boolean>;
+  replaceAgentAuthCredential(
+    input: AgentAuthCredentialBinding & {
+      expectedRotationSeq: number;
+      payloadEncrypted: string;
+      expiresAt: Date | null;
+    },
+  ): Promise<AgentAuthCredential | null>;
+  claimAgentAuthCredentialRefresh(
+    input: AgentAuthCredentialBinding & {
+      expectedRotationSeq: number;
+      owner: string;
+      leaseId: string;
+      leaseUntil: Date;
+      now: Date;
+    },
+  ): Promise<AgentAuthCredential | null>;
+  completeAgentAuthCredentialRefresh(
+    input: AgentAuthCredentialBinding & {
+      expectedRotationSeq: number;
+      owner: string;
+      leaseId: string;
+      now: Date;
+      payloadEncrypted: string;
+      expiresAt: Date | null;
+    },
+  ): Promise<AgentAuthCredential | null>;
+  releaseAgentAuthCredentialRefresh(
+    input: AgentAuthCredentialBinding & {
+      expectedRotationSeq: number;
+      owner: string;
+      leaseId: string;
+      now: Date;
+    },
+  ): Promise<AgentAuthCredential | null>;
+  createAgentAuthTransaction(input: {
+    agentConnectionId: string;
+    stateHash: string;
+    payloadEncrypted: string;
+    expiresAt: Date;
+  }): Promise<AgentAuthTransaction>;
+  consumeAgentAuthTransaction(
+    stateHash: string,
+    now?: Date,
+  ): Promise<AgentAuthTransaction | null>;
+  deleteExpiredAgentAuthTransactions(now?: Date, limit?: number): Promise<number>;
+};
+
 export type OidcAuthorizationCodeProviderOptions = {
-  store: Store;
+  store: OidcAuthorizationCodePersistence;
   appSecretKey: string;
   callbackUrl: string;
   resolveClientSecret(config: OidcAuthorizationCodeConfig, connection: OidcConnectionSnapshot): Promise<string | undefined>;

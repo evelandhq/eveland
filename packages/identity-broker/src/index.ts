@@ -10,9 +10,16 @@ import {
 import {
   callerTokenAudience,
   identityAppTokenAudience,
+  type IdentityPrincipal,
+  type IdentityProviderConnection,
+  type IdentityRealm,
+  type IdentityReturnTarget,
+  type IdentitySession,
+  type IdentitySigningKey,
+  type IdentitySigningKeyStatus,
   type ResolvedExternalIdentity,
 } from "@eveland/core/identity";
-import type { Store } from "@eveland/db";
+import type { Project } from "@eveland/core/contracts";
 
 export class IdentityBrokerError extends Error {
   constructor(
@@ -25,8 +32,58 @@ export class IdentityBrokerError extends Error {
   }
 }
 
+export type IdentityBrokerPersistence = {
+  getIdentityProviderConnection(
+    id: string,
+  ): Promise<IdentityProviderConnection | null>;
+  getIdentityRealmByExternalId(
+    providerConnectionId: string,
+    externalRealmId: string,
+  ): Promise<IdentityRealm | null>;
+  upsertIdentityPrincipal(input: {
+    identityRealmId: string;
+    externalSubject: string;
+    displayName: string | null;
+    email: string | null;
+    claims: Record<string, string | readonly string[]>;
+  }): Promise<IdentityPrincipal>;
+  createIdentitySession(input: {
+    tokenHash: string;
+    identityPrincipalId: string;
+    activeIdentityRealmId: string;
+    expiresAt: Date;
+  }): Promise<IdentitySession>;
+  getActiveIdentitySession(
+    tokenHash: string,
+    now?: Date,
+  ): Promise<IdentitySession | null>;
+  getIdentityPrincipal(id: string): Promise<IdentityPrincipal | null>;
+  getIdentityRealm(id: string): Promise<IdentityRealm | null>;
+  revokeIdentitySession(
+    id: string,
+    now?: Date,
+  ): Promise<IdentitySession | null>;
+  getProject(
+    projectId: string,
+  ): Promise<Pick<Project, "id" | "deletionStatus"> | null>;
+  getIdentityReturnTargetByKey(
+    key: string,
+  ): Promise<IdentityReturnTarget | null>;
+  listIdentitySigningKeys(): Promise<IdentitySigningKey[]>;
+  getActiveIdentitySigningKey(now?: Date): Promise<IdentitySigningKey | null>;
+  createIdentitySigningKey(input: {
+    id?: string;
+    algorithm: "ES256";
+    publicJwk: Record<string, unknown>;
+    privateKeyEncrypted: string;
+    status: IdentitySigningKeyStatus;
+    notBefore: Date;
+    expiresAt: Date;
+  }): Promise<IdentitySigningKey>;
+};
+
 export type IdentityBrokerOptions = {
-  store: Store;
+  store: IdentityBrokerPersistence;
   issuer: string;
   appSecretKey: string;
   now?: () => Date;

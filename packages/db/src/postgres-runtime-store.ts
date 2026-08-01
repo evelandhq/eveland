@@ -7,19 +7,12 @@ import {
 import { activationLeases, deployments, runtimeInstances } from "./schema.js";
 import { isUniqueConstraint } from "./postgres-store-support.js";
 import { RuntimeInstanceDrainingError } from "./store-shared.js";
-
-
-import type {
-  PostgresDomain,
-  PostgresStoreContext,
-} from "./postgres-store-support.js";
+import type { RuntimeStore } from "./store-domains.js";
+import type { PostgresStoreContext } from "./postgres-store-support.js";
 
 export function createPostgresRuntimeStore({
   db,
-  ensureDeploymentRoutes,
-  ensureDefaultOwner,
-  createJob,
-}: PostgresStoreContext): PostgresDomain {
+}: PostgresStoreContext): RuntimeStore {
   return {
     async acquireActivationLease(input) {
       return db.transaction(async (tx) => {

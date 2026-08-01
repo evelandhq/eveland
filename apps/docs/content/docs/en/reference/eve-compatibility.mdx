@@ -3,9 +3,9 @@ title: Eve compatibility
 description: Understand Eveland's verified Eve version window and fail-closed policy.
 ---
 
-Until Eve publishes a stable compatibility contract, Eveland supports a sliding window of the latest three fully verified Eve minor lines. The current checked-in product contract supports `0.25.x`, `0.26.x`, and `0.27.x`, verified at `0.25.3`, `0.26.2`, and `0.27.8`.
+Until Eve publishes a stable compatibility contract, Eveland supports a sliding window of the latest three fully verified Eve minor lines. The current checked-in product contract supports `0.27.x`, `0.28.x`, and `0.29.x`, verified at `0.27.13`, `0.28.0`, and `0.29.4`.
 
-The UI marks only the latest supported line, `0.27.x`, in green. Older supported lines stay operational but appear in red with an upgrade reminder; unsupported versions also appear in red and remain blocked.
+The UI marks only the latest supported line, `0.29.x`, in green. Older supported lines stay operational but appear in red with an upgrade reminder; unsupported versions also appear in red and remain blocked.
 
 Eve 0.27 moves Nuxt deployments to Vercel's stable services model, improves compaction and prompt caching, and makes Route Auth advertise standards-compliant challenges. HTTP Basic now advertises its realm and UTF-8 charset and compares credentials after Unicode NFC normalization. Eveland does not host imported Agents through Eve's Nuxt integration and does not infer a Playground authentication method from a 401 challenge, so these changes require no adapter branch.
 
@@ -19,7 +19,7 @@ Eve 0.27.7 adds bounded catch-up reads through `session.stream({ follow: false }
 
 Eve 0.27.8 adds the authoring-time `eve add` and `eve registry` commands. Eveland does not run these commands during import or deployment, so they do not mutate an imported source snapshot or grant a Release extra network, filesystem, or sandbox privileges.
 
-Agent projects should refresh their lockfile and redeploy to receive `0.27.8`, even when a range such as `^0.27.0` already permits it. Eve 0.27.3+ requires AI SDK `ai@^7.0.34`; update a separately pinned or locked older AI SDK at the same time. Custom NDJSON consumers must ignore blank lines. Relay or proxy code may use reconnect opt-out when it owns recovery, and may use `follow: false` only when the target Agent is also on Eve 0.27.7+; ordinary Agent clients should keep the default live follow. Only enable remote principal forwarding after both deployments are upgraded and the receiver can name the exact trusted forwarder.
+Projects that depend on those commands must use Eve 0.27.8 or later. For the current latest line, Agent projects should refresh their lockfile and redeploy to receive `0.29.4`, even when a range such as `^0.29.0` already permits it. Eve 0.27.3+ requires AI SDK `ai@^7.0.34`; update a separately pinned or locked older AI SDK at the same time. Custom NDJSON consumers must ignore blank lines. Relay or proxy code may use reconnect opt-out when it owns recovery, and may use `follow: false` only when the target Agent is also on Eve 0.27.7+; ordinary Agent clients should keep the default live follow. Only enable remote principal forwarding after both deployments are upgraded and the receiver can name the exact trusted forwarder.
 
 An npm publication alone does not widen the window. A new minor enters only after changelog and source review plus the complete compatibility matrix. When it enters, the older supported minor leaves the window deliberately.
 
