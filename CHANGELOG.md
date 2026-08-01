@@ -4,6 +4,25 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.23.0](https://github.com/evelandhq/eveland/compare/v0.22.0...v0.23.0) (2026-08-01)
+
+
+### Features
+
+* enforce workspace architecture as ratchet tests ([#241](https://github.com/evelandhq/eveland/issues/241)) ([9735b8d](https://github.com/evelandhq/eveland/commit/9735b8d988e8676dd28b6f6b311bcda6340da9f0))
+
+
+### Bug Fixes
+
+* **api:** make concurrent admin demotions unable to strand the Team ([#239](https://github.com/evelandhq/eveland/issues/239)) ([cbe12cd](https://github.com/evelandhq/eveland/commit/cbe12cdba2cd017b7c76ca3464df7947a6bb89d5))
+* **api:** stop serializing session tokens and host paths in responses ([#236](https://github.com/evelandhq/eveland/issues/236)) ([c995d46](https://github.com/evelandhq/eveland/commit/c995d46d941f4cc675b2bf933165a2d97c2c114c))
+* **db:** record a deployment and its release in one transaction ([#237](https://github.com/evelandhq/eveland/issues/237)) ([f6213db](https://github.com/evelandhq/eveland/commit/f6213dba413b2fc32f58b445de778f7a4cff2da4))
+* **gateway:** gate the whole /internal surface structurally ([#240](https://github.com/evelandhq/eveland/issues/240)) ([5de7e8a](https://github.com/evelandhq/eveland/commit/5de7e8a1fcc152e33cc7bcb4ad94ca22bc475f7b))
+* **infra:** keep AppleDouble metadata out of the smoke source archive ([#235](https://github.com/evelandhq/eveland/issues/235)) ([24fcf15](https://github.com/evelandhq/eveland/commit/24fcf153390910635a613bf34bc6b21d2e12c802))
+* **infra:** keep host secrets out of the Lima smoke VM ([#233](https://github.com/evelandhq/eveland/issues/233)) ([37443b9](https://github.com/evelandhq/eveland/commit/37443b9d7311f30bc4cc78ff1e9d3f158e8eee4c))
+* materialize Eve Connection discovery in releases ([3aa21c4](https://github.com/evelandhq/eveland/commit/3aa21c40085d487c2d0a7e06d097c9d8cf573ac1))
+* **worker:** archive deployments under an atomic archiving claim ([#238](https://github.com/evelandhq/eveland/issues/238)) ([88496a3](https://github.com/evelandhq/eveland/commit/88496a34142bf26dca47b6ba81880757b1438a32))
+
 ## [0.22.0](https://github.com/evelandhq/eveland/compare/v0.21.0...v0.22.0) (2026-08-01)
 
 
