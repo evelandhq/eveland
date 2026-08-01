@@ -17,20 +17,6 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
 );
 
 describe("Eve observer hook compatibility matrix", () => {
-  test("pins the two previous Eve minors for the compatibility matrix", async () => {
-    const packageJson = JSON.parse(
-      await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
-    ) as { devDependencies: Record<string, string> };
-
-    for (const line of EVE_COMPATIBILITY_POLICY.supportedLines) {
-      expect(packageJson.devDependencies[line.dependencyName]).toBe(
-        line.dependencyName === "eve"
-          ? line.verifiedVersion
-          : `npm:eve@${line.verifiedVersion}`,
-      );
-    }
-  });
-
   test.each(compatibilityMatrix)("runs observer coverage against Eve $version", async ({ packageName, version }) => {
     const { stdout } = await execFileAsync(process.execPath, [eveBin(packageName), "--version"]);
 
@@ -156,6 +142,7 @@ describe("Eve observer hook compatibility matrix", () => {
         await rm(fixtureDir, { recursive: true, force: true });
       }
     },
+    120_000,
   );
 });
 

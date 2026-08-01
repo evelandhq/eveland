@@ -15,13 +15,14 @@
 // pipeline with EVELAND_RUNTIME=systemd, exactly as systemd-smoke.ts does.
 import assert from "node:assert/strict";
 import { execa } from "execa";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { DeploymentRecord } from "@eveland/core/contracts";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
+import { materializeEveFixtureDirectory } from "@eveland/core/server/eve-fixture";
 import { createPgliteTestStore } from "@eveland/db/test";
 import { processNextJob } from "../jobs/process.js";
 import { resolveRuntimeKind } from "../runtime/select.js";
@@ -375,7 +376,7 @@ async function runLiveHttpTurn(input: {
 
 const sourceTempRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-agent-sandbox-source-"));
 const syncedSourcePath = path.join(sourceTempRoot, "source");
-await cp(FIXTURE_SOURCE_PATH, syncedSourcePath, { recursive: true });
+await materializeEveFixtureDirectory(FIXTURE_SOURCE_PATH, syncedSourcePath);
 
 const { store, close } = await createPgliteTestStore();
 const project = await store.createProject({ name: "Agent Sandbox E2E", importKind: "zip", sourcePath: syncedSourcePath });

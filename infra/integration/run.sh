@@ -55,7 +55,7 @@ limactl shell "$VM" -- sudo bash -c "
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/gateway-e2e.mts
 
-  # Complete scheduler/scale-to-zero proof against Eve 0.29.4 and the real
+  # Complete scheduler/scale-to-zero proof against the latest verified Eve and the real
   # systemd runtime: dormant cron wake, OTLP usage, native no-op, idle
   # shutdown, and a bound public continuation wake.
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \

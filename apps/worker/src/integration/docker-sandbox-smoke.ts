@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { glob, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { materializeEveFixtureDirectory } from "@eveland/core/server/eve-fixture";
 import { allocateAvailableHostPort } from "../jobs/process.js";
 import { createDockerAdapter } from "../runtime/docker.js";
 import { waitForHttpHealth } from "../runtime/health.js";
@@ -23,6 +24,7 @@ const processName = "eveland-local-sandbox-smoke-" + Date.now().toString(36);
 const root = await mkdtemp(path.join(os.tmpdir(), "eveland-local-sandbox-smoke-"));
 const sandboxCacheDir = path.join(root, "sandbox");
 const observabilityPolicyDir = path.join(root, "observability");
+const fixtureSourcePath = path.join(root, "source");
 const adapter = createDockerAdapter({ internalPort: 3000, dataDir: process.env.EVELAND_DATA_DIR ?? ".eveland-data", backendDistDir: resolveBackendDistDir });
 let started = false;
 
@@ -87,6 +89,10 @@ async function runTypeScriptTurn(hostPort: number): Promise<void> {
 try {
   await Promise.all([
     mkdir(sandboxCacheDir, { recursive: true }),
+    materializeEveFixtureDirectory(
+      path.resolve(import.meta.dirname, "fixtures/agent-sandbox-e2e"),
+      fixtureSourcePath,
+    ),
     writeAgentRuntimePolicy({
       directory: observabilityPolicyDir,
       policy: {
@@ -115,7 +121,7 @@ try {
   const result = await adapter.buildRelease({
     projectId,
     releaseId,
-    sourcePath: path.resolve(import.meta.dirname, "fixtures/agent-sandbox-e2e"),
+    sourcePath: fixtureSourcePath,
     buildDir: path.join(root, "release"),
     commandContext: { hasLockfile: false },
   });

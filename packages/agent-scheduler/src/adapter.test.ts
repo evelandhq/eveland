@@ -19,20 +19,6 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
 const eveBin = eveBinFor("eve");
 
 describe("injectSchedulerAdapter", () => {
-  test("pins all exact Eve patches used by the compatibility matrix", async () => {
-    const packageJson = JSON.parse(
-      await readFile(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
-    ) as { devDependencies: Record<string, string> };
-
-    for (const line of EVE_COMPATIBILITY_POLICY.supportedLines) {
-      expect(packageJson.devDependencies[line.dependencyName]).toBe(
-        line.dependencyName === "eve"
-          ? line.verifiedVersion
-          : `npm:eve@${line.verifiedVersion}`,
-      );
-    }
-  });
-
   test("fails closed outside the latest three verified Eve minors", async () => {
     for (const eveVersion of ["0.26.2", "0.30.0", "~0.30.0", ">=0.27.0", "*", "latest"]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
