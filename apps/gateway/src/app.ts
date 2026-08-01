@@ -110,16 +110,21 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   };
 
   app.get("/health", (context) => context.json({ ok: true, ...buildInfo }));
-  app.get("/internal/diagnostics/config", (context) => {
+  // Structural gate on the privileged surface: every /internal/* path is
+  // service-authenticated here, before any handler, so a future internal
+  // route cannot forget the check -- and an unregistered internal path can
+  // never fall through to the public proxy catch-all.
+  app.use("/internal/*", async (context, next) => {
     if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
       return context.json({ error: "Not found" }, 404);
     }
+    await next();
+  });
+
+  app.get("/internal/diagnostics/config", (context) => {
     return context.json(configurationSnapshot);
   });
   app.all("/internal/projects/:projectId/playground/eve/*", async (context) => {
-    if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
-      return context.json({ error: "Not found" }, 404);
-    }
     let agentAuth: AgentAuthEnvelope;
     try {
       agentAuth = readAgentAuthEnvelope(context.req.header(AGENT_AUTH_ENVELOPE_HEADER));
@@ -272,9 +277,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       : response;
   });
   app.post("/internal/projects/:projectId/playground", async (context) => {
-    if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
-      return context.json({ error: "Not found" }, 404);
-    }
     const input = (await context.req.json().catch(() => null)) as { message?: unknown } | null;
     if (!input || typeof input.message !== "string" || input.message.length === 0) {
       return context.json({ error: "Invalid Playground message" }, 400);
@@ -369,14 +371,15 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     }
   });
   app.post("/internal/cache/invalidate", async (context) => {
-    if (!isInternalRequest(context.req.header("authorization"), options.internalServiceToken)) {
-      return context.json({ error: "Not found" }, 404);
-    }
     const input = (await context.req.json().catch(() => ({}))) as { hostname?: unknown };
     if (typeof input.hostname === "string") routeCache.delete(hostnameFromAuthority(canonicalAuthority(input.hostname)));
     else routeCache.clear();
     return context.json({ invalidated: true });
   });
+
+  // Terminal boundary: an authenticated request for an internal path no
+  // handler claims ends here, not in the public proxy catch-all.
+  app.all("/internal/*", (context) => context.json({ error: "Not found" }, 404));
 
   app.all("*", async (context) => {
     const authority = canonicalAuthority(context.req.header("host") ?? new URL(context.req.url).host);
