@@ -155,10 +155,6 @@ export const sharedAgentEnvironmentSchema = z
     });
   });
 
-export const playgroundMessageSchema = z.object({
-  message: z.string().min(1),
-});
-
 export const updateAgentConnectionSchema = z.object({
   expectedSecurityRevision: z.number().int().positive(),
   method: z.string().min(1),

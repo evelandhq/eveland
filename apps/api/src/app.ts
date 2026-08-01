@@ -4,11 +4,7 @@ import type { AuthPrincipal } from "@eveland/core/contracts";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { assertValidSecretKey } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
-import {
-  proxyGatewayPlayground,
-  runGatewayPlayground,
-} from "./gateway-playground.js";
-import { registerLegacyPlaygroundRoute } from "./app-legacy-playground-route.js";
+import { proxyGatewayPlayground } from "./gateway-playground.js";
 import { registerInternalRoutes } from "./app-internal-routes.js";
 import {
   createIdentityRouteServices,
@@ -59,7 +55,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   }
   const appSecretKey = options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
   assertValidSecretKey(appSecretKey);
-  const playgroundRunner = options.playgroundRunner ?? runGatewayPlayground;
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
@@ -150,8 +145,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     agentAuth,
     playgroundProxy,
   });
-
-  registerLegacyPlaygroundRoute({ app, store, playgroundRunner });
 
 
   registerSecretRoutes({

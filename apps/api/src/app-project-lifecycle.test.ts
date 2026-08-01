@@ -282,26 +282,6 @@ describe("api app", () => {
     expect(response.status).toBe(404);
   });
 
-  test("rejects playground messages when no deployment is running", async () => {
-    const store = createTestStore();
-    const project = await store.createProject({
-      name: "Idle Agent",
-      importKind: "zip",
-    });
-    const app = createApp(store);
-
-    const response = await app.request(`/projects/${project.id}/playground`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: "Hello" }),
-    });
-
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "No running deployment",
-    });
-  });
-
   test("returns 404 when deleting a project that does not exist", async () => {
     const app = createApp(createTestStore());
 

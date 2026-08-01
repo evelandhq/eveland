@@ -12,7 +12,7 @@ import type {
   ExternalObservabilityResponse,
 } from "@eveland/core/server/observability";
 import type { createBetterAuthRuntime } from "./auth.js";
-import type { PlaygroundProxy, PlaygroundRunner } from "./gateway-playground.js";
+import type { PlaygroundProxy } from "./gateway-playground.js";
 import type { AuthPrincipal } from "@eveland/core/contracts";
 import type { Hono } from "hono";
 
@@ -26,7 +26,6 @@ export type AppOptions = {
   appSecretKey?: string;
   identityIssuer?: string;
   identityAllowedOrigins?: string[];
-  playgroundRunner?: PlaygroundRunner;
   playgroundProxy?: PlaygroundProxy;
   dataDir?: string;
   gatewayHealth?: () => Promise<Omit<InstanceComponentHealth, "key" | "label">>;
