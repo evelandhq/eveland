@@ -203,12 +203,6 @@ export interface SourceStore {
   listSourceRevisions(projectId: string): Promise<SourceRevision[]>;
   getCurrentSourceRevision(projectId: string): Promise<SourceRevision | null>;
   getSourceRevision(revisionId: string): Promise<SourceRevision | null>;
-  /**
-   * Replaces a revision's summary with the build-derived one. The revision row
-   * itself stays immutable otherwise; only this informational projection is
-   * refreshed once `eve build` has produced the authoritative discovery manifest.
-   */
-  updateSourceRevisionSummary(revisionId: string, summary: Record<string, unknown>): Promise<void>;
   listSourceRevisionFiles(revisionId: string): Promise<SourceFileRecord[]>;
   listSourceFiles(projectId: string): Promise<SourceFileRecord[]>;
   getSourceFile(projectId: string, filePath: string): Promise<SourceFileRecord | null>;
@@ -474,6 +468,13 @@ export interface DeploymentStore {
     // predates the delivery contract. Real builds always pass the current
     // contract via ReleaseBuildResult.
     observerContract?: number;
+    /**
+     * Build-derived summary from eve's discovery manifest. Release-scoped
+     * because the same immutable source revision can be rebuilt into releases
+     * with different resolved dependencies; persisted here, with the release
+     * row, so a failed start never leaves summary from a nonexistent release.
+     */
+    summary?: Record<string, unknown> | null;
     containerName: string;
     internalPort: number;
     hostPort: number;

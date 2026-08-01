@@ -52,8 +52,7 @@ describe("projectDiscoveryManifest", () => {
 
   test("projects a flat-layout manifest without a path prefix", () => {
     const projection = projectDiscoveryManifest({
-      kind: "eve-agent-discovery-manifest",
-      version: 12,
+      ...nestedManifest,
       agentId: "flat-fixture",
       agentRoot: "/srv/app",
       appRoot: "/srv/app",
@@ -62,6 +61,7 @@ describe("projectDiscoveryManifest", () => {
       schedules: [{ logicalPath: "schedules/cleanup.ts" }],
       sandbox: { logicalPath: "sandbox.ts" },
       subagents: [],
+      hooks: [],
       diagnosticsSummary: { errors: 0, warnings: 1 },
     });
 
@@ -82,23 +82,24 @@ describe("projectDiscoveryManifest", () => {
     expect(projectDiscoveryManifest([])).toBeNull();
   });
 
-  test("tolerates missing entity arrays instead of failing the projection", () => {
-    const projection = projectDiscoveryManifest({
-      kind: "eve-agent-discovery-manifest",
-      version: 99,
-      agentRoot: "/srv/app/agent",
-      appRoot: "/srv/app",
-    });
+  test("fails closed on an unknown schema version instead of becoming authoritative emptiness", () => {
+    expect(projectDiscoveryManifest({ ...nestedManifest, version: 99 })).toBeNull();
+  });
 
-    expect(projection).toMatchObject({
-      manifestVersion: 99,
-      layout: "nested",
-      agentId: null,
-      diagnostics: null,
-      instructions: [],
-      tools: [],
-      subagents: [],
-      channels: [],
-    });
+  test("fails closed when entity arrays or roots are missing", () => {
+    // A bare kind+version envelope must not wipe the static summary's entity lists.
+    expect(
+      projectDiscoveryManifest({
+        kind: "eve-agent-discovery-manifest",
+        version: 12,
+        agentRoot: "/srv/app/agent",
+        appRoot: "/srv/app",
+      }),
+    ).toBeNull();
+    const { tools: _tools, ...withoutTools } = nestedManifest;
+    expect(projectDiscoveryManifest(withoutTools)).toBeNull();
+    const { agentRoot: _agentRoot, ...withoutAgentRoot } = nestedManifest;
+    expect(projectDiscoveryManifest(withoutAgentRoot)).toBeNull();
+    expect(projectDiscoveryManifest({ ...nestedManifest, sandbox: "sandbox.ts" })).toBeNull();
   });
 });

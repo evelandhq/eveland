@@ -7,9 +7,11 @@ import type { EveProjectLayout, EveProjectSummary } from "./source.js";
  * it is produced by the same discovery pass `eve build` compiles from, so it cannot
  * drift from eve's layout rules the way re-derived heuristics can.
  *
- * The projection is deliberately tolerant: the manifest is informational (the static
- * scan already gated the import), so an unrecognized manifest yields null and the
- * caller keeps the static summary rather than failing the build.
+ * Fail closed to null: this projection replaces the static entity lists wholesale, so
+ * a manifest with an unknown schema version or missing entity arrays must not become
+ * "authoritative emptiness". The caller keeps the static summary instead. The
+ * agent-observer compatibility matrix runs this projection on manifests generated live
+ * by every pinned eve binary, so a schema bump fails the matrix, not production.
  */
 export type DiscoverySummaryProjection = {
   summarySource: "build-manifest";
@@ -27,21 +29,41 @@ export type DiscoverySummaryProjection = {
 
 const MANIFEST_KIND = "eve-agent-discovery-manifest";
 
+/** Verified against the manifests eve 0.27.13, 0.28.0, and 0.29.4 generate. */
+export const SUPPORTED_DISCOVERY_MANIFEST_VERSIONS: readonly number[] = [12];
+
+const ENTITY_ARRAY_KEYS = [
+  "instructions",
+  "tools",
+  "skills",
+  "subagents",
+  "connections",
+  "schedules",
+  "hooks",
+  "channels",
+] as const;
+
 export function projectDiscoveryManifest(manifest: unknown): DiscoverySummaryProjection | null {
   if (!isRecord(manifest) || manifest.kind !== MANIFEST_KIND) return null;
   const version = manifest.version;
-  if (typeof version !== "number") return null;
+  if (typeof version !== "number" || !SUPPORTED_DISCOVERY_MANIFEST_VERSIONS.includes(version)) {
+    return null;
+  }
+  // Every entity list must be present as an actual array, and sandbox must be
+  // the documented null-or-entry shape. A manifest missing them is not "empty",
+  // it is unrecognized.
+  if (ENTITY_ARRAY_KEYS.some((key) => !Array.isArray(manifest[key]))) return null;
+  if (manifest.sandbox !== null && !isEntry(manifest.sandbox)) return null;
 
   const agentRoot = typeof manifest.agentRoot === "string" ? manifest.agentRoot : null;
   const appRoot = typeof manifest.appRoot === "string" ? manifest.appRoot : null;
-  const layout: EveProjectLayout =
-    agentRoot && appRoot ? (agentRoot === appRoot ? "flat" : "nested") : "unknown";
+  if (!agentRoot || !appRoot) return null;
+  const layout: EveProjectLayout = agentRoot === appRoot ? "flat" : "nested";
   // Summary paths stay app-root-relative like the static scan's, so UI consumers
   // need no awareness of which producer wrote the summary.
   const root = layout === "nested" ? "agent/" : "";
   const prefix = (paths: string[]) => paths.map((entry) => `${root}${entry}`);
 
-  const channels = logicalPaths(manifest.channels);
   const subagents = readEntries(manifest.subagents);
 
   return {
@@ -58,11 +80,15 @@ export function projectDiscoveryManifest(manifest: unknown): DiscoverySummaryPro
     schedules: prefix(logicalPaths(manifest.schedules)),
     sandbox: prefix(logicalPaths(manifest.sandbox === null ? [] : [manifest.sandbox])),
     hooks: prefix(logicalPaths(manifest.hooks)),
-    channels: prefix(channels),
+    channels: prefix(logicalPaths(manifest.channels)),
     subagentIds: subagents
       .map((entry) => entry.subagentId)
       .filter((value): value is string => typeof value === "string"),
   };
+}
+
+function isEntry(value: unknown): value is { logicalPath: string } {
+  return isRecord(value) && typeof value.logicalPath === "string";
 }
 
 function readEntries(value: unknown): Array<{ logicalPath: string; subagentId?: unknown }> {
