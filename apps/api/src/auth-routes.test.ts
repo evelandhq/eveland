@@ -69,9 +69,26 @@ describe("control-plane auth routes", () => {
     expect((await app.request("/health")).status).toBe(200);
     expect((await app.request("/api/auth/get-session")).status).toBe(200);
     const response = await app.request("/projects");
+    const agentAuthMethods = await app.request("/agent-auth/methods");
+    const canonicalPlayground = await app.request(
+      "/projects/proj_unauthorized/playground/eve/v1/session",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "Must authenticate first" }),
+      },
+    );
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "Authentication required" });
+    expect(agentAuthMethods.status).toBe(401);
+    await expect(agentAuthMethods.json()).resolves.toEqual({
+      error: "Authentication required",
+    });
+    expect(canonicalPlayground.status).toBe(401);
+    await expect(canonicalPlayground.json()).resolves.toEqual({
+      error: "Authentication required",
+    });
   });
 
   test("blocks the raw change-password endpoint so session revocation cannot be skipped", async () => {
