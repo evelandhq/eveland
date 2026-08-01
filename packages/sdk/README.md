@@ -51,3 +51,11 @@ standalone or combined header.
 challenges, so a route such as `[evelandIdentity(), httpBasic()]` advertises
 both methods. A recognized Eveland token fails closed when the helper is
 unconfigured or signing keys are unavailable.
+
+## Versioning
+
+`eveland` versions independently of the Eveland platform: its compatibility
+contract is the `eve` peer range plus the exports documented above, not a
+platform release number. Publishing is a manual, deliberate step; CI verifies
+on every commit that the packed tarball installs into a clean project and
+imports cleanly, so the package stays publishable from `main` at any time.
