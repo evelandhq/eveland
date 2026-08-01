@@ -89,6 +89,37 @@ jobs:
       - name: Run tests
         run: ${{ matrix.command }}
 
+  sdk:
+    name: SDK pack contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The published package must stay installable straight from a registry
+      # tarball: prepack builds dist, then the tarball is installed into a
+      # clean project (the eve peer resolves from npm) and imported.
+      - name: Pack the sdk
+        run: pnpm --filter eveland pack --pack-destination /tmp/eveland-sdk
+
+      - name: Install the tarball into a clean project and import it
+        run: |
+          mkdir -p /tmp/sdk-smoke && cd /tmp/sdk-smoke
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund /tmp/eveland-sdk/eveland-*.tgz
+          node -e "import('eveland/auth').then((m) => { if (typeof m.evelandIdentity !== 'function') throw new Error('evelandIdentity export missing'); console.log('sdk import ok'); })"
+
   build:
     runs-on: ubuntu-latest
     steps:
