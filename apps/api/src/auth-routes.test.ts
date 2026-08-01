@@ -1,66 +1,9 @@
-import { describe, expect, onTestFinished, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
-  authAccounts,
-  authSessions,
-  authVerifications,
-  invitations,
-  teamMemberships,
-  teams,
-  users,
-} from "@eveland/db/schema";
-import { createPgliteTestStore } from "@eveland/db/test";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createApp } from "./app.js";
-import { createBetterAuthRuntime } from "./auth.js";
-
-async function createAuthApp() {
-  const database = await createPgliteTestStore();
-  onTestFinished(() => database.close());
-  const auth = createBetterAuthRuntime({
-    database: drizzleAdapter(database.db, {
-      provider: "pg",
-      schema: {
-        user: users,
-        session: authSessions,
-        account: authAccounts,
-        verification: authVerifications,
-        organization: teams,
-        member: teamMemberships,
-        invitation: invitations,
-      },
-    }),
-    baseURL: "http://localhost:4000",
-    webOrigin: "http://localhost:3000",
-    secret: "test-secret-with-at-least-thirty-two-characters",
-  });
-  await auth.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
-  return {
-    app: createApp(database.store, {
-      auth,
-      webOrigin: "http://localhost:3000",
-      configurationDiagnostics: async () => ({ components: [] }),
-    }),
-    store: database.store,
-  };
-}
-
-async function signIn(app: ReturnType<typeof createApp>, email = "admin@example.com", password = "admin-password") {
-  const response = await app.request("/api/auth/sign-in/email", {
-    method: "POST",
-    headers: { "content-type": "application/json", origin: "http://localhost:3000" },
-    body: JSON.stringify({ email, password }),
-  });
-  return { response, cookie: response.headers.get("set-cookie")?.split(";", 1)[0] ?? "" };
-}
-
-async function invite(app: ReturnType<typeof createApp>, cookie: string, email = "member@example.com") {
-  const response = await app.request("/invitations", {
-    method: "POST",
-    headers: { cookie, "content-type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-  return { response, body: await response.json() as { invitation: { id: string }; inviteUrl: string } };
-}
+  createAuthApp,
+  invite,
+  signIn,
+} from "./auth-routes.test-support.js";
 
 describe("control-plane auth routes", () => {
   test("keeps health and Better Auth public while rejecting anonymous control-plane requests", async () => {
@@ -358,6 +301,11 @@ describe("control-plane auth routes", () => {
     const adminId = membersBefore.members[0].userId as string;
 
     expect((await app.request(`/members/${adminId}`, { method: "DELETE", headers: { cookie: adminCookie } })).status).toBe(409);
+    expect((await app.request(`/members/${adminId}`, {
+      method: "PATCH",
+      headers: { cookie: adminCookie, "content-type": "application/json" },
+      body: JSON.stringify({ role: "member" }),
+    })).status).toBe(409);
 
     const issued = await invite(app, adminCookie);
     const accepted = await app.request("/invitations/accept", {
