@@ -1,4 +1,4 @@
-import type { Store } from "@eveland/db";
+import type { InstanceHealthStore, ObservabilityStore } from "@eveland/db";
 import {
   analyzeHostCapacity,
   summarizeWorkerHealth,
@@ -9,8 +9,14 @@ import {
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type ComponentObservation = Omit<InstanceComponentHealth, "key" | "label">;
 
+export type InstanceHealthReadStore = Pick<
+  InstanceHealthStore,
+  "listWorkerHeartbeats" | "listHostMetrics" | "getInstanceWorkload"
+> &
+  Pick<ObservabilityStore, "latestOtlpBatchReceivedAt">;
+
 export async function collectInstanceHealth(
-  store: Store,
+  store: InstanceHealthReadStore,
   options: {
     now?: () => Date;
     historyHours: number;
