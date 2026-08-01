@@ -6,17 +6,19 @@ import type {
   Project as CoreProject,
   ProjectSchedule as CoreProjectSchedule,
   ProjectScheduleSummary as CoreProjectScheduleSummary,
+  PublicDeploymentRecord as CorePublicDeployment,
   PublicJob as CorePublicJob,
+  PublicReleaseRecord as CorePublicRelease,
   PublicSecret as CorePublicSecret,
+  PublicSession as CorePublicSession,
+  PublicSourceRevision as CorePublicSourceRevision,
   ScheduleRecord,
   ScheduleRunListItem,
   ScheduleVersion as CoreScheduleVersion,
-  Session as CoreSession,
   SessionEvent as CoreSessionEvent,
   SessionNode as CoreSessionNode,
   SessionTokenUsage as CoreSessionTokenUsage,
   SourceFileRecord,
-  SourceRevision as CoreSourceRevision,
 } from "@eveland/core/contracts";
 
 export type Project = CoreProject;
@@ -25,12 +27,14 @@ export type Schedule = ScheduleRecord;
 export type ProjectSchedule = CoreProjectSchedule;
 export type ScheduleVersion = CoreScheduleVersion;
 export type ProjectScheduleSummary = CoreProjectScheduleSummary;
-export type Session = CoreSession;
-export type ScheduleRun = ScheduleRunListItem;
+export type Session = CorePublicSession;
+export type ScheduleRun = Omit<ScheduleRunListItem, "sessions"> & {
+  sessions: Session[];
+};
 
 export type ScheduleRunDetail = ScheduleRun & {
   version: ScheduleVersion;
-  release: { id: string; projectId: string; sourceRevisionId: string; imageTag: string; createdAt: string };
+  release: CorePublicRelease;
   deployment: Deployment;
 };
 
@@ -139,5 +143,5 @@ export function selectProjectLogs(
   });
 }
 
-export type SourceRevision = CoreSourceRevision;
+export type SourceRevision = CorePublicSourceRevision;
 export type SourceFile = SourceFileRecord;

@@ -7,15 +7,15 @@ import type {
   ProjectScheduleSummary as CoreProjectScheduleSummary,
   PublicJob as CorePublicJob,
   PublicSecret as CorePublicSecret,
+  PublicSession as CorePublicSession,
+  PublicSourceRevision as CorePublicSourceRevision,
   ScheduleRecord,
   ScheduleRunListItem,
   ScheduleVersion as CoreScheduleVersion,
-  Session as CoreSession,
   SessionEvent as CoreSessionEvent,
   SessionNode as CoreSessionNode,
   SessionTokenUsage as CoreSessionTokenUsage,
   SourceFileRecord,
-  SourceRevision as CoreSourceRevision,
 } from "@eveland/core/contracts";
 import type { EveVersionInfo as CoreEveVersionInfo } from "@eveland/core/eve-compatibility";
 import type {
@@ -57,15 +57,20 @@ type ControlPlaneDomainContracts = [
   Assert<Equal<ProjectSchedule, CoreProjectSchedule>>,
   Assert<Equal<ScheduleVersion, CoreScheduleVersion>>,
   Assert<Equal<ProjectScheduleSummary, CoreProjectScheduleSummary>>,
-  Assert<Equal<Session, CoreSession>>,
-  Assert<Equal<ScheduleRun, ScheduleRunListItem>>,
+  Assert<Equal<Session, CorePublicSession>>,
+  Assert<
+    Equal<
+      ScheduleRun,
+      Omit<ScheduleRunListItem, "sessions"> & { sessions: CorePublicSession[] }
+    >
+  >,
   Assert<Equal<SessionTokenUsage, CoreSessionTokenUsage>>,
   Assert<Equal<SessionEvent, CoreSessionEvent>>,
   Assert<Equal<SessionNode, CoreSessionNode>>,
   Assert<Equal<ModelUsageEvent, CoreModelUsageEvent>>,
   Assert<Equal<Job, CorePublicJob>>,
   Assert<Equal<LogLine, LogRecord>>,
-  Assert<Equal<SourceRevision, CoreSourceRevision>>,
+  Assert<Equal<SourceRevision, CorePublicSourceRevision>>,
   Assert<Equal<SourceFile, SourceFileRecord>>,
 ];
 

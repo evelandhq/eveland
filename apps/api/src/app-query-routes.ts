@@ -1,12 +1,22 @@
-import type { LogRecord } from "@eveland/core/contracts";
+import type { LogRecord, UsageAnalytics } from "@eveland/core/contracts";
 import type { Store } from "@eveland/db";
 import type { ApiApp } from "./app-types.js";
+import {
+  publicDeployment,
+  publicRelease,
+  publicSession,
+  publicSourceRevision,
+} from "./app-public-projections.js";
 import {
   scheduleRunListQuerySchema,
   sessionListQuerySchema,
   usageAnalyticsQuerySchema,
 } from "./app-schemas.js";
 import { resolveProjectEveVersion } from "./app-support.js";
+
+function publicUsageAnalytics(usage: UsageAnalytics) {
+  return { ...usage, recentSessions: usage.recentSessions.map(publicSession) };
+}
 
 export function registerQueryRoutes(app: ApiApp, store: Store): void {
   app.get("/usage", async (c) => {
@@ -16,7 +26,9 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
         { error: "Invalid usage filters", issues: parsed.error.issues },
         400,
       );
-    return c.json({ usage: await store.getUsageAnalytics(parsed.data) });
+    return c.json({
+      usage: publicUsageAnalytics(await store.getUsageAnalytics(parsed.data)),
+    });
   });
 
   app.get("/projects/:projectId/usage", async (c) => {
@@ -30,7 +42,9 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
         400,
       );
     return c.json({
-      usage: await store.getUsageAnalytics({ ...parsed.data, projectId }),
+      usage: publicUsageAnalytics(
+        await store.getUsageAnalytics({ ...parsed.data, projectId }),
+      ),
     });
   });
 
@@ -69,19 +83,35 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
       c.req.param("projectId"),
       parsed.data,
     );
-    return c.json({ runs: page.items, nextCursor: page.nextCursor });
+    return c.json({
+      runs: page.items.map((run) => ({
+        ...run,
+        sessions: run.sessions.map(publicSession),
+      })),
+      nextCursor: page.nextCursor,
+    });
   });
 
   app.get("/schedule-runs/:scheduleRunId", async (c) => {
     const run = await store.getScheduleRunDetail(c.req.param("scheduleRunId"));
     return run
-      ? c.json({ run })
+      ? c.json({
+          run: {
+            ...run,
+            sessions: run.sessions.map(publicSession),
+            deployment: publicDeployment(run.deployment),
+            release: publicRelease(run.release),
+          },
+        })
       : c.json({ error: "ScheduleRun not found" }, 404);
   });
 
   app.get("/projects/:projectId/source/revision", async (c) => {
+    const revision = await store.getCurrentSourceRevision(
+      c.req.param("projectId"),
+    );
     return c.json({
-      revision: await store.getCurrentSourceRevision(c.req.param("projectId")),
+      revision: revision ? publicSourceRevision(revision) : null,
     });
   });
 
@@ -122,7 +152,10 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
       c.req.param("projectId"),
       parsed.data,
     );
-    return c.json({ sessions: page.items, nextCursor: page.nextCursor });
+    return c.json({
+      sessions: page.items.map(publicSession),
+      nextCursor: page.nextCursor,
+    });
   });
 
   app.get("/sessions/:sessionId/events", async (c) => {
@@ -134,7 +167,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
   app.get("/sessions/:sessionId", async (c) => {
     const session = await store.getSession(c.req.param("sessionId"));
     return session
-      ? c.json({ session })
+      ? c.json({ session: publicSession(session) })
       : c.json({ error: "Session not found" }, 404);
   });
 
