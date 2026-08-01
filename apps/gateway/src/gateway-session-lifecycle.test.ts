@@ -1,0 +1,299 @@
+import type { SessionBinding } from "@eveland/core/contracts";
+import { describe, expect, test, vi } from "vitest";
+import {
+  applyGatewaySessionResponse,
+  resolveGatewaySessionBinding,
+  type GatewaySessionBindingRepository,
+} from "./gateway-session-lifecycle.js";
+
+const activeBinding: SessionBinding = {
+  id: "bind_1",
+  projectId: "proj_1",
+  eveSessionId: "eve_1",
+  continuationToken: "continue_1",
+  routeId: "route_1",
+  deploymentId: "dep_1",
+  trigger: "api",
+  variantName: null,
+  experimentId: null,
+  requestId: "request_1",
+  remoteIp: null,
+  affinityFingerprint: null,
+  affinitySource: null,
+  createdAt: "2026-07-28T10:00:00.000Z",
+  updatedAt: "2026-07-28T10:00:00.000Z",
+};
+
+function repositoryFixture(input: {
+  bySession?: SessionBinding | null;
+  byToken?: SessionBinding | null;
+  touched?: SessionBinding | null;
+} = {}) {
+  const located = input.bySession ?? input.byToken ?? null;
+  return {
+    findSessionBinding: vi.fn(async () => input.bySession ?? null),
+    findSessionBindingByContinuationToken: vi.fn(
+      async () => input.byToken ?? null,
+    ),
+    touchSessionBinding: vi.fn(async () =>
+      input.touched === undefined ? located : input.touched,
+    ),
+    bindSession: vi.fn(async () => undefined),
+    setSessionBindingContinuationToken: vi.fn(async () => activeBinding),
+  } satisfies GatewaySessionBindingRepository;
+}
+
+const bufferedJson = (value: unknown) =>
+  new TextEncoder().encode(JSON.stringify(value));
+
+describe("Gateway SessionBinding lifecycle", () => {
+  test("resolves and refreshes a path SessionBinding", async () => {
+    const repository = repositoryFixture({ bySession: activeBinding });
+    const now = new Date("2026-07-28T12:00:00.000Z");
+    const clock = vi.fn(() => {
+      expect(repository.findSessionBinding).toHaveBeenCalledOnce();
+      return now;
+    });
+
+    const resolution = await resolveGatewaySessionBinding({
+      repository,
+      projectId: "proj_1",
+      request: { kind: "continuation", sessionId: "eve_1" },
+      bufferedBody: undefined,
+      now: clock,
+      idlePolicy: { apiIdleTtlMs: 86_400_000 },
+    });
+
+    expect(resolution).toEqual({
+      state: "active",
+      lookup: "session_id",
+      request: { kind: "continuation", sessionId: "eve_1" },
+      binding: activeBinding,
+    });
+    expect(repository.findSessionBinding).toHaveBeenCalledWith(
+      "proj_1",
+      "eve_1",
+    );
+    expect(repository.findSessionBindingByContinuationToken).not.toHaveBeenCalled();
+    expect(repository.touchSessionBinding).toHaveBeenCalledWith(
+      "proj_1",
+      "eve_1",
+      now,
+    );
+    expect(clock).toHaveBeenCalledOnce();
+  });
+
+  test("resolves an initial or reset request by its buffered continuation token", async () => {
+    const repository = repositoryFixture({ byToken: activeBinding });
+
+    const resolution = await resolveGatewaySessionBinding({
+      repository,
+      projectId: "proj_1",
+      request: { kind: "reset", sessionId: null },
+      bufferedBody: bufferedJson({ continuationToken: "continue_1" }),
+      now: () => new Date("2026-07-28T12:00:00.000Z"),
+      idlePolicy: { apiIdleTtlMs: 86_400_000 },
+    });
+
+    expect(resolution).toMatchObject({
+      state: "active",
+      lookup: "continuation_token",
+      binding: activeBinding,
+    });
+    expect(repository.findSessionBindingByContinuationToken).toHaveBeenCalledWith(
+      "proj_1",
+      "continue_1",
+    );
+  });
+
+  test("does not read the idle clock when no binding lookup is needed", async () => {
+    const repository = repositoryFixture();
+    const clock = vi.fn(() => new Date());
+
+    const resolution = await resolveGatewaySessionBinding({
+      repository,
+      projectId: "proj_1",
+      request: null,
+      bufferedBody: undefined,
+      now: clock,
+      idlePolicy: {},
+    });
+
+    expect(resolution).toEqual({
+      state: "unbound",
+      lookup: "none",
+      request: null,
+      binding: null,
+    });
+    expect(clock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      reason: "is past its idle TTL",
+      binding: { ...activeBinding, updatedAt: "2026-07-27T10:00:00.000Z" },
+      touched: activeBinding,
+    },
+    {
+      reason: "disappears while being touched",
+      binding: activeBinding,
+      touched: null,
+    },
+  ])("reports a binding as expired when it $reason", async ({ binding, touched }) => {
+    const repository = repositoryFixture({ bySession: binding, touched });
+
+    const resolution = await resolveGatewaySessionBinding({
+      repository,
+      projectId: "proj_1",
+      request: { kind: "continuation", sessionId: "eve_1" },
+      bufferedBody: undefined,
+      now: () => new Date("2026-07-28T12:00:00.000Z"),
+      idlePolicy: { apiIdleTtlMs: 3_600_000 },
+    });
+
+    expect(resolution).toMatchObject({
+      state: "expired",
+      lookup: "session_id",
+      binding,
+    });
+  });
+
+  test("binds a successful initial response from its Eve header without reading a non-JSON body", async () => {
+    const repository = repositoryFixture();
+    const upstream = new Response("accepted", {
+      status: 202,
+      headers: { "x-eve-session-id": "eve_created" },
+    });
+    const clone = vi.spyOn(upstream, "clone");
+
+    const effect = await applyGatewaySessionResponse({
+      repository,
+      projectId: "proj_1",
+      request: { kind: "initial", sessionId: null },
+      binding: null,
+      upstream,
+      target: {
+        routeId: "route_1",
+        deploymentId: "dep_1",
+        variantName: "candidate",
+        experimentId: "route_1:r2",
+      },
+      provenance: {
+        kind: "api",
+        requestId: "request_created",
+        remoteIp: "203.0.113.7",
+        affinity: {
+          fingerprint: "sha256-affinity",
+          source: "version_key",
+        },
+      },
+    });
+
+    expect(effect).toEqual({ kind: "bound", eveSessionId: "eve_created" });
+    expect(clone).not.toHaveBeenCalled();
+    expect(repository.bindSession).toHaveBeenCalledWith({
+      projectId: "proj_1",
+      eveSessionId: "eve_created",
+      continuationToken: null,
+      routeId: "route_1",
+      deploymentId: "dep_1",
+      trigger: "api",
+      variantName: "candidate",
+      experimentId: "route_1:r2",
+      requestId: "request_created",
+      remoteIp: "203.0.113.7",
+      affinityFingerprint: "sha256-affinity",
+      affinitySource: "version_key",
+    });
+  });
+
+  test.each([
+    {
+      request: { kind: "continuation" as const, sessionId: "eve_1" },
+      body: { sessionId: "eve_1", continuationToken: "continue_2" },
+      expectedToken: "continue_2",
+      expectedEffect: { kind: "continuation_token_set", eveSessionId: "eve_1" },
+    },
+    {
+      request: { kind: "reset" as const, sessionId: null },
+      body: { ok: true, previousSessionId: "eve_1", status: "reset" },
+      expectedToken: null,
+      expectedEffect: { kind: "continuation_token_cleared", eveSessionId: "eve_1" },
+    },
+  ])(
+    "persists a successful $request.kind response effect",
+    async ({ request, body, expectedToken, expectedEffect }) => {
+      const repository = repositoryFixture();
+
+      const effect = await applyGatewaySessionResponse({
+        repository,
+        projectId: "proj_1",
+        request,
+        binding: activeBinding,
+        upstream: Response.json(body, { status: 202 }),
+        target: {
+          routeId: "route_1",
+          deploymentId: "dep_1",
+          variantName: null,
+          experimentId: null,
+        },
+        provenance: { kind: "playground", requestId: "request_playground" },
+      });
+
+      expect(effect).toEqual(expectedEffect);
+      expect(repository.setSessionBindingContinuationToken).toHaveBeenCalledWith(
+        "proj_1",
+        "eve_1",
+        expectedToken,
+      );
+    },
+  );
+
+  test.each([
+    {
+      reason: "the upstream failed",
+      request: { kind: "initial" as const, sessionId: null },
+      response: Response.json({ sessionId: "eve_ignored" }, { status: 500 }),
+    },
+    {
+      reason: "the request is a stream",
+      request: { kind: "stream" as const, sessionId: "eve_1" },
+      response: Response.json({ continuationToken: "continue_ignored" }),
+    },
+    {
+      reason: "reset ownership does not match",
+      request: { kind: "reset" as const, sessionId: null },
+      response: Response.json({
+        previousSessionId: "eve_other",
+        status: "reset",
+      }),
+    },
+  ])("does not mutate bindings when $reason", async ({ request, response }) => {
+    const repository = repositoryFixture();
+    const clone = vi.spyOn(response, "clone");
+
+    const effect = await applyGatewaySessionResponse({
+      repository,
+      projectId: "proj_1",
+      request,
+      binding: activeBinding,
+      upstream: response,
+      target: {
+        routeId: "route_1",
+        deploymentId: "dep_1",
+        variantName: null,
+        experimentId: null,
+      },
+      provenance: { kind: "playground", requestId: "request_playground" },
+    });
+
+    expect(effect).toEqual({ kind: "none" });
+    expect(repository.bindSession).not.toHaveBeenCalled();
+    expect(
+      repository.setSessionBindingContinuationToken,
+    ).not.toHaveBeenCalled();
+    if (!response.ok || request.kind === "stream") {
+      expect(clone).not.toHaveBeenCalled();
+    }
+  });
+});
