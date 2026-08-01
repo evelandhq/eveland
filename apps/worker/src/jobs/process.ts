@@ -31,6 +31,7 @@ import { importGitSource, getGitCommitSha } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
 
 import { processJob } from "./process-job.js";
+import { settleJobFailure } from "./job-registry.js";
 import { devSecretKey, errorMessage, parseEncryptedSecret } from "./process-support.js";
 import type { ProcessJobOptions } from "./process-types.js";
 
@@ -86,44 +87,9 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
         await clearTemporaryGitCredential(store, job);
         const failed = await store.failJob(job.id, message, job.attempts);
         if (!failed) return true;
-        if (job.type === "ensure_deployment_running") {
-          await store.updateRuntimeInstance(job.payload.runtimeInstanceId, {
-            status: "failed",
-            error: message,
-          });
-        }
-        // A failed import never touches the running container, so it must not report a
-        // live deployment as failed; only deploy/restart jobs change deployment status.
-        if (job.type === "delete_project") {
-          await store.setProjectDeletionFailed(job.projectId, message);
-        } else if (job.type === "build_deploy") {
-          const production = await store.getCurrentDeployment(job.projectId);
-          await store.updateProjectState(
-            job.projectId,
-            production &&
-              (production.status === "running" ||
-                production.status === "draining")
-              ? {
-                  status: "failed",
-                  deploymentStatus: production.status,
-                }
-              : { status: "failed", deploymentStatus: "failed" },
-          );
-        } else if (job.type === "ensure_deployment_running") {
-          const production = await store.getCurrentDeployment(job.projectId);
-          if (production?.id === job.payload.deploymentId) {
-            await store.updateProjectState(job.projectId, {
-              status: "failed",
-            });
-          }
-        } else if (job.type !== "archive_deployment") {
-          await store.updateProjectState(
-            job.projectId,
-            job.type === "restart_deployment"
-              ? { status: "failed", deploymentStatus: "failed" }
-              : { status: "failed" },
-          );
-        }
+        // What a failed job family means for the project lives with the
+        // handlers; only claiming, fencing, and logging stay here.
+        await settleJobFailure(store, job, message);
         await store.appendLog({
           projectId: job.projectId,
           type: "runtime",
@@ -149,7 +115,7 @@ export async function processNextSourcePreflight(
     await runWithJobHeartbeat({
       intervalMs: options.jobHeartbeatIntervalMs ?? Number(process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000),
       heartbeat: () => store.heartbeatSourcePreflight(preflight.id, preflight.attempts),
-      work: async () => {
+      work: async (signal) => {
         let sourcePath = preflight.sourcePath;
         let commitSha = preflight.commitSha;
         if (!sourcePath && preflight.kind === "git") {
@@ -167,6 +133,7 @@ export async function processNextSourcePreflight(
           await importGitSource({
             gitUrl: preflight.gitUrl,
             targetDir: sourcePath,
+            signal,
             ...(preflight.gitCredential ? {
               credential: {
                 host: preflight.gitCredential.host,
@@ -177,11 +144,13 @@ export async function processNextSourcePreflight(
               },
             } : {}),
           });
-          commitSha = await getGitCommitSha(sourcePath);
+          commitSha = await getGitCommitSha(sourcePath, signal);
         }
         if (!sourcePath) throw new Error("Source preflight missing sourcePath.");
 
+        signal.throwIfAborted();
         const scan = await scanEveSource({ kind: preflight.kind, sourcePath, commitSha });
+        signal.throwIfAborted();
         const completed = await store.completeSourcePreflight(preflight.id, preflight.attempts, {
           sourcePath,
           commitSha,

@@ -142,7 +142,7 @@ export async function removeManagedProjectFiles(
   );
 }
 
-export function isStrictlyWithin(candidate: string, root: string): boolean {
+function isStrictlyWithin(candidate: string, root: string): boolean {
   const relative = path.relative(root, candidate);
   return (
     relative !== "" &&
@@ -157,7 +157,7 @@ export function isStrictlyWithin(candidate: string, root: string): boolean {
 // ever logged, never thrown, so it can never mask the original deploy/restart
 // error that triggered the cleanup.
 export async function stopStartedProcessOnFailure(
-  store: Store,
+  store: Pick<Store, "appendLog">,
   projectId: string,
   adapter: RuntimeAdapter,
   processName: string,
@@ -199,7 +199,7 @@ export async function stopStartedProcessOnFailure(
   }
 }
 
-export function limitRuntimeDiagnostic(input: string): string {
+function limitRuntimeDiagnostic(input: string): string {
   if (input.length <= runtimeDiagnosticMaxCharacters) return input;
   const marker = "\n… runtime diagnostics truncated …\n";
   const prefixLength = 2_000;
@@ -301,7 +301,7 @@ export async function composeDeploymentEnv(
   return { env, secretValues };
 }
 
-export function readSharedAgentEnvironmentValues(
+function readSharedAgentEnvironmentValues(
   environment: SharedAgentEnvironmentRecord | null,
   appSecretKey: string,
 ): Record<string, string> {
@@ -316,7 +316,7 @@ export function readSharedAgentEnvironmentValues(
   );
 }
 
-export async function readRuntimeSecrets(
+async function readRuntimeSecrets(
   store: Pick<Store, "listSecretRecords">,
   projectId: string,
   appSecretKey: string,
@@ -374,7 +374,7 @@ export async function resolveRuntimeCommandContext(
     : { hasLockfile: hasNpmLockfile, packageManager: "npm" as const };
 }
 
-export async function fileExists(filePath: string): Promise<boolean> {
+async function fileExists(filePath: string): Promise<boolean> {
   try {
     await access(filePath);
     return true;
@@ -383,7 +383,7 @@ export async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-export function declaredEveVersion(
+function declaredEveVersion(
   packageJson: PackageJson | null,
 ): string | null {
   const version =
@@ -399,7 +399,7 @@ type PackageJson = {
   devDependencies?: Record<string, string>;
 };
 
-export async function readPackageJson(
+async function readPackageJson(
   sourcePath: string,
 ): Promise<PackageJson | null> {
   try {
