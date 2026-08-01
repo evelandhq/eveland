@@ -4,6 +4,18 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.22.0](https://github.com/evelandhq/eveland/compare/v0.21.0...v0.22.0) (2026-08-01)
+
+
+### Features
+
+* refresh the project summary from eve's discovery manifest after build ([#224](https://github.com/evelandhq/eveland/issues/224)) ([5d58268](https://github.com/evelandhq/eveland/commit/5d582682e62166e3c6755311f1f2fc275eba1543))
+
+
+### Bug Fixes
+
+* distinguish Playground authentication from Eve Connections ([#220](https://github.com/evelandhq/eveland/issues/220)) ([d5894c0](https://github.com/evelandhq/eveland/commit/d5894c0dafa99335c48c2cf6c033e9c6e8c7c749))
+
 ## [0.21.0](https://github.com/evelandhq/eveland/compare/v0.20.0...v0.21.0) (2026-08-01)
 
 
