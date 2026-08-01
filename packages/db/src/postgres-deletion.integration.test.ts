@@ -1,15 +1,24 @@
-import { afterAll, describe, expect, test } from "vitest";
-import { createDatabase } from "./client.js";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import {
+  createIsolatedPostgresDatabase,
+  type IsolatedPostgresDatabase,
+} from "./postgres-integration.test-support.js";
 import { createPostgresStore } from "./postgres-store.js";
 
 const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
-const database = databaseUrl ? createDatabase(databaseUrl) : null;
 
-afterAll(async () => database?.close());
+// Claims from the global job queue, so it needs its own database; see
+// postgres-integration.test-support.ts.
+describe.skipIf(!databaseUrl)("Postgres project deletion", () => {
+  let harness: IsolatedPostgresDatabase;
 
-describe.skipIf(!database)("Postgres project deletion", () => {
+  beforeAll(async () => {
+    harness = await createIsolatedPostgresDatabase(databaseUrl!);
+  });
+  afterAll(async () => harness?.drop());
+
   test("persists the deleting state and atomically replaces queued work with one deletion job", async () => {
-    const store = createPostgresStore(database!);
+    const store = createPostgresStore(harness.database);
     const pendingSourcePath = "/data/uploads/zip-postgres-pending/source";
     const project = await store.createProject({
       name: `Delete integration ${Date.now()}`,
@@ -39,7 +48,7 @@ describe.skipIf(!database)("Postgres project deletion", () => {
   });
 
   test("does not claim a deletion job while another worker is running project work", async () => {
-    const store = createPostgresStore(database!);
+    const store = createPostgresStore(harness.database);
     const project = await store.createProject({ name: `Busy delete integration ${Date.now()}`, importKind: "zip" });
     const running = await store.claimNextJob("worker-a");
     await store.requestProjectDeletion(project.id);

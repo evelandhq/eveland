@@ -45,6 +45,22 @@ jobs:
             command: pnpm --filter @eveland/db test
           - name: remaining
             command: pnpm --filter='!@eveland/api' --filter='!@eveland/worker' --filter='!@eveland/db' -r test
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: eveland
+          POSTGRES_PASSWORD: eveland
+          POSTGRES_DB: eveland_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eveland"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      EVELAND_POSTGRES_TEST_URL: postgres://eveland:eveland@localhost:5432/eveland_test
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +75,16 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Twice on purpose: the second run must be a no-op, proving the
+      # migration journal stays re-applicable against an already-migrated
+      # database (the path production upgrades take).
+      - name: Apply database migrations (twice, verifying idempotent re-run)
+        run: |
+          pnpm --filter @eveland/db db:migrate
+          pnpm --filter @eveland/db db:migrate
+        env:
+          DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland_test
 
       - name: Run tests
         run: ${{ matrix.command }}
