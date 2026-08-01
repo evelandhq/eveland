@@ -30,9 +30,14 @@ limactl shell "$VM" -- sudo bash -c '
   install -d /opt/eveland
   find /opt/eveland -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} +
 '
+# COPYFILE_DISABLE stops macOS bsdtar from adding AppleDouble ("._name")
+# companions for files that carry extended attributes; the guest-side
+# --exclude drops any that slip through regardless of the host tar flavor.
+# Extracted into the guest they become real files, and eve discovery then
+# rejects e.g. agent/channels/._eve.ts as an illegal channel name.
 git -C "$REPO_DIR" ls-files --cached --others --exclude-standard -z |
-  tar -czf - --null -T - |
-  limactl shell "$VM" -- sudo tar -xzf - -C /opt/eveland
+  COPYFILE_DISABLE=1 tar -czf - --null -T - |
+  limactl shell "$VM" -- sudo tar -xzf - -C /opt/eveland --exclude='._*'
 
 limactl shell "$VM" -- sudo bash -c "
   set -euo pipefail
