@@ -448,6 +448,13 @@ export function createPostgresJobSourceStore({
       return revision ? sourceRevisionRowToSourceRevision(revision) : null;
     },
 
+    async updateSourceRevisionSummary(revisionId, summary) {
+      await db
+        .update(sourceRevisions)
+        .set({ summary })
+        .where(eq(sourceRevisions.id, revisionId));
+    },
+
     async listSourceRevisionFiles(revisionId) {
       const rows = await db
         .select()

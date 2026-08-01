@@ -6,7 +6,7 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
-import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
+import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type ReleaseDiscovery, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
 import { AGENT_OBSERVABILITY_MOUNT_DIR } from "./observability/policy.js";
 import {
@@ -132,6 +132,30 @@ export function buildDockerSandboxVerifyArgs(imageTag: string): string[] {
     "node",
     path.posix.join("/app", SANDBOX_VERIFY_SCRIPT_PATH),
   ];
+}
+
+// eve build ran inside the image, so its discovery artifacts live in the image
+// filesystem, not on the host. One throwaway container prints them; failures
+// only cost the build-derived summary (the import-time static one remains).
+const readImageDiscoveryScript =
+  'const fs=require("fs");let m=null,v=null;' +
+  'try{m=JSON.parse(fs.readFileSync("/app/.eve/discovery/agent-discovery-manifest.json","utf8"))}catch{}' +
+  'try{v=require("/app/node_modules/eve/package.json").version}catch{}' +
+  'process.stdout.write(JSON.stringify({manifest:m,resolvedEveVersion:typeof v==="string"?v:null}))';
+
+export async function readImageDiscovery(imageTag: string): Promise<ReleaseDiscovery | undefined> {
+  const result = await execa(
+    "docker",
+    ["run", "--rm", "--network", "none", imageTag, "node", "-e", readImageDiscoveryScript],
+    { reject: false },
+  ).catch(() => undefined);
+  if (!result || result.exitCode !== 0 || typeof result.stdout !== "string") return undefined;
+  try {
+    const parsed = JSON.parse(result.stdout) as { manifest: unknown; resolvedEveVersion: string | null };
+    return parsed.manifest === null ? undefined : parsed;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function verifyDockerSandbox(imageTag: string): Promise<void> {
@@ -291,9 +315,11 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
         if (sandboxInjection) {
           await verifyDockerSandbox(imageTag);
         }
+        const discovery = await readImageDiscovery(imageTag);
         return {
           releaseRef: imageTag,
           schedulerDefinitions: observerInjection.scheduler?.definitions,
+          ...(discovery ? { discovery } : {}),
           log: [
             log,
             `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
