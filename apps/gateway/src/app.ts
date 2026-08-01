@@ -1,6 +1,4 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import http from "node:http";
-import { Readable } from "node:stream";
 import {
   AGENT_AUTH_ENVELOPE_HEADER,
   decodeAgentAuthEnvelope,
@@ -18,10 +16,6 @@ import {
   PLAYGROUND_MAX_TRANSPORT_BYTES,
 } from "@eveland/core/eve";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import {
-  createEveVersionInfo,
-  unsupportedEveVersionMessage,
-} from "@eveland/core/source";
 import { Hono } from "hono";
 
 export type { ResolvedAgentRoute } from "@eveland/core/contracts";
@@ -31,6 +25,16 @@ import {
   applyGatewaySessionResponse,
   resolveGatewaySessionBinding,
 } from "./gateway-session-lifecycle.js";
+import {
+  activationKind,
+  cancelUpstreamAndReleaseActivation,
+  isAbortError,
+  manageActivationResponse,
+  sessionExpiredResponse,
+  unsupportedDeploymentResponse,
+} from "./gateway-request-lifecycle.js";
+import { createGatewayRouteCache } from "./gateway-route-cache.js";
+import { proxyToDeployment, readLimitedBody } from "./gateway-transport.js";
 import {
   DownstreamAbortedError,
   RequestBodyTooLargeError,
@@ -49,17 +53,6 @@ import {
   serializeAffinityCookie,
 } from "./gateway-routing.js";
 
-const hopByHopHeaders = new Set([
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
-
 export function createGatewayApp(repository: GatewayRepository, options: GatewayAppOptions): Hono {
   if (!options.affinitySecret) throw new Error("Gateway affinity secret is required.");
   if (
@@ -71,27 +64,10 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   const app = new Hono();
   const buildInfo = options.buildInfo ?? createBuildInfoFromEnv("gateway", process.env);
   const configurationSnapshot = options.configurationSnapshot ?? createConfigurationSnapshot("gateway", process.env);
-  const routeCache = new Map<string, { route: ResolvedAgentRoute | null; expiresAt: number }>();
-  const routeCacheTtlMs = options.routeCacheTtlMs ?? 5_000;
-  // Every hostname under an allowed base domain is cacheable, including ones
-  // that resolve to no route, so an unbounded Map grows for as long as someone
-  // sends requests with fresh subdomains. Expired entries are dropped first;
-  // insertion order then evicts the oldest.
-  const routeCacheMaxEntries = options.routeCacheMaxEntries ?? 1_000;
-  const cacheRoute = (hostname: string, route: ResolvedAgentRoute | null) => {
-    if (routeCache.size >= routeCacheMaxEntries) {
-      const evictedAt = Date.now();
-      for (const [key, entry] of routeCache) {
-        if (entry.expiresAt <= evictedAt) routeCache.delete(key);
-      }
-      while (routeCache.size >= routeCacheMaxEntries) {
-        const oldest = routeCache.keys().next();
-        if (oldest.done) break;
-        routeCache.delete(oldest.value);
-      }
-    }
-    routeCache.set(hostname, { route, expiresAt: Date.now() + routeCacheTtlMs });
-  };
+  const routeCache = createGatewayRouteCache({
+    ttlMs: options.routeCacheTtlMs ?? 5_000,
+    maxEntries: options.routeCacheMaxEntries ?? 1_000,
+  });
   const maxRequestBodyBytes = options.maxRequestBodyBytes ?? 10_485_760;
   const now = options.now ?? (() => new Date());
   const sessionIdlePolicy = {
@@ -292,9 +268,9 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     const hostname = hostnameFromAuthority(authority);
     if (!isAllowedHostname(hostname, options.allowedBaseDomains)) return context.json({ error: "Route not found" }, 404);
 
-    const cached = routeCache.get(hostname);
-    const route = cached && cached.expiresAt > Date.now() ? cached.route : await repository.findRouteByHostname(hostname);
-    if (!cached || cached.expiresAt <= Date.now()) cacheRoute(hostname, route);
+    const cached = routeCache.read(hostname);
+    const route = cached !== undefined ? cached : await repository.findRouteByHostname(hostname);
+    if (cached === undefined) routeCache.store(hostname, route);
     if (!route?.enabled) return context.json({ error: "Route not found" }, 404);
 
     const requestUrl = new URL(context.req.url);
@@ -458,30 +434,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   return app;
 }
 
-function sessionExpiredResponse(): Response {
-  return Response.json(
-    { error: "Session expired", code: "session_expired" },
-    { status: 410 },
-  );
-}
-
-async function unsupportedDeploymentResponse(
-  repository: GatewayRepository,
-  deploymentId: string,
-): Promise<Response | null> {
-  const eveVersion = await repository.getDeploymentEveVersion(deploymentId) ?? createEveVersionInfo(null, null);
-  if (eveVersion.supported) return null;
-  return Response.json({
-    error: "Unsupported Eve version",
-    detail: unsupportedEveVersionMessage(eveVersion.version),
-    eveVersion,
-  }, { status: 409 });
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
 function isInternalRequest(authorization: string | undefined, token: string | undefined): boolean {
   if (!token || !authorization) return false;
   // Sole gate on the privileged /internal/* surface -- compare in constant
@@ -489,180 +441,4 @@ function isInternalRequest(authorization: string | undefined, token: string | un
   const expected = createHash("sha256").update(`Bearer ${token}`).digest();
   const provided = createHash("sha256").update(authorization).digest();
   return timingSafeEqual(expected, provided);
-}
-
-function proxyToDeployment(input: {
-  port: number;
-  path: string;
-  method: string;
-  headers: Headers;
-  body: Uint8Array | null;
-  timeoutMs?: number;
-  signal?: AbortSignal;
-}): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    let responseStarted = false;
-    const request = http.request(
-      {
-        hostname: "127.0.0.1",
-        port: input.port,
-        path: input.path,
-        method: input.method,
-        headers: Object.fromEntries(input.headers.entries()),
-      },
-      (response) => {
-        responseStarted = true;
-        const headers = new Headers();
-        for (let index = 0; index < response.rawHeaders.length; index += 2) {
-          const name = response.rawHeaders[index];
-          const value = response.rawHeaders[index + 1];
-          if (name && value !== undefined && !hopByHopHeaders.has(name.toLowerCase())) headers.append(name, value);
-        }
-        resolve(
-          new Response(proxyResponseBody(response, request), {
-            status: response.statusCode ?? 502,
-            statusText: response.statusMessage,
-            headers,
-          }),
-        );
-      },
-    );
-    const abort = () => request.destroy(new DownstreamAbortedError());
-    const cleanup = () => input.signal?.removeEventListener("abort", abort);
-    request.once("error", (error) => {
-      cleanup();
-      if (!responseStarted) reject(error);
-    });
-    request.once("close", cleanup);
-    if (input.signal?.aborted) abort();
-    else input.signal?.addEventListener("abort", abort, { once: true });
-    if (input.timeoutMs) request.setTimeout(input.timeoutMs, () => request.destroy(new Error("Upstream request timed out.")));
-    request.end(input.body ?? undefined);
-  });
-}
-
-function activationKind(method: string, pathname: string): "public_request" | "stream" | "turn" {
-  const request = classifyEveSessionRequest(method, pathname);
-  if (request?.kind === "stream") return "stream";
-  if (request) return "turn";
-  return "public_request";
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
-
-async function cancelUpstreamAndReleaseActivation(
-  upstream: Response,
-  error: unknown,
-  activation: { leaseId: string } | null,
-  client: GatewayActivationClient | undefined,
-): Promise<void> {
-  await upstream.body?.cancel(error).catch(() => undefined);
-  if (activation && client) {
-    await client.release(activation.leaseId).catch(() => undefined);
-  }
-}
-
-function manageActivationResponse(
-  response: Response,
-  client: GatewayActivationClient,
-  leaseId: string,
-  renewIntervalMs: number,
-): Response {
-  if (!response.body) {
-    void client.release(leaseId).catch(() => undefined);
-    return response;
-  }
-  const reader = response.body.getReader();
-  let finalized = false;
-  const renewTimer = setInterval(() => {
-    void client.renew(leaseId).catch(() => undefined);
-  }, renewIntervalMs);
-  renewTimer.unref?.();
-  const finalize = async () => {
-    if (finalized) return;
-    finalized = true;
-    clearInterval(renewTimer);
-    await client.release(leaseId).catch(() => undefined);
-  };
-  const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const chunk = await reader.read();
-        if (chunk.done) {
-          await finalize();
-          controller.close();
-        } else {
-          controller.enqueue(chunk.value);
-        }
-      } catch (error) {
-        await finalize();
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      await reader.cancel(reason).catch(() => undefined);
-      await finalize();
-    },
-  });
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
-}
-
-async function readLimitedBody(
-  body: ReadableStream<Uint8Array> | null,
-  maxBytes: number,
-  signal: AbortSignal,
-): Promise<Uint8Array | null> {
-  if (!body) return null;
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      if (signal.aborted) throw new DownstreamAbortedError();
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel("request body limit exceeded").catch(() => undefined);
-        throw new RequestBodyTooLargeError();
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const joined = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return joined;
-}
-
-function proxyResponseBody(response: http.IncomingMessage, request: http.ClientRequest): ReadableStream<Uint8Array> {
-  const body = Readable.toWeb(response) as ReadableStream<Uint8Array>;
-  const reader = body.getReader();
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const chunk = await reader.read();
-        if (chunk.done) controller.close();
-        else controller.enqueue(chunk.value);
-      } catch (error) {
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      response.destroy();
-      request.destroy();
-      await reader.cancel(reason).catch(() => undefined);
-    },
-  });
 }
