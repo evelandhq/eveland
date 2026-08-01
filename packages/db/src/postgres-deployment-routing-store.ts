@@ -277,6 +277,24 @@ export function createPostgresDeploymentRoutingStore({
       return release ? releaseRowToRelease(release) : null;
     },
 
+    async listReleaseSummaries(projectId) {
+      // One project-scoped query: a deployment overview needs every listed
+      // deployment's release summary, and per-release lookups would be an
+      // unbounded N+1 over the full (archived included) deployment history.
+      const rows = await db
+        .select({ id: releases.id, summary: releases.summary })
+        .from(releases)
+        .where(eq(releases.projectId, projectId));
+      return Object.fromEntries(
+        rows.map((row) => [
+          row.id,
+          row.summary && typeof row.summary === "object" && !Array.isArray(row.summary)
+            ? (row.summary as Record<string, unknown>)
+            : null,
+        ]),
+      );
+    },
+
     ensureDeploymentRoutes,
 
     async reconcileAgentRoutes(baseDomain) {
