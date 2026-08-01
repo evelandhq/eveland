@@ -479,13 +479,13 @@ function validateProvider(
   provider: AgentAuthProviderRegistration,
   existing: Map<string, AgentAuthProviderRegistration>,
 ): void {
-  if (!/^[a-z][a-z0-9-]*$/.test(provider.method)) throw new Error(`Invalid Agent Auth Method: ${provider.method}.`);
-  if (existing.has(provider.method)) throw new Error(`Duplicate Agent Auth Method: ${provider.method}.`);
+  if (!/^[a-z][a-z0-9-]*$/.test(provider.method)) throw new Error(`Invalid Playground authentication method: ${provider.method}.`);
+  if (existing.has(provider.method)) throw new Error(`Duplicate Playground authentication method: ${provider.method}.`);
   if (provider.descriptor.method !== provider.method) {
-    throw new Error(`Agent Auth descriptor method must match provider ${provider.method}.`);
+    throw new Error(`Playground authentication descriptor method must match provider ${provider.method}.`);
   }
   if (provider.descriptor.credentialScope !== provider.credentialScope) {
-    throw new Error(`Agent Auth descriptor credential scope must match provider ${provider.method}.`);
+    throw new Error(`Playground authentication descriptor credential scope must match provider ${provider.method}.`);
   }
 }
 
@@ -516,12 +516,12 @@ function requiredString(value: unknown, message: string): string {
 }
 
 function secretReference(value: unknown): AgentAuthSecretReference {
-  const candidate = record(value, "Agent Auth secret reference must be an object.");
+  const candidate = record(value, "Playground authentication secret reference must be an object.");
   if (candidate.kind !== "project-secret") {
-    throw new Error("Agent Auth secret reference kind is invalid.");
+    throw new Error("Playground authentication secret reference kind is invalid.");
   }
-  const key = requiredString(candidate.key, "Agent Auth secret reference key is required.");
-  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error("Agent Auth secret reference key is invalid.");
+  const key = requiredString(candidate.key, "Playground authentication secret reference key is required.");
+  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error("Playground authentication secret reference key is invalid.");
   return { kind: candidate.kind, key };
 }
 
@@ -549,7 +549,7 @@ async function resolveSecretReference(
   reference: AgentAuthSecretReference,
   resolver: ((reference: AgentAuthSecretReference) => Promise<string>) | undefined,
 ): Promise<string> {
-  if (!resolver) throw new Error("Agent Auth secret reference resolver is unavailable.");
+  if (!resolver) throw new Error("Playground authentication secret reference resolver is unavailable.");
   return resolver(reference);
 }
 

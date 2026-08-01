@@ -69,7 +69,7 @@ API 与 Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `
 
 ### Agent 用户身份 (/settings/identity)
 
-Agent 用户身份与控制面 Better Auth、Playground 的 Agent Connection credential 是三条独立边界。
+Agent 用户身份与控制面 Better Auth、Playground authentication credential 是三条独立边界。
 第一阶段提供一个受管 `Internal` Provider：API 只在服务端验证有效 Better Auth member，
 再映射为通用 `ResolvedExternalIdentity`，通过统一的 `finalizeIdentity()` 建立独立
 `eveland_identity` Session。Better Auth cookie/token、member role 与 provider credential
@@ -574,8 +574,9 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 
 用户输入消息后，Web 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
 
-每个受管 Project 最多有一个 Agent Connection。它是 Playground 调用 Agent 的客户端配置，
-不是 Project、Deployment、Eve Connection 或控制面登录 Session。当前通用方法包括：
+每个受管 Project 最多有一套 Playground authentication 配置。它是 Playground 调用 Agent 的客户端配置，
+不是 Project、Deployment、Eve Connection 或控制面登录 Session。Connection 专指 Eve
+`agent/connections/*` 中 Agent 访问外部 MCP/OpenAPI server 的能力。Playground authentication 当前通用方法包括：
 
 * `local-dev`：不发送 credential，并且只允许 Gateway 用 loopback Host 调用 Eve `localDev()`；
 * `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
@@ -585,7 +586,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 * `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 * `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
-用户必须在 Playground 的 Connection 设置中显式选择客户端方法；平台不得从 Eve verifier
+用户必须在 Playground authentication 设置中显式选择客户端方法；平台不得从 Eve verifier
 名称、源码 import、401 或 `WWW-Authenticate` 猜测 credential acquisition。Eveland member id
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
 verifier 建立的 Caller 做隐式映射。
@@ -593,17 +594,17 @@ verifier 建立的 Caller 做隐式映射。
 `vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.29.4
 `ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
 `x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
-Connection 只保存 token Secret reference/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
+Playground authentication 只保存 token Secret reference/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
 
 通用 `oidc` 方法只使用协议级配置：HTTPS issuer、client id、scope、可选 audience 及其
 `resource`/`audience` 参数模式、显式 token endpoint client authentication、附加 authorization
 parameters，以及 `eve-jwt` 或 `userinfo` access-token verification。confidential client secret
-通过 Project Secret 引用，不能进入 Connection browser payload。`eve-jwt` 必须绑定已配置的
+通过 Project Secret 引用，不能进入 Playground authentication browser payload。`eve-jwt` 必须绑定已配置的
 issuer/audience；`userinfo` 必须让 UserInfo `sub` 与已验证 ID Token `sub` 一致。Provider 名称不能
 改变 scope、prompt、client authentication 或 verification 行为。
 
 OIDC interaction 使用 Web-owned callback page 和经过控制面登录认证的 API callback。state、nonce、
-PKCE verifier、Caller Principal、Connection revision 与 return path 保存在十分钟、一次性消费、
+PKCE verifier、Caller Principal、authentication revision 与 return path 保存在十分钟、一次性消费、
 加密的 transaction 中；过期 transaction 有实际清理路径。access/refresh token 按 Caller Principal
 隔离加密保存，只有 JWT/UserInfo 验证成功后才能发送给 Agent。暂时 verification failure 保持
 pending，永久 token rejection 不激活 credential。refresh 使用进程内 singleflight 和 Postgres
@@ -614,8 +615,8 @@ lease/rotation fencing；过期 lease writer 不能完成更新。
 refresh 并重发一次，第二个 401 不产生第三个 Agent request；403 不 refresh。Caller Principal 是
 Eveland member id 的隔离键，可以与 ID Token `sub`、access-token subject 和 Agent Caller 完全不同。
 
-Connection 的 normalized config 使用 `APP_SECRET_KEY` 派生用途密钥并以 AES-256-GCM 保存，
-AAD 绑定 Connection id、opaque method 和 security revision。API/Web 只返回 descriptor 与脱敏
+Playground authentication 的 normalized config 使用 `APP_SECRET_KEY` 派生用途密钥并以 AES-256-GCM 保存，
+AAD 绑定 authentication configuration id、opaque method 和 security revision。API/Web 只返回 descriptor 与脱敏
 configured 状态，不返回 password、token 或 custom Header value。只有 method 或 normalized config
 发生语义变化时 security revision 才递增；旧 revision credential 不再命中新请求。
 
@@ -919,7 +920,7 @@ argv 上——argv 通过 `/proc/<pid>/cmdline` 对同主机任意用户可读�
 
 Entry 语义变化才递增内部 revision。更新或清空共享环境时，API 对所有 Project 的
 `running`/`draining` Deployment 排定向 restart；没有 live Deployment 时从下一次启动生效。
-Shared Agent Environment 只属于 Agent runtime，不得作为 Agent Connection credential。新的 Basic、Bearer、
+Shared Agent Environment 只属于 Agent runtime，不得作为 Playground authentication credential。新的 Basic、Bearer、
 Vercel OIDC 和 confidential OIDC 配置通过 Project Secret reference 延迟解析；引用缺失、删除或无法解密必须
 fail closed，不得回退到旧值或 inline copy。系统不提供 named Profile、runtime binding、Platform Secret
 reference 或对应的兼容 API。Shared Agent Environment 使用独立 singleton 存储，不继承 Profile 数据模型。

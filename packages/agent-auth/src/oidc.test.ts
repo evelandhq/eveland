@@ -98,7 +98,7 @@ describe("generic OIDC Authorization Code provider", () => {
       currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${revisionMismatch.state}`),
       callerPrincipalId: "member-a",
       getConnection: async () => ({ ...snapshot, securityRevision: 2 }),
-    })).rejects.toThrow(/Connection changed/i);
+    })).rejects.toThrow(/Playground authentication changed/i);
 
     let current = new Date("2029-01-01T00:00:00.000Z");
     const expiringProvider = createOidcAuthorizationCodeProvider({
@@ -152,7 +152,7 @@ describe("generic OIDC Authorization Code provider", () => {
       currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${racing.state}`),
       callerPrincipalId: "member-race",
       getConnection: async () => currentSnapshot,
-    })).rejects.toThrow(/Connection changed/i);
+    })).rejects.toThrow(/Playground authentication changed/i);
     await expect(store.getAgentAuthCredential(credentialKey(connection.id, "member-race"))).resolves.toBeNull();
   });
 

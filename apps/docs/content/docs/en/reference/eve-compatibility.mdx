@@ -7,7 +7,7 @@ Until Eve publishes a stable compatibility contract, Eveland supports a sliding 
 
 The UI marks only the latest supported line, `0.27.x`, in green. Older supported lines stay operational but appear in red with an upgrade reminder; unsupported versions also appear in red and remain blocked.
 
-Eve 0.27 moves Nuxt deployments to Vercel's stable services model, improves compaction and prompt caching, and makes Route Auth advertise standards-compliant challenges. HTTP Basic now advertises its realm and UTF-8 charset and compares credentials after Unicode NFC normalization. Eveland does not host imported Agents through Eve's Nuxt integration and does not infer a Connection method from a 401 challenge, so these changes require no adapter branch.
+Eve 0.27 moves Nuxt deployments to Vercel's stable services model, improves compaction and prompt caching, and makes Route Auth advertise standards-compliant challenges. HTTP Basic now advertises its realm and UTF-8 charset and compares credentials after Unicode NFC normalization. Eveland does not host imported Agents through Eve's Nuxt integration and does not infer a Playground authentication method from a 401 challenge, so these changes require no adapter branch.
 
 The 0.27.1–0.27.3 patches improve workflow concurrency and cancellation, queued channel delivery, Slack and Teams routing, prefixed callback routes, dynamic-tool refresh, sandbox seed ordering, and diagnostics. Eve 0.27.2 also sends an initial whitespace byte when opening an NDJSON stream and lets Client callers opt out of automatic stream reconnection. Eveland's stream monitor already ignores blank lines, Gateway forwards the byte without buffering, and the Playground keeps the default durable reconnect behavior.
 

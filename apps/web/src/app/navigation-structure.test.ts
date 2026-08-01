@@ -547,7 +547,20 @@ describe("web application shell", () => {
     expect(nextConfig).toContain('source: "/api/eveland/:path*"')
   })
 
-  test("keeps the Playground Agent Connection dialog scrollable within the viewport", () => {
+  test("names Playground route credentials as authentication instead of an Eve Connection", () => {
+    const authenticationSettings = source("../components/agent-connection-settings.tsx")
+    const callbackPage = source("./agent-auth/oidc/callback/page.tsx")
+
+    expect(authenticationSettings).toContain("Playground authentication")
+    expect(authenticationSettings).not.toContain("Agent Connection")
+    expect(callbackPage).toContain("Playground authentication")
+    expect(callbackPage).not.toContain("Agent Connection")
+    expect(callbackPage).toContain("Authentication failed")
+    expect(callbackPage).toContain("Finishing authentication")
+    expect(callbackPage).not.toContain("Agent authorization")
+  })
+
+  test("keeps the Playground authentication dialog scrollable within the viewport", () => {
     const connectionSettings = source("../components/agent-connection-settings.tsx")
 
     expect(connectionSettings).toContain("max-h-[calc(100svh-2rem)]")

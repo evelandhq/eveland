@@ -27,7 +27,7 @@ export default function OidcAgentAuthCallbackPage() {
     completeAgentAuthCallback(search)
       .then(({ returnPath }) => router.replace(safeAgentAuthReturnPath(returnPath)))
       .catch((caught) => {
-        setError(caught instanceof Error ? caught.message : "Agent authorization could not be completed.");
+        setError(caught instanceof Error ? caught.message : "Playground authentication could not be completed.");
       });
   }, [router]);
 
@@ -38,21 +38,21 @@ export default function OidcAgentAuthCallbackPage() {
           <div className="mb-3 flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <KeyRoundIcon />
           </div>
-          <CardTitle>Agent authorization</CardTitle>
+          <CardTitle>Playground authentication</CardTitle>
           <CardDescription>
-            Completing the OIDC grant for this Agent Connection. Tokens stay on the server.
+            Completing the OIDC grant used to authenticate Playground requests. Tokens stay on the server.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {error ? (
             <Alert variant="destructive">
               <AlertCircleIcon />
-              <AlertTitle>Authorization failed</AlertTitle>
+              <AlertTitle>Authentication failed</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : (
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Spinner /> Finishing authorization…
+              <Spinner /> Finishing authentication…
             </div>
           )}
         </CardContent>
