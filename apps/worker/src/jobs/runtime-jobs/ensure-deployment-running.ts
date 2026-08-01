@@ -25,6 +25,15 @@ export async function handleEnsureDeploymentRunningJob(
     throw new Error("Deployment activation target is invalid.");
   if (!runtimeInstance || runtimeInstance.deploymentId !== deployment.id)
     throw new Error("RuntimeInstance activation target is invalid.");
+  // A queued activation that lost the race to an archive must not resurrect
+  // the deployment.
+  if (deployment.status === "archiving" || deployment.status === "archived") {
+    await store.updateRuntimeInstance(runtimeInstanceId, {
+      status: "failed",
+      error: `Deployment is ${deployment.status} and cannot be activated.`,
+    });
+    return;
+  }
   const release = await store.getRelease(deployment.releaseId);
   if (!release)
     throw new Error("Deployment activation Release is missing.");

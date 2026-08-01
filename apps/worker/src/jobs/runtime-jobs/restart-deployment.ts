@@ -51,7 +51,7 @@ export async function handleRestartDeploymentJob(
     );
   }
   // A queued restart that lost the race to an archive must not resurrect it.
-  if (deployment.status === "archived") {
+  if (deployment.status === "archived" || deployment.status === "archiving") {
     const production = await store.getCurrentDeployment(job.projectId);
     await store.updateProjectState(job.projectId, {
       deploymentStatus: production?.status ?? "not_deployed",
@@ -60,7 +60,7 @@ export async function handleRestartDeploymentJob(
       projectId: job.projectId,
       deploymentId: deployment.id,
       type: "deploy",
-      line: `Restart skipped: deployment ${deployment.deploymentKey} is archived.`,
+      line: `Restart skipped: deployment ${deployment.deploymentKey} is ${deployment.status}.`,
     });
     return;
   }

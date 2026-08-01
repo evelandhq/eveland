@@ -49,7 +49,7 @@ export type Deployment = {
   projectId: string;
   releaseId: string;
   hostPort: number;
-  status: "running" | "draining" | "stopped" | "archived" | "failed";
+  status: "running" | "draining" | "stopped" | "archiving" | "archived" | "failed";
   runtimeKind: "docker" | "systemd";
   createdAt: string;
 };

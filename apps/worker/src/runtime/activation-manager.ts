@@ -57,6 +57,28 @@ export async function ensureDeploymentActive(
     }
   }
 
+  // Ordered against the archive claim: whichever commits second sees the
+  // other. An archive that claimed first is visible here; a lease acquired
+  // first is visible to the archive's post-claim retention re-check.
+  const liveDeployment = await store.getDeployment(input.deployment.id);
+  if (
+    !liveDeployment ||
+    liveDeployment.status === "archiving" ||
+    liveDeployment.status === "archived"
+  ) {
+    const refusal = liveDeployment
+      ? `Deployment ${input.deployment.id} is ${liveDeployment.status} and cannot be activated.`
+      : `Deployment ${input.deployment.id} no longer exists.`;
+    if (claimed.starter) {
+      await store.updateRuntimeInstance(claimed.runtimeInstance.id, {
+        status: "failed",
+        error: refusal,
+      }, now());
+    }
+    await store.releaseActivationLease(claimed.lease.id, now());
+    throw new Error(refusal);
+  }
+
   if (claimed.runtimeInstance.status === "ready") return claimed;
   if (claimed.starter) {
     try {
