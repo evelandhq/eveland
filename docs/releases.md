@@ -46,7 +46,7 @@ Eveland uses Semantic Versioning and starts at `0.1.0`:
 - `1.0.0` begins only after the installation, API, and database-upgrade
   contracts are stable enough to support as a public compatibility boundary.
 
-The MVP supports the latest stable `0.x` release. It does not maintain long-term
+Eveland supports the latest stable `0.x` release. It does not maintain long-term
 release branches or promise backports to older minors.
 
 ## Release workflow

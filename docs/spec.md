@@ -1,4 +1,4 @@
-# Ever: eve Runtime MVP Spec
+# Eveland 产品规格
 
 ## 1. 定位
 
@@ -44,8 +44,8 @@ Team
           └─ Eve 项目中的 cron 定义
 ```
 
-MVP 中只支持一个默认运行环境：`Production`。
-MVP 中每个 Eveland 实例只有一个 Team；数据模型保留未来支持多个 Team 的边界。
+当前只支持一个默认运行环境：`Production`。
+每个 Eveland 实例只有一个 Team；数据模型保留未来支持多个 Team 的边界。
 
 ---
 
@@ -170,7 +170,7 @@ Personal 与 System 分组导航。
 
 * 修改姓名
 * 上传、替换或移除头像；只接受 PNG、JPEG、WebP，最大 512 KB
-* 查看登录邮箱；MVP 中邮箱只读
+* 查看登录邮箱；邮箱当前只读
 * 配置 Display timezone；未保存偏好时默认使用浏览器当前 IANA 时区，保存后作为个人偏好跨页面和登录 Session 生效
 * 使用当前密码修改密码；新密码至少 12 个字符，成功后撤销当前 Session 之外的所有登录 Session
 
@@ -736,12 +736,10 @@ Model 的 distinct root Sessions，Token、Cost 和 step 数按 model usage even
 
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
-Eveland 是生产 Schedule 的唯一调度器。与全局 Agent 版本门槛一致，当前 Release adapter 支持整个
-Eve 0.27.x、0.28.x 与 0.29.x 版本线（接受精确 patch、锚定其上的 ~/^ range，以及
-0.27 / 0.27.x / 0.27.*、0.28 / 0.28.x / 0.28.*、0.29 / 0.29.x / 0.29.* 整个 minor 的写法）；任何可能解析到
-这三个 minor 之外的
-Eve 依赖必须在 build 时 fail closed 并返回明确的 adapter
-diagnostic，不能猜测或降级执行。导入源码时按 `agent/schedules/` 下的完整相对路径
+Eveland 是生产 Schedule 的唯一调度器。Release adapter 遵循「新建项目」一节定义的
+全局 Eve 版本滑动窗口；任何可能解析到窗口之外的 Eve 依赖必须在 build 时 fail
+closed 并返回明确的 adapter diagnostic，不能猜测或降级执行。导入源码时按
+`agent/schedules/` 下的完整相对路径
 识别 Schedule key，并只接受五字段、UTC、分钟级 cron 语义；每次 Source Revision
 保留不可变 ScheduleVersion。Project 另有一个
 显式 scheduler target，未来 cron/manual run 固定到该 Deployment、Release 和
@@ -822,7 +820,7 @@ ScheduleRun 详情查看完整执行结果与关联 Sessions。
 
 只读代码浏览器。
 
-MVP 支持：
+支持：
 
 * 文件树
 * 文件内容查看
@@ -929,7 +927,7 @@ reference 或对应的兼容 API。Shared Agent Environment 使用独立 singlet
 
 ### Logs (/projects/proj_xxxxxxxxxx/logs)
 
-MVP 只提供三类日志：
+Logs 提供三类日志：
 
 * Build Log
 * Deploy Log
@@ -947,7 +945,7 @@ Logs 页面默认按时间倒序展示最新记录，在固定高度的滚动区
 `https://eveland.ai`，由 Cloudflare Workers 承载 Next.js/Fumadocs 应用；它不与
 API、Gateway、worker 或 Agent Deployment 共享运行权限。合入 `main` 且变更包含
 `apps/docs/**` 时，仓库 CI 自动构建并发布该公共网站。这个仓库自身的文档发布流程
-不改变 MVP 中“导入的 Eve Project 不支持 Git push 自动部署”的产品边界。
+不改变“导入的 Eve Project 不支持 Git push 自动部署”的产品边界。
 
 ```text
 Browser
@@ -1092,9 +1090,9 @@ apps -X-> apps
 
 ---
 
-## 6. MVP 非目标
+## 6. 非目标
 
-MVP 不做：
+Eveland 当前不做：
 
 * 在线代码编辑器
 * GitHub OAuth / 自动同步
@@ -1110,20 +1108,6 @@ MVP 不做：
 * 完整的多租户 sandbox
 
 ---
-
-## 7. MVP 成功标准
-
-用户可以在一台 self-hosted 机器上完成：
-
-```text
-导入一个 Eve 项目
-→ 配置 API Key
-→ Build & Deploy
-→ 在 Playground 中运行
-→ 查看 Session Timeline
-→ 查看 cron 定义及其触发产生的 Session
-→ 查看 Build / Deploy / Runtime Logs
-```
 
 ## 技术栈
 

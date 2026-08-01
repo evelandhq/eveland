@@ -106,7 +106,7 @@ async function collectSourceFiles(rootDir: string, relativeDir = ""): Promise<So
         content: await readFile(absolutePath, "utf8"),
       });
     } catch {
-      // Binary or unreadable files are not needed for the MVP source browser.
+      // Binary or unreadable files are not needed for the source browser.
     }
   }
 

@@ -265,6 +265,39 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_COLD_START_TIMEOUT_MS` | `30000` | Maximum time Gateway waits for API/Worker to make a dormant Deployment ready before returning 503/504. |
 | `EVELAND_ACTIVATION_RENEW_INTERVAL_MS` | `60000` | Gateway renewal interval while an upstream response stream is still active. |
 | `EVELAND_SCHEDULER_RUNTIME_SECRET` | *(dev fallback only under explicit `NODE_ENV=development`)* | Required in production on API and worker. Authenticates the injected private Scheduler Channel and its API callback; keep it independent from Gateway and Better Auth secrets. |
+| `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback only under explicit `NODE_ENV=development`)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
+| `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
+| `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
+| `EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS` | `120000` | Maximum private Scheduler Channel dispatch duration before the Worker treats the result as failed or unknown. |
+| `EVELAND_SCHEDULER_PREWARM_MS` | `60000` | Window before `nextRunAt` in which the scheduler target stays warm or is proactively activated. Prewarming never executes the handler early. |
+| `EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS` | `86400000` | Hard safety deadline for a dispatched ScheduleRun when private OTLP observations produce no terminal turn boundary. This is independent from the activation idle TTL. |
+| `EVELAND_IDENTITY_ISSUER` | `http://localhost:4000` | Stable public issuer embedded in Caller Tokens; configure the same value on API and worker. |
+| `EVELAND_IDENTITY_JWKS_URL` | issuer + `/.well-known/jwks.json` | Agent-reachable signing-key URL reserved and injected by Worker. Host systemd deployments normally use API loopback. |
+| `EVELAND_ACTIVATION_IDLE_TTL_MS` | `300000` | Time after the final lease release/expiry before Worker stops a ready RuntimeInstance. The Deployment and Release remain. |
+| `EVELAND_ACTIVATION_REAPER_BATCH_SIZE` | `25` | Maximum idle RuntimeInstances claimed per Worker tick. |
+| `EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE` | `25` | Maximum interrupted `starting` RuntimeInstances re-enqueued per Worker tick. |
+| `EVELAND_ACTIVATION_START_STALE_MS` | `300000` | Age after which a running activation job can be reclaimed following a Worker crash. |
+| `EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE` | `100` | Maximum ready RuntimeInstances compared with Docker/systemd process state per Worker tick. |
+| `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | `3600000` | Interval between orphan-resource sweeps (1 hour). The Worker lists running `eveland-*-dep_*` units/containers, adopts unmanaged ones into the RuntimeInstance idle lifecycle, stops processes no Deployment legitimately owns, and removes managed Agent telemetry networks whose container remains absent. `0` disables the sweep. |
+| `EVELAND_ORPHAN_GRACE_MS` | `300000` | How long an out-of-model process may keep running before the sweep stops it. |
+| `EVELAND_RELEASE_SWEEP_INTERVAL_MS` | `3600000` | Interval between automatic Release retention sweeps (1 hour). Each sweep enqueues archive jobs for old, unprotected, stopped Deployments; `0` disables the sweep. |
+| `EVELAND_RELEASE_SWEEP_BATCH_SIZE` | `25` | Maximum new archive jobs enqueued by one Release retention sweep. |
+| `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
+| `EVELAND_GIT_CLONE_TIMEOUT_MS` | `120000` | Maximum non-interactive Git clone duration before an import fails and its partial source directory is removed. Increase this only when the worker's network requires a longer bounded transfer window. |
+| `EVELAND_GIT_CLONE_MAX_ATTEMPTS` | `3` | Maximum attempts for transient Git network failures; authentication and repository-not-found failures are not retried. |
+| `EVELAND_GIT_CLONE_RETRY_DELAY_MS` | `1000` | Initial exponential backoff delay between Git attempts. |
+| `EVELAND_SOURCE_PREFLIGHT_TTL_MS` | `3600000` | Lifetime of an unconsumed source check. The worker removes expired managed snapshots; running checks are never expired mid-scan. |
+| `WORKER_JOB_HEARTBEAT_INTERVAL_MS` | `30000` | How often a running job renews its lease. |
+| `WORKER_JOB_STALE_MS` | `120000` | Time without a heartbeat before a running job is re-queued after worker failure. Keep this above the heartbeat interval. |
+| `WORKER_JOB_RECOVERY_BATCH_SIZE` | `25` | Maximum stale jobs recovered per worker poll. |
+| `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
+| `EVELAND_HOST_METRIC_INTERVAL_MS` | `60000` | How often Worker emits host CPU, memory, load, data-filesystem, inode, workload, and heartbeat metrics through OTLP. |
+| `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from automatic or manual archive. Mutable route targets, non-expired SessionBindings, and active request leases are protected independently of age. Older unprotected stopped Deployments are swept automatically; archive removes both the runtime artifact and build directory. |
+| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts stored secrets and derives Agent telemetry credentials. It must match the API value. After rotation, redeploy every Agent Deployment so its policy contains a credential signed by the new key; hot reload across a key change is not supported. Never rely on the fallback dev key outside local development. |
+| `WORKFLOW_POSTGRES_URL` | *(unset)* | Platform-owned Postgres **base** URL for durable workflow worlds. The worker derives one database per project (`eveland_wf_<project>_<digest>`), creates and bootstraps it before any deployment process starts, and injects the derived URL — deployments never share a workflow database. The role in this URL needs `CREATEDB`. Required in production and reserved from Project Secret overrides. For systemd, use a host-reachable address such as `postgres://eveland:eveland@127.0.0.1:5432/eveland`. |
+| `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | Matching `DATABASE_URL` when the deployment URL uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches a separate workflow database through `localhost` or a Compose service name. It is never injected into an Agent. |
+| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
+| `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
 ### Agent Connection credential boundary
 
@@ -322,39 +355,6 @@ typically as sibling HTTPS subdomains. The separate `eveland_identity` cookie is
 scoped to `/identity` and protects only the Identity API; `/agent-catalog` is public.
 The cookie uses `SameSite=Lax`, so an unrelated site cannot use it for credentialed
 token requests even when its exact origin is present in the CORS allowlist.
-| `EVELAND_SCHEDULER_DISPATCH_SECRET` | *(dev fallback only under explicit `NODE_ENV=development`)* | Required in production on API and worker. Signs short-lived, single-use credentials bound to one ScheduleRun and Deployment. It is never injected into an Agent. |
-| `EVELAND_SCHEDULER_REDEEM_URL` | *(unset)* | API callback injected into prepared Eve Releases. A host systemd runtime normally uses `http://127.0.0.1:4000/internal/scheduler/dispatch`; Docker Agent containers use `http://host.docker.internal:4000/internal/scheduler/dispatch`. |
-| `EVELAND_SCHEDULER_PLANNER_BATCH_SIZE` | `25` | Maximum due schedules atomically claimed in one Worker planner tick. |
-| `EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS` | `120000` | Maximum private Scheduler Channel dispatch duration before the Worker treats the result as failed or unknown. |
-| `EVELAND_SCHEDULER_PREWARM_MS` | `60000` | Window before `nextRunAt` in which the scheduler target stays warm or is proactively activated. Prewarming never executes the handler early. |
-| `EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS` | `86400000` | Hard safety deadline for a dispatched ScheduleRun when private OTLP observations produce no terminal turn boundary. This is independent from the activation idle TTL. |
-| `EVELAND_IDENTITY_ISSUER` | `http://localhost:4000` | Stable public issuer embedded in Caller Tokens; configure the same value on API and worker. |
-| `EVELAND_IDENTITY_JWKS_URL` | issuer + `/.well-known/jwks.json` | Agent-reachable signing-key URL reserved and injected by Worker. Host systemd deployments normally use API loopback. |
-| `EVELAND_ACTIVATION_IDLE_TTL_MS` | `300000` | Time after the final lease release/expiry before Worker stops a ready RuntimeInstance. The Deployment and Release remain. |
-| `EVELAND_ACTIVATION_REAPER_BATCH_SIZE` | `25` | Maximum idle RuntimeInstances claimed per Worker tick. |
-| `EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE` | `25` | Maximum interrupted `starting` RuntimeInstances re-enqueued per Worker tick. |
-| `EVELAND_ACTIVATION_START_STALE_MS` | `300000` | Age after which a running activation job can be reclaimed following a Worker crash. |
-| `EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE` | `100` | Maximum ready RuntimeInstances compared with Docker/systemd process state per Worker tick. |
-| `EVELAND_ORPHAN_SWEEP_INTERVAL_MS` | `3600000` | Interval between orphan-resource sweeps (1 hour). The Worker lists running `eveland-*-dep_*` units/containers, adopts unmanaged ones into the RuntimeInstance idle lifecycle, stops processes no Deployment legitimately owns, and removes managed Agent telemetry networks whose container remains absent. `0` disables the sweep. |
-| `EVELAND_ORPHAN_GRACE_MS` | `300000` | How long an out-of-model process may keep running before the sweep stops it. |
-| `EVELAND_RELEASE_SWEEP_INTERVAL_MS` | `3600000` | Interval between automatic Release retention sweeps (1 hour). Each sweep enqueues archive jobs for old, unprotected, stopped Deployments; `0` disables the sweep. |
-| `EVELAND_RELEASE_SWEEP_BATCH_SIZE` | `25` | Maximum new archive jobs enqueued by one Release retention sweep. |
-| `EVELAND_DEPLOYMENT_PORT` | `41000` | Start of the host-port allocation range. The worker scans `startPort..startPort+100` for a free `127.0.0.1` port to bind each deployment to. |
-| `EVELAND_GIT_CLONE_TIMEOUT_MS` | `120000` | Maximum non-interactive Git clone duration before an import fails and its partial source directory is removed. Increase this only when the worker's network requires a longer bounded transfer window. |
-| `EVELAND_GIT_CLONE_MAX_ATTEMPTS` | `3` | Maximum attempts for transient Git network failures; authentication and repository-not-found failures are not retried. |
-| `EVELAND_GIT_CLONE_RETRY_DELAY_MS` | `1000` | Initial exponential backoff delay between Git attempts. |
-| `EVELAND_SOURCE_PREFLIGHT_TTL_MS` | `3600000` | Lifetime of an unconsumed source check. The worker removes expired managed snapshots; running checks are never expired mid-scan. |
-| `WORKER_JOB_HEARTBEAT_INTERVAL_MS` | `30000` | How often a running job renews its lease. |
-| `WORKER_JOB_STALE_MS` | `120000` | Time without a heartbeat before a running job is re-queued after worker failure. Keep this above the heartbeat interval. |
-| `WORKER_JOB_RECOVERY_BATCH_SIZE` | `25` | Maximum stale jobs recovered per worker poll. |
-| `EVELAND_HEALTH_TIMEOUT_MS` | `15000` | How long the worker polls the deployment's HTTP health endpoint before failing the deploy. |
-| `EVELAND_HOST_METRIC_INTERVAL_MS` | `60000` | How often Worker emits host CPU, memory, load, data-filesystem, inode, workload, and heartbeat metrics through OTLP. |
-| `EVELAND_RELEASE_RETENTION` | `3` | Minimum number of newest release artifacts protected from automatic or manual archive. Mutable route targets, non-expired SessionBindings, and active request leases are protected independently of age. Older unprotected stopped Deployments are swept automatically; archive removes both the runtime artifact and build directory. |
-| `APP_SECRET_KEY` | *(hardcoded dev key)* | Required in production. Decrypts stored secrets and derives Agent telemetry credentials. It must match the API value. After rotation, redeploy every Agent Deployment so its policy contains a credential signed by the new key; hot reload across a key change is not supported. Never rely on the fallback dev key outside local development. |
-| `WORKFLOW_POSTGRES_URL` | *(unset)* | Platform-owned Postgres **base** URL for durable workflow worlds. The worker derives one database per project (`eveland_wf_<project>_<digest>`), creates and bootstraps it before any deployment process starts, and injects the derived URL — deployments never share a workflow database. The role in this URL needs `CREATEDB`. Required in production and reserved from Project Secret overrides. For systemd, use a host-reachable address such as `postgres://eveland:eveland@127.0.0.1:5432/eveland`. |
-| `WORKFLOW_POSTGRES_BOOTSTRAP_URL` | Matching `DATABASE_URL` when the deployment URL uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches a separate workflow database through `localhost` or a Compose service name. It is never injected into an Agent. |
-| `NODE_ENV` | *(unset)* | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above). |
-| `EVELAND_SANDBOX_CACHE_DIR` | `$EVELAND_DATA_DIR/sandbox` | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below. |
 
 Project stable routes use `<projectSlug>.<baseDomain>`. Immutable Deployment previews use
 `<eightCharacterDeploymentKey>--<projectSlug>.<baseDomain>`; the separator stays inside one
@@ -434,50 +434,24 @@ opt-in is possible future work.
 > **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
 >
 > Every deployment record stores the `runtimeKind` (`docker` or `systemd`) of
-> the adapter that created it, and `restart_deployment`, `delete_project`, and
-> a redeploy's teardown of the previous release (`build_deploy`) all resolve
-> their `stopProcess` call from that recorded value — never from the worker's
-> current `EVELAND_RUNTIME`. So as long as a deployment's `runtimeKind` is
-> correct, stopping, restarting, or deleting it always reaches the adapter
-> that actually owns the process, even after `EVELAND_RUNTIME` has moved on.
+> the adapter that created it, and stop, restart, and delete always resolve
+> their adapter from that recorded value — never from the worker's current
+> `EVELAND_RUNTIME`. The remaining risk is a `runtimeKind` that is wrong for
+> the process that actually exists: the migration that introduced the column
+> backfilled every pre-existing row as `docker`, so a host that already ran
+> `EVELAND_RUNTIME=systemd` before upgrading has all of its older deployments
+> mislabeled. Stopping one of them then resolves the Docker adapter against a
+> systemd unit — the old process is never stopped and keeps its port, a
+> redeploy crash-loops or quietly leaves two versions running, and health
+> checks can false-pass against the stale process.
 >
-> The risk that remains is a `runtimeKind` that is *wrong* for what actually
-> created the process — true of every deployment row that existed before this
-> column shipped. Its migration (`pnpm --filter @eveland/api db:generate` to
-> regenerate the migration SQL, with the checked-in history now owned by
-> `packages/db/drizzle/`, then `db:push` to apply it against
-> the target database) backfills every existing row with `runtime_kind =
-> 'docker'`, whether or not a `docker` adapter actually made it. A host that
-> was already running `EVELAND_RUNTIME=systemd` before upgrading gets every one
-> of its existing deployments mislabeled this way, and stopping, restarting, or
-> deleting one of them afterward resolves the Docker adapter against what is
-> actually a systemd unit:
->
-> - `stopProcess` against the wrong adapter fails one of two ways, depending on
->   whether that adapter's own runtime is actually present on the host. If it
->   is (e.g. this host also runs the Docker Compose stack for API/Web/Postgres,
->   so `docker` is on `PATH` and its daemon is reachable), the mismatched stop
->   is a silent no-op: `docker rm -f <name>` against a name that was never a
->   real container just reports "No such container", and the actual systemd
->   unit is never touched. If the wrong adapter's runtime isn't present at all
->   (no `docker`/`systemctl` binary, or an unreachable daemon), the stop
->   attempt now fails loudly instead — the job is marked failed and the error
->   names the command and its captured output.
-> - Either way, the old process is never actually stopped and keeps holding
->   its port.
-> - A redeploy tries to bind the same host port and crash-loops (or, on a
->   different port, quietly leaves two versions of the app running).
-> - Health checks can false-pass against the still-running old process while
->   the new one is broken, masking the failure.
->
-> Treat the **resolved** runtime as fixed per host, chosen once at provisioning
-> time — and remember there are two ways to change it: flipping `EVELAND_RUNTIME`,
-> or setting `NODE_ENV=production` on a host that leaves `EVELAND_RUNTIME` unset
-> (the production default is `systemd`). The preflight catches an accidental flip
-> loudly, but drain first regardless.
-> Drain a host first — stop and remove **every** deployment — both before
-> switching the resolved runtime and before applying this migration on a host
-> that is not already `docker`:
+> Treat the **resolved** runtime as fixed per host, chosen at provisioning
+> time — and remember it can change two ways: flipping `EVELAND_RUNTIME`, or
+> setting `NODE_ENV=production` on a host that leaves `EVELAND_RUNTIME` unset
+> (the production default is `systemd`). The preflight catches an accidental
+> flip loudly, but drain first regardless: stop and remove **every**
+> deployment before switching the resolved runtime, and before applying the
+> `runtimeKind` backfill migration on a host that is not already `docker`:
 >
 > ```bash
 > # systemd host being migrated away from, or upgrading across this migration:
