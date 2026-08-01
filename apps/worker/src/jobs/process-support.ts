@@ -157,7 +157,7 @@ function isStrictlyWithin(candidate: string, root: string): boolean {
 // ever logged, never thrown, so it can never mask the original deploy/restart
 // error that triggered the cleanup.
 export async function stopStartedProcessOnFailure(
-  store: Store,
+  store: Pick<Store, "appendLog">,
   projectId: string,
   adapter: RuntimeAdapter,
   processName: string,

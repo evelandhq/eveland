@@ -15,6 +15,7 @@ import {
   ensureDeploymentLaunchSandbox,
   materializeDeploymentLaunchContext,
   resolveDeploymentLaunchPrerequisites,
+  type LaunchInputStore,
 } from "./deployment-launch-context.js";
 import {
   allocateAvailableHostPort,
@@ -25,8 +26,26 @@ import {
 } from "./process-support.js";
 import type { ProcessJobOptions } from "./process-types.js";
 
+// The narrow persistence port this handler actually needs: its own reads
+// and writes plus the launch-context port it passes through.
+type BuildDeployStore = LaunchInputStore &
+  Pick<
+    Store,
+    | "getProject"
+    | "getCurrentSourceRevision"
+    | "getCurrentDeployment"
+    | "updateProjectState"
+    | "appendLog"
+    | "recordScheduleVersions"
+    | "listReservedDeploymentHostPorts"
+    | "recordDeployment"
+    | "setProjectSchedulerTarget"
+    | "ensureDeploymentRoutes"
+    | "promoteDeployment"
+  >;
+
 export async function handleBuildDeployJob(
-  store: Store,
+  store: BuildDeployStore,
   job: Job<"build_deploy">,
   options: ProcessJobOptions,
 ): Promise<void> {

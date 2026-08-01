@@ -57,7 +57,7 @@ export type DeploymentStartInput = Readonly<{
   launchContext: DeploymentLaunchContext;
 }>;
 
-type LaunchInputStore = Pick<
+export type LaunchInputStore = Pick<
   Store,
   | "listSecretRecords"
   | "getSharedAgentEnvironmentRecord"

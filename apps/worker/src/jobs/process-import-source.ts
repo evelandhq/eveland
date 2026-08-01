@@ -1,6 +1,12 @@
 import type { Job } from "@eveland/core/contracts";
 import { decryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
+
+// The narrow persistence port this handler actually needs.
+type ImportSourceStore = Pick<
+  Store,
+  "getProject" | "appendLog" | "recordSourceRevision" | "upsertGitCredential" | "enqueueJob"
+>;
 import path from "node:path";
 import { getGitCommitSha, importGitSource } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
@@ -8,7 +14,7 @@ import { devSecretKey, parseEncryptedSecret } from "./process-support.js";
 import type { ProcessJobOptions } from "./process-types.js";
 
 export async function handleImportSourceJob(
-  store: Store,
+  store: ImportSourceStore,
   job: Job<"import_source">,
   options: ProcessJobOptions,
 ): Promise<void> {
