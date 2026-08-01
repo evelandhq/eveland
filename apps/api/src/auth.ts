@@ -236,12 +236,29 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     return true;
   }
 
+  // The pre-write admin count alone is check-then-act: two concurrent
+  // demotions or removals can each observe two admins and both proceed. Every
+  // admin-losing mutation therefore re-counts AFTER its own write and
+  // compensates when the Team would be left without an admin -- the worst
+  // concurrent outcome is that every racing mutation is reverted and fails,
+  // never a lockout. The compensation goes through the adapter directly so it
+  // cannot depend on the caller's (possibly just-demoted) session.
+  async function countAdminMemberships(): Promise<number> {
+    const context = await auth.$context;
+    const members = await context.adapter.findMany<{ role: string }>({
+      model: "member",
+      where: [{ field: "organizationId", value: DEFAULT_ORGANIZATION_ID }],
+    });
+    return members.filter((member) => member.role === "admin").length;
+  }
+
   async function updateMemberRole(request: Request, userId: string, role: TeamRole): Promise<TeamMember> {
     await requireAdmin(request);
     const members = await listMembers(request);
     const member = members.find((candidate) => candidate.userId === userId);
     if (!member) throw new Error("Member not found");
-    if (member.role === "admin" && role === "member" && members.filter((candidate) => candidate.role === "admin").length === 1) {
+    const demotion = member.role === "admin" && role === "member";
+    if (demotion && members.filter((candidate) => candidate.role === "admin").length === 1) {
       throw new Error("Cannot demote the last admin");
     }
     const raw = await listRawMembers(request);
@@ -251,6 +268,14 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       headers: request.headers,
       body: { memberId: rawMember.id, role, organizationId: DEFAULT_ORGANIZATION_ID },
     });
+    if (demotion && (await countAdminMemberships()) === 0) {
+      await (await auth.$context).adapter.update({
+        model: "member",
+        where: [{ field: "id", value: rawMember.id }],
+        update: { role: "admin" },
+      });
+      throw new Error("Cannot demote the last admin");
+    }
     const updated = (await listMembers(request)).find((candidate) => candidate.userId === userId);
     if (!updated) throw new Error("Member not found");
     return updated;
@@ -271,6 +296,18 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       headers: request.headers,
       body: { memberIdOrEmail: rawMember.id, organizationId: DEFAULT_ORGANIZATION_ID },
     });
+    if (member.role === "admin" && (await countAdminMemberships()) === 0) {
+      await (await auth.$context).adapter.create({
+        model: "member",
+        data: {
+          organizationId: DEFAULT_ORGANIZATION_ID,
+          userId,
+          role: "admin",
+          createdAt: new Date(rawMember.createdAt),
+        },
+      });
+      throw new Error("Cannot remove the last admin");
+    }
     await (await auth.$context).internalAdapter.deleteUserSessions(userId);
     return true;
   }
