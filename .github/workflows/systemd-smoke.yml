@@ -41,7 +41,12 @@ jobs:
       - name: Install sandbox host dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y apparmor bubblewrap zstd
+          # Parity with the Lima guest's provisioning list (infra/integration/run.sh),
+          # minus docker.io: the worker preflight requires e.g. ripgrep on PATH.
+          sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq openssl python-is-python3 python3 python3-pip ripgrep unzip zstd
+          # bwrap binds /workspace as the sandbox workspace destination and
+          # cannot create it itself.
+          sudo mkdir -p /workspace
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

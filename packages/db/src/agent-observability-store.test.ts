@@ -394,6 +394,53 @@ describe("Agent observability ingestion repository", () => {
     expect(mergedEvents).toHaveLength(2);
     expect(mergedEvents.map((event) => event.index)).toEqual([0, 1]);
   });
+
+  test("a placeholder merge folds every usage counter onto the surviving session", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const gatewaySession = await store.createSession({ projectId, deploymentId, trigger: "playground" });
+    await store.recordModelUsage(gatewaySession.id, {
+      turnId: "turn_gateway",
+      stepIndex: 0,
+      finishReason: "stop",
+      inputTokens: 10,
+      outputTokens: 20,
+      cacheReadTokens: 1,
+      cacheWriteTokens: 2,
+      costUsd: 0.5,
+      usageReported: true,
+    });
+    const observed = await store.ingestAgentEvent(envelope(deploymentId));
+    await store.recordModelUsage(observed.session.id, {
+      turnId: "turn_observed",
+      stepIndex: 0,
+      finishReason: "stop",
+      inputTokens: 100,
+      outputTokens: 200,
+      cacheReadTokens: 10,
+      cacheWriteTokens: 20,
+      costUsd: 1.25,
+      usageReported: false,
+    });
+
+    const completed = await store.completeSession(gatewaySession.id, {
+      status: "completed",
+      eveSessionId: "eve_root",
+    });
+
+    // Every counter the sessions schema carries must fold across the merge;
+    // a counter missing from the fold silently loses usage here.
+    expect(completed).toMatchObject({
+      usage: {
+        inputTokens: 110,
+        outputTokens: 220,
+        cacheReadTokens: 11,
+        cacheWriteTokens: 22,
+        reportedSteps: 1,
+        missingSteps: 1,
+      },
+    });
+    expect(completed?.usage.costUsd).toBeCloseTo(1.75);
+  });
 });
 
 describe("out-of-order delivery", () => {
