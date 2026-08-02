@@ -16,7 +16,7 @@ import type {
   PublicObservabilityPolicy,
 } from "@eveland/core/observability";
 
-import { apiRequest } from "./api-transport.js";
+import { apiRequest } from "./api-transport";
 
 // Aliases of the shared contracts, not copies: the api-contract typecheck
 // pins them, so a divergence fails to compile instead of drifting silently.
