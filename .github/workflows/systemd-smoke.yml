@@ -47,6 +47,12 @@ jobs:
           # bwrap binds /workspace as the sandbox workspace destination and
           # cannot create it itself.
           sudo mkdir -p /workspace
+          # ubuntu-24.04 runners restrict unprivileged user namespaces via
+          # AppArmor, and the build sandbox runs bwrap as the unprivileged
+          # eveland-build user. The runner VM is ephemeral, so lifting the
+          # restriction mirrors the Lima guest instead of weakening a durable
+          # host.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
