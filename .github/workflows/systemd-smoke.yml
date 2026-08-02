@@ -77,6 +77,11 @@ jobs:
           id -u eveland-build >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
           id -u eveland-app >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app
           sudo install -d /var/lib/eveland-data
+          # The deployment-shaped unit runs as the unprivileged eveland-app and
+          # must reach the checkout. The runner's home is not world-traversable,
+          # unlike the Lima guest's /opt/eveland. Grant traverse on the
+          # ancestors only (contents keep their checkout permissions).
+          sudo chmod o+x /home/runner /home/runner/work "$GITHUB_WORKSPACE/.." "$GITHUB_WORKSPACE"
 
       - name: Worker preflight
         run: |
