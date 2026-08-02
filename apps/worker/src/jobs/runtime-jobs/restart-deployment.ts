@@ -8,14 +8,31 @@ import {
   ensureDeploymentLaunchSandbox,
   materializeDeploymentLaunchContext,
   resolveDeploymentLaunchPrerequisites,
+  type LaunchInputStore,
 } from "../deployment-launch-context.js";
 import { stopStartedProcessOnFailure } from "../process-support.js";
 import type { ProcessJobOptions } from "../process-types.js";
 import { settleDeploymentStatus } from "./deployment-status.js";
 import type { RuntimeJob } from "./types.js";
 
+// The narrow persistence port this handler and its launch helpers need.
+type RestartDeploymentStore = Pick<
+  Store,
+  | "appendLog"
+  | "getCurrentDeployment"
+  | "getDeployment"
+  | "getProject"
+  | "getRelease"
+  | "getSourceRevision"
+  | "listDeploymentRuntimeInstances"
+  | "transitionDeploymentStatus"
+  | "updateProjectState"
+  | "updateRuntimeInstance"
+> &
+  LaunchInputStore;
+
 export async function handleRestartDeploymentJob(
-  store: Store,
+  store: RestartDeploymentStore,
   job: RuntimeJob<"restart_deployment">,
   options: ProcessJobOptions,
 ): Promise<void> {

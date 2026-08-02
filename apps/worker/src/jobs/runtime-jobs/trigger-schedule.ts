@@ -5,7 +5,7 @@ import {
 } from "@eveland/core/server/scheduler-dispatch";
 import type { Store } from "@eveland/db";
 
-import { ensureDeploymentActive } from "../../runtime/activation-manager.js";
+import { ensureDeploymentActive, type ActivationStore } from "../../runtime/activation-manager.js";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import {
   createDeploymentStartInput,
@@ -13,13 +13,34 @@ import {
   materializeDeploymentLaunchContext,
   resolveDeploymentLaunchPrerequisites,
   resolveRecoverableRuntimeSource,
+  type LaunchInputStore,
 } from "../deployment-launch-context.js";
 import { dispatchScheduleToRuntime, errorMessage } from "../process-support.js";
 import type { ProcessJobOptions } from "../process-types.js";
 import type { RuntimeJob } from "./types.js";
 
+// The narrow persistence port this handler and its launch helpers need.
+type TriggerScheduleStore = Pick<
+  Store,
+  | "appendLog"
+  | "claimScheduleRunActivation"
+  | "completeScheduleRun"
+  | "getDeployment"
+  | "getProjectSchedule"
+  | "getRelease"
+  | "getScheduleRun"
+  | "getSourceRevision"
+  | "listProjectScheduleVersions"
+  | "listSourceRevisionFiles"
+  | "releaseActivationLease"
+  | "renewActivationLease"
+  | "updateDeploymentStatus"
+> &
+  ActivationStore &
+  LaunchInputStore;
+
 export async function handleTriggerScheduleJob(
-  store: Store,
+  store: TriggerScheduleStore,
   job: RuntimeJob<"trigger_schedule">,
   options: ProcessJobOptions,
 ): Promise<void> {

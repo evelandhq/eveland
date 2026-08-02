@@ -11,6 +11,7 @@ import {
   buildDockerStartCommand,
   createDockerAdapter,
   isBenignDockerStopFailure,
+  parseDockerPublishOwnership,
   verifyDockerSandbox,
   writeGeneratedDockerfile,
 } from "./runtime/docker.js";
@@ -66,6 +67,26 @@ test("the Worker dev process restarts when the shared .env changes", async () =>
   };
 
   expect(manifest.scripts.dev).toContain("--include ../../.env");
+});
+
+describe("parseDockerPublishOwnership", () => {
+  test("maps the daemon's publish records onto the shared PortOwnership vocabulary", () => {
+    expect(parseDockerPublishOwnership("", "eveland-proj-dep_a1")).toEqual({
+      status: "unbound",
+    });
+    expect(
+      parseDockerPublishOwnership("eveland-proj-dep_a1\n", "eveland-proj-dep_a1"),
+    ).toEqual({ status: "owned" });
+    expect(
+      parseDockerPublishOwnership(
+        "eveland-other-dep_b2\neveland-third-dep_c3\n",
+        "eveland-proj-dep_a1",
+      ),
+    ).toEqual({
+      status: "foreign",
+      holder: "eveland-other-dep_b2, eveland-third-dep_c3",
+    });
+  });
 });
 
 describe("buildDockerBuildArgs", () => {
@@ -592,9 +613,11 @@ describe("createDockerAdapter", () => {
     ).resolves.toBe(true);
   });
 
-  test("ensureProcess reuses a running container without starting another process", async () => {
+  test("ensureProcess reuses a running container only after the daemon attests it publishes the port", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({ failed: false, stdout: "running\n", all: "running\n" } as never);
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false, stdout: "running\n", all: "running\n" } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_123\n", all: "eveland-proj_123\n" } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     const result = await adapter.ensureProcess!({
@@ -611,6 +634,34 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Reused ready Docker process");
     expect(vi.mocked(execa).mock.calls).toEqual([
       ["docker", ["inspect", "--format", "{{.State.Status}}", "eveland-proj_123"], { all: true, reject: false }],
+      ["docker", ["ps", "--filter", "publish=43123", "--format", "{{.Names}}"], { all: true, reject: false }],
+    ]);
+  });
+
+  test("ensureProcess stops a live container whose port is published by another container", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false, stdout: "running\n", all: "running\n" } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_other\n", all: "eveland-proj_other\n" } as never)
+      .mockResolvedValueOnce({ failed: false, stdout: "", all: "" } as never);
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    await expect(
+      adapter.ensureProcess!({
+        processName: "eveland-proj_123",
+        releaseRef: "eveland/proj_123:rel_456",
+        port: 43123,
+        env: {},
+        commandContext: { hasLockfile: true },
+        sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        observabilityPolicyDir:
+          "/var/lib/eveland-data/observability/proj_123/dep_456",
+      }),
+    ).rejects.toThrow(/published by eveland-proj_other/);
+    expect(vi.mocked(execa).mock.calls[2]?.[1]).toEqual([
+      "rm",
+      "--force",
+      "eveland-proj_123",
     ]);
   });
 

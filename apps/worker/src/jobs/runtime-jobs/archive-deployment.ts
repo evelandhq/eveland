@@ -18,8 +18,18 @@ const MANUAL_CLAIMABLE: DeploymentStatus[] = [
   "archiving",
 ];
 
+// The narrow persistence port this handler actually needs.
+type ArchiveDeploymentStore = Pick<
+  Store,
+  | "appendLog"
+  | "getDeployment"
+  | "getDeploymentRetention"
+  | "getRelease"
+  | "transitionDeploymentStatus"
+>;
+
 export async function handleArchiveDeploymentJob(
-  store: Store,
+  store: ArchiveDeploymentStore,
   job: RuntimeJob<"archive_deployment">,
   options: ProcessJobOptions,
 ): Promise<void> {

@@ -12,7 +12,7 @@ const RUNTIME_JOB_OWNED_DEPLOYMENT_STATUSES: DeploymentStatus[] = [
 ];
 
 export async function settleDeploymentStatus(
-  store: Store,
+  store: Pick<Store, "transitionDeploymentStatus">,
   deploymentId: string,
   status: Extract<DeploymentStatus, "running" | "stopped">,
 ): Promise<void> {

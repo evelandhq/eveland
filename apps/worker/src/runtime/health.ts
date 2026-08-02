@@ -1,4 +1,4 @@
-import type { RuntimeAdapter } from "./types.js";
+import type { PortOwnershipCapability } from "./types.js";
 
 export type HttpHealthInput = {
   host: string;
@@ -9,7 +9,7 @@ export type HttpHealthInput = {
 
 export type OwnedHttpHealthInput = HttpHealthInput & {
   processName: string;
-  runtime: Pick<RuntimeAdapter, "verifyPortOwnership">;
+  runtime: Partial<PortOwnershipCapability>;
   pollIntervalMs?: number;
   waitForHealth?: (input: HttpHealthInput) => Promise<void>;
 };

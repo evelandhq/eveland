@@ -1,19 +1,37 @@
-import { type Store } from "@eveland/db";
 import type { MiddlewareHandler } from "hono";
-import type { ApiApp, AppOptions } from "./app-types.js";
+import type { ApiApp } from "./app-types.js";
 
 // Composer only: the Project protocol is four vertical slices, each owning
 // its route family. Cross-cutting deletion guarding stays here so every
-// slice registers behind it.
-import { registerProjectDeploymentRoutes } from "./app-project-deployment-routes.js";
-import { registerProjectLifecycleRoutes } from "./app-project-lifecycle-routes.js";
-import { registerProjectMetadataRoutes } from "./app-project-metadata-routes.js";
-import { registerProjectSourceRoutes } from "./app-project-source-routes.js";
+// slice registers behind it. The composer's store is the union of the slice
+// ports, so this file never sees more of the Store than its slices declare.
+import {
+  registerProjectDeploymentRoutes,
+  type ProjectDeploymentOptions,
+  type ProjectDeploymentStore,
+} from "./app-project-deployment-routes.js";
+import {
+  registerProjectLifecycleRoutes,
+  type ProjectLifecycleStore,
+} from "./app-project-lifecycle-routes.js";
+import {
+  registerProjectMetadataRoutes,
+  type ProjectMetadataStore,
+} from "./app-project-metadata-routes.js";
+import {
+  registerProjectSourceRoutes,
+  type ProjectSourceStore,
+} from "./app-project-source-routes.js";
+
+export type ProjectRoutesStore = ProjectLifecycleStore &
+  ProjectMetadataStore &
+  ProjectDeploymentStore &
+  ProjectSourceStore;
 
 export function registerProjectRoutes(input: {
   app: ApiApp;
-  store: Store;
-  options: AppOptions;
+  store: ProjectRoutesStore;
+  options: ProjectDeploymentOptions;
   dataDir: string;
   appSecretKey: string;
   sourcePreflightTtlMs: number;

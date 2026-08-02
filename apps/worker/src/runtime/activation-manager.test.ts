@@ -1,7 +1,7 @@
 import { createTestStore } from "@eveland/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { ensureDeploymentActive, reconcileRuntimeInstances } from "./activation-manager.js";
-import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
+import type { ProcessInspectionCapability, ProcessStartInput, RuntimeAdapter } from "./types.js";
 
 describe("ensureDeploymentActive", () => {
   test("waits for a draining RuntimeInstance to stop before starting its next generation", async () => {
@@ -329,7 +329,7 @@ describe("ensureDeploymentActive", () => {
         status: "foreign" as const,
         holder: "pid 4242 (unit eveland-proj_other-dep_7.service)",
       })),
-    } as unknown as RuntimeAdapter;
+    } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
     await expect(reconcileRuntimeInstances(store, {
       limit: 10,
@@ -400,7 +400,7 @@ describe("ensureDeploymentActive", () => {
       startProcess: vi.fn(),
       stopProcess: vi.fn(),
       inspectProcess: vi.fn(async () => "missing" as const),
-    } as unknown as RuntimeAdapter;
+    } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
     await expect(reconcileRuntimeInstances(store, {
       limit: 10,
@@ -466,7 +466,7 @@ describe("ensureDeploymentActive", () => {
       startProcess: vi.fn(),
       stopProcess: vi.fn(),
       inspectProcess: vi.fn(async () => "missing" as const),
-    } as unknown as RuntimeAdapter;
+    } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
     await expect(reconcileRuntimeInstances(store, {
       limit: 10,
@@ -526,7 +526,7 @@ describe("ensureDeploymentActive", () => {
         });
         return "missing" as const;
       }),
-    } as unknown as RuntimeAdapter;
+    } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
     await expect(reconcileRuntimeInstances(store, {
       limit: 10,
@@ -602,7 +602,7 @@ describe("ensureDeploymentActive", () => {
       startProcess: vi.fn(),
       stopProcess: vi.fn(),
       inspectProcess: vi.fn(async () => "missing" as const),
-    } as unknown as RuntimeAdapter;
+    } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
     await expect(reconcileRuntimeInstances(store, {
       limit: 10,
@@ -649,7 +649,7 @@ describe("ensureDeploymentActive", () => {
       startProcess: vi.fn(),
       stopProcess: vi.fn(),
       inspectProcess: vi.fn(async () => "missing" as const),
-    } as unknown as RuntimeAdapter;
+    } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
     await expect(reconcileRuntimeInstances(store, {
       now: new Date("2026-07-28T02:36:24.000Z"),
@@ -684,7 +684,7 @@ describe("ensureDeploymentActive", () => {
       startProcess: vi.fn(),
       stopProcess: vi.fn(),
       inspectProcess: vi.fn(async () => "ready" as const),
-    } as unknown as RuntimeAdapter;
+    } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
     await expect(reconcileRuntimeInstances(store, {
       now: new Date("2026-07-29T02:21:14.001Z"),

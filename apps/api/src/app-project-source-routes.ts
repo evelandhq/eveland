@@ -17,9 +17,22 @@ type CreateGitCredentialInput = {
   persistAfterImport: boolean;
 };
 
+// The narrow persistence port this slice actually needs.
+export type ProjectSourceStore = Pick<
+  Store,
+  | "createProject"
+  | "createProjectFromSourcePreflight"
+  | "createSourcePreflight"
+  | "deleteGitCredential"
+  | "getGitCredential"
+  | "getSourcePreflight"
+  | "isProjectSlugAvailable"
+  | "listGitCredentials"
+>;
+
 export function registerProjectSourceRoutes(input: {
   app: ApiApp;
-  store: Store;
+  store: ProjectSourceStore;
   dataDir: string;
   appSecretKey: string;
   sourcePreflightTtlMs: number;

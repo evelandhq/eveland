@@ -6,7 +6,7 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
-import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type ReleaseDiscovery, type CompleteRuntimeAdapter, type RuntimeCommandContext } from "./types.js";
+import { processSafeName, type PortOwnership, type PortOwnershipCapability, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type ReleaseDiscovery, type CompleteRuntimeAdapter, type RuntimeCommandContext } from "./types.js";
 import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
 import { AGENT_OBSERVABILITY_MOUNT_DIR } from "./observability/policy.js";
 import {
@@ -290,12 +290,32 @@ export type DockerAdapterConfig = {
   backendDistDir: () => string;
 };
 
-export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntimeAdapter {
+/**
+ * Maps `docker ps --filter publish=<port>` output onto the shared
+ * PortOwnership vocabulary. The daemon's publish records are docker's
+ * authority on which container holds a host port -- docker-proxy binds the
+ * socket itself, so an ss/pid lookup would name docker-proxy for every
+ * container and prove nothing.
+ */
+export function parseDockerPublishOwnership(
+  stdout: string,
+  processName: string,
+): PortOwnership {
+  const names = stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (names.length === 0) return { status: "unbound" };
+  if (names.includes(processName)) return { status: "owned" };
+  return { status: "foreign", holder: names.join(", ") };
+}
+
+export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntimeAdapter & PortOwnershipCapability {
   const collectorContainerName =
     config.collectorContainerName ?? defaultCollectorContainerName;
   const envDir = path.resolve(config.dataDir, "deployment-env");
   const envFilePathFor = (processName: string) => path.join(envDir, `${processName}.env`);
-  const adapter: CompleteRuntimeAdapter = {
+  const adapter: CompleteRuntimeAdapter & PortOwnershipCapability = {
     name: "docker",
     async buildRelease(input: ReleaseBuildInput): Promise<ReleaseBuildResult> {
       const imageTag = `eveland/${processSafeName(input.projectId)}:${processSafeName(input.releaseId)}`;
@@ -426,10 +446,46 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
         logs: diagnosticCommandOutput(logs, "docker logs"),
       };
     },
+    async verifyPortOwnership({ processName, port }): Promise<PortOwnership> {
+      // A non-container host process holding the port stays invisible to the
+      // daemon and reports "unbound"; the readiness gate then times out
+      // instead of trusting the wrong responder's HTTP answers.
+      const published = await execa(
+        "docker",
+        ["ps", "--filter", `publish=${port}`, "--format", "{{.Names}}"],
+        { all: true, reject: false },
+      );
+      if (published.failed) {
+        // Silently passing here would reintroduce blind trust in whatever
+        // answers on the port, so an unusable lookup fails activation loudly.
+        throw new Error(`docker publish lookup for port ${port} failed: ${published.all || "no output captured"}`);
+      }
+      return parseDockerPublishOwnership(published.stdout ?? "", processName);
+    },
     async ensureProcess(input) {
-      const status = await adapter.inspectProcess!(input.processName);
+      const status = await adapter.inspectProcess(input.processName);
       if (status === "ready" || status === "starting") {
-        return { internalPort: config.internalPort, log: `Reused ${status} Docker process ${input.processName}.` };
+        const ownership = await adapter.verifyPortOwnership({
+          processName: input.processName,
+          port: input.port,
+        });
+        if (ownership.status === "owned" || (ownership.status === "unbound" && status === "starting")) {
+          // A starting container that has not published yet is a legitimate
+          // reuse; the readiness gate keeps polling ownership afterwards.
+          return { internalPort: config.internalPort, log: `Reused ${status} Docker process ${input.processName}.` };
+        }
+        if (ownership.status === "foreign") {
+          // The container is alive but its host port is served by another
+          // container; left running its traffic would reach the wrong Agent.
+          await dockerStopAndRemove(input.processName);
+          throw new Error(
+            `Docker process ${input.processName} does not publish port ${input.port}: ` +
+              `the port is published by ${ownership.holder}. Stopped the container instead of ` +
+              "reusing it against another container's socket.",
+          );
+        }
+        // Ready but unbound: the daemon no longer maps this port to the
+        // container (a re-created deployment on a new port); replace it.
       }
       if (status !== "missing") await dockerStopAndRemove(input.processName);
       return adapter.startProcess(input);

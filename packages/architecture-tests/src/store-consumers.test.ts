@@ -14,14 +14,6 @@ const FULL_STORE_ALLOWLIST: string[] = [
   "apps/api/src/app-observability-proxy-routes.ts",
   "apps/api/src/app-observability-routes.ts",
   "apps/api/src/app-otel-routes.ts",
-  // The four slices of the former app-project-routes monolith plus its
-  // composer: one prior entry became five, not new consumption. Their
-  // narrow ports land with the Store-narrowing pass.
-  "apps/api/src/app-project-deployment-routes.ts",
-  "apps/api/src/app-project-lifecycle-routes.ts",
-  "apps/api/src/app-project-metadata-routes.ts",
-  "apps/api/src/app-project-routes.ts",
-  "apps/api/src/app-project-source-routes.ts",
   "apps/api/src/app-query-routes.ts",
   "apps/api/src/app-secret-routes.ts",
   "apps/api/src/app-support.ts",
@@ -33,13 +25,6 @@ const FULL_STORE_ALLOWLIST: string[] = [
   "apps/worker/src/jobs/job-registry.ts",
   "apps/worker/src/jobs/process-observability.ts",
   "apps/worker/src/jobs/process.ts",
-  "apps/worker/src/jobs/runtime-jobs/archive-deployment.ts",
-  "apps/worker/src/jobs/runtime-jobs/delete-project.ts",
-  "apps/worker/src/jobs/runtime-jobs/deployment-status.ts",
-  "apps/worker/src/jobs/runtime-jobs/ensure-deployment-running.ts",
-  "apps/worker/src/jobs/runtime-jobs/restart-deployment.ts",
-  "apps/worker/src/jobs/runtime-jobs/trigger-schedule.ts",
-  "apps/worker/src/runtime/activation-manager.ts",
   "apps/worker/src/runtime/identity-config-reconciler.ts",
   "apps/worker/src/runtime/idle-reaper.ts",
   "apps/worker/src/runtime/orphan-reaper.ts",
