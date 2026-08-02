@@ -16,8 +16,6 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
     packageName: dependencyName,
   }),
 );
-const eveBin = eveBinFor("eve");
-
 describe("injectSchedulerAdapter", () => {
   test("fails closed outside the latest three verified Eve minors", async () => {
     for (const eveVersion of ["0.26.2", "0.30.0", "~0.30.0", ">=0.27.0", "*", "latest"]) {

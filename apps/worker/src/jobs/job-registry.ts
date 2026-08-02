@@ -2,7 +2,11 @@ import type { Job, JobType } from "@eveland/core/contracts";
 import type { Store } from "@eveland/db";
 import { handleBuildDeployJob } from "./process-build-deploy.js";
 import { handleImportSourceJob } from "./process-import-source.js";
-import { runtimeJobHandlers } from "./process-runtime-job.js";
+import { handleArchiveDeploymentJob } from "./runtime-jobs/archive-deployment.js";
+import { handleDeleteProjectJob } from "./runtime-jobs/delete-project.js";
+import { handleEnsureDeploymentRunningJob } from "./runtime-jobs/ensure-deployment-running.js";
+import { handleRestartDeploymentJob } from "./runtime-jobs/restart-deployment.js";
+import { handleTriggerScheduleJob } from "./runtime-jobs/trigger-schedule.js";
 import type { ProcessJobOptions } from "./process-types.js";
 
 export type JobDescriptor<Type extends JobType = JobType> = {
@@ -47,7 +51,7 @@ export const jobRegistry: { [Type in JobType]: JobDescriptor<Type> } = {
     },
   },
   restart_deployment: {
-    handle: runtimeJobHandlers.restart_deployment,
+    handle: handleRestartDeploymentJob,
     onFailure: async (store, job) => {
       await store.updateProjectState(job.projectId, {
         status: "failed",
@@ -56,13 +60,13 @@ export const jobRegistry: { [Type in JobType]: JobDescriptor<Type> } = {
     },
   },
   trigger_schedule: {
-    handle: runtimeJobHandlers.trigger_schedule,
+    handle: handleTriggerScheduleJob,
     onFailure: async (store, job) => {
       await store.updateProjectState(job.projectId, { status: "failed" });
     },
   },
   ensure_deployment_running: {
-    handle: runtimeJobHandlers.ensure_deployment_running,
+    handle: handleEnsureDeploymentRunningJob,
     onFailure: async (store, job, message) => {
       await store.updateRuntimeInstance(job.payload.runtimeInstanceId, {
         status: "failed",
@@ -79,10 +83,10 @@ export const jobRegistry: { [Type in JobType]: JobDescriptor<Type> } = {
   // Archive failures leave project state alone: the deployment reverts to
   // its pre-claim status and nothing user-facing changed.
   archive_deployment: {
-    handle: runtimeJobHandlers.archive_deployment,
+    handle: handleArchiveDeploymentJob,
   },
   delete_project: {
-    handle: runtimeJobHandlers.delete_project,
+    handle: handleDeleteProjectJob,
     onFailure: async (store, job, message) => {
       await store.setProjectDeletionFailed(job.projectId, message);
     },

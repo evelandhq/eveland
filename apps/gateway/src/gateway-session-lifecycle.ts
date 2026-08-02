@@ -125,12 +125,6 @@ export type GatewaySessionProvenance =
       requestId: string;
     };
 
-export type GatewaySessionResponseEffect =
-  | { kind: "none" }
-  | { kind: "bound"; eveSessionId: string }
-  | { kind: "continuation_token_set"; eveSessionId: string }
-  | { kind: "continuation_token_cleared"; eveSessionId: string };
-
 export async function applyGatewaySessionResponse(input: {
   repository: GatewaySessionBindingRepository;
   projectId: string;
@@ -139,7 +133,7 @@ export async function applyGatewaySessionResponse(input: {
   upstream: Response;
   target: GatewaySessionTarget;
   provenance: GatewaySessionProvenance;
-}): Promise<GatewaySessionResponseEffect> {
+}): Promise<void> {
   const { request, upstream } = input;
   if (
     !request ||
@@ -147,7 +141,7 @@ export async function applyGatewaySessionResponse(input: {
     request.kind === "cancel" ||
     request.kind === "stream"
   ) {
-    return { kind: "none" };
+    return;
   }
 
   const metadata = isJsonResponse(upstream)
@@ -157,7 +151,7 @@ export async function applyGatewaySessionResponse(input: {
   if (request.kind === "initial") {
     const eveSessionId =
       upstream.headers.get("x-eve-session-id") ?? metadata?.sessionId ?? null;
-    if (!eveSessionId) return { kind: "none" };
+    if (!eveSessionId) return;
 
     const provenance = bindingProvenance(input.provenance);
     await input.repository.bindSession({
@@ -167,7 +161,7 @@ export async function applyGatewaySessionResponse(input: {
       ...input.target,
       ...provenance,
     });
-    return { kind: "bound", eveSessionId };
+    return;
   }
 
   if (
@@ -180,10 +174,7 @@ export async function applyGatewaySessionResponse(input: {
       request.sessionId,
       metadata.continuationToken,
     );
-    return {
-      kind: "continuation_token_set",
-      eveSessionId: request.sessionId,
-    };
+    return;
   }
 
   if (
@@ -197,13 +188,7 @@ export async function applyGatewaySessionResponse(input: {
       input.binding.eveSessionId,
       null,
     );
-    return {
-      kind: "continuation_token_cleared",
-      eveSessionId: input.binding.eveSessionId,
-    };
   }
-
-  return { kind: "none" };
 }
 
 function bindingProvenance(

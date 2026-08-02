@@ -13,7 +13,7 @@ const { importGitSource, getGitCommitSha, scanEveSource } = vi.hoisted(() => ({
 vi.mock("../source/importer.js", () => ({ importGitSource, getGitCommitSha }));
 vi.mock("../source/scan.js", () => ({ scanEveSource }));
 
-import { processNextSourcePreflight } from "./process.js";
+import { processNextSourcePreflight } from "./process-source-preflight.js";
 
 describe("source preflight fencing", () => {
   test("threads the heartbeat abort signal through the git import", async () => {

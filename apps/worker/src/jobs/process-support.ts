@@ -221,7 +221,6 @@ export async function composeDeploymentEnv(
     "listSecretRecords" | "getSharedAgentEnvironmentRecord"
   >,
   projectId: string,
-  deploymentId: string,
   options: ProcessJobOptions,
   workerEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<{ env: Record<string, string>; secretValues: string[] }> {

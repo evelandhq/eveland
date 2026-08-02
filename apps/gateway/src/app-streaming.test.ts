@@ -1,23 +1,8 @@
-import {
-  createServer,
-  request as httpRequest,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
+import { request as httpRequest } from "node:http";
 import { serve } from "@hono/node-server";
-import { afterEach, describe, expect, test, vi } from "vitest";
-import { createBuildInfo } from "@eveland/core/build-info";
-import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
-import {
-  createGatewayApp,
-  type GatewayRepository,
-  type ResolvedAgentRoute,
-} from "./app.js";
+import { describe, expect, test, vi } from "vitest";
+import { createGatewayApp } from "./app.js";
 import { affinityBucketForRoute } from "@eveland/core/routing";
-import {
-  AGENT_AUTH_ENVELOPE_HEADER,
-  encodeAgentAuthEnvelope,
-} from "@eveland/core/agent-auth";
 import {
   activatedSessionPersistenceFailureFixture,
   affinitySecret,

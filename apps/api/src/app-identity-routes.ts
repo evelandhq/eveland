@@ -228,7 +228,7 @@ export function registerPublicIdentityRoutes(
     try {
       const sessionToken =
         getCookie(c, IDENTITY_SESSION_COOKIE_NAME) ?? "";
-      const resolved = await broker.resolveSession(sessionToken);
+      await broker.resolveSession(sessionToken);
       const catalogAgent = (await store.listAgentCatalog()).find(
         (agent) => agent.projectId === parsed.data.projectId,
       );

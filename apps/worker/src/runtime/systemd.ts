@@ -72,9 +72,9 @@ fi
 /**
  * Every project's sandbox cache lives at `<root>/<processSafeName(projectId)>`.
  * Exported so `createSystemdAdapter` (which knows the projectId at build time)
- * and `jobs/process.ts` (which must pass the identical path into
- * `startProcess`, since `ProcessStartInput` carries no projectId) can never
- * compute two different paths for the same project.
+ * and `jobs/process-support.ts` (which must pass the identical path into
+ * `startProcess` via the launch context, since `ProcessStartInput` carries no
+ * projectId) can never compute two different paths for the same project.
  */
 export function resolveProjectSandboxCacheDir(root: string, projectId: string): string {
   return path.resolve(root, processSafeName(projectId));
@@ -82,11 +82,12 @@ export function resolveProjectSandboxCacheDir(root: string, projectId: string): 
 
 /**
  * Root holding every project's durable sandbox cache. `select.ts` (constructing
- * the systemd adapter) and `jobs/process.ts` (which must pass the identical
- * path into `startProcess`, since `ProcessStartInput` carries no projectId)
- * both call this so the two can never compute two different roots for the
- * same env -- a typo'd env var name in one of the two call sites is now a
- * single point of failure this function's own tests would catch.
+ * the systemd adapter) and `jobs/process-support.ts` (which must pass the
+ * identical path into `startProcess` via the launch context, since
+ * `ProcessStartInput` carries no projectId) both call this so the two can
+ * never compute two different roots for the same env -- a typo'd env var name
+ * in one of the two call sites is now a single point of failure this
+ * function's own tests would catch.
  */
 export function resolveSandboxCacheRoot(env: NodeJS.ProcessEnv): string {
   return path.resolve(env.EVELAND_SANDBOX_CACHE_DIR ?? path.join(env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox"));

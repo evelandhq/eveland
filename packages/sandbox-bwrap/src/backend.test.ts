@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { mkdtemp, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

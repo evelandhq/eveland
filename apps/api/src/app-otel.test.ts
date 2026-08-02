@@ -159,14 +159,14 @@ describe("Built-in OTLP ingest", () => {
       {
         signal: "traces",
         payload: protobufTraceBatch(),
-        verify: async (store: ReturnType<typeof createTestStore>) => {
+        verify: async () => {
           // Traces persist nothing beyond the receipt asserted in the loop.
         },
       },
       {
         signal: "logs",
         payload: platformLogBatch(),
-        verify: async (store: ReturnType<typeof createTestStore>) => {
+        verify: async () => {
           // Platform logs are not part of the Built-in read model.
         },
         rejected: 1,

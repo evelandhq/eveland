@@ -126,7 +126,7 @@ describe("Eveland Internal Identity routes", () => {
   });
 
   test("lets only an admin configure one Internal provider and its Realm", async () => {
-    const { app, store } = await createIdentityApp();
+    const { app } = await createIdentityApp();
     const cookie = await signIn(app);
 
     const providerResponse = await app.request("/system/identity/providers", {

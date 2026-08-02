@@ -54,10 +54,7 @@ import type {
 } from "@eveland/core/contracts";
 import type { ModelStepUsage } from "@eveland/core/eve";
 import type { AgentCatalogRecord } from "@eveland/core/catalog";
-import type {
-  AgentEventObservation,
-  TelemetryDomain,
-} from "@eveland/core/observability";
+import type { AgentEventObservation } from "@eveland/core/observability";
 import type { EveVersionInfo } from "@eveland/core/source";
 import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
 import type {
