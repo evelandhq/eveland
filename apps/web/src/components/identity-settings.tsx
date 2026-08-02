@@ -32,7 +32,7 @@ import {
   updateInternalIdentityProvider,
   upsertIdentityReturnTarget,
 } from "@/lib/client-api";
-import type { PublicIdentityProvider } from "@/lib/server-api";
+import type { PublicIdentityProvider } from "@/lib/api";
 
 export function IdentitySettings({
   initialProviders,

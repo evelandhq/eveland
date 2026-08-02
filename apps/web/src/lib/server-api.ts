@@ -30,7 +30,6 @@ import type {
   SourceRevision,
 } from "./api";
 import type { PublicIdentityProvider } from "./api";
-export type { PublicIdentityProvider } from "./api";
 import type {
   AuthPrincipal as CurrentMember,
   TeamInvitation as Invitation,

@@ -1,11 +1,14 @@
 import { describe, expect, test, vi } from "vitest";
 import * as ClientApi from "../lib/client-api.js";
+import {
+  cancelPlaygroundTurn,
+  createPlaygroundMessage,
+  resetPlaygroundConversation,
+} from "../lib/playground-session.js";
 
 describe("Playground message composition", () => {
   test("sends plain text directly and converts uploaded files to Eve user-content parts", () => {
-    const createMessage = (ClientApi as Record<string, unknown>).createPlaygroundMessage;
-    expect(createMessage).toBeTypeOf("function");
-    if (typeof createMessage !== "function") return;
+    const createMessage = createPlaygroundMessage;
 
     expect(createMessage("  Hello  ", [])).toBe("Hello");
     expect(
@@ -26,10 +29,6 @@ describe("Playground message composition", () => {
   });
 
   test("requests server cancellation and surfaces failures", async () => {
-    const cancelPlaygroundTurn = (ClientApi as Record<string, unknown>).cancelPlaygroundTurn;
-    expect(cancelPlaygroundTurn).toBeTypeOf("function");
-    if (typeof cancelPlaygroundTurn !== "function") return;
-
     const cancel = vi.fn(async () => ({ sessionId: "eve_1", status: "accepted" as const }));
     await cancelPlaygroundTurn({ cancel });
     expect(cancel).toHaveBeenCalledOnce();
@@ -39,10 +38,6 @@ describe("Playground message composition", () => {
   });
 
   test("resets the durable Playground session before clearing the conversation", async () => {
-    const resetPlaygroundConversation = (ClientApi as Record<string, unknown>).resetPlaygroundConversation;
-    expect(resetPlaygroundConversation).toBeTypeOf("function");
-    if (typeof resetPlaygroundConversation !== "function") return;
-
     const order: string[] = [];
     await resetPlaygroundConversation({
       session: { reset: vi.fn(async () => { order.push("server"); }) },

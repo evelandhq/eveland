@@ -15,11 +15,15 @@ import type {
   Project as CoreProject,
   ProjectSchedule as CoreProjectSchedule,
   ProjectScheduleSummary as CoreProjectScheduleSummary,
+  AgentEndpoints as CoreAgentEndpoints,
+  DeploymentOverview as CoreDeploymentOverview,
+  PublicDeploymentRecord as CorePublicDeployment,
   PublicJob as CorePublicJob,
   PublicReleaseRecord as CorePublicRelease,
   PublicSecret as CorePublicSecret,
   PublicSession as CorePublicSession,
   PublicSourceRevision as CorePublicSourceRevision,
+  ResolvedAgentRoute as CoreResolvedAgentRoute,
   ScheduleRecord,
   ScheduleRunListItem,
   ScheduleVersion as CoreScheduleVersion,
@@ -27,6 +31,7 @@ import type {
   SessionNode as CoreSessionNode,
   SessionTokenUsage as CoreSessionTokenUsage,
   SourceFileRecord,
+  VariantMetric as CoreVariantMetric,
 } from "@eveland/core/contracts";
 
 export type Project = CoreProject;
@@ -46,53 +51,15 @@ export type ScheduleRunDetail = ScheduleRun & {
   deployment: Deployment;
 };
 
-export type AgentEndpoints = {
-  stable: string | null;
-  previews: string[];
-};
-
-export type Deployment = {
-  id: string;
-  deploymentKey: string;
-  projectId: string;
-  releaseId: string;
-  hostPort: number;
-  status: "running" | "draining" | "stopped" | "archiving" | "archived" | "failed";
-  runtimeKind: "docker" | "systemd";
-  createdAt: string;
-};
-
-export type AgentRoute = {
-  id: string;
-  hostname: string;
-  kind: "project" | "deployment" | "alias";
-  policyRevision: number;
-  targets: Array<{ deploymentId: string; weight: number; variantName: string | null }>;
-};
-
-export type DeploymentOverview = {
-  deployments: Deployment[];
-  routes: AgentRoute[];
-  retention: Array<{ deployment: Deployment; protected: boolean; reasons: string[] }>;
-  /**
-   * Release id -> build-derived summary projected from eve's discovery
-   * manifest; null for releases built before the projection existed or whose
-   * manifest was unreadable.
-   */
-  releaseSummaries: Record<string, Record<string, unknown> | null>;
-};
-
-export type VariantMetric = {
-  deploymentId: string | null;
-  experimentId: string | null;
-  variantName: string;
-  sessions: number;
-  success: number;
-  failure: number;
-  averageLatencyMs: number;
-  tokens: number;
-  costUsd: number;
-};
+// Pinned to the core wire shapes (api-contract.typecheck.ts asserts the
+// equality): the deployment domain previously hand-wrote these and had
+// already drifted -- Deployment lost updatedAt, and AgentRoute described
+// narrower targets than the API actually returns.
+export type AgentEndpoints = CoreAgentEndpoints;
+export type Deployment = CorePublicDeployment;
+export type AgentRoute = CoreResolvedAgentRoute;
+export type DeploymentOverview = CoreDeploymentOverview;
+export type VariantMetric = CoreVariantMetric;
 
 export type SessionTokenUsage = CoreSessionTokenUsage;
 export type SessionEvent = CoreSessionEvent;
