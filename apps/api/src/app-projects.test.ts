@@ -501,6 +501,60 @@ describe("api app", () => {
     expect(JSON.stringify(body)).not.toContain("41000");
   });
 
+  test("orders preview endpoints oldest-first by deployment and drops archived ones", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Preview Order Agent",
+      importKind: "zip",
+    });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/source",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deploymentKeys: string[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const deployment = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `preview-order-${index}`,
+        containerName: `preview-order-${index}`,
+        internalPort: 3000,
+        hostPort: 41000 + index,
+        runtimeKind: "docker",
+      });
+      await store.ensureDeploymentRoutes(
+        project.id,
+        deployment.id,
+        "agent.localhost",
+      );
+      deploymentKeys.push(deployment.deploymentKey);
+    }
+    const deployed = await store.listDeployments(project.id);
+    const newest = deployed[0]!;
+    const archived = deployed[2]!;
+    await store.updateDeploymentStatus(archived.id, "archived");
+
+    const response = await createApp(store).request(
+      `/projects/${project.id}/endpoints`,
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { previews: string[] };
+    expect(body.previews).toEqual(
+      deploymentKeys
+        .filter((key) => key !== archived.deploymentKey)
+        .map((key) => `http://${key}--${project.slug}.agent.localhost:4080`),
+    );
+    expect(body.previews.at(-1)).toBe(
+      `http://${newest.deploymentKey}--${project.slug}.agent.localhost:4080`,
+    );
+  });
+
   test("atomically promotes, rolls traffic weights, creates aliases, and invalidates Gateway cache", async () => {
     const store = createTestStore();
     const invalidated: string[][] = [];

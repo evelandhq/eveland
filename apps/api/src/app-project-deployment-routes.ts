@@ -69,9 +69,16 @@ export function registerProjectDeploymentRoutes(input: {
           )
         : null,
       previews: routes
-        .filter((route) => route.kind === "deployment")
-        .map((route) => publicGatewayUrl(route.hostname, options))
-        .sort(),
+        .filter(
+          (route) =>
+            route.kind === "deployment" &&
+            route.enabled &&
+            route.targets.some((target) => target.status !== "archived"),
+        )
+        .sort((a, b) =>
+          a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0,
+        )
+        .map((route) => publicGatewayUrl(route.hostname, options)),
     });
   });
 
