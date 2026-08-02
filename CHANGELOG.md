@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.23.1](https://github.com/evelandhq/eveland/compare/v0.23.0...v0.23.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* close six runtime risks across gateway, agent-auth, and the control plane ([#249](https://github.com/evelandhq/eveland/issues/249)) ([9987401](https://github.com/evelandhq/eveland/commit/99874016d93bbb5d435dbd4d7729cf49a3e10e82))
+* **worker:** attest Docker port ownership, narrow the ports, and total the guardrails ([#251](https://github.com/evelandhq/eveland/issues/251)) ([5b08b07](https://github.com/evelandhq/eveland/commit/5b08b07bc499abf1f1d356fd23a7ecfc6e20b8ab))
+
 ## [0.23.0](https://github.com/evelandhq/eveland/compare/v0.22.0...v0.23.0) (2026-08-01)
 
 
