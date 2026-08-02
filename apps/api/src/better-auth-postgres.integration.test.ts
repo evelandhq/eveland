@@ -5,6 +5,13 @@ import { afterAll, describe, expect, test } from "vitest";
 import { createBetterAuthRuntime } from "./auth.js";
 
 const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
+// Local runs may skip; CI must never silently lose this file to a renamed
+// env var (same fail-fast as packages/db's postgres-integration support).
+if (process.env.CI && !databaseUrl) {
+  throw new Error(
+    "CI is set but EVELAND_POSTGRES_TEST_URL is not: the Better Auth Postgres integration test would silently skip.",
+  );
+}
 const database = databaseUrl ? createDatabase(databaseUrl) : null;
 
 afterAll(async () => database?.close());

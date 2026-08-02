@@ -1,0 +1,93 @@
+name: systemd smoke
+
+# The production worker topology (systemd + bwrap sandbox) previously had no
+# automated coverage at all -- only the manual Lima harness in
+# infra/integration/run.sh. This is the reduced version of that harness on a
+# plain ubuntu runner (a full systemd VM): preflight, the worker systemd
+# smoke, the bwrap backend contract, the end-to-end sandbox proof, and the
+# gateway e2e against the real systemd runtime. The Lima script remains the
+# full-fidelity harness (observer/connections/schedule e2e stay there; the
+# schedule e2e carries a known upstream replay flake that would poison a
+# nightly signal).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: systemd-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install sandbox host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apparmor bubblewrap zstd
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the sandbox backend
+        run: pnpm --filter @eveland/sandbox-bwrap build
+
+      - name: Provision worker users and data root
+        run: |
+          id -u eveland-build >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
+          id -u eveland-app >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app
+          sudo install -d /var/lib/eveland-data
+
+      - name: Worker preflight
+        run: |
+          sudo -E env "PATH=$PATH" \
+            EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
+            pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+
+      - name: Worker systemd smoke
+        run: |
+          sudo -E env "PATH=$PATH" \
+            EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
+            pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
+
+      - name: bwrap backend contract (deployment-shaped unit)
+        run: |
+          sudo install -d -o eveland-app -g eveland-app /var/lib/eveland-app
+          sudo systemd-run --wait --pipe --collect --service-type=exec \
+            --property=User=eveland-app \
+            --property=NoNewPrivileges=yes \
+            --property=ProtectSystem=strict \
+            --property=PrivateTmp=yes \
+            --property=ReadWritePaths=/var/lib/eveland-app \
+            --setenv=TMPDIR=/var/lib/eveland-app \
+            bash -lc "cd $GITHUB_WORKSPACE/packages/sandbox-bwrap && ../../node_modules/.bin/tsx src/integration/bwrap-backend-smoke.ts"
+
+      - name: Agent sandbox end-to-end
+        run: |
+          sudo -E env "PATH=$PATH" \
+            EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
+            pnpm --filter @eveland/worker exec tsx src/integration/agent-sandbox-e2e.ts
+
+      - name: Gateway e2e against the systemd runtime
+        run: |
+          sudo -E env "PATH=$PATH" \
+            EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
+            EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
+            pnpm exec tsx infra/integration/gateway-e2e.mts

@@ -103,6 +103,9 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
 - `packages/session-collector`: standard OTLP projection into Eveland
   Session, usage, and instance-health read models.
 - `packages/sandbox-bwrap`: the systemd runtime's Eve exec sandbox backend.
+- `packages/architecture-tests`: the ratchet suite that enforces this file's
+  dependency direction and the workspace-wide structural rules (see
+  "Architecture ratchets" below).
 - `packages/agent-auth`: Agent Connection auth providers, OIDC, and the sealed
   config/credential envelopes.
 - `packages/identity-broker`: Agent-user Identity realms, sessions, and Caller
@@ -119,17 +122,40 @@ Keep the dependency direction:
 apps -> packages
 session-collector -> core + db
 agent-auth, identity-broker -> core + db
-agent-scheduler -> core
+agent-observer, agent-scheduler -> core
+platform-observability, sandbox-bwrap, architecture-tests -> no Eveland package
 sdk -> no Eveland package at all
 db -> core
 core -> no other Eveland package
 apps -X-> apps
 ```
 
+This direction is enforced, not aspirational: the matrix in
+`packages/architecture-tests/src/import-boundaries.test.ts` is total over
+`packages/`, so a new package must declare its allowed edges there before it
+can depend on anything.
+
 Do not add a `packages/core` root barrel. Import its explicit exports such as
 `@eveland/core/contracts`, `@eveland/core/eve`, and
 `@eveland/core/server/archive`. Shared app behavior belongs in a package, not in
 an app-to-app import.
+
+### Architecture ratchets
+
+`packages/architecture-tests` runs in the normal test suite and holds the
+structural rules as executable ratchets: the dependency matrix above, the
+no-app-to-app and no-deep-import rules, the import-cycle check (allowlist
+currently empty), the full-Store consumer allowlist (new code takes a narrow
+domain port; the list only shrinks), the browser-safe scan of core's
+non-server exports, the source->registry environment coverage, and the
+repo-wide consistency suites for the eve compatibility window and the
+environment-variable reference.
+
+Editing a ratchet allowlist is a reviewed design decision, not a fix for a
+failing build: an addition needs a comment in the allowlist explaining why and
+what will remove it again. Deleting or weakening a scan to get a change green
+is never acceptable; if a rule is genuinely wrong, change the rule and this
+file in the same PR.
 
 Keep composition entrypoints thin. Add behavior to the module that owns the
 domain instead of rebuilding monoliths in `packages/db/src/store.ts`,

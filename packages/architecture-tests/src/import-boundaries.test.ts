@@ -7,10 +7,16 @@ import {
 } from "./scan-support.js";
 
 // The dependency direction from AGENTS.md, enforced instead of documented.
+// The matrix is TOTAL over packages/: a workspace missing here fails the
+// suite, so a new package is born constrained instead of unratcheted.
 const PACKAGE_DEPENDENCY_MATRIX: Record<string, string[]> = {
   "@eveland/core": [],
   "@eveland/db": ["@eveland/core"],
+  "@eveland/agent-observer": ["@eveland/core"],
   "@eveland/agent-scheduler": ["@eveland/core"],
+  "@eveland/architecture-tests": [],
+  "@eveland/platform-observability": [],
+  "@eveland/sandbox-bwrap": [],
   "@eveland/session-collector": ["@eveland/core", "@eveland/db"],
   "@eveland/agent-auth": ["@eveland/core", "@eveland/db"],
   "@eveland/identity-broker": ["@eveland/core", "@eveland/db"],
@@ -91,6 +97,11 @@ describe("workspace import boundaries", () => {
         }
       }
       const allowed = PACKAGE_DEPENDENCY_MATRIX[workspace.name];
+      if (!allowed && !workspace.directory.startsWith("apps/")) {
+        violations.push(
+          `${workspace.name} is not in the dependency matrix; add its allowed edges instead of leaving it unratcheted`,
+        );
+      }
       if (allowed) {
         for (const dependency of declaredWorkspaceDependencies(workspace.manifest)) {
           if (dependency.startsWith("@eveland/") && !allowed.includes(dependency)) {

@@ -30,6 +30,9 @@ repository shape and how to run it.
 - `packages/session-collector`: standard OTLP decoding and projection into the built-in
   Session, usage, and instance-health read models.
 - `packages/sdk`: the published `eveland` npm package (`eveland/auth`).
+- `packages/architecture-tests`: executable ratchets for the workspace's dependency
+  direction, import cycles, full-Store consumers, browser-safe core exports, and
+  environment-variable coverage.
 - `apps/api`: Hono control-plane API with Better Auth sessions, team membership, and
   the authenticated built-in OTLP ingest endpoint.
 - `apps/gateway`: host-routed public Agent data plane. Preserves Agent auth/cookies and

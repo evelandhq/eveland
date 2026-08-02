@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { configurationDefinitions } from "./config-diagnostics.js";
+import { configurationDefinitions } from "@eveland/core/config-diagnostics";
 
 /**
  * `docs/environment-variables.md` is the operator-facing reference, and the

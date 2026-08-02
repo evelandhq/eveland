@@ -6,6 +6,18 @@ import { createDatabase, type Database } from "./client.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
+// Every real-Postgres integration file gates itself with
+// `describe.skipIf(!EVELAND_POSTGRES_TEST_URL)`. On a developer machine that
+// is a feature; under CI it is how a renamed workflow env var silently turns
+// the whole integration layer into green-but-skipped. The import of this
+// module still executes in skipped files, so this refuses to let CI run
+// without the database it is supposed to be testing against.
+if (process.env.CI && !process.env.EVELAND_POSTGRES_TEST_URL) {
+  throw new Error(
+    "CI is set but EVELAND_POSTGRES_TEST_URL is not: the real-Postgres integration suite would silently skip. Configure the database service or the env wiring in the workflow.",
+  );
+}
+
 export type IsolatedPostgresDatabase = {
   database: Database;
   drop: () => Promise<void>;
