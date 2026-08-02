@@ -1,4 +1,5 @@
 import type { SessionBinding } from "@eveland/core/contracts";
+import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
 import { describe, expect, test, vi } from "vitest";
 import {
   applyGatewaySessionResponse,
@@ -204,6 +205,85 @@ describe("Gateway SessionBinding lifecycle", () => {
       affinityFingerprint: "sha256-affinity",
       affinitySource: "version_key",
     });
+  });
+
+  test("never clones a response whose declared length exceeds the metadata cap, and still binds from the Eve header", async () => {
+    const repository = repositoryFixture();
+    const upstream = new Response("{", {
+      status: 202,
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(PLAYGROUND_MAX_TRANSPORT_BYTES + 1),
+        "x-eve-session-id": "eve_big",
+      },
+    });
+    const clone = vi.spyOn(upstream, "clone");
+
+    await applyGatewaySessionResponse({
+      repository,
+      projectId: "proj_1",
+      request: { kind: "initial", sessionId: null },
+      binding: null,
+      upstream,
+      target: {
+        routeId: "route_1",
+        deploymentId: "dep_1",
+        variantName: null,
+        experimentId: null,
+      },
+      provenance: { kind: "playground", requestId: "request_big" },
+    });
+
+    expect(clone).not.toHaveBeenCalled();
+    expect(repository.bindSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eveSessionId: "eve_big",
+        continuationToken: null,
+      }),
+    );
+  });
+
+  test("stops reading agent-controlled metadata at the byte cap and leaves the binding untouched", async () => {
+    const repository = repositoryFixture();
+    const chunk = new TextEncoder().encode("x".repeat(64 * 1024));
+    // Well past the cap: an uncapped tee would pull every one of these bytes
+    // into memory before giving up on the JSON parse.
+    const total = PLAYGROUND_MAX_TRANSPORT_BYTES + 16 * chunk.byteLength;
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= total) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(chunk);
+        sent += chunk.byteLength;
+      },
+    });
+    const upstream = new Response(body, {
+      status: 202,
+      headers: { "content-type": "application/json" },
+    });
+
+    await applyGatewaySessionResponse({
+      repository,
+      projectId: "proj_1",
+      request: { kind: "continuation", sessionId: "eve_1" },
+      binding: activeBinding,
+      upstream,
+      target: {
+        routeId: "route_1",
+        deploymentId: "dep_1",
+        variantName: null,
+        experimentId: null,
+      },
+      provenance: { kind: "playground", requestId: "request_flood" },
+    });
+
+    expect(sent).toBeLessThan(total);
+    expect(
+      repository.setSessionBindingContinuationToken,
+    ).not.toHaveBeenCalled();
   });
 
   test.each([

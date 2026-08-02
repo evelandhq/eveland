@@ -93,6 +93,7 @@ export type IdentityBrokerOptions = {
 };
 
 export function createIdentityBroker(options: IdentityBrokerOptions) {
+  assertStrongAppSecretKey(options.appSecretKey);
   const now = options.now ?? (() => new Date());
   const identitySessionTtlSeconds = options.identitySessionTtlSeconds ?? 30 * 24 * 60 * 60;
   const callerTokenTtlSeconds = options.callerTokenTtlSeconds ?? 60;
@@ -444,7 +445,23 @@ function openPrivateKey(value: string, appSecretKey: string, keyId: string): str
   ]).toString("utf8");
 }
 
+// Same strength rule as every other APP_SECRET_KEY consumer (core/server
+// secrets, agent-auth sealed credential/config/transaction): 32 utf8 bytes,
+// or base64 of a 32-byte value.
+function assertStrongAppSecretKey(appSecretKey: string): void {
+  const utf8 = Buffer.from(appSecretKey, "utf8");
+  if (utf8.length === 32) return;
+  const decoded = Buffer.from(appSecretKey, "base64");
+  if (decoded.length === 32) return;
+  throw new Error("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
+}
+
 function identitySigningEncryptionKey(appSecretKey: string): Buffer {
+  // Deliberately derives from the raw string (not the base64-decoded bytes
+  // like the other envelope homes): v1 signing-key envelopes were sealed this
+  // way, and changing the derivation input would orphan every persisted
+  // Identity signing key. Normalize only alongside a versioned envelope
+  // migration when the sealed-envelope implementations are unified.
   return createHmac("sha256", appSecretKey)
     .update("eveland:identity:signing-key:v1")
     .digest();

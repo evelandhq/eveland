@@ -4,7 +4,6 @@ import type {
   AuthPrincipal,
   RuntimeInstance,
   SessionStatus,
-  TeamInvitation,
 } from "@eveland/core/contracts";
 import { getEveString, parseEveJsonObject } from "@eveland/core/eve";
 import { assertSafeArchivePath } from "@eveland/core/server/archive";
@@ -21,6 +20,7 @@ import {
   type Store,
 } from "@eveland/db";
 import type { Context } from "hono";
+import { AuthFlowError } from "./auth.js";
 import { execFile } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
@@ -30,10 +30,6 @@ import { projectNameSchema } from "./app-schemas.js";
 import type { AppOptions } from "./app-types.js";
 
 const execFileAsync = promisify(execFile);
-
-export function publicInvitation(invitation: TeamInvitation) {
-  return invitation;
-}
 
 export function publicGatewayUrl(
   hostname: string,
@@ -62,21 +58,28 @@ export function getSetCookies(headers: Headers): string[] {
 }
 
 export function authErrorResponse(c: Context, error: unknown): Response {
+  // Statuses come from types, never from prose: our own auth flows throw
+  // AuthFlowError with the status baked in, and Better Auth failures carry a
+  // numeric statusCode (better-call APIError). Message wording -- ours or
+  // upstream's -- must not be able to reclassify a response.
+  if (error instanceof AuthFlowError) {
+    return c.json({ error: error.message }, error.status);
+  }
   const message =
     error instanceof Error ? error.message : "Authentication request failed";
-  if (message === "Admin access required")
-    return c.json({ error: message }, 403);
-  if (message === "Invalid email or password")
-    return c.json({ error: message }, 401);
-  if (
-    message.includes("last admin") ||
-    message.includes("already a team member") ||
-    message.includes("no longer pending")
-  ) {
-    return c.json({ error: message }, 409);
-  }
-  if (message.includes("not found")) return c.json({ error: message }, 404);
-  return c.json({ error: message }, 400);
+  return c.json({ error: message }, upstreamAuthStatus(error) ?? 400);
+}
+
+function upstreamAuthStatus(error: unknown): 400 | 401 | 403 | 404 | 409 | null {
+  if (typeof error !== "object" || error === null) return null;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return statusCode === 400 ||
+    statusCode === 401 ||
+    statusCode === 403 ||
+    statusCode === 404 ||
+    statusCode === 409
+    ? statusCode
+    : null;
 }
 
 /**

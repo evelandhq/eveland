@@ -340,6 +340,100 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     return flight;
   };
 
+  // Re-resolution is bounded: each pass may retry once more after a replace
+  // race or a refresh, but an IdP that only ever mints already-expiring
+  // tokens (legal per RFC 6749) must fail closed instead of live-locking the
+  // request in a refresh loop. recoverUnauthorized carries the same kind of
+  // bound via its attempt field.
+  const MAX_CREDENTIAL_RESOLUTION_ATTEMPTS = 3;
+
+  const resolveCredential = async (
+    input: {
+      connection: OidcConnectionSnapshot;
+      callerPrincipalId: string;
+      returnPath?: string;
+    },
+    attempt: number,
+  ): Promise<OidcCredentialResolution> => {
+    const key = keyFor(input.connection, input.callerPrincipalId);
+    let credential = await options.store.getAgentAuthCredential(key);
+    if (!credential) return { failure: interactionRequired(input.connection.id, input.returnPath) };
+    let payload: CredentialPayload;
+    try {
+      payload = openPayload(credential, key);
+    } catch {
+      return { failure: { code: "configuration_invalid", method: "oidc", message: "The stored Agent credential could not be decrypted." } };
+    }
+    if (payload.state === "pending_verification") {
+      const clientSecret = await options.resolveClientSecret(input.connection.config, input.connection);
+      try {
+        const verified = await verifyAccessToken(
+          payload.candidateAccessToken,
+          input.connection.config,
+          { issuer: payload.idTokenIssuer, subject: payload.idTokenSubject },
+          clientSecret,
+        );
+        const active: ActiveCredential = {
+          state: "active",
+          accessToken: payload.candidateAccessToken,
+          ...(payload.refreshToken ? { refreshToken: payload.refreshToken } : {}),
+          agentIssuer: verified.issuer,
+          agentSubject: verified.subject,
+          idTokenIssuer: payload.idTokenIssuer,
+          idTokenSubject: payload.idTokenSubject,
+          obtainedAt: payload.obtainedAt,
+        };
+        const replaced = await options.store.replaceAgentAuthCredential({
+          ...key,
+          expectedRotationSeq: credential.rotationSeq,
+          payloadEncrypted: sealAgentAuthCredential(active, options.appSecretKey, key),
+          expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : null,
+        });
+        if (!replaced) {
+          if (attempt + 1 >= MAX_CREDENTIAL_RESOLUTION_ATTEMPTS) {
+            return { failure: { code: "retry_required", method: "oidc", message: "The Agent credential changed; retry the request." } };
+          }
+          return resolveCredential(input, attempt + 1);
+        }
+        credential = replaced;
+        payload = active;
+      } catch (error) {
+        return { failure: {
+          code: error instanceof OidcAccessTokenRejectedError ? "configuration_invalid" : "provider_unavailable",
+          method: "oidc",
+          message: error instanceof OidcAccessTokenRejectedError
+            ? error.message
+            : "The OIDC access token is awaiting verification.",
+        } };
+      }
+    }
+    if (isExpiringSoon(credential, now())) {
+      if (!payload.refreshToken) return { failure: interactionRequired(input.connection.id, input.returnPath) };
+      if (attempt + 1 >= MAX_CREDENTIAL_RESOLUTION_ATTEMPTS) {
+        // A refresh already succeeded on an earlier pass and the rotated
+        // credential is still inside the expiring-soon window: another
+        // refresh would mint another about-to-expire token, not progress.
+        return { failure: { code: "provider_unavailable", method: "oidc", message: "The identity provider keeps returning Agent credentials that are already about to expire." } };
+      }
+      try {
+        await getOrStartRefresh(input.connection, input.callerPrincipalId, credential, payload);
+      } catch (error) {
+        if (error instanceof OidcReauthorizationRequiredError) {
+          return { failure: interactionRequired(input.connection.id, input.returnPath) };
+        }
+        if (error instanceof OidcAccessTokenRejectedError) {
+          return { failure: { code: "configuration_invalid", method: "oidc", message: error.message } };
+        }
+        return { failure: { code: "provider_unavailable", method: "oidc", message: "The identity provider could not refresh the Agent credential." } };
+      }
+      return resolveCredential(input, attempt + 1);
+    }
+    return {
+      envelope: { version: 1, authority: "canonical", headers: [["authorization", `Bearer ${payload.accessToken}`]] },
+      version: { securityRevision: input.connection.securityRevision, rotationSeq: credential.rotationSeq },
+    };
+  };
+
   const provider = {
     callbackUrl: options.callbackUrl,
     async preflight(connection: OidcConnectionSnapshot) {
@@ -409,72 +503,7 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
       callerPrincipalId: string;
       returnPath?: string;
     }): Promise<OidcCredentialResolution> {
-      const key = keyFor(input.connection, input.callerPrincipalId);
-      let credential = await options.store.getAgentAuthCredential(key);
-      if (!credential) return { failure: interactionRequired(input.connection.id, input.returnPath) };
-      let payload: CredentialPayload;
-      try {
-        payload = openPayload(credential, key);
-      } catch {
-        return { failure: { code: "configuration_invalid", method: "oidc", message: "The stored Agent credential could not be decrypted." } };
-      }
-      if (payload.state === "pending_verification") {
-        const clientSecret = await options.resolveClientSecret(input.connection.config, input.connection);
-        try {
-          const verified = await verifyAccessToken(
-            payload.candidateAccessToken,
-            input.connection.config,
-            { issuer: payload.idTokenIssuer, subject: payload.idTokenSubject },
-            clientSecret,
-          );
-          const active: ActiveCredential = {
-            state: "active",
-            accessToken: payload.candidateAccessToken,
-            ...(payload.refreshToken ? { refreshToken: payload.refreshToken } : {}),
-            agentIssuer: verified.issuer,
-            agentSubject: verified.subject,
-            idTokenIssuer: payload.idTokenIssuer,
-            idTokenSubject: payload.idTokenSubject,
-            obtainedAt: payload.obtainedAt,
-          };
-          const replaced = await options.store.replaceAgentAuthCredential({
-            ...key,
-            expectedRotationSeq: credential.rotationSeq,
-            payloadEncrypted: sealAgentAuthCredential(active, options.appSecretKey, key),
-            expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : null,
-          });
-          if (!replaced) return provider.getCredential(input);
-          credential = replaced;
-          payload = active;
-        } catch (error) {
-          return { failure: {
-            code: error instanceof OidcAccessTokenRejectedError ? "configuration_invalid" : "provider_unavailable",
-            method: "oidc",
-            message: error instanceof OidcAccessTokenRejectedError
-              ? error.message
-              : "The OIDC access token is awaiting verification.",
-          } };
-        }
-      }
-      if (isExpiringSoon(credential, now())) {
-        if (!payload.refreshToken) return { failure: interactionRequired(input.connection.id, input.returnPath) };
-        try {
-          await getOrStartRefresh(input.connection, input.callerPrincipalId, credential, payload);
-        } catch (error) {
-          if (error instanceof OidcReauthorizationRequiredError) {
-            return { failure: interactionRequired(input.connection.id, input.returnPath) };
-          }
-          if (error instanceof OidcAccessTokenRejectedError) {
-            return { failure: { code: "configuration_invalid", method: "oidc", message: error.message } };
-          }
-          return { failure: { code: "provider_unavailable", method: "oidc", message: "The identity provider could not refresh the Agent credential." } };
-        }
-        return provider.getCredential(input);
-      }
-      return {
-        envelope: { version: 1, authority: "canonical", headers: [["authorization", `Bearer ${payload.accessToken}`]] },
-        version: { securityRevision: input.connection.securityRevision, rotationSeq: credential.rotationSeq },
-      };
+      return resolveCredential(input, 0);
     },
     async recoverUnauthorized(input: {
       connection: OidcConnectionSnapshot;

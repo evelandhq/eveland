@@ -3,7 +3,9 @@ import type {
   ReleaseRecord,
   Session,
   SourceRevision,
+  TeamInvitation,
 } from "@eveland/core/contracts";
+import { invitationHandle } from "./auth.js";
 
 // Control-plane responses cross the browser boundary. Strip runtime
 // capability material (session continuation tokens) and host infrastructure
@@ -16,6 +18,13 @@ export function publicSession<T extends Session>(
 ): Omit<T, "continuationToken"> {
   const { continuationToken: _continuationToken, ...rest } = session;
   return rest;
+}
+
+// The Better Auth invitation row id IS the single-use acceptance token, so
+// serialized invitations swap it for a derived management handle. The raw
+// token leaves the API only inside create/resend inviteUrl.
+export function publicInvitation(invitation: TeamInvitation): TeamInvitation {
+  return { ...invitation, id: invitationHandle(invitation.id) };
 }
 
 export function publicSourceRevision<T extends SourceRevision>(

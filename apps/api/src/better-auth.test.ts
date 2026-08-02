@@ -10,7 +10,7 @@ import {
 import { createPgliteTestStore } from "@eveland/db/test";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { describe, expect, onTestFinished, test } from "vitest";
-import { createBetterAuthRuntime, SESSION_COOKIE_NAME } from "./auth.js";
+import { createBetterAuthRuntime, invitationHandle, SESSION_COOKIE_NAME } from "./auth.js";
 
 async function createTestRuntime(
   interceptAdapter?: (adapter: Record<string, unknown>) => Record<string, unknown>,
@@ -148,7 +148,7 @@ describe("Better Auth runtime", () => {
     const used = await runtime.invite(request, "used@example.com");
     await runtime.acceptInvitation({ token: used.token, name: "Used", password: "member-password" });
     const revoked = await runtime.invite(request, "revoked@example.com");
-    await runtime.revokeInvitation(request, revoked.invitation.id);
+    await runtime.revokeInvitation(request, invitationHandle(revoked.invitation.id));
     await database.db.insert(invitations).values({
       id: "invitation_stale",
       organizationId: "team_local",

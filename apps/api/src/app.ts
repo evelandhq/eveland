@@ -20,7 +20,7 @@ import { registerObservabilityRoutes } from "./app-observability-routes.js";
 import { createAgentAuthService } from "./agent-auth-service.js";
 import { registerAgentAuthRoutes } from "./app-agent-auth-routes.js";
 import { registerCanonicalPlaygroundRoute } from "./app-canonical-playground-route.js";
-import { registerControlPlaneAuthBoundary } from "./app-control-plane-auth-boundary.js";
+import { registerAdminOnlyBoundary, registerControlPlaneAuthBoundary } from "./app-control-plane-auth-boundary.js";
 import { registerMemberRoutes } from "./app-member-routes.js";
 import { registerSystemDiagnosticsRoutes } from "./app-system-diagnostics-routes.js";
 export type { AppOptions } from "./app-types.js";
@@ -124,6 +124,7 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   if (options.auth) {
     registerControlPlaneAuthBoundary({ app, auth: options.auth });
+    registerAdminOnlyBoundary(app);
     registerSystemIdentityRoutes(identityRouteContext);
     registerMemberRoutes({ app, auth: options.auth, webOrigin });
     registerSystemDiagnosticsRoutes({
@@ -150,7 +151,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
   registerSecretRoutes({
     app,
     store,
-    options,
     appSecretKey,
     enqueueLiveDeploymentRestarts,
   });

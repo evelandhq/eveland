@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { admin, organization } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
@@ -220,19 +220,19 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       .map(toTeamInvitation);
   }
 
-  async function reissueInvitation(request: Request, invitationId: string) {
+  async function reissueInvitation(request: Request, invitationHandleValue: string) {
     await requireAdmin(request);
-    const invitation = await findInvitation(invitationId);
-    if (!invitation || invitation.status !== "pending") throw new Error("Invitation not found");
-    await auth.api.cancelInvitation({ headers: request.headers, body: { invitationId } });
+    const invitation = await findInvitationByHandle(invitationHandleValue);
+    if (!invitation || invitation.status !== "pending") throw new AuthFlowError("Invitation not found", 404);
+    await auth.api.cancelInvitation({ headers: request.headers, body: { invitationId: invitation.id } });
     return invite(request, invitation.email, invitation.role === "admin" ? "admin" : "member");
   }
 
-  async function revokeInvitation(request: Request, invitationId: string): Promise<boolean> {
+  async function revokeInvitation(request: Request, invitationHandleValue: string): Promise<boolean> {
     await requireAdmin(request);
-    const invitation = await findInvitation(invitationId);
+    const invitation = await findInvitationByHandle(invitationHandleValue);
     if (!invitation || invitation.status !== "pending") return false;
-    await auth.api.cancelInvitation({ headers: request.headers, body: { invitationId } });
+    await auth.api.cancelInvitation({ headers: request.headers, body: { invitationId: invitation.id } });
     return true;
   }
 
@@ -256,14 +256,14 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     await requireAdmin(request);
     const members = await listMembers(request);
     const member = members.find((candidate) => candidate.userId === userId);
-    if (!member) throw new Error("Member not found");
+    if (!member) throw new AuthFlowError("Member not found", 404);
     const demotion = member.role === "admin" && role === "member";
     if (demotion && members.filter((candidate) => candidate.role === "admin").length === 1) {
-      throw new Error("Cannot demote the last admin");
+      throw new AuthFlowError("Cannot demote the last admin", 409);
     }
     const raw = await listRawMembers(request);
     const rawMember = raw.find((candidate) => candidate.userId === userId);
-    if (!rawMember) throw new Error("Member not found");
+    if (!rawMember) throw new AuthFlowError("Member not found", 404);
     await auth.api.updateMemberRole({
       headers: request.headers,
       body: { memberId: rawMember.id, role, organizationId: DEFAULT_ORGANIZATION_ID },
@@ -274,10 +274,10 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
         where: [{ field: "id", value: rawMember.id }],
         update: { role: "admin" },
       });
-      throw new Error("Cannot demote the last admin");
+      throw new AuthFlowError("Cannot demote the last admin", 409);
     }
     const updated = (await listMembers(request)).find((candidate) => candidate.userId === userId);
-    if (!updated) throw new Error("Member not found");
+    if (!updated) throw new AuthFlowError("Member not found", 404);
     return updated;
   }
 
@@ -287,7 +287,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     const member = members.find((candidate) => candidate.userId === userId);
     if (!member) return false;
     if (member.role === "admin" && members.filter((candidate) => candidate.role === "admin").length === 1) {
-      throw new Error("Cannot remove the last admin");
+      throw new AuthFlowError("Cannot remove the last admin", 409);
     }
     const raw = await listRawMembers(request);
     const rawMember = raw.find((candidate) => candidate.userId === userId);
@@ -306,7 +306,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
           createdAt: new Date(rawMember.createdAt),
         },
       });
-      throw new Error("Cannot remove the last admin");
+      throw new AuthFlowError("Cannot remove the last admin", 409);
     }
     await (await auth.$context).internalAdapter.deleteUserSessions(userId);
     return true;
@@ -323,7 +323,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     });
     await assertSuccessfulAuthResponse(response);
     const principal = await authenticate(request);
-    if (!principal) throw new Error("Authentication required");
+    if (!principal) throw new AuthFlowError("Authentication required", 401);
     return { principal, headers: response.headers };
   }
 
@@ -345,9 +345,9 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       status: string;
       expiresAt: Date;
     }>({ model: "invitation", where: [{ field: "id", value: input.token }] });
-    if (!invitation) throw new Error("Invitation not found");
+    if (!invitation) throw new AuthFlowError("Invitation not found", 404);
     if (invitation.status !== "pending" || invitation.expiresAt.getTime() <= Date.now()) {
-      throw new Error("Invitation is no longer pending");
+      throw new AuthFlowError("Invitation is no longer pending", 409);
     }
     const existing = await context.internalAdapter.findUserByEmail(invitation.email, { includeAccounts: true });
     if (!existing) {
@@ -361,7 +361,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       headers: new Headers({ origin: options.webOrigin }),
       asResponse: true,
     });
-    if (!signInResponse.ok) throw new Error("Invalid email or password");
+    if (!signInResponse.ok) throw new AuthFlowError("Invalid email or password", 401);
     const cookie = responseCookies(signInResponse.headers).map((value) => value.split(";", 1)[0]).join("; ");
     const headers = new Headers({ cookie, origin: options.webOrigin });
     await auth.api.acceptInvitation({ headers, body: { invitationId: invitation.id } });
@@ -372,7 +372,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
 
   async function requireAdmin(request: Request): Promise<AuthPrincipal> {
     const principal = await authenticate(request);
-    if (principal?.role !== "admin") throw new Error("Admin access required");
+    if (principal?.role !== "admin") throw new AuthFlowError("Admin access required", 403);
     return principal;
   }
 
@@ -383,8 +383,11 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     })).members;
   }
 
-  async function findInvitation(invitationId: string) {
-    return (await auth.$context).adapter.findOne<{
+  // Management callers reference invitations by the derived handle, never by
+  // the row id: the Better Auth invitation id doubles as the single-use
+  // acceptance token, so it must not circulate as a resource reference.
+  async function findInvitationByHandle(handle: string) {
+    const invitations = await (await auth.$context).adapter.findMany<{
       id: string;
       email: string;
       role: string;
@@ -392,7 +395,8 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       expiresAt: Date;
       inviterId: string;
       createdAt: Date;
-    }>({ model: "invitation", where: [{ field: "id", value: invitationId }] });
+    }>({ model: "invitation", where: [{ field: "organizationId", value: DEFAULT_ORGANIZATION_ID }] });
+    return invitations.find((invitation) => invitationHandle(invitation.id) === handle) ?? null;
   }
 
   return {
@@ -414,10 +418,40 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
   };
 }
 
+/**
+ * Non-reversible management reference for an invitation. The invitation row
+ * id IS the acceptance token (see generateId above), so serialized responses
+ * and route parameters use this handle; the raw token appears only inside
+ * the inviteUrl that create/resend intentionally return.
+ */
+export function invitationHandle(invitationId: string): string {
+  return `invh_${createHash("sha256").update(invitationId).digest("base64url").slice(0, 24)}`;
+}
+
+/**
+ * An auth-flow failure whose HTTP status is part of the contract. Route
+ * handlers map these by `instanceof` in authErrorResponse; message wording is
+ * presentation only and must never be load-bearing for the status.
+ */
+export class AuthFlowError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 401 | 403 | 404 | 409,
+  ) {
+    super(message);
+    this.name = "AuthFlowError";
+  }
+}
+
 async function assertSuccessfulAuthResponse(response: Response): Promise<void> {
   if (response.ok) return;
   const body = await response.json().catch(() => ({})) as { message?: string; error?: string };
-  throw new Error(body.message ?? body.error ?? `Authentication request failed with ${response.status}`);
+  const message = body.message ?? body.error ?? `Authentication request failed with ${response.status}`;
+  // Trust the upstream status, never upstream prose.
+  const status = response.status === 401 || response.status === 403 || response.status === 404 || response.status === 409
+    ? response.status
+    : 400;
+  throw new AuthFlowError(message, status);
 }
 
 function responseCookies(headers: Headers): string[] {

@@ -164,8 +164,11 @@ corresponding tests and docs are updated.
 ### Gateway and routing
 
 - Gateway is not the Agent's identity provider. Preserve Agent-owned
-  `Authorization`, cookies, origin semantics, request streaming, and NDJSON
-  response streaming.
+  `Authorization`, cookies, origin semantics, and NDJSON response streaming.
+  Request bodies are buffered up to the configured body limit before
+  forwarding (routing must inspect initial/reset bodies); upstream response
+  bodies stream through, and any response tee (session metadata) must stay
+  byte-capped.
 - Validate the complete canonical public Host. Strip untrusted
   `Forwarded`/`X-Forwarded-*` and reserved `X-Eveland-*` input, then rebuild only
   trusted platform headers.

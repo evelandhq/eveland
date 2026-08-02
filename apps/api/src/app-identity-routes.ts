@@ -317,21 +317,13 @@ export function registerSystemIdentityRoutes(
   context: IdentityRoutesContext,
 ) {
   const { app, store, appSecretKey } = context;
-  const requireAdmin = (role: string) => role === "admin";
-
   app.get("/system/identity/providers", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     return c.json({
       providers: (await store.listIdentityProviderConnections()).map(publicProvider),
     });
   });
 
   app.post("/system/identity/providers", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = createIdentityProviderSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -378,9 +370,6 @@ export function registerSystemIdentityRoutes(
   });
 
   app.post("/system/identity/providers/:providerId/preflight", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const provider = await store.getIdentityProviderConnection(
       c.req.param("providerId"),
     );
@@ -400,9 +389,6 @@ export function registerSystemIdentityRoutes(
   });
 
   app.patch("/system/identity/providers/:providerId", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = updateIdentityProviderSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -487,18 +473,12 @@ export function registerSystemIdentityRoutes(
   });
 
   app.get("/system/identity/realms", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     return c.json({
       realms: await store.listIdentityRealms(c.req.query("providerConnectionId")),
     });
   });
 
   app.post("/system/identity/realms", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = createIdentityRealmSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -529,9 +509,6 @@ export function registerSystemIdentityRoutes(
   });
 
   app.patch("/system/identity/realms/:realmId", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = updateIdentityRealmSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -546,16 +523,10 @@ export function registerSystemIdentityRoutes(
   });
 
   app.get("/system/identity/return-targets", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     return c.json({ targets: await store.listIdentityReturnTargets() });
   });
 
   app.put("/system/identity/return-targets/:targetKey", async (c) => {
-    if (!requireAdmin(c.get("principal").role)) {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const key = c.req.param("targetKey");
     if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(key)) {
       return c.json({ error: "Invalid Identity return target key." }, 400);

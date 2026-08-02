@@ -1,3 +1,5 @@
+import type { MiddlewareHandler } from "hono";
+import type { AuthPrincipal } from "@eveland/core/contracts";
 import type { createBetterAuthRuntime } from "./auth.js";
 import type { ApiApp } from "./app-types.js";
 import { acceptInvitationSchema } from "./app-schemas.js";
@@ -65,4 +67,24 @@ export function registerControlPlaneAuthBoundary(input: {
     c.set("principal", principal);
     await next();
   });
+}
+
+/**
+ * Structural role gate for the platform-operator surface: every current and
+ * future route under /system/* and /platform/* is admin-only here, before any
+ * handler runs, so a new operator route cannot forget the check. Registered
+ * (like the session boundary above) only when auth is configured; the
+ * member-403 walk in app-admin-boundary.test.ts pins the whole surface.
+ */
+export function registerAdminOnlyBoundary(app: ApiApp): void {
+  const adminOnly: MiddlewareHandler<{
+    Variables: { principal: AuthPrincipal };
+  }> = async (c, next) => {
+    if (c.get("principal")?.role !== "admin") {
+      return c.json({ error: "Admin access required" }, 403);
+    }
+    await next();
+  };
+  app.use("/system/*", adminOnly);
+  app.use("/platform/*", adminOnly);
 }
