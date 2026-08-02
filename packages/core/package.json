@@ -11,6 +11,7 @@
     "./config-diagnostics": "./src/config-diagnostics.ts",
     "./contracts": "./src/contracts.ts",
     "./discovery": "./src/discovery.ts",
+    "./environment-entries": "./src/environment-entries.ts",
     "./eve": "./src/eve.ts",
     "./eve-compatibility": "./src/eve-compatibility.ts",
     "./ids": "./src/ids.ts",

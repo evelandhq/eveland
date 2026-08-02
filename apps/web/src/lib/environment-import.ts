@@ -1,3 +1,5 @@
+import { ENVIRONMENT_ENTRY_KEY_PATTERN } from "@eveland/core/environment-entries";
+
 export type DotenvImportEntry = {
   line: number;
   key: string;
@@ -10,7 +12,7 @@ export type DotenvImportError = {
   message: string;
 };
 
-const environmentVariablePattern = /^[A-Z][A-Z0-9_]*$/;
+const environmentVariablePattern = ENVIRONMENT_ENTRY_KEY_PATTERN;
 
 export function parseDotenvImport(source: string): {
   entries: DotenvImportEntry[];

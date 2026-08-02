@@ -1,4 +1,8 @@
 import {
+  ENVIRONMENT_ENTRY_KEY_MESSAGE,
+  ENVIRONMENT_ENTRY_KEY_PATTERN,
+} from "@eveland/core/environment-entries";
+import {
   inferProjectSlugFromGitUrl,
   PROJECT_SLUG_MAX_LENGTH,
   PROJECT_SLUG_PATTERN,
@@ -50,10 +54,7 @@ export const createProjectSchema = z.discriminatedUnion("importKind", [
 export const environmentVariableSchema = z.object({
   key: z
     .string()
-    .regex(
-      /^[A-Z][A-Z0-9_]*$/,
-      "Use uppercase letters, numbers, and underscores, starting with a letter.",
-    ),
+    .regex(ENVIRONMENT_ENTRY_KEY_PATTERN, ENVIRONMENT_ENTRY_KEY_MESSAGE),
   kind: z.enum(["variable", "secret"]).default("secret"),
   value: z.string().min(1).max(65_536),
 });
@@ -129,10 +130,7 @@ export const updateSecretSchema = environmentVariableSchema.extend({
 export const sharedAgentEnvironmentEntrySchema = z.object({
   key: z
     .string()
-    .regex(
-      /^[A-Z][A-Z0-9_]*$/,
-      "Use uppercase letters, numbers, and underscores, starting with a letter.",
-    ),
+    .regex(ENVIRONMENT_ENTRY_KEY_PATTERN, ENVIRONMENT_ENTRY_KEY_MESSAGE),
   kind: z.enum(["variable", "secret"]),
   value: z.string().min(1).max(65_536).optional(),
 });

@@ -1,3 +1,9 @@
+import {
+  ENVIRONMENT_ENTRY_KEY_MESSAGE,
+  isValidEnvironmentEntryKey,
+  normalizeEnvironmentEntryKey,
+} from "@eveland/core/environment-entries";
+
 export type ProjectEnvironmentEntryDraft = {
   key: string;
   kind: "variable" | "secret";
@@ -12,9 +18,9 @@ export function validateProjectEnvironmentEntry(
 ):
   | { ok: true; input: { key: string; kind: "variable" | "secret"; value?: string } }
   | { ok: false; error: string } {
-  const key = entry.key.trim().toUpperCase();
-  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
-    return { ok: false, error: "Use uppercase letters, numbers, and underscores, starting with a letter." };
+  const key = normalizeEnvironmentEntryKey(entry.key);
+  if (!isValidEnvironmentEntryKey(key)) {
+    return { ok: false, error: ENVIRONMENT_ENTRY_KEY_MESSAGE };
   }
   if (existingKeys.some((candidate) => candidate === key && candidate !== originalKey)) {
     return { ok: false, error: "Project environment names must be unique." };

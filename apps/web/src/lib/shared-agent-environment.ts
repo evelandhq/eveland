@@ -1,3 +1,5 @@
+import { isValidEnvironmentEntryKey } from "@eveland/core/environment-entries";
+
 export type SharedAgentEnvironmentDraft = {
   entries: Array<{
     key: string;
@@ -38,7 +40,7 @@ export function validateSharedAgentEnvironmentDraft(input: SharedAgentEnvironmen
   const entries: Array<{ key: string; kind: "variable" | "secret"; value?: string }> = [];
   for (const [index, entry] of input.entries.entries()) {
     const key = keys[index]!;
-    if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
+    if (!isValidEnvironmentEntryKey(key)) {
       return { ok: false, error: `Enter a valid key for entry ${index + 1}.` };
     }
     if (!entry.configured && !entry.value) {
