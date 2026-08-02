@@ -68,7 +68,7 @@ const defaultOwner = {
 };
 
 import type { PostgresStoreContext } from "./postgres-store-support.js";
-import { isUniqueConstraint } from "./postgres-store-support.js";
+import { insertJobRowTx, isUniqueConstraint } from "./postgres-store-support.js";
 
 type PostgresProjectDomain = Omit<ProjectStore, "updateProjectState"> &
   Pick<
@@ -409,11 +409,9 @@ export function createPostgresProjectStore({
             })),
           );
         }
-        await tx.insert(jobs).values({
-          id: createId("job"),
+        await insertJobRowTx(tx, {
           projectId: projectRow.id,
           type: "import_source",
-          status: "queued",
           payload: {
             importKind: preflight.kind,
             gitUrl: preflight.gitUrl,
@@ -574,17 +572,11 @@ export function createPostgresProjectStore({
         await tx
           .delete(jobs)
           .where(and(eq(jobs.projectId, projectId), eq(jobs.status, "queued")));
-        const [row] = await tx
-          .insert(jobs)
-          .values({
-            id: createId("job"),
-            projectId,
-            type: "delete_project",
-            status: "queued",
-            payload: { sourcePaths },
-          })
-          .returning();
-        if (!row) throw new Error("Failed to create project deletion job.");
+        const row = await insertJobRowTx(tx, {
+          projectId,
+          type: "delete_project",
+          payload: { sourcePaths },
+        });
         return { outcome: "queued", job: jobRowToJob(row) } as const;
       });
     },

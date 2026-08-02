@@ -4,7 +4,6 @@ import {
   isSessionBindingActive,
   validateRouteTargets,
 } from "@eveland/core/routing";
-import { getNextRunAt } from "@eveland/core/schedules";
 import {
   createEveVersionInfo,
   readDeclaredEveVersion,
@@ -26,22 +25,7 @@ import {
   releaseRowToRelease,
   sessionBindingRowToSessionBinding,
 } from "./mappers.js";
-import {
-  agentRoutes,
-  activationLeases,
-  deployments,
-  runtimeInstances,
-  projectSchedulerTargets,
-  projectSchedules,
-  projects,
-  releases,
-  routeTargets,
-  scheduleVersions,
-  sessionBindings,
-  sessions,
-  sourceFiles,
-  sourceRevisions,
-} from "./schema.js";
+import { agentRoutes, activationLeases, deployments, runtimeInstances, projects, releases, routeTargets, sessionBindings, sessions, sourceFiles, sourceRevisions } from "./schema.js";
 import {
   DeploymentNotFoundError,
   DeploymentNotPromotableError,
@@ -50,6 +34,7 @@ import {
 import type { DeploymentStore, RoutingStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 import {
+  applySchedulerTargetTx,
   isUniqueConstraint,
   normalizeBaseDomain,
 } from "./postgres-store-support.js";
@@ -643,45 +628,20 @@ export function createPostgresDeploymentRoutingStore({
           })
           .where(eq(projects.id, projectId));
         const now = new Date();
-        await tx
-          .insert(projectSchedulerTargets)
-          .values({ projectId, deploymentId, updatedAt: now })
-          .onConflictDoUpdate({
-            target: projectSchedulerTargets.projectId,
-            set: { deploymentId, updatedAt: now },
-          });
-        const scheduleRows = await tx
-          .select()
-          .from(projectSchedules)
-          .where(eq(projectSchedules.projectId, projectId));
         const [release] = await tx
           .select()
           .from(releases)
           .where(eq(releases.id, deployment.releaseId))
           .limit(1);
         if (!release) throw new Error("Promoted Deployment has no Release.");
-        for (const schedule of scheduleRows) {
-          const [version] = await tx
-            .select()
-            .from(scheduleVersions)
-            .where(
-              and(
-                eq(scheduleVersions.scheduleId, schedule.id),
-                eq(scheduleVersions.sourceRevisionId, release.sourceRevisionId),
-              ),
-            )
-            .limit(1);
-          await tx
-            .update(projectSchedules)
-            .set({
-              nextRunAt:
-                version && schedule.enabled
-                  ? getNextRunAt(version.cron, now)
-                  : null,
-              updatedAt: now,
-            })
-            .where(eq(projectSchedules.id, schedule.id));
-        }
+        // Promotion must move the scheduler target inside its own transaction;
+        // the effect itself is the ScheduleStore's, shared rather than copied.
+        await applySchedulerTargetTx(tx, {
+          projectId,
+          deploymentId,
+          sourceRevisionId: release.sourceRevisionId,
+          now,
+        });
         return route.hostname;
       });
       return (await domain.findRouteByHostname(hostname))!;

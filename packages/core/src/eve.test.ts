@@ -193,3 +193,47 @@ describe("Playground turn validation", () => {
     expect(() => validate({ inputResponses: [{ requestId: "request_1", optionId: "" }] })).toThrow(/option or text value/i);
   });
 });
+
+describe("eve event projections", () => {
+  test("maps every boundary event onto the scheduled-execution outcome", () => {
+    const { scheduleExecutionStatusFromEveEvent, EVE_SESSION_BOUNDARY_EVENT_TYPES } = Eve;
+    expect(scheduleExecutionStatusFromEveEvent("turn.completed", "completed")).toBe("succeeded");
+    expect(scheduleExecutionStatusFromEveEvent("session.completed", "completed")).toBe("succeeded");
+    expect(scheduleExecutionStatusFromEveEvent("turn.failed", "failed")).toBe("failed");
+    expect(scheduleExecutionStatusFromEveEvent("turn.cancelled", "running")).toBe("failed");
+    expect(scheduleExecutionStatusFromEveEvent("session.failed", "failed")).toBe("failed");
+    expect(scheduleExecutionStatusFromEveEvent("session.waiting", "waiting_approval")).toBe("parked");
+    expect(scheduleExecutionStatusFromEveEvent("session.waiting", "waiting")).toBe("succeeded");
+    // Total mapping: anything outside the boundary vocabulary keeps running.
+    expect(scheduleExecutionStatusFromEveEvent("step.completed", "running")).toBe("running");
+    expect(scheduleExecutionStatusFromEveEvent(undefined, "running")).toBe("running");
+    // Every declared boundary event resolves to a non-running outcome.
+    for (const type of EVE_SESSION_BOUNDARY_EVENT_TYPES) {
+      expect(scheduleExecutionStatusFromEveEvent(type, "running")).not.toBe("running");
+    }
+  });
+
+  test("projects session status transitions including the approval-parked hold", () => {
+    const { sessionStatusFromEveEvent } = Eve;
+    expect(sessionStatusFromEveEvent("session.started", "running")).toBe("running");
+    expect(sessionStatusFromEveEvent("turn.started", "waiting")).toBe("running");
+    expect(sessionStatusFromEveEvent("input.requested", "running")).toBe("waiting_approval");
+    expect(sessionStatusFromEveEvent("session.waiting", "waiting_approval")).toBe("waiting_approval");
+    expect(sessionStatusFromEveEvent("session.waiting", "running")).toBe("waiting");
+    expect(sessionStatusFromEveEvent("session.completed", "running")).toBe("completed");
+    expect(sessionStatusFromEveEvent("session.failed", "running")).toBe("failed");
+    expect(sessionStatusFromEveEvent("step.completed", "running")).toBeNull();
+  });
+
+  test("renders the scheduled-execution failure line from the boundary payload", () => {
+    const { scheduleExecutionErrorFromEveEvent } = Eve;
+    expect(scheduleExecutionErrorFromEveEvent("turn.failed", { message: "boom" }))
+      .toBe("Scheduled Session turn.failed: boom");
+    expect(scheduleExecutionErrorFromEveEvent("turn.failed", {}))
+      .toBe("Scheduled Session ended with turn.failed.");
+    expect(scheduleExecutionErrorFromEveEvent(undefined, { message: "boom" }))
+      .toBe("Scheduled Session failed: boom");
+    expect(scheduleExecutionErrorFromEveEvent(undefined, "not a record"))
+      .toBe("Scheduled Session ended with failure.");
+  });
+});

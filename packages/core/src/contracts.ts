@@ -347,6 +347,50 @@ export type ResolvedAgentRoute = AgentRoute & {
   >;
 };
 
+/**
+ * Wire shapes of the Project deployment surface, declared next to the records
+ * they project so the control panel pins its client types against them
+ * instead of re-describing the responses by hand.
+ */
+export type PublicDeploymentRetention = {
+  deployment: PublicDeploymentRecord;
+  protected: boolean;
+  reasons: Array<
+    "route_target" | "active_session" | "active_request" | "recent_artifact"
+  >;
+};
+
+export type DeploymentOverview = {
+  deployments: PublicDeploymentRecord[];
+  routes: ResolvedAgentRoute[];
+  retention: PublicDeploymentRetention[];
+  /**
+   * Release id -> build-derived summary projected from eve's discovery
+   * manifest; null for releases built before the projection existed or whose
+   * manifest was unreadable.
+   */
+  releaseSummaries: Record<string, Record<string, unknown> | null>;
+};
+
+/** Per-variant rollup behind the experiment view. */
+export type VariantMetric = {
+  deploymentId: string | null;
+  experimentId: string | null;
+  variantName: string;
+  sessions: number;
+  success: number;
+  failure: number;
+  averageLatencyMs: number;
+  tokens: number;
+  costUsd: number;
+};
+
+/** Gateway-resolved public addresses for a Project's Agent. */
+export type AgentEndpoints = {
+  stable: string | null;
+  previews: string[];
+};
+
 export type SessionBinding = {
   id: string;
   projectId: string;
