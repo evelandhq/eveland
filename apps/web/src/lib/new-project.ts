@@ -1,3 +1,4 @@
+import { ENVIRONMENT_ENTRY_KEY_PATTERN } from "@eveland/core/environment-entries";
 import type { Job, Project } from "./api";
 
 export type NewProjectProgress = {
@@ -15,7 +16,7 @@ export type NewProjectEnvironmentVariable = {
   visible: boolean;
 };
 
-const environmentVariablePattern = /^[A-Z][A-Z0-9_]*$/;
+const environmentVariablePattern = ENVIRONMENT_ENTRY_KEY_PATTERN;
 
 export function getNewProjectProgress(project: Project | null, jobs: Job[]): NewProjectProgress {
   const importJob = jobs.find((job) => job.type === "import_source") ?? null;

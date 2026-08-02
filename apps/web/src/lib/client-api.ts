@@ -1,4 +1,3 @@
-import type { FileUIPart, UserContent } from "ai";
 import type { Job, Project, PublicSecret, ScheduleRun } from "./api";
 import type {
   AgentConnection,
@@ -17,7 +16,7 @@ import type {
   PublicObservabilityPolicy,
 } from "@eveland/core/observability";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { apiRequest } from "./api-transport";
 
 // Aliases of the shared contracts, not copies: the api-contract typecheck
 // pins them, so a divergence fails to compile instead of drifting silently.
@@ -389,34 +388,6 @@ export async function upsertIdentityReturnTarget(input: {
   ).then((data) => data.target);
 }
 
-export function createPlaygroundMessage(text: string, files: readonly FileUIPart[]): string | UserContent {
-  const trimmed = text.trim();
-  if (files.length === 0) {
-    return trimmed;
-  }
-
-  return [
-    ...(trimmed.length > 0 ? [{ type: "text" as const, text: trimmed }] : []),
-    ...files.map((file) => ({
-      type: "file" as const,
-      data: file.url,
-      filename: file.filename,
-      mediaType: file.mediaType,
-    })),
-  ];
-}
-
-export async function cancelPlaygroundTurn(session: { cancel(): Promise<unknown> }): Promise<void> {
-  await session.cancel();
-}
-
-export async function resetPlaygroundConversation(input: {
-  session: { reset(): Promise<unknown> };
-  clear: () => void;
-}): Promise<void> {
-  await input.session.reset();
-  input.clear();
-}
 
 export function resetPlaygroundOnPageLeave(input: {
   projectId: string;
@@ -504,10 +475,9 @@ export async function runSchedule(projectId: string, scheduleId: string): Promis
   return data.run;
 }
 
+// One browser transport for the whole control panel: shared error decoding
+// (including field-level validation issues) and the 401 -> login policy live
+// in lib/api-transport.
 async function clientRequest<T = unknown>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, { ...init, credentials: "include" });
-  if (response.status === 204) return undefined as T;
-  const data = (await response.json().catch(() => ({}))) as T & { error?: string; detail?: string; message?: string };
-  if (!response.ok) throw new Error(data.detail ?? data.error ?? data.message ?? `Request failed with ${response.status}`);
-  return data;
+  return apiRequest<T>(path, init);
 }

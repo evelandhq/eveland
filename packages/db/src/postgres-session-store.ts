@@ -7,7 +7,7 @@ import {
 import { modelUsageEvents, projects, sessionBindings, sessionNodes, sessions } from "./schema.js";
 import type { SessionStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
-import { appendSessionEventRow, modelUsageRowToModelUsageEvent, moveSessionEventsForMerge } from "./postgres-store-support.js";
+import { appendRuntimeLostEventTx, appendSessionEventRow, mergeSessionRows, modelUsageRowToModelUsageEvent } from "./postgres-store-support.js";
 
 type PostgresSessionMutationDomain = Pick<
   SessionStore,
@@ -24,33 +24,38 @@ export function createPostgresSessionStore({
 }: PostgresStoreContext): PostgresSessionMutationDomain {
   return {
     async createSession(input) {
-      const [row] = await db
-        .insert(sessions)
-        .values({
-          id: createId("sess"),
-          projectId: input.projectId,
-          deploymentId: input.deploymentId ?? null,
-          eveSessionId: input.eveSessionId ?? null,
-          continuationToken: input.continuationToken ?? null,
-          trigger: input.trigger,
-          scheduleId: input.scheduleId ?? null,
-          status: "running",
-        })
-        .returning();
+      // The session row and the project's latestSessionStatus denormalization
+      // are one fact: a crash between them leaves the project card stale
+      // forever. Every other writer of that projection is transactional.
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(sessions)
+          .values({
+            id: createId("sess"),
+            projectId: input.projectId,
+            deploymentId: input.deploymentId ?? null,
+            eveSessionId: input.eveSessionId ?? null,
+            continuationToken: input.continuationToken ?? null,
+            trigger: input.trigger,
+            scheduleId: input.scheduleId ?? null,
+            status: "running",
+          })
+          .returning();
 
-      if (!row) {
-        throw new Error("Failed to create session.");
-      }
+        if (!row) {
+          throw new Error("Failed to create session.");
+        }
 
-      await db
-        .update(projects)
-        .set({
-          latestSessionStatus: "running",
-          updatedAt: new Date(),
-        })
-        .where(eq(projects.id, input.projectId));
+        await tx
+          .update(projects)
+          .set({
+            latestSessionStatus: "running",
+            updatedAt: new Date(),
+          })
+          .where(eq(projects.id, input.projectId));
 
-      return sessionRowToSession(row);
+        return sessionRowToSession(row);
+      });
     },
 
     async getSessionByEveSessionId(projectId, eveSessionId) {
@@ -180,37 +185,14 @@ export function createPostgresSessionStore({
             )
             .limit(1);
           if (observed) {
-            await tx
-              .update(sessionNodes)
-              .set({ rootSessionId: sessionId })
-              .where(eq(sessionNodes.rootSessionId, observed.id));
-            await moveSessionEventsForMerge(tx, observed.id, sessionId);
-            await tx
-              .update(modelUsageEvents)
-              .set({ sessionId })
-              .where(eq(modelUsageEvents.sessionId, observed.id));
-            [current] = await tx
-              .update(sessions)
-              .set({
+            current =
+              (await mergeSessionRows(tx, observed, sessionId, {
                 rootNodeId: current.rootNodeId ?? observed.rootNodeId,
                 deploymentId: current.deploymentId ?? observed.deploymentId,
                 routeId: current.routeId ?? observed.routeId,
                 experimentId: current.experimentId ?? observed.experimentId,
                 variantName: current.variantName ?? observed.variantName,
-                inputTokens: sql`${sessions.inputTokens} + ${observed.inputTokens}`,
-                outputTokens: sql`${sessions.outputTokens} + ${observed.outputTokens}`,
-                cacheReadTokens: sql`${sessions.cacheReadTokens} + ${observed.cacheReadTokens}`,
-                cacheWriteTokens: sql`${sessions.cacheWriteTokens} + ${observed.cacheWriteTokens}`,
-                costUsd:
-                  observed.costUsd === null
-                    ? current.costUsd
-                    : sql`coalesce(${sessions.costUsd}, 0) + ${observed.costUsd}`,
-                usageReportedSteps: sql`${sessions.usageReportedSteps} + ${observed.usageReportedSteps}`,
-                usageMissingSteps: sql`${sessions.usageMissingSteps} + ${observed.usageMissingSteps}`,
-              })
-              .where(eq(sessions.id, sessionId))
-              .returning();
-            await tx.delete(sessions).where(eq(sessions.id, observed.id));
+              })) ?? current;
           }
         }
 
@@ -307,15 +289,13 @@ export function createPostgresSessionStore({
           .set({ status: "failed", updatedAt: now })
           .where(inArray(sessionNodes.id, nodeIds));
         for (const session of interrupted) {
-          await appendSessionEventRow(tx, {
-            id: createId("evt"),
+          await appendRuntimeLostEventTx(tx, {
             sessionId: session.sessionId,
             sessionNodeId: session.nodeId,
             observedDeploymentId: session.deploymentId,
-            observedRuntimeInstanceId: runtimeInstanceId,
-            type: "platform.runtime_lost",
-            payload: { runtimeInstanceId, reason },
-            eventAt: now,
+            runtimeInstanceId,
+            reason,
+            now,
           });
         }
         await tx

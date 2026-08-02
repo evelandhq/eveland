@@ -394,6 +394,107 @@ describe("Agent observability ingestion repository", () => {
     expect(mergedEvents).toHaveLength(2);
     expect(mergedEvents.map((event) => event.index)).toEqual([0, 1]);
   });
+
+  test("projects a lost RuntimeInstance exactly once regardless of pass order", async () => {
+    const runtimeLostEvents = async (
+      store: Awaited<ReturnType<typeof createStore>>["store"],
+      sessionId: string,
+    ) =>
+      (await store.listSessionEvents(sessionId)).filter(
+        (event) => event.type === "platform.runtime_lost",
+      );
+
+    // The schedule pass and the session pass run in separate transactions and
+    // the worker calls them in one order today. Neither order may double-post
+    // the loss event, so the projection stays correct if a caller ever swaps
+    // them (or a crash replays one of the two).
+    for (const reversed of [false, true]) {
+      const { store, projectId, deploymentId } = await createStore();
+      const activation = await store.acquireActivationLease({
+        deploymentId,
+        kind: "turn",
+        ownerId: `turn_lost_${reversed}`,
+        expiresAt: new Date("2026-07-28T03:00:00.000Z"),
+        now: new Date("2026-07-28T02:00:00.000Z"),
+      });
+      const runtimeInstanceId = activation.runtimeInstance.id;
+      await store.updateRuntimeInstance(runtimeInstanceId, {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: 41_050,
+      });
+      const ingested = await store.ingestAgentEvent(
+        envelope(deploymentId, { runtimeInstanceId }),
+      );
+      expect(await store.getSession(ingested.session.id)).toMatchObject({
+        status: "running",
+      });
+
+      const reason = `RuntimeInstance ${runtimeInstanceId} vanished.`;
+      const passes = [
+        () => store.failScheduleExecutionsForRuntimeInstance(runtimeInstanceId, reason),
+        () => store.failRunningSessionsForRuntimeInstance(runtimeInstanceId, reason),
+      ];
+      for (const pass of reversed ? [...passes].reverse() : passes) {
+        await pass();
+      }
+      // Both passes again: replaying a projection must not add a second event.
+      for (const pass of passes) await pass();
+
+      expect(await runtimeLostEvents(store, ingested.session.id)).toHaveLength(1);
+      await expect(store.getSession(ingested.session.id)).resolves.toMatchObject({
+        status: "failed",
+      });
+      expect(projectId).toBeTruthy();
+    }
+  });
+
+  test("a placeholder merge folds every usage counter onto the surviving session", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const gatewaySession = await store.createSession({ projectId, deploymentId, trigger: "playground" });
+    await store.recordModelUsage(gatewaySession.id, {
+      turnId: "turn_gateway",
+      stepIndex: 0,
+      finishReason: "stop",
+      inputTokens: 10,
+      outputTokens: 20,
+      cacheReadTokens: 1,
+      cacheWriteTokens: 2,
+      costUsd: 0.5,
+      usageReported: true,
+    });
+    const observed = await store.ingestAgentEvent(envelope(deploymentId));
+    await store.recordModelUsage(observed.session.id, {
+      turnId: "turn_observed",
+      stepIndex: 0,
+      finishReason: "stop",
+      inputTokens: 100,
+      outputTokens: 200,
+      cacheReadTokens: 10,
+      cacheWriteTokens: 20,
+      costUsd: 1.25,
+      usageReported: false,
+    });
+
+    const completed = await store.completeSession(gatewaySession.id, {
+      status: "completed",
+      eveSessionId: "eve_root",
+    });
+
+    // Every counter the sessions schema carries must fold across the merge;
+    // a counter missing from the fold silently loses usage here.
+    expect(completed).toMatchObject({
+      usage: {
+        inputTokens: 110,
+        outputTokens: 220,
+        cacheReadTokens: 11,
+        cacheWriteTokens: 22,
+        reportedSteps: 1,
+        missingSteps: 1,
+      },
+    });
+    expect(completed?.usage.costUsd).toBeCloseTo(1.75);
+  });
 });
 
 describe("out-of-order delivery", () => {

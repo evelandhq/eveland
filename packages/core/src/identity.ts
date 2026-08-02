@@ -24,11 +24,23 @@ export type InternalIdentityProviderConfig = {
   enabled: boolean;
 };
 
+/** How an OIDC provider resolves a caller's external Realm. */
 export type OidcExternalRealmResolution =
   | "connection"
   | "id_token_claim"
   | "userinfo_claim"
   | "provider_api";
+
+/**
+ * Every resolution mode a persisted Identity Provider Connection can carry.
+ * Wider than OidcExternalRealmResolution by `internal_member`, which only the
+ * internal provider uses. Persistence contracts reference this name rather
+ * than re-spelling the union, so a new mode cannot be added to the record
+ * type while a store's input type silently rejects it.
+ */
+export type ExternalRealmResolution =
+  | OidcExternalRealmResolution
+  | "internal_member";
 
 export type OidcIdentityProviderConfig = {
   type: "oidc";
@@ -66,12 +78,7 @@ export type IdentityProviderConnection = {
     | "client_secret_post"
     | "none"
     | null;
-  externalRealmResolution:
-    | "connection"
-    | "internal_member"
-    | "id_token_claim"
-    | "userinfo_claim"
-    | "provider_api";
+  externalRealmResolution: ExternalRealmResolution;
   externalRealmClaim: string | null;
   enabled: boolean;
   securityRevision: number;

@@ -67,6 +67,7 @@ import type {
   IdentityLoginTransaction,
   IdentityOidcCredential,
   IdentityPrincipal,
+  ExternalRealmResolution,
   IdentityProviderConnection,
   IdentityRealm,
   IdentityReturnTarget,
@@ -283,12 +284,7 @@ export interface IdentityStore {
     scopes?: string[];
     authorizationParameters?: Record<string, string>;
     tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post" | "none";
-    externalRealmResolution?:
-      | "connection"
-      | "internal_member"
-      | "id_token_claim"
-      | "userinfo_claim"
-      | "provider_api";
+    externalRealmResolution?: ExternalRealmResolution;
     externalRealmClaim?: string | null;
     enabled: boolean;
   }): Promise<IdentityProviderConnection>;
@@ -305,12 +301,7 @@ export interface IdentityStore {
     scopes?: string[];
     authorizationParameters?: Record<string, string>;
     tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post" | "none";
-    externalRealmResolution?:
-      | "connection"
-      | "internal_member"
-      | "id_token_claim"
-      | "userinfo_claim"
-      | "provider_api";
+    externalRealmResolution?: ExternalRealmResolution;
     externalRealmClaim?: string | null;
     enabled: boolean;
     securityChanged: boolean;

@@ -238,3 +238,78 @@ function isSupportedPlaygroundFile(mediaType: string, filename: string): boolean
   if (mediaType !== "application/octet-stream") return false;
   return /\.(?:c|cc|cpp|css|csv|go|h|hpp|html|java|js|jsx|json|md|mdx|py|rb|rs|sh|sql|toml|ts|tsx|txt|xml|ya?ml)$/i.test(filename);
 }
+
+/**
+ * Eve's turn/session boundary events -- the vocabulary is eve's, and eve adds
+ * to it (turn.cancelled arrived in 0.24), so every projection that decides
+ * "did this event end a scheduled run / change a session's state" imports the
+ * list and the mappings below from here instead of re-spelling them. The
+ * mapping tables are pinned by eve.test.ts.
+ */
+export const EVE_SESSION_BOUNDARY_EVENT_TYPES = [
+  "turn.completed",
+  "turn.failed",
+  "turn.cancelled",
+  "session.waiting",
+  "session.completed",
+  "session.failed",
+] as const;
+
+/**
+ * Projects an eve event onto the platform Session status vocabulary, or null
+ * when the event does not move the projection. `session.waiting` keeps an
+ * approval-parked session parked instead of demoting it to plain waiting.
+ */
+export function sessionStatusFromEveEvent(
+  type: string,
+  currentStatus: string,
+): "running" | "waiting_approval" | "waiting" | "completed" | "failed" | null {
+  if (type === "session.started" || type === "turn.started") return "running";
+  if (type === "input.requested") return "waiting_approval";
+  if (type === "session.waiting")
+    return currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
+  if (type === "session.completed") return "completed";
+  if (type === "session.failed") return "failed";
+  return null;
+}
+
+/**
+ * Projects an eve event onto a scheduled execution's outcome. Total: any
+ * non-boundary event leaves the execution "running". A `session.waiting`
+ * under an approval request parks the run; otherwise waiting means the turn
+ * finished and the run succeeded.
+ */
+export function scheduleExecutionStatusFromEveEvent(
+  type: string | undefined,
+  sessionStatus: string,
+): "running" | "succeeded" | "failed" | "parked" {
+  if (
+    type === "turn.failed" ||
+    type === "turn.cancelled" ||
+    type === "session.failed"
+  )
+    return "failed";
+  if (type === "session.waiting" && sessionStatus === "waiting_approval")
+    return "parked";
+  if (
+    type === "turn.completed" ||
+    type === "session.waiting" ||
+    type === "session.completed"
+  )
+    return "succeeded";
+  return "running";
+}
+
+/** Operator-facing failure line for a scheduled execution's boundary event. */
+export function scheduleExecutionErrorFromEveEvent(
+  type: string | undefined,
+  payload: unknown,
+): string {
+  const message =
+    isEveRecord(payload) && typeof payload.message === "string"
+      ? payload.message
+      : null;
+  return message
+    ? `Scheduled Session ${type ?? "failed"}: ${message}`
+    : `Scheduled Session ended with ${type ?? "failure"}.`;
+}

@@ -1,17 +1,179 @@
 import { and, eq, sql } from "drizzle-orm";
 import type {
+  JobType,
   ModelUsageEvent,
   SharedAgentEnvironment,
   SharedAgentEnvironmentRecord,
 } from "@eveland/core/contracts";
+import { createId } from "@eveland/core/ids";
+import { decodeJobPayload } from "@eveland/core/jobs";
+import { getNextRunAt } from "@eveland/core/schedules";
 import type { StoreDatabase } from "./client.js";
-import { agentAuthCredentials, modelUsageEvents, sessionEvents, sessions, sharedAgentEnvironment } from "./schema.js";
+import {
+  agentAuthCredentials,
+  jobs,
+  modelUsageEvents,
+  projectSchedulerTargets,
+  projectSchedules,
+  scheduleVersions,
+  sessionEvents,
+  sessionNodes,
+  sessions,
+  sharedAgentEnvironment,
+} from "./schema.js";
 import type { AgentAuthCredentialKey } from "./store-domains.js";
+
+type JobPayloadInput<Type extends JobType> = Parameters<
+  typeof decodeJobPayload<Type>
+>[1];
 
 export type PostgresStoreContext = {
   database: StoreDatabase;
   db: StoreDatabase["db"];
 };
+
+/**
+ * Appends a session's `platform.runtime_lost` event unless that session
+ * already carries one for the same RuntimeInstance.
+ *
+ * The loss of one RuntimeInstance is projected by two store methods in two
+ * domains -- schedule executions and running sessions -- in separate
+ * transactions. Their result previously depended on call order: the schedule
+ * pass flips sessions to failed, and the session pass filters on
+ * `status = 'running'`, so running them the other way round appended a second
+ * runtime_lost event to every scheduled session. Deduplicating here makes the
+ * projection order-independent instead of leaving an unwritten contract
+ * between two interfaces (pinned by the both-orders test in
+ * session-store.test.ts).
+ */
+export async function appendRuntimeLostEventTx(
+  tx: StoreDatabase["db"],
+  input: {
+    sessionId: string;
+    runtimeInstanceId: string;
+    reason: string;
+    now: Date;
+    sessionNodeId?: string | null;
+    observedDeploymentId?: string | null;
+  },
+): Promise<boolean> {
+  const [existing] = await tx
+    .select({ id: sessionEvents.id })
+    .from(sessionEvents)
+    .where(
+      and(
+        eq(sessionEvents.sessionId, input.sessionId),
+        eq(sessionEvents.type, "platform.runtime_lost"),
+        sql`${sessionEvents.payload}->>'runtimeInstanceId' = ${input.runtimeInstanceId}`,
+      ),
+    )
+    .limit(1);
+  if (existing) return false;
+  await appendSessionEventRow(tx, {
+    id: createId("evt"),
+    sessionId: input.sessionId,
+    ...(input.sessionNodeId ? { sessionNodeId: input.sessionNodeId } : {}),
+    ...(input.observedDeploymentId
+      ? { observedDeploymentId: input.observedDeploymentId }
+      : {}),
+    observedRuntimeInstanceId: input.runtimeInstanceId,
+    type: "platform.runtime_lost",
+    payload: { runtimeInstanceId: input.runtimeInstanceId, reason: input.reason },
+    eventAt: input.now,
+  });
+  return true;
+}
+
+/**
+ * The one validated jobs insert. Every enqueue -- the JobSource domain's own
+ * `enqueueJob` and the transactional flows in the project and schedule stores
+ * that must enqueue inside their own transaction -- goes through here, so a
+ * payload that does not satisfy its job type's contract can never reach the
+ * queue (the claim side would otherwise quarantine it as an invalid row).
+ */
+export async function insertJobRowTx<Type extends JobType>(
+  tx: StoreDatabase["db"],
+  input: {
+    projectId: string;
+    type: Type;
+    payload: JobPayloadInput<Type>;
+    createdAt?: Date;
+    updatedAt?: Date;
+  },
+): Promise<typeof jobs.$inferSelect> {
+  const [row] = await tx
+    .insert(jobs)
+    .values({
+      id: createId("job"),
+      projectId: input.projectId,
+      type: input.type,
+      status: "queued",
+      payload: decodeJobPayload(input.type, input.payload ?? {}),
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      ...(input.updatedAt ? { updatedAt: input.updatedAt } : {}),
+    })
+    .returning();
+  if (!row) throw new Error(`Failed to enqueue ${input.type} job.`);
+  return row;
+}
+
+/**
+ * Points a Project's scheduler at a Deployment and recomputes every schedule's
+ * next run from that Deployment's Release. Shared by the ScheduleStore's
+ * `setProjectSchedulerTarget` and by `promoteDeployment`, which must apply the
+ * same effect inside its own promotion transaction -- previously a verbatim
+ * copy that could drift from the canonical one.
+ */
+export async function applySchedulerTargetTx(
+  tx: StoreDatabase["db"],
+  input: {
+    projectId: string;
+    deploymentId: string;
+    sourceRevisionId: string;
+    now: Date;
+  },
+): Promise<typeof projectSchedulerTargets.$inferSelect | undefined> {
+  const [target] = await tx
+    .insert(projectSchedulerTargets)
+    .values({
+      projectId: input.projectId,
+      deploymentId: input.deploymentId,
+      updatedAt: input.now,
+    })
+    .onConflictDoUpdate({
+      target: projectSchedulerTargets.projectId,
+      set: { deploymentId: input.deploymentId, updatedAt: input.now },
+    })
+    .returning();
+
+  const scheduleRows = await tx
+    .select()
+    .from(projectSchedules)
+    .where(eq(projectSchedules.projectId, input.projectId));
+  for (const scheduleRow of scheduleRows) {
+    const [version] = await tx
+      .select()
+      .from(scheduleVersions)
+      .where(
+        and(
+          eq(scheduleVersions.scheduleId, scheduleRow.id),
+          eq(scheduleVersions.sourceRevisionId, input.sourceRevisionId),
+        ),
+      )
+      .limit(1);
+    await tx
+      .update(projectSchedules)
+      .set({
+        nextRunAt:
+          version && scheduleRow.enabled
+            ? getNextRunAt(version.cron, input.now)
+            : null,
+        updatedAt: input.now,
+      })
+      .where(eq(projectSchedules.id, scheduleRow.id));
+  }
+  return target;
+}
 
 export function agentAuthCredentialWhere(key: AgentAuthCredentialKey) {
   return and(
@@ -167,4 +329,54 @@ export async function moveSessionEventsForMerge(
       index: sql`${sessionEvents.index} + ${offset}`,
     })
     .where(eq(sessionEvents.sessionId, fromSessionId));
+}
+
+/**
+ * Folds one root Session into another: re-parents its nodes, its events
+ * (renumbered by moveSessionEventsForMerge), and its usage rows, adds its
+ * usage counters onto the surviving row, applies any caller-supplied
+ * metadata coalescing, and deletes the absorbed row. Both merge paths --
+ * completeSession's placeholder merge and the ingest path's subagent
+ * re-parent -- go through here, so a new usage counter cannot be folded on
+ * one path and silently dropped on the other (pinned by the every-counter
+ * merge test in agent-observability-store.test.ts).
+ */
+export async function mergeSessionRows(
+  tx: StoreDatabase["db"],
+  absorbed: typeof sessions.$inferSelect,
+  survivingSessionId: string,
+  metadataPatch: Partial<
+    Pick<
+      typeof sessions.$inferInsert,
+      "rootNodeId" | "deploymentId" | "routeId" | "experimentId" | "variantName"
+    >
+  > = {},
+): Promise<typeof sessions.$inferSelect | undefined> {
+  await tx
+    .update(sessionNodes)
+    .set({ rootSessionId: survivingSessionId })
+    .where(eq(sessionNodes.rootSessionId, absorbed.id));
+  await moveSessionEventsForMerge(tx, absorbed.id, survivingSessionId);
+  await tx
+    .update(modelUsageEvents)
+    .set({ sessionId: survivingSessionId })
+    .where(eq(modelUsageEvents.sessionId, absorbed.id));
+  const [surviving] = await tx
+    .update(sessions)
+    .set({
+      ...metadataPatch,
+      inputTokens: sql`${sessions.inputTokens} + ${absorbed.inputTokens}`,
+      outputTokens: sql`${sessions.outputTokens} + ${absorbed.outputTokens}`,
+      cacheReadTokens: sql`${sessions.cacheReadTokens} + ${absorbed.cacheReadTokens}`,
+      cacheWriteTokens: sql`${sessions.cacheWriteTokens} + ${absorbed.cacheWriteTokens}`,
+      ...(absorbed.costUsd === null
+        ? {}
+        : { costUsd: sql`coalesce(${sessions.costUsd}, 0) + ${absorbed.costUsd}` }),
+      usageReportedSteps: sql`${sessions.usageReportedSteps} + ${absorbed.usageReportedSteps}`,
+      usageMissingSteps: sql`${sessions.usageMissingSteps} + ${absorbed.usageMissingSteps}`,
+    })
+    .where(eq(sessions.id, survivingSessionId))
+    .returning();
+  await tx.delete(sessions).where(eq(sessions.id, absorbed.id));
+  return surviving;
 }

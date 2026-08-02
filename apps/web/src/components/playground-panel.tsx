@@ -69,12 +69,12 @@ import {
   PLAYGROUND_MAX_FILES,
   PLAYGROUND_MAX_TOTAL_FILE_BYTES,
 } from "@eveland/core/eve";
+import { resetPlaygroundOnPageLeave } from "@/lib/client-api";
 import {
   cancelPlaygroundTurn,
   createPlaygroundMessage,
   resetPlaygroundConversation,
-  resetPlaygroundOnPageLeave,
-} from "@/lib/client-api";
+} from "@/lib/playground-session";
 import type { EveVersionInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AgentConnectionSettings } from "@/components/agent-connection-settings";

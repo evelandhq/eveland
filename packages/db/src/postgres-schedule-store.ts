@@ -1,5 +1,10 @@
 import { createId } from "@eveland/core/ids";
 import { getNextRunAt } from "@eveland/core/schedules";
+import {
+  EVE_SESSION_BOUNDARY_EVENT_TYPES,
+  scheduleExecutionErrorFromEveEvent,
+  scheduleExecutionStatusFromEveEvent,
+} from "@eveland/core/eve";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   deploymentRowToDeployment,
@@ -11,28 +16,13 @@ import {
   scheduleVersionRowToScheduleVersion,
   sessionRowToSession,
 } from "./mappers.js";
-import {
-  activationLeases,
-  deployments,
-  jobs,
-  projects,
-  projectSchedulerTargets,
-  projectSchedules,
-  releases,
-  scheduleRunSessions,
-  scheduleRuns,
-  scheduleVersions,
-  schedules,
-  sessionEvents,
-  sessions,
-  sourceRevisions,
-} from "./schema.js";
+import { activationLeases, deployments, projects, projectSchedulerTargets, projectSchedules, releases, scheduleRunSessions, scheduleRuns, scheduleVersions, schedules, sessionEvents, sessions, sourceRevisions } from "./schema.js";
 import { summarizeSessionUsage } from "./session-usage.js";
 
 
 import type { ScheduleStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
-import { appendSessionEventRow } from "./postgres-store-support.js";
+import { appendRuntimeLostEventTx, appendSessionEventRow, applySchedulerTargetTx, insertJobRowTx } from "./postgres-store-support.js";
 
 export function createPostgresScheduleStore({
   db,
@@ -231,46 +221,14 @@ export function createPostgresScheduleStore({
         if (!targetDeployment)
           throw new Error("Cannot target an unknown Deployment for schedules.");
 
-        const [target] = await tx
-          .insert(projectSchedulerTargets)
-          .values({ projectId, deploymentId, updatedAt: now })
-          .onConflictDoUpdate({
-            target: projectSchedulerTargets.projectId,
-            set: { deploymentId, updatedAt: now },
-          })
-          .returning();
+        const target = await applySchedulerTargetTx(tx, {
+          projectId,
+          deploymentId,
+          sourceRevisionId: targetDeployment.release.sourceRevisionId,
+          now,
+        });
         if (!target)
           throw new Error("Failed to update the Project scheduler target.");
-
-        const scheduleRows = await tx
-          .select()
-          .from(projectSchedules)
-          .where(eq(projectSchedules.projectId, projectId));
-        for (const scheduleRow of scheduleRows) {
-          const [version] = await tx
-            .select()
-            .from(scheduleVersions)
-            .where(
-              and(
-                eq(scheduleVersions.scheduleId, scheduleRow.id),
-                eq(
-                  scheduleVersions.sourceRevisionId,
-                  targetDeployment.release.sourceRevisionId,
-                ),
-              ),
-            )
-            .limit(1);
-          await tx
-            .update(projectSchedules)
-            .set({
-              nextRunAt:
-                version && scheduleRow.enabled
-                  ? getNextRunAt(version.cron, now)
-                  : null,
-              updatedAt: now,
-            })
-            .where(eq(projectSchedules.id, scheduleRow.id));
-        }
         return projectSchedulerTargetRowToProjectSchedulerTarget(target);
       });
     },
@@ -380,13 +338,10 @@ export function createPostgresScheduleStore({
           })
           .returning();
         if (!run) throw new Error("Failed to create manual ScheduleRun.");
-        await tx.insert(jobs).values({
-          id: createId("job"),
+        await insertJobRowTx(tx, {
           projectId,
           type: "trigger_schedule",
-          status: "queued",
           payload: { scheduleRunId: run.id },
-          attempts: 0,
           createdAt: now,
           updatedAt: now,
         });
@@ -469,13 +424,10 @@ export function createPostgresScheduleStore({
             .update(projectSchedules)
             .set({ nextRunAt: next, updatedAt: input.now })
             .where(eq(projectSchedules.id, row.schedule.id));
-          await tx.insert(jobs).values({
-            id: createId("job"),
+          await insertJobRowTx(tx, {
             projectId: row.schedule.projectId,
             type: "trigger_schedule",
-            status: "queued",
             payload: { scheduleRunId: run.id },
-            attempts: 0,
             createdAt: input.now,
             updatedAt: input.now,
           });
@@ -726,24 +678,19 @@ export function createPostgresScheduleStore({
                       run.startedAt ?? run.createdAt,
                     ),
                     inArray(sessionEvents.type, [
-                      "turn.completed",
-                      "turn.failed",
-                      "turn.cancelled",
-                      "session.waiting",
-                      "session.completed",
-                      "session.failed",
+                      ...EVE_SESSION_BOUNDARY_EVENT_TYPES,
                     ]),
                   ),
                 )
                 .orderBy(desc(sessionEvents.index))
                 .limit(1);
-              executionStatus = scheduleExecutionStatusFromBoundary(
+              executionStatus = scheduleExecutionStatusFromEveEvent(
                 boundary?.type,
                 existing.status,
               );
               executionError =
                 executionStatus === "failed"
-                  ? scheduleExecutionBoundaryError(
+                  ? scheduleExecutionErrorFromEveEvent(
                       boundary?.type,
                       boundary?.payload,
                     )
@@ -889,12 +836,11 @@ export function createPostgresScheduleStore({
             ),
           );
         for (const execution of interrupted) {
-          await appendSessionEventRow(tx, {
-            id: createId("evt"),
+          await appendRuntimeLostEventTx(tx, {
             sessionId: execution.sessionId,
-            type: "platform.runtime_lost",
-            payload: { runtimeInstanceId, reason },
-            eventAt: now,
+            runtimeInstanceId,
+            reason,
+            now,
           });
         }
         await tx
@@ -1054,39 +1000,3 @@ export function createPostgresScheduleStore({
   };
 }
 
-function scheduleExecutionStatusFromBoundary(
-  type: string | undefined,
-  sessionStatus: string,
-): "running" | "succeeded" | "failed" | "parked" {
-  if (
-    type === "turn.failed" ||
-    type === "turn.cancelled" ||
-    type === "session.failed"
-  )
-    return "failed";
-  if (type === "session.waiting" && sessionStatus === "waiting_approval")
-    return "parked";
-  if (
-    type === "turn.completed" ||
-    type === "session.waiting" ||
-    type === "session.completed"
-  )
-    return "succeeded";
-  return "running";
-}
-
-function scheduleExecutionBoundaryError(
-  type: string | undefined,
-  payload: unknown,
-): string {
-  const message =
-    typeof payload === "object" &&
-    payload !== null &&
-    "message" in payload &&
-    typeof payload.message === "string"
-      ? payload.message
-      : null;
-  return message
-    ? `Scheduled Session ${type ?? "failed"}: ${message}`
-    : `Scheduled Session ended with ${type ?? "failure"}.`;
-}

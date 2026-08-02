@@ -1,13 +1,18 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { createId } from "@eveland/core/ids";
-import { parseStepUsageEvent } from "@eveland/core/eve";
+import {
+  parseStepUsageEvent,
+  scheduleExecutionErrorFromEveEvent,
+  scheduleExecutionStatusFromEveEvent,
+  sessionStatusFromEveEvent,
+} from "@eveland/core/eve";
 import {
   UnmanagedTelemetryResourceError,
   type AgentEventObservation,
 } from "@eveland/core/observability";
-import type { SessionStatus, SessionTrigger } from "@eveland/core/contracts";
+import type { SessionTrigger } from "@eveland/core/contracts";
 import type { StoreDatabase } from "./client.js";
-import { appendSessionEventRow, moveSessionEventsForMerge } from "./postgres-store-support.js";
+import { appendSessionEventRow, mergeSessionRows, moveSessionEventsForMerge } from "./postgres-store-support.js";
 import {
   sessionEventRowToSessionEvent,
   sessionNodeRowToSessionNode,
@@ -26,6 +31,13 @@ import {
   sessionNodes,
   sessions,
 } from "./schema.js";
+
+/** The ingest projection only writes an execution outcome for boundary events. */
+function nonRunning(
+  status: "running" | "succeeded" | "failed" | "parked",
+): "succeeded" | "failed" | "parked" | null {
+  return status === "running" ? null : status;
+}
 
 export async function ingestPostgresAgentEvent(
   database: StoreDatabase,
@@ -342,7 +354,7 @@ export async function ingestPostgresAgentEvent(
     });
 
     const projectedStatus = isLatestObservation
-      ? eventStatus(type, node.status)
+      ? sessionStatusFromEveEvent(type, node.status)
       : null;
     const runtime =
       type === "session.started"
@@ -390,7 +402,7 @@ export async function ingestPostgresAgentEvent(
       const now = new Date();
       const executionStatus =
         node.parentNodeId === null
-          ? scheduleExecutionStatus(type, projectedStatus)
+          ? nonRunning(scheduleExecutionStatusFromEveEvent(type, projectedStatus ?? node.status))
           : null;
       await tx
         .update(scheduleRunSessions)
@@ -402,7 +414,7 @@ export async function ingestPostgresAgentEvent(
                 completedAt: now,
                 error:
                   executionStatus === "failed"
-                    ? scheduleExecutionError(type, payload)
+                    ? scheduleExecutionErrorFromEveEvent(type, payload)
                     : null,
               }
             : {}),
@@ -487,34 +499,20 @@ export async function ingestPostgresAgentEvent(
               .from(sessions)
               .where(eq(sessions.id, oldRootSessionId))
               .limit(1);
-            await tx
-              .update(sessionNodes)
-              .set({ rootSessionId: sessionRow!.id })
-              .where(eq(sessionNodes.rootSessionId, oldRootSessionId));
-            await moveSessionEventsForMerge(tx, oldRootSessionId, sessionRow!.id);
-            await tx
-              .update(modelUsageEvents)
-              .set({ sessionId: sessionRow!.id })
-              .where(eq(modelUsageEvents.sessionId, oldRootSessionId));
             if (oldRoot) {
+              await mergeSessionRows(tx, oldRoot, sessionRow!.id);
+            } else {
+              // The old root row is already gone (a concurrent merge); still
+              // re-parent the orphaned children onto the surviving root.
               await tx
-                .update(sessions)
-                .set({
-                  inputTokens: sql`${sessions.inputTokens} + ${oldRoot.inputTokens}`,
-                  outputTokens: sql`${sessions.outputTokens} + ${oldRoot.outputTokens}`,
-                  cacheReadTokens: sql`${sessions.cacheReadTokens} + ${oldRoot.cacheReadTokens}`,
-                  cacheWriteTokens: sql`${sessions.cacheWriteTokens} + ${oldRoot.cacheWriteTokens}`,
-                  costUsd:
-                    oldRoot.costUsd === null
-                      ? sessions.costUsd
-                      : sql`coalesce(${sessions.costUsd}, 0) + ${oldRoot.costUsd}`,
-                  usageReportedSteps: sql`${sessions.usageReportedSteps} + ${oldRoot.usageReportedSteps}`,
-                  usageMissingSteps: sql`${sessions.usageMissingSteps} + ${oldRoot.usageMissingSteps}`,
-                })
-                .where(eq(sessions.id, sessionRow!.id));
+                .update(sessionNodes)
+                .set({ rootSessionId: sessionRow!.id })
+                .where(eq(sessionNodes.rootSessionId, oldRootSessionId));
+              await moveSessionEventsForMerge(tx, oldRootSessionId, sessionRow!.id);
               await tx
-                .delete(sessions)
-                .where(eq(sessions.id, oldRootSessionId));
+                .update(modelUsageEvents)
+                .set({ sessionId: sessionRow!.id })
+                .where(eq(modelUsageEvents.sessionId, oldRootSessionId));
             }
           }
           [child] = await tx
@@ -617,40 +615,6 @@ function triggerFromAgentChannel(
   if (channelKind && channelKind !== "http" && channelKind !== "eve")
     return "webhook";
   return "direct_http";
-}
-
-function eventStatus(type: string, current: string): SessionStatus | null {
-  if (type === "session.started" || type === "turn.started") return "running";
-  if (type === "input.requested") return "waiting_approval";
-  if (type === "session.waiting")
-    return current === "waiting_approval" ? "waiting_approval" : "waiting";
-  if (type === "session.completed") return "completed";
-  if (type === "session.failed") return "failed";
-  return null;
-}
-
-function scheduleExecutionStatus(
-  type: string,
-  projectedStatus: SessionStatus | null,
-): "succeeded" | "failed" | "parked" | null {
-  if (type === "turn.completed" || type === "session.completed")
-    return "succeeded";
-  if (
-    type === "turn.failed" ||
-    type === "turn.cancelled" ||
-    type === "session.failed"
-  )
-    return "failed";
-  if (type === "session.waiting")
-    return projectedStatus === "waiting_approval" ? "parked" : "succeeded";
-  return null;
-}
-
-function scheduleExecutionError(type: string, payload: unknown): string {
-  const message = stringValue(recordValue(payload)?.message);
-  return message
-    ? `Scheduled Session ${type}: ${message}`
-    : `Scheduled Session ended with ${type}.`;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

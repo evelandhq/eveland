@@ -176,13 +176,9 @@ describe("team management web surfaces", () => {
     expect(serverApi).toContain("cookieStore.toString()");
   });
 
-  test("includes credentials in direct browser project and secret mutations", () => {
-    const newProjectFormUrl = new URL("../components/new-project-flow.tsx", import.meta.url);
-    expect(existsSync(fileURLToPath(newProjectFormUrl))).toBe(true);
-    if (!existsSync(fileURLToPath(newProjectFormUrl))) return;
-    expect(source("../components/new-project-flow.tsx")).toContain('credentials: "include"');
-    expect(source("../lib/client-api.ts")).toContain('credentials: "include"');
-  });
+  // Cookie credentials are no longer a string to grep for in each caller:
+  // lib/api-transport sends them for every browser call, and
+  // api-transport.test.ts asserts that behavior directly.
 
   test("manages project variables and secrets with the shared table and dialog pattern", () => {
     const page = source("./projects/[projectId]/settings/environment/page.tsx");

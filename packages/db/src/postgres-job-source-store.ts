@@ -31,6 +31,7 @@ import type {
   SourceStore,
 } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
+import { insertJobRowTx } from "./postgres-store-support.js";
 
 type PostgresJobSourceDomain = JobStore &
   Pick<ProjectStore, "updateProjectState"> &
@@ -54,22 +55,9 @@ export function createPostgresJobSourceStore({
     ...jobInput: EnqueueJobArguments<Type>
   ): Promise<Job<Type>> => {
     const [type, payloadInput] = jobInput;
-    const payload = decodeJobPayload(
-      type,
-      payloadInput ?? {},
+    const row = await db.transaction((tx) =>
+      insertJobRowTx(tx, { projectId, type, payload: payloadInput ?? {} }),
     );
-    const [row] = await db
-      .insert(jobs)
-      .values({
-        id: createId("job"),
-        projectId,
-        type,
-        status: "queued",
-        payload,
-      })
-      .returning();
-
-    if (!row) throw new Error("Failed to create job.");
     const job = jobRowToJob(row);
     if (job.type !== type) {
       throw new Error(`Enqueued job ${job.id} changed type at persistence.`);
@@ -157,20 +145,14 @@ export function createPostgresJobSourceStore({
         if (existing) {
           return { job: jobRowToJob(existing), created: false };
         }
-        const [created] = await tx
-          .insert(jobs)
-          .values({
-            id: createId("job"),
-            projectId,
-            type: "archive_deployment",
-            status: "queued",
-            payload: {
-              deploymentId,
-              ...(options.automatic ? { automatic: true } : {}),
-            },
-          })
-          .returning();
-        if (!created) throw new Error("Failed to enqueue Deployment archive.");
+        const created = await insertJobRowTx(tx, {
+          projectId,
+          type: "archive_deployment",
+          payload: {
+            deploymentId,
+            ...(options.automatic ? { automatic: true } : {}),
+          },
+        });
         return { job: jobRowToJob(created), created: true };
       });
     },
@@ -235,18 +217,13 @@ export function createPostgresJobSourceStore({
           }
           return jobRowToJob(existing);
         }
-        const [created] = await tx
-          .insert(jobs)
-          .values({
-            id: createId("job"),
-            projectId,
-            type: "ensure_deployment_running",
-            status: "queued",
-            payload: { deploymentId, runtimeInstanceId },
-            createdAt: now,
-            updatedAt: now,
-          })
-          .returning();
+        const created = await insertJobRowTx(tx, {
+          projectId,
+          type: "ensure_deployment_running",
+          payload: { deploymentId, runtimeInstanceId },
+          createdAt: now,
+          updatedAt: now,
+        });
         if (!created)
           throw new Error("Failed to enqueue Deployment activation.");
         return jobRowToJob(created);

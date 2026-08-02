@@ -5,7 +5,12 @@ import type {
   Project as CoreProject,
   ProjectSchedule as CoreProjectSchedule,
   ProjectScheduleSummary as CoreProjectScheduleSummary,
+  AgentEndpoints as CoreAgentEndpoints,
   AuthPrincipal as CoreAuthPrincipal,
+  DeploymentOverview as CoreDeploymentOverview,
+  PublicDeploymentRecord as CorePublicDeploymentRecord,
+  ResolvedAgentRoute as CoreResolvedAgentRoute,
+  VariantMetric as CoreVariantMetric,
   PublicJob as CorePublicJob,
   PublicSecret as CorePublicSecret,
   PublicSession as CorePublicSession,
@@ -37,8 +42,13 @@ import type {
   SessionEvent,
   SessionNode,
   SessionTokenUsage,
+  AgentEndpoints,
+  AgentRoute,
+  Deployment,
+  DeploymentOverview,
   SourceFile,
   SourceRevision,
+  VariantMetric,
 } from "./api";
 import type { CurrentMember, Invitation, Member } from "./client-api";
 
@@ -79,6 +89,13 @@ type ControlPlaneDomainContracts = [
   Assert<Equal<Member, CoreTeamMember>>,
   Assert<Equal<CurrentMember, CoreAuthPrincipal>>,
   Assert<Equal<Invitation, CoreTeamInvitation>>,
+  // The deployment domain: these were hand-written and had drifted (Deployment
+  // lost updatedAt; AgentRoute under-described the targets the API returns).
+  Assert<Equal<Deployment, CorePublicDeploymentRecord>>,
+  Assert<Equal<AgentRoute, CoreResolvedAgentRoute>>,
+  Assert<Equal<AgentEndpoints, CoreAgentEndpoints>>,
+  Assert<Equal<DeploymentOverview, CoreDeploymentOverview>>,
+  Assert<Equal<VariantMetric, CoreVariantMetric>>,
 ];
 
 export type { ControlPlaneDomainContracts };

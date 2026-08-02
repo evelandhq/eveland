@@ -67,6 +67,7 @@ import {
   safeProjectSlug,
   uploadZipPreflight,
 } from "./new-project-flow-api";
+import { apiFetch } from "@/lib/api-transport";
 import {
   DeploymentStage,
   SourceSummary,
@@ -75,7 +76,6 @@ import {
   type NewProjectStep as Step,
 } from "./new-project-flow-parts";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.";
 
 type Availability = "idle" | "checking" | "available" | "unavailable" | "error";
@@ -177,8 +177,7 @@ export function NewProjectFlow() {
     setAvailability("checking");
     setAvailabilityError(null);
     const timeout = window.setTimeout(() => {
-      void fetch(`${apiBaseUrl}/projects/name-availability?name=${encodeURIComponent(name)}`, {
-        credentials: "include",
+      void apiFetch(`/projects/name-availability?name=${encodeURIComponent(name)}`, {
         signal: controller.signal,
       })
         .then(async (response) => {
@@ -246,9 +245,8 @@ export function NewProjectFlow() {
     setPending(true);
     try {
       const response = sourceKind === "git"
-        ? await fetch(`${apiBaseUrl}/source-preflights`, {
+        ? await apiFetch("/source-preflights", {
             method: "POST",
-            credentials: "include",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ kind: "git", gitUrl, ...(gitlabPat ? { gitlabPat } : {}) }),
           })
@@ -278,9 +276,8 @@ export function NewProjectFlow() {
     setCreateError(null);
     let response: Response;
     try {
-      response = await fetch(`${apiBaseUrl}/projects`, {
+      response = await apiFetch("/projects", {
         method: "POST",
-        credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name,
