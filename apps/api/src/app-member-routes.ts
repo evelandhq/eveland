@@ -8,8 +8,8 @@ import {
 import {
   authErrorResponse,
   getSetCookies,
-  publicInvitation,
 } from "./app-support.js";
+import { publicInvitation } from "./app-public-projections.js";
 import type { ApiApp } from "./app-types.js";
 
 type BetterAuthRuntime = ReturnType<typeof createBetterAuthRuntime>;

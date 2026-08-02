@@ -53,16 +53,10 @@ export function registerObservabilityRoutes(input: {
   });
 
   app.get("/system/observability", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     return c.json(await policyService.getPublicPolicy());
   });
 
   app.put("/system/observability", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = updateAgentCaptureSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -94,9 +88,6 @@ export function registerObservabilityRoutes(input: {
   });
 
   app.post("/system/observability/destinations", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = createDestinationSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -161,9 +152,6 @@ export function registerObservabilityRoutes(input: {
   });
 
   app.put("/system/observability/destinations/:destinationId", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = updateDestinationSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -227,9 +215,6 @@ export function registerObservabilityRoutes(input: {
   });
 
   app.patch("/system/observability/destinations/:destinationId", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = toggleDestinationSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -270,9 +255,6 @@ export function registerObservabilityRoutes(input: {
   });
 
   app.delete("/system/observability/destinations/:destinationId", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const parsed = deleteDestinationSchema.safeParse(
       await c.req.json().catch(() => null),
     );

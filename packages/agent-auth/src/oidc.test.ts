@@ -215,6 +215,60 @@ describe("generic OIDC Authorization Code provider", () => {
     });
   });
 
+  test("fails closed instead of live-looping when the IdP only mints immediately-expiring credentials", async () => {
+    const { store, connection, snapshot } = await fixture("oidc-livelock");
+    const fixedNow = new Date("2029-01-01T00:00:00.000Z");
+    let refreshCalls = 0;
+    const provider = createOidcAuthorizationCodeProvider({
+      store,
+      appSecretKey,
+      callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
+      resolveClientSecret: async () => "client-secret",
+      protocol: protocol({
+        async exchangeAuthorizationCode() {
+          return {
+            accessToken: "expired-token",
+            refreshToken: "refresh-token",
+            expiresAt: new Date("2028-12-31T23:00:00.000Z"),
+            issuer: config.issuer,
+            subject: "id-token-subject",
+          };
+        },
+        async refresh(_config, _secret, _refreshToken, subject) {
+          refreshCalls += 1;
+          // Legal per RFC 6749: every refreshed token is already inside the
+          // 30-second expiring-soon window when it arrives.
+          return {
+            accessToken: `short-lived-${refreshCalls}`,
+            refreshToken: "refresh-token",
+            expiresAt: new Date(fixedNow.getTime() + 10_000),
+            issuer: config.issuer,
+            subject,
+          };
+        },
+      }),
+      verifyAccessToken: async () => ({ issuer: config.issuer, subject: "agent-subject" }),
+      now: () => fixedNow,
+    });
+    const interaction = await provider.start({
+      connection: snapshot,
+      callerPrincipalId: "member-a",
+      returnPath: `/projects/${connection.target.projectId}/playground`,
+    });
+    await provider.callback({
+      state: interaction.state,
+      currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${interaction.state}`),
+      callerPrincipalId: "member-a",
+      getConnection: async () => snapshot,
+    });
+
+    await expect(
+      provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" }),
+    ).resolves.toMatchObject({ failure: { code: "provider_unavailable" } });
+    // Bounded refresh work, not one network call per recursion forever.
+    expect(refreshCalls).toBeLessThanOrEqual(2);
+  });
+
   test("keeps a temporarily unverifiable UserInfo token pending and permanently rejects subject mismatch", async () => {
     const { store, connection } = await fixture("oidc-userinfo");
     const userinfoConfig = {

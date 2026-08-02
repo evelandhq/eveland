@@ -44,6 +44,16 @@ describe("Identity Broker", () => {
     });
   });
 
+  test("refuses a weak APP_SECRET_KEY at construction like every other sealed-envelope home", () => {
+    expect(() =>
+      createIdentityBroker({
+        store: createTestStore(),
+        issuer: "https://identity.example.com",
+        appSecretKey: "too-short",
+      }),
+    ).toThrow(/APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value/);
+  });
+
   test("rejects an unknown or disabled external Realm before creating a session", async () => {
     const store = createTestStore();
     const { connection } = await configuredIdentity(store);

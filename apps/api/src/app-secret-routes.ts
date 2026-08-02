@@ -11,19 +11,17 @@ import {
   sharedAgentEnvironmentSchema,
   updateSecretSchema,
 } from "./app-schemas.js";
-import type { ApiApp, AppOptions } from "./app-types.js";
+import type { ApiApp } from "./app-types.js";
 
 export function registerSecretRoutes(input: {
   app: ApiApp;
   store: Store;
-  options: Pick<AppOptions, "auth">;
   appSecretKey: string;
   enqueueLiveDeploymentRestarts(projectId: string): Promise<Job[]>;
 }): void {
   const {
     app,
     store,
-    options,
     appSecretKey,
     enqueueLiveDeploymentRestarts,
   } = input;
@@ -125,8 +123,6 @@ export function registerSecretRoutes(input: {
   });
 
   app.get("/platform/shared-agent-environment", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin")
-      return c.json({ error: "Admin access required" }, 403);
     const record = await store.getSharedAgentEnvironmentRecord();
     return c.json({
       environment: record ? publicSharedAgentEnvironment(record) : null,
@@ -134,8 +130,6 @@ export function registerSecretRoutes(input: {
   });
 
   app.put("/platform/shared-agent-environment", async (c) => {
-    if (options.auth && c.get("principal").role !== "admin")
-      return c.json({ error: "Admin access required" }, 403);
     const parsed = sharedAgentEnvironmentSchema.safeParse(
       await c.req.json().catch(() => null),
     );

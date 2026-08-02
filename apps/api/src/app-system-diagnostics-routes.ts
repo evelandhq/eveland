@@ -18,9 +18,6 @@ export function registerSystemDiagnosticsRoutes(input: {
   const { app, store, configurationDiagnostics, gatewayHealth } = input;
 
   app.get("/system/configuration", async (c) => {
-    if (c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     if (!configurationDiagnostics) {
       return c.json({ error: "Configuration diagnostics unavailable" }, 503);
     }
@@ -32,9 +29,6 @@ export function registerSystemDiagnosticsRoutes(input: {
   });
 
   app.get("/system/health", async (c) => {
-    if (c.get("principal").role !== "admin") {
-      return c.json({ error: "Admin access required" }, 403);
-    }
     const requestedHours = Number(c.req.query("hours") ?? 24);
     const historyHours = Number.isFinite(requestedHours)
       ? Math.max(1, Math.min(168, Math.round(requestedHours)))

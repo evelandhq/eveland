@@ -95,7 +95,7 @@ describe("control-plane auth routes", () => {
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: issued.body.invitation.id, name: "Member", password: "member-password" }),
+      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Member", password: "member-password" }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
@@ -131,7 +131,7 @@ describe("control-plane auth routes", () => {
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: issued.body.invitation.id, name: "Member", password: "member-password" }),
+      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Member", password: "member-password" }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
@@ -147,7 +147,7 @@ describe("control-plane auth routes", () => {
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: issued.body.invitation.id, name: "Profile Member", password: "member-password" }),
+      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Profile Member", password: "member-password" }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
     const input = { entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "operator-secret" }] };
@@ -278,7 +278,7 @@ describe("control-plane auth routes", () => {
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: issued.body.invitation.id, name: "Member", password: "member-password" }),
+      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Member", password: "member-password" }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
@@ -311,7 +311,7 @@ describe("control-plane auth routes", () => {
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: issued.body.invitation.id, name: "Member", password: "member-password" }),
+      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Member", password: "member-password" }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
     const members = await (await app.request("/members", { headers: { cookie: adminCookie } })).json();
@@ -335,13 +335,44 @@ describe("control-plane auth routes", () => {
     expect(reissued.status).toBe(200);
     const reissuedBody = await reissued.json() as { invitation: { id: string }; inviteUrl: string };
     expect(reissuedBody.invitation.id).not.toBe(issued.body.invitation.id);
-    expect(reissuedBody.inviteUrl).toContain(reissuedBody.invitation.id);
+    const reissuedToken = new URL(reissuedBody.inviteUrl).searchParams.get("token")!;
 
     expect((await app.request(`/invitations/${reissuedBody.invitation.id}`, { method: "DELETE", headers: { cookie } })).status).toBe(204);
     expect((await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: reissuedBody.invitation.id, name: "Member", password: "member-password" }),
+      body: JSON.stringify({ token: reissuedToken, name: "Member", password: "member-password" }),
+    })).status).toBe(409);
+  });
+
+  test("management responses carry an invitation handle, never the acceptance token", async () => {
+    const { app } = await createAuthApp();
+    const { cookie } = await signIn(app);
+    const issued = await invite(app, cookie, "tokenless@example.com");
+    const token = new URL(issued.body.inviteUrl).searchParams.get("token")!;
+
+    // The raw token opens an account; it belongs only in inviteUrl, which
+    // create/resend intentionally surface. Every serialized invitation --
+    // create response and list -- exposes a derived handle instead.
+    expect(issued.body.invitation.id).not.toBe(token);
+    expect(JSON.stringify(issued.body.invitation)).not.toContain(token);
+    const list = await app.request("/invitations", { headers: { cookie } });
+    expect(list.status).toBe(200);
+    const listBody = await list.text();
+    expect(listBody).not.toContain(token);
+
+    // The handle from the list remains a working management reference.
+    const listed = (JSON.parse(listBody) as { invitations: { id: string; email: string }[] })
+      .invitations.find((candidate) => candidate.email === "tokenless@example.com");
+    expect(listed).toBeDefined();
+    expect(
+      (await app.request(`/invitations/${listed!.id}`, { method: "DELETE", headers: { cookie } })).status,
+    ).toBe(204);
+    // A revoked token no longer opens an account.
+    expect((await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, name: "Member", password: "member-password" }),
     })).status).toBe(409);
   });
 });
