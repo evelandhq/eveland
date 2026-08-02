@@ -110,7 +110,6 @@ export async function resolveDeploymentLaunchPrerequisites(input: {
   const { env, secretValues } = await composeDeploymentEnv(
     input.store,
     input.projectId,
-    input.deploymentId,
     { ...input.options, appSecretKey },
     input.workerEnv,
   );

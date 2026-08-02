@@ -1,24 +1,7 @@
-import { execFile } from "node:child_process";
-import { createServer, type ServerResponse } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
 import { describe, expect, test, vi } from "vitest";
-import { createBuildInfo } from "@eveland/core/build-info";
-import { createScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
-import {
-  decryptSecretValue,
-  type EncryptedSecret,
-} from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
-import type { Store } from "@eveland/db";
 import { createTestStore } from "@eveland/db/vitest";
 
-import {
-  createScheduleRunFixture,
-  createZipArchiveFixture,
-} from "./app.test-support.js";
 
 describe("api app", () => {
   test("syncs the latest git source with deployment and promotion chained", async () => {

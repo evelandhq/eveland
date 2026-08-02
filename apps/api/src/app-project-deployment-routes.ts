@@ -1,47 +1,13 @@
-import { rm } from "node:fs/promises";
-import {
-  inferProjectSlugFromGitUrl,
-  normalizeGitHttpHost,
-} from "@eveland/core/ids";
 import { toPublicJob } from "@eveland/core/jobs";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
 import {
   DEFAULT_API_SESSION_IDLE_TTL_MS,
   DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
 } from "@eveland/core/routing";
-import {
-  DeploymentNotFoundError,
-  DeploymentNotPromotableError,
-  ProjectRouteNotFoundError,
-  ProjectSlugConflictError,
-  type Store,
-} from "@eveland/db";
-import type { MiddlewareHandler } from "hono";
+import { DeploymentNotFoundError, DeploymentNotPromotableError, ProjectRouteNotFoundError, type Store } from "@eveland/db";
 import { publicDeployment } from "./app-public-projections.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
-import {
-  aliasSchema,
-  buildDeploySchema,
-  createGitSourcePreflightSchema,
-  createProjectFromPreflightSchema,
-  createProjectSchema,
-  projectNameSchema,
-  routeTargetsSchema,
-  syncSourceSchema,
-  updateProjectMetadataSchema,
-} from "./app-schemas.js";
-import { bodyLimit } from "hono/body-limit";
-import {
-  createZipProjectFromUpload,
-  currentUserId,
-  extractZipUpload,
-  InvalidZipUploadError,
-  invalidateGateway,
-  invalidateGatewayAfterCommit,
-  isMultipartRequest,
-  publicGatewayUrl,
-  resolveProjectEveVersion,
-} from "./app-support.js";
+import { aliasSchema, routeTargetsSchema } from "./app-schemas.js";
+import { invalidateGatewayAfterCommit, publicGatewayUrl } from "./app-support.js";
 
 export function registerProjectDeploymentRoutes(input: {
   app: ApiApp;

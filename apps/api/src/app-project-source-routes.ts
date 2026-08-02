@@ -3,45 +3,12 @@ import {
   inferProjectSlugFromGitUrl,
   normalizeGitHttpHost,
 } from "@eveland/core/ids";
-import { toPublicJob } from "@eveland/core/jobs";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
-import {
-  DEFAULT_API_SESSION_IDLE_TTL_MS,
-  DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
-} from "@eveland/core/routing";
-import {
-  DeploymentNotFoundError,
-  DeploymentNotPromotableError,
-  ProjectRouteNotFoundError,
-  ProjectSlugConflictError,
-  type Store,
-} from "@eveland/db";
-import type { MiddlewareHandler } from "hono";
-import { publicDeployment } from "./app-public-projections.js";
-import type { ApiApp, AppOptions } from "./app-types.js";
-import {
-  aliasSchema,
-  buildDeploySchema,
-  createGitSourcePreflightSchema,
-  createProjectFromPreflightSchema,
-  createProjectSchema,
-  projectNameSchema,
-  routeTargetsSchema,
-  syncSourceSchema,
-  updateProjectMetadataSchema,
-} from "./app-schemas.js";
+import { ProjectSlugConflictError, type Store } from "@eveland/db";
+import type { ApiApp } from "./app-types.js";
+import { createGitSourcePreflightSchema, createProjectFromPreflightSchema, createProjectSchema, projectNameSchema } from "./app-schemas.js";
 import { bodyLimit } from "hono/body-limit";
-import {
-  createZipProjectFromUpload,
-  currentUserId,
-  extractZipUpload,
-  InvalidZipUploadError,
-  invalidateGateway,
-  invalidateGatewayAfterCommit,
-  isMultipartRequest,
-  publicGatewayUrl,
-  resolveProjectEveVersion,
-} from "./app-support.js";
+import { createZipProjectFromUpload, currentUserId, extractZipUpload, InvalidZipUploadError, isMultipartRequest } from "./app-support.js";
 
 type CreateGitCredentialInput = {
   userId: string;

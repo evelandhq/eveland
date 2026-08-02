@@ -466,7 +466,7 @@ describe("collectSystemdPreflightIssues", () => {
     deps.platform = "darwin";
     deps.getuid = vi.fn(() => 1000);
     deps.pathExists = vi.fn(async (p: string) => p !== "/run/systemd/system");
-    const issues = await collectSystemdPreflightIssues(deps);
+    await collectSystemdPreflightIssues(deps);
     // mkdir/canTraverseAs (check 9) still ran despite checks 1-3 failing.
     expect(deps.mkdir).toHaveBeenCalledWith("/var/lib/eveland");
     expect(deps.canTraverseAs).toHaveBeenCalled();

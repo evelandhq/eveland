@@ -153,7 +153,7 @@ describe("discovery SSRF hardening", () => {
     // passing by accident.
     let innerIssuer = "";
     let innerHits = 0;
-    const innerServer = createServer((request, response) => {
+    const innerServer = createServer((_request, response) => {
       innerHits += 1;
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({
@@ -173,7 +173,7 @@ describe("discovery SSRF hardening", () => {
     if (!innerAddress || typeof innerAddress === "string") throw new Error("Expected TCP address.");
     innerIssuer = `http://127.0.0.1:${innerAddress.port}`;
 
-    const redirectingServer = createServer((request, response) => {
+    const redirectingServer = createServer((_request, response) => {
       response.statusCode = 302;
       response.setHeader("location", `${innerIssuer}/.well-known/openid-configuration`);
       response.end();

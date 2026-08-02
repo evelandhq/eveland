@@ -16,7 +16,6 @@ describe("composeDeploymentEnv Identity configuration", () => {
     const result = await composeDeploymentEnv(
       store,
       "proj_local",
-      "dep_local",
       {
         nodeEnv: "development",
         appSecretKey: "eveland-test-secret-key-00000000",

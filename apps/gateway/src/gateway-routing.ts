@@ -223,13 +223,6 @@ export function requestHasBody(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
 }
 
-export async function sessionIdFromJson(response: Response): Promise<string | null> {
-  if (!response.headers.get("content-type")?.includes("application/json")) return null;
-  const value = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-  const candidate = value?.sessionId;
-  return typeof candidate === "string" ? candidate : null;
-}
-
 export function quoteForwarded(value: string): string {
   return `"${value.replace(/["\\]/g, "")}"`;
 }

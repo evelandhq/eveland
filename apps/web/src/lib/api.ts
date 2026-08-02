@@ -15,7 +15,6 @@ import type {
   Project as CoreProject,
   ProjectSchedule as CoreProjectSchedule,
   ProjectScheduleSummary as CoreProjectScheduleSummary,
-  PublicDeploymentRecord as CorePublicDeployment,
   PublicJob as CorePublicJob,
   PublicReleaseRecord as CorePublicRelease,
   PublicSecret as CorePublicSecret,

@@ -10,11 +10,7 @@ import type {
   UsageAnalytics,
   UsageRange,
 } from "@eveland/core/contracts";
-import type {
-  IdentityProviderConnection,
-  IdentityRealm,
-  IdentityReturnTarget,
-} from "@eveland/core/identity";
+import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity";
 import type {
   AgentEndpoints,
   DeploymentOverview,

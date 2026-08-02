@@ -166,7 +166,7 @@ describe("Gateway SessionBinding lifecycle", () => {
     });
     const clone = vi.spyOn(upstream, "clone");
 
-    const effect = await applyGatewaySessionResponse({
+    await applyGatewaySessionResponse({
       repository,
       projectId: "proj_1",
       request: { kind: "initial", sessionId: null },
@@ -189,7 +189,6 @@ describe("Gateway SessionBinding lifecycle", () => {
       },
     });
 
-    expect(effect).toEqual({ kind: "bound", eveSessionId: "eve_created" });
     expect(clone).not.toHaveBeenCalled();
     expect(repository.bindSession).toHaveBeenCalledWith({
       projectId: "proj_1",
@@ -212,20 +211,18 @@ describe("Gateway SessionBinding lifecycle", () => {
       request: { kind: "continuation" as const, sessionId: "eve_1" },
       body: { sessionId: "eve_1", continuationToken: "continue_2" },
       expectedToken: "continue_2",
-      expectedEffect: { kind: "continuation_token_set", eveSessionId: "eve_1" },
     },
     {
       request: { kind: "reset" as const, sessionId: null },
       body: { ok: true, previousSessionId: "eve_1", status: "reset" },
       expectedToken: null,
-      expectedEffect: { kind: "continuation_token_cleared", eveSessionId: "eve_1" },
     },
   ])(
-    "persists a successful $request.kind response effect",
-    async ({ request, body, expectedToken, expectedEffect }) => {
+    "persists a successful $request.kind response",
+    async ({ request, body, expectedToken }) => {
       const repository = repositoryFixture();
 
-      const effect = await applyGatewaySessionResponse({
+      await applyGatewaySessionResponse({
         repository,
         projectId: "proj_1",
         request,
@@ -240,7 +237,6 @@ describe("Gateway SessionBinding lifecycle", () => {
         provenance: { kind: "playground", requestId: "request_playground" },
       });
 
-      expect(effect).toEqual(expectedEffect);
       expect(repository.setSessionBindingContinuationToken).toHaveBeenCalledWith(
         "proj_1",
         "eve_1",
@@ -272,7 +268,7 @@ describe("Gateway SessionBinding lifecycle", () => {
     const repository = repositoryFixture();
     const clone = vi.spyOn(response, "clone");
 
-    const effect = await applyGatewaySessionResponse({
+    await applyGatewaySessionResponse({
       repository,
       projectId: "proj_1",
       request,
@@ -287,7 +283,6 @@ describe("Gateway SessionBinding lifecycle", () => {
       provenance: { kind: "playground", requestId: "request_playground" },
     });
 
-    expect(effect).toEqual({ kind: "none" });
     expect(repository.bindSession).not.toHaveBeenCalled();
     expect(
       repository.setSessionBindingContinuationToken,

@@ -1,5 +1,4 @@
 import type { Job } from "@eveland/core/contracts";
-import { decryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
 
 // The narrow persistence port this handler actually needs.
@@ -8,10 +7,9 @@ type ImportSourceStore = Pick<
   "getProject" | "appendLog" | "recordSourceRevision" | "upsertGitCredential" | "enqueueJob"
 >;
 import path from "node:path";
-import { getGitCommitSha, importGitSource } from "../source/importer.js";
 import { scanEveSource } from "../source/scan.js";
-import { devSecretKey, parseEncryptedSecret } from "./process-support.js";
 import type { ProcessJobOptions } from "./process-types.js";
+import { materializeGitSource } from "./source-materialize.js";
 
 export async function handleImportSourceJob(
   store: ImportSourceStore,
@@ -42,23 +40,12 @@ export async function handleImportSourceJob(
       job.id,
       `attempt-${job.attempts}`,
     );
-    await importGitSource({
+    commitSha = await materializeGitSource({
       gitUrl,
       targetDir: sourcePath,
+      credential: gitCredential,
+      appSecretKey: options.appSecretKey,
       ...(options.signal ? { signal: options.signal } : {}),
-      ...(gitCredential
-        ? {
-            credential: {
-              host: gitCredential.host,
-              token: decryptSecretValue(
-                parseEncryptedSecret(gitCredential.encryptedToken),
-                options.appSecretKey ??
-                  process.env.APP_SECRET_KEY ??
-                  devSecretKey,
-              ),
-            },
-          }
-        : {}),
       onRetry: async (attempt, detail) => {
         options.signal?.throwIfAborted();
         await store.appendLog({
@@ -69,7 +56,6 @@ export async function handleImportSourceJob(
         options.signal?.throwIfAborted();
       },
     });
-    commitSha = await getGitCommitSha(sourcePath, options.signal);
   }
 
   options.signal?.throwIfAborted();

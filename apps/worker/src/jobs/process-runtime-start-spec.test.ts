@@ -1,12 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-describe("runtime deployment start spec", () => {
-  test("selects adapter-visible directories and injects deployment identity", async () => {
-    const runtimeJobs = await import("./process-runtime-job.js");
+import { createDeploymentStartInput } from "./deployment-launch-context.js";
 
-    expect(runtimeJobs).toHaveProperty("createDeploymentStartInput");
-    const createDeploymentStartInput =
-      runtimeJobs.createDeploymentStartInput!;
+describe("runtime deployment start spec", () => {
+  test("selects adapter-visible directories and injects deployment identity", () => {
     const common = {
       processName: "eveland-agent",
       releaseRef: "eveland/project:release",
