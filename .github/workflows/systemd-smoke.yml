@@ -60,6 +60,18 @@ jobs:
       - name: Build the sandbox backend
         run: pnpm --filter @eveland/sandbox-bwrap build
 
+      - name: Put the sandbox toolchain on the system PATH
+        run: |
+          # Deployment units run with a plain system PATH, so the toolchain the
+          # sandbox self-check probes must live there -- not in the runner's
+          # per-user setup-pnpm/setup-node directories. Same corepack install
+          # the Lima guest performs.
+          sudo corepack enable
+          sudo corepack install --global pnpm@11.7.0
+          sudo ln -sf "$(command -v node)" /usr/local/bin/node
+          sudo ln -sf "$(command -v npm)" /usr/local/bin/npm
+          sudo -i sh -lc 'command -v node npm pnpm rg jq zstd'
+
       - name: Provision worker users and data root
         run: |
           id -u eveland-build >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
