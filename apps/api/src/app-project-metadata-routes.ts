@@ -1,11 +1,18 @@
 import { type Store } from "@eveland/db";
 import type { ApiApp } from "./app-types.js";
 import { updateProjectMetadataSchema } from "./app-schemas.js";
-import { resolveProjectEveVersion } from "./app-support.js";
+import { resolveProjectEveVersion, type EveVersionStore } from "./app-support.js";
+
+// The narrow persistence port this slice actually needs.
+export type ProjectMetadataStore = Pick<
+  Store,
+  "getProject" | "listProjects" | "updateProjectMetadata"
+> &
+  EveVersionStore;
 
 export function registerProjectMetadataRoutes(input: {
   app: ApiApp;
-  store: Store;
+  store: ProjectMetadataStore;
 }): void {
   const { app, store } = input;
   app.get("/projects", async (c) => {

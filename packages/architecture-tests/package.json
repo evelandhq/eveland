@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@eveland/core": "workspace:*",
     "@types/node": "^26.0.1",
     "vitest": "^4.1.9"
   }

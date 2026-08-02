@@ -33,7 +33,7 @@ const execFileAsync = promisify(execFile);
 
 export function publicGatewayUrl(
   hostname: string,
-  options: AppOptions,
+  options: Pick<AppOptions, "gatewayPublicScheme" | "gatewayPublicPort">,
 ): string {
   const scheme =
     options.gatewayPublicScheme ??
@@ -89,7 +89,7 @@ function upstreamAuthStatus(error: unknown): 400 | 401 | 403 | 404 | 409 | null 
  * Answering 500 told the operator the opposite of what happened.
  */
 export async function invalidateGatewayAfterCommit(
-  options: AppOptions,
+  options: Pick<AppOptions, "invalidateGatewayRoutes">,
   hostnames: string[],
 ): Promise<void> {
   try {
@@ -104,7 +104,7 @@ export async function invalidateGatewayAfterCommit(
 }
 
 export async function invalidateGateway(
-  options: AppOptions,
+  options: Pick<AppOptions, "invalidateGatewayRoutes">,
   hostnames: string[],
 ): Promise<void> {
   if (options.invalidateGatewayRoutes)
@@ -327,7 +327,7 @@ export function agentAuthFailureStatus(
 
 export async function createZipProjectFromUpload(
   c: Context,
-  store: Store,
+  store: Pick<Store, "createProject" | "isProjectSlugAvailable">,
   dataDir: string,
 ) {
   const form = await c.req.formData();

@@ -4,7 +4,7 @@ import {
   listSourceFiles,
   listWorkspaces,
   readSource,
-  resolveRelativeImport,
+  resolveImport,
 } from "./scan-support.js";
 
 // Known cycles, keyed by their sorted member files. Ratchet: a new cycle
@@ -17,7 +17,9 @@ function findCycleGroups(files: string[]): string[][] {
   for (const file of files) {
     const targets: string[] = [];
     for (const specifier of importSpecifiers(readSource(file))) {
-      const resolved = resolveRelativeImport(file, specifier);
+      // resolveImport also follows @eveland/* subpath (self-)imports, so a
+      // cycle routed through the package's own exports map is visible.
+      const resolved = resolveImport(file, specifier);
       if (resolved && fileSet.has(resolved)) targets.push(resolved);
     }
     edges.set(file, targets);

@@ -121,10 +121,12 @@ export type RuntimeAdapter = {
  * a future runtime that skips a capability fails to compile there instead of
  * typechecking as a RuntimeAdapter and missing methods at runtime; consumers
  * keep guarding only where an intentionally partial adapter (a test fake) is
- * acceptable. Port-ownership proof is deliberately NOT part of the complete
- * set: only systemd can attest that its own unit holds a loopback socket, so
- * that capability is declared by the systemd factory alone and every consumer
- * must keep handling its absence.
+ * acceptable. Port-ownership proof stays outside the complete set because its
+ * attestation source is runtime-specific -- systemd proves a unit holds the
+ * loopback socket (ss + owning unit), docker proves a container publishes the
+ * host port (the daemon's publish records) -- and both shipped factories
+ * declare it explicitly; consumers still handle its absence for runtimes and
+ * fakes that cannot attest.
  */
 export type CompleteRuntimeAdapter = RuntimeAdapter & RuntimeCapabilities;
 

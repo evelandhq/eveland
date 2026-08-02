@@ -1,23 +1,22 @@
+import { builtinModules } from "node:module";
 import { describe, expect, test } from "vitest";
 import {
   importSpecifiers,
   listWorkspaces,
   readSource,
-  resolveRelativeImport,
+  resolveImport,
 } from "./scan-support.js";
 
-const NODE_BUILTINS = new Set([
-  "assert", "buffer", "child_process", "crypto", "dns", "events", "fs", "http",
-  "https", "net", "os", "path", "process", "stream", "tls", "url", "util",
-  "worker_threads", "zlib",
-]);
+// The real builtin list, not a hand-written subset that silently misses
+// async_hooks, vm, v8, tty, and friends.
+const NODE_BUILTINS = new Set(builtinModules);
 
 function isNodeSpecifier(specifier: string): boolean {
   return specifier.startsWith("node:") || NODE_BUILTINS.has(specifier.split("/")[0]!);
 }
 
 describe("browser-safe core exports", () => {
-  test("no non-server core export reaches a node builtin", () => {
+  test("no non-server core export reaches a node builtin or the server subtree", () => {
     const core = listWorkspaces().find((workspace) => workspace.name === "@eveland/core")!;
     const exportsMap = core.manifest.exports as Record<string, string>;
     const violations: string[] = [];
@@ -34,7 +33,14 @@ describe("browser-safe core exports", () => {
             violations.push(`${subpath} -> ${file} imports ${specifier}`);
             continue;
           }
-          const resolved = resolveRelativeImport(file, specifier);
+          // The walk follows @eveland/core subpath self-imports too (the
+          // repo's mandated style), so a browser-safe module cannot reach
+          // node code through the package's own exports map unseen.
+          const resolved = resolveImport(file, specifier);
+          if (resolved?.startsWith(`${core.directory}/src/server/`)) {
+            violations.push(`${subpath} -> ${file} imports the server subtree via ${specifier}`);
+            continue;
+          }
           if (resolved && !seen.has(resolved)) {
             seen.add(resolved);
             queue.push(resolved);

@@ -2,7 +2,7 @@ import { createTestStore } from "@eveland/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { reapIdleDeployments } from "./idle-reaper.js";
 import { createOrphanProcessReaper } from "./orphan-reaper.js";
-import type { RuntimeAdapter } from "./types.js";
+import type { ProcessDirectoryCapability, RuntimeAdapter } from "./types.js";
 
 function fakeAdapter(name: "docker" | "systemd", processNames: string[]) {
   const stopProcess = vi.fn(async () => {});
@@ -12,7 +12,7 @@ function fakeAdapter(name: "docker" | "systemd", processNames: string[]) {
     startProcess: vi.fn(),
     stopProcess,
     listProcesses: vi.fn(async () => processNames),
-  } as unknown as RuntimeAdapter;
+  } as unknown as RuntimeAdapter & ProcessDirectoryCapability;
   return { adapter, stopProcess };
 }
 
@@ -215,7 +215,7 @@ describe("createOrphanProcessReaper", () => {
         throw new Error("systemctl is not available");
       }),
       stopProcess: vi.fn(),
-    } as unknown as RuntimeAdapter;
+    } as unknown as RuntimeAdapter & ProcessDirectoryCapability;
     const { adapter, stopProcess } = fakeAdapter("docker", ["eveland-proj_gone-dep_gone321"]);
     const reap = createOrphanProcessReaper(store, {
       kinds: ["systemd", "docker"],

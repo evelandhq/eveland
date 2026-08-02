@@ -14,14 +14,6 @@ const FULL_STORE_ALLOWLIST: string[] = [
   "apps/api/src/app-observability-proxy-routes.ts",
   "apps/api/src/app-observability-routes.ts",
   "apps/api/src/app-otel-routes.ts",
-  // The four slices of the former app-project-routes monolith plus its
-  // composer: one prior entry became five, not new consumption. Their
-  // narrow ports land with the Store-narrowing pass.
-  "apps/api/src/app-project-deployment-routes.ts",
-  "apps/api/src/app-project-lifecycle-routes.ts",
-  "apps/api/src/app-project-metadata-routes.ts",
-  "apps/api/src/app-project-routes.ts",
-  "apps/api/src/app-project-source-routes.ts",
   "apps/api/src/app-query-routes.ts",
   "apps/api/src/app-secret-routes.ts",
   "apps/api/src/app-support.ts",
@@ -33,13 +25,6 @@ const FULL_STORE_ALLOWLIST: string[] = [
   "apps/worker/src/jobs/job-registry.ts",
   "apps/worker/src/jobs/process-observability.ts",
   "apps/worker/src/jobs/process.ts",
-  "apps/worker/src/jobs/runtime-jobs/archive-deployment.ts",
-  "apps/worker/src/jobs/runtime-jobs/delete-project.ts",
-  "apps/worker/src/jobs/runtime-jobs/deployment-status.ts",
-  "apps/worker/src/jobs/runtime-jobs/ensure-deployment-running.ts",
-  "apps/worker/src/jobs/runtime-jobs/restart-deployment.ts",
-  "apps/worker/src/jobs/runtime-jobs/trigger-schedule.ts",
-  "apps/worker/src/runtime/activation-manager.ts",
   "apps/worker/src/runtime/identity-config-reconciler.ts",
   "apps/worker/src/runtime/idle-reaper.ts",
   "apps/worker/src/runtime/orphan-reaper.ts",
@@ -50,24 +35,37 @@ const FULL_STORE_ALLOWLIST: string[] = [
 
 const IMPORT_FROM_DB = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*["']@eveland\/db["']/g;
 
-function importsStoreToken(source: string): boolean {
+/** Local names the full Store is bound to, including `Store as Alias`. */
+function importedStoreNames(source: string): string[] {
+  const names: string[] = [];
   for (const match of source.matchAll(IMPORT_FROM_DB)) {
     const clause = match[2]!;
     for (const rawItem of clause.split(",")) {
       const item = rawItem.trim().replace(/^type\s+/, "");
-      if (item === "Store" || item.startsWith("Store ")) return true;
+      if (item === "Store") names.push("Store");
+      else {
+        const alias = item.match(/^Store\s+as\s+([A-Za-z0-9_$]+)$/)?.[1];
+        if (alias) names.push(alias);
+      }
     }
   }
-  return false;
+  return names;
 }
 
 // Importing Store only to narrow it (Pick<Store, ...> / Omit<Store, ...>) is
 // the pattern this ratchet exists to encourage -- those files do not count.
+// Aliased imports (`Store as PlatformStore`) are tracked under the alias, so
+// renaming the binding cannot dodge the ratchet.
 function consumesFullStore(source: string): boolean {
-  if (!importsStoreToken(source)) return false;
+  const names = importedStoreNames(source);
+  if (names.length === 0) return false;
   const withoutImports = source.replace(/import\s[^;]*?from\s*["'][^"']+["'];?/g, "");
-  const withoutNarrowing = withoutImports.replace(/(?:Pick|Omit)<\s*Store\s*,/g, "<narrowed,");
-  return /\bStore\b/.test(withoutNarrowing);
+  const namePattern = names.join("|");
+  const withoutNarrowing = withoutImports.replace(
+    new RegExp(`(?:Pick|Omit)<\\s*(?:${namePattern})\\s*,`, "g"),
+    "<narrowed,",
+  );
+  return new RegExp(`\\b(?:${namePattern})\\b`).test(withoutNarrowing);
 }
 
 describe("full-Store consumers", () => {

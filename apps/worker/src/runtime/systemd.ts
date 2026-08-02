@@ -585,9 +585,9 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
       return { status: "foreign", holder: holders.join(", ") };
     },
     async ensureProcess(input) {
-      const status = await adapter.inspectProcess!(input.processName);
+      const status = await adapter.inspectProcess(input.processName);
       if (status === "ready" || status === "starting") {
-        const ownership = await adapter.verifyPortOwnership!({
+        const ownership = await adapter.verifyPortOwnership({
           processName: input.processName,
           port: input.port,
         });

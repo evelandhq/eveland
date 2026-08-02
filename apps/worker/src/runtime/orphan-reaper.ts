@@ -1,7 +1,7 @@
 import type { RuntimeKind } from "@eveland/core/contracts";
 import type { Store } from "@eveland/db";
 import { createRuntimeAdapterForKind } from "./select.js";
-import type { RuntimeAdapter } from "./types.js";
+import type { ProcessDirectoryCapability, RuntimeAdapter } from "./types.js";
 import {
   listOrphanAgentTelemetryNetworks,
   removeOrphanAgentTelemetryNetwork,
@@ -26,7 +26,7 @@ export type OrphanProcessReaperOptions = {
    */
   graceMs?: number;
   kinds?: RuntimeKind[];
-  runtimeForKind?: (kind: RuntimeKind) => RuntimeAdapter;
+  runtimeForKind?: (kind: RuntimeKind) => RuntimeAdapter & ProcessDirectoryCapability;
   listOrphanDockerNetworks?: () => Promise<
     ManagedAgentTelemetryNetwork[]
   >;
@@ -122,10 +122,9 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
     const seenKeys = new Set<string>();
     for (const kind of kinds) {
       let names: string[];
-      let adapter: RuntimeAdapter;
+      let adapter: RuntimeAdapter & ProcessDirectoryCapability;
       try {
         adapter = runtimeForKind(kind);
-        if (!adapter.listProcesses) continue;
         names = await adapter.listProcesses(DEPLOYMENT_PROCESS_PREFIX);
       } catch {
         // Hosts legitimately lack the other runtime's CLI (docker-only dev,

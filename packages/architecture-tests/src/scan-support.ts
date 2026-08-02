@@ -78,7 +78,10 @@ export type Workspace = {
   manifest: Record<string, unknown>;
 };
 
+let workspaceCache: Workspace[] | null = null;
+
 export function listWorkspaces(): Workspace[] {
+  if (workspaceCache) return workspaceCache;
   const workspaces: Workspace[] = [];
   for (const group of ["apps", "packages"]) {
     for (const entry of readdirSync(path.join(repoRoot, group), { withFileTypes: true })) {
@@ -93,5 +96,34 @@ export function listWorkspaces(): Workspace[] {
       });
     }
   }
+  workspaceCache = workspaces;
   return workspaces;
+}
+
+/**
+ * Resolves an `@eveland/<pkg>/<subpath>` specifier through the target
+ * workspace's exports map to a repo-relative source file, or null. The repo's
+ * mandated import style is exactly these subpath imports -- including
+ * self-referential ones inside a package -- so a scanner that follows only
+ * relative imports is blind to real edges: a browser-safe module reaching
+ * node builtins through `@eveland/core/server/...`, or a cycle routed through
+ * a subpath.
+ */
+export function resolveWorkspaceImport(specifier: string): string | null {
+  if (!specifier.startsWith("@eveland/")) return null;
+  const [scope, pkg, ...rest] = specifier.split("/");
+  const workspace = listWorkspaces().find((candidate) => candidate.name === `${scope}/${pkg}`);
+  if (!workspace) return null;
+  const exportsMap = workspace.manifest.exports as Record<string, unknown> | undefined;
+  if (!exportsMap) return null;
+  const subpath = rest.length > 0 ? `./${rest.join("/")}` : ".";
+  const target = exportsMap[subpath];
+  if (typeof target !== "string") return null;
+  const candidate = path.posix.join(workspace.directory, target.replace(/^\.\//, ""));
+  return existsSync(path.join(repoRoot, candidate)) ? candidate : null;
+}
+
+/** Relative and workspace-subpath imports resolved to repo-relative files. */
+export function resolveImport(fromFile: string, specifier: string): string | null {
+  return resolveRelativeImport(fromFile, specifier) ?? resolveWorkspaceImport(specifier);
 }

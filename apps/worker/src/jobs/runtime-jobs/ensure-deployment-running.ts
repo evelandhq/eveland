@@ -1,9 +1,10 @@
 import type { Store } from "@eveland/db";
 
-import { startRuntimeInstance } from "../../runtime/activation-manager.js";
+import { startRuntimeInstance, type ActivationStore } from "../../runtime/activation-manager.js";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import {
   createDeploymentStartInput,
+  type LaunchInputStore,
   ensureDeploymentLaunchSandbox,
   materializeDeploymentLaunchContext,
   resolveDeploymentLaunchPrerequisites,
@@ -13,8 +14,22 @@ import type { ProcessJobOptions } from "../process-types.js";
 import { settleDeploymentStatus } from "./deployment-status.js";
 import type { RuntimeJob } from "./types.js";
 
+// The narrow persistence port this handler and its launch helpers need.
+type EnsureDeploymentRunningStore = Pick<
+  Store,
+  | "appendLog"
+  | "getDeployment"
+  | "getRelease"
+  | "getRuntimeInstance"
+  | "getSourceRevision"
+  | "listSourceRevisionFiles"
+  | "updateRuntimeInstance"
+> &
+  ActivationStore &
+  LaunchInputStore;
+
 export async function handleEnsureDeploymentRunningJob(
-  store: Store,
+  store: EnsureDeploymentRunningStore,
   job: RuntimeJob<"ensure_deployment_running">,
   options: ProcessJobOptions,
 ): Promise<void> {

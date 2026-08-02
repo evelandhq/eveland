@@ -9,10 +9,36 @@ import type { ApiApp, AppOptions } from "./app-types.js";
 import { aliasSchema, routeTargetsSchema } from "./app-schemas.js";
 import { invalidateGatewayAfterCommit, publicGatewayUrl } from "./app-support.js";
 
+// The narrow persistence and configuration ports this slice actually needs.
+export type ProjectDeploymentStore = Pick<
+  Store,
+  | "enqueueDeploymentArchive"
+  | "ensureAliasRoute"
+  | "getDeployment"
+  | "getDeploymentRetention"
+  | "getVariantMetrics"
+  | "listDeployments"
+  | "listProjectRoutes"
+  | "listReleaseSummaries"
+  | "promoteDeployment"
+  | "updateDeploymentStatus"
+  | "updateRouteTargets"
+>;
+
+export type ProjectDeploymentOptions = Pick<
+  AppOptions,
+  | "sessionBindingNow"
+  | "playgroundSessionIdleTtlMs"
+  | "apiSessionIdleTtlMs"
+  | "gatewayPublicScheme"
+  | "gatewayPublicPort"
+  | "invalidateGatewayRoutes"
+>;
+
 export function registerProjectDeploymentRoutes(input: {
   app: ApiApp;
-  store: Store;
-  options: AppOptions;
+  store: ProjectDeploymentStore;
+  options: ProjectDeploymentOptions;
 }): void {
   const { app, store, options } = input;
   const deploymentRetentionOptions = () => ({

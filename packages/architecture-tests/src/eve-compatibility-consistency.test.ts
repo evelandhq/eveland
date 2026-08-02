@@ -6,7 +6,7 @@ import {
   LATEST_VERIFIED_EVE_VERSION,
   SUPPORTED_EVE_VERSION_RANGES,
   VERIFIED_EVE_VERSIONS,
-} from "./eve-compatibility.js";
+} from "@eveland/core/eve-compatibility";
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -70,7 +70,7 @@ describe("Eve compatibility repository contract", () => {
   });
 
   test("derives public compatibility values from the policy", async () => {
-    const compatibility = await import("./eve-compatibility.js");
+    const compatibility = await import("@eveland/core/eve-compatibility");
     const expectedRanges = EVE_COMPATIBILITY_POLICY.supportedLines.map(
       ({ range }) => range,
     );
@@ -89,8 +89,8 @@ describe("Eve compatibility repository contract", () => {
   });
 
   test("makes the source scanner consume the compatibility policy", async () => {
-    const compatibility = await import("./eve-compatibility.js");
-    const source = await import("./source.js");
+    const compatibility = await import("@eveland/core/eve-compatibility");
+    const source = await import("@eveland/core/source");
 
     expect(source.SUPPORTED_EVE_VERSION_RANGES).toBe(
       compatibility.SUPPORTED_EVE_VERSION_RANGES,
@@ -98,8 +98,8 @@ describe("Eve compatibility repository contract", () => {
   });
 
   test("makes the source scanner delegate compatibility decisions", async () => {
-    const compatibility = await import("./eve-compatibility.js");
-    const source = await import("./source.js");
+    const compatibility = await import("@eveland/core/eve-compatibility");
+    const source = await import("@eveland/core/source");
 
     expect(source.isSupportedEveDependency).toBe(
       compatibility.isSupportedEveDependency,

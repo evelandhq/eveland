@@ -5,9 +5,19 @@ import type { ApiApp } from "./app-types.js";
 import { buildDeploySchema, syncSourceSchema } from "./app-schemas.js";
 import { currentUserId } from "./app-support.js";
 
+// The narrow persistence port this slice actually needs.
+export type ProjectLifecycleStore = Pick<
+  Store,
+  | "enqueueJob"
+  | "getGitCredential"
+  | "getProject"
+  | "listProjectJobs"
+  | "requestProjectDeletion"
+>;
+
 export function registerProjectLifecycleRoutes(input: {
   app: ApiApp;
-  store: Store;
+  store: ProjectLifecycleStore;
 }): void {
   const { app, store } = input;
   app.get("/projects/:projectId/jobs", async (c) => {

@@ -6,8 +6,19 @@ import { removeManagedProjectFiles } from "../process-support.js";
 import type { ProcessJobOptions } from "../process-types.js";
 import type { RuntimeJob } from "./types.js";
 
+// The narrow persistence port this handler actually needs.
+type DeleteProjectStore = Pick<
+  Store,
+  | "appendLog"
+  | "deleteProject"
+  | "getProject"
+  | "getRelease"
+  | "listDeployments"
+  | "listSourceRevisions"
+>;
+
 export async function handleDeleteProjectJob(
-  store: Store,
+  store: DeleteProjectStore,
   job: RuntimeJob<"delete_project">,
   options: ProcessJobOptions,
 ): Promise<void> {

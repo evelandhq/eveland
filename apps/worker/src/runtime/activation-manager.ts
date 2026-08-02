@@ -1,9 +1,28 @@
 import type { ActivationLeaseClaim, ActivationLeaseKind, DeploymentRecord, RuntimeInstance, RuntimeKind } from "@eveland/core/contracts";
 import { RuntimeInstanceDrainingError, type Store } from "@eveland/db";
+
+// The narrow persistence port every activation-manager entry point shares.
+export type ActivationStore = Pick<
+  Store,
+  | "acquireActivationLease"
+  | "enqueueDeploymentActivation"
+  | "failExpiredScheduleExecutions"
+  | "failRunningSessionsForRuntimeInstance"
+  | "failScheduleExecutionsForRuntimeInstance"
+  | "getDeployment"
+  | "getRuntimeInstance"
+  | "listDeploymentRuntimeInstances"
+  | "listReservedDeploymentHostPorts"
+  | "listRuntimeInstances"
+  | "releaseActivationLease"
+  | "reserveRuntimeInstancePort"
+  | "transitionDeploymentStatus"
+  | "updateRuntimeInstance"
+>;
 import { waitForOwnedHttpHealth } from "./health.js";
 import { allocateReservedInstancePort, isTcpPortAvailable } from "./ports.js";
 import { createRuntimeAdapterForKind } from "./select.js";
-import type { ProcessStartInput, RuntimeAdapter } from "./types.js";
+import type { ProcessInspectionCapability, ProcessStartInput, RuntimeAdapter } from "./types.js";
 
 export type DeploymentActivationInput = {
   deployment: DeploymentRecord;
@@ -24,7 +43,7 @@ export type DeploymentActivationOptions = {
 };
 
 export async function ensureDeploymentActive(
-  store: Store,
+  store: ActivationStore,
   input: DeploymentActivationInput,
   options: DeploymentActivationOptions = {},
 ): Promise<ActivationLeaseClaim> {
@@ -121,7 +140,7 @@ export async function ensureDeploymentActive(
  * Docker must reserve the Deployment's port or fail loudly.
  */
 async function resolveInstancePort(
-  store: Store,
+  store: ActivationStore,
   input: Pick<DeploymentActivationInput, "deployment" | "runtime" | "startInput">,
   current: RuntimeInstance,
 ): Promise<number> {
@@ -164,7 +183,7 @@ async function resolveInstancePort(
 }
 
 export async function startRuntimeInstance(
-  store: Store,
+  store: ActivationStore,
   input: Pick<DeploymentActivationInput, "deployment" | "runtime" | "startInput">,
   runtimeInstanceId: string,
   options: DeploymentActivationOptions = {},
@@ -222,7 +241,7 @@ function isRuntimeInstanceDrainingError(error: unknown): boolean {
 }
 
 export async function recoverStartingRuntimeInstances(
-  store: Store,
+  store: ActivationStore,
   input: { now?: Date; limit?: number; staleJobAfterMs?: number } = {},
 ): Promise<number> {
   const now = input.now ?? new Date();
@@ -255,7 +274,7 @@ export async function recoverStartingRuntimeInstances(
  * would overwrite a healthy restart with a verdict about the process it replaced.
  */
 async function stillReadyRuntimeInstance(
-  store: Store,
+  store: ActivationStore,
   runtimeInstanceId: string,
 ): Promise<boolean> {
   const current = await store.getRuntimeInstance(runtimeInstanceId);
@@ -263,11 +282,11 @@ async function stillReadyRuntimeInstance(
 }
 
 export async function reconcileRuntimeInstances(
-  store: Store,
+  store: ActivationStore,
   input: {
     now?: Date;
     limit?: number;
-    runtimeForKind?: (kind: RuntimeKind) => RuntimeAdapter;
+    runtimeForKind?: (kind: RuntimeKind) => RuntimeAdapter & ProcessInspectionCapability;
   } = {},
 ): Promise<number> {
   const now = input.now ?? new Date();
@@ -301,7 +320,6 @@ export async function reconcileRuntimeInstances(
       continue;
     }
     const runtime = (input.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
-    if (!runtime.inspectProcess) continue;
     const status = await runtime.inspectProcess(deployment.containerName);
     if (status === "ready" || status === "starting") {
       if (!runtime.verifyPortOwnership) continue;

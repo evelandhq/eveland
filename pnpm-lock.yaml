@@ -423,6 +423,9 @@ importers:
 
   packages/architecture-tests:
     devDependencies:
+      '@eveland/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^26.0.1
         version: 26.1.1
