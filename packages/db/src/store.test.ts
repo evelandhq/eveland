@@ -677,10 +677,10 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source-new",
-      summary: { eveVersion: "0.29.4" },
+      summary: { eveVersion: "0.29.5" },
       envVars: [],
       files: [
-        { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.4" } }) },
+        { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.5" } }) },
       ],
       schedules: [],
     });
@@ -710,7 +710,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:resolved",
-      summary: { summarySource: "build-manifest", eveVersionResolved: "0.29.4" },
+      summary: { summarySource: "build-manifest", eveVersionResolved: "0.29.5" },
       containerName: "eveland-proj-resolved",
       internalPort: 3000,
       hostPort: 41014,
@@ -720,7 +720,7 @@ describe("SQL Store jobs", () => {
     // The build installed a concrete version; the gate reads it instead of
     // the declared range the import scan captured.
     await expect(store.getDeploymentEveVersion(deployment.id)).resolves.toMatchObject({
-      version: "0.29.4",
+      version: "0.29.5",
       supported: true,
       sourceRevisionId: revision.id,
     });

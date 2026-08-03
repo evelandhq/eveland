@@ -45,7 +45,7 @@ describe("injectSchedulerAdapter", () => {
       "0.28.x",
       "0.28.*",
       "0.29.0",
-      "0.29.4",
+      "0.29.5",
       "~0.29.0",
       "^0.29.0",
       "0.29",
@@ -62,7 +62,7 @@ describe("injectSchedulerAdapter", () => {
 
   test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.29.4",
+      eveVersion: "0.29.5",
       files: {
         "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
 import { helper } from "../../lib/helper";
@@ -126,7 +126,7 @@ Produce the daily report.
 
   test("generates a closed authenticated dispatch Channel without embedding secrets", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.29.4",
+      eveVersion: "0.29.5",
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
       },
@@ -158,7 +158,7 @@ Produce the daily report.
     async (extension) => {
       const sourcePath = `agent/schedules/nested/direct.${extension}`;
       const releaseDir = await fixture({
-        eveVersion: "0.29.4",
+        eveVersion: "0.29.5",
         files: { [sourcePath]: `export default { cron: "0 6 * * *", async run() {} };` },
       });
 
@@ -175,7 +175,7 @@ Produce the daily report.
 
   test("rejects reserved authored identifiers and the reserved Channel path", async () => {
     const identifierCollision = await fixture({
-      eveVersion: "0.29.4",
+      eveVersion: "0.29.5",
       files: {
         "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
       },
@@ -185,7 +185,7 @@ Produce the daily report.
     );
 
     const channelCollision = await fixture({
-      eveVersion: "0.29.4",
+      eveVersion: "0.29.5",
       files: {
         "agent/schedules/ok.ts": `export default { cron: "* * * * *", async run() {} };`,
         "agent/channels/eveland-scheduler.ts": `export default {};`,
@@ -196,7 +196,7 @@ Produce the daily report.
     );
 
     const defaultReExport = await fixture({
-      eveVersion: "0.29.4",
+      eveVersion: "0.29.5",
       files: {
         "agent/lib/shared.ts": `export default { cron: "0 7 * * *", async run() {} };`,
         "agent/schedules/re-export.ts": `export { default } from "../lib/shared";`,

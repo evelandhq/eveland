@@ -6,7 +6,7 @@ describe("inspectEveProject", () => {
     const result = inspectEveProject([
       {
         path: "package.json",
-        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.29.4" } }),
+        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.29.5" } }),
       },
       {
         path: "agent/agent.ts",
@@ -32,7 +32,7 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(true);
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
-    expect(result.eveVersion).toBe("0.29.4");
+    expect(result.eveVersion).toBe("0.29.5");
     expect(result.capabilities).toEqual({ eveChat: true });
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
@@ -54,7 +54,7 @@ describe("inspectEveProject", () => {
 
   test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.4" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.5" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       {
         path: "agent/channels/eve.ts",
@@ -67,7 +67,7 @@ describe("inspectEveProject", () => {
 
   test("uses Eve's authored skill extensions in the source summary", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.4" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.5" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       ...["md", "ts", "cts", "mts", "js", "cjs", "mjs"].map((extension) => ({
         path: `agent/skills/research.${extension}`,
@@ -130,7 +130,7 @@ describe("inspectEveProject", () => {
       "0.28.x",
       "0.28.*",
       "0.29.0",
-      "0.29.4",
+      "0.29.5",
       "~0.29.0",
       "^0.29.0",
       "0.29",
