@@ -20,6 +20,8 @@ import {
 import {
   allocateAvailableHostPort,
   claimInFlightPort,
+  composeBuildVariables,
+  devSecretKey,
   invalidateGatewayRouteCache,
   releaseInFlightPort,
   stopStartedProcessOnFailure,
@@ -94,6 +96,14 @@ export async function handleBuildDeployJob(
     sourcePath: revision.sourcePath,
     options,
   });
+  // A Release is immutable and an environment change only restarts live
+  // Deployments onto the existing one, so a later variable change reaches the
+  // compiled manifest no earlier than the next deploy.
+  const buildVariables = await composeBuildVariables(
+    store,
+    project.id,
+    options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey,
+  );
 
   await store.updateProjectState(job.projectId, {
     status: "build_pending",
@@ -114,6 +124,7 @@ export async function handleBuildDeployJob(
       sourcePath: revision.sourcePath,
       buildDir,
       commandContext: launchPrerequisites.commandContext,
+      buildVariables,
       ...(options.signal ? { signal: options.signal } : {}),
       ...(workflowPostgresUrl ? { workflowWorld: PLATFORM_WORKFLOW_WORLD } : {}),
     });

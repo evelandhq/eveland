@@ -911,13 +911,16 @@ Project 和 initial import job 原子提交，不能先排队部署再通过后�
 Environment 页面必须明确提示是否已排入重启；没有 live Deployment 时，条目从
 下一次 deploy 开始生效。
 
-Project Variable/Secret 仅在运行时注入容器，不进入：
+Project Secret 仅在运行时注入容器，不进入：
 
 - Git Repo
 - Zip
 - Build Log
 - Source 页面
 - Session Log
+
+Project Variable 是显式声明的非机密配置，同样不进入 Git Repo、Zip、Source 页面和
+Session Log，但额外参与 Release build（见下方 Build 可见的 Variable）。
 
 ---
 
@@ -931,7 +934,7 @@ Web 以 Type、Name、Value 状态和行级操作组成的表格展示 Entry；�
 
 共享环境自动应用到所有 Project 的每个 Agent Deployment，不存在 Project/Deployment binding。确定性优先级为
 Shared Agent Environment < Project Secret < Eveland 保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。
-共享值只在 deploy、restart、cold activation
+共享 `secret` 只在 deploy、restart、cold activation
 或 schedule activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、
 generated Dockerfile、OTLP signal、日志或 Web payload。解密后的值只能经由 root-owned 0600 的
 环境文件交给 runtime（systemd 的 `EnvironmentFile`、Docker 的 `--env-file`），不得出现在进程
@@ -945,6 +948,27 @@ Shared Agent Environment 只属于 Agent runtime，不得作为 Playground authe
 Vercel OIDC 和 confidential OIDC 配置通过 Project Secret reference 延迟解析；引用缺失、删除或无法解密必须
 fail closed，不得回退到旧值或 inline copy。系统不提供 named Profile、runtime binding、Platform Secret
 reference 或对应的兼容 API。Shared Agent Environment 使用独立 singleton 存储，不继承 Profile 数据模型。
+
+---
+
+### Build 可见的 Variable
+
+Release build 运行 `npx eve build`，它会 import 项目自己的 agent config 来编译 manifest。
+config 在模块加载期从 `process.env` 读到的值（最典型的是 model id）会被固化进 Release：build
+看不到该条目时，编译出来的是 config 里的兜底值，之后该 Release 每个 turn 上报的都是那个陈旧值。
+
+因此 build 环境在 `PATH` 与 `npm_config_cache` 之外，还接收该 Project 生效的 `variable` 条目，
+优先级与运行时一致（Shared Agent Environment < Project Variable）。`secret` 永远不进入
+build：install/build lifecycle script 是不可信的项目代码，无论以哪个用户运行都能通过
+`/proc/self/environ` 读到 build 进程自己的环境。
+
+- `PATH`、`HOME`、`NPM_CONFIG_CACHE` 由平台保留。同名条目在 build 中被丢弃并在 Build Log
+  记录 `WARNING`，但仍照常注入已部署进程，不能静默丢弃。
+- Release 不可变，因此改动 `variable` 只在下一次 deploy 刷新编译产物；单纯的环境变更仍然只对
+  live Deployment 排 restart，沿用原 Release。
+- Docker runtime 通过 generated Dockerfile 的 `ARG` 与 `docker build --build-arg` 传递这些
+  variable，其值会出现在该镜像的 build metadata 中；这是 `variable` 与 `secret` 分级的直接后果。
+- Build Log 仍对完整 Project/Shared Environment 值集合脱敏。
 
 ---
 

@@ -7,6 +7,7 @@ import {
   buildDynamicUserAccessRepairScript,
   buildEnvFileContent,
   buildReleaseBuildCommand,
+  buildReleaseBuildEnvironment,
   buildRunAsUserArgs,
   buildSystemdRunArgs,
   buildSystemdStartCommand,
@@ -295,6 +296,46 @@ describe("buildReleaseBuildCommand", () => {
     expect(buildReleaseBuildCommand({ hasLockfile: false })).toBe(
       "npm install && npx eve build && npx eve info --json >/dev/null",
     );
+  });
+});
+
+describe("buildReleaseBuildEnvironment", () => {
+  test("gives eve build the Agent's non-secret variables", () => {
+    const { environment } = buildReleaseBuildEnvironment({
+      npmCacheDir: "/var/lib/eveland/npm-cache",
+      pathValue: "/usr/bin",
+      variables: { MODEL_NAME: "configured-model" },
+    });
+
+    expect(environment).toEqual({
+      MODEL_NAME: "configured-model",
+      PATH: "/usr/bin",
+      npm_config_cache: "/var/lib/eveland/npm-cache",
+    });
+  });
+
+  test("keeps the platform's own build toolchain names out of a project's reach", () => {
+    const { environment, rejectedKeys } = buildReleaseBuildEnvironment({
+      npmCacheDir: "/var/lib/eveland/npm-cache",
+      pathValue: "/usr/bin",
+      variables: { NPM_CONFIG_CACHE: "/tmp/attacker", PATH: "/tmp/attacker-bin" },
+    });
+
+    expect(environment).toEqual({
+      PATH: "/usr/bin",
+      npm_config_cache: "/var/lib/eveland/npm-cache",
+    });
+    expect(rejectedKeys).toEqual(["NPM_CONFIG_CACHE", "PATH"]);
+  });
+
+  test("carries no secret-bearing worker environment into the build", () => {
+    const { environment } = buildReleaseBuildEnvironment({
+      npmCacheDir: "/var/lib/eveland/npm-cache",
+      pathValue: "/usr/bin",
+      variables: { MODEL_NAME: "configured-model" },
+    });
+
+    expect(Object.keys(environment).sort()).toEqual(["MODEL_NAME", "PATH", "npm_config_cache"]);
   });
 });
 

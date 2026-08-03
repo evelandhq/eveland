@@ -1,6 +1,7 @@
 import { execa } from "execa";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
@@ -33,6 +34,11 @@ export type DockerBuildInput = {
   contextDir: string;
   dockerfilePath: string;
   imageTag: string;
+  /**
+   * Build-arg values are recorded in the image's build metadata, which is why
+   * only `kind: "variable"` entries may travel this way.
+   */
+  variables?: Readonly<Record<string, string>>;
 };
 
 export type DockerRunInput = {
@@ -130,7 +136,18 @@ export function buildDockerEnvFileContent(env: Record<string, string>): string {
 }
 
 export function buildDockerBuildArgs(input: DockerBuildInput): string[] {
-  return ["build", "--file", input.dockerfilePath, "--tag", input.imageTag, input.contextDir];
+  const buildArgs = Object.entries(input.variables ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
+  return [
+    "build",
+    "--file",
+    input.dockerfilePath,
+    ...buildArgs,
+    "--tag",
+    input.imageTag,
+    input.contextDir,
+  ];
 }
 
 export function buildDockerSandboxVerifyArgs(imageTag: string): string[] {
@@ -199,6 +216,7 @@ export async function verifyDockerSandbox(imageTag: string): Promise<void> {
 export async function writeGeneratedDockerfile(
   buildDir: string,
   workflowWorld?: WorkflowWorldBuildConfig,
+  variableKeys: readonly string[] = [],
 ): Promise<string> {
   await mkdir(buildDir, { recursive: true });
   const dockerfilePath = path.join(buildDir, "Dockerfile");
@@ -206,6 +224,14 @@ export async function writeGeneratedDockerfile(
   const workflowWorldInstall = workflowWorld
     ? `RUN if [ -f pnpm-lock.yaml ]; then ${buildWorkflowWorldInstallCommand(workflowWorld, "pnpm")}; else ${buildWorkflowWorldInstallCommand(workflowWorld, "npm")}; fi\n`
     : "";
+  // ARG, not ENV: a build arg is an environment variable for the RUN below
+  // without persisting into the deployed image, where the runtime --env-file
+  // stays the only authority. Declared last before that RUN so a variable
+  // change invalidates only this layer.
+  const buildVariableArgs = [...variableKeys]
+    .sort((a, b) => a.localeCompare(b))
+    .map((key) => `ARG ${key}\n`)
+    .join("");
   await writeFile(
     dockerfilePath,
     `FROM node:24-alpine
@@ -226,7 +252,7 @@ RUN if [ -f pnpm-lock.yaml ]; then ${PNPM_FROZEN_INSTALL_COMMAND}; elif [ -f pac
 ${workflowWorldInstall}COPY . .
 # Compile the eve application ahead of time, then materialize the full
 # discovery manifest from that exact installed dependency tree.
-RUN npx eve build && npx eve info --json > /dev/null
+${buildVariableArgs}RUN npx eve build && npx eve info --json > /dev/null
 EXPOSE 3000
 `,
   );
@@ -234,19 +260,13 @@ EXPOSE 3000
 }
 
 export async function dockerBuild(
-  contextDir: string,
-  imageTag: string,
-  dockerfilePath: string,
-  signal?: AbortSignal,
+  input: DockerBuildInput & { signal?: AbortSignal },
 ): Promise<string> {
-  const result = await execa(
-    "docker",
-    buildDockerBuildArgs({ contextDir, imageTag, dockerfilePath }),
-    {
-      all: true,
-      ...(signal ? { cancelSignal: signal } : {}),
-    },
-  );
+  const { signal, ...buildInput } = input;
+  const result = await execa("docker", buildDockerBuildArgs(buildInput), {
+    all: true,
+    ...(signal ? { cancelSignal: signal } : {}),
+  });
   return result.all ?? "";
 }
 
@@ -361,8 +381,19 @@ export function createDockerAdapter(
         if (sandboxInjection) {
           await writeSandboxVerifyScript(path.resolve(input.buildDir));
         }
-        const dockerfilePath = await writeGeneratedDockerfile(input.buildDir, input.workflowWorld);
-        const log = await dockerBuild(input.buildDir, imageTag, dockerfilePath, input.signal);
+        const buildVariables = selectBuildVariables(input.buildVariables);
+        const dockerfilePath = await writeGeneratedDockerfile(
+          input.buildDir,
+          input.workflowWorld,
+          Object.keys(buildVariables.variables),
+        );
+        const log = await dockerBuild({
+          contextDir: input.buildDir,
+          dockerfilePath,
+          imageTag,
+          variables: buildVariables.variables,
+          ...(input.signal ? { signal: input.signal } : {}),
+        });
         if (sandboxInjection) {
           await verifyDockerSandbox(imageTag);
         }
@@ -373,6 +404,7 @@ export function createDockerAdapter(
           ...(discovery ? { discovery } : {}),
           log: [
             log,
+            rejectedBuildVariablesLog(buildVariables.rejectedKeys),
             `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
             observerInjection.workflowWorld
               ? `Injected platform workflow world: ${input.workflowWorld?.packageName} (${observerInjection.workflowWorld.agentConfigPath})`

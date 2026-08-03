@@ -270,15 +270,45 @@ export async function composeDeploymentEnv(
   return { env, secretValues };
 }
 
+/**
+ * The subset of the Agent environment a Release build may see: `variable`
+ * entries only, never a `secret`. See ../runtime/build-environment.ts.
+ */
+export async function composeBuildVariables(
+  store: Pick<Store, "listSecretRecords" | "getSharedAgentEnvironmentRecord">,
+  projectId: string,
+  appSecretKey: string,
+): Promise<Record<string, string>> {
+  const shared = readSharedAgentEnvironmentValues(
+    await store.getSharedAgentEnvironmentRecord(),
+    appSecretKey,
+    "variable",
+  );
+  const project = Object.fromEntries(
+    (await store.listSecretRecords(projectId))
+      .filter((record) => record.kind === "variable")
+      .map((record) => [
+        record.key,
+        decryptSecretValue(parseEncryptedSecret(record.encryptedValue), appSecretKey),
+      ]),
+  );
+  // Must stay the runtime order (see mergeRuntimeEnvironment), minus the
+  // reserved layer the build never gets.
+  return { ...shared, ...project };
+}
+
 function readSharedAgentEnvironmentValues(
   environment: SharedAgentEnvironmentRecord | null,
   appSecretKey: string,
+  kind?: SharedAgentEnvironmentRecord["entries"][number]["kind"],
 ): Record<string, string> {
   return Object.fromEntries(
-    (environment?.entries ?? []).map((entry) => [
-      entry.key,
-      decryptSecretValue(parseEncryptedSecret(entry.encryptedValue), appSecretKey),
-    ]),
+    (environment?.entries ?? [])
+      .filter((entry) => kind === undefined || entry.kind === kind)
+      .map((entry) => [
+        entry.key,
+        decryptSecretValue(parseEncryptedSecret(entry.encryptedValue), appSecretKey),
+      ]),
   );
 }
 
