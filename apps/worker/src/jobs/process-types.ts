@@ -22,6 +22,8 @@ export type ProcessJobOptions = {
   identityIssuer?: string;
   identityJwksUrl?: string;
   jobHeartbeatIntervalMs?: number;
+  /** Global cap on concurrently running heavy jobs (builds); omitted leaves them uncapped. */
+  maxConcurrentHeavyJobs?: number;
   dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
   tracer?: Tracer;
   /** Aborted when this execution's job lease is fenced away; long-running steps must stop. */

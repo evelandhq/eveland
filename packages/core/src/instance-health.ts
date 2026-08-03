@@ -7,6 +7,12 @@ export type WorkerHeartbeat = {
   intervalMs: number;
   lastTickDurationMs: number;
   lastError: string | null;
+  /**
+   * Cap the worker enforces on concurrently running heavy jobs (builds),
+   * derived from its machine spec or EVELAND_MAX_CONCURRENT_JOBS; null for
+   * heartbeats from workers that predate the cap.
+   */
+  maxConcurrentHeavyJobs: number | null;
 };
 
 /**
@@ -47,6 +53,14 @@ export type HostMetricSample = {
 export type InstanceWorkload = {
   queuedJobs: number;
   runningJobs: number;
+  /** Running jobs of HEAVY_JOB_TYPES (builds) — the ones the global cap governs. */
+  runningHeavyJobs: number;
+  /**
+   * The worker's heavy-job concurrency cap, read from its freshest heartbeat
+   * (the store's workload query cannot know it); null until such a heartbeat
+   * arrives.
+   */
+  maxConcurrentHeavyJobs: number | null;
   oldestQueuedAt: string | null;
   runtimeInstances: Record<"starting" | "ready" | "draining" | "stopped" | "failed", number>;
 };

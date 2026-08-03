@@ -10,6 +10,7 @@ function heartbeat(overrides: Partial<WorkerHeartbeat> = {}): WorkerHeartbeat {
     intervalMs: 5_000,
     lastTickDurationMs: 70,
     lastError: null,
+    maxConcurrentHeavyJobs: 2,
     ...overrides,
   };
 }
@@ -50,6 +51,7 @@ describe("instance health store", () => {
         workerId: "worker-1",
         observedAt: "2026-07-18T10:00:05.000Z",
         lastTickDurationMs: 91,
+        maxConcurrentHeavyJobs: 2,
       }),
     ]);
   });
@@ -145,6 +147,7 @@ describe("instance health store", () => {
     await expect(store.getInstanceWorkload()).resolves.toEqual({
       queuedJobs: 1,
       runningJobs: 1,
+      runningHeavyJobs: 0,
       oldestQueuedAt: expect.any(String),
       runtimeInstances: {
         starting: 0,
@@ -153,6 +156,23 @@ describe("instance health store", () => {
         stopped: 0,
         failed: 1,
       },
+    });
+  });
+
+  test("counts running builds separately from light running jobs", async () => {
+    const store = createTestStore();
+    const heavyProject = await store.createProject({ name: "Heavy Workload", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-health");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(heavyProject.id, "build_deploy");
+    await store.claimNextJob("worker-health");
+    await store.createProject({ name: "Light Workload", importKind: "zip" });
+    await store.claimNextJob("worker-health");
+
+    await expect(store.getInstanceWorkload()).resolves.toMatchObject({
+      queuedJobs: 0,
+      runningJobs: 2,
+      runningHeavyJobs: 1,
     });
   });
 });
@@ -167,6 +187,7 @@ describe("worker heartbeat replay", () => {
       intervalMs: 5_000,
       lastTickDurationMs: 12,
       lastError: null,
+      maxConcurrentHeavyJobs: 2,
     };
     await store.upsertWorkerHeartbeat(current);
 
@@ -194,6 +215,7 @@ describe("worker heartbeat replay", () => {
       intervalMs: 5_000,
       lastTickDurationMs: 12,
       lastError: null,
+      maxConcurrentHeavyJobs: 2,
     };
     await store.upsertWorkerHeartbeat(base);
 

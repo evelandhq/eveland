@@ -66,6 +66,9 @@ function projectHeartbeat(
   if (!heartbeatPoint) return;
   const heartbeatAttributes = attributesFrom(heartbeatPoint.attributes);
   const durationPoint = metrics.get("eveland.worker.tick.duration")?.[0];
+  const heavyJobCap = nonNegativeInteger(
+    heartbeatAttributes["eveland.worker.max_concurrent_heavy_jobs"],
+  );
   projection.heartbeats.push({
     workerId,
     startedAt: unixNanoToIso(stringValue(heartbeatPoint.startTimeUnixNano)) ?? observedAt,
@@ -76,6 +79,9 @@ function projectHeartbeat(
       heartbeatAttributes["eveland.worker.tick.status"] === "error"
         ? "Worker tick failed; inspect Worker telemetry."
         : null,
+    // Workers that predate the heavy-job cap publish no attribute; a cap is
+    // always at least one, so zero is equally treated as absent.
+    maxConcurrentHeavyJobs: heavyJobCap ? heavyJobCap : null,
   });
   projection.acceptedDataPoints += 1;
   if (histogramMean(durationPoint) !== undefined) {

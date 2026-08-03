@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { createId } from "@eveland/core/ids";
+import { HEAVY_JOB_TYPES } from "@eveland/core/jobs";
 import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
 import { hostMetricSamples, jobs, runtimeInstances, workerHeartbeats } from "./schema.js";
 import type { InstanceHealthStore } from "./store-domains.js";
@@ -96,11 +97,16 @@ export function createPostgresInstanceHealthStore(
     },
 
     async getInstanceWorkload() {
+      const heavyTypes = sql.join(
+        HEAVY_JOB_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      );
       const [jobGroups, runtimeGroups] = await Promise.all([
         db
           .select({
             status: jobs.status,
             count: sql<number>`count(*)::int`,
+            heavyCount: sql<number>`count(*) filter (where ${jobs.type} in (${heavyTypes}))::int`,
             oldest: sql<Date | null>`min(${jobs.createdAt})`,
           })
           .from(jobs)
@@ -118,9 +124,11 @@ export function createPostgresInstanceHealthStore(
           runtimeCounts[group.status as keyof typeof runtimeCounts] = group.count;
       }
       const queued = jobGroups.find((group) => group.status === "queued");
+      const running = jobGroups.find((group) => group.status === "running");
       return {
         queuedJobs: queued?.count ?? 0,
-        runningJobs: jobGroups.find((group) => group.status === "running")?.count ?? 0,
+        runningJobs: running?.count ?? 0,
+        runningHeavyJobs: running?.heavyCount ?? 0,
         oldestQueuedAt: timestampToIso(queued?.oldest),
         runtimeInstances: runtimeCounts,
       };

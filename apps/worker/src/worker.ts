@@ -15,6 +15,7 @@ import {
   cleanupExpiredSourcePreflights,
   processNextSourcePreflight,
 } from "./jobs/process-source-preflight.js";
+import { resolveMaxConcurrentHeavyJobs } from "./runtime/job-concurrency.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
@@ -47,6 +48,7 @@ const releaseSweepIntervalMs = Number(process.env.EVELAND_RELEASE_SWEEP_INTERVAL
 const workflowSweepIntervalMs = Number(process.env.EVELAND_WORKFLOW_SWEEP_INTERVAL_MS ?? 3_600_000);
 const workerId = workerInstanceId;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
+const maxConcurrentHeavyJobs = resolveMaxConcurrentHeavyJobs(process.env);
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
 const store = instrumentRuntimeLogStore(storeFactory.store, runtimeObservability);
@@ -130,18 +132,24 @@ await writeConfigurationSnapshotFile(
   createConfigurationSnapshot("worker", process.env),
 ).catch(() => console.warn("Worker configuration diagnostics are unavailable."));
 
-console.log(`${formatBuildInfo(buildInfo)} ready. Poll interval: ${intervalMs}ms`);
+console.log(
+  `${formatBuildInfo(buildInfo)} ready. Poll interval: ${intervalMs}ms. Concurrent build limit: ${maxConcurrentHeavyJobs}${process.env.EVELAND_MAX_CONCURRENT_JOBS ? " (EVELAND_MAX_CONCURRENT_JOBS)" : " (derived from machine spec)"}.`,
+);
 platformObservability.emitLog({
   severity: "info",
   eventName: "eveland.worker.ready",
   body: "Eveland Worker is ready.",
-  attributes: { "eveland.worker.poll_interval_ms": intervalMs },
+  attributes: {
+    "eveland.worker.poll_interval_ms": intervalMs,
+    "eveland.worker.max_concurrent_heavy_jobs": maxConcurrentHeavyJobs,
+  },
 });
 
 const telemetry = createWorkerTelemetry(capacityObservability.meter, {
   workerId,
   dataDir,
   intervalMs,
+  maxConcurrentHeavyJobs,
   metricIntervalMs: Number(process.env.EVELAND_HOST_METRIC_INTERVAL_MS ?? 60_000),
   onMetricError: (error) =>
     console.warn(
@@ -214,6 +222,7 @@ async function tick() {
           processNextSourcePreflight(store, workerId),
           processNextJob(store, workerId, {
             tracer: platformObservability.tracer,
+            maxConcurrentHeavyJobs,
           }),
         ]);
         lastTickError = null;

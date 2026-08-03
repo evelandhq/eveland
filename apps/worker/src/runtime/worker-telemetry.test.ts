@@ -16,6 +16,7 @@ describe("worker telemetry", () => {
       workerId: "worker-1",
       dataDir: "/missing",
       intervalMs: 5_000,
+      maxConcurrentHeavyJobs: 2,
       metricIntervalMs: 60_000,
       now: () => now,
       collect: async () => {
@@ -42,6 +43,7 @@ describe("worker telemetry", () => {
       workerId: "worker-1",
       dataDir: "/var/lib/eveland",
       intervalMs: 5_000,
+      maxConcurrentHeavyJobs: 2,
       metricIntervalMs: 60_000,
       startedAt: new Date("2026-07-18T09:00:00.000Z"),
       now: () => now,
@@ -105,6 +107,10 @@ describe("worker telemetry", () => {
         "eveland.postgres.agent_pool_size",
       ]),
     );
+    // The health page reads the heavy-job cap back from this attribute.
+    expect(heartbeatAttributes(metrics.exporter)).toMatchObject({
+      "eveland.worker.max_concurrent_heavy_jobs": 2,
+    });
     await metrics.provider.shutdown();
   });
 });
@@ -122,6 +128,15 @@ function createTestMetrics() {
     provider,
     meter: provider.getMeter("worker-telemetry-test"),
   };
+}
+
+function heartbeatAttributes(exporter: InMemoryMetricExporter): Record<string, unknown> {
+  const heartbeat = exporter
+    .getMetrics()
+    .flatMap((data) => data.scopeMetrics)
+    .flatMap((scope) => scope.metrics)
+    .find((metric) => metric.descriptor.name === "eveland.worker.heartbeat");
+  return { ...heartbeat?.dataPoints[0]?.attributes };
 }
 
 function metricNames(exporter: InMemoryMetricExporter): string[] {

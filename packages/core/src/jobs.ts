@@ -47,6 +47,15 @@ const jobPayloadSchemas: {
   delete_project: z.object({ sourcePaths: z.array(z.string()).optional() }).passthrough(),
 };
 
+/**
+ * Job types that run a full build (`npm ci` + `npx eve build`, 1-2 GB peak
+ * each) and therefore count against the worker's global heavy-job concurrency
+ * cap. Every other job type — including import_source, which only fetches and
+ * scans source before enqueueing a separate build_deploy — is cheap and must
+ * never queue behind a build.
+ */
+export const HEAVY_JOB_TYPES = ["build_deploy"] as const satisfies readonly JobType[];
+
 const jobTypeSet = new Set<JobType>(Object.keys(jobPayloadSchemas) as JobType[]);
 const jobStatusSet = new Set<JobStatus>(["queued", "running", "completed", "failed"]);
 
