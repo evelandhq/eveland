@@ -26,6 +26,10 @@ function metric(observedAt: string, workerId = "worker-1"): Omit<HostMetricSampl
     diskAvailableBytes: 60_000,
     diskInodesTotal: 10_000,
     diskInodesAvailable: 9_000,
+    cpuCores: 2,
+    pgConnections: [
+      { role: "shared", usedConnections: 42, maxConnections: 100, agentPoolSize: 10 },
+    ],
   };
 }
 

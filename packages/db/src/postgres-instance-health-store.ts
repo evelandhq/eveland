@@ -61,6 +61,8 @@ export function createPostgresInstanceHealthStore(
             diskAvailableBytes: sample.diskAvailableBytes,
             diskInodesTotal: sample.diskInodesTotal,
             diskInodesAvailable: sample.diskInodesAvailable,
+            cpuCores: sample.cpuCores,
+            pgConnections: sample.pgConnections,
           },
         })
         .returning();

@@ -198,6 +198,9 @@ export default async function InstanceHealthPage({
           <p className="mt-1 text-xs text-muted-foreground">
             Filesystem, memory, and CPU measurements published by the Worker host.
           </p>
+          {hostSpec(report.capacity) ? (
+            <p className="mt-1 text-xs text-muted-foreground">Host: {hostSpec(report.capacity)}</p>
+          ) : null}
         </div>
         <div className="grid divide-y border-y lg:grid-cols-3 lg:divide-x lg:divide-y-0">
           <div className="lg:pr-5">
@@ -206,7 +209,10 @@ export default async function InstanceHealthPage({
               value={percentLabel(report.capacity.disk.usedPercent)}
               points={diskPoints}
               hours={historyHours}
-              detail={`${formatBytes(report.capacity.disk.availableBytes)} available`}
+              detail={availabilityDetail(
+                report.capacity.disk.availableBytes,
+                report.capacity.disk.totalBytes,
+              )}
             />
           </div>
           <div className="lg:px-5">
@@ -215,7 +221,10 @@ export default async function InstanceHealthPage({
               value={percentLabel(report.capacity.memory.usedPercent)}
               points={memoryPoints}
               hours={historyHours}
-              detail={`${formatBytes(report.capacity.memory.availableBytes)} available`}
+              detail={availabilityDetail(
+                report.capacity.memory.availableBytes,
+                report.capacity.memory.totalBytes,
+              )}
             />
           </div>
           <div className="lg:pl-5">
@@ -224,7 +233,9 @@ export default async function InstanceHealthPage({
               value={percentLabel(report.capacity.cpu.percent)}
               points={cpuPoints}
               hours={historyHours}
-              detail={`Load ${report.capacity.cpu.load1?.toFixed(2) ?? "—"}`}
+              detail={`Load ${report.capacity.cpu.load1?.toFixed(2) ?? "—"}${
+                report.capacity.cpu.cores === null ? "" : ` on ${report.capacity.cpu.cores} cores`
+              }`}
             />
           </div>
         </div>
@@ -234,6 +245,46 @@ export default async function InstanceHealthPage({
             : `At the recent growth rate, available disk is projected to last about ${report.capacity.disk.projectedDaysRemaining} days.`}
         </p>
       </section>
+
+      {report.capacity.postgres.instances.length > 0 ? (
+        <>
+          <Separator />
+
+          <section aria-labelledby="connections-heading" className="flex flex-col gap-3">
+            <div>
+              <h3 id="connections-heading" className="text-sm font-semibold">
+                Postgres connection budget
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Every running Agent holds a connection pool; when max_connections is exhausted, new
+                deployments fail at startup.
+              </p>
+            </div>
+            <dl className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-2">
+              {report.capacity.postgres.instances.map((instance) => (
+                <div key={instance.role} className="bg-background p-4">
+                  <dt className="text-xs text-muted-foreground">{pgRoleLabels[instance.role]}</dt>
+                  <dd className="mt-2 text-2xl font-semibold tabular-nums">
+                    {instance.usedConnections}
+                    <span className="text-sm font-normal text-muted-foreground">
+                      {" "}
+                      / {instance.maxConnections} connections
+                    </span>
+                  </dd>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {instance.usedPercent}% used
+                    {instance.estimatedAdditionalAgents === null
+                      ? ""
+                      : ` · room for ~${instance.estimatedAdditionalAgents} more running Agent${
+                          instance.estimatedAdditionalAgents === 1 ? "" : "s"
+                        }`}
+                  </p>
+                </div>
+              ))}
+            </dl>
+          </section>
+        </>
+      ) : null}
 
       <Separator />
 
@@ -299,6 +350,32 @@ function WorkloadValue({ label, value }: { label: string; value: number }) {
       <dd className="mt-2 text-2xl font-semibold tabular-nums">{value}</dd>
     </div>
   );
+}
+
+const pgRoleLabels = {
+  shared: "Postgres (control plane + workflows)",
+  control: "Control-plane Postgres",
+  workflow: "Workflow Postgres",
+} as const;
+
+function hostSpec(capacity: {
+  cpu: { cores: number | null };
+  memory: { totalBytes: number | null };
+  disk: { totalBytes: number | null };
+}): string | null {
+  const parts = [
+    capacity.cpu.cores === null ? null : `${capacity.cpu.cores} CPU cores`,
+    capacity.memory.totalBytes === null
+      ? null
+      : `${formatBytes(capacity.memory.totalBytes)} memory`,
+    capacity.disk.totalBytes === null ? null : `${formatBytes(capacity.disk.totalBytes)} disk`,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function availabilityDetail(availableBytes: number | null, totalBytes: number | null): string {
+  if (totalBytes === null) return `${formatBytes(availableBytes)} available`;
+  return `${formatBytes(availableBytes)} of ${formatBytes(totalBytes)} available`;
 }
 
 function percentUsed(total: number, available: number): number {

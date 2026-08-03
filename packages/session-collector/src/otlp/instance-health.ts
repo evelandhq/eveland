@@ -1,4 +1,8 @@
-import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
+import type {
+  HostMetricSample,
+  PgInstanceConnectionSample,
+  WorkerHeartbeat,
+} from "@eveland/core/instance-health";
 import {
   arrayOfRecords,
   attributesFrom,
@@ -130,8 +134,52 @@ function projectHostMetrics(
     diskAvailableBytes: diskFree,
     diskInodesTotal: inodeLimit ?? null,
     diskInodesAvailable: inodeFree === undefined ? null : inodeFree,
+    cpuCores: firstPointValue(metrics, "eveland.host.cpu.logical.count") ?? null,
+    pgConnections: pgConnectionSamples(metrics),
   });
   projection.acceptedDataPoints += acceptedHostMetricDataPoints(metrics);
+}
+
+const pgInstanceRoles = ["shared", "control", "workflow"] as const;
+
+/**
+ * Reassembles the per-instance connection samples the worker flattened into
+ * role-attributed gauge points. An instance needs both its usage and limit
+ * point to count; the pool-size point is optional because control-only
+ * instances never carry one.
+ */
+function pgConnectionSamples(
+  metrics: Map<string, Record<string, unknown>[]>,
+): PgInstanceConnectionSample[] | null {
+  const samples: PgInstanceConnectionSample[] = [];
+  for (const role of pgInstanceRoles) {
+    const used = pointByAttribute(
+      metrics,
+      "eveland.postgres.connections.usage",
+      "eveland.postgres.role",
+      role,
+    );
+    const limit = pointByAttribute(
+      metrics,
+      "eveland.postgres.connections.limit",
+      "eveland.postgres.role",
+      role,
+    );
+    if (used === undefined || limit === undefined) continue;
+    const poolSize = pointByAttribute(
+      metrics,
+      "eveland.postgres.agent_pool_size",
+      "eveland.postgres.role",
+      role,
+    );
+    samples.push({
+      role,
+      usedConnections: used,
+      maxConnections: limit,
+      agentPoolSize: poolSize === undefined ? null : poolSize,
+    });
+  }
+  return samples.length > 0 ? samples : null;
 }
 
 function acceptedHostMetricDataPoints(metrics: Map<string, Record<string, unknown>[]>): number {
@@ -157,8 +205,24 @@ function acceptedHostMetricDataPoints(metrics: Map<string, Record<string, unknow
       "free",
     ) +
     acceptedFirstNumberPoint(metrics, "eveland.system.filesystem.inodes.limit") +
-    acceptedFirstNumberPoint(metrics, "eveland.host.load.1m")
+    acceptedFirstNumberPoint(metrics, "eveland.host.load.1m") +
+    acceptedFirstNumberPoint(metrics, "eveland.host.cpu.logical.count") +
+    acceptedPgConnectionPoints(metrics)
   );
+}
+
+function acceptedPgConnectionPoints(metrics: Map<string, Record<string, unknown>[]>): number {
+  let accepted = 0;
+  for (const name of [
+    "eveland.postgres.connections.usage",
+    "eveland.postgres.connections.limit",
+    "eveland.postgres.agent_pool_size",
+  ]) {
+    for (const role of pgInstanceRoles) {
+      accepted += acceptedAttributeNumberPoint(metrics, name, "eveland.postgres.role", role);
+    }
+  }
+  return accepted;
 }
 
 function acceptedFirstNumberPoint(

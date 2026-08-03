@@ -278,6 +278,16 @@ describe("OTLP Instance Health projection", () => {
                 ]),
                 gauge("eveland.system.filesystem.inodes.limit", [point(100)]),
                 gauge("eveland.host.load.1m", [point(1.5)]),
+                gauge("eveland.host.cpu.logical.count", [point(4)]),
+                gauge("eveland.postgres.connections.usage", [
+                  point(42, { "eveland.postgres.role": "shared" }),
+                ]),
+                gauge("eveland.postgres.connections.limit", [
+                  point(100, { "eveland.postgres.role": "shared" }),
+                ]),
+                gauge("eveland.postgres.agent_pool_size", [
+                  point(10, { "eveland.postgres.role": "shared" }),
+                ]),
               ],
             },
           ],
@@ -286,7 +296,7 @@ describe("OTLP Instance Health projection", () => {
     });
 
     expect(projection).toEqual({
-      acceptedDataPoints: 11,
+      acceptedDataPoints: 15,
       heartbeats: [
         {
           workerId: "worker_1",
@@ -309,9 +319,47 @@ describe("OTLP Instance Health projection", () => {
           diskAvailableBytes: 300,
           diskInodesTotal: 100,
           diskInodesAvailable: 20,
+          cpuCores: 4,
+          pgConnections: [
+            { role: "shared", usedConnections: 42, maxConnections: 100, agentPoolSize: 10 },
+          ],
         },
       ],
     });
+  });
+
+  test("keeps spec fields null for workers that predate them", () => {
+    const projection = projectInstanceTelemetryFromOtlpMetrics({
+      resourceMetrics: [
+        {
+          resource: {
+            attributes: [
+              attribute("service.name", "eveland-worker"),
+              attribute("service.instance.id", "worker_1"),
+              attribute("eveland.telemetry.domain", "capacity"),
+            ],
+          },
+          scopeMetrics: [
+            {
+              metrics: [
+                gauge("system.memory.usage", [
+                  point(600, { "system.memory.state": "used" }),
+                  point(400, { "system.memory.state": "free" }),
+                ]),
+                gauge("system.filesystem.usage", [
+                  point(300, { "system.filesystem.state": "free" }),
+                ]),
+                gauge("system.filesystem.limit", [point(1000)]),
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(projection.hostMetrics).toEqual([
+      expect.objectContaining({ cpuCores: null, pgConnections: null }),
+    ]);
   });
 
   test("acknowledges only the DataPoints consumed by each read model", () => {

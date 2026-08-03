@@ -9,6 +9,25 @@ export type WorkerHeartbeat = {
   lastError: string | null;
 };
 
+/**
+ * Connection usage of one Postgres instance the platform depends on, sampled
+ * instance-wide (pg_stat_activity spans every database in the cluster).
+ * "shared" means the control plane and the workflow worlds live on the same
+ * instance, so there is exactly one budget; "control"/"workflow" appear as a
+ * pair when the operator has split them.
+ */
+export type PgInstanceConnectionSample = {
+  role: "shared" | "control" | "workflow";
+  usedConnections: number;
+  maxConnections: number;
+  /**
+   * Pool size granted to each deployment runtime on this instance
+   * (WORKFLOW_POSTGRES_MAX_POOL_SIZE); null when the instance hosts no
+   * workflow worlds, i.e. role "control".
+   */
+  agentPoolSize: number | null;
+};
+
 export type HostMetricSample = {
   id: string;
   workerId: string;
@@ -21,6 +40,8 @@ export type HostMetricSample = {
   diskAvailableBytes: number;
   diskInodesTotal: number | null;
   diskInodesAvailable: number | null;
+  cpuCores: number | null;
+  pgConnections: PgInstanceConnectionSample[] | null;
 };
 
 export type InstanceWorkload = {
@@ -54,9 +75,23 @@ export type CapacityRisk = {
     | "disk_projected_exhaustion"
     | "disk_inodes"
     | "memory_available"
-    | "cpu_sustained";
+    | "cpu_sustained"
+    | "postgres_connections";
   severity: "warning" | "critical";
   message: string;
+};
+
+export type PgConnectionCapacity = {
+  role: PgInstanceConnectionSample["role"];
+  usedConnections: number;
+  maxConnections: number;
+  usedPercent: number;
+  /**
+   * How many more agent runtimes can start before this instance runs out of
+   * connections, assuming each takes a full pool; null when the instance
+   * hosts no workflow worlds.
+   */
+  estimatedAdditionalAgents: number | null;
 };
 
 export type HostCapacityAnalysis = {
@@ -65,15 +100,21 @@ export type HostCapacityAnalysis = {
   disk: {
     usedPercent: number | null;
     availableBytes: number | null;
+    totalBytes: number | null;
     projectedDaysRemaining: number | null;
   };
   memory: {
     usedPercent: number | null;
     availableBytes: number | null;
+    totalBytes: number | null;
   };
   cpu: {
     percent: number | null;
     load1: number | null;
+    cores: number | null;
+  };
+  postgres: {
+    instances: PgConnectionCapacity[];
   };
   risks: CapacityRisk[];
 };
@@ -120,9 +161,15 @@ export function analyzeHostCapacity(samples: HostMetricSample[]): HostCapacityAn
     return {
       overall: "healthy",
       observedAt: null,
-      disk: { usedPercent: null, availableBytes: null, projectedDaysRemaining: null },
-      memory: { usedPercent: null, availableBytes: null },
-      cpu: { percent: null, load1: null },
+      disk: {
+        usedPercent: null,
+        availableBytes: null,
+        totalBytes: null,
+        projectedDaysRemaining: null,
+      },
+      memory: { usedPercent: null, availableBytes: null, totalBytes: null },
+      cpu: { percent: null, load1: null, cores: null },
+      postgres: { instances: [] },
       risks: [],
     };
   }
@@ -197,6 +244,8 @@ export function analyzeHostCapacity(samples: HostMetricSample[]): HostCapacityAn
     });
   }
 
+  const pgInstances = analyzePgConnections(latest.pgConnections ?? [], risks);
+
   return {
     overall: risks.some((risk) => risk.severity === "critical")
       ? "critical"
@@ -207,15 +256,65 @@ export function analyzeHostCapacity(samples: HostMetricSample[]): HostCapacityAn
     disk: {
       usedPercent: diskUsedPercent,
       availableBytes: latest.diskAvailableBytes,
+      totalBytes: latest.diskTotalBytes,
       projectedDaysRemaining,
     },
     memory: {
       usedPercent: memoryUsedPercent,
       availableBytes: latest.memoryAvailableBytes,
+      totalBytes: latest.memoryTotalBytes,
     },
-    cpu: { percent: latest.cpuPercent, load1: latest.load1 },
+    cpu: { percent: latest.cpuPercent, load1: latest.load1, cores: latest.cpuCores },
+    postgres: { instances: pgInstances },
     risks,
   };
+}
+
+const pgRoleLabels: Record<PgInstanceConnectionSample["role"], string> = {
+  shared: "Postgres",
+  control: "Control-plane Postgres",
+  workflow: "Workflow Postgres",
+};
+
+function analyzePgConnections(
+  samples: PgInstanceConnectionSample[],
+  risks: CapacityRisk[],
+): PgConnectionCapacity[] {
+  return samples.map((instance) => {
+    const usedPercent =
+      instance.maxConnections > 0
+        ? Math.round((instance.usedConnections / instance.maxConnections) * 1000) / 10
+        : 0;
+    const estimatedAdditionalAgents =
+      instance.agentPoolSize && instance.agentPoolSize > 0
+        ? Math.max(
+            0,
+            Math.floor(
+              (instance.maxConnections - instance.usedConnections) / instance.agentPoolSize,
+            ),
+          )
+        : null;
+    if (usedPercent >= 90) {
+      risks.push({
+        code: "postgres_connections",
+        severity: "critical",
+        message: `${pgRoleLabels[instance.role]} is using ${instance.usedConnections}/${instance.maxConnections} connections; when it is full, new deployments fail at startup with FATAL 53300.`,
+      });
+    } else if (usedPercent >= 75) {
+      risks.push({
+        code: "postgres_connections",
+        severity: "warning",
+        message: `${pgRoleLabels[instance.role]} is using ${instance.usedConnections}/${instance.maxConnections} connections${estimatedAdditionalAgents === null ? "" : ` — roughly ${estimatedAdditionalAgents} more agent${estimatedAdditionalAgents === 1 ? "" : "s"} can start`}.`,
+      });
+    }
+    return {
+      role: instance.role,
+      usedConnections: instance.usedConnections,
+      maxConnections: instance.maxConnections,
+      usedPercent,
+      estimatedAdditionalAgents,
+    };
+  });
 }
 
 function percentUsed(total: number, available: number): number {

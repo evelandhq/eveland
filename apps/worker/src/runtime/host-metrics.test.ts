@@ -45,6 +45,10 @@ describe("host metric collection", () => {
             ffree: 8_000,
           };
         },
+        cpuCount: () => 4,
+        pgConnections: async () => [
+          { role: "shared", usedConnections: 42, maxConnections: 100, agentPoolSize: 10 },
+        ],
       },
     );
 
@@ -59,7 +63,35 @@ describe("host metric collection", () => {
       diskAvailableBytes: 1_024_000,
       diskInodesTotal: 10_000,
       diskInodesAvailable: 8_000,
+      cpuCores: 4,
+      pgConnections: [
+        { role: "shared", usedConnections: 42, maxConnections: 100, agentPoolSize: 10 },
+      ],
     });
     expect(result.cpuTimes).toEqual({ idle: 150, total: 300 });
+  });
+
+  test("degrades pg connection sampling to null instead of failing the sample", async () => {
+    const result = await collectHostMetric("worker-1", "/var/lib/eveland", null, {
+      now: () => new Date("2026-07-18T10:00:00.000Z"),
+      cpuTimes: () => ({ idle: 150, total: 300 }),
+      loadAverage: () => [0.5],
+      totalMemory: () => 16_000,
+      availableMemory: () => 6_000,
+      statfs: async () => ({
+        blocks: 1_000,
+        bsize: 4_096,
+        bavail: 250,
+        files: 10_000,
+        ffree: 8_000,
+      }),
+      cpuCount: () => 4,
+      pgConnections: async () => {
+        throw new Error("sorry, too many clients already");
+      },
+    });
+
+    expect(result.sample.pgConnections).toBeNull();
+    expect(result.sample.memoryTotalBytes).toBe(16_000);
   });
 });

@@ -1,6 +1,7 @@
 import { readFile, statfs } from "node:fs/promises";
 import os from "node:os";
-import type { HostMetricSample } from "@eveland/core/instance-health";
+import type { HostMetricSample, PgInstanceConnectionSample } from "@eveland/core/instance-health";
+import { samplePgInstanceConnections } from "./pg-connections.js";
 
 export type CpuTimes = { idle: number; total: number };
 
@@ -19,6 +20,8 @@ type HostMetricDependencies = {
   totalMemory: () => number;
   availableMemory: () => number | Promise<number>;
   statfs: (path: string) => Promise<FileSystemStats>;
+  cpuCount: () => number;
+  pgConnections: () => Promise<PgInstanceConnectionSample[] | null>;
 };
 
 const defaultDependencies: HostMetricDependencies = {
@@ -28,6 +31,8 @@ const defaultDependencies: HostMetricDependencies = {
   totalMemory: () => os.totalmem(),
   availableMemory: readAvailableMemory,
   statfs: (path) => statfs(path),
+  cpuCount: () => os.cpus().length,
+  pgConnections: () => samplePgInstanceConnections(process.env),
 };
 
 export function cpuPercentBetween(previous: CpuTimes | null, current: CpuTimes): number | null {
@@ -50,9 +55,12 @@ export async function collectHostMetric(
   previousCpuTimes: CpuTimes | null,
   dependencies: HostMetricDependencies = defaultDependencies,
 ): Promise<{ sample: Omit<HostMetricSample, "id">; cpuTimes: CpuTimes }> {
-  const [filesystem, memoryAvailableBytes] = await Promise.all([
+  const [filesystem, memoryAvailableBytes, pgConnections] = await Promise.all([
     dependencies.statfs(dataDir),
     dependencies.availableMemory(),
+    // A refused or slow Postgres must degrade this one field, not the sample:
+    // connection saturation is exactly when the rest of these metrics matter.
+    dependencies.pgConnections().catch(() => null),
   ]);
   const currentCpuTimes = dependencies.cpuTimes();
   const blockSize = Number(filesystem.bsize);
@@ -69,6 +77,8 @@ export async function collectHostMetric(
       diskAvailableBytes: Number(filesystem.bavail) * blockSize,
       diskInodesTotal: Number(filesystem.files),
       diskInodesAvailable: Number(filesystem.ffree),
+      cpuCores: dependencies.cpuCount(),
+      pgConnections,
     },
     cpuTimes: currentCpuTimes,
   };
