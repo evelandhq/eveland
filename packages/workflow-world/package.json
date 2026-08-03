@@ -14,21 +14,26 @@
   ],
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    },
-    "./schema": {
-      "types": "./dist/drizzle/schema.d.ts",
-      "import": "./dist/drizzle/schema.js"
-    },
-    "./migrate": {
-      "types": "./dist/migrate.d.ts",
-      "import": "./dist/migrate.js"
-    }
+    ".": "./src/index.ts",
+    "./schema": "./src/drizzle/schema.ts",
+    "./migrate": "./src/migrate.ts"
   },
   "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "./schema": {
+        "types": "./dist/drizzle/schema.d.ts",
+        "import": "./dist/drizzle/schema.js"
+      },
+      "./migrate": {
+        "types": "./dist/migrate.d.ts",
+        "import": "./dist/migrate.js"
+      }
+    },
     "access": "public"
   },
   "scripts": {
