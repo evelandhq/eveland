@@ -1,4 +1,9 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["CHANGELOG.md", "packages/db/drizzle/**", "pnpm-lock.yaml"]
+  "ignorePatterns": [
+    "CHANGELOG.md",
+    ".release-please-manifest.json",
+    "packages/db/drizzle/**",
+    "pnpm-lock.yaml"
+  ]
 }

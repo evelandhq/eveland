@@ -179,6 +179,22 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Without an explicit bound, @workflow/world-postgres falls back to pg's
+ * implicit pool default (10) — per-deployment connection consumption then
+ * scales invisibly with the number of running deployments until the workflow
+ * Postgres instance hits max_connections (FATAL 53300). The default keeps
+ * pg's 10; operators tune the fleet-wide value via the worker's
+ * WORKFLOW_POSTGRES_MAX_POOL_SIZE.
+ */
+const defaultWorkflowMaxPoolSize = 10;
+
+function resolveWorkflowMaxPoolSize(workerEnv: NodeJS.ProcessEnv): string {
+  const parsed = Number.parseInt(workerEnv.WORKFLOW_POSTGRES_MAX_POOL_SIZE ?? "", 10);
+  const size = Number.isFinite(parsed) && parsed > 0 ? parsed : defaultWorkflowMaxPoolSize;
+  return String(size);
+}
+
 // Shared by build_deploy and restart_deployment. Durable-workflow gating is
 // NOT part of this: build_deploy only calls this after deciding the deploy may
 // proceed, and restart never re-gates an already-deployed release.
@@ -225,7 +241,16 @@ export async function composeDeploymentEnv(
     EVELAND_PROJECT_ID: projectId,
     ...(identityIssuer ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") } : {}),
     ...(identityJwksUrl ? { EVELAND_IDENTITY_JWKS_URL: identityJwksUrl } : {}),
-    ...(projectWorkflowUrl ? { WORKFLOW_POSTGRES_URL: projectWorkflowUrl } : {}),
+    // The pool size is reserved alongside the URL: connection capacity on the
+    // shared workflow Postgres instance is platform-planned
+    // (max_connections ≈ pool size × concurrent deployments), so a project
+    // must not be able to raise its own share of it.
+    ...(projectWorkflowUrl
+      ? {
+          WORKFLOW_POSTGRES_URL: projectWorkflowUrl,
+          WORKFLOW_POSTGRES_MAX_POOL_SIZE: resolveWorkflowMaxPoolSize(workerEnv),
+        }
+      : {}),
     ...(schedulerRuntimeSecret ? { EVELAND_SCHEDULER_RUNTIME_SECRET: schedulerRuntimeSecret } : {}),
     ...(schedulerRedeemUrl ? { EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl } : {}),
     ...(isProduction ? { NODE_ENV: "production" } : {}),

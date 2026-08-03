@@ -297,6 +297,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `APP_SECRET_KEY`                                   | _(hardcoded dev key)_                                                                                          | Required in production. Decrypts stored secrets and derives Agent telemetry credentials. It must match the API value. After rotation, redeploy every Agent Deployment so its policy contains a credential signed by the new key; hot reload across a key change is not supported. Never rely on the fallback dev key outside local development.                                                                                                                                                              |
 | `WORKFLOW_POSTGRES_URL`                            | _(unset)_                                                                                                      | Platform-owned Postgres **base** URL for durable workflow worlds. The worker derives one database per project (`eveland_wf_<project>_<digest>`), creates and bootstraps it before any deployment process starts, and injects the derived URL — deployments never share a workflow database. The role in this URL needs `CREATEDB`. Required in production and reserved from Project Secret overrides. For systemd, use a host-reachable address such as `postgres://eveland:eveland@127.0.0.1:5432/eveland`. |
 | `WORKFLOW_POSTGRES_BOOTSTRAP_URL`                  | Matching `DATABASE_URL` when the deployment URL uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches a separate workflow database through `localhost` or a Compose service name. It is never injected into an Agent.                                                                                                                                                                                                                                          |
+| `WORKFLOW_POSTGRES_MAX_POOL_SIZE`                  | `10`                                                                                                           | Max pg pool connections each deployment runtime opens against its workflow database; the worker injects it into every deployment and Project Secrets cannot override it. Size the workflow instance's `max_connections` as roughly this value × expected concurrent running deployments, plus the control-plane pools when both share one Postgres instance. Lower it to fit more deployments per instance; a Postgres `FATAL 53300 "too many clients"` at deployment startup means this budget is exceeded. |
 | `NODE_ENV`                                         | _(unset)_                                                                                                      | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above).                                                                                                                                     |
 | `EVELAND_SANDBOX_CACHE_DIR`                        | `$EVELAND_DATA_DIR/sandbox`                                                                                    | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below.                                                                                                                                                                                                                        |
 
@@ -744,8 +745,58 @@ Session and ScheduleRun; if no boundary arrives before
 `EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS`, it records
 `platform.runtime_deadline_exceeded` instead.
 
+## Capacity planning (single host)
+
+Eveland is designed to run a fleet of Agents on one machine, so the practical
+question is how machine size maps to concurrent workload. Three workload kinds
+compete for the host, in decreasing memory weight:
+
+| Workload                                                       | Memory (typical) | CPU                     | Postgres connections                                                                           |
+| -------------------------------------------------------------- | ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------- |
+| One **build** (`npm ci`/`npx eve build`)                       | 1–2 GB peak      | high (bursts, ~2 cores) | none — build env deliberately excludes all database URLs                                       |
+| One **running Agent** (`npx eve start`)                        | 150–300 MB RSS   | low while idle          | up to `WORKFLOW_POSTGRES_MAX_POOL_SIZE` (default 10) + control-plane request load it generates |
+| Control plane (API, Gateway, Web, worker, Postgres, Collector) | ~1–1.5 GB total  | low                     | ~30 (`DATABASE_POOL_SIZE` × API/Gateway/worker)                                                |
+
+Concurrency is governed as follows:
+
+- **Running Agents**: no hard cap. The idle reaper stops any Agent with no
+  activation lease for five minutes (`EVELAND_ACTIVATION_IDLE_TTL_MS`), so the
+  steady-state count follows real traffic, not the number of projects.
+- **Builds**: at most one running job **per project**, but there is no global
+  cap — N projects deploying simultaneously means N concurrent builds, admitted
+  at one new job per worker tick (`WORKER_POLL_INTERVAL_MS`, default 5 s).
+  Builds are the heaviest transient load; treat "how many teams deploy at once"
+  as a first-class sizing input.
+
+Postgres deserves a clarification, because `max_connections` is the limit
+operators reach first (`FATAL 53300: sorry, too many clients already` at Agent
+startup): **connections are a bookkeeping ceiling, not the scarce resource**.
+Raising `max_connections` costs almost nothing until connections actually
+exist, and an idle backend is roughly 2 MB — 300 mostly-idle connections is
+under 1 GB. The Agents _holding_ those connections cost far more than the
+connections themselves, so RAM runs out at the process level first. Size in
+this order:
+
+1. Budget RAM: `total − 2 GB (OS + control plane) − builds × 2 GB` → divide by
+   ~0.3 GB for the sustainable running-Agent count.
+2. Set `max_connections ≈ agents × WORKFLOW_POSTGRES_MAX_POOL_SIZE + 30
+(control plane) + headroom`. Lower the pool size to fit more Agents per
+   instance when workflows are light.
+
+Reference points:
+
+| Host  | Concurrent builds | Running Agents | `max_connections` |
+| ----- | ----------------- | -------------- | ----------------- |
+| 4 GB  | 1                 | ~5             | default 100       |
+| 8 GB  | 2                 | ~10–15         | 200               |
+| 16 GB | 3–4               | ~30            | 300–400           |
+| 32 GB | 6–8               | ~60            | 400+ (pool 5)     |
+
 ## Known limits (v1)
 
+- There is no global cap on concurrent build jobs — only one per project (see
+  "Capacity planning" above). Simultaneous deploys from many projects can
+  exhaust host RAM/CPU; pace fleet-wide redeploys until a global cap exists.
 - The sandbox cache under `EVELAND_SANDBOX_CACHE_DIR` is never pruned; disk usage grows
   with the number of durable sessions and unique templates (see "Agent exec sandbox"
   above).
