@@ -143,6 +143,40 @@ jobs:
           npm install --no-audit --no-fund /tmp/eveland-sdk/eveland-*.tgz
           node -e "import('eveland/auth').then((m) => { if (typeof m.evelandIdentity !== 'function') throw new Error('evelandIdentity export missing'); console.log('sdk import ok'); })"
 
+  workflow-world:
+    name: Workflow world pack contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # This package is installed into Agent deployments straight from npm, and
+      # its workspace `exports` deliberately point at src/ so the monorepo can
+      # typecheck it without a build. Only pnpm's publishConfig substitution
+      # rewrites them to dist/ at pack time — so packing and importing for real
+      # is the only thing that proves a deployment would get a working package.
+      - name: Pack the workflow world
+        run: pnpm --filter @eveland/workflow-world pack --pack-destination /tmp/eveland-workflow-world
+
+      - name: Install the tarball into a clean project and import it
+        run: |
+          mkdir -p /tmp/workflow-world-smoke && cd /tmp/workflow-world-smoke
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund /tmp/eveland-workflow-world/eveland-workflow-world-*.tgz
+          node -e "import('@eveland/workflow-world').then((m) => { for (const name of ['createWorld', 'runMigrations', 'ensureTenantPartitions', 'MessageData', 'DISPATCH_VERSION']) { if (m[name] === undefined) throw new Error(name + ' export missing'); } console.log('workflow world import ok'); })"
+          test -f node_modules/@eveland/workflow-world/migrations/0001_initial.sql
+
   build:
     runs-on: ubuntu-latest
     steps:
