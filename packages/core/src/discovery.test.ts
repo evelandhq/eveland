@@ -14,8 +14,16 @@ const nestedManifest = {
   channels: [],
   connections: [],
   diagnosticsSummary: { errors: 0, warnings: 0 },
-  hooks: [{ sourceKind: "module", logicalPath: "hooks/root-observer.ts", sourceId: "hooks/root-observer.ts" }],
-  instructions: [{ sourceKind: "markdown", logicalPath: "instructions.md", sourceId: "instructions.md" }],
+  hooks: [
+    {
+      sourceKind: "module",
+      logicalPath: "hooks/root-observer.ts",
+      sourceId: "hooks/root-observer.ts",
+    },
+  ],
+  instructions: [
+    { sourceKind: "markdown", logicalPath: "instructions.md", sourceId: "instructions.md" },
+  ],
   sandbox: null,
   schedules: [],
   skills: [],
@@ -115,6 +123,8 @@ describe("projectDiscoveryManifest", () => {
         instructions: [{ logicalPath: "instructions.md" }, { logicalPath: 42 }],
       }),
     ).toBeNull();
-    expect(projectDiscoveryManifest({ ...nestedManifest, hooks: ["hooks/observer.ts"] })).toBeNull();
+    expect(
+      projectDiscoveryManifest({ ...nestedManifest, hooks: ["hooks/observer.ts"] }),
+    ).toBeNull();
   });
 });

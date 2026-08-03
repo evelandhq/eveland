@@ -42,15 +42,17 @@ describe("observability policy", () => {
     expect(
       observabilityPolicySchema.safeParse({
         ...policy,
-        externalDestinations: [{
-          id: "destination_1",
-          kind: "built_in",
-          enabled: true,
-          supportedSignals: ["traces", "logs", "metrics"],
-          filterProfile: "all_eveland",
-          encryptedConfig: "ciphertext",
-          securityRevision: 1,
-        }],
+        externalDestinations: [
+          {
+            id: "destination_1",
+            kind: "built_in",
+            enabled: true,
+            supportedSignals: ["traces", "logs", "metrics"],
+            filterProfile: "all_eveland",
+            encryptedConfig: "ciphertext",
+            securityRevision: 1,
+          },
+        ],
       }).success,
     ).toBe(false);
   });
@@ -157,10 +159,7 @@ describe("observability policy", () => {
 
     const publicPolicy = toPublicObservabilityPolicy(policy, {
       destinationConfigs: new Map([
-        [
-          "destination_langfuse",
-          { kind: "langfuse", baseUrl: "https://us.cloud.langfuse.com" },
-        ],
+        ["destination_langfuse", { kind: "langfuse", baseUrl: "https://us.cloud.langfuse.com" }],
       ]),
     });
 
@@ -184,9 +183,7 @@ describe("observability policy", () => {
     ]);
     expect(JSON.stringify(publicPolicy)).not.toContain("ciphertext");
     // An unreadable destination is still listed, so an Admin can replace it.
-    expect(
-      toPublicObservabilityPolicy(policy).externalDestinations[0]!.config,
-    ).toBeNull();
+    expect(toPublicObservabilityPolicy(policy).externalDestinations[0]!.config).toBeNull();
   });
 
   test("publishes destination URLs and credential shape, never credential values", () => {
@@ -353,14 +350,10 @@ describe("observability policy", () => {
       kind: "langfuse",
       baseUrl: "https://us.cloud.langfuse.com",
     });
-    expect(
-      langfuseOtlpTracesEndpoint("https://us.cloud.langfuse.com"),
-    ).toBe(
+    expect(langfuseOtlpTracesEndpoint("https://us.cloud.langfuse.com")).toBe(
       "https://us.cloud.langfuse.com/api/public/otel/v1/traces",
     );
-    expect(
-      langfuseOtlpTracesEndpoint("https://langfuse.example.com/"),
-    ).toBe(
+    expect(langfuseOtlpTracesEndpoint("https://langfuse.example.com/")).toBe(
       "https://langfuse.example.com/api/public/otel/v1/traces",
     );
     expect(
@@ -414,9 +407,7 @@ describe("Agent runtime policy", () => {
   };
 
   test("contains capture, internal OTLP, and deployment provenance only", () => {
-    expect(AGENT_RUNTIME_POLICY_PATH).toBe(
-      "/run/eveland/observability/agent-policy.json",
-    );
+    expect(AGENT_RUNTIME_POLICY_PATH).toBe("/run/eveland/observability/agent-policy.json");
     const runtimePolicy = createAgentRuntimePolicy({
       policy: observabilityPolicy,
       otlpEndpoint: "http://127.0.0.1:4318",

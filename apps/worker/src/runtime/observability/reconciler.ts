@@ -16,10 +16,7 @@ export function createWorkerObservabilityReconciler(
   const warn =
     options.warn ??
     ((message, error) =>
-      console.warn(
-        message,
-        error instanceof Error ? error.message : String(error),
-      ));
+      console.warn(message, error instanceof Error ? error.message : String(error)));
   const lastWarningAt = new Map<string, number>();
 
   return async () => {

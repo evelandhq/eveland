@@ -25,7 +25,11 @@ const root = await mkdtemp(path.join(os.tmpdir(), "eveland-local-sandbox-smoke-"
 const sandboxCacheDir = path.join(root, "sandbox");
 const observabilityPolicyDir = path.join(root, "observability");
 const fixtureSourcePath = path.join(root, "source");
-const adapter = createDockerAdapter({ internalPort: 3000, dataDir: process.env.EVELAND_DATA_DIR ?? ".eveland-data", backendDistDir: resolveBackendDistDir });
+const adapter = createDockerAdapter({
+  internalPort: 3000,
+  dataDir: process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+  backendDistDir: resolveBackendDistDir,
+});
 let started = false;
 
 async function runTypeScriptTurn(hostPort: number): Promise<void> {
@@ -37,21 +41,33 @@ async function runTypeScriptTurn(hostPort: number): Promise<void> {
   const createResponse = await fetch("http://127.0.0.1:" + hostPort + "/eve/v1/session", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message: "Use the bash tool to run the command " + quote + command + quote + "." }),
+    body: JSON.stringify({
+      message: "Use the bash tool to run the command " + quote + command + quote + ".",
+    }),
     signal: AbortSignal.timeout(10_000),
   });
   const createBody = await createResponse.text();
   assert.equal(createResponse.ok, true, "session create failed: " + createBody);
   const parsed = JSON.parse(createBody) as { sessionId?: unknown };
   const sessionId =
-    typeof parsed.sessionId === "string" ? parsed.sessionId : (createResponse.headers.get("x-eve-session-id") ?? undefined);
+    typeof parsed.sessionId === "string"
+      ? parsed.sessionId
+      : (createResponse.headers.get("x-eve-session-id") ?? undefined);
   assert.equal(typeof sessionId, "string", "session create returned no sessionId");
 
   const streamResponse = await fetch(
-    "http://127.0.0.1:" + hostPort + "/eve/v1/session/" + encodeURIComponent(sessionId as string) + "/stream",
+    "http://127.0.0.1:" +
+      hostPort +
+      "/eve/v1/session/" +
+      encodeURIComponent(sessionId as string) +
+      "/stream",
     { signal: AbortSignal.timeout(30_000) },
   );
-  assert.equal(streamResponse.ok, true, "session stream failed with status " + streamResponse.status);
+  assert.equal(
+    streamResponse.ok,
+    true,
+    "session stream failed with status " + streamResponse.status,
+  );
   assert.ok(streamResponse.body);
 
   const reader = streamResponse.body.getReader();
@@ -129,7 +145,10 @@ try {
   assert.equal(result.releaseRef, imageTag);
   assert.match(result.log, /Injected eve sandbox modules: agent\/sandbox\/sandbox\.js/);
   assert.equal(
-    await readFile(path.join(root, "release", "agent", "sandbox", "workspace", "eveland-seed.txt"), "utf8"),
+    await readFile(
+      path.join(root, "release", "agent", "sandbox", "workspace", "eveland-seed.txt"),
+      "utf8",
+    ),
     "eveland-seed-preserved\n",
   );
   assert.match(result.log, /Docker sandbox self-check passed/);

@@ -7,7 +7,11 @@ import { runSchedule } from "@/lib/client-api";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
-export function RunScheduleAction({ projectId, scheduleId, disabled }: {
+export function RunScheduleAction({
+  projectId,
+  scheduleId,
+  disabled,
+}: {
   projectId: string;
   scheduleId: string;
   disabled: boolean;

@@ -2,10 +2,7 @@ import { context, metrics, trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { isTracingSuppressed } from "@opentelemetry/core";
 import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
-import {
-  AggregationTemporality,
-  InMemoryMetricExporter,
-} from "@opentelemetry/sdk-metrics";
+import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/sdk-metrics";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -26,37 +23,29 @@ afterEach(() => {
 
 describe("platform observability", () => {
   test("fails fast without the platform receiver token in production", () => {
-    expect(() =>
-      resolvePlatformOtlpServiceToken({ NODE_ENV: "production" }),
-    ).toThrow(
+    expect(() => resolvePlatformOtlpServiceToken({ NODE_ENV: "production" })).toThrow(
       "EVELAND_OTLP_SERVICE_TOKEN is required in production.",
     );
-    expect(
-      resolvePlatformOtlpServiceToken({ NODE_ENV: "development" }),
-    ).toBe("eveland-dev-otlp-service-token");
+    expect(resolvePlatformOtlpServiceToken({ NODE_ENV: "development" })).toBe(
+      "eveland-dev-otlp-service-token",
+    );
   });
 
   test("builds credential-free standard OTLP/HTTP signal endpoints", () => {
-    expect(
-      resolveOtlpHttpSignalUrls("http://collector.internal:4318/"),
-    ).toEqual({
+    expect(resolveOtlpHttpSignalUrls("http://collector.internal:4318/")).toEqual({
       traces: "http://collector.internal:4318/v1/traces",
       logs: "http://collector.internal:4318/v1/logs",
       metrics: "http://collector.internal:4318/v1/metrics",
     });
     expect(() =>
-      resolveOtlpHttpSignalUrls(
-        "http://eveland:secret@collector.internal:4318",
-      ),
+      resolveOtlpHttpSignalUrls("http://eveland:secret@collector.internal:4318"),
     ).toThrow(/credentials/);
   });
 
   test("uses one platform Resource for traces, logs, and metrics", async () => {
     const traceExporter = new InMemorySpanExporter();
     const logExporter = new InMemoryLogRecordExporter();
-    const metricExporter = new InMemoryMetricExporter(
-      AggregationTemporality.CUMULATIVE,
-    );
+    const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
     const telemetry = startPlatformObservability({
       serviceName: "eveland-worker",
       serviceVersion: "0.11.0",
@@ -73,11 +62,9 @@ describe("platform observability", () => {
       instrumentations: [],
     });
     expect(isTracingSuppressed(context.active())).toBe(false);
-    expect(
-      runWithPlatformTracingSuppressed(() =>
-        isTracingSuppressed(context.active()),
-      ),
-    ).toBe(true);
+    expect(runWithPlatformTracingSuppressed(() => isTracingSuppressed(context.active()))).toBe(
+      true,
+    );
     expect(isTracingSuppressed(context.active())).toBe(false);
 
     const span = telemetry.tracer.startSpan("worker.tick");
@@ -91,9 +78,7 @@ describe("platform observability", () => {
     await telemetry.forceFlush();
 
     expect(traceExporter.getFinishedSpans()).toHaveLength(1);
-    expect(
-      traceExporter.getFinishedSpans()[0]?.resource.attributes,
-    ).toMatchObject({
+    expect(traceExporter.getFinishedSpans()[0]?.resource.attributes).toMatchObject({
       "service.name": "eveland-worker",
       "service.version": "0.11.0",
       "service.instance.id": "worker-1",
@@ -129,9 +114,7 @@ describe("platform observability", () => {
   });
 
   test("exports capacity metrics through a private non-global provider", async () => {
-    const metricExporter = new InMemoryMetricExporter(
-      AggregationTemporality.CUMULATIVE,
-    );
+    const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
     const telemetry = startPrivateMetrics({
       serviceName: "eveland-worker",
       serviceVersion: "0.11.0",
@@ -185,15 +168,11 @@ describe("platform observability", () => {
     await telemetry.forceFlush();
 
     expect(logExporter.getFinishedLogRecords()).toHaveLength(1);
-    expect(
-      logExporter.getFinishedLogRecords()[0]?.resource.attributes,
-    ).toMatchObject({
+    expect(logExporter.getFinishedLogRecords()[0]?.resource.attributes).toMatchObject({
       "service.name": "eveland-worker",
       "eveland.telemetry.domain": "runtime",
     });
-    expect(
-      logExporter.getFinishedLogRecords()[0]?.attributes,
-    ).toMatchObject({
+    expect(logExporter.getFinishedLogRecords()[0]?.attributes).toMatchObject({
       "eveland.project.id": "proj_1",
       "eveland.deployment.id": "dep_1",
     });

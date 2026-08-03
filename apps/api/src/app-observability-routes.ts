@@ -57,9 +57,7 @@ export function registerObservabilityRoutes(input: {
   });
 
   app.put("/system/observability", async (c) => {
-    const parsed = updateAgentCaptureSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = updateAgentCaptureSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         {
@@ -80,17 +78,14 @@ export function registerObservabilityRoutes(input: {
       ? c.json(await policyService.getPublicPolicy(updated))
       : c.json(
           {
-            error:
-              "Observability policy changed; reload and try again.",
+            error: "Observability policy changed; reload and try again.",
           },
           409,
-      );
+        );
   });
 
   app.post("/system/observability/destinations", async (c) => {
-    const parsed = createDestinationSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = createDestinationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         { error: "Invalid observability destination", issues: parsed.error.issues },
@@ -111,9 +106,7 @@ export function registerObservabilityRoutes(input: {
     }
     let config: ExternalDestinationConfig;
     try {
-      config = await policyService.resolveDestinationConfig(
-        parsed.data.config,
-      );
+      config = await policyService.resolveDestinationConfig(parsed.data.config);
     } catch (error) {
       return c.json(
         {
@@ -130,31 +123,22 @@ export function registerObservabilityRoutes(input: {
       teamId: DEFAULT_TEAM_ID,
       expectedRevision: parsed.data.expectedRevision,
       agentCapture: current.agentCapture,
-      externalDestinations: [
-        ...current.externalDestinations,
-        destination,
-      ],
+      externalDestinations: [...current.externalDestinations, destination],
     });
     if (!updated) {
       return c.json(
         {
-          error:
-            "Observability policy changed; reload and try again.",
+          error: "Observability policy changed; reload and try again.",
         },
         409,
       );
     }
-    await policyService.markDestinationProbePending(
-      destination.id,
-      destination.enabled,
-    );
+    await policyService.markDestinationProbePending(destination.id, destination.enabled);
     return c.json(await policyService.getPublicPolicy(updated), 201);
   });
 
   app.put("/system/observability/destinations/:destinationId", async (c) => {
-    const parsed = updateDestinationSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = updateDestinationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         { error: "Invalid observability destination", issues: parsed.error.issues },
@@ -171,10 +155,7 @@ export function registerObservabilityRoutes(input: {
     }
     let config: ExternalDestinationConfig;
     try {
-      config = await policyService.resolveDestinationConfig(
-        parsed.data.config,
-        existing,
-      );
+      config = await policyService.resolveDestinationConfig(parsed.data.config, existing);
     } catch (error) {
       return c.json(
         {
@@ -201,23 +182,17 @@ export function registerObservabilityRoutes(input: {
     if (!updated) {
       return c.json(
         {
-          error:
-            "Observability policy changed; reload and try again.",
+          error: "Observability policy changed; reload and try again.",
         },
         409,
       );
     }
-    await policyService.markDestinationProbePending(
-      replacement.id,
-      replacement.enabled,
-    );
+    await policyService.markDestinationProbePending(replacement.id, replacement.enabled);
     return c.json(await policyService.getPublicPolicy(updated));
   });
 
   app.patch("/system/observability/destinations/:destinationId", async (c) => {
-    const parsed = toggleDestinationSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = toggleDestinationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         { error: "Invalid observability destination", issues: parsed.error.issues },
@@ -241,23 +216,17 @@ export function registerObservabilityRoutes(input: {
     if (!updated) {
       return c.json(
         {
-          error:
-            "Observability policy changed; reload and try again.",
+          error: "Observability policy changed; reload and try again.",
         },
         409,
       );
     }
-    await policyService.markDestinationProbePending(
-      existing.id,
-      parsed.data.enabled,
-    );
+    await policyService.markDestinationProbePending(existing.id, parsed.data.enabled);
     return c.json(await policyService.getPublicPolicy(updated));
   });
 
   app.delete("/system/observability/destinations/:destinationId", async (c) => {
-    const parsed = deleteDestinationSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = deleteDestinationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         { error: "Invalid observability destination", issues: parsed.error.issues },

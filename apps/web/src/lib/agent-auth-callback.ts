@@ -6,10 +6,11 @@ export function agentAuthCallbackSearch(search: string): string | null {
 
 export function safeAgentAuthReturnPath(returnPath: unknown): string {
   if (
-    typeof returnPath === "string"
-    && returnPath.startsWith("/")
-    && !returnPath.startsWith("//")
-    && !returnPath.startsWith("/\\")
-  ) return returnPath;
+    typeof returnPath === "string" &&
+    returnPath.startsWith("/") &&
+    !returnPath.startsWith("//") &&
+    !returnPath.startsWith("/\\")
+  )
+    return returnPath;
   return "/projects";
 }

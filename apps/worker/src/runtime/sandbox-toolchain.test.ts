@@ -29,18 +29,28 @@ describe("systemd sandbox toolchain provisioning", () => {
   });
 
   test("installs the platform-owned commands in the real Lima host", async () => {
-    const limaConfig = await readFile(new URL("../../../../infra/lima/eveland.yaml", import.meta.url), "utf8");
-    const aptPackages = limaConfig.match(/^\s*apt-get install -y ([^\n]+)$/m)?.[1]?.split(/\s+/) ?? [];
+    const limaConfig = await readFile(
+      new URL("../../../../infra/lima/eveland.yaml", import.meta.url),
+      "utf8",
+    );
+    const aptPackages =
+      limaConfig.match(/^\s*apt-get install -y ([^\n]+)$/m)?.[1]?.split(/\s+/) ?? [];
 
     expect(aptPackages).toEqual(expect.arrayContaining(expectedAptPackages));
     expect(limaConfig).toContain(`corepack install --global pnpm@${SANDBOX_PNPM_VERSION}`);
   });
 
   test("upgrades a reused Lima host before invoking pnpm or the worker preflight", async () => {
-    const integrationScript = await readFile(new URL("../../../../infra/integration/run.sh", import.meta.url), "utf8");
-    const aptPackages = integrationScript.match(/^\s*apt-get install -y ([^\n]+)$/m)?.[1]?.split(/\s+/) ?? [];
+    const integrationScript = await readFile(
+      new URL("../../../../infra/integration/run.sh", import.meta.url),
+      "utf8",
+    );
+    const aptPackages =
+      integrationScript.match(/^\s*apt-get install -y ([^\n]+)$/m)?.[1]?.split(/\s+/) ?? [];
     const toolchainInstallIndex = integrationScript.indexOf("apt-get install -y");
-    const workspaceInstallIndex = integrationScript.indexOf("corepack pnpm install --frozen-lockfile");
+    const workspaceInstallIndex = integrationScript.indexOf(
+      "corepack pnpm install --frozen-lockfile",
+    );
 
     expect(aptPackages).toEqual(expect.arrayContaining(expectedAptPackages));
     expect(integrationScript).toContain(`corepack install --global pnpm@${SANDBOX_PNPM_VERSION}`);

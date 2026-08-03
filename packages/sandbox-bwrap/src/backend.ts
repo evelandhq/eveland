@@ -40,7 +40,9 @@ async function copyDirectoryAtomically(sourcePath: string, targetPath: string): 
   }
 }
 
-export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput = {}): SandboxBackend {
+export function createBwrapSandboxBackend(
+  input: CreateBwrapSandboxBackendInput = {},
+): SandboxBackend {
   const options = resolveBwrapSandboxOptions(input.createOptions);
   const optionsHash = createBwrapOptionsHash(options);
   const runner = input.runner ?? createNodeProcessRunner();
@@ -70,7 +72,10 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
     return seedPath;
   }
 
-  async function writeSeedFiles(session: BwrapSession, seedFiles: ReadonlyArray<SandboxSeedFile>): Promise<void> {
+  async function writeSeedFiles(
+    session: BwrapSession,
+    seedFiles: ReadonlyArray<SandboxSeedFile>,
+  ): Promise<void> {
     for (const seed of seedFiles) {
       const seedPath = resolveSeedPath(seed.path);
       if (typeof seed.content === "string") {
@@ -86,7 +91,12 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
 
     async prewarm({ templateKey, bootstrap, seedFiles, log, runtimeContext }) {
       assertBwrapAvailable();
-      const templatePath = resolveTemplatePath(runtimeContext.appRoot, templateKey, optionsHash, options.cacheDir);
+      const templatePath = resolveTemplatePath(
+        runtimeContext.appRoot,
+        templateKey,
+        optionsHash,
+        options.cacheDir,
+      );
       if (existsSync(templatePath)) return { reused: true };
 
       log?.(`bwrap: capturing template for ${templateKey}`);
@@ -113,9 +123,17 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
         if (templateKey === null) {
           await mkdir(sessionPath, { recursive: true });
         } else {
-          const templatePath = resolveTemplatePath(runtimeContext.appRoot, templateKey, optionsHash, options.cacheDir);
+          const templatePath = resolveTemplatePath(
+            runtimeContext.appRoot,
+            templateKey,
+            optionsHash,
+            options.cacheDir,
+          );
           if (!existsSync(templatePath)) {
-            throw new SandboxTemplateNotProvisionedError({ backendName: BWRAP_BACKEND_NAME, templateKey });
+            throw new SandboxTemplateNotProvisionedError({
+              backendName: BWRAP_BACKEND_NAME,
+              templateKey,
+            });
           }
           await copyDirectoryAtomically(templatePath, sessionPath);
         }

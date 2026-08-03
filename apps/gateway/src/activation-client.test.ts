@@ -5,12 +5,17 @@ import { createApiActivationClient } from "./activation-client.js";
 const servers: Array<ReturnType<typeof createServer>> = [];
 
 afterEach(async () => {
-  await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  await Promise.all(
+    servers
+      .splice(0)
+      .map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+  );
 });
 
 describe("createApiActivationClient", () => {
   test("authenticates activate, renew, and release calls to the control API", async () => {
-    const requests: Array<{ method?: string; url?: string; authorization?: string; body: string }> = [];
+    const requests: Array<{ method?: string; url?: string; authorization?: string; body: string }> =
+      [];
     const server = createServer(async (request, response) => {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -21,9 +26,11 @@ describe("createApiActivationClient", () => {
         body: Buffer.concat(chunks).toString("utf8"),
       });
       response.setHeader("content-type", "application/json");
-      response.end(request.method === "POST" && request.url === "/internal/runtime/activations"
-        ? JSON.stringify({ lease: { id: "lease_api" }, runtimeInstance: { endpointPort: 41990 } })
-        : JSON.stringify({ ok: true }));
+      response.end(
+        request.method === "POST" && request.url === "/internal/runtime/activations"
+          ? JSON.stringify({ lease: { id: "lease_api" }, runtimeInstance: { endpointPort: 41990 } })
+          : JSON.stringify({ ok: true }),
+      );
     });
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -34,11 +41,16 @@ describe("createApiActivationClient", () => {
       serviceToken: "gateway-service-token",
     });
 
-    await expect(client.activate({
-      deploymentId: "dep_wake",
-      kind: "turn",
-      ownerId: "req_wake",
-    }, new AbortController().signal)).resolves.toEqual({ leaseId: "lease_api", endpointPort: 41990 });
+    await expect(
+      client.activate(
+        {
+          deploymentId: "dep_wake",
+          kind: "turn",
+          ownerId: "req_wake",
+        },
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({ leaseId: "lease_api", endpointPort: 41990 });
     await client.renew("lease_api");
     await client.release("lease_api");
 
@@ -49,7 +61,10 @@ describe("createApiActivationClient", () => {
         authorization: "Bearer gateway-service-token",
         body: JSON.stringify({ deploymentId: "dep_wake", kind: "turn", ownerId: "req_wake" }),
       }),
-      expect.objectContaining({ method: "POST", url: "/internal/runtime/activations/lease_api/renew" }),
+      expect.objectContaining({
+        method: "POST",
+        url: "/internal/runtime/activations/lease_api/renew",
+      }),
       expect.objectContaining({ method: "DELETE", url: "/internal/runtime/activations/lease_api" }),
     ]);
   });
@@ -64,7 +79,12 @@ describe("createApiActivationClient", () => {
         return;
       }
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ lease: { id: "lease_after_drain" }, runtimeInstance: { endpointPort: 41990 } }));
+      response.end(
+        JSON.stringify({
+          lease: { id: "lease_after_drain" },
+          runtimeInstance: { endpointPort: 41990 },
+        }),
+      );
     });
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -76,11 +96,16 @@ describe("createApiActivationClient", () => {
       drainRetryMs: 1,
     });
 
-    await expect(client.activate({
-      deploymentId: "dep_drain",
-      kind: "public_request",
-      ownerId: "req_after_drain",
-    }, new AbortController().signal)).resolves.toEqual({ leaseId: "lease_after_drain", endpointPort: 41990 });
+    await expect(
+      client.activate(
+        {
+          deploymentId: "dep_drain",
+          kind: "public_request",
+          ownerId: "req_after_drain",
+        },
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({ leaseId: "lease_after_drain", endpointPort: 41990 });
     expect(attempts).toBe(2);
   });
 });

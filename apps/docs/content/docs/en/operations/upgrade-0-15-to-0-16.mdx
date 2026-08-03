@@ -15,7 +15,7 @@ The supported Eve range is unchanged: imported Agents on `0.25.x`, `0.26.x`, and
 
 ### Behavior changes to expect
 
-- **Public upstream requests now have a socket idle timeout**, 120 seconds by default (`EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS`). It is an *idle* timeout, not a total deadline: streaming NDJSON keeps resetting it, so long turns are unaffected. What it stops is a deployment that accepts a connection and then never answers, which previously held the client, the socket, and the deployment's renewing activation lease indefinitely. Raise it only if one of your Agents legitimately goes more than two minutes between bytes.
+- **Public upstream requests now have a socket idle timeout**, 120 seconds by default (`EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS`). It is an _idle_ timeout, not a total deadline: streaming NDJSON keeps resetting it, so long turns are unaffected. What it stops is a deployment that accepts a connection and then never answers, which previously held the client, the socket, and the deployment's renewing activation lease indefinitely. Raise it only if one of your Agents legitimately goes more than two minutes between bytes.
 - **Gateway's hostname route cache is bounded** at 1000 entries. Requests to unknown subdomains under an allowed base domain could previously grow it for the life of the process. Eviction drops expired entries first, then the oldest; with a five-second TTL this is not observable in normal operation.
 - **Usage and experiment views do less work per request.** `variant-metrics` aggregates in SQL instead of loading every Session a Project ever recorded, and the usage dashboard stops transferring whole Session rows repeated per usage event. The numbers are unchanged.
 

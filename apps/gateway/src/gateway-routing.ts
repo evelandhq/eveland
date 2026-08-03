@@ -25,13 +25,20 @@ export async function resolveTarget(
 ): Promise<ResolvedAgentRoute["targets"][number] | null> {
   if (binding) {
     const routed = route.targets.find(
-      (target) => target.deploymentId === binding.deploymentId &&
-        (target.status === "running" || target.status === "draining" || (allowStopped && target.status === "stopped")),
+      (target) =>
+        target.deploymentId === binding.deploymentId &&
+        (target.status === "running" ||
+          target.status === "draining" ||
+          (allowStopped && target.status === "stopped")),
     );
     if (routed) return routed;
     const deployment = await repository.getDeployment(binding.deploymentId);
-    if (deployment &&
-      (deployment.status === "running" || deployment.status === "draining" || (allowStopped && deployment.status === "stopped"))) {
+    if (
+      deployment &&
+      (deployment.status === "running" ||
+        deployment.status === "draining" ||
+        (allowStopped && deployment.status === "stopped"))
+    ) {
       return {
         routeId: route.id,
         deploymentId: deployment.id,
@@ -43,7 +50,9 @@ export async function resolveTarget(
     }
     return null;
   }
-  const eligible = route.targets.filter((target) => target.status === "running" || (allowStopped && target.status === "stopped"));
+  const eligible = route.targets.filter(
+    (target) => target.status === "running" || (allowStopped && target.status === "stopped"),
+  );
   if (eligible.length === 0) return null;
   // Partially degraded two-target policy: the filtered subset no longer
   // carries the full 10,000 basis points, and weighted selection over it
@@ -52,7 +61,10 @@ export async function resolveTarget(
   // weight 0: failing over beats refusing, and pinned sessions keep using
   // their binding regardless.
   if (eligible.length < route.targets.length) return eligible[0] ?? null;
-  return selectWeightedTarget(eligible, affinityKey, { id: route.id, policyRevision: route.policyRevision });
+  return selectWeightedTarget(eligible, affinityKey, {
+    id: route.id,
+    policyRevision: route.policyRevision,
+  });
 }
 
 export function affinityKey(
@@ -89,7 +101,12 @@ export function affinityResult(
   source: "cookie" | "version_key" | "generated",
   cookieValue: string | null,
 ) {
-  return { key, source, cookieValue, fingerprint: `sha256-${createHash("sha256").update(key).digest("hex")}` };
+  return {
+    key,
+    source,
+    cookieValue,
+    fingerprint: `sha256-${createHash("sha256").update(key).digest("hex")}`,
+  };
 }
 
 export function routeExperimentId(route: ResolvedAgentRoute): string | null {
@@ -167,7 +184,10 @@ export function buildUpstreamHeaders(
   const proto = protocol === "https:" ? "https" : "http";
   headers.set("host", authority);
   const forwardedFor = remoteIp ?? "unknown";
-  headers.set("forwarded", `for=${quoteForwarded(forwardedFor)};proto=${proto};host=${quoteForwarded(authority)}`);
+  headers.set(
+    "forwarded",
+    `for=${quoteForwarded(forwardedFor)};proto=${proto};host=${quoteForwarded(authority)}`,
+  );
   headers.set("x-forwarded-for", forwardedFor);
   headers.set("x-forwarded-host", authority);
   headers.set("x-forwarded-proto", proto);

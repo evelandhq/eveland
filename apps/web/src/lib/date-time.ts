@@ -90,11 +90,7 @@ function dateTimeParts(value: Date, timeZone?: string): DateTimeParts {
   };
 }
 
-export function formatCompactDateTime(
-  value: string,
-  now: Date,
-  timeZone?: string,
-): string {
+export function formatCompactDateTime(value: string, now: Date, timeZone?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
@@ -106,7 +102,5 @@ export function formatCompactDateTime(
     formatted.month === current.month &&
     formatted.day === current.day;
 
-  return sameDay
-    ? time
-    : `${formatted.month}-${formatted.day} ${time}`;
+  return sameDay ? time : `${formatted.month}-${formatted.day} ${time}`;
 }

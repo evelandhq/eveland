@@ -28,10 +28,14 @@ describe.skipIf(!database)("Postgres shared Agent environment", () => {
     const suffix = Date.now().toString();
     const results = await Promise.all([
       store.saveSharedAgentEnvironment({
-        entries: [{ key: "MODEL_ACCOUNT", kind: "variable", encryptedValue: `account-a-${suffix}` }],
+        entries: [
+          { key: "MODEL_ACCOUNT", kind: "variable", encryptedValue: `account-a-${suffix}` },
+        ],
       }),
       store.saveSharedAgentEnvironment({
-        entries: [{ key: "MODEL_ACCOUNT", kind: "variable", encryptedValue: `account-b-${suffix}` }],
+        entries: [
+          { key: "MODEL_ACCOUNT", kind: "variable", encryptedValue: `account-b-${suffix}` },
+        ],
       }),
     ]);
 

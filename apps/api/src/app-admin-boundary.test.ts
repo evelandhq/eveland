@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  createAuthApp,
-  invite,
-  signIn,
-} from "./auth-routes.test-support.js";
+import { createAuthApp, invite, signIn } from "./auth-routes.test-support.js";
 
 // Ratchet-shaped walk: every route registered under the platform-operator
 // prefixes must refuse a member session before its handler runs. New
@@ -33,17 +29,14 @@ describe("admin-only boundary", () => {
       .filter(
         (route) =>
           route.method !== "ALL" &&
-          (route.path.startsWith("/system/") ||
-            route.path.startsWith("/platform/")),
+          (route.path.startsWith("/system/") || route.path.startsWith("/platform/")),
       )
       .map((route) => ({
         method: route.method,
         path: route.path.replace(/:(\w+)/g, "walk-$1"),
       }));
     const uniqueRoutes = [
-      ...new Map(
-        operatorRoutes.map((route) => [`${route.method} ${route.path}`, route]),
-      ).values(),
+      ...new Map(operatorRoutes.map((route) => [`${route.method} ${route.path}`, route])).values(),
     ];
     // Sanity: enumeration found the operator surface (19 method+path pairs
     // today); an empty walk must fail loudly, not pass vacuously.
@@ -58,9 +51,7 @@ describe("admin-only boundary", () => {
         },
         ...(route.method === "GET" ? {} : { body: "{}" }),
       });
-      expect(
-        { ...route, status: response.status },
-      ).toEqual({ ...route, status: 403 });
+      expect({ ...route, status: response.status }).toEqual({ ...route, status: 403 });
       await expect(response.json()).resolves.toEqual({
         error: "Admin access required",
       });

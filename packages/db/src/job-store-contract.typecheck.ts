@@ -17,11 +17,9 @@ function assertTypedEnqueue(store: JobStore): void {
   store.listProjectJobs("proj_1").then((jobs) => {
     jobs satisfies import("@eveland/core/contracts").Job[];
   });
-  store
-    .listProjectJobs("proj_1", { type: "trigger_schedule" })
-    .then((jobs) => {
-      jobs satisfies import("@eveland/core/contracts").Job<"trigger_schedule">[];
-    });
+  store.listProjectJobs("proj_1", { type: "trigger_schedule" }).then((jobs) => {
+    jobs satisfies import("@eveland/core/contracts").Job<"trigger_schedule">[];
+  });
   // @ts-expect-error A narrowed result requires the matching runtime filter.
   store.listProjectJobs<"trigger_schedule">("proj_1");
 

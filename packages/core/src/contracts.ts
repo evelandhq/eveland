@@ -1,9 +1,31 @@
 export type ProjectImportKind = "git" | "zip";
-export type ProjectStatus = "import_pending" | "imported" | "invalid" | "build_pending" | "deployed" | "failed";
+export type ProjectStatus =
+  | "import_pending"
+  | "imported"
+  | "invalid"
+  | "build_pending"
+  | "deployed"
+  | "failed";
 export type ProjectDeletionStatus = "deleting" | "failed";
-export type DeploymentStatus = "not_deployed" | "building" | "starting" | "running" | "draining" | "stopped" | "archiving" | "archived" | "failed";
+export type DeploymentStatus =
+  | "not_deployed"
+  | "building"
+  | "starting"
+  | "running"
+  | "draining"
+  | "stopped"
+  | "archiving"
+  | "archived"
+  | "failed";
 export type SessionStatus = "running" | "waiting" | "completed" | "failed" | "waiting_approval";
-export type SessionTrigger = "playground" | "cron" | "manual" | "webhook" | "channel" | "api" | "direct_http";
+export type SessionTrigger =
+  | "playground"
+  | "cron"
+  | "manual"
+  | "webhook"
+  | "channel"
+  | "api"
+  | "direct_http";
 export type RuntimeKind = "docker" | "systemd";
 export type TeamRole = "admin" | "member";
 
@@ -260,10 +282,7 @@ export type ReleaseRecord = {
 
 // The browser-facing shape: registry refs and the observer delivery contract
 // are runtime-internal.
-export type PublicReleaseRecord = Omit<
-  ReleaseRecord,
-  "imageTag" | "observerContract"
->;
+export type PublicReleaseRecord = Omit<ReleaseRecord, "imageTag" | "observerContract">;
 
 export type DeploymentRecord = {
   id: string;
@@ -282,10 +301,7 @@ export type DeploymentRecord = {
 // The browser-facing shape: container naming and the container-internal port
 // are runtime-internal. hostPort stays -- the deployments page shows it as
 // the loopback upstream.
-export type PublicDeploymentRecord = Omit<
-  DeploymentRecord,
-  "containerName" | "internalPort"
->;
+export type PublicDeploymentRecord = Omit<DeploymentRecord, "containerName" | "internalPort">;
 
 export type SourceFileRecord = {
   id: string;
@@ -355,9 +371,7 @@ export type ResolvedAgentRoute = AgentRoute & {
 export type PublicDeploymentRetention = {
   deployment: PublicDeploymentRecord;
   protected: boolean;
-  reasons: Array<
-    "route_target" | "active_session" | "active_request" | "recent_artifact"
-  >;
+  reasons: Array<"route_target" | "active_session" | "active_request" | "recent_artifact">;
 };
 
 export type DeploymentOverview = {

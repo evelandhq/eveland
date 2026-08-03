@@ -16,17 +16,33 @@ import {
   scheduleVersionRowToScheduleVersion,
   sessionRowToSession,
 } from "./mappers.js";
-import { activationLeases, deployments, projects, projectSchedulerTargets, projectSchedules, releases, scheduleRunSessions, scheduleRuns, scheduleVersions, schedules, sessionEvents, sessions, sourceRevisions } from "./schema.js";
+import {
+  activationLeases,
+  deployments,
+  projects,
+  projectSchedulerTargets,
+  projectSchedules,
+  releases,
+  scheduleRunSessions,
+  scheduleRuns,
+  scheduleVersions,
+  schedules,
+  sessionEvents,
+  sessions,
+  sourceRevisions,
+} from "./schema.js";
 import { summarizeSessionUsage } from "./session-usage.js";
-
 
 import type { ScheduleStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
-import { appendRuntimeLostEventTx, appendSessionEventRow, applySchedulerTargetTx, insertJobRowTx } from "./postgres-store-support.js";
+import {
+  appendRuntimeLostEventTx,
+  appendSessionEventRow,
+  applySchedulerTargetTx,
+  insertJobRowTx,
+} from "./postgres-store-support.js";
 
-export function createPostgresScheduleStore({
-  db,
-}: PostgresStoreContext): ScheduleStore {
+export function createPostgresScheduleStore({ db }: PostgresStoreContext): ScheduleStore {
   return {
     async listSchedules(projectId) {
       const rows = await db
@@ -50,9 +66,7 @@ export function createPostgresScheduleStore({
           )
           .limit(1);
         if (!revision)
-          throw new Error(
-            "Cannot record schedule versions for an unknown SourceRevision.",
-          );
+          throw new Error("Cannot record schedule versions for an unknown SourceRevision.");
 
         const seenKeys = new Set<string>();
         const result = [];
@@ -84,10 +98,7 @@ export function createPostgresScheduleStore({
               )
               .limit(1);
           }
-          if (!scheduleRow)
-            throw new Error(
-              `Failed to upsert ProjectSchedule ${definition.key}.`,
-            );
+          if (!scheduleRow) throw new Error(`Failed to upsert ProjectSchedule ${definition.key}.`);
 
           let [versionRow] = await tx
             .insert(scheduleVersions)
@@ -101,10 +112,7 @@ export function createPostgresScheduleStore({
               definitionHash: definition.definitionHash,
             })
             .onConflictDoNothing({
-              target: [
-                scheduleVersions.scheduleId,
-                scheduleVersions.sourceRevisionId,
-              ],
+              target: [scheduleVersions.scheduleId, scheduleVersions.sourceRevisionId],
             })
             .returning();
           if (!versionRow) {
@@ -119,10 +127,7 @@ export function createPostgresScheduleStore({
               )
               .limit(1);
           }
-          if (!versionRow)
-            throw new Error(
-              `Failed to persist ScheduleVersion ${definition.key}.`,
-            );
+          if (!versionRow) throw new Error(`Failed to persist ScheduleVersion ${definition.key}.`);
           if (
             versionRow.definitionHash !== definition.definitionHash ||
             versionRow.cron !== definition.cron ||
@@ -144,10 +149,7 @@ export function createPostgresScheduleStore({
       const rows = await db
         .select({ schedule: projectSchedules, version: scheduleVersions })
         .from(projectSchedules)
-        .innerJoin(
-          scheduleVersions,
-          eq(scheduleVersions.scheduleId, projectSchedules.id),
-        )
+        .innerJoin(scheduleVersions, eq(scheduleVersions.scheduleId, projectSchedules.id))
         .where(
           and(
             eq(projectSchedules.projectId, projectId),
@@ -173,10 +175,7 @@ export function createPostgresScheduleStore({
           projectSchedulerTargets,
           eq(projectSchedulerTargets.projectId, projectSchedules.projectId),
         )
-        .leftJoin(
-          deployments,
-          eq(deployments.id, projectSchedulerTargets.deploymentId),
-        )
+        .leftJoin(deployments, eq(deployments.id, projectSchedulerTargets.deploymentId))
         .leftJoin(releases, eq(releases.id, deployments.releaseId))
         .leftJoin(
           scheduleVersions,
@@ -189,9 +188,7 @@ export function createPostgresScheduleStore({
         .orderBy(projectSchedules.key);
       return rows.map((row) => ({
         schedule: projectScheduleRowToProjectSchedule(row.schedule),
-        version: row.version
-          ? scheduleVersionRowToScheduleVersion(row.version)
-          : null,
+        version: row.version ? scheduleVersionRowToScheduleVersion(row.version) : null,
         targetDeploymentId: row.targetDeploymentId,
       }));
     },
@@ -211,12 +208,7 @@ export function createPostgresScheduleStore({
           .select({ deployment: deployments, release: releases })
           .from(deployments)
           .innerJoin(releases, eq(releases.id, deployments.releaseId))
-          .where(
-            and(
-              eq(deployments.id, deploymentId),
-              eq(deployments.projectId, projectId),
-            ),
-          )
+          .where(and(eq(deployments.id, deploymentId), eq(deployments.projectId, projectId)))
           .limit(1);
         if (!targetDeployment)
           throw new Error("Cannot target an unknown Deployment for schedules.");
@@ -227,8 +219,7 @@ export function createPostgresScheduleStore({
           sourceRevisionId: targetDeployment.release.sourceRevisionId,
           now,
         });
-        if (!target)
-          throw new Error("Failed to update the Project scheduler target.");
+        if (!target) throw new Error("Failed to update the Project scheduler target.");
         return projectSchedulerTargetRowToProjectSchedulerTarget(target);
       });
     },
@@ -248,10 +239,7 @@ export function createPostgresScheduleStore({
           projectSchedulerTargets,
           eq(projectSchedulerTargets.projectId, projectSchedules.projectId),
         )
-        .innerJoin(
-          deployments,
-          eq(deployments.id, projectSchedulerTargets.deploymentId),
-        )
+        .innerJoin(deployments, eq(deployments.id, projectSchedulerTargets.deploymentId))
         .where(
           and(
             eq(projectSchedules.enabled, true),
@@ -282,10 +270,7 @@ export function createPostgresScheduleStore({
           .select()
           .from(projectSchedules)
           .where(
-            and(
-              eq(projectSchedules.id, scheduleId),
-              eq(projectSchedules.projectId, projectId),
-            ),
+            and(eq(projectSchedules.id, scheduleId), eq(projectSchedules.projectId, projectId)),
           )
           .limit(1);
         if (!schedule) throw new Error("Project schedule not found.");
@@ -293,34 +278,22 @@ export function createPostgresScheduleStore({
         const [target] = await tx
           .select({ deployment: deployments, release: releases })
           .from(projectSchedulerTargets)
-          .innerJoin(
-            deployments,
-            eq(deployments.id, projectSchedulerTargets.deploymentId),
-          )
+          .innerJoin(deployments, eq(deployments.id, projectSchedulerTargets.deploymentId))
           .innerJoin(releases, eq(releases.id, deployments.releaseId))
           .where(eq(projectSchedulerTargets.projectId, projectId))
           .limit(1);
-        if (!target)
-          throw new Error(
-            "Project schedule has no deployable scheduler target.",
-          );
+        if (!target) throw new Error("Project schedule has no deployable scheduler target.");
         const [version] = await tx
           .select()
           .from(scheduleVersions)
           .where(
             and(
               eq(scheduleVersions.scheduleId, scheduleId),
-              eq(
-                scheduleVersions.sourceRevisionId,
-                target.release.sourceRevisionId,
-              ),
+              eq(scheduleVersions.sourceRevisionId, target.release.sourceRevisionId),
             ),
           )
           .limit(1);
-        if (!version)
-          throw new Error(
-            "Project schedule has no deployable scheduler target.",
-          );
+        if (!version) throw new Error("Project schedule has no deployable scheduler target.");
         const [run] = await tx
           .insert(scheduleRuns)
           .values({
@@ -365,10 +338,7 @@ export function createPostgresScheduleStore({
             projectSchedulerTargets,
             eq(projectSchedulerTargets.projectId, projectSchedules.projectId),
           )
-          .innerJoin(
-            deployments,
-            eq(deployments.id, projectSchedulerTargets.deploymentId),
-          )
+          .innerJoin(deployments, eq(deployments.id, projectSchedulerTargets.deploymentId))
           .innerJoin(releases, eq(releases.id, deployments.releaseId))
           .innerJoin(
             scheduleVersions,
@@ -378,10 +348,7 @@ export function createPostgresScheduleStore({
             ),
           )
           .where(
-            and(
-              eq(projectSchedules.enabled, true),
-              lte(projectSchedules.nextRunAt, input.now),
-            ),
+            and(eq(projectSchedules.enabled, true), lte(projectSchedules.nextRunAt, input.now)),
           )
           .orderBy(asc(projectSchedules.nextRunAt), asc(projectSchedules.id))
           .limit(input.limit)
@@ -448,45 +415,29 @@ export function createPostgresScheduleStore({
 
     async listScheduleRuns(projectId, input) {
       const conditions = [eq(projectSchedules.projectId, projectId)];
-      if (input.scheduleId)
-        conditions.push(eq(scheduleRuns.scheduleId, input.scheduleId));
-      if (input.trigger)
-        conditions.push(eq(scheduleRuns.trigger, input.trigger));
+      if (input.scheduleId) conditions.push(eq(scheduleRuns.scheduleId, input.scheduleId));
+      if (input.trigger) conditions.push(eq(scheduleRuns.trigger, input.trigger));
       if (input.status) conditions.push(eq(scheduleRuns.status, input.status));
       if (input.cursor) {
         const [cursor] = await db
           .select({ id: scheduleRuns.id, createdAt: scheduleRuns.createdAt })
           .from(scheduleRuns)
-          .innerJoin(
-            projectSchedules,
-            eq(projectSchedules.id, scheduleRuns.scheduleId),
-          )
-          .where(
-            and(
-              eq(scheduleRuns.id, input.cursor),
-              eq(projectSchedules.projectId, projectId),
-            ),
-          )
+          .innerJoin(projectSchedules, eq(projectSchedules.id, scheduleRuns.scheduleId))
+          .where(and(eq(scheduleRuns.id, input.cursor), eq(projectSchedules.projectId, projectId)))
           .limit(1);
         if (!cursor) return { items: [], nextCursor: null };
         if (cursor)
           conditions.push(
             or(
               lt(scheduleRuns.createdAt, cursor.createdAt),
-              and(
-                eq(scheduleRuns.createdAt, cursor.createdAt),
-                lt(scheduleRuns.id, cursor.id),
-              ),
+              and(eq(scheduleRuns.createdAt, cursor.createdAt), lt(scheduleRuns.id, cursor.id)),
             )!,
           );
       }
       const rows = await db
         .select({ run: scheduleRuns, scheduleKey: projectSchedules.key })
         .from(scheduleRuns)
-        .innerJoin(
-          projectSchedules,
-          eq(projectSchedules.id, scheduleRuns.scheduleId),
-        )
+        .innerJoin(projectSchedules, eq(projectSchedules.id, scheduleRuns.scheduleId))
         .where(and(...conditions))
         .orderBy(desc(scheduleRuns.createdAt), desc(scheduleRuns.id))
         .limit(input.limit + 1);
@@ -517,8 +468,7 @@ export function createPostgresScheduleStore({
             sessions: runSessions,
           };
         }),
-        nextCursor:
-          rows.length > input.limit ? (pageRows.at(-1)?.run.id ?? null) : null,
+        nextCursor: rows.length > input.limit ? (pageRows.at(-1)?.run.id ?? null) : null,
       };
     },
 
@@ -532,14 +482,8 @@ export function createPostgresScheduleStore({
           deployment: deployments,
         })
         .from(scheduleRuns)
-        .innerJoin(
-          projectSchedules,
-          eq(projectSchedules.id, scheduleRuns.scheduleId),
-        )
-        .innerJoin(
-          scheduleVersions,
-          eq(scheduleVersions.id, scheduleRuns.scheduleVersionId),
-        )
+        .innerJoin(projectSchedules, eq(projectSchedules.id, scheduleRuns.scheduleId))
+        .innerJoin(scheduleVersions, eq(scheduleVersions.id, scheduleRuns.scheduleVersionId))
         .innerJoin(releases, eq(releases.id, scheduleRuns.releaseId))
         .innerJoin(deployments, eq(deployments.id, scheduleRuns.deploymentId))
         .where(eq(scheduleRuns.id, scheduleRunId))
@@ -563,11 +507,7 @@ export function createPostgresScheduleStore({
       };
     },
 
-    async claimScheduleRunActivation(
-      scheduleRunId,
-      now = new Date(),
-      staleAfterMs = 300_000,
-    ) {
+    async claimScheduleRunActivation(scheduleRunId, now = new Date(), staleAfterMs = 300_000) {
       const staleBefore = new Date(now.getTime() - staleAfterMs);
       const [claimed] = await db
         .update(scheduleRuns)
@@ -577,10 +517,7 @@ export function createPostgresScheduleStore({
             eq(scheduleRuns.id, scheduleRunId),
             or(
               eq(scheduleRuns.status, "queued"),
-              and(
-                eq(scheduleRuns.status, "activating"),
-                lte(scheduleRuns.updatedAt, staleBefore),
-              ),
+              and(eq(scheduleRuns.status, "activating"), lte(scheduleRuns.updatedAt, staleBefore)),
             ),
           ),
         )
@@ -622,8 +559,7 @@ export function createPostgresScheduleStore({
           .from(projectSchedules)
           .where(eq(projectSchedules.id, run.scheduleId))
           .limit(1);
-        if (!schedule)
-          throw new Error("ScheduleRun references an unknown ProjectSchedule.");
+        if (!schedule) throw new Error("ScheduleRun references an unknown ProjectSchedule.");
 
         const trigger = run.trigger === "cron" ? "cron" : "manual";
         const dispatchedSessionIds = new Set(input.eveSessionIds ?? []);
@@ -643,15 +579,9 @@ export function createPostgresScheduleStore({
             )
             .limit(1);
           let sessionId = existing?.id;
-          let executionStatus:
-            | "running"
-            | "succeeded"
-            | "failed"
-            | "parked" = input.status === "succeeded"
-              ? "running"
-              : "failed";
-          let executionError =
-            input.status === "succeeded" ? null : (input.error ?? null);
+          let executionStatus: "running" | "succeeded" | "failed" | "parked" =
+            input.status === "succeeded" ? "running" : "failed";
+          let executionError = input.status === "succeeded" ? null : (input.error ?? null);
           if (existing) {
             await tx
               .update(sessions)
@@ -673,13 +603,8 @@ export function createPostgresScheduleStore({
                   and(
                     eq(sessionEvents.sessionId, existing.id),
                     eq(sessionEvents.sessionNodeId, existing.rootNodeId),
-                    gte(
-                      sessionEvents.createdAt,
-                      run.startedAt ?? run.createdAt,
-                    ),
-                    inArray(sessionEvents.type, [
-                      ...EVE_SESSION_BOUNDARY_EVENT_TYPES,
-                    ]),
+                    gte(sessionEvents.createdAt, run.startedAt ?? run.createdAt),
+                    inArray(sessionEvents.type, [...EVE_SESSION_BOUNDARY_EVENT_TYPES]),
                   ),
                 )
                 .orderBy(desc(sessionEvents.index))
@@ -690,10 +615,7 @@ export function createPostgresScheduleStore({
               );
               executionError =
                 executionStatus === "failed"
-                  ? scheduleExecutionErrorFromEveEvent(
-                      boundary?.type,
-                      boundary?.payload,
-                    )
+                  ? scheduleExecutionErrorFromEveEvent(boundary?.type, boundary?.payload)
                   : null;
             }
           } else {
@@ -712,16 +634,14 @@ export function createPostgresScheduleStore({
               .returning({ id: sessions.id });
             sessionId = created?.id;
           }
-          if (!sessionId)
-            throw new Error("Failed to link a scheduled Session.");
+          if (!sessionId) throw new Error("Failed to link a scheduled Session.");
           await tx
             .insert(scheduleRunSessions)
             .values({
               scheduleRunId: run.id,
               sessionId,
               status: executionStatus,
-              completedAt:
-                executionStatus === "running" ? null : new Date(),
+              completedAt: executionStatus === "running" ? null : new Date(),
               error: executionError,
             })
             .onConflictDoNothing();
@@ -738,17 +658,13 @@ export function createPostgresScheduleStore({
                 .from(scheduleRunSessions)
                 .where(eq(scheduleRunSessions.scheduleRunId, run.id))
             : [];
-        const executionFailure = executions.find(
-          (execution) => execution.status === "failed",
-        );
+        const executionFailure = executions.find((execution) => execution.status === "failed");
         const remainsRunning =
           input.status === "succeeded" &&
           dispatchedSessionIds.size > 0 &&
           executions.some((execution) => execution.status === "running");
         const terminalStatus =
-          input.status === "succeeded" && executionFailure
-            ? "failed"
-            : input.status;
+          input.status === "succeeded" && executionFailure ? "failed" : input.status;
         const [completed] = await tx
           .update(scheduleRuns)
           .set({
@@ -775,11 +691,7 @@ export function createPostgresScheduleStore({
       });
     },
 
-    async failScheduleExecutionsForRuntimeInstance(
-      runtimeInstanceId,
-      reason,
-      now = new Date(),
-    ) {
+    async failScheduleExecutionsForRuntimeInstance(runtimeInstanceId, reason, now = new Date()) {
       return db.transaction(async (tx) => {
         const interrupted = await tx
           .select({
@@ -788,17 +700,11 @@ export function createPostgresScheduleStore({
             projectId: sessions.projectId,
           })
           .from(scheduleRunSessions)
-          .innerJoin(
-            sessions,
-            eq(sessions.id, scheduleRunSessions.sessionId),
-          )
+          .innerJoin(sessions, eq(sessions.id, scheduleRunSessions.sessionId))
           .innerJoin(
             activationLeases,
             and(
-              eq(
-                activationLeases.ownerId,
-                scheduleRunSessions.scheduleRunId,
-              ),
+              eq(activationLeases.ownerId, scheduleRunSessions.scheduleRunId),
               eq(activationLeases.kind, "schedule_run"),
               eq(activationLeases.runtimeInstanceId, runtimeInstanceId),
             ),
@@ -806,12 +712,8 @@ export function createPostgresScheduleStore({
           .where(eq(scheduleRunSessions.status, "running"));
         if (interrupted.length === 0) return 0;
 
-        const runIds = [...new Set(
-          interrupted.map((execution) => execution.scheduleRunId),
-        )];
-        const sessionIds = interrupted.map(
-          (execution) => execution.sessionId,
-        );
+        const runIds = [...new Set(interrupted.map((execution) => execution.scheduleRunId))];
+        const sessionIds = interrupted.map((execution) => execution.sessionId);
         await tx
           .update(scheduleRunSessions)
           .set({
@@ -829,12 +731,7 @@ export function createPostgresScheduleStore({
         await tx
           .update(sessions)
           .set({ status: "failed", completedAt: now })
-          .where(
-            and(
-              inArray(sessions.id, sessionIds),
-              eq(sessions.status, "running"),
-            ),
-          );
+          .where(and(inArray(sessions.id, sessionIds), eq(sessions.status, "running")));
         for (const execution of interrupted) {
           await appendRuntimeLostEventTx(tx, {
             sessionId: execution.sessionId,
@@ -863,9 +760,7 @@ export function createPostgresScheduleStore({
               isNull(activationLeases.releasedAt),
             ),
           );
-        const projectIds = [...new Set(
-          interrupted.map((execution) => execution.projectId),
-        )];
+        const projectIds = [...new Set(interrupted.map((execution) => execution.projectId))];
         await tx
           .update(projects)
           .set({ latestSessionStatus: "failed", updatedAt: now })
@@ -887,18 +782,12 @@ export function createPostgresScheduleStore({
           .innerJoin(
             activationLeases,
             and(
-              eq(
-                activationLeases.ownerId,
-                scheduleRunSessions.scheduleRunId,
-              ),
+              eq(activationLeases.ownerId, scheduleRunSessions.scheduleRunId),
               eq(activationLeases.kind, "schedule_run"),
             ),
           )
           .where(
-            and(
-              eq(scheduleRunSessions.status, "running"),
-              lte(activationLeases.expiresAt, now),
-            ),
+            and(eq(scheduleRunSessions.status, "running"), lte(activationLeases.expiresAt, now)),
           )
           .limit(limit);
         for (const expired of expiredRuns) {
@@ -909,22 +798,14 @@ export function createPostgresScheduleStore({
               projectId: sessions.projectId,
             })
             .from(scheduleRunSessions)
-            .innerJoin(
-              sessions,
-              eq(sessions.id, scheduleRunSessions.sessionId),
-            )
+            .innerJoin(sessions, eq(sessions.id, scheduleRunSessions.sessionId))
             .where(
               and(
-                eq(
-                  scheduleRunSessions.scheduleRunId,
-                  expired.scheduleRunId,
-                ),
+                eq(scheduleRunSessions.scheduleRunId, expired.scheduleRunId),
                 eq(scheduleRunSessions.status, "running"),
               ),
             );
-          const sessionIds = executions.map(
-            (execution) => execution.sessionId,
-          );
+          const sessionIds = executions.map((execution) => execution.sessionId);
           if (sessionIds.length === 0) continue;
           await tx
             .update(scheduleRunSessions)
@@ -935,22 +816,14 @@ export function createPostgresScheduleStore({
             })
             .where(
               and(
-                eq(
-                  scheduleRunSessions.scheduleRunId,
-                  expired.scheduleRunId,
-                ),
+                eq(scheduleRunSessions.scheduleRunId, expired.scheduleRunId),
                 eq(scheduleRunSessions.status, "running"),
               ),
             );
           await tx
             .update(sessions)
             .set({ status: "failed", completedAt: now })
-            .where(
-              and(
-                inArray(sessions.id, sessionIds),
-                eq(sessions.status, "running"),
-              ),
-            );
+            .where(and(inArray(sessions.id, sessionIds), eq(sessions.status, "running")));
           for (const execution of executions) {
             await appendSessionEventRow(tx, {
               id: createId("evt"),
@@ -986,12 +859,9 @@ export function createPostgresScheduleStore({
             .update(projects)
             .set({ latestSessionStatus: "failed", updatedAt: now })
             .where(
-              inArray(
-                projects.id,
-                [...new Set(
-                  executions.map((execution) => execution.projectId),
-                )],
-              ),
+              inArray(projects.id, [
+                ...new Set(executions.map((execution) => execution.projectId)),
+              ]),
             );
         }
         return expiredRuns.length;
@@ -999,4 +869,3 @@ export function createPostgresScheduleStore({
     },
   };
 }
-

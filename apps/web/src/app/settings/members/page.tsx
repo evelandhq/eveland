@@ -31,14 +31,18 @@ export default async function MembersSettingsPage() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h2 className="text-xl font-semibold tracking-tight">Members</h2>
-        <p className="text-sm text-muted-foreground">Manage access to this Eveland workspace and its projects.</p>
+        <p className="text-sm text-muted-foreground">
+          Manage access to this Eveland workspace and its projects.
+        </p>
       </header>
 
       {current.role === "admin" ? (
         <Card>
           <CardHeader>
             <CardTitle>Invite a member</CardTitle>
-            <CardDescription>Create a single-use invitation link. Email delivery can be added later.</CardDescription>
+            <CardDescription>
+              Create a single-use invitation link. Email delivery can be added later.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <InviteMemberForm />
@@ -49,7 +53,9 @@ export default async function MembersSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Team</CardTitle>
-          <CardDescription>{members.length} active {members.length === 1 ? "member" : "members"}</CardDescription>
+          <CardDescription>
+            {members.length} active {members.length === 1 ? "member" : "members"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -58,7 +64,9 @@ export default async function MembersSettingsPage() {
                 <TableHead>Member</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Joined</TableHead>
-                {current.role === "admin" ? <TableHead className="text-right">Actions</TableHead> : null}
+                {current.role === "admin" ? (
+                  <TableHead className="text-right">Actions</TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -70,11 +78,20 @@ export default async function MembersSettingsPage() {
                       <span className="text-xs text-muted-foreground">{member.email}</span>
                     </div>
                   </TableCell>
-                  <TableCell><Badge variant={member.role === "admin" ? "default" : "secondary"}>{member.role}</Badge></TableCell>
-                  <TableCell><DateTime value={member.joinedAt} display="date" /></TableCell>
+                  <TableCell>
+                    <Badge variant={member.role === "admin" ? "default" : "secondary"}>
+                      {member.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <DateTime value={member.joinedAt} display="date" />
+                  </TableCell>
                   {current.role === "admin" ? (
                     <TableCell className="text-right">
-                      <MemberActions member={member} isLastAdmin={member.role === "admin" && adminCount === 1} />
+                      <MemberActions
+                        member={member}
+                        isLastAdmin={member.role === "admin" && adminCount === 1}
+                      />
                     </TableCell>
                   ) : null}
                 </TableRow>
@@ -88,7 +105,9 @@ export default async function MembersSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Pending invitations</CardTitle>
-            <CardDescription>Refresh an invitation to rotate its link and extend it for seven days.</CardDescription>
+            <CardDescription>
+              Refresh an invitation to rotate its link and extend it for seven days.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -103,8 +122,12 @@ export default async function MembersSettingsPage() {
                 {invitations.map((invitation) => (
                   <TableRow key={invitation.id}>
                     <TableCell>{invitation.email}</TableCell>
-                    <TableCell><DateTime value={invitation.expiresAt} /></TableCell>
-                    <TableCell className="text-right"><InvitationActions invitationId={invitation.id} /></TableCell>
+                    <TableCell>
+                      <DateTime value={invitation.expiresAt} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <InvitationActions invitationId={invitation.id} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

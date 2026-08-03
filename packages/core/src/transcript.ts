@@ -44,7 +44,10 @@ export type TranscriptItem =
   | { kind: "tool"; call: TranscriptToolCall }
   | { kind: "system"; label: string; text: string | null; eventAt: string };
 
-export type TranscriptActivityItem = Extract<TranscriptItem, { kind: "reasoning" | "tool" | "system" }>;
+export type TranscriptActivityItem = Extract<
+  TranscriptItem,
+  { kind: "reasoning" | "tool" | "system" }
+>;
 
 export type TranscriptDisplayItem =
   | Extract<TranscriptItem, { kind: "user" | "assistant" }>
@@ -90,7 +93,9 @@ export function buildSessionTranscript(
   for (const node of nodes) {
     const nodeEvents =
       rootNode && node.id === rootNode.id
-        ? events.filter((event) => (event.sessionNodeId ?? null) === node.id || event.sessionNodeId == null)
+        ? events.filter(
+            (event) => (event.sessionNodeId ?? null) === node.id || event.sessionNodeId == null,
+          )
         : events.filter((event) => (event.sessionNodeId ?? null) === node.id);
     views.set(node.id, {
       sessionNodeId: node.id,
@@ -104,7 +109,7 @@ export function buildSessionTranscript(
     });
   }
 
-  let root = rootNode ? views.get(rootNode.id) ?? null : null;
+  let root = rootNode ? (views.get(rootNode.id) ?? null) : null;
   if (!root && nodes.length === 0 && events.length > 0) {
     root = {
       sessionNodeId: null,
@@ -178,7 +183,11 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
       case "reasoning.completed": {
         const text = messageText(payload);
         if (text) {
-          turnFor(payload, event.eventAt).items.push({ kind: "reasoning", text, eventAt: event.eventAt });
+          turnFor(payload, event.eventAt).items.push({
+            kind: "reasoning",
+            text,
+            eventAt: event.eventAt,
+          });
         }
         break;
       }
@@ -191,7 +200,11 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
           const kind = asString(action.kind) ?? "";
           const call: TranscriptToolCall = {
             callId: asString(action.callId),
-            name: asString(action.toolName) ?? asString(action.name) ?? asString(action.subagentName) ?? (kind || "tool"),
+            name:
+              asString(action.toolName) ??
+              asString(action.name) ??
+              asString(action.subagentName) ??
+              (kind || "tool"),
             isSubagent: kind.startsWith("subagent"),
             input: "input" in action ? action.input : null,
             output: null,
@@ -214,7 +227,7 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
         const callId = asString(result?.callId);
         const call = callId ? callsById.get(callId) : undefined;
         const output = result && "output" in result ? result.output : null;
-        const errorText = failed ? errorMessage(result) ?? errorMessage(payload) ?? status : null;
+        const errorText = failed ? (errorMessage(result) ?? errorMessage(payload) ?? status) : null;
         if (call) {
           call.output = output;
           call.status = failed ? "failed" : "completed";
@@ -226,7 +239,11 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
             kind: "tool",
             call: {
               callId,
-              name: asString(result?.toolName) ?? asString(result?.name) ?? asString(result?.subagentName) ?? (kind || "tool"),
+              name:
+                asString(result?.toolName) ??
+                asString(result?.name) ??
+                asString(result?.subagentName) ??
+                (kind || "tool"),
               isSubagent: kind.startsWith("subagent"),
               input: null,
               output,
@@ -256,7 +273,12 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
       case "turn.failed": {
         const turn = turnFor(payload, event.eventAt);
         turn.status = "failed";
-        turn.items.push({ kind: "system", label: "Turn failed", text: errorMessage(payload), eventAt: event.eventAt });
+        turn.items.push({
+          kind: "system",
+          label: "Turn failed",
+          text: errorMessage(payload),
+          eventAt: event.eventAt,
+        });
         break;
       }
       case "turn.cancelled": {
@@ -268,7 +290,12 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
             call.errorText = "Turn cancelled";
           }
         }
-        turn.items.push({ kind: "system", label: "Turn cancelled", text: null, eventAt: event.eventAt });
+        turn.items.push({
+          kind: "system",
+          label: "Turn cancelled",
+          text: null,
+          eventAt: event.eventAt,
+        });
         break;
       }
       case "step.failed": {
@@ -282,7 +309,12 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
       }
       case "session.failed": {
         const turn = turnFor(payload, event.eventAt);
-        turn.items.push({ kind: "system", label: "Session failed", text: errorMessage(payload), eventAt: event.eventAt });
+        turn.items.push({
+          kind: "system",
+          label: "Session failed",
+          text: errorMessage(payload),
+          eventAt: event.eventAt,
+        });
         if (turn.status === "incomplete") turn.status = "failed";
         break;
       }
@@ -291,7 +323,10 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
         turnFor(payload, event.eventAt).items.push({
           kind: "system",
           label: "Input requested",
-          text: asString(request?.prompt) ?? asString(payload?.prompt) ?? (messageText(payload) || null),
+          text:
+            asString(request?.prompt) ??
+            asString(payload?.prompt) ??
+            (messageText(payload) || null),
           eventAt: event.eventAt,
         });
         break;
@@ -385,11 +420,17 @@ export function turnToolCalls(turn: TranscriptTurn): TranscriptToolCall[] {
   return turn.items.flatMap((item) => (item.kind === "tool" ? [item.call] : []));
 }
 
-function findOpenSubagentCall(view: TranscriptNode, nodeId: string | null): TranscriptToolCall | null {
+function findOpenSubagentCall(
+  view: TranscriptNode,
+  nodeId: string | null,
+): TranscriptToolCall | null {
   const open = view.turns
     .flatMap(turnToolCalls)
     .filter((call) => call.isSubagent && call.child === null);
-  return open.find((call) => nodeId !== null && call.targetNodeId === nodeId) ?? (nodeId === null ? open[0] ?? null : null);
+  return (
+    open.find((call) => nodeId !== null && call.targetNodeId === nodeId) ??
+    (nodeId === null ? (open[0] ?? null) : null)
+  );
 }
 
 function messageText(payload: Record<string, unknown> | null): string {
@@ -408,7 +449,12 @@ function messageText(payload: Record<string, unknown> | null): string {
 function errorMessage(payload: Record<string, unknown> | null): string | null {
   if (!payload) return null;
   const error = payload.error;
-  return asString(error) ?? asString(asRecord(error)?.message) ?? asString(payload.reason) ?? asString(payload.message);
+  return (
+    asString(error) ??
+    asString(asRecord(error)?.message) ??
+    asString(payload.reason) ??
+    asString(payload.message)
+  );
 }
 
 function usageFrom(value: unknown): TranscriptUsage | null {
@@ -433,7 +479,9 @@ function addUsage(base: TranscriptUsage | null, extra: TranscriptUsage): Transcr
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function asString(value: unknown): string | null {

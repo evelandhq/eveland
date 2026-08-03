@@ -1,12 +1,19 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useEffect, useState } from "react"
-import { usePathname } from "next/navigation"
-import { ArrowLeftIcon, BadgeInfoIcon, ChevronsUpDownIcon, LogOutIcon, SettingsIcon, SproutIcon } from "lucide-react"
-import { EVELAND_VERSION } from "@eveland/core/build-info"
-import { ProjectNav } from "@/components/project-nav"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import {
+  ArrowLeftIcon,
+  BadgeInfoIcon,
+  ChevronsUpDownIcon,
+  LogOutIcon,
+  SettingsIcon,
+  SproutIcon,
+} from "lucide-react";
+import { EVELAND_VERSION } from "@eveland/core/build-info";
+import { ProjectNav } from "@/components/project-nav";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -27,43 +34,45 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 import {
   getProjectIdFromPathname,
   getSettingsNavigationGroups,
   globalNavigationItems,
   isNavigationItemActive,
-} from "@/lib/navigation"
-import { getCurrentMember, signOut, type CurrentMember } from "@/lib/client-api"
+} from "@/lib/navigation";
+import { getCurrentMember, signOut, type CurrentMember } from "@/lib/client-api";
 
 export function AppSidebar() {
-  const pathname = usePathname()
-  const projectId = getProjectIdFromPathname(pathname)
-  const isSettings = pathname.startsWith("/settings")
-  const [member, setMember] = useState<CurrentMember | null>(null)
-  const settingsNavigationGroups = getSettingsNavigationGroups(member?.role ?? null)
+  const pathname = usePathname();
+  const projectId = getProjectIdFromPathname(pathname);
+  const isSettings = pathname.startsWith("/settings");
+  const [member, setMember] = useState<CurrentMember | null>(null);
+  const settingsNavigationGroups = getSettingsNavigationGroups(member?.role ?? null);
 
   useEffect(() => {
-    if (pathname === "/login" || pathname.startsWith("/accept-invite")) return
-    let cancelled = false
-    void getCurrentMember().then((current) => {
-      if (!cancelled) setMember(current)
-    }).catch(() => undefined)
+    if (pathname === "/login" || pathname.startsWith("/accept-invite")) return;
+    let cancelled = false;
+    void getCurrentMember()
+      .then((current) => {
+        if (!cancelled) setMember(current);
+      })
+      .catch(() => undefined);
     const updateMember = (event: Event) => {
-      const detail = (event as CustomEvent<CurrentMember>).detail
-      if (detail) setMember(detail)
-    }
-    window.addEventListener("eveland:profile-updated", updateMember)
+      const detail = (event as CustomEvent<CurrentMember>).detail;
+      if (detail) setMember(detail);
+    };
+    window.addEventListener("eveland:profile-updated", updateMember);
     return () => {
-      cancelled = true
-      window.removeEventListener("eveland:profile-updated", updateMember)
-    }
-  }, [pathname])
+      cancelled = true;
+      window.removeEventListener("eveland:profile-updated", updateMember);
+    };
+  }, [pathname]);
 
-  if (pathname === "/login" || pathname.startsWith("/accept-invite")) return null
+  if (pathname === "/login" || pathname.startsWith("/accept-invite")) return null;
 
-  const memberLabel = member?.name ?? member?.email ?? "Account"
-  const memberInitials = memberLabel.slice(0, 2).toUpperCase()
+  const memberLabel = member?.name ?? member?.email ?? "Account";
+  const memberInitials = memberLabel.slice(0, 2).toUpperCase();
 
   return (
     <Sidebar collapsible="icon">
@@ -79,11 +88,7 @@ export function AppSidebar() {
                 <span>{projectId ? "Back to projects" : "Back to workspace"}</span>
               </SidebarMenuButton>
             ) : (
-              <SidebarMenuButton
-                render={<Link href="/projects" />}
-                size="lg"
-                tooltip="Eveland"
-              >
+              <SidebarMenuButton render={<Link href="/projects" />} size="lg" tooltip="Eveland">
                 <SproutIcon />
                 <span className="font-semibold">Eveland</span>
               </SidebarMenuButton>
@@ -99,7 +104,7 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   {group.items.map((item) => {
-                    const Icon = item.icon
+                    const Icon = item.icon;
 
                     return (
                       <SidebarMenuItem key={item.href}>
@@ -112,7 +117,7 @@ export function AppSidebar() {
                           <span>{item.label}</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
-                    )
+                    );
                   })}
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -131,7 +136,7 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {globalNavigationItems.map((item) => {
-                  const Icon = item.icon
+                  const Icon = item.icon;
 
                   return (
                     <SidebarMenuItem key={item.href}>
@@ -144,7 +149,7 @@ export function AppSidebar() {
                         <span>{item.label}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )
+                  );
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -172,7 +177,9 @@ export function AppSidebar() {
                 </Avatar>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-medium">{memberLabel}</span>
-                  <span className="truncate text-xs text-muted-foreground">{member?.email ?? "Loading account…"}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {member?.email ?? "Loading account…"}
+                  </span>
                 </span>
                 <ChevronsUpDownIcon />
               </DropdownMenuTrigger>
@@ -187,8 +194,8 @@ export function AppSidebar() {
                 <DropdownMenuGroup>
                   <DropdownMenuItem
                     onClick={async () => {
-                      await signOut()
-                      window.location.assign("/login")
+                      await signOut();
+                      window.location.assign("/login");
                     }}
                   >
                     <LogOutIcon />
@@ -202,5 +209,5 @@ export function AppSidebar() {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-  )
+  );
 }

@@ -16,15 +16,11 @@ describe("Identity login continuation", () => {
   });
 
   test("sends only the opaque state to the configured Eveland API", () => {
-    expect(buildIdentityInternalContinuationUrl(
-      "opaque-state",
-      "https://api.example.com/",
-    )).toBe(
+    expect(buildIdentityInternalContinuationUrl("opaque-state", "https://api.example.com/")).toBe(
       "https://api.example.com/identity/internal/continue?state=opaque-state",
     );
-    expect(() => buildIdentityInternalContinuationUrl(
-      " ",
-      "https://api.example.com",
-    )).toThrow(/state/i);
+    expect(() => buildIdentityInternalContinuationUrl(" ", "https://api.example.com")).toThrow(
+      /state/i,
+    );
   });
 });

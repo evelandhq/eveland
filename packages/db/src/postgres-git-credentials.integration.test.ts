@@ -11,7 +11,10 @@ describe.skipIf(!database)("Postgres Git credentials", () => {
   test("upserts and deletes a host credential within its user boundary", async () => {
     const store = createPostgresStore(database!);
     const host = `gitlab-${Date.now()}.example.com`;
-    const project = await store.createProject({ name: `Git credential integration ${Date.now()}`, importKind: "git" });
+    const project = await store.createProject({
+      name: `Git credential integration ${Date.now()}`,
+      importKind: "git",
+    });
 
     try {
       const first = await store.upsertGitCredential("user_local_admin", host, "encrypted-one");
@@ -21,7 +24,9 @@ describe.skipIf(!database)("Postgres Git credentials", () => {
       await expect(store.getGitCredential("user_local_admin", host)).resolves.toMatchObject({
         encryptedToken: "encrypted-two",
       });
-      expect(JSON.stringify(await store.listGitCredentials("user_local_admin"))).not.toContain("encrypted-two");
+      expect(JSON.stringify(await store.listGitCredentials("user_local_admin"))).not.toContain(
+        "encrypted-two",
+      );
       await expect(store.deleteGitCredential("another_user", first.id)).resolves.toBe(false);
       await expect(store.deleteGitCredential("user_local_admin", first.id)).resolves.toBe(true);
     } finally {

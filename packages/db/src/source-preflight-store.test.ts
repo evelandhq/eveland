@@ -22,16 +22,20 @@ describe("source preflight store", () => {
 
     const claimed = await store.claimNextSourcePreflight("worker-a");
     expect(claimed).toMatchObject({ id: preflight.id, status: "running", attempts: 1 });
-    await expect(store.completeSourcePreflight(preflight.id, 0, {
-      sourcePath: "/data/preflights/pre_1/source",
-      commitSha: "abc123",
-      summary: { eveVersion: "0.29.4", layout: "single-agent" },
-    })).resolves.toBe(false);
-    await expect(store.completeSourcePreflight(preflight.id, claimed!.attempts, {
-      sourcePath: "/data/preflights/pre_1/source",
-      commitSha: "abc123",
-      summary: { eveVersion: "0.29.4", layout: "single-agent" },
-    })).resolves.toBe(true);
+    await expect(
+      store.completeSourcePreflight(preflight.id, 0, {
+        sourcePath: "/data/preflights/pre_1/source",
+        commitSha: "abc123",
+        summary: { eveVersion: "0.29.4", layout: "single-agent" },
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      store.completeSourcePreflight(preflight.id, claimed!.attempts, {
+        sourcePath: "/data/preflights/pre_1/source",
+        commitSha: "abc123",
+        summary: { eveVersion: "0.29.4", layout: "single-agent" },
+      }),
+    ).resolves.toBe(true);
 
     await expect(store.getSourcePreflight(preflight.id, "user_a")).resolves.toMatchObject({
       status: "completed",
@@ -78,15 +82,25 @@ describe("source preflight store", () => {
       },
     });
     await expect(store.listSecretRecords(result.project.id)).resolves.toEqual([
-      expect.objectContaining({ key: "OPENAI_API_KEY", kind: "secret", encryptedValue: "encrypted-openai-key" }),
-      expect.objectContaining({ key: "MODEL_NAME", kind: "variable", encryptedValue: "encrypted-model-name" }),
+      expect.objectContaining({
+        key: "OPENAI_API_KEY",
+        kind: "secret",
+        encryptedValue: "encrypted-openai-key",
+      }),
+      expect.objectContaining({
+        key: "MODEL_NAME",
+        kind: "variable",
+        encryptedValue: "encrypted-model-name",
+      }),
     ]);
-    await expect(store.createProjectFromSourcePreflight({
-      preflightId: preflight.id,
-      userId: "user_a",
-      name: "second-agent",
-      deployAfterImport: true,
-    })).resolves.toEqual({ outcome: "consumed" });
+    await expect(
+      store.createProjectFromSourcePreflight({
+        preflightId: preflight.id,
+        userId: "user_a",
+        name: "second-agent",
+        deployAfterImport: true,
+      }),
+    ).resolves.toEqual({ outcome: "consumed" });
   });
 
   test("does not consume a validated snapshot when its exact project name conflicts", async () => {
@@ -105,13 +119,17 @@ describe("source preflight store", () => {
       summary: {},
     });
 
-    await expect(store.createProjectFromSourcePreflight({
-      preflightId: preflight.id,
-      userId: "user_a",
-      name: "taken-name",
-      deployAfterImport: true,
-    })).rejects.toBeInstanceOf(ProjectSlugConflictError);
-    await expect(store.getSourcePreflight(preflight.id, "user_a")).resolves.toMatchObject({ status: "completed" });
+    await expect(
+      store.createProjectFromSourcePreflight({
+        preflightId: preflight.id,
+        userId: "user_a",
+        name: "taken-name",
+        deployAfterImport: true,
+      }),
+    ).rejects.toBeInstanceOf(ProjectSlugConflictError);
+    await expect(store.getSourcePreflight(preflight.id, "user_a")).resolves.toMatchObject({
+      status: "completed",
+    });
   });
 
   test("expires only unconsumed terminal snapshots and returns their cleanup paths", async () => {
@@ -129,9 +147,9 @@ describe("source preflight store", () => {
       summary: {},
     });
 
-    await expect(store.expireSourcePreflights(new Date("2030-01-01T00:00:00.000Z"), 25)).resolves.toEqual([
-      "/data/uploads/expired/source",
-    ]);
+    await expect(
+      store.expireSourcePreflights(new Date("2030-01-01T00:00:00.000Z"), 25),
+    ).resolves.toEqual(["/data/uploads/expired/source"]);
     await expect(store.getSourcePreflight(preflight.id, "user_a")).resolves.toBeNull();
   });
 });

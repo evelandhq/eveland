@@ -1,7 +1,6 @@
 import { execa } from "execa";
 
-const DEFAULT_COLLECTOR_IMAGE =
-  "otel/opentelemetry-collector-contrib:0.149.0";
+const DEFAULT_COLLECTOR_IMAGE = "otel/opentelemetry-collector-contrib:0.149.0";
 const DEFAULT_COLLECTOR_CONTAINER = "eveland-otel-collector";
 
 export type CollectorConfigLocation = {
@@ -44,11 +43,8 @@ export async function validateCollectorConfig(
   }
 }
 
-export async function restartCollectorContainer(
-  env: NodeJS.ProcessEnv,
-): Promise<void> {
-  const container =
-    env.EVELAND_OTEL_COLLECTOR_CONTAINER ?? DEFAULT_COLLECTOR_CONTAINER;
+export async function restartCollectorContainer(env: NodeJS.ProcessEnv): Promise<void> {
+  const container = env.EVELAND_OTEL_COLLECTOR_CONTAINER ?? DEFAULT_COLLECTOR_CONTAINER;
   const result = await execa("docker", ["restart", container], {
     all: true,
     reject: false,

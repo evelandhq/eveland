@@ -8,7 +8,10 @@ export type ProcessJobOptions = {
   allocateHostPort?: () => number | Promise<number>;
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
   workflowPostgresUrl?: string;
-  ensureProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<string | undefined>;
+  ensureProjectWorkflowWorld?: (
+    env: NodeJS.ProcessEnv,
+    projectId: string,
+  ) => Promise<string | undefined>;
   dropProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<void>;
   nodeEnv?: string;
   dataDir?: string;

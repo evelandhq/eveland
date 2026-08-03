@@ -13,8 +13,7 @@ const probeTimeoutMs = 5_000;
 
 type DestinationHealthStore = Pick<
   Store,
-  | "getObservabilityPolicy"
-  | "upsertExternalObservabilityDestinationHealth"
+  "getObservabilityPolicy" | "upsertExternalObservabilityDestinationHealth"
 >;
 
 export function createExternalDestinationHealthReconciler(input: {
@@ -24,22 +23,16 @@ export function createExternalDestinationHealthReconciler(input: {
   probeDestination?: (config: ExternalDestinationConfig) => Promise<void>;
 }): () => Promise<number> {
   const now = input.now ?? (() => new Date());
-  const probeDestination =
-    input.probeDestination ?? probeExternalDestination;
+  const probeDestination = input.probeDestination ?? probeExternalDestination;
   let lastRunAt: number | undefined;
   let inFlight: Promise<number> | undefined;
 
   const reconcile = async (): Promise<number> => {
     const checkedAt = now();
-    if (
-      lastRunAt !== undefined &&
-      checkedAt.getTime() - lastRunAt < probeIntervalMs
-    ) {
+    if (lastRunAt !== undefined && checkedAt.getTime() - lastRunAt < probeIntervalMs) {
       return 0;
     }
-    const policy = await input.store.getObservabilityPolicy(
-      DEFAULT_TEAM_ID,
-    );
+    const policy = await input.store.getObservabilityPolicy(DEFAULT_TEAM_ID);
     await Promise.all(
       policy.externalDestinations.map(async (destination) => {
         const base = {
@@ -57,14 +50,9 @@ export function createExternalDestinationHealthReconciler(input: {
         }
 
         try {
-          const config = decryptDestinationConfig(
-            destination.encryptedConfig,
-            input.appSecretKey,
-          );
+          const config = decryptDestinationConfig(destination.encryptedConfig, input.appSecretKey);
           if (config.kind !== destination.kind) {
-            throw new Error(
-              "Encrypted destination kind does not match its policy.",
-            );
+            throw new Error("Encrypted destination kind does not match its policy.");
           }
           await probeDestination(config);
           await input.store.upsertExternalObservabilityDestinationHealth({
@@ -111,25 +99,19 @@ export async function probeExternalDestination(
       config,
       signal,
       contentType: "application/json",
-      body: new TextEncoder().encode(
-        JSON.stringify(emptySignalRequest(signal)),
-      ),
+      body: new TextEncoder().encode(JSON.stringify(emptySignalRequest(signal))),
       privateHostAllowlist: parseObservabilityPrivateHostAllowlist(
         process.env.EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST,
       ),
       timeoutMs: probeTimeoutMs,
     });
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(
-        `Destination probe failed with HTTP ${response.status}.`,
-      );
+      throw new Error(`Destination probe failed with HTTP ${response.status}.`);
     }
   }
 }
 
-function emptySignalRequest(
-  signal: "traces" | "logs" | "metrics",
-): Record<string, never[]> {
+function emptySignalRequest(signal: "traces" | "logs" | "metrics"): Record<string, never[]> {
   const field = {
     traces: "resourceSpans",
     logs: "resourceLogs",
@@ -139,7 +121,6 @@ function emptySignalRequest(
 }
 
 function boundedError(error: unknown): string {
-  const message =
-    error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
   return message.slice(0, 512);
 }

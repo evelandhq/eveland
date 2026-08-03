@@ -1,31 +1,27 @@
 import type { DeploymentStatus } from "@eveland/core/contracts";
 import { claimDeploymentKey, createId } from "@eveland/core/ids";
-import {
-  isSessionBindingActive,
-  validateRouteTargets,
-} from "@eveland/core/routing";
-import {
-  createEveVersionInfo,
-  readDeclaredEveVersion,
-} from "@eveland/core/source";
-import {
-  and,
-  desc,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  isNull,
-  ne,
-  sql,
-} from "drizzle-orm";
+import { isSessionBindingActive, validateRouteTargets } from "@eveland/core/routing";
+import { createEveVersionInfo, readDeclaredEveVersion } from "@eveland/core/source";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import {
   agentRouteRowToAgentRoute,
   deploymentRowToDeployment,
   releaseRowToRelease,
   sessionBindingRowToSessionBinding,
 } from "./mappers.js";
-import { agentRoutes, activationLeases, deployments, runtimeInstances, projects, releases, routeTargets, sessionBindings, sessions, sourceFiles, sourceRevisions } from "./schema.js";
+import {
+  agentRoutes,
+  activationLeases,
+  deployments,
+  runtimeInstances,
+  projects,
+  releases,
+  routeTargets,
+  sessionBindings,
+  sessions,
+  sourceFiles,
+  sourceRevisions,
+} from "./schema.js";
 import {
   DeploymentNotFoundError,
   DeploymentNotPromotableError,
@@ -51,36 +47,20 @@ export function createPostgresDeploymentRoutingStore({
   ) => {
     const domain = normalizeBaseDomain(baseDomain);
     return db.transaction(async (tx) => {
-      const [project] = await tx
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
+      const [project] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
       const [deployment] = await tx
         .select()
         .from(deployments)
-        .where(
-          and(
-            eq(deployments.id, deploymentId),
-            eq(deployments.projectId, projectId),
-          ),
-        )
+        .where(and(eq(deployments.id, deploymentId), eq(deployments.projectId, projectId)))
         .limit(1);
       if (!project || !deployment) {
-        throw new Error(
-          "Cannot create Agent routes for an unknown project or deployment.",
-        );
+        throw new Error("Cannot create Agent routes for an unknown project or deployment.");
       }
 
       let [stable] = await tx
         .select()
         .from(agentRoutes)
-        .where(
-          and(
-            eq(agentRoutes.projectId, projectId),
-            eq(agentRoutes.kind, "project"),
-          ),
-        )
+        .where(and(eq(agentRoutes.projectId, projectId), eq(agentRoutes.kind, "project")))
         .limit(1);
       if (stable) {
         [stable] = await tx
@@ -146,9 +126,7 @@ export function createPostgresDeploymentRoutingStore({
           .returning();
       }
       if (!preview) {
-        throw new Error(
-          "Failed to materialize the deployment preview route.",
-        );
+        throw new Error("Failed to materialize the deployment preview route.");
       }
 
       const [existingStableTarget] = await tx
@@ -176,10 +154,7 @@ export function createPostgresDeploymentRoutingStore({
           target: [routeTargets.routeId, routeTargets.deploymentId],
           set: { weight: 10_000, variantName: null },
         });
-      return [
-        agentRouteRowToAgentRoute(stable),
-        agentRouteRowToAgentRoute(preview),
-      ];
+      return [agentRouteRowToAgentRoute(stable), agentRouteRowToAgentRoute(preview)];
     });
   };
 
@@ -227,8 +202,7 @@ export function createPostgresDeploymentRoutingStore({
               return claimed;
             });
           } catch (error) {
-            if (isUniqueConstraint(error, "deployments_project_key_idx"))
-              return null;
+            if (isUniqueConstraint(error, "deployments_project_key_idx")) return null;
             throw error;
           }
         });
@@ -242,23 +216,14 @@ export function createPostgresDeploymentRoutingStore({
             deploymentId: deploymentRow.id,
             updatedAt: new Date(),
           })
-          .where(
-            and(
-              eq(projects.id, input.projectId),
-              isNull(projects.deploymentId),
-            ),
-          );
+          .where(and(eq(projects.id, input.projectId), isNull(projects.deploymentId)));
 
         return deploymentRowToDeployment(deploymentRow);
       });
     },
 
     async getCurrentDeployment(projectId) {
-      const [project] = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
+      const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
       if (!project?.deploymentId) {
         return null;
       }
@@ -322,10 +287,7 @@ export function createPostgresDeploymentRoutingStore({
         })
         .from(deployments)
         .innerJoin(releases, eq(releases.id, deployments.releaseId))
-        .innerJoin(
-          sourceRevisions,
-          eq(sourceRevisions.id, releases.sourceRevisionId),
-        )
+        .innerJoin(sourceRevisions, eq(sourceRevisions.id, releases.sourceRevisionId))
         .where(eq(deployments.id, deploymentId))
         .limit(1);
       if (!record) return null;
@@ -385,22 +347,13 @@ export function createPostgresDeploymentRoutingStore({
       const [deployment] = await db
         .update(deployments)
         .set({ status: to, updatedAt: new Date() })
-        .where(
-          and(
-            eq(deployments.id, deploymentId),
-            inArray(deployments.status, from),
-          ),
-        )
+        .where(and(eq(deployments.id, deploymentId), inArray(deployments.status, from)))
         .returning();
       return deployment ? deploymentRowToDeployment(deployment) : null;
     },
 
     async getRelease(releaseId) {
-      const [release] = await db
-        .select()
-        .from(releases)
-        .where(eq(releases.id, releaseId))
-        .limit(1);
+      const [release] = await db.select().from(releases).where(eq(releases.id, releaseId)).limit(1);
       return release ? releaseRowToRelease(release) : null;
     },
 
@@ -430,11 +383,7 @@ export function createPostgresDeploymentRoutingStore({
         .from(projects);
       for (const row of rows) {
         if (row.deploymentId)
-          await ensureDeploymentRoutes(
-            row.projectId,
-            row.deploymentId,
-            baseDomain,
-          );
+          await ensureDeploymentRoutes(row.projectId, row.deploymentId, baseDomain);
       }
     },
 
@@ -470,12 +419,7 @@ export function createPostgresDeploymentRoutingStore({
       const [route] = await db
         .select()
         .from(agentRoutes)
-        .where(
-          and(
-            eq(agentRoutes.projectId, projectId),
-            eq(agentRoutes.kind, "project"),
-          ),
-        )
+        .where(and(eq(agentRoutes.projectId, projectId), eq(agentRoutes.kind, "project")))
         .limit(1);
       if (!route) return null;
       const targets = await db
@@ -547,16 +491,12 @@ export function createPostgresDeploymentRoutingStore({
             .where(eq(deployments.id, target.deploymentId))
             .limit(1);
           if (!deployment || deployment.projectId !== route.projectId)
-            throw new Error(
-              "Route target deployment does not belong to the project.",
-            );
+            throw new Error("Route target deployment does not belong to the project.");
           if (target.weight > 0 && deployment.status !== "running")
             throw new Error("A weighted route target must be running.");
         }
         await tx.delete(routeTargets).where(eq(routeTargets.routeId, routeId));
-        await tx
-          .insert(routeTargets)
-          .values(targets.map((target) => ({ routeId, ...target })));
+        await tx.insert(routeTargets).values(targets.map((target) => ({ routeId, ...target })));
         await tx
           .update(agentRoutes)
           .set({
@@ -579,22 +519,12 @@ export function createPostgresDeploymentRoutingStore({
         const [route] = await tx
           .select()
           .from(agentRoutes)
-          .where(
-            and(
-              eq(agentRoutes.projectId, projectId),
-              eq(agentRoutes.kind, "project"),
-            ),
-          )
+          .where(and(eq(agentRoutes.projectId, projectId), eq(agentRoutes.kind, "project")))
           .limit(1);
         const [deployment] = await tx
           .select()
           .from(deployments)
-          .where(
-            and(
-              eq(deployments.id, deploymentId),
-              eq(deployments.projectId, projectId),
-            ),
-          )
+          .where(and(eq(deployments.id, deploymentId), eq(deployments.projectId, projectId)))
           .limit(1);
         if (!route) throw new ProjectRouteNotFoundError();
         if (!deployment) throw new DeploymentNotFoundError();
@@ -603,14 +533,12 @@ export function createPostgresDeploymentRoutingStore({
             `A promoted deployment must be running, but this one is ${deployment.status}.`,
           );
         await tx.delete(routeTargets).where(eq(routeTargets.routeId, route.id));
-        await tx
-          .insert(routeTargets)
-          .values({
-            routeId: route.id,
-            deploymentId,
-            weight: 10_000,
-            variantName: null,
-          });
+        await tx.insert(routeTargets).values({
+          routeId: route.id,
+          deploymentId,
+          weight: 10_000,
+          variantName: null,
+        });
         await tx
           .update(agentRoutes)
           .set({
@@ -669,9 +597,7 @@ export function createPostgresDeploymentRoutingStore({
             deployment.projectId !== projectId ||
             (target.weight > 0 && deployment.status !== "running")
           ) {
-            throw new Error(
-              "Alias target must be a running deployment in this project.",
-            );
+            throw new Error("Alias target must be a running deployment in this project.");
           }
         }
         const hostname = `${alias}--${project.slug}.${normalizeBaseDomain(baseDomain)}`;
@@ -716,19 +642,14 @@ export function createPostgresDeploymentRoutingStore({
       const targeted = new Set(
         routes
           .filter((route) => route.kind !== "deployment")
-          .flatMap((route) =>
-            route.targets.map((target) => target.deploymentId),
-          ),
+          .flatMap((route) => route.targets.map((target) => target.deploymentId)),
       );
       const bindingRows = await db
         .select()
         .from(sessionBindings)
         .where(eq(sessionBindings.projectId, projectId));
       const bindings = bindingRows.map(sessionBindingRowToSessionBinding);
-      const sessionRows = await db
-        .select()
-        .from(sessions)
-        .where(eq(sessions.projectId, projectId));
+      const sessionRows = await db.select().from(sessions).where(eq(sessions.projectId, projectId));
       const terminalByEveId = new Map(
         sessionRows
           .filter((session) => session.eveSessionId)
@@ -762,18 +683,13 @@ export function createPostgresDeploymentRoutingStore({
                   gt(activationLeases.expiresAt, now),
                 ),
               );
-      const activeRequests = new Set(
-        activeLeaseRows.map((lease) => lease.deploymentId),
-      );
+      const activeRequests = new Set(activeLeaseRows.map((lease) => lease.deploymentId));
       const recent = new Set(
         deploymentList.slice(0, keepRecent).map((deployment) => deployment.id),
       );
       return deploymentList.map((deployment) => {
         const reasons: Array<
-          | "route_target"
-          | "active_session"
-          | "active_request"
-          | "recent_artifact"
+          "route_target" | "active_session" | "active_request" | "recent_artifact"
         > = [];
         if (targeted.has(deployment.id)) reasons.push("route_target");
         if (active.has(deployment.id)) reasons.push("active_session");
@@ -797,10 +713,7 @@ export function createPostgresDeploymentRoutingStore({
       return binding ? sessionBindingRowToSessionBinding(binding) : null;
     },
 
-    async findSessionBindingByContinuationToken(
-      projectId,
-      continuationToken,
-    ) {
+    async findSessionBindingByContinuationToken(projectId, continuationToken) {
       const [binding] = await db
         .select()
         .from(sessionBindings)
@@ -837,8 +750,7 @@ export function createPostgresDeploymentRoutingStore({
             set: { ...input, continuationToken, updatedAt: new Date() },
           })
           .returning();
-        if (!binding)
-          throw new Error("Failed to persist the Gateway SessionBinding.");
+        if (!binding) throw new Error("Failed to persist the Gateway SessionBinding.");
         await tx
           .update(sessions)
           .set({
@@ -892,12 +804,7 @@ export function createPostgresDeploymentRoutingStore({
         await tx
           .update(sessions)
           .set({ continuationToken })
-          .where(
-            and(
-              eq(sessions.projectId, projectId),
-              eq(sessions.eveSessionId, eveSessionId),
-            ),
-          );
+          .where(and(eq(sessions.projectId, projectId), eq(sessions.eveSessionId, eveSessionId)));
         return sessionBindingRowToSessionBinding(binding);
       });
     },

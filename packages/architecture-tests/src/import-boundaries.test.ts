@@ -1,10 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  importSpecifiers,
-  listSourceFiles,
-  listWorkspaces,
-  readSource,
-} from "./scan-support.js";
+import { importSpecifiers, listSourceFiles, listWorkspaces, readSource } from "./scan-support.js";
 
 // The dependency direction from AGENTS.md, enforced instead of documented.
 // The matrix is TOTAL over packages/: a workspace missing here fails the

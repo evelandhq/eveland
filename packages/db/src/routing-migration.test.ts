@@ -18,7 +18,7 @@ describe("semantic project slug migration", () => {
     const migration = readMigration();
 
     expect(migration).toContain('DROP CONSTRAINT "deployments_deployment_key_unique"');
-    expect(migration).toContain("substring(md5(deployment.\"id\" || salt::text), 1, 8)");
+    expect(migration).toContain('substring(md5(deployment."id" || salt::text), 1, 8)');
     expect(migration).toContain('CREATE UNIQUE INDEX "deployments_project_key_idx"');
     expect(migration).toContain('CHECK ("deployments"."deployment_key" ~ \'^[a-z0-9]{8}$\')');
   });

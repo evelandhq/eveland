@@ -32,12 +32,10 @@ describe("SQL Store project creation", () => {
       const sharedCreatedAt = new Date("2026-07-29T08:00:00.000Z");
       const duplicateIds = [firstDuplicate.id, secondDuplicate.id].sort();
 
-      await database.db
-        .update(projects)
-        .set({
-          createdAt: sharedCreatedAt,
-          updatedAt: sharedCreatedAt,
-        });
+      await database.db.update(projects).set({
+        createdAt: sharedCreatedAt,
+        updatedAt: sharedCreatedAt,
+      });
       await database.db
         .update(projects)
         .set({ name: "duplicate-agent" })
@@ -83,12 +81,14 @@ describe("SQL Store project creation", () => {
       type: "import_source",
       payload: { deployAfterImport: true },
     });
-    await expect(store.createProject({
-      name: "first-deploy",
-      importKind: "git",
-      gitUrl: "https://github.com/evelandhq/first-deploy.git",
-      requireExactSlug: true,
-    })).rejects.toThrow("Project name is already in use.");
+    await expect(
+      store.createProject({
+        name: "first-deploy",
+        importKind: "git",
+        gitUrl: "https://github.com/evelandhq/first-deploy.git",
+        requireExactSlug: true,
+      }),
+    ).rejects.toThrow("Project name is already in use.");
   });
 
   test("checks exact project slug availability", async () => {
@@ -104,9 +104,17 @@ describe("SQL Store Git credentials", () => {
   test("keeps one encrypted credential per user and normalized host", async () => {
     const store = createTestStore();
 
-    const created = await store.upsertGitCredential("user_one", "gitlab.example.com", "encrypted-one");
+    const created = await store.upsertGitCredential(
+      "user_one",
+      "gitlab.example.com",
+      "encrypted-one",
+    );
     await store.upsertGitCredential("user_two", "gitlab.example.com", "encrypted-two");
-    const updated = await store.upsertGitCredential("user_one", "gitlab.example.com", "encrypted-new");
+    const updated = await store.upsertGitCredential(
+      "user_one",
+      "gitlab.example.com",
+      "encrypted-new",
+    );
 
     expect(updated.id).toBe(created.id);
     await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toMatchObject({
@@ -115,7 +123,9 @@ describe("SQL Store Git credentials", () => {
     await expect(store.listGitCredentials("user_one")).resolves.toEqual([
       expect.objectContaining({ host: "gitlab.example.com" }),
     ]);
-    expect(JSON.stringify(await store.listGitCredentials("user_one"))).not.toContain("encrypted-new");
+    expect(JSON.stringify(await store.listGitCredentials("user_one"))).not.toContain(
+      "encrypted-new",
+    );
     await expect(store.deleteGitCredential("user_one", created.id)).resolves.toBe(true);
     await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toBeNull();
     await expect(store.getGitCredential("user_two", "gitlab.example.com")).resolves.toMatchObject({
@@ -127,7 +137,11 @@ describe("SQL Store Git credentials", () => {
 describe("SQL Store jobs", () => {
   test("lists a project's jobs newest first", async () => {
     const store = createTestStore();
-    const project = await store.createProject({ name: "Visible Jobs Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
+    const project = await store.createProject({
+      name: "Visible Jobs Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/agent.git",
+    });
     const initialImport = await store.claimNextJob("worker-a");
     await store.completeJob(initialImport!.id);
     const latest = await store.enqueueJob(project.id, "build_deploy");
@@ -141,14 +155,18 @@ describe("SQL Store jobs", () => {
 
   test("filters project jobs before applying the result limit", async () => {
     const store = createTestStore();
-    const project = await store.createProject({ name: "Filtered Jobs Agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
+    const project = await store.createProject({
+      name: "Filtered Jobs Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/agent.git",
+    });
     const importJob = await store.claimNextJob("worker-a");
     await store.completeJob(importJob!.id);
     for (let index = 0; index < 25; index += 1) await store.enqueueJob(project.id, "build_deploy");
 
-    await expect(store.listProjectJobs(project.id, { type: "import_source", limit: 1 })).resolves.toEqual([
-      expect.objectContaining({ id: importJob!.id, type: "import_source" }),
-    ]);
+    await expect(
+      store.listProjectJobs(project.id, { type: "import_source", limit: 1 }),
+    ).resolves.toEqual([expect.objectContaining({ id: importJob!.id, type: "import_source" })]);
   });
 
   test("enqueues at most one active archive job for a deployment", async () => {
@@ -178,14 +196,8 @@ describe("SQL Store jobs", () => {
       runtimeKind: "systemd",
     });
 
-    const first = await store.enqueueDeploymentArchive(
-      project.id,
-      deployment.id,
-    );
-    const duplicate = await store.enqueueDeploymentArchive(
-      project.id,
-      deployment.id,
-    );
+    const first = await store.enqueueDeploymentArchive(project.id, deployment.id);
+    const duplicate = await store.enqueueDeploymentArchive(project.id, deployment.id);
 
     expect(first).toMatchObject({ created: true });
     expect(duplicate).toMatchObject({
@@ -203,7 +215,11 @@ describe("SQL Store jobs", () => {
   test("marks a project as deleting and replaces queued work with one deletion job", async () => {
     const store = createTestStore();
     const pendingSourcePath = "/data/uploads/zip-pending/source";
-    const project = await store.createProject({ name: "Delete Agent", importKind: "zip", sourcePath: pendingSourcePath });
+    const project = await store.createProject({
+      name: "Delete Agent",
+      importKind: "zip",
+      sourcePath: pendingSourcePath,
+    });
     await store.enqueueJob(project.id, "build_deploy");
 
     const requestProjectDeletion = Reflect.get(store, "requestProjectDeletion");
@@ -219,7 +235,10 @@ describe("SQL Store jobs", () => {
         payload: { sourcePaths: [pendingSourcePath] },
       },
     });
-    await expect(store.getProject(project.id)).resolves.toMatchObject({ deletionStatus: "deleting", deletionError: null });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      deletionStatus: "deleting",
+      deletionError: null,
+    });
     await expect(store.claimNextJob("worker-a")).resolves.toMatchObject({ type: "delete_project" });
     await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
   });
@@ -250,8 +269,13 @@ describe("SQL Store jobs", () => {
       deletionError: "runtime unavailable",
     });
 
-    await expect(store.requestProjectDeletion(project.id)).resolves.toMatchObject({ outcome: "queued" });
-    await expect(store.getProject(project.id)).resolves.toMatchObject({ deletionStatus: "deleting", deletionError: null });
+    await expect(store.requestProjectDeletion(project.id)).resolves.toMatchObject({
+      outcome: "queued",
+    });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      deletionStatus: "deleting",
+      deletionError: null,
+    });
   });
 
   test("waits for running project work before claiming its deletion job", async () => {
@@ -265,7 +289,10 @@ describe("SQL Store jobs", () => {
 
     expect(whileBusy).toMatchObject({ projectId: otherProject.id, type: "import_source" });
     await store.completeJob(running!.id);
-    await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({ projectId: project.id, type: "delete_project" });
+    await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({
+      projectId: project.id,
+      type: "delete_project",
+    });
   });
 
   test("never claims a job for a project that already has a running job", async () => {
@@ -319,8 +346,12 @@ describe("SQL Store jobs", () => {
     const startedAt = new Date("2026-07-17T00:00:00.000Z");
     const firstClaim = await store.claimNextJob("worker-a", startedAt);
 
-    await expect(store.recoverStaleJobs(new Date("2026-07-17T00:01:00.000Z"), 30_000)).resolves.toBe(1);
-    await expect(store.claimNextJob("worker-b", new Date("2026-07-17T00:01:01.000Z"))).resolves.toMatchObject({
+    await expect(
+      store.recoverStaleJobs(new Date("2026-07-17T00:01:00.000Z"), 30_000),
+    ).resolves.toBe(1);
+    await expect(
+      store.claimNextJob("worker-b", new Date("2026-07-17T00:01:01.000Z")),
+    ).resolves.toMatchObject({
       id: firstClaim!.id,
       projectId: project.id,
       status: "running",
@@ -333,8 +364,12 @@ describe("SQL Store jobs", () => {
     await store.createProject({ name: "Heartbeat Job Agent", importKind: "zip" });
     const job = await store.claimNextJob("worker-a", new Date("2026-07-17T00:00:00.000Z"));
 
-    await expect(store.heartbeatJob(job!.id, job!.attempts, new Date("2026-07-17T00:00:20.000Z"))).resolves.toBe(true);
-    await expect(store.recoverStaleJobs(new Date("2026-07-17T00:00:40.000Z"), 30_000)).resolves.toBe(0);
+    await expect(
+      store.heartbeatJob(job!.id, job!.attempts, new Date("2026-07-17T00:00:20.000Z")),
+    ).resolves.toBe(true);
+    await expect(
+      store.recoverStaleJobs(new Date("2026-07-17T00:00:40.000Z"), 30_000),
+    ).resolves.toBe(0);
   });
 
   test("rejects completion from an attempt that lost its lease", async () => {
@@ -382,7 +417,11 @@ describe("SQL Store jobs", () => {
     const project = await store.createProject({ name: "Import Agent", importKind: "zip" });
 
     const updated = await store.updateProjectState(project.id, { status: "imported" });
-    const log = await store.appendLog({ projectId: project.id, type: "build", line: "source imported" });
+    const log = await store.appendLog({
+      projectId: project.id,
+      type: "build",
+      line: "source imported",
+    });
 
     expect(updated).toMatchObject({ id: project.id, status: "imported" });
     await expect(store.listLogs(project.id)).resolves.toEqual([log]);
@@ -414,10 +453,20 @@ describe("SQL Store jobs", () => {
       ],
     });
 
-    await expect(store.getProject(project.id)).resolves.toMatchObject({ sourceRevisionId: revision.id, status: "imported" });
-    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({ id: revision.id, commitSha: "abc123" });
-    await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({ content: "You are concise." });
-    await expect(store.listSchedules(project.id)).resolves.toEqual([expect.objectContaining({ name: "daily" })]);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      sourceRevisionId: revision.id,
+      status: "imported",
+    });
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
+      id: revision.id,
+      commitSha: "abc123",
+    });
+    await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({
+      content: "You are concise.",
+    });
+    await expect(store.listSchedules(project.id)).resolves.toEqual([
+      expect.objectContaining({ name: "daily" }),
+    ]);
   });
 
   test("leaves the previous revision and schedules intact when a later step fails", async () => {
@@ -473,9 +522,15 @@ describe("SQL Store jobs", () => {
       }),
     ).rejects.toThrow();
 
-    await expect(store.getProject(project.id)).resolves.toMatchObject({ sourceRevisionId: revision.id });
-    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({ commitSha: "good-commit" });
-    await expect(store.listSchedules(project.id)).resolves.toEqual([expect.objectContaining({ name: "daily" })]);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      sourceRevisionId: revision.id,
+    });
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
+      commitSha: "good-commit",
+    });
+    await expect(store.listSchedules(project.id)).resolves.toEqual([
+      expect.objectContaining({ name: "daily" }),
+    ]);
     await expect(store.listSourceRevisions(project.id)).resolves.toHaveLength(1);
   });
 
@@ -590,7 +645,9 @@ describe("SQL Store jobs", () => {
     });
 
     expect(deployment.runtimeKind).toBe("systemd");
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ runtimeKind: "systemd" });
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({
+      runtimeKind: "systemd",
+    });
   });
 
   test("resolves Eve version from the deployment's immutable source revision", async () => {
@@ -602,7 +659,9 @@ describe("SQL Store jobs", () => {
       sourcePath: "/tmp/source-old",
       summary: {},
       envVars: [],
-      files: [{ path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.22.6" } }) }],
+      files: [
+        { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.22.6" } }) },
+      ],
       schedules: [],
     });
     const oldDeployment = await store.recordDeployment({
@@ -620,7 +679,9 @@ describe("SQL Store jobs", () => {
       sourcePath: "/tmp/source-new",
       summary: { eveVersion: "0.29.4" },
       envVars: [],
-      files: [{ path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.4" } }) }],
+      files: [
+        { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.29.4" } }) },
+      ],
       schedules: [],
     });
 
@@ -788,10 +849,16 @@ describe("SQL Store jobs", () => {
       }),
     ]);
     await expect(store.listSessionEvents(session.id)).resolves.toEqual([
-      expect.objectContaining({ index: 0, type: "message", payload: { role: "user", content: "Hello" } }),
+      expect.objectContaining({
+        index: 0,
+        type: "message",
+        payload: { role: "user", content: "Hello" },
+      }),
       expect.objectContaining({ index: 1, type: "model_response", payload: { content: "Hi" } }),
     ]);
-    await expect(store.getProject(project.id)).resolves.toMatchObject({ latestSessionStatus: "completed" });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      latestSessionStatus: "completed",
+    });
     expect(completed).toMatchObject({ id: session.id, status: "completed" });
   });
 
@@ -816,7 +883,12 @@ describe("SQL Store jobs", () => {
       usageReported: true,
     });
 
-    expect(usageEvent).toMatchObject({ sessionId: session.id, turnId: "turn_0", stepIndex: 0, inputTokens: 120 });
+    expect(usageEvent).toMatchObject({
+      sessionId: session.id,
+      turnId: "turn_0",
+      stepIndex: 0,
+      inputTokens: 120,
+    });
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({
         usage: {
@@ -856,7 +928,9 @@ describe("SQL Store jobs", () => {
     expect(replayed.id).toBe(first.id);
     await expect(store.listModelUsageEvents(session.id)).resolves.toHaveLength(1);
     await expect(store.listSessions(project.id)).resolves.toEqual([
-      expect.objectContaining({ usage: expect.objectContaining({ inputTokens: 12, outputTokens: 4, reportedSteps: 1 }) }),
+      expect.objectContaining({
+        usage: expect.objectContaining({ inputTokens: 12, outputTokens: 4, reportedSteps: 1 }),
+      }),
     ]);
   });
 

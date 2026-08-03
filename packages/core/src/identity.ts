@@ -38,9 +38,7 @@ export type OidcExternalRealmResolution =
  * than re-spelling the union, so a new mode cannot be added to the record
  * type while a store's input type silently rejects it.
  */
-export type ExternalRealmResolution =
-  | OidcExternalRealmResolution
-  | "internal_member";
+export type ExternalRealmResolution = OidcExternalRealmResolution | "internal_member";
 
 export type OidcIdentityProviderConfig = {
   type: "oidc";
@@ -50,18 +48,13 @@ export type OidcIdentityProviderConfig = {
   clientSecretConfigured: boolean;
   scopes: string[];
   authorizationParameters: Record<string, string>;
-  tokenEndpointAuthMethod:
-    | "client_secret_basic"
-    | "client_secret_post"
-    | "none";
+  tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
   externalRealmResolution: OidcExternalRealmResolution;
   externalRealmClaim?: string;
   enabled: boolean;
 };
 
-export type IdentityProviderConfig =
-  | InternalIdentityProviderConfig
-  | OidcIdentityProviderConfig;
+export type IdentityProviderConfig = InternalIdentityProviderConfig | OidcIdentityProviderConfig;
 
 export type IdentityProviderConnection = {
   id: string;
@@ -73,11 +66,7 @@ export type IdentityProviderConnection = {
   clientSecretEncrypted: string | null;
   scopes: string[];
   authorizationParameters: Record<string, string>;
-  tokenEndpointAuthMethod:
-    | "client_secret_basic"
-    | "client_secret_post"
-    | "none"
-    | null;
+  tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post" | "none" | null;
   externalRealmResolution: ExternalRealmResolution;
   externalRealmClaim: string | null;
   enabled: boolean;
@@ -176,10 +165,7 @@ export function normalizeIdentityProviderConnection(
     return {
       type,
       displayName,
-      internalRealmKey: requiredString(
-        input.internalRealmKey,
-        "Internal Realm key is required.",
-      ),
+      internalRealmKey: requiredString(input.internalRealmKey, "Internal Realm key is required."),
       enabled,
     };
   }
@@ -200,8 +186,7 @@ export function normalizeIdentityProviderConnection(
     "OIDC external Realm resolution is invalid.",
   );
   const externalRealmClaim =
-    externalRealmResolution === "id_token_claim" ||
-    externalRealmResolution === "userinfo_claim"
+    externalRealmResolution === "id_token_claim" || externalRealmResolution === "userinfo_claim"
       ? requiredString(
           input.externalRealmClaim,
           "OIDC external Realm claim is required for claim resolution.",
@@ -229,10 +214,7 @@ export function callerTokenAudience(projectId: string): string {
 }
 
 export function identityAppTokenAudience(targetKey: string): string {
-  const normalized = requiredString(
-    targetKey,
-    "Identity return target key is required.",
-  );
+  const normalized = requiredString(targetKey, "Identity return target key is required.");
   return `eveland:app:${normalized}`;
 }
 
@@ -286,10 +268,7 @@ function stringRecord(value: unknown): Record<string, string> {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, candidate]) => [
         requiredString(key, "OIDC authorization parameter name is required."),
-        requiredString(
-          candidate,
-          `OIDC authorization parameter ${key} must be a string.`,
-        ),
+        requiredString(candidate, `OIDC authorization parameter ${key} must be a string.`),
       ]),
   );
 }

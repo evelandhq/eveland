@@ -41,11 +41,27 @@ export function MemberActions({ member, isLastAdmin }: { member: Member; isLastA
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={changeRole} disabled={pending || isLastAdmin}>
-          {member.role === "admin" ? <UserRoundIcon data-icon="inline-start" /> : <ShieldIcon data-icon="inline-start" />}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={changeRole}
+          disabled={pending || isLastAdmin}
+        >
+          {member.role === "admin" ? (
+            <UserRoundIcon data-icon="inline-start" />
+          ) : (
+            <ShieldIcon data-icon="inline-start" />
+          )}
           {member.role === "admin" ? "Make member" : "Make admin"}
         </Button>
-        <Button type="button" size="sm" variant="destructive" onClick={remove} disabled={pending || isLastAdmin}>
+        <Button
+          type="button"
+          size="sm"
+          variant="destructive"
+          onClick={remove}
+          disabled={pending || isLastAdmin}
+        >
           <UserMinusIcon data-icon="inline-start" />
           Remove
         </Button>

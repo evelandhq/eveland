@@ -25,9 +25,16 @@ export function encryptSecretValue(value: string, key: string): EncryptedSecret 
 }
 
 export function decryptSecretValue(secret: EncryptedSecret, key: string): string {
-  const decipher = createDecipheriv("aes-256-gcm", normalizeKey(key), Buffer.from(secret.iv, "base64"));
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    normalizeKey(key),
+    Buffer.from(secret.iv, "base64"),
+  );
   decipher.setAuthTag(Buffer.from(secret.authTag, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(secret.ciphertext, "base64")), decipher.final()]).toString("utf8");
+  return Buffer.concat([
+    decipher.update(Buffer.from(secret.ciphertext, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
 }
 
 export function maskKnownSecrets(input: string, values: string[]): string {

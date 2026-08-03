@@ -30,43 +30,31 @@ export function formatUsd(costUsd: number | null): string {
 }
 
 export function completionRate(totals: UsageTotals): number | null {
-  const terminalSessions =
-    totals.completedSessions + totals.failedSessions;
-  return terminalSessions === 0
-    ? null
-    : (totals.completedSessions / terminalSessions) * 100;
+  const terminalSessions = totals.completedSessions + totals.failedSessions;
+  return terminalSessions === 0 ? null : (totals.completedSessions / terminalSessions) * 100;
 }
 
 export function usageCoverage(totals: UsageTotals): number | null {
   const observedSteps = totals.reportedSteps + totals.missingSteps;
-  return observedSteps === 0
-    ? null
-    : (totals.reportedSteps / observedSteps) * 100;
+  return observedSteps === 0 ? null : (totals.reportedSteps / observedSteps) * 100;
 }
 
 export function costCoverage(totals: UsageTotals): number | null {
-  return totals.modelSteps === 0
-    ? null
-    : (totals.costReportedSteps / totals.modelSteps) * 100;
+  return totals.modelSteps === 0 ? null : (totals.costReportedSteps / totals.modelSteps) * 100;
 }
 
-export function percentageDelta(
-  current: number,
-  previous: number,
-): number | null {
+export function percentageDelta(current: number, previous: number): number | null {
   return previous === 0 ? null : ((current - previous) / previous) * 100;
 }
 
-export function parseUsageFilters(
-  input: Record<string, string | string[] | undefined>,
-): { range: UsageRange; modelId?: string } {
-  const first = (value: string | string[] | undefined) =>
-    Array.isArray(value) ? value[0] : value;
+export function parseUsageFilters(input: Record<string, string | string[] | undefined>): {
+  range: UsageRange;
+  modelId?: string;
+} {
+  const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
   const requestedRange = first(input.range);
   const range: UsageRange =
-    requestedRange === "24h" ||
-    requestedRange === "7d" ||
-    requestedRange === "30d"
+    requestedRange === "24h" || requestedRange === "7d" || requestedRange === "30d"
       ? requestedRange
       : "7d";
   const modelId = first(input.model)?.trim();
@@ -144,6 +132,8 @@ export function groupModelUsageByAgent(events: readonly ModelUsageEvent[]): Agen
   }
 
   return [...grouped.values()].sort(
-    (left, right) => right.totalTokens - left.totalTokens || (left.agentName ?? "").localeCompare(right.agentName ?? ""),
+    (left, right) =>
+      right.totalTokens - left.totalTokens ||
+      (left.agentName ?? "").localeCompare(right.agentName ?? ""),
   );
 }

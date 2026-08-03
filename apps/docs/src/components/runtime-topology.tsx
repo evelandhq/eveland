@@ -8,7 +8,13 @@ const topologyCopy = {
     compose: "Docker Compose",
     services: "Web · API · Gateway",
     data: "Postgres + shared data",
-    bridge: <>jobs<br />events</>,
+    bridge: (
+      <>
+        jobs
+        <br />
+        events
+      </>
+    ),
     host: "Linux host",
     worker: "Worker",
     controller: "systemd controller",
@@ -23,7 +29,13 @@ const topologyCopy = {
     compose: "生产 Compose 控制面",
     services: "Web · API · Gateway",
     data: "Postgres + 共享数据目录",
-    bridge: <>Job<br />Event</>,
+    bridge: (
+      <>
+        Job
+        <br />
+        Event
+      </>
+    ),
     host: "Linux 宿主机",
     worker: "Worker",
     controller: "systemd Controller",

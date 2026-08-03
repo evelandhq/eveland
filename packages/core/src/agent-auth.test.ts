@@ -33,18 +33,25 @@ describe("Agent Auth credential envelope", () => {
   });
 
   test("rejects malformed, injected, and duplicate credential headers", () => {
-    expect(() => parseAgentCredentialHeaders([["not a header", "value"]])).toThrow(/credential header/i);
-    expect(() => parseAgentCredentialHeaders([["x-api-key", "value\r\ninjected: true"]])).toThrow(/credential header/i);
-    expect(() => parseAgentCredentialHeaders([
-      ["Authorization", "Bearer first"],
-      ["authorization", "Bearer second"],
-    ])).toThrow(/duplicate/i);
+    expect(() => parseAgentCredentialHeaders([["not a header", "value"]])).toThrow(
+      /credential header/i,
+    );
+    expect(() => parseAgentCredentialHeaders([["x-api-key", "value\r\ninjected: true"]])).toThrow(
+      /credential header/i,
+    );
+    expect(() =>
+      parseAgentCredentialHeaders([
+        ["Authorization", "Bearer first"],
+        ["authorization", "Bearer second"],
+      ]),
+    ).toThrow(/duplicate/i);
   });
 
   test("rejects malformed and unsupported envelopes", () => {
     expect(() => decodeAgentAuthEnvelope("not-base64-json")).toThrow();
-    const unsupported = Buffer.from(JSON.stringify({ version: 2, authority: "canonical", headers: [] }))
-      .toString("base64url");
+    const unsupported = Buffer.from(
+      JSON.stringify({ version: 2, authority: "canonical", headers: [] }),
+    ).toString("base64url");
     expect(() => decodeAgentAuthEnvelope(unsupported)).toThrow();
   });
 });

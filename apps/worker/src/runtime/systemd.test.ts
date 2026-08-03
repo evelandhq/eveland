@@ -42,7 +42,9 @@ vi.mock("@eveland/agent-scheduler", () => ({
 // real filesystem fixture; here it's mocked so createSystemdAdapter's buildRelease
 // tests can pin call *ordering* and the cache-dir/log-prefixing wiring in isolation.
 vi.mock("./sandbox-inject.js", () => ({
-  injectSandboxModules: vi.fn().mockResolvedValue({ generated: ["agent/sandbox.js"], replaced: [] }),
+  injectSandboxModules: vi
+    .fn()
+    .mockResolvedValue({ generated: ["agent/sandbox.js"], replaced: [] }),
 }));
 
 // verifySandbox shells out to the real vendored backend under systemd-run; it has its
@@ -65,10 +67,8 @@ describe("buildSystemdRunArgs", () => {
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
       dataDir: "/var/lib/eveland-data",
-      observabilityPolicyDir:
-        "/var/lib/eveland-data/observability/proj_123/dep_456",
-      accessRepairScriptPath:
-        "/data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
+      accessRepairScriptPath: "/data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
       dynamicUserUidMarkerPath:
         "/var/lib/eveland-data/observability/proj_123/dep_456/.dynamic-user-uid",
       command: "npx eve start --host 127.0.0.1 --port 41000",
@@ -134,17 +134,20 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
       dataDir: "/var/lib/eveland-data",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/p/d",
       accessRepairScriptPath: "/env/p.prepare-access.sh",
-      dynamicUserUidMarkerPath:
-        "/var/lib/eveland-data/observability/p/d/.dynamic-user-uid",
+      dynamicUserUidMarkerPath: "/var/lib/eveland-data/observability/p/d/.dynamic-user-uid",
       command: "npx eve start",
     });
 
     expect(args).toContain("--property=ReadWritePaths=/rel");
     expect(args).toContain("--property=ReadWritePaths=/var/lib/eveland-data/sandbox/p");
-    expect(args).toContain("--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/p");
+    expect(args).toContain(
+      "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/p",
+    );
     expect(args).toContain("--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/rel");
     // The env file must still be read before PORT is forced.
-    expect(args.indexOf("--property=EnvironmentFile=/env/p.env")).toBeLessThan(args.indexOf("--property=Environment=PORT=41000"));
+    expect(args.indexOf("--property=EnvironmentFile=/env/p.env")).toBeLessThan(
+      args.indexOf("--property=Environment=PORT=41000"),
+    );
   });
 });
 
@@ -161,50 +164,34 @@ describe("buildSystemdRunArgs (sibling isolation)", () => {
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/p",
       dataDir: "/var/lib/eveland-data",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/p/d",
-      accessRepairScriptPath:
-        "/var/lib/eveland-data/deployment-env/p.prepare-access.sh",
-      dynamicUserUidMarkerPath:
-        "/var/lib/eveland-data/observability/p/d/.dynamic-user-uid",
+      accessRepairScriptPath: "/var/lib/eveland-data/deployment-env/p.prepare-access.sh",
+      dynamicUserUidMarkerPath: "/var/lib/eveland-data/observability/p/d/.dynamic-user-uid",
       command: "npx eve start",
     });
 
-    expect(args).toContain(
-      "--property=TemporaryFileSystem=/var/lib/eveland-data:ro",
-    );
+    expect(args).toContain("--property=TemporaryFileSystem=/var/lib/eveland-data:ro");
     // Only this Deployment's own subtrees are reopened; a sibling's policy dir
     // under the same data root stays hidden behind the tmpfs.
-    expect(args).toContain(
-      "--property=BindPaths=/var/lib/eveland-data/builds/p/rel",
-    );
-    expect(args).toContain(
-      "--property=BindPaths=/var/lib/eveland-data/sandbox/p",
-    );
-    expect(
-      args.filter((arg) => arg.startsWith("--property=BindPaths=")),
-    ).toHaveLength(3);
+    expect(args).toContain("--property=BindPaths=/var/lib/eveland-data/builds/p/rel");
+    expect(args).toContain("--property=BindPaths=/var/lib/eveland-data/sandbox/p");
+    expect(args.filter((arg) => arg.startsWith("--property=BindPaths="))).toHaveLength(3);
     // The env file carries every project secret and also lives under the mask,
     // so it must be reopened or the Deployment starts with no configuration.
-    expect(
-      args.filter((arg) => arg.startsWith("--property=BindReadOnlyPaths=")),
-    ).toEqual([
+    expect(args.filter((arg) => arg.startsWith("--property=BindReadOnlyPaths="))).toEqual([
       "--property=BindReadOnlyPaths=/var/lib/eveland-data/deployment-env/p.env",
       "--property=BindReadOnlyPaths=/var/lib/eveland-data/deployment-env/p.prepare-access.sh:/run/eveland/prepare-dynamic-user-access",
       "--property=BindReadOnlyPaths=/var/lib/eveland-data/observability/p/d:/run/eveland/observability",
     ]);
     // systemd applies TemporaryFileSystem= before the binds that reopen paths
     // through it, so a bind listed first would be masked back out.
-    expect(
-      args.indexOf("--property=TemporaryFileSystem=/var/lib/eveland-data:ro"),
-    ).toBeLessThan(
+    expect(args.indexOf("--property=TemporaryFileSystem=/var/lib/eveland-data:ro")).toBeLessThan(
       args.indexOf("--property=BindPaths=/var/lib/eveland-data/builds/p/rel"),
     );
     expect(args).toContain("--property=DynamicUser=yes");
     expect(args).toContain("--property=Group=eveland-app");
     expect(args).toContain("--property=UMask=0002");
     expect(args).toContain("--property=ProtectProc=invisible");
-    expect(args).toContain(
-      `--property=User=${resolveSystemdDeploymentUser("eveland-p-d")}`,
-    );
+    expect(args).toContain(`--property=User=${resolveSystemdDeploymentUser("eveland-p-d")}`);
   });
 });
 
@@ -216,9 +203,7 @@ describe("resolveSystemdDeploymentUser", () => {
     expect(first).not.toBe(second);
     expect(first).toMatch(/^eveland-d-[a-f0-9]{20}$/);
     expect(first.length).toBeLessThanOrEqual(31);
-    expect(resolveSystemdDeploymentUser("eveland-proj_123-dep_456")).toBe(
-      first,
-    );
+    expect(resolveSystemdDeploymentUser("eveland-proj_123-dep_456")).toBe(first);
   });
 });
 
@@ -247,13 +232,15 @@ describe("resolveSandboxCacheRoot", () => {
   });
 
   test("derives <EVELAND_DATA_DIR>/sandbox when no override is set", () => {
-    expect(resolveSandboxCacheRoot({ EVELAND_DATA_DIR: "/var/lib/eveland-data" } as NodeJS.ProcessEnv)).toBe(
-      path.resolve("/var/lib/eveland-data", "sandbox"),
-    );
+    expect(
+      resolveSandboxCacheRoot({ EVELAND_DATA_DIR: "/var/lib/eveland-data" } as NodeJS.ProcessEnv),
+    ).toBe(path.resolve("/var/lib/eveland-data", "sandbox"));
   });
 
   test("defaults to .eveland-data/sandbox when neither env var is set", () => {
-    expect(resolveSandboxCacheRoot({} as NodeJS.ProcessEnv)).toBe(path.resolve(".eveland-data", "sandbox"));
+    expect(resolveSandboxCacheRoot({} as NodeJS.ProcessEnv)).toBe(
+      path.resolve(".eveland-data", "sandbox"),
+    );
   });
 });
 
@@ -262,7 +249,6 @@ describe("buildSystemdStartCommand", () => {
     const command = buildSystemdStartCommand({ hasLockfile: true }, 41000);
     expect(command).toBe("npx eve start --host 127.0.0.1 --port 41000");
   });
-
 });
 
 describe("buildReleaseBuildCommand", () => {
@@ -322,18 +308,33 @@ describe("buildBwrapArgs", () => {
     });
 
     expect(args).toEqual([
-      "--ro-bind", "/", "/",
-      "--dev", "/dev",
-      "--proc", "/proc",
-      "--tmpfs", "/tmp",
-      "--tmpfs", "/var/lib/eveland-data",
-      "--bind", "/var/lib/eveland-data/builds/proj_123/rel_789", "/var/lib/eveland-data/builds/proj_123/rel_789",
-      "--bind", "/var/lib/eveland-data/npm-cache", "/var/lib/eveland-data/npm-cache",
+      "--ro-bind",
+      "/",
+      "/",
+      "--dev",
+      "/dev",
+      "--proc",
+      "/proc",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/var/lib/eveland-data",
+      "--bind",
+      "/var/lib/eveland-data/builds/proj_123/rel_789",
+      "/var/lib/eveland-data/builds/proj_123/rel_789",
+      "--bind",
+      "/var/lib/eveland-data/npm-cache",
+      "/var/lib/eveland-data/npm-cache",
       "--unshare-pid",
       "--die-with-parent",
-      "--chdir", "/var/lib/eveland-data/builds/proj_123/rel_789",
-      "--setenv", "HOME", "/var/lib/eveland-data/builds/proj_123/rel_789",
-      "sh", "-lc", "npm ci && npx eve build",
+      "--chdir",
+      "/var/lib/eveland-data/builds/proj_123/rel_789",
+      "--setenv",
+      "HOME",
+      "/var/lib/eveland-data/builds/proj_123/rel_789",
+      "sh",
+      "-lc",
+      "npm ci && npx eve build",
     ]);
   });
 });
@@ -367,14 +368,25 @@ describe("createSystemdAdapter listProcesses", () => {
     ]);
     expect(execa).toHaveBeenLastCalledWith(
       "systemctl",
-      ["list-units", "--type=service", "--state=active,activating", "--plain", "--no-legend", "--no-pager", "eveland-*.service"],
+      [
+        "list-units",
+        "--type=service",
+        "--state=active,activating",
+        "--plain",
+        "--no-legend",
+        "--no-pager",
+        "eveland-*.service",
+      ],
       expect.objectContaining({ reject: false }),
     );
   });
 
   test("throws when systemctl cannot list units", async () => {
     const adapter = createSystemdAdapter(baseAdapterConfig);
-    vi.mocked(execa).mockResolvedValueOnce({ failed: true, all: "systemctl: command not found" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: true,
+      all: "systemctl: command not found",
+    } as never);
 
     await expect(adapter.listProcesses!("eveland-")).rejects.toThrow(/systemctl list-units/);
   });
@@ -394,7 +406,11 @@ describe("createSystemdAdapter backendDistDir laziness", () => {
     const backendDistDir = vi.fn(() => {
       throw new Error("@eveland/sandbox-bwrap is not resolvable.");
     });
-    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none", backendDistDir });
+    const adapter = createSystemdAdapter({
+      ...baseAdapterConfig,
+      buildSandbox: "none",
+      backendDistDir,
+    });
 
     await expect(
       adapter.buildRelease({
@@ -422,37 +438,17 @@ describe("createSystemdAdapter startProcess", () => {
       env: {},
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observabilityPolicyDir:
-        "/var/lib/eveland-data/observability/proj_123/dep_456",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(vi.mocked(execa).mock.calls.slice(0, 3)).toEqual([
-      [
-        "chown",
-        [
-          "-R",
-          "root:eveland-app",
-          "/var/lib/eveland-data/observability/proj_123/dep_456",
-        ],
-      ],
-      [
-        "chmod",
-        ["2750", "/var/lib/eveland-data/observability/proj_123/dep_456"],
-      ],
-      [
-        "chmod",
-        [
-          "0640",
-          "/var/lib/eveland-data/observability/proj_123/dep_456/agent-policy.json",
-        ],
-      ],
+      ["chown", ["-R", "root:eveland-app", "/var/lib/eveland-data/observability/proj_123/dep_456"]],
+      ["chmod", ["2750", "/var/lib/eveland-data/observability/proj_123/dep_456"]],
+      ["chmod", ["0640", "/var/lib/eveland-data/observability/proj_123/dep_456/agent-policy.json"]],
     ]);
     expect(vi.mocked(execa).mock.calls).not.toContainEqual([
       "chmod",
-      expect.arrayContaining([
-        "-R",
-        "/data/builds/proj_123/rel_platform",
-      ]),
+      expect.arrayContaining(["-R", "/data/builds/proj_123/rel_platform"]),
     ]);
     expect(writeFile).toHaveBeenCalledWith(
       "/var/lib/eveland-data/observability/proj_123/dep_456/.dynamic-user-uid",
@@ -484,12 +480,8 @@ describe("createSystemdAdapter startProcess", () => {
       'if [ -z "$current_uid" ] || [ "$current_uid" != "$previous_uid" ]; then',
     );
     expect(script.match(/chmod -R/g)).toHaveLength(1);
-    expect(script).toContain(
-      "chmod -R g+rwX,g-s -- '/data/release with spaces' '/data/cache'",
-    );
-    expect(script.indexOf("chmod -R")).toBeLessThan(
-      script.indexOf("printf '%s\\n'"),
-    );
+    expect(script).toContain("chmod -R g+rwX,g-s -- '/data/release with spaces' '/data/cache'");
+    expect(script.indexOf("chmod -R")).toBeLessThan(script.indexOf("printf '%s\\n'"));
   });
 
   test("reads the dynamic uid from systemd's registry, not from NSS", () => {
@@ -499,9 +491,7 @@ describe("createSystemdAdapter startProcess", () => {
       sandboxCacheDir: "/data/cache",
     });
 
-    expect(script).toContain(
-      "readlink '/run/systemd/dynamic-uid/direct:eveland-d-123'",
-    );
+    expect(script).toContain("readlink '/run/systemd/dynamic-uid/direct:eveland-d-123'");
     expect(script).not.toContain("id -u");
     expect(script).not.toContain("getent");
   });
@@ -520,8 +510,7 @@ describe("createSystemdAdapter startProcess", () => {
       },
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observabilityPolicyDir:
-        "/var/lib/eveland-data/observability/proj_123/dep_456",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(writeFile).toHaveBeenCalledWith(
@@ -539,7 +528,10 @@ describe("createSystemdAdapter startProcess", () => {
         failed: false,
         stdout: 'LISTEN 0 511 127.0.0.1:41000 0.0.0.0:* users:(("node",pid=1234,fd=20))',
       } as never)
-      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_123-dep_456.service\n" } as never);
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "eveland-proj_123-dep_456.service\n",
+      } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     const result = await adapter.ensureProcess!({
@@ -549,13 +541,16 @@ describe("createSystemdAdapter startProcess", () => {
       env: {},
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observabilityPolicyDir:
-        "/var/lib/eveland-data/observability/proj_123/dep_456",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.log).toContain("Reused ready systemd process");
     expect(vi.mocked(execa).mock.calls).toEqual([
-      ["systemctl", ["show", "eveland-proj_123-dep_456.service", "--property=ActiveState", "--value"], { all: true, reject: false }],
+      [
+        "systemctl",
+        ["show", "eveland-proj_123-dep_456.service", "--property=ActiveState", "--value"],
+        { all: true, reject: false },
+      ],
       ["ss", ["-H", "-t", "-l", "-n", "-p", "sport", "=", ":41000"], { all: true, reject: false }],
       ["ps", ["-o", "unit=", "-p", "1234"], { all: true, reject: false }],
     ]);
@@ -564,7 +559,11 @@ describe("createSystemdAdapter startProcess", () => {
   test("ensureProcess reuses a starting unit that has not bound its port yet", async () => {
     vi.mocked(execa).mockClear();
     vi.mocked(execa)
-      .mockResolvedValueOnce({ failed: false, stdout: "activating\n", all: "activating\n" } as never)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "activating\n",
+        all: "activating\n",
+      } as never)
       .mockResolvedValueOnce({ failed: false, stdout: "", all: "" } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
@@ -575,8 +574,7 @@ describe("createSystemdAdapter startProcess", () => {
       env: {},
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observabilityPolicyDir:
-        "/var/lib/eveland-data/observability/proj_123/dep_456",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.log).toContain("Reused starting systemd process");
@@ -591,7 +589,10 @@ describe("createSystemdAdapter startProcess", () => {
         failed: false,
         stdout: 'LISTEN 0 511 127.0.0.1:41000 0.0.0.0:* users:(("node",pid=9876,fd=20))',
       } as never)
-      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_other-dep_999.service\n" } as never)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "eveland-proj_other-dep_999.service\n",
+      } as never)
       .mockResolvedValueOnce({ failed: false } as never)
       .mockResolvedValueOnce({ failed: false } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
@@ -604,8 +605,7 @@ describe("createSystemdAdapter startProcess", () => {
         env: {},
         commandContext: { hasLockfile: true },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-        observabilityPolicyDir:
-          "/var/lib/eveland-data/observability/proj_123/dep_456",
+        observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       }),
     ).rejects.toThrow(/eveland-proj_other-dep_999\.service/);
 
@@ -622,16 +622,20 @@ describe("createSystemdAdapter startProcess", () => {
     vi.mocked(execa)
       .mockResolvedValueOnce({
         failed: false,
-        stdout: "ActiveState=activating\nSubState=auto-restart\nNRestarts=3\nExecMainStatus=1\nResult=exit-code\n",
+        stdout:
+          "ActiveState=activating\nSubState=auto-restart\nNRestarts=3\nExecMainStatus=1\nResult=exit-code\n",
         all: "ActiveState=activating\nSubState=auto-restart\nNRestarts=3\nExecMainStatus=1\nResult=exit-code\n",
       } as never)
       .mockResolvedValueOnce({ failed: false, all: "Eve startup failed\nstack trace" } as never);
-    const adapter = createSystemdAdapter(baseAdapterConfig) as ReturnType<typeof createSystemdAdapter> & {
+    const adapter = createSystemdAdapter(baseAdapterConfig) as ReturnType<
+      typeof createSystemdAdapter
+    > & {
       getProcessDiagnostics(processName: string): Promise<{ state: string; logs: string }>;
     };
 
     await expect(adapter.getProcessDiagnostics("eveland-proj_123-dep_456")).resolves.toEqual({
-      state: "ActiveState=activating\nSubState=auto-restart\nNRestarts=3\nExecMainStatus=1\nResult=exit-code",
+      state:
+        "ActiveState=activating\nSubState=auto-restart\nNRestarts=3\nExecMainStatus=1\nResult=exit-code",
       logs: "Eve startup failed\nstack trace",
     });
     expect(vi.mocked(execa).mock.calls).toEqual([
@@ -647,7 +651,14 @@ describe("createSystemdAdapter startProcess", () => {
       ],
       [
         "journalctl",
-        ["--unit", "eveland-proj_123-dep_456.service", "--lines", "200", "--no-pager", "--output=short-iso"],
+        [
+          "--unit",
+          "eveland-proj_123-dep_456.service",
+          "--lines",
+          "200",
+          "--no-pager",
+          "--output=short-iso",
+        ],
         { all: true, reject: false },
       ],
     ]);
@@ -679,8 +690,18 @@ describe("createSystemdAdapter stopProcess", () => {
     vi.mocked(execa).mockClear();
     vi.mocked(rm).mockClear();
     vi.mocked(execa)
-      .mockResolvedValueOnce({ failed: true, exitCode: 5, stderr: "Unit eveland-proj_123-dep_456.service not loaded.", all: "" } as never)
-      .mockResolvedValueOnce({ failed: true, exitCode: 5, stderr: "Unit eveland-proj_123-dep_456.service not loaded.", all: "" } as never);
+      .mockResolvedValueOnce({
+        failed: true,
+        exitCode: 5,
+        stderr: "Unit eveland-proj_123-dep_456.service not loaded.",
+        all: "",
+      } as never)
+      .mockResolvedValueOnce({
+        failed: true,
+        exitCode: 5,
+        stderr: "Unit eveland-proj_123-dep_456.service not loaded.",
+        all: "",
+      } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123-dep_456")).resolves.toBeUndefined();
@@ -700,7 +721,12 @@ describe("createSystemdAdapter stopProcess", () => {
 
   test("throws naming the command and stderr when systemctl stop fails for an unknown reason", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr: "Access denied", all: "" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: true,
+      exitCode: 1,
+      stderr: "Access denied",
+      all: "",
+    } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123-dep_456")).rejects.toThrow(
@@ -712,7 +738,12 @@ describe("createSystemdAdapter stopProcess", () => {
     vi.mocked(execa).mockClear();
     vi.mocked(execa)
       .mockResolvedValueOnce({ failed: false, exitCode: 0, stderr: "", all: "" } as never)
-      .mockResolvedValueOnce({ failed: true, exitCode: 1, stderr: "Access denied", all: "" } as never);
+      .mockResolvedValueOnce({
+        failed: true,
+        exitCode: 1,
+        stderr: "Access denied",
+        all: "",
+      } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123-dep_456")).rejects.toThrow(
@@ -722,7 +753,12 @@ describe("createSystemdAdapter stopProcess", () => {
 
   test("throws when systemctl itself cannot be spawned (ENOENT, no exit code or stderr)", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: undefined, stderr: "", all: "" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: true,
+      exitCode: undefined,
+      stderr: "",
+      all: "",
+    } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123-dep_456")).rejects.toThrow(/systemctl stop/);
@@ -736,7 +772,11 @@ describe("isBenignSystemctlStopFailure", () => {
 
   test("tolerates a not-loaded unit -- the idempotent no-op case", () => {
     expect(
-      isBenignSystemctlStopFailure({ failed: true, exitCode: 5, stderr: "Unit eveland-proj_123-dep_456.service not loaded." }),
+      isBenignSystemctlStopFailure({
+        failed: true,
+        exitCode: 5,
+        stderr: "Unit eveland-proj_123-dep_456.service not loaded.",
+      }),
     ).toBe(true);
   });
 
@@ -751,17 +791,24 @@ describe("isBenignSystemctlStopFailure", () => {
   });
 
   test("does not tolerate a spawn failure (systemctl missing, no exit code or stderr)", () => {
-    expect(isBenignSystemctlStopFailure({ failed: true, exitCode: undefined, stderr: "" })).toBe(false);
+    expect(isBenignSystemctlStopFailure({ failed: true, exitCode: undefined, stderr: "" })).toBe(
+      false,
+    );
   });
 
   test("does not tolerate an unknown non-zero exit", () => {
-    expect(isBenignSystemctlStopFailure({ failed: true, exitCode: 1, stderr: "Access denied" })).toBe(false);
+    expect(
+      isBenignSystemctlStopFailure({ failed: true, exitCode: 1, stderr: "Access denied" }),
+    ).toBe(false);
   });
 });
 
 describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
   test("injects the sandbox after cp -a and before the build command, then creates and chowns the project cache dir", async () => {
-    vi.mocked(injectSandboxModules).mockResolvedValueOnce({ generated: ["agent/sandbox.js"], replaced: [] });
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      generated: ["agent/sandbox.js"],
+      replaced: [],
+    });
     const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
 
     const result = await adapter.buildRelease({
@@ -793,20 +840,17 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     expect(mkdir).toHaveBeenCalledWith(cacheDir, { recursive: true });
 
     const chownCalls = execaCalls.filter(([cmd]) => cmd === "chown").map(([, args]) => args);
-    expect(chownCalls).toContainEqual(["-R", "eveland-app:", path.resolve("/data/builds/proj_123/rel_789")]);
+    expect(chownCalls).toContainEqual([
+      "-R",
+      "eveland-app:",
+      path.resolve("/data/builds/proj_123/rel_789"),
+    ]);
     expect(chownCalls).toContainEqual(["-R", "eveland-app:", cacheDir]);
     expect(execaCalls).toContainEqual([
       "chmod",
-      [
-        "-R",
-        "g+rwX,g-s",
-        path.resolve("/data/builds/proj_123/rel_789"),
-      ],
+      ["-R", "g+rwX,g-s", path.resolve("/data/builds/proj_123/rel_789")],
     ]);
-    expect(execaCalls).toContainEqual([
-      "chmod",
-      ["-R", "g+rwX,g-s", cacheDir],
-    ]);
+    expect(execaCalls).toContainEqual(["chmod", ["-R", "g+rwX,g-s", cacheDir]]);
 
     expect(result.log).toContain("Injected eve sandbox modules: agent/sandbox.js");
     expect(result.log).not.toContain("WARNING");
@@ -857,17 +901,33 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
     const order = vi.mocked(execa).mock.invocationCallOrder;
 
     const buildUserChownReleaseIndex = calls.findIndex(
-      ([cmd, args]) => cmd === "chown" && Array.isArray(args) && args[1] === "eveland-build:" && args[2] === releaseDir,
+      ([cmd, args]) =>
+        cmd === "chown" &&
+        Array.isArray(args) &&
+        args[1] === "eveland-build:" &&
+        args[2] === releaseDir,
     );
     const buildUserChownCacheIndex = calls.findIndex(
-      ([cmd, args]) => cmd === "chown" && Array.isArray(args) && args[1] === "eveland-build:" && args[2] === npmCacheDir,
+      ([cmd, args]) =>
+        cmd === "chown" &&
+        Array.isArray(args) &&
+        args[1] === "eveland-build:" &&
+        args[2] === npmCacheDir,
     );
     const runuserIndex = calls.findIndex(([cmd]) => cmd === "runuser");
     const appUserChownReleaseIndex = calls.findIndex(
-      ([cmd, args]) => cmd === "chown" && Array.isArray(args) && args[1] === "eveland-app:" && args[2] === releaseDir,
+      ([cmd, args]) =>
+        cmd === "chown" &&
+        Array.isArray(args) &&
+        args[1] === "eveland-app:" &&
+        args[2] === releaseDir,
     );
     const appUserChownCacheIndex = calls.findIndex(
-      ([cmd, args]) => cmd === "chown" && Array.isArray(args) && args[1] === "eveland-app:" && args[2] === cacheDir,
+      ([cmd, args]) =>
+        cmd === "chown" &&
+        Array.isArray(args) &&
+        args[1] === "eveland-app:" &&
+        args[2] === cacheDir,
     );
 
     expect(buildUserChownReleaseIndex).toBeGreaterThanOrEqual(0);
@@ -885,7 +945,11 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
     // execa's overloaded signature makes Parameters<> resolve to a union of tuple
     // shapes; cast the found call to the (file, args, options) shape actually used
     // by every call site in systemd.ts so the destructure below type-checks.
-    const [, runuserArgs, runuserOptions] = calls[runuserIndex]! as unknown as [string, string[], Record<string, unknown>];
+    const [, runuserArgs, runuserOptions] = calls[runuserIndex]! as unknown as [
+      string,
+      string[],
+      Record<string, unknown>,
+    ];
     // HOME rides as an `env` wrapper inside the runuser'd argv, not as an execa
     // env var: runuser (without -m) resets HOME to the build user's own passwd
     // entry after the user switch, so an execa-env HOME would never survive.
@@ -930,7 +994,11 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
     const runuserCall = calls.find(([cmd]) => cmd === "runuser");
     expect(runuserCall).toBeDefined();
     // See the cast comment in the sibling "none mode" test above.
-    const [, args, options] = runuserCall! as unknown as [string, string[], Record<string, unknown>];
+    const [, args, options] = runuserCall! as unknown as [
+      string,
+      string[],
+      Record<string, unknown>,
+    ];
 
     expect(args).toEqual([
       "-u",
@@ -952,7 +1020,7 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
       env: { npm_config_cache: npmCacheDir },
       extendEnv: false,
     });
-    expect((options.env as Record<string, unknown>)).not.toHaveProperty("HOME");
+    expect(options.env as Record<string, unknown>).not.toHaveProperty("HOME");
   });
 
   test("passes extendEnv:false and only PATH/npm_config_cache in the build env, excluding worker secrets even when process.env carries them", async () => {
@@ -981,7 +1049,11 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
         const calls = vi.mocked(execa).mock.calls;
         const runuserCall = calls.find(([cmd]) => cmd === "runuser");
         expect(runuserCall).toBeDefined();
-        const [, , options] = runuserCall! as unknown as [string, string[], Record<string, unknown>];
+        const [, , options] = runuserCall! as unknown as [
+          string,
+          string[],
+          Record<string, unknown>,
+        ];
 
         expect(options.extendEnv).toBe(false);
         expect(options.env).toEqual({
@@ -1061,7 +1133,9 @@ describe("createSystemdAdapter buildRelease (sandbox verify)", () => {
   });
 
   test("propagates a verify failure so the build itself fails", async () => {
-    vi.mocked(verifySandbox).mockRejectedValueOnce(new Error("sandbox self-check failed: bwrap missing"));
+    vi.mocked(verifySandbox).mockRejectedValueOnce(
+      new Error("sandbox self-check failed: bwrap missing"),
+    );
     const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
 
     await expect(
@@ -1125,11 +1199,19 @@ describe("createSystemdAdapter verifyPortOwnership", () => {
           'LISTEN 0 511 127.0.0.1:41032 0.0.0.0:* users:(("node",pid=1234,fd=20))',
         ].join("\n"),
       } as never)
-      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_other-dep_9.service\n" } as never)
-      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_123-dep_456.service\n" } as never);
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "eveland-proj_other-dep_9.service\n",
+      } as never)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "eveland-proj_123-dep_456.service\n",
+      } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
-    await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({ status: "owned" });
+    await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({
+      status: "owned",
+    });
     expect(vi.mocked(execa).mock.calls[0]).toEqual([
       "ss",
       ["-H", "-t", "-l", "-n", "-p", "sport", "=", ":41032"],
@@ -1144,7 +1226,10 @@ describe("createSystemdAdapter verifyPortOwnership", () => {
         failed: false,
         stdout: 'LISTEN 0 511 127.0.0.1:41032 0.0.0.0:* users:(("node",pid=9876,fd=20))',
       } as never)
-      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_other-dep_9.service\n" } as never);
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "eveland-proj_other-dep_9.service\n",
+      } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
     await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({
@@ -1174,7 +1259,9 @@ describe("createSystemdAdapter verifyPortOwnership", () => {
     vi.mocked(execa).mockResolvedValueOnce({ failed: false, stdout: "" } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
-    await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({ status: "unbound" });
+    await expect(adapter.verifyPortOwnership!(ownershipInput)).resolves.toEqual({
+      status: "unbound",
+    });
   });
 
   test("fails loudly instead of passing silently when ss itself fails", async () => {
@@ -1182,7 +1269,9 @@ describe("createSystemdAdapter verifyPortOwnership", () => {
     vi.mocked(execa).mockResolvedValueOnce({ failed: true, all: "ss: command not found" } as never);
     const adapter = createSystemdAdapter(baseAdapterConfig);
 
-    await expect(adapter.verifyPortOwnership!(ownershipInput)).rejects.toThrow(/ss.*command not found/);
+    await expect(adapter.verifyPortOwnership!(ownershipInput)).rejects.toThrow(
+      /ss.*command not found/,
+    );
   });
 });
 
@@ -1204,15 +1293,17 @@ describe("createSystemdAdapter startProcess failure cleanup", () => {
         env: { OPENAI_API_KEY: "secret" },
         commandContext: { hasLockfile: true },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-        observabilityPolicyDir:
-          "/var/lib/eveland-data/observability/proj_123/dep_456",
+        observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       }),
     ).rejects.toThrow(/transient service unit/);
 
     expect(vi.mocked(rm).mock.calls).toEqual(
       expect.arrayContaining([
         ["/var/lib/eveland-data/deployment-env/eveland-proj_123-dep_456.env", { force: true }],
-        ["/var/lib/eveland-data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh", { force: true }],
+        [
+          "/var/lib/eveland-data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
+          { force: true },
+        ],
       ]),
     );
     vi.mocked(execa).mockReset();

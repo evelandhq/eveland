@@ -11,9 +11,7 @@ import {
 import type { CatalogStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 
-export function createPostgresCatalogStore({
-  db,
-}: PostgresStoreContext): CatalogStore {
+export function createPostgresCatalogStore({ db }: PostgresStoreContext): CatalogStore {
   return {
     async listAgentCatalog() {
       const rows = await db
@@ -36,20 +34,11 @@ export function createPostgresCatalogStore({
         )
         .innerJoin(
           routeTargets,
-          and(
-            eq(routeTargets.routeId, agentRoutes.id),
-            gt(routeTargets.weight, 0),
-          ),
+          and(eq(routeTargets.routeId, agentRoutes.id), gt(routeTargets.weight, 0)),
         )
-        .innerJoin(
-          deployments,
-          eq(deployments.id, routeTargets.deploymentId),
-        )
+        .innerJoin(deployments, eq(deployments.id, routeTargets.deploymentId))
         .innerJoin(releases, eq(releases.id, deployments.releaseId))
-        .innerJoin(
-          sourceRevisions,
-          eq(sourceRevisions.id, releases.sourceRevisionId),
-        )
+        .innerJoin(sourceRevisions, eq(sourceRevisions.id, releases.sourceRevisionId))
         .where(isNull(projects.deletionStatus))
         .orderBy(asc(projects.name), asc(projects.id));
 

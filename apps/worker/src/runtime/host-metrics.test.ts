@@ -8,7 +8,11 @@ import {
 
 describe("host metric collection", () => {
   test("uses Linux MemAvailable instead of cache-sensitive free memory", () => {
-    expect(parseMemAvailable("MemTotal:       16384000 kB\nMemFree:          500000 kB\nMemAvailable:    6400000 kB\n")).toBe(6_553_600_000);
+    expect(
+      parseMemAvailable(
+        "MemTotal:       16384000 kB\nMemFree:          500000 kB\nMemAvailable:    6400000 kB\n",
+      ),
+    ).toBe(6_553_600_000);
     expect(parseMemAvailable("MemTotal: 1000 kB\n")).toBeNull();
   });
 
@@ -21,23 +25,28 @@ describe("host metric collection", () => {
   });
 
   test("collects memory, load, filesystem capacity, and inode headroom", async () => {
-    const result = await collectHostMetric("worker-1", "/var/lib/eveland", { idle: 100, total: 200 }, {
-      now: () => new Date("2026-07-18T10:00:00.000Z"),
-      cpuTimes: () => ({ idle: 150, total: 300 }),
-      loadAverage: () => [1.25, 0.8, 0.5],
-      totalMemory: () => 16_000,
-      availableMemory: () => 6_000,
-      statfs: async (path) => {
-        expect(path).toBe("/var/lib/eveland");
-        return {
-          blocks: 1_000,
-          bsize: 4_096,
-          bavail: 250,
-          files: 10_000,
-          ffree: 8_000,
-        };
+    const result = await collectHostMetric(
+      "worker-1",
+      "/var/lib/eveland",
+      { idle: 100, total: 200 },
+      {
+        now: () => new Date("2026-07-18T10:00:00.000Z"),
+        cpuTimes: () => ({ idle: 150, total: 300 }),
+        loadAverage: () => [1.25, 0.8, 0.5],
+        totalMemory: () => 16_000,
+        availableMemory: () => 6_000,
+        statfs: async (path) => {
+          expect(path).toBe("/var/lib/eveland");
+          return {
+            blocks: 1_000,
+            bsize: 4_096,
+            bavail: 250,
+            files: 10_000,
+            ffree: 8_000,
+          };
+        },
       },
-    });
+    );
 
     expect(result.sample).toEqual({
       workerId: "worker-1",

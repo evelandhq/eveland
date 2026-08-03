@@ -2,10 +2,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import {
-  decryptSecretValue,
-  type EncryptedSecret,
-} from "@eveland/core/server/secrets";
+import { decryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
 import { createApp } from "./app.js";
 import { createTestStore } from "@eveland/db/vitest";
 
@@ -119,9 +116,7 @@ describe("api app", () => {
       error: "Project name is already in use.",
     });
 
-    await expect(
-      store.claimNextJob("new-project-test-worker"),
-    ).resolves.toMatchObject({
+    await expect(store.claimNextJob("new-project-test-worker")).resolves.toMatchObject({
       type: "import_source",
       payload: { deployAfterImport: true },
     });
@@ -169,8 +164,7 @@ describe("api app", () => {
       id: project.id,
       slug: "office-assistant",
       name: "Office Assistant",
-      description:
-        "Answers routine office questions and helps employees complete common requests.",
+      description: "Answers routine office questions and helps employees complete common requests.",
     });
   });
 
@@ -231,22 +225,14 @@ describe("api app", () => {
     await expect(store.listProjects()).resolves.toEqual([]);
 
     const claimed = await store.claimNextSourcePreflight("api-test-worker");
-    expect(claimed?.gitCredential?.encryptedToken).not.toContain(
-      "glpat-preflight-only",
-    );
-    await store.completeSourcePreflight(
-      queued.preflight.id,
-      claimed!.attempts,
-      {
-        sourcePath: "/data/preflights/source",
-        commitSha: "abc123",
-        summary: { eveVersion: "0.29.4", layout: "single-agent" },
-      },
-    );
+    expect(claimed?.gitCredential?.encryptedToken).not.toContain("glpat-preflight-only");
+    await store.completeSourcePreflight(queued.preflight.id, claimed!.attempts, {
+      sourcePath: "/data/preflights/source",
+      commitSha: "abc123",
+      summary: { eveVersion: "0.29.4", layout: "single-agent" },
+    });
 
-    const statusResponse = await app.request(
-      `/source-preflights/${queued.preflight.id}`,
-    );
+    const statusResponse = await app.request(`/source-preflights/${queued.preflight.id}`);
     expect(statusResponse.status).toBe(200);
     await expect(statusResponse.json()).resolves.toEqual({
       preflight: expect.objectContaining({
@@ -275,10 +261,7 @@ describe("api app", () => {
     };
     expect(created.project.name).toBe("validated-agent");
     const secretRecords = await store.listSecretRecords(created.project.id);
-    expect(secretRecords.map((secret) => secret.key)).toEqual([
-      "OPENAI_API_KEY",
-      "MODEL_NAME",
-    ]);
+    expect(secretRecords.map((secret) => secret.key)).toEqual(["OPENAI_API_KEY", "MODEL_NAME"]);
     expect(secretRecords.map((secret) => secret.kind)).toEqual(["secret", "variable"]);
     expect(
       secretRecords.map((secret) =>
@@ -357,9 +340,7 @@ describe("api app", () => {
         encryptedToken: expect.any(String),
       },
     });
-    expect(JSON.stringify(job?.payload)).not.toContain(
-      "glpat-first-import-secret",
-    );
+    expect(JSON.stringify(job?.payload)).not.toContain("glpat-first-import-secret");
     await expect(
       store.getGitCredential("user_local_admin", "gitlab.example.com"),
     ).resolves.toBeNull();
@@ -407,11 +388,7 @@ describe("api app", () => {
       "gitlab.example.com",
       "encrypted-token",
     );
-    await store.upsertGitCredential(
-      "another_user",
-      "gitlab.example.com",
-      "other-token",
-    );
+    await store.upsertGitCredential("another_user", "gitlab.example.com", "other-token");
     const app = createApp(store);
 
     const list = await app.request("/git-credentials");
@@ -480,23 +457,15 @@ describe("api app", () => {
       hostPort: 41000,
       runtimeKind: "docker",
     });
-    await store.ensureDeploymentRoutes(
-      project.id,
-      deployment.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/endpoints`,
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/endpoints`);
 
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toEqual({
       stable: `http://${project.slug}.agent.localhost:4080`,
-      previews: [
-        `http://${deployment.deploymentKey}--${project.slug}.agent.localhost:4080`,
-      ],
+      previews: [`http://${deployment.deploymentKey}--${project.slug}.agent.localhost:4080`],
     });
     expect(JSON.stringify(body)).not.toContain("41000");
   });
@@ -527,11 +496,7 @@ describe("api app", () => {
         hostPort: 41000 + index,
         runtimeKind: "docker",
       });
-      await store.ensureDeploymentRoutes(
-        project.id,
-        deployment.id,
-        "agent.localhost",
-      );
+      await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
       deploymentKeys.push(deployment.deploymentKey);
     }
     const deployed = await store.listDeployments(project.id);
@@ -539,9 +504,7 @@ describe("api app", () => {
     const archived = deployed[2]!;
     await store.updateDeploymentStatus(archived.id, "archived");
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/endpoints`,
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/endpoints`);
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { previews: string[] };
@@ -590,11 +553,7 @@ describe("api app", () => {
       hostPort: 41002,
       runtimeKind: "docker",
     });
-    await store.ensureDeploymentRoutes(
-      project.id,
-      second.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
     const app = createApp(store, {
       invalidateGatewayRoutes: async (hostnames) => {
         invalidated.push(hostnames);
@@ -602,9 +561,7 @@ describe("api app", () => {
     });
     const stable = await store.findProjectRoute(project.id);
     const preview = (await store.listProjectRoutes(project.id)).find(
-      (route) =>
-        route.kind === "deployment" &&
-        route.targets[0]?.deploymentId === first.id,
+      (route) => route.kind === "deployment" && route.targets[0]?.deploymentId === first.id,
     );
     const mutatePreview = await app.request(
       `/projects/${project.id}/routes/${preview!.id}/targets`,
@@ -612,52 +569,42 @@ describe("api app", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          targets: [
-            { deploymentId: second.id, weight: 10_000, variantName: "mutable" },
-          ],
+          targets: [{ deploymentId: second.id, weight: 10_000, variantName: "mutable" }],
         }),
       },
     );
     expect(mutatePreview.status).toBe(409);
 
-    const split = await app.request(
-      `/projects/${project.id}/routes/${stable!.id}/targets`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          targets: [
-            { deploymentId: first.id, weight: 9_000, variantName: "control" },
-            {
-              deploymentId: second.id,
-              weight: 1_000,
-              variantName: "candidate",
-            },
-          ],
-        }),
-      },
-    );
+    const split = await app.request(`/projects/${project.id}/routes/${stable!.id}/targets`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        targets: [
+          { deploymentId: first.id, weight: 9_000, variantName: "control" },
+          {
+            deploymentId: second.id,
+            weight: 1_000,
+            variantName: "candidate",
+          },
+        ],
+      }),
+    });
     expect(split.status).toBe(200);
     await expect(split.json()).resolves.toMatchObject({
       route: { policyRevision: 2 },
     });
 
-    const promote = await app.request(
-      `/projects/${project.id}/deployments/${second.id}/promote`,
-      { method: "POST" },
-    );
+    const promote = await app.request(`/projects/${project.id}/deployments/${second.id}/promote`, {
+      method: "POST",
+    });
     expect(promote.status).toBe(200);
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
-      { id: second.id },
-    );
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: second.id });
     const alias = await app.request(`/projects/${project.id}/aliases`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         alias: "canary",
-        targets: [
-          { deploymentId: second.id, weight: 10_000, variantName: "canary" },
-        ],
+        targets: [{ deploymentId: second.id, weight: 10_000, variantName: "canary" }],
       }),
     });
     expect(alias.status).toBe(201);
@@ -703,11 +650,7 @@ describe("api app", () => {
       hostPort: 41202,
       runtimeKind: "docker",
     });
-    await store.ensureDeploymentRoutes(
-      project.id,
-      second.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
     const stable = await store.findProjectRoute(project.id);
     await store.updateRouteTargets(stable!.id, [
       { deploymentId: first.id, weight: 0, variantName: "control" },
@@ -724,9 +667,7 @@ describe("api app", () => {
       deployment: { id: first.id, status: "draining" },
     });
     await expect(
-      store.findRouteByHostname(
-        `${first.deploymentKey}--${project.slug}.agent.localhost`,
-      ),
+      store.findRouteByHostname(`${first.deploymentKey}--${project.slug}.agent.localhost`),
     ).resolves.toMatchObject({
       kind: "deployment",
       targets: [
@@ -756,19 +697,19 @@ describe("api app", () => {
     });
     const deployments = [];
     for (let index = 0; index < 4; index += 1) {
-      deployments.push(await store.recordDeployment({
-        projectId: project.id,
-        sourceRevisionId: revision.id,
-        imageTag: `expired-retention-${index}`,
-        summary:
-          index === 0
-            ? { summarySource: "build-manifest", eveVersionResolved: "0.29.4" }
-            : null,
-        containerName: `expired-retention-${index}`,
-        internalPort: 3000,
-        hostPort: 41210 + index,
-        runtimeKind: "docker",
-      }));
+      deployments.push(
+        await store.recordDeployment({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          imageTag: `expired-retention-${index}`,
+          summary:
+            index === 0 ? { summarySource: "build-manifest", eveVersionResolved: "0.29.4" } : null,
+          containerName: `expired-retention-${index}`,
+          internalPort: 3000,
+          hostPort: 41210 + index,
+          runtimeKind: "docker",
+        }),
+      );
     }
     const [stableRoute] = await store.ensureDeploymentRoutes(
       project.id,
@@ -845,11 +786,7 @@ describe("api app", () => {
       hostPort: 41301,
       runtimeKind: "docker",
     });
-    await store.ensureDeploymentRoutes(
-      project.id,
-      control.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, control.id, "agent.localhost");
     const candidate = await store.recordDeployment({
       projectId: project.id,
       sourceRevisionId: revision.id,
@@ -859,11 +796,7 @@ describe("api app", () => {
       hostPort: 41302,
       runtimeKind: "docker",
     });
-    await store.ensureDeploymentRoutes(
-      project.id,
-      candidate.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, candidate.id, "agent.localhost");
     const stable = await store.findProjectRoute(project.id);
     await store.updateRouteTargets(stable!.id, [
       { deploymentId: control.id, weight: 5_000, variantName: "control" },
@@ -937,9 +870,7 @@ describe("api app", () => {
     });
     await store.completeSession(candidateSession.id, { status: "failed" });
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/variant-metrics`,
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/variant-metrics`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -1000,22 +931,15 @@ describe("api app", () => {
       throw new Error("Expected a source import job.");
     }
     const sourcePath = job.payload.sourcePath;
-    expect(sourcePath).toEqual(
-      expect.stringContaining(path.join(dataDir, "uploads")),
-    );
+    expect(sourcePath).toEqual(expect.stringContaining(path.join(dataDir, "uploads")));
     await expect(
-      readFile(
-        path.join(String(sourcePath), "agent", "instructions.md"),
-        "utf8",
-      ),
+      readFile(path.join(String(sourcePath), "agent", "instructions.md"), "utf8"),
     ).resolves.toBe("You are a helpful test agent.");
   });
 
   test("queues a Zip source preflight without creating a Project", async () => {
     const store = createTestStore();
-    const dataDir = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-api-preflight-"),
-    );
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-preflight-"));
     const archivePath = await createZipArchiveFixture({
       wrappedDirectory: "validated",
     });
@@ -1025,25 +949,17 @@ describe("api app", () => {
     const form = new FormData();
     form.set("archive", archive);
 
-    const response = await createApp(store, { dataDir }).request(
-      "/source-preflights",
-      {
-        method: "POST",
-        body: form,
-      },
-    );
+    const response = await createApp(store, { dataDir }).request("/source-preflights", {
+      method: "POST",
+      body: form,
+    });
 
     expect(response.status).toBe(202);
     await expect(store.listProjects()).resolves.toEqual([]);
-    const claimed = await store.claimNextSourcePreflight(
-      "zip-preflight-worker",
-    );
+    const claimed = await store.claimNextSourcePreflight("zip-preflight-worker");
     expect(claimed).toMatchObject({ kind: "zip", status: "running" });
     await expect(
-      readFile(
-        path.join(claimed!.sourcePath!, "agent", "instructions.md"),
-        "utf8",
-      ),
+      readFile(path.join(claimed!.sourcePath!, "agent", "instructions.md"), "utf8"),
     ).resolves.toBe("You are a helpful test agent.");
     await rm(dataDir, { recursive: true, force: true });
   });
@@ -1073,9 +989,9 @@ describe("api app", () => {
       throw new Error("Expected a source import job.");
     }
     const sourcePath = String(job.payload.sourcePath);
-    await expect(
-      readFile(path.join(sourcePath, "agent", "instructions.md"), "utf8"),
-    ).resolves.toBe("You are a helpful test agent.");
+    await expect(readFile(path.join(sourcePath, "agent", "instructions.md"), "utf8")).resolves.toBe(
+      "You are a helpful test agent.",
+    );
     expect(sourcePath.endsWith(`${path.sep}helloworld`)).toBe(true);
   });
 
@@ -1109,7 +1025,9 @@ describe("zip upload hardening", () => {
     const store = createTestStore();
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
     const archivePath = await createSymlinkZipArchiveFixture();
-    const archive = new File([await readFile(archivePath)], "evil.zip", { type: "application/zip" });
+    const archive = new File([await readFile(archivePath)], "evil.zip", {
+      type: "application/zip",
+    });
     const form = new FormData();
     form.set("name", "evil-agent");
     form.set("archive", archive);
@@ -1131,7 +1049,9 @@ describe("zip upload hardening", () => {
     const store = createTestStore();
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
     const archivePath = await createSymlinkZipArchiveFixture();
-    const archive = new File([await readFile(archivePath)], "evil.zip", { type: "application/zip" });
+    const archive = new File([await readFile(archivePath)], "evil.zip", {
+      type: "application/zip",
+    });
     const form = new FormData();
     form.set("archive", archive);
     const app = createApp(store, { dataDir });
@@ -1148,7 +1068,9 @@ describe("zip upload hardening", () => {
       const store = createTestStore();
       const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-api-data-"));
       const archivePath = await createZipArchiveFixture();
-      const archive = new File([await readFile(archivePath)], "agent.zip", { type: "application/zip" });
+      const archive = new File([await readFile(archivePath)], "agent.zip", {
+        type: "application/zip",
+      });
       const form = new FormData();
       form.set("name", "big-agent");
       form.set("archive", archive);
@@ -1197,10 +1119,9 @@ describe("promote failure handling", () => {
     const { store, project } = await promotableFixture();
     const app = createApp(store, { invalidateGatewayRoutes: async () => {} });
 
-    const response = await app.request(
-      `/projects/${project.id}/deployments/dep_missing/promote`,
-      { method: "POST" },
-    );
+    const response = await app.request(`/projects/${project.id}/deployments/dep_missing/promote`, {
+      method: "POST",
+    });
 
     expect(response.status).toBe(404);
   });

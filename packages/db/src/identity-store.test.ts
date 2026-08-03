@@ -44,14 +44,16 @@ describe("Identity store", () => {
       displayName: "Internal Members",
       securityRevision: 2,
     });
-    await expect(store.updateIdentityProviderConnection({
-      id: connection.id,
-      expectedSecurityRevision: 2,
-      displayName: "Invalid Realm Rewrite",
-      internalRealmKey: "other-realm",
-      enabled: true,
-      securityChanged: true,
-    })).rejects.toThrow(/realm key.*immutable/i);
+    await expect(
+      store.updateIdentityProviderConnection({
+        id: connection.id,
+        expectedSecurityRevision: 2,
+        displayName: "Invalid Realm Rewrite",
+        internalRealmKey: "other-realm",
+        enabled: true,
+        securityChanged: true,
+      }),
+    ).rejects.toThrow(/realm key.*immutable/i);
 
     const secondInternal = await store.createIdentityProviderConnection({
       type: "internal",
@@ -127,23 +129,20 @@ describe("Identity store", () => {
       expiresAt: new Date("2030-01-01T00:00:00.000Z"),
     });
 
-    await expect(store.getActiveIdentitySession(
-      "sha256:session-one",
-      new Date("2029-01-01T00:00:00.000Z"),
-    )).resolves.toMatchObject({
+    await expect(
+      store.getActiveIdentitySession("sha256:session-one", new Date("2029-01-01T00:00:00.000Z")),
+    ).resolves.toMatchObject({
       id: session.id,
       identityPrincipalId: principal.id,
       activeIdentityRealmId: realm.id,
     });
-    await expect(store.getActiveIdentitySession(
-      "sha256:session-one",
-      new Date("2031-01-01T00:00:00.000Z"),
-    )).resolves.toBeNull();
+    await expect(
+      store.getActiveIdentitySession("sha256:session-one", new Date("2031-01-01T00:00:00.000Z")),
+    ).resolves.toBeNull();
     await store.revokeIdentitySession(session.id, new Date("2029-02-01T00:00:00.000Z"));
-    await expect(store.getActiveIdentitySession(
-      "sha256:session-one",
-      new Date("2029-03-01T00:00:00.000Z"),
-    )).resolves.toBeNull();
+    await expect(
+      store.getActiveIdentitySession("sha256:session-one", new Date("2029-03-01T00:00:00.000Z")),
+    ).resolves.toBeNull();
     await expect(store.getIdentityProviderConnection(connection.id)).resolves.not.toBeNull();
   });
 
@@ -171,18 +170,16 @@ describe("Identity store", () => {
       expiresAt: new Date("2030-01-01T00:00:00.000Z"),
     });
 
-    await expect(store.consumeIdentityLoginTransaction(
-      "sha256:state",
-      new Date("2029-01-01T00:00:00.000Z"),
-    )).resolves.toMatchObject({
+    await expect(
+      store.consumeIdentityLoginTransaction("sha256:state", new Date("2029-01-01T00:00:00.000Z")),
+    ).resolves.toMatchObject({
       providerConnectionId: connection.id,
       returnTargetId: target.id,
       returnPath: "/agents/agent_123",
     });
-    await expect(store.consumeIdentityLoginTransaction(
-      "sha256:state",
-      new Date("2029-01-01T00:00:00.000Z"),
-    )).resolves.toBeNull();
+    await expect(
+      store.consumeIdentityLoginTransaction("sha256:state", new Date("2029-01-01T00:00:00.000Z")),
+    ).resolves.toBeNull();
 
     await store.createIdentityLoginTransaction({
       stateHash: "sha256:expired",
@@ -194,10 +191,9 @@ describe("Identity store", () => {
       pkceVerifierEncrypted: null,
       expiresAt: new Date("2028-01-01T00:00:00.000Z"),
     });
-    await expect(store.deleteExpiredIdentityLoginTransactions(
-      new Date("2029-01-01T00:00:00.000Z"),
-      10,
-    )).resolves.toBe(1);
+    await expect(
+      store.deleteExpiredIdentityLoginTransactions(new Date("2029-01-01T00:00:00.000Z"), 10),
+    ).resolves.toBe(1);
   });
 
   test("fences OIDC credential refresh and rotates signing keys", async () => {
@@ -314,14 +310,15 @@ describe("Identity store", () => {
       securityChanged: true,
     });
 
-    await expect(store.getActiveIdentitySession(
-      "sha256:old-session",
-      new Date("2029-01-01T00:00:00.000Z"),
-    )).resolves.toBeNull();
-    await expect(store.consumeIdentityLoginTransaction(
-      "sha256:old-state",
-      new Date("2029-01-01T00:00:00.000Z"),
-    )).resolves.toBeNull();
+    await expect(
+      store.getActiveIdentitySession("sha256:old-session", new Date("2029-01-01T00:00:00.000Z")),
+    ).resolves.toBeNull();
+    await expect(
+      store.consumeIdentityLoginTransaction(
+        "sha256:old-state",
+        new Date("2029-01-01T00:00:00.000Z"),
+      ),
+    ).resolves.toBeNull();
     expect(session.revokedAt).toBeNull();
   });
 });

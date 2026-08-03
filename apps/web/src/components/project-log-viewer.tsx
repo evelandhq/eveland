@@ -6,8 +6,19 @@ import { useDisplayTimezone } from "@/components/time-zone-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -52,7 +63,9 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
             <TerminalIcon />
           </EmptyMedia>
           <EmptyTitle>No logs recorded</EmptyTitle>
-          <EmptyDescription>Output will appear here after the project starts importing.</EmptyDescription>
+          <EmptyDescription>
+            Output will appear here after the project starts importing.
+          </EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -73,7 +86,11 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
           />
           {query ? (
             <InputGroupAddon align="inline-end">
-              <InputGroupButton size="icon-xs" aria-label="Clear search" onClick={() => setQuery("")}>
+              <InputGroupButton
+                size="icon-xs"
+                aria-label="Clear search"
+                onClick={() => setQuery("")}
+              >
                 <XIcon />
               </InputGroupButton>
             </InputGroupAddon>
@@ -102,7 +119,11 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
           <Button
             variant="outline"
             size="sm"
-            aria-label={order === "desc" ? "Newest first. Switch to oldest first" : "Oldest first. Switch to newest first"}
+            aria-label={
+              order === "desc"
+                ? "Newest first. Switch to oldest first"
+                : "Oldest first. Switch to newest first"
+            }
             onClick={() => setOrder((current) => (current === "desc" ? "asc" : "desc"))}
           >
             <ChevronsUpDownIcon data-icon="inline-start" />
@@ -111,7 +132,10 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-xl border bg-card shadow-xs" aria-label="Project log stream">
+      <section
+        className="overflow-hidden rounded-xl border bg-card shadow-xs"
+        aria-label="Project log stream"
+      >
         <header className="grid grid-cols-[6.5rem_4.75rem_minmax(0,1fr)] items-center gap-3 border-b bg-muted/40 px-4 py-2 text-xs text-muted-foreground sm:grid-cols-[9.5rem_5.5rem_minmax(0,1fr)]">
           <span>Timestamp</span>
           <span>Type</span>
@@ -169,8 +193,12 @@ function ProjectLogRow({ log }: { log: LogLine }) {
         <Badge variant="outline">{log.type}</Badge>
       </span>
       <span className="flex min-w-0 items-start gap-2">
-        <span className="line-clamp-2 min-w-0 flex-1 break-words text-left leading-5">{compactLine}</span>
-        {isExpandable ? <ChevronDownIcon className="mt-0.5 shrink-0 transition-transform group-data-[panel-open]/trigger:rotate-180" /> : null}
+        <span className="line-clamp-2 min-w-0 flex-1 break-words text-left leading-5">
+          {compactLine}
+        </span>
+        {isExpandable ? (
+          <ChevronDownIcon className="mt-0.5 shrink-0 transition-transform group-data-[panel-open]/trigger:rotate-180" />
+        ) : null}
       </span>
     </>
   );
@@ -186,7 +214,9 @@ function ProjectLogRow({ log }: { log: LogLine }) {
             {row}
           </CollapsibleTrigger>
           <CollapsibleContent className="border-t bg-muted/25 px-4 py-3 sm:pl-[16rem]">
-            <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5">{log.line}</pre>
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5">
+              {log.line}
+            </pre>
           </CollapsibleContent>
         </Collapsible>
       ) : (

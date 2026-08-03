@@ -1,10 +1,14 @@
 import { describe, expect, test, vi } from "vitest";
 import { createGatewayApp } from "./app.js";
+import { AGENT_AUTH_ENVELOPE_HEADER, encodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
 import {
-  AGENT_AUTH_ENVELOPE_HEADER,
-  encodeAgentAuthEnvelope,
-} from "@eveland/core/agent-auth";
-import { activatedSessionPersistenceFailureFixture, affinitySecret, registerGatewayTestCleanup, repository, route, startUpstream } from "./app.test-support.js";
+  activatedSessionPersistenceFailureFixture,
+  affinitySecret,
+  registerGatewayTestCleanup,
+  repository,
+  route,
+  startUpstream,
+} from "./app.test-support.js";
 
 registerGatewayTestCleanup();
 
@@ -101,9 +105,7 @@ describe("Gateway", () => {
           responseBody,
         });
       const cancel = vi.spyOn(ReadableStream.prototype, "cancel");
-      const errorLog = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
+      const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
       const app = createGatewayApp(repo, {
         allowedBaseDomains: ["agent.localhost"],
         affinitySecret,
@@ -133,9 +135,7 @@ describe("Gateway", () => {
         );
         expect(cancel).toHaveBeenCalledWith(persistenceError);
         expect(activationClient.release).toHaveBeenCalledTimes(1);
-        expect(activationClient.release).toHaveBeenCalledWith(
-          "lease_persist_playground",
-        );
+        expect(activationClient.release).toHaveBeenCalledWith("lease_persist_playground");
       } finally {
         cancel.mockRestore();
         errorLog.mockRestore();
@@ -173,10 +173,7 @@ describe("Gateway", () => {
           );
           return;
         }
-        if (
-          request.method === "POST" &&
-          request.url === "/eve/v1/session/eve_stream"
-        ) {
+        if (request.method === "POST" && request.url === "/eve/v1/session/eve_stream") {
           response.writeHead(202, {
             "content-type": "application/json",
             "x-eve-session-id": "eve_stream",
@@ -189,20 +186,12 @@ describe("Gateway", () => {
           );
           return;
         }
-        if (
-          request.method === "POST" &&
-          request.url === "/eve/v1/session/eve_stream/cancel"
-        ) {
+        if (request.method === "POST" && request.url === "/eve/v1/session/eve_stream/cancel") {
           response.writeHead(202, { "content-type": "application/json" });
-          response.end(
-            JSON.stringify({ sessionId: "eve_stream", status: "accepted" }),
-          );
+          response.end(JSON.stringify({ sessionId: "eve_stream", status: "accepted" }));
           return;
         }
-        if (
-          request.method === "POST" &&
-          request.url === "/eve/v1/session/reset"
-        ) {
+        if (request.method === "POST" && request.url === "/eve/v1/session/reset") {
           response.writeHead(200, { "content-type": "application/json" });
           response.end(
             JSON.stringify({
@@ -236,9 +225,7 @@ describe("Gateway", () => {
         response.writeHead(404).end();
       });
     });
-    const repo = repository([
-      route({ hostPort: upstream.port, deploymentStatus: "stopped" }),
-    ]);
+    const repo = repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]);
     const activationClient = {
       activate: vi.fn(
         async (
@@ -363,9 +350,7 @@ describe("Gateway", () => {
       previousSessionId: "eve_stream",
       status: "reset",
     });
-    expect(new TextDecoder().decode(first.value)).toContain(
-      "reasoning.appended",
-    );
+    expect(new TextDecoder().decode(first.value)).toContain("reasoning.appended");
     expect(stream.headers.get("x-eve-stream-tail-index")).toBe("3");
     expect(Date.now() - startedAt).toBeLessThan(200);
     await reader.cancel();
@@ -419,19 +404,13 @@ describe("Gateway", () => {
       expect.any(AbortSignal),
     );
     expect(
-      activationClient.activate.mock.calls.filter(
-        ([input]) => input.kind === "turn",
-      ),
+      activationClient.activate.mock.calls.filter(([input]) => input.kind === "turn"),
     ).toHaveLength(4);
   });
 
   test("invalidates cached Host resolution through the service-authenticated control path", async () => {
-    const first = await startUpstream((_request, response) =>
-      response.end("first"),
-    );
-    const second = await startUpstream((_request, response) =>
-      response.end("second"),
-    );
+    const first = await startUpstream((_request, response) => response.end("first"));
+    const second = await startUpstream((_request, response) => response.end("second"));
     const routes = [route({ hostPort: first.port })];
     const app = createGatewayApp(repository(routes), {
       allowedBaseDomains: ["agent.localhost"],
@@ -455,17 +434,14 @@ describe("Gateway", () => {
         })
       ).text(),
     ).resolves.toBe("first");
-    const invalidate = await app.request(
-      "http://gateway/internal/cache/invalidate",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer service-secret",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ hostname: "p-alpha.agent.localhost" }),
+    const invalidate = await app.request("http://gateway/internal/cache/invalidate", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer service-secret",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({ hostname: "p-alpha.agent.localhost" }),
+    });
     expect(invalidate.status).toBe(200);
     await expect(
       (
@@ -494,14 +470,11 @@ describe("Gateway", () => {
       });
       response.end(JSON.stringify({ sessionId: `eve_${requests.length}` }));
     });
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      {
-        allowedBaseDomains: ["agent.localhost"],
-        affinitySecret,
-        internalServiceToken: "service-secret",
-      },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+    });
     const canonical = encodeAgentAuthEnvelope({
       version: 1,
       authority: "canonical",

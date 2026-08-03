@@ -36,50 +36,94 @@ import type {
   TeamMember as Member,
 } from "@eveland/core/contracts";
 
-const apiBaseUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const apiBaseUrl =
+  process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export type ProjectListItem = Project & { eveVersion: EveVersionInfo };
 
-export const getProjects = () => apiGet<{ projects: ProjectListItem[] }>("/projects").then((data) => data.projects);
-export const getProject = (projectId: string) => apiGet<{ project: Project | null }>(`/projects/${projectId}`).then((data) => data.project);
-export const getProjectJobs = (projectId: string) => apiGet<{ jobs: Job[] }>(`/projects/${projectId}/jobs`).then((data) => data.jobs);
+export const getProjects = () =>
+  apiGet<{ projects: ProjectListItem[] }>("/projects").then((data) => data.projects);
+export const getProject = (projectId: string) =>
+  apiGet<{ project: Project | null }>(`/projects/${projectId}`).then((data) => data.project);
+export const getProjectJobs = (projectId: string) =>
+  apiGet<{ jobs: Job[] }>(`/projects/${projectId}/jobs`).then((data) => data.jobs);
 export const getAgentEndpoints = (projectId: string) =>
-  apiGetOptional<AgentEndpoints>(`/projects/${projectId}/endpoints`).then((data) => data ?? { stable: null, previews: [] });
+  apiGetOptional<AgentEndpoints>(`/projects/${projectId}/endpoints`).then(
+    (data) => data ?? { stable: null, previews: [] },
+  );
 export const getEveVersion = (projectId: string) =>
-  apiGet<{ eveVersion: EveVersionInfo }>(`/projects/${projectId}/eve-version`).then((data) => data.eveVersion);
-export const getDeploymentOverview = (projectId: string) => apiGet<DeploymentOverview>(`/projects/${projectId}/deployments`);
-export const getSecrets = (projectId: string) => apiGet<{ secrets: PublicSecret[] }>(`/projects/${projectId}/secrets`).then((data) => data.secrets);
+  apiGet<{ eveVersion: EveVersionInfo }>(`/projects/${projectId}/eve-version`).then(
+    (data) => data.eveVersion,
+  );
+export const getDeploymentOverview = (projectId: string) =>
+  apiGet<DeploymentOverview>(`/projects/${projectId}/deployments`);
+export const getSecrets = (projectId: string) =>
+  apiGet<{ secrets: PublicSecret[] }>(`/projects/${projectId}/secrets`).then(
+    (data) => data.secrets,
+  );
 export const getSchedules = (projectId: string) =>
-  apiGet<{ schedules: ProjectScheduleSummary[] }>(`/projects/${projectId}/schedules`).then((data) => data.schedules);
-export const getScheduleRuns = (projectId: string, filters: Record<string, string | undefined> = {}) =>
-  apiGet<{ runs: ScheduleRun[]; nextCursor: string | null }>(`/projects/${projectId}/schedule-runs${queryString(filters)}`);
+  apiGet<{ schedules: ProjectScheduleSummary[] }>(`/projects/${projectId}/schedules`).then(
+    (data) => data.schedules,
+  );
+export const getScheduleRuns = (
+  projectId: string,
+  filters: Record<string, string | undefined> = {},
+) =>
+  apiGet<{ runs: ScheduleRun[]; nextCursor: string | null }>(
+    `/projects/${projectId}/schedule-runs${queryString(filters)}`,
+  );
 export const getScheduleRun = (scheduleRunId: string) =>
   apiGet<{ run: ScheduleRunDetail }>(`/schedule-runs/${scheduleRunId}`).then((data) => data.run);
 export const getSessions = (projectId: string, filters: Record<string, string | undefined> = {}) =>
-  apiGet<{ sessions: Session[]; nextCursor: string | null }>(`/projects/${projectId}/sessions${queryString(filters)}`).then((data) => data.sessions);
-export const getSessionsPage = (projectId: string, filters: Record<string, string | undefined> = {}) =>
-  apiGet<{ sessions: Session[]; nextCursor: string | null }>(`/projects/${projectId}/sessions${queryString(filters)}`);
+  apiGet<{ sessions: Session[]; nextCursor: string | null }>(
+    `/projects/${projectId}/sessions${queryString(filters)}`,
+  ).then((data) => data.sessions);
+export const getSessionsPage = (
+  projectId: string,
+  filters: Record<string, string | undefined> = {},
+) =>
+  apiGet<{ sessions: Session[]; nextCursor: string | null }>(
+    `/projects/${projectId}/sessions${queryString(filters)}`,
+  );
 export const getUsageAnalytics = (filters: { range: UsageRange; modelId?: string }) =>
   apiGet<{ usage: UsageAnalytics }>(`/usage${queryString(filters)}`).then((data) => data.usage);
 export const getProjectUsageAnalytics = (
   projectId: string,
   filters: { range: UsageRange; modelId?: string },
 ) =>
-  apiGet<{ usage: UsageAnalytics }>(`/projects/${projectId}/usage${queryString(filters)}`).then((data) => data.usage);
-export const getSession = (sessionId: string) => apiGet<{ session: Session }>(`/sessions/${sessionId}`).then((data) => data.session);
-export const getSessionEvents = (sessionId: string) => apiGet<{ events: SessionEvent[] }>(`/sessions/${sessionId}/events`).then((data) => data.events);
-export const getSessionUsage = (sessionId: string) => apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`).then((data) => data.usage);
-export const getSessionNodes = (sessionId: string) => apiGet<{ nodes: SessionNode[] }>(`/sessions/${sessionId}/nodes`).then((data) => data.nodes);
-export const getLogs = (projectId: string) => apiGet<{ logs: LogLine[] }>(`/projects/${projectId}/logs`).then((data) => data.logs);
-export const getSourceRevision = (projectId: string) => apiGet<{ revision: SourceRevision | null }>(`/projects/${projectId}/source/revision`).then((data) => data.revision);
-export const getSourceFiles = (projectId: string) => apiGet<{ files: SourceFile[] }>(`/projects/${projectId}/source/files`).then((data) => data.files);
-export const getSourceFile = (projectId: string, filePath: string) => apiGet<{ file: SourceFile | null }>(`/projects/${projectId}/source/file?path=${encodeURIComponent(filePath)}`).then((data) => data.file);
-export const getCurrentMember = () => apiGet<{ member: CurrentMember }>("/auth/session").then((data) => data.member);
+  apiGet<{ usage: UsageAnalytics }>(`/projects/${projectId}/usage${queryString(filters)}`).then(
+    (data) => data.usage,
+  );
+export const getSession = (sessionId: string) =>
+  apiGet<{ session: Session }>(`/sessions/${sessionId}`).then((data) => data.session);
+export const getSessionEvents = (sessionId: string) =>
+  apiGet<{ events: SessionEvent[] }>(`/sessions/${sessionId}/events`).then((data) => data.events);
+export const getSessionUsage = (sessionId: string) =>
+  apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`).then((data) => data.usage);
+export const getSessionNodes = (sessionId: string) =>
+  apiGet<{ nodes: SessionNode[] }>(`/sessions/${sessionId}/nodes`).then((data) => data.nodes);
+export const getLogs = (projectId: string) =>
+  apiGet<{ logs: LogLine[] }>(`/projects/${projectId}/logs`).then((data) => data.logs);
+export const getSourceRevision = (projectId: string) =>
+  apiGet<{ revision: SourceRevision | null }>(`/projects/${projectId}/source/revision`).then(
+    (data) => data.revision,
+  );
+export const getSourceFiles = (projectId: string) =>
+  apiGet<{ files: SourceFile[] }>(`/projects/${projectId}/source/files`).then((data) => data.files);
+export const getSourceFile = (projectId: string, filePath: string) =>
+  apiGet<{ file: SourceFile | null }>(
+    `/projects/${projectId}/source/file?path=${encodeURIComponent(filePath)}`,
+  ).then((data) => data.file);
+export const getCurrentMember = () =>
+  apiGet<{ member: CurrentMember }>("/auth/session").then((data) => data.member);
 export const getCurrentMemberOrNull = () =>
-  apiGet<{ member: CurrentMember }>("/auth/session", { unauthorized: "return-null" })
-    .then((data) => data?.member ?? null);
-export const getMembers = () => apiGet<{ members: Member[] }>("/members").then((data) => data.members);
-export const getInvitations = () => apiGet<{ invitations: Invitation[] }>("/invitations").then((data) => data.invitations);
+  apiGet<{ member: CurrentMember }>("/auth/session", { unauthorized: "return-null" }).then(
+    (data) => data?.member ?? null,
+  );
+export const getMembers = () =>
+  apiGet<{ members: Member[] }>("/members").then((data) => data.members);
+export const getInvitations = () =>
+  apiGet<{ invitations: Invitation[] }>("/invitations").then((data) => data.invitations);
 export const getApiBuildInfo = () => apiGet<{ ok: true } & EvelandBuildInfo>("/health");
 export const getSystemConfigurationDiagnostics = () =>
   apiGet<SystemConfigurationDiagnostics>("/system/configuration");
@@ -88,19 +132,23 @@ export const getObservabilitySettings = () =>
 export const getInstanceHealth = (hours = 24) =>
   apiGet<InstanceHealthReport>(`/system/health?hours=${encodeURIComponent(hours)}`);
 export const getGitCredentials = () =>
-  apiGet<{ credentials: PublicGitCredential[] }>("/git-credentials").then((data) => data.credentials);
+  apiGet<{ credentials: PublicGitCredential[] }>("/git-credentials").then(
+    (data) => data.credentials,
+  );
 export const getSharedAgentEnvironment = () =>
-  apiGet<{ environment: SharedAgentEnvironment | null }>("/platform/shared-agent-environment")
-    .then((data) => data.environment);
+  apiGet<{ environment: SharedAgentEnvironment | null }>("/platform/shared-agent-environment").then(
+    (data) => data.environment,
+  );
 export const getIdentityProviders = () =>
-  apiGet<{ providers: PublicIdentityProvider[] }>("/system/identity/providers")
-    .then((data) => data.providers);
+  apiGet<{ providers: PublicIdentityProvider[] }>("/system/identity/providers").then(
+    (data) => data.providers,
+  );
 export const getIdentityRealms = () =>
-  apiGet<{ realms: IdentityRealm[] }>("/system/identity/realms")
-    .then((data) => data.realms);
+  apiGet<{ realms: IdentityRealm[] }>("/system/identity/realms").then((data) => data.realms);
 export const getIdentityReturnTargets = () =>
-  apiGet<{ targets: IdentityReturnTarget[] }>("/system/identity/return-targets")
-    .then((data) => data.targets);
+  apiGet<{ targets: IdentityReturnTarget[] }>("/system/identity/return-targets").then(
+    (data) => data.targets,
+  );
 function queryString(filters: Record<string, string | undefined>): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);

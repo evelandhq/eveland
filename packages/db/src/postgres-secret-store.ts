@@ -84,9 +84,7 @@ export function createPostgresSecretStore({ db }: PostgresStoreContext): SecretS
         .set({
           key: input.key,
           kind: input.kind,
-          ...(input.encryptedValue !== undefined
-            ? { encryptedValue: input.encryptedValue }
-            : {}),
+          ...(input.encryptedValue !== undefined ? { encryptedValue: input.encryptedValue } : {}),
           updatedAt: new Date(),
         })
         .where(and(eq(secrets.projectId, projectId), eq(secrets.id, secretId)))
@@ -103,10 +101,7 @@ export function createPostgresSecretStore({ db }: PostgresStoreContext): SecretS
     },
 
     async listSecretRecords(projectId) {
-      const rows = await db
-        .select()
-        .from(secrets)
-        .where(eq(secrets.projectId, projectId));
+      const rows = await db.select().from(secrets).where(eq(secrets.projectId, projectId));
       return rows.map(secretRowToSecretRecord);
     },
 

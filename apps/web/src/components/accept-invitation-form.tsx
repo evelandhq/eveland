@@ -42,7 +42,15 @@ export function AcceptInvitationForm({ token }: { token: string }) {
         </Field>
         <Field data-invalid={Boolean(error)}>
           <FieldLabel htmlFor="new-password">Password</FieldLabel>
-          <Input id="new-password" name="password" type="password" minLength={12} autoComplete="new-password" aria-invalid={Boolean(error)} required />
+          <Input
+            id="new-password"
+            name="password"
+            type="password"
+            minLength={12}
+            autoComplete="new-password"
+            aria-invalid={Boolean(error)}
+            required
+          />
           <FieldDescription>Use at least 12 characters.</FieldDescription>
           {error ? <FieldError>{error}</FieldError> : null}
         </Field>

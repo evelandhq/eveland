@@ -39,9 +39,13 @@ describe("control-plane responses redact internal fields", () => {
       sessions: await serializedBody(await app.request(`/projects/${project.id}/sessions`)),
       usage: await serializedBody(await app.request("/usage")),
       projectUsage: await serializedBody(await app.request(`/projects/${project.id}/usage`)),
-      scheduleRuns: await serializedBody(await app.request(`/projects/${project.id}/schedule-runs`)),
+      scheduleRuns: await serializedBody(
+        await app.request(`/projects/${project.id}/schedule-runs`),
+      ),
       scheduleRunDetail: await serializedBody(await app.request(`/schedule-runs/${run.id}`)),
-      sourceRevision: await serializedBody(await app.request(`/projects/${project.id}/source/revision`)),
+      sourceRevision: await serializedBody(
+        await app.request(`/projects/${project.id}/source/revision`),
+      ),
       deployments: await serializedBody(await app.request(`/projects/${project.id}/deployments`)),
       projects: await serializedBody(await app.request("/projects")),
       schedules: await serializedBody(await app.request(`/projects/${project.id}/schedules`)),
@@ -50,8 +54,12 @@ describe("control-plane responses redact internal fields", () => {
       for (const key of FORBIDDEN_KEYS) {
         expect.soft(body, `${route} must not serialize ${key}`).not.toContain(key);
       }
-      expect.soft(body, `${route} must not leak the continuation token`).not.toContain(CONTINUATION_TOKEN);
-      expect.soft(body, `${route} must not leak the host source path`).not.toContain(HOST_SOURCE_PATH);
+      expect
+        .soft(body, `${route} must not leak the continuation token`)
+        .not.toContain(CONTINUATION_TOKEN);
+      expect
+        .soft(body, `${route} must not leak the host source path`)
+        .not.toContain(HOST_SOURCE_PATH);
     }
   });
 

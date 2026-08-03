@@ -76,7 +76,9 @@ export type PortOwnership =
 
 /** Reads a managed process's lifecycle state, plus its pre-removal forensics. */
 export type ProcessInspectionCapability = {
-  inspectProcess(processName: string): Promise<"missing" | "starting" | "ready" | "stopped" | "failed">;
+  inspectProcess(
+    processName: string,
+  ): Promise<"missing" | "starting" | "ready" | "stopped" | "failed">;
   /** Best-effort state and recent output captured before an unhealthy process is removed. */
   getProcessDiagnostics(processName: string): Promise<ProcessDiagnostics>;
 };

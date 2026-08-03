@@ -5,22 +5,14 @@ import { describe, expect, test } from "vitest";
 
 describe("Agent Catalog capability backfill migration", () => {
   test("backfills only legacy canonical Eve channel revisions and preserves existing metadata", async () => {
-    const migrationsDirectory = fileURLToPath(
-      new URL("../drizzle", import.meta.url),
-    );
+    const migrationsDirectory = fileURLToPath(new URL("../drizzle", import.meta.url));
     const migrationFile = readdirSync(migrationsDirectory).find((file) =>
       /^\d{4}_agent_catalog_capability_backfill\.sql$/.test(file),
     );
-    expect(
-      migrationFile,
-      "expected an Agent Catalog capability backfill migration",
-    ).toBeDefined();
+    expect(migrationFile, "expected an Agent Catalog capability backfill migration").toBeDefined();
     if (!migrationFile) return;
 
-    const migration = readFileSync(
-      `${migrationsDirectory}/${migrationFile}`,
-      "utf8",
-    );
+    const migration = readFileSync(`${migrationsDirectory}/${migrationFile}`, "utf8");
     const client = new PGlite();
     try {
       await client.exec(`
@@ -133,12 +125,13 @@ async function seedRevision(
     content: string;
   },
 ): Promise<void> {
-  await client.query(
-    "INSERT INTO source_revisions (id, summary) VALUES ($1, $2::jsonb)",
-    [input.id, JSON.stringify(input.summary)],
-  );
-  await client.query(
-    "INSERT INTO source_files (revision_id, path, content) VALUES ($1, $2, $3)",
-    [input.id, input.path, input.content],
-  );
+  await client.query("INSERT INTO source_revisions (id, summary) VALUES ($1, $2::jsonb)", [
+    input.id,
+    JSON.stringify(input.summary),
+  ]);
+  await client.query("INSERT INTO source_files (revision_id, path, content) VALUES ($1, $2, $3)", [
+    input.id,
+    input.path,
+    input.content,
+  ]);
 }

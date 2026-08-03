@@ -4,7 +4,11 @@ import { createTestStore } from "./vitest-store.js";
 describe("Agent Connection store", () => {
   test("creates one managed Agent Connection per Project", async () => {
     const store = createTestStore();
-    const project = await store.createProject({ name: "protected-agent", importKind: "git", gitUrl: "https://example.com/agent.git" });
+    const project = await store.createProject({
+      name: "protected-agent",
+      importKind: "git",
+      gitUrl: "https://example.com/agent.git",
+    });
 
     const connection = await store.createAgentConnection({
       target: { kind: "managed-project", projectId: project.id },
@@ -20,11 +24,13 @@ describe("Agent Connection store", () => {
       securityRevision: 1,
     });
     await expect(store.getProjectAgentConnection(project.id)).resolves.toEqual(connection);
-    await expect(store.createAgentConnection({
-      target: { kind: "managed-project", projectId: project.id },
-      method: "none",
-      configEncrypted: "encrypted-none-config",
-    })).rejects.toThrow(/already exists/i);
+    await expect(
+      store.createAgentConnection({
+        target: { kind: "managed-project", projectId: project.id },
+        method: "none",
+        configEncrypted: "encrypted-none-config",
+      }),
+    ).rejects.toThrow(/already exists/i);
   });
 
   test("keeps the revision for a semantic no-op and increments it for a security change", async () => {
@@ -58,7 +64,10 @@ describe("Agent Connection store", () => {
       securityChanged: true,
     });
 
-    expect(unchanged).toMatchObject({ securityRevision: 1, configEncrypted: "encrypted-v1-new-iv" });
+    expect(unchanged).toMatchObject({
+      securityRevision: 1,
+      configEncrypted: "encrypted-v1-new-iv",
+    });
     expect(changed).toMatchObject({ method: "bearer", securityRevision: 2 });
     expect(stale).toBeNull();
   });
@@ -80,7 +89,12 @@ describe("Agent Connection store", () => {
       credentialKey: "default",
     };
     await store.putAgentAuthCredential({ ...key, payloadEncrypted: "token-a1", expiresAt: null });
-    await store.putAgentAuthCredential({ ...key, scopeSubject: "member-b", payloadEncrypted: "token-b1", expiresAt: null });
+    await store.putAgentAuthCredential({
+      ...key,
+      scopeSubject: "member-b",
+      payloadEncrypted: "token-b1",
+      expiresAt: null,
+    });
 
     const replaced = await store.replaceAgentAuthCredential({
       ...key,
@@ -97,7 +111,9 @@ describe("Agent Connection store", () => {
 
     expect(replaced).toMatchObject({ payloadEncrypted: "token-a2", rotationSeq: 1 });
     expect(staleRotation).toBeNull();
-    await expect(store.getAgentAuthCredential({ ...key, scopeSubject: "member-b" })).resolves.toMatchObject({
+    await expect(
+      store.getAgentAuthCredential({ ...key, scopeSubject: "member-b" }),
+    ).resolves.toMatchObject({
       payloadEncrypted: "token-b1",
       rotationSeq: 0,
     });
@@ -120,7 +136,11 @@ describe("Agent Connection store", () => {
       scopeSubject: "",
       credentialKey: "default",
     };
-    await store.putAgentAuthCredential({ ...key, payloadEncrypted: "encrypted-token", expiresAt: null });
+    await store.putAgentAuthCredential({
+      ...key,
+      payloadEncrypted: "encrypted-token",
+      expiresAt: null,
+    });
 
     await expect(store.deleteProject(project.id)).resolves.toBe(true);
     await expect(store.getAgentConnection(connection.id)).resolves.toBeNull();
@@ -143,32 +163,42 @@ describe("Agent Connection store", () => {
       scopeSubject: "member-a",
       credentialKey: "",
     };
-    await store.putAgentAuthCredential({ ...key, payloadEncrypted: "credential-v1", expiresAt: null });
-    const leaseNow = new Date("2029-01-01T00:00:00.000Z");
-    await expect(store.claimAgentAuthCredentialRefresh({
+    await store.putAgentAuthCredential({
       ...key,
-      expectedRotationSeq: 0,
-      owner: "slow-instance",
-      leaseId: "expired-lease",
-      now: leaseNow,
-      leaseUntil: new Date("2029-01-01T00:00:30.000Z"),
-    })).resolves.not.toBeNull();
-    await expect(store.completeAgentAuthCredentialRefresh({
-      ...key,
-      expectedRotationSeq: 0,
-      owner: "slow-instance",
-      leaseId: "expired-lease",
-      now: new Date("2029-01-01T00:00:31.000Z"),
-      payloadEncrypted: "late-token",
+      payloadEncrypted: "credential-v1",
       expiresAt: null,
-    })).resolves.toBeNull();
-    await expect(store.releaseAgentAuthCredentialRefresh({
-      ...key,
-      expectedRotationSeq: 0,
-      owner: "slow-instance",
-      leaseId: "expired-lease",
-      now: new Date("2029-01-01T00:00:31.000Z"),
-    })).resolves.toBeNull();
+    });
+    const leaseNow = new Date("2029-01-01T00:00:00.000Z");
+    await expect(
+      store.claimAgentAuthCredentialRefresh({
+        ...key,
+        expectedRotationSeq: 0,
+        owner: "slow-instance",
+        leaseId: "expired-lease",
+        now: leaseNow,
+        leaseUntil: new Date("2029-01-01T00:00:30.000Z"),
+      }),
+    ).resolves.not.toBeNull();
+    await expect(
+      store.completeAgentAuthCredentialRefresh({
+        ...key,
+        expectedRotationSeq: 0,
+        owner: "slow-instance",
+        leaseId: "expired-lease",
+        now: new Date("2029-01-01T00:00:31.000Z"),
+        payloadEncrypted: "late-token",
+        expiresAt: null,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      store.releaseAgentAuthCredentialRefresh({
+        ...key,
+        expectedRotationSeq: 0,
+        owner: "slow-instance",
+        leaseId: "expired-lease",
+        now: new Date("2029-01-01T00:00:31.000Z"),
+      }),
+    ).resolves.toBeNull();
     await store.createAgentAuthTransaction({
       agentConnectionId: connection.id,
       stateHash: "expired-state",
@@ -182,11 +212,17 @@ describe("Agent Connection store", () => {
       expiresAt: new Date("2031-01-01T00:00:00.000Z"),
     });
 
-    await expect(store.deleteExpiredAgentAuthTransactions(new Date("2030-01-01T00:00:00.000Z"), 10)).resolves.toBe(1);
-    await expect(store.consumeAgentAuthTransaction("expired-state", new Date("2028-01-01T00:00:00.000Z"))).resolves.toBeNull();
+    await expect(
+      store.deleteExpiredAgentAuthTransactions(new Date("2030-01-01T00:00:00.000Z"), 10),
+    ).resolves.toBe(1);
+    await expect(
+      store.consumeAgentAuthTransaction("expired-state", new Date("2028-01-01T00:00:00.000Z")),
+    ).resolves.toBeNull();
     await expect(store.deleteStaleAgentAuthCredentials(connection.id, 2)).resolves.toBe(1);
     await expect(store.getAgentAuthCredential(key)).resolves.toBeNull();
-    await expect(store.consumeAgentAuthTransaction("active-state", new Date("2030-01-01T00:00:00.000Z"))).resolves.toMatchObject({
+    await expect(
+      store.consumeAgentAuthTransaction("active-state", new Date("2030-01-01T00:00:00.000Z")),
+    ).resolves.toMatchObject({
       payloadEncrypted: "active-transaction",
     });
   });

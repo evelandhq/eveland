@@ -57,13 +57,7 @@ describe("external observability destination network policy", () => {
     ).rejects.toThrow(/HTTPS/);
   });
 
-  test.each([
-    "127.0.0.1",
-    "10.0.0.8",
-    "169.254.169.254",
-    "::1",
-    "::ffff:8.8.8.8",
-  ])(
+  test.each(["127.0.0.1", "10.0.0.8", "169.254.169.254", "::1", "::ffff:8.8.8.8"])(
     "rejects non-public resolved address %s by default",
     async (address) => {
       await expect(
@@ -74,9 +68,7 @@ describe("external observability destination network policy", () => {
             authorization: { type: "bearer", value: "secret" },
           },
           {
-            lookup: async () => [
-              { address, family: address.includes(":") ? 6 : 4 },
-            ],
+            lookup: async () => [{ address, family: address.includes(":") ? 6 : 4 }],
           },
         ),
       ).rejects.toThrow(/public IP/);
@@ -100,9 +92,7 @@ describe("external observability destination network policy", () => {
       ),
     ).resolves.toBeUndefined();
     expect(
-      parseObservabilityPrivateHostAllowlist(
-        " collector.internal,10.0.0.8,collector.internal ",
-      ),
+      parseObservabilityPrivateHostAllowlist(" collector.internal,10.0.0.8,collector.internal "),
     ).toEqual(new Set(["collector.internal", "10.0.0.8"]));
   });
 
@@ -139,8 +129,6 @@ describe("external observability destination network policy", () => {
     });
 
     expect(result.status).toBe(307);
-    expect(requests).toEqual([
-      `collector.internal:${address.port} /v1/logs`,
-    ]);
+    expect(requests).toEqual([`collector.internal:${address.port} /v1/logs`]);
   });
 });

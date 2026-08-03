@@ -12,17 +12,10 @@ export const platformObservability = startPlatformObservability({
   serviceName: "eveland-api",
   serviceVersion: buildInfo.version,
   serviceInstanceId: `${os.hostname()}:${process.pid}`,
-  environment:
-    process.env.NODE_ENV === "production" ? "production" : "development",
+  environment: process.env.NODE_ENV === "production" ? "production" : "development",
   teamId: DEFAULT_TEAM_ID,
-  otlpEndpoint:
-    process.env.EVELAND_OTLP_ENDPOINT ?? "http://127.0.0.1:4318",
+  otlpEndpoint: process.env.EVELAND_OTLP_ENDPOINT ?? "http://127.0.0.1:4318",
   otlpServiceToken: resolvePlatformOtlpServiceToken(process.env),
-  ignoredIncomingPaths: [
-    "/internal/otel/",
-    "/internal/observability/destinations/",
-  ],
-  metricExportIntervalMs: Number(
-    process.env.EVELAND_OTEL_METRIC_INTERVAL_MS ?? 60_000,
-  ),
+  ignoredIncomingPaths: ["/internal/otel/", "/internal/observability/destinations/"],
+  metricExportIntervalMs: Number(process.env.EVELAND_OTEL_METRIC_INTERVAL_MS ?? 60_000),
 });

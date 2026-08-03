@@ -36,9 +36,6 @@ export async function materializeEveFixtureDirectory(
   await cp(sourceDirectory, destinationDirectory, { recursive: true });
   const packagePath = path.join(destinationDirectory, "package.json");
   const packageJson = await readFile(packagePath, "utf8");
-  await writeFile(
-    packagePath,
-    materializeEveFixturePackageJson(packageJson, eveVersion),
-  );
+  await writeFile(packagePath, materializeEveFixturePackageJson(packageJson, eveVersion));
   return destinationDirectory;
 }

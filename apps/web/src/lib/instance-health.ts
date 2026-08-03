@@ -38,9 +38,7 @@ export function capacityTimelineScale(
   observedAt: string[],
   hours: number,
 ): { domain: [number, number]; ticks: number[] } | null {
-  const timestamps = observedAt
-    .map(Date.parse)
-    .filter((timestamp) => Number.isFinite(timestamp));
+  const timestamps = observedAt.map(Date.parse).filter((timestamp) => Number.isFinite(timestamp));
   if (timestamps.length === 0) return null;
 
   const halfHourMs = 30 * 60 * 1000;
@@ -56,10 +54,7 @@ export function capacityTimelineScale(
   return { domain: [domainStart, domainEnd], ticks };
 }
 
-export function formatCapacityTooltipTimestamp(
-  observedAt: string,
-  timeZone?: string,
-): string {
+export function formatCapacityTooltipTimestamp(observedAt: string, timeZone?: string): string {
   return formatDateTime(observedAt, timeZone, {
     month: "short",
     day: "numeric",

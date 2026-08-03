@@ -8,11 +8,7 @@ import { currentUserId } from "./app-support.js";
 // The narrow persistence port this slice actually needs.
 export type ProjectLifecycleStore = Pick<
   Store,
-  | "enqueueJob"
-  | "getGitCredential"
-  | "getProject"
-  | "listProjectJobs"
-  | "requestProjectDeletion"
+  "enqueueJob" | "getGitCredential" | "getProject" | "listProjectJobs" | "requestProjectDeletion"
 >;
 
 export function registerProjectLifecycleRoutes(input: {
@@ -36,8 +32,7 @@ export function registerProjectLifecycleRoutes(input: {
   app.delete("/projects/:projectId", async (c) => {
     const projectId = c.req.param("projectId");
     const request = await store.requestProjectDeletion(projectId);
-    if (request.outcome === "not_found")
-      return c.json({ error: "Project not found" }, 404);
+    if (request.outcome === "not_found") return c.json({ error: "Project not found" }, 404);
     if (request.outcome === "already_deleting")
       return c.json({ error: "Project is being deleted" }, 409);
     return c.json({ job: toPublicJob(request.job) }, 202);
@@ -49,9 +44,7 @@ export function registerProjectLifecycleRoutes(input: {
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
-    const deployOptions = buildDeploySchema.safeParse(
-      await c.req.json().catch(() => ({})),
-    );
+    const deployOptions = buildDeploySchema.safeParse(await c.req.json().catch(() => ({})));
     if (!deployOptions.success) {
       return c.json(
         {
@@ -74,15 +67,10 @@ export function registerProjectLifecycleRoutes(input: {
       return c.json({ error: "Project not found" }, 404);
     }
     if (project.importKind !== "git" || !project.gitUrl) {
-      return c.json(
-        { error: "Only git projects can sync source from a repository." },
-        400,
-      );
+      return c.json({ error: "Only git projects can sync source from a repository." }, 400);
     }
 
-    const syncOptions = syncSourceSchema.safeParse(
-      await c.req.json().catch(() => ({})),
-    );
+    const syncOptions = syncSourceSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!syncOptions.success) {
       return c.json(
         {
@@ -93,9 +81,7 @@ export function registerProjectLifecycleRoutes(input: {
       );
     }
     const host = normalizeGitHttpHost(project.gitUrl);
-    const storedCredential = host
-      ? await store.getGitCredential(currentUserId(c), host)
-      : null;
+    const storedCredential = host ? await store.getGitCredential(currentUserId(c), host) : null;
     const job = await store.enqueueJob(projectId, "import_source", {
       importKind: "git",
       gitUrl: project.gitUrl,

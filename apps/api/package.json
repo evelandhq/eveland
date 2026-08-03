@@ -1,8 +1,8 @@
 {
   "name": "@eveland/api",
   "version": "0.0.0",
-  "license": "AGPL-3.0-only",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "tsx watch --import=@eveland/platform-observability/register --include ../../.env --env-file=../../.env src/server.ts",

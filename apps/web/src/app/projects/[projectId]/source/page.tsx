@@ -1,19 +1,19 @@
-import { FileCodeIcon } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { FileCodeIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from '@/components/ui/empty';
-import { SourceCodeView } from '@/components/source-code-view';
-import { SourceFileTree } from '@/components/source-file-tree';
-import { getEveVersion, getSourceFiles } from '@/lib/server-api';
-import { getSourceLanguage } from '@/lib/source-language';
-import { EveVersionStatus } from '@/components/eve-version-status';
+} from "@/components/ui/empty";
+import { SourceCodeView } from "@/components/source-code-view";
+import { SourceFileTree } from "@/components/source-file-tree";
+import { getEveVersion, getSourceFiles } from "@/lib/server-api";
+import { getSourceLanguage } from "@/lib/source-language";
+import { EveVersionStatus } from "@/components/eve-version-status";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Source",
 };
@@ -27,8 +27,13 @@ export default async function SourcePage({
 }) {
   const { projectId } = await params;
   const { path } = await searchParams;
-  const [files, eveVersion] = await Promise.all([getSourceFiles(projectId), getEveVersion(projectId)]);
-  const selectedPath = files.some((file) => file.path === path) ? path ?? null : files[0]?.path ?? null;
+  const [files, eveVersion] = await Promise.all([
+    getSourceFiles(projectId),
+    getEveVersion(projectId),
+  ]);
+  const selectedPath = files.some((file) => file.path === path)
+    ? (path ?? null)
+    : (files[0]?.path ?? null);
   const selectedFile = files.find((file) => file.path === selectedPath) ?? null;
   const selectedLanguage = selectedFile ? getSourceLanguage(selectedFile.path) : null;
 
@@ -38,7 +43,7 @@ export default async function SourcePage({
         <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
           <h2 className="text-sm font-medium">Source files</h2>
           <span className="text-xs tabular-nums text-muted-foreground">
-            {files.length} {files.length === 1 ? 'file' : 'files'}
+            {files.length} {files.length === 1 ? "file" : "files"}
           </span>
         </header>
         <div className="min-h-0 flex-1 p-1.5">
@@ -58,7 +63,7 @@ export default async function SourcePage({
           <div className="flex min-w-0 items-center gap-2">
             <FileCodeIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
             <h1 className="truncate font-mono text-sm font-medium">
-              {selectedFile?.path ?? 'File content'}
+              {selectedFile?.path ?? "File content"}
             </h1>
           </div>
           {selectedFile ? (

@@ -2,8 +2,8 @@
   "name": "@eveland/architecture-tests",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "description": "Workspace-wide architecture ratchets: dependency direction, Store narrowing, import cycles, browser-safe core exports, and configuration coverage.",
+  "type": "module",
   "scripts": {
     "test": "vitest run --maxWorkers=2 --testTimeout=30000",
     "typecheck": "tsc -p tsconfig.json --noEmit"

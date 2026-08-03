@@ -27,14 +27,21 @@ describe("team management web surfaces", () => {
     if (!existsSync(fileURLToPath(newProjectFormUrl))) return;
     const newProjectForm = source("../components/new-project-flow.tsx");
     const credentialsPageUrl = new URL("./settings/git-credentials/page.tsx", import.meta.url);
-    const credentialsFormUrl = new URL("../components/git-credentials-settings.tsx", import.meta.url);
+    const credentialsFormUrl = new URL(
+      "../components/git-credentials-settings.tsx",
+      import.meta.url,
+    );
 
     expect(newProjectForm).toContain("GitLab personal access token");
     expect(newProjectForm).toContain("gitlabPat");
     expect(newProjectForm).toContain('type="password"');
     expect(existsSync(fileURLToPath(credentialsPageUrl))).toBe(true);
     expect(existsSync(fileURLToPath(credentialsFormUrl))).toBe(true);
-    if (!existsSync(fileURLToPath(credentialsPageUrl)) || !existsSync(fileURLToPath(credentialsFormUrl))) return;
+    if (
+      !existsSync(fileURLToPath(credentialsPageUrl)) ||
+      !existsSync(fileURLToPath(credentialsFormUrl))
+    )
+      return;
     expect(source("./settings/git-credentials/page.tsx")).toContain("getGitCredentials");
     const credentialsForm = source("../components/git-credentials-settings.tsx");
     expect(credentialsForm).toContain("<Card");
@@ -44,19 +51,26 @@ describe("team management web surfaces", () => {
   });
 
   test("provides one global shared Agent environment", () => {
-    const environmentPageUrl = new URL("./settings/shared-agent-environment/page.tsx", import.meta.url);
-    const environmentSettingsUrl = new URL("../components/shared-agent-environment-settings.tsx", import.meta.url);
+    const environmentPageUrl = new URL(
+      "./settings/shared-agent-environment/page.tsx",
+      import.meta.url,
+    );
+    const environmentSettingsUrl = new URL(
+      "../components/shared-agent-environment-settings.tsx",
+      import.meta.url,
+    );
 
     expect(existsSync(fileURLToPath(environmentPageUrl))).toBe(true);
     expect(existsSync(fileURLToPath(environmentSettingsUrl))).toBe(true);
     if (
       !existsSync(fileURLToPath(environmentPageUrl)) ||
       !existsSync(fileURLToPath(environmentSettingsUrl))
-    ) return;
+    )
+      return;
 
     const environmentPage = source("./settings/shared-agent-environment/page.tsx");
     expect(environmentPage).toContain("getSharedAgentEnvironment");
-    expect(environmentPage).toContain("every Agent Deployment");
+    expect(environmentPage.replace(/\s+/g, " ")).toContain("every Agent Deployment");
     const environmentSettings = source("../components/shared-agent-environment-settings.tsx");
     expect(environmentSettings).toContain("<Card");
     expect(environmentSettings).toContain("<Table");
@@ -190,7 +204,7 @@ describe("team management web surfaces", () => {
     expect(page).toContain("<ProjectSecretsSettings");
     expect(page).toContain("return <ProjectSecretsSettings");
     expect(settings).toContain('aria-labelledby="variables-secrets-heading"');
-    expect(settings).toContain(
+    expect(settings.replace(/\s+/g, " ")).toContain(
       "Values are encrypted and never returned after saving. Saving changes restarts live deployments; otherwise, they apply the next time this project starts.",
     );
     expect(settings).toContain("<Table");

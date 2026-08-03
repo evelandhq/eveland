@@ -1,14 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  ROOT_CONTEXT,
-  trace,
-  type Attributes,
-  type Span,
-} from "@opentelemetry/api";
-import {
-  SeverityNumber,
-  type LogBody,
-} from "@opentelemetry/api-logs";
+import { ROOT_CONTEXT, trace, type Attributes, type Span } from "@opentelemetry/api";
+import { SeverityNumber, type LogBody } from "@opentelemetry/api-logs";
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
 import type {
   AgentTelemetryEvent,
@@ -16,13 +8,7 @@ import type {
   RuntimeAgentPolicy,
 } from "./contracts.js";
 import { commonAttributes } from "./lifecycle.js";
-import {
-  asDate,
-  asNonNegativeInteger,
-  asRecord,
-  asString,
-  canonicalJson,
-} from "./values.js";
+import { asDate, asNonNegativeInteger, asRecord, asString, canonicalJson } from "./values.js";
 
 const collectedEventTypes = new Set([
   "session.started",
@@ -57,8 +43,7 @@ export function shouldCollectAgentTelemetryEvent(
   includeReasoning: boolean,
 ): boolean {
   return (
-    collectedEventTypes.has(eventType) ||
-    (includeReasoning && eventType === "reasoning.completed")
+    collectedEventTypes.has(eventType) || (includeReasoning && eventType === "reasoning.completed")
   );
 }
 
@@ -71,11 +56,7 @@ export function emitAgentTelemetryEventLog(input: {
   logger: ReturnType<LoggerProvider["getLogger"]>;
   policy: RuntimeAgentPolicy;
 }): void {
-  const body = sanitizeForPolicy(
-    input.event,
-    input.policy.capture,
-    input.eventType,
-  );
+  const body = sanitizeForPolicy(input.event, input.policy.capture, input.eventType);
   const eventData = asRecord(input.event.data);
   const parentSessionId = asString(input.context.session?.parent?.sessionId);
   const stepIndex = asNonNegativeInteger(eventData?.stepIndex);
@@ -92,12 +73,8 @@ export function emitAgentTelemetryEventLog(input: {
         .update("\0")
         .update(canonicalJson(body))
         .digest("hex"),
-      ...(parentSessionId
-        ? { "eveland.eve.parent_session.id": parentSessionId }
-        : {}),
-      ...(stepIndex !== undefined
-        ? { "eveland.eve.step.index": stepIndex }
-        : {}),
+      ...(parentSessionId ? { "eveland.eve.parent_session.id": parentSessionId } : {}),
+      ...(stepIndex !== undefined ? { "eveland.eve.step.index": stepIndex } : {}),
     },
   );
   const eventDate = asDate(input.event.meta?.at);
@@ -195,11 +172,7 @@ function isOutputKey(eventType: string, keyName: string): boolean {
 }
 
 function isReasoningKey(keyName: string): boolean {
-  return (
-    keyName === "reasoning" ||
-    keyName === "reasoningDelta" ||
-    keyName === "reasoningSoFar"
-  );
+  return keyName === "reasoning" || keyName === "reasoningDelta" || keyName === "reasoningSoFar";
 }
 
 function severityForEvent(eventType: string): SeverityNumber {

@@ -20,7 +20,9 @@ vi.mock("execa", () => ({
  * when a check gains another required binary (e.g. `runuser`) or user (e.g.
  * the build user) -- every name it's asked about already passes.
  */
-function makePassingDeps(env: NodeJS.ProcessEnv = { EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland" }): PreflightDeps {
+function makePassingDeps(
+  env: NodeJS.ProcessEnv = { EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland" },
+): PreflightDeps {
   return {
     env,
     platform: "linux",
@@ -53,10 +55,8 @@ describe("assertWorkerPreflight", () => {
 
     const [create, remove] = vi.mocked(execa).mock.calls.slice(-2);
     expect(create?.[0]).toBe("docker");
-    expect(create?.[1]).toEqual(
-      expect.arrayContaining(["network", "create"]),
-    );
-    const networkName = (create?.[1] as string[]).at(-1);
+    expect(create?.[1]).toEqual(expect.arrayContaining(["network", "create"]));
+    const networkName = (create![1] as string[]).at(-1);
     expect(remove).toEqual([
       "docker",
       ["network", "rm", networkName],
@@ -79,23 +79,25 @@ describe("assertWorkerPreflight", () => {
 
   test("checks Docker bridge allocation for an explicit docker runtime", async () => {
     const deps = makePassingDeps({ EVELAND_RUNTIME: "docker" });
-    await expect(assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps)).resolves.toBeUndefined();
+    await expect(
+      assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps),
+    ).resolves.toBeUndefined();
     expect(deps.probeDockerNetworkPool).toHaveBeenCalledOnce();
     expect(deps.commandExists).not.toHaveBeenCalled();
   });
 
   test("fails before deployment when Docker cannot allocate another bridge subnet", async () => {
     const deps = makePassingDeps({ EVELAND_RUNTIME: "docker" });
-    deps.probeDockerNetworkPool = vi.fn(async () =>
-      "all predefined address pools have been fully subnetted"
+    deps.probeDockerNetworkPool = vi.fn(
+      async () => "all predefined address pools have been fully subnetted",
     );
 
-    await expect(
-      assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps),
-    ).rejects.toThrow(/default-address-pools/);
-    await expect(
-      assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps),
-    ).rejects.toThrow(/fully subnetted/);
+    await expect(assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps)).rejects.toThrow(
+      /default-address-pools/,
+    );
+    await expect(assertWorkerPreflight({ EVELAND_RUNTIME: "docker" }, deps)).rejects.toThrow(
+      /fully subnetted/,
+    );
   });
 
   test("rejects an invalid APP_SECRET_KEY before a docker worker starts", async () => {
@@ -151,7 +153,9 @@ describe("assertWorkerPreflight", () => {
     };
     const deps = makePassingDeps(env);
     deps.platform = "darwin";
-    await expect(assertWorkerPreflight(env, deps)).rejects.toThrow(/^systemd runtime preflight failed:/);
+    await expect(assertWorkerPreflight(env, deps)).rejects.toThrow(
+      /^systemd runtime preflight failed:/,
+    );
   });
 
   test("uses Docker-only preflight when NODE_ENV=production but EVELAND_RUNTIME=docker is explicit", async () => {
@@ -180,7 +184,9 @@ describe("assertWorkerPreflight", () => {
     deps.platform = "darwin";
     deps.getuid = vi.fn(() => 1000);
 
-    await expect(assertWorkerPreflight(deps.env, deps)).rejects.toThrow(/^systemd runtime preflight failed:/);
+    await expect(assertWorkerPreflight(deps.env, deps)).rejects.toThrow(
+      /^systemd runtime preflight failed:/,
+    );
     try {
       await assertWorkerPreflight(deps.env, deps);
       throw new Error("expected assertWorkerPreflight to throw");
@@ -222,20 +228,34 @@ describe("collectSystemdPreflightIssues", () => {
   test("flags an unset EVELAND_DATA_DIR", async () => {
     const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd" });
     const issues = await collectSystemdPreflightIssues(deps);
-    expect(issues.some((issue) => issue.includes("EVELAND_DATA_DIR") && /not set/i.test(issue) && issue.includes("/var/lib/eveland"))).toBe(true);
+    expect(
+      issues.some(
+        (issue) =>
+          issue.includes("EVELAND_DATA_DIR") &&
+          /not set/i.test(issue) &&
+          issue.includes("/var/lib/eveland"),
+      ),
+    ).toBe(true);
   });
 
   test("flags a relative EVELAND_DATA_DIR, and skips check 9 entirely rather than mkdir-ing it relative to cwd", async () => {
-    const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "relative-data-dir" });
+    const deps = makePassingDeps({
+      EVELAND_RUNTIME: "systemd",
+      EVELAND_DATA_DIR: "relative-data-dir",
+    });
     const issues = await collectSystemdPreflightIssues(deps);
-    expect(issues.some((issue) => issue.includes("relative-data-dir") && /absolute/i.test(issue))).toBe(true);
+    expect(
+      issues.some((issue) => issue.includes("relative-data-dir") && /absolute/i.test(issue)),
+    ).toBe(true);
     expect(deps.mkdir).not.toHaveBeenCalled();
     expect(deps.canTraverseAs).not.toHaveBeenCalled();
   });
 
   test("flags each missing required binary by name", async () => {
     const deps = makePassingDeps();
-    deps.commandExists = vi.fn(async (name: string) => name !== "systemd-run" && name !== "node" && name !== "git");
+    deps.commandExists = vi.fn(
+      async (name: string) => name !== "systemd-run" && name !== "node" && name !== "git",
+    );
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("systemd-run"))).toBe(true);
     expect(issues.some((issue) => issue.includes("node"))).toBe(true);
@@ -251,7 +271,10 @@ describe("collectSystemdPreflightIssues", () => {
     const issues = await collectSystemdPreflightIssues(deps);
 
     for (const command of SANDBOX_TOOLCHAIN_COMMANDS) {
-      expect(issues.some((issue) => issue.includes(`"${command}"`)), command).toBe(true);
+      expect(
+        issues.some((issue) => issue.includes(`"${command}"`)),
+        command,
+      ).toBe(true);
     }
   });
 
@@ -277,7 +300,11 @@ describe("collectSystemdPreflightIssues", () => {
   });
 
   test("does not require bwrap when EVELAND_BUILD_SANDBOX=none", async () => {
-    const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland", EVELAND_BUILD_SANDBOX: "none" });
+    const deps = makePassingDeps({
+      EVELAND_RUNTIME: "systemd",
+      EVELAND_DATA_DIR: "/var/lib/eveland",
+      EVELAND_BUILD_SANDBOX: "none",
+    });
     const commandExists = vi.fn(async (name: string) => name !== "bwrap");
     deps.commandExists = commandExists;
     const issues = await collectSystemdPreflightIssues(deps);
@@ -293,7 +320,11 @@ describe("collectSystemdPreflightIssues", () => {
   });
 
   test("still requires runuser when EVELAND_BUILD_SANDBOX=none, unlike bwrap", async () => {
-    const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland", EVELAND_BUILD_SANDBOX: "none" });
+    const deps = makePassingDeps({
+      EVELAND_RUNTIME: "systemd",
+      EVELAND_DATA_DIR: "/var/lib/eveland",
+      EVELAND_BUILD_SANDBOX: "none",
+    });
     deps.commandExists = vi.fn(async (name: string) => name !== "runuser");
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("runuser"))).toBe(true);
@@ -307,7 +338,11 @@ describe("collectSystemdPreflightIssues", () => {
   });
 
   test("flags a missing app user using EVELAND_APP_USER when set", async () => {
-    const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland", EVELAND_APP_USER: "custom-app" });
+    const deps = makePassingDeps({
+      EVELAND_RUNTIME: "systemd",
+      EVELAND_DATA_DIR: "/var/lib/eveland",
+      EVELAND_APP_USER: "custom-app",
+    });
     deps.userExists = vi.fn(async () => false);
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("custom-app"))).toBe(true);
@@ -325,9 +360,7 @@ describe("collectSystemdPreflightIssues", () => {
 
     expect(
       issues.some(
-        (issue) =>
-          issue.includes('Access group "custom-app"') &&
-          issue.includes("--user-group"),
+        (issue) => issue.includes('Access group "custom-app"') && issue.includes("--user-group"),
       ),
     ).toBe(true);
   });
@@ -337,12 +370,21 @@ describe("collectSystemdPreflightIssues", () => {
     deps.userExists = vi.fn(async (name: string) => name !== "eveland-build");
     const issues = await collectSystemdPreflightIssues(deps);
     expect(
-      issues.some((issue) => issue.includes("eveland-build") && issue.includes("EVELAND_BUILD_USER") && issue.includes("useradd")),
+      issues.some(
+        (issue) =>
+          issue.includes("eveland-build") &&
+          issue.includes("EVELAND_BUILD_USER") &&
+          issue.includes("useradd"),
+      ),
     ).toBe(true);
   });
 
   test("flags a missing build user using EVELAND_BUILD_USER when set", async () => {
-    const deps = makePassingDeps({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland", EVELAND_BUILD_USER: "custom-build" });
+    const deps = makePassingDeps({
+      EVELAND_RUNTIME: "systemd",
+      EVELAND_DATA_DIR: "/var/lib/eveland",
+      EVELAND_BUILD_USER: "custom-build",
+    });
     deps.userExists = vi.fn(async (name: string) => name !== "custom-build");
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("custom-build"))).toBe(true);
@@ -373,7 +415,9 @@ describe("collectSystemdPreflightIssues", () => {
   test("converts a backendDistDir() throw into an issue, keeping its message", async () => {
     const deps = makePassingDeps();
     deps.backendDistDir = vi.fn(() => {
-      throw new Error("@eveland/sandbox-bwrap is not resolvable. Run `pnpm --filter @eveland/sandbox-bwrap build`.");
+      throw new Error(
+        "@eveland/sandbox-bwrap is not resolvable. Run `pnpm --filter @eveland/sandbox-bwrap build`.",
+      );
     });
     const issues = await collectSystemdPreflightIssues(deps);
     expect(issues.some((issue) => issue.includes("sandbox-bwrap build"))).toBe(true);
@@ -383,15 +427,26 @@ describe("collectSystemdPreflightIssues", () => {
     const deps = makePassingDeps();
     deps.canTraverseAs = vi.fn(async () => false);
     const issues = await collectSystemdPreflightIssues(deps);
-    expect(issues.some((issue) => /traverse/i.test(issue) && issue.includes("/var/lib/eveland"))).toBe(true);
+    expect(
+      issues.some((issue) => /traverse/i.test(issue) && issue.includes("/var/lib/eveland")),
+    ).toBe(true);
   });
 
   test("flags the build user being unable to traverse the data dir, independent of the app-user probe passing", async () => {
     const deps = makePassingDeps();
     deps.canTraverseAs = vi.fn(async (user: string) => user !== "eveland-build");
     const issues = await collectSystemdPreflightIssues(deps);
-    expect(issues.some((issue) => /traverse/i.test(issue) && issue.includes("eveland-build") && issue.includes("/var/lib/eveland"))).toBe(true);
-    expect(issues.some((issue) => /traverse/i.test(issue) && issue.includes("eveland-app"))).toBe(false);
+    expect(
+      issues.some(
+        (issue) =>
+          /traverse/i.test(issue) &&
+          issue.includes("eveland-build") &&
+          issue.includes("/var/lib/eveland"),
+      ),
+    ).toBe(true);
+    expect(issues.some((issue) => /traverse/i.test(issue) && issue.includes("eveland-app"))).toBe(
+      false,
+    );
   });
 
   test("mkdirs the data dir and probes both app-user and build-user traversal on it", async () => {
@@ -444,7 +499,9 @@ describe("collectSystemdPreflightIssues", () => {
 
     const issues = await collectSystemdPreflightIssues(deps);
 
-    expect(issues.some((issue) => issue.includes("/var/lib/eveland") && issue.includes("EACCES"))).toBe(true);
+    expect(
+      issues.some((issue) => issue.includes("/var/lib/eveland") && issue.includes("EACCES")),
+    ).toBe(true);
     expect(issues.some((issue) => /root/i.test(issue) && issue.includes("1000"))).toBe(true);
     expect(canTraverseAs).not.toHaveBeenCalled();
   });

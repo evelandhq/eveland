@@ -7,10 +7,7 @@ import {
   type AuthFn,
 } from "eve/channels/auth";
 
-type FetchLike = (
-  input: string | URL | Request,
-  init?: RequestInit,
-) => Promise<Response>;
+type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export type EvelandIdentityOptions = {
   issuer?: string;
@@ -36,16 +33,9 @@ export type EvelandAuthenticationChallenge = {
   displayName: string;
 };
 
-export function evelandIdentity(
-  options: EvelandIdentityOptions = {},
-): AuthFn<Request> {
-  const issuer = (
-    options.issuer ??
-    process.env.EVELAND_IDENTITY_ISSUER ??
-    ""
-  ).replace(/\/$/, "");
-  const projectId =
-    options.projectId ?? process.env.EVELAND_PROJECT_ID ?? "";
+export function evelandIdentity(options: EvelandIdentityOptions = {}): AuthFn<Request> {
+  const issuer = (options.issuer ?? process.env.EVELAND_IDENTITY_ISSUER ?? "").replace(/\/$/, "");
+  const projectId = options.projectId ?? process.env.EVELAND_PROJECT_ID ?? "";
   const jwksUrl =
     options.jwksUrl ??
     process.env.EVELAND_IDENTITY_JWKS_URL ??
@@ -59,13 +49,9 @@ export function evelandIdentity(
         .map((realm) => realm.trim())
         .filter(Boolean)) as readonly string[],
   );
-  let cache:
-    | { expiresAt: number; keys: Array<Record<string, unknown>> }
-    | undefined;
+  let cache: { expiresAt: number; keys: Array<Record<string, unknown>> } | undefined;
 
-  async function loadKeys(
-    force = false,
-  ): Promise<Array<Record<string, unknown>>> {
+  async function loadKeys(force = false): Promise<Array<Record<string, unknown>>> {
     if (!force && cache && cache.expiresAt > now().getTime()) {
       return cache.keys;
     }
@@ -76,18 +62,12 @@ export function evelandIdentity(
         redirect: "error",
       });
     } catch {
-      throw unavailable(
-        "Eveland Identity signing keys are temporarily unavailable.",
-      );
+      throw unavailable("Eveland Identity signing keys are temporarily unavailable.");
     }
     if (!response.ok) {
-      throw unavailable(
-        "Eveland Identity signing keys are temporarily unavailable.",
-      );
+      throw unavailable("Eveland Identity signing keys are temporarily unavailable.");
     }
-    const body = (await response.json().catch(() => null)) as
-      | { keys?: unknown }
-      | null;
+    const body = (await response.json().catch(() => null)) as { keys?: unknown } | null;
     if (!Array.isArray(body?.keys)) {
       throw unavailable("Eveland Identity signing keys are invalid.");
     }
@@ -152,10 +132,8 @@ export function evelandIdentity(
       // display name. Rejecting an otherwise valid, correctly-audienced token
       // over it turned those users into an undiagnosable 401. Its type is
       // still checked when present.
-      (claims.name !== undefined &&
-        (typeof claims.name !== "string" || !claims.name.trim())) ||
-      (claims.email !== undefined &&
-        (typeof claims.email !== "string" || !claims.email.trim())) ||
+      (claims.name !== undefined && (typeof claims.name !== "string" || !claims.name.trim())) ||
+      (claims.email !== undefined && (typeof claims.email !== "string" || !claims.email.trim())) ||
       typeof claims.iat !== "number" ||
       claims.iat > nowSeconds + 5 ||
       typeof claims.nbf !== "number" ||
@@ -211,9 +189,7 @@ export function parseEvelandAuthenticationChallenge(
   header: string | null,
 ): EvelandAuthenticationChallenge | null {
   if (!header) return null;
-  const starts = [
-    ...header.matchAll(/(?:^|,\s*)(Basic|Bearer)(?:\s+|$)/gi),
-  ];
+  const starts = [...header.matchAll(/(?:^|,\s*)(Basic|Bearer)(?:\s+|$)/gi)];
   for (let index = 0; index < starts.length; index += 1) {
     const match = starts[index]!;
     if (match[1]?.toLowerCase() !== "bearer") continue;
@@ -231,11 +207,7 @@ export function parseEvelandAuthenticationChallenge(
     } catch {
       continue;
     }
-    if (
-      (url.protocol !== "http:" && url.protocol !== "https:") ||
-      url.username ||
-      url.password
-    ) {
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
       continue;
     }
     return {
@@ -267,12 +239,8 @@ function decodeToken(token: string): {
   const parts = token.split(".");
   if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return null;
   try {
-    const header = JSON.parse(
-      Buffer.from(parts[0], "base64url").toString("utf8"),
-    ) as unknown;
-    const payload = JSON.parse(
-      Buffer.from(parts[1], "base64url").toString("utf8"),
-    ) as unknown;
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as unknown;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as unknown;
     if (
       !isRecord(header) ||
       !isRecord(payload) ||

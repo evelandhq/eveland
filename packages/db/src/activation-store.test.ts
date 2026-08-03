@@ -46,11 +46,15 @@ describe("runtime activation persistence", () => {
 
     expect(claims.filter((claim) => claim.starter)).toHaveLength(1);
     expect(new Set(claims.map((claim) => claim.runtimeInstance.id)).size).toBe(1);
-    const instance = await store.updateRuntimeInstance(claims[0]!.runtimeInstance.id, {
-      status: "ready",
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, now);
+    const instance = await store.updateRuntimeInstance(
+      claims[0]!.runtimeInstance.id,
+      {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      },
+      now,
+    );
     expect(instance).toMatchObject({ status: "ready", readyAt: now.toISOString() });
 
     await store.releaseActivationLease(claims[0]!.lease.id, now);
@@ -70,41 +74,57 @@ describe("runtime activation persistence", () => {
       expiresAt: new Date("2026-07-15T02:01:00.000Z"),
       now: startedAt,
     });
-    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
-      status: "ready",
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, startedAt);
+    await store.updateRuntimeInstance(
+      claim.runtimeInstance.id,
+      {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      },
+      startedAt,
+    );
 
-    await expect(store.renewActivationLease(
-      claim.lease.id,
-      new Date("2026-07-15T02:03:00.000Z"),
-      new Date("2026-07-15T02:00:30.000Z"),
-    )).resolves.toMatchObject({ expiresAt: "2026-07-15T02:03:00.000Z" });
+    await expect(
+      store.renewActivationLease(
+        claim.lease.id,
+        new Date("2026-07-15T02:03:00.000Z"),
+        new Date("2026-07-15T02:00:30.000Z"),
+      ),
+    ).resolves.toMatchObject({ expiresAt: "2026-07-15T02:03:00.000Z" });
     await store.releaseActivationLease(claim.lease.id, new Date("2026-07-15T02:01:30.000Z"));
-    await expect(store.renewActivationLease(
-      claim.lease.id,
-      new Date("2026-07-15T02:04:00.000Z"),
-      new Date("2026-07-15T02:02:00.000Z"),
-    )).resolves.toBeNull();
+    await expect(
+      store.renewActivationLease(
+        claim.lease.id,
+        new Date("2026-07-15T02:04:00.000Z"),
+        new Date("2026-07-15T02:02:00.000Z"),
+      ),
+    ).resolves.toBeNull();
 
-    await expect(store.claimIdleRuntimeInstances({
-      now: new Date("2026-07-15T02:02:29.999Z"),
-      idleTtlMs: 60_000,
-      limit: 10,
-    })).resolves.toEqual([]);
-    await expect(store.claimIdleRuntimeInstances({
-      now: new Date("2026-07-15T02:02:30.000Z"),
-      idleTtlMs: 60_000,
-      limit: 10,
-    })).resolves.toEqual([expect.objectContaining({ id: claim.runtimeInstance.id, status: "draining" })]);
-    await expect(store.acquireActivationLease({
-      deploymentId: deployment.id,
-      kind: "public_request",
-      ownerId: "req_during_drain",
-      expiresAt: new Date("2026-07-15T02:04:00.000Z"),
-      now: new Date("2026-07-15T02:02:31.000Z"),
-    })).rejects.toThrow(/draining/);
+    await expect(
+      store.claimIdleRuntimeInstances({
+        now: new Date("2026-07-15T02:02:29.999Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      store.claimIdleRuntimeInstances({
+        now: new Date("2026-07-15T02:02:30.000Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: claim.runtimeInstance.id, status: "draining" }),
+    ]);
+    await expect(
+      store.acquireActivationLease({
+        deploymentId: deployment.id,
+        kind: "public_request",
+        ownerId: "req_during_drain",
+        expiresAt: new Date("2026-07-15T02:04:00.000Z"),
+        now: new Date("2026-07-15T02:02:31.000Z"),
+      }),
+    ).rejects.toThrow(/draining/);
   });
 
   test("coalesces activation jobs and recovers a stale Worker claim", async () => {
@@ -131,7 +151,9 @@ describe("runtime activation persistence", () => {
       new Date("2026-07-15T04:00:01.000Z"),
     );
     expect(duplicate.id).toBe(first.id);
-    await expect(store.claimNextJob("activation-worker", new Date("2026-07-15T04:00:30.000Z"))).resolves.toMatchObject({
+    await expect(
+      store.claimNextJob("activation-worker", new Date("2026-07-15T04:00:30.000Z")),
+    ).resolves.toMatchObject({
       id: first.id,
       status: "running",
     });
@@ -152,7 +174,9 @@ describe("orphan process adoption persistence", () => {
     const store = createTestStore();
     const { deployment } = await deploymentFixture(store, "Adoptable Agent", 41991);
 
-    await expect(store.getDeploymentByContainerName(deployment.containerName)).resolves.toMatchObject({
+    await expect(
+      store.getDeploymentByContainerName(deployment.containerName),
+    ).resolves.toMatchObject({
       id: deployment.id,
     });
     await expect(store.getDeploymentByContainerName("eveland-unknown-process")).resolves.toBeNull();
@@ -163,10 +187,14 @@ describe("orphan process adoption persistence", () => {
     const { deployment } = await deploymentFixture(store, "Zombie Agent", 41992);
     const now = new Date("2026-07-16T08:00:00.000Z");
 
-    const adopted = await store.adoptRuntimeInstance(deployment.id, {
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, now);
+    const adopted = await store.adoptRuntimeInstance(
+      deployment.id,
+      {
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      },
+      now,
+    );
     expect(adopted).toMatchObject({
       deploymentId: deployment.id,
       generation: 1,
@@ -190,11 +218,13 @@ describe("orphan process adoption persistence", () => {
     expect(claim.runtimeInstance.id).toBe(adopted!.id);
     await store.releaseActivationLease(claim.lease.id, now);
 
-    await expect(store.claimIdleRuntimeInstances({
-      now: new Date("2026-07-16T08:05:00.000Z"),
-      idleTtlMs: 300_000,
-      limit: 10,
-    })).resolves.toEqual([expect.objectContaining({ id: adopted!.id, status: "draining" })]);
+    await expect(
+      store.claimIdleRuntimeInstances({
+        now: new Date("2026-07-16T08:05:00.000Z"),
+        idleTtlMs: 300_000,
+        limit: 10,
+      }),
+    ).resolves.toEqual([expect.objectContaining({ id: adopted!.id, status: "draining" })]);
   });
 
   test("refuses adoption while a live or draining instance exists and re-adopts after stop", async () => {
@@ -202,30 +232,64 @@ describe("orphan process adoption persistence", () => {
     const { deployment } = await deploymentFixture(store, "Readopt Agent", 41993);
     const now = new Date("2026-07-16T09:00:00.000Z");
 
-    const first = await store.adoptRuntimeInstance(deployment.id, {
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, now);
-    await expect(store.adoptRuntimeInstance(deployment.id, {
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, now)).resolves.toBeNull();
+    const first = await store.adoptRuntimeInstance(
+      deployment.id,
+      {
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      },
+      now,
+    );
+    await expect(
+      store.adoptRuntimeInstance(
+        deployment.id,
+        {
+          endpointHost: "127.0.0.1",
+          endpointPort: deployment.hostPort,
+        },
+        now,
+      ),
+    ).resolves.toBeNull();
 
-    await store.claimIdleRuntimeInstances({ now: new Date("2026-07-16T09:05:00.000Z"), idleTtlMs: 300_000, limit: 10 });
-    await expect(store.adoptRuntimeInstance(deployment.id, {
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, new Date("2026-07-16T09:05:01.000Z"))).resolves.toBeNull();
+    await store.claimIdleRuntimeInstances({
+      now: new Date("2026-07-16T09:05:00.000Z"),
+      idleTtlMs: 300_000,
+      limit: 10,
+    });
+    await expect(
+      store.adoptRuntimeInstance(
+        deployment.id,
+        {
+          endpointHost: "127.0.0.1",
+          endpointPort: deployment.hostPort,
+        },
+        new Date("2026-07-16T09:05:01.000Z"),
+      ),
+    ).resolves.toBeNull();
 
-    await store.updateRuntimeInstance(first!.id, { status: "stopped" }, new Date("2026-07-16T09:05:02.000Z"));
-    await expect(store.adoptRuntimeInstance(deployment.id, {
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, new Date("2026-07-16T09:06:00.000Z"))).resolves.toMatchObject({ generation: 2, status: "ready" });
+    await store.updateRuntimeInstance(
+      first!.id,
+      { status: "stopped" },
+      new Date("2026-07-16T09:05:02.000Z"),
+    );
+    await expect(
+      store.adoptRuntimeInstance(
+        deployment.id,
+        {
+          endpointHost: "127.0.0.1",
+          endpointPort: deployment.hostPort,
+        },
+        new Date("2026-07-16T09:06:00.000Z"),
+      ),
+    ).resolves.toMatchObject({ generation: 2, status: "ready" });
   });
 });
 
-async function deploymentFixture(store: ReturnType<typeof createTestStore>, name: string, hostPort: number) {
+async function deploymentFixture(
+  store: ReturnType<typeof createTestStore>,
+  name: string,
+  hostPort: number,
+) {
   const project = await store.createProject({ name, importKind: "zip" });
   const importJob = await store.claimNextJob("fixture-import");
   await store.completeJob(importJob!.id);
@@ -289,7 +353,9 @@ describe("runtime instance port reservation", () => {
       expiresAt: new Date(Date.now() + 60_000),
     });
 
-    await expect(store.reserveRuntimeInstancePort(claim.runtimeInstance.id, 41911)).resolves.toBe(true);
+    await expect(store.reserveRuntimeInstancePort(claim.runtimeInstance.id, 41911)).resolves.toBe(
+      true,
+    );
     await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
       status: "starting",
       endpointHost: "127.0.0.1",
@@ -307,7 +373,9 @@ describe("runtime instance port reservation", () => {
       ownerId: "req_holder",
       expiresAt: new Date(Date.now() + 60_000),
     });
-    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41912)).resolves.toBe(true);
+    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41912)).resolves.toBe(
+      true,
+    );
 
     const contender = await store.acquireActivationLease({
       deploymentId: contenderDeployment.id,
@@ -316,7 +384,9 @@ describe("runtime instance port reservation", () => {
       expiresAt: new Date(Date.now() + 60_000),
     });
     // Still reservable-looking while the holder is only starting -- must refuse.
-    await expect(store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41912)).resolves.toBe(false);
+    await expect(
+      store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41912),
+    ).resolves.toBe(false);
 
     // Ready keeps the reservation.
     await store.updateRuntimeInstance(holder.runtimeInstance.id, {
@@ -324,10 +394,14 @@ describe("runtime instance port reservation", () => {
       endpointHost: "127.0.0.1",
       endpointPort: 41912,
     });
-    await expect(store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41912)).resolves.toBe(false);
+    await expect(
+      store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41912),
+    ).resolves.toBe(false);
 
     // A different port still works for the contender.
-    await expect(store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41913)).resolves.toBe(true);
+    await expect(
+      store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41913),
+    ).resolves.toBe(true);
   });
 
   test("frees the port once the holding instance leaves live statuses", async () => {
@@ -340,8 +414,13 @@ describe("runtime instance port reservation", () => {
       ownerId: "req_free",
       expiresAt: new Date(Date.now() + 60_000),
     });
-    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41914)).resolves.toBe(true);
-    await store.updateRuntimeInstance(holder.runtimeInstance.id, { status: "failed", error: "fixture" });
+    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41914)).resolves.toBe(
+      true,
+    );
+    await store.updateRuntimeInstance(holder.runtimeInstance.id, {
+      status: "failed",
+      error: "fixture",
+    });
 
     const contender = await store.acquireActivationLease({
       deploymentId: contenderDeployment.id,
@@ -349,6 +428,8 @@ describe("runtime instance port reservation", () => {
       ownerId: "req_reuse",
       expiresAt: new Date(Date.now() + 60_000),
     });
-    await expect(store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41914)).resolves.toBe(true);
+    await expect(
+      store.reserveRuntimeInstancePort(contender.runtimeInstance.id, 41914),
+    ).resolves.toBe(true);
   });
 });

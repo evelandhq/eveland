@@ -59,14 +59,14 @@ the handle is shut down. The session's workspace directory is not touched by
 
 ### Options
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `env` | `{}` | Environment variables set for every sandboxed command. |
-| `networkPolicy` | `"allow-all"` | `"allow-all"` shares the host network; `"deny-all"` runs each command with no network (`--unshare-net`). `setNetworkPolicy` can switch between the two at run time; granular domain policies are rejected (use the Vercel backend for those). |
-| `hidePaths` | `[]` | Extra host paths hidden from the sandbox (each covered by an empty tmpfs). |
-| `bwrapPath` | `"bwrap"` | bwrap executable to invoke. |
-| `cacheDir` | `<appRoot>/.eve/sandbox-cache/bwrap` | Absolute directory holding templates and durable session workspaces. Pin this outside the release directory so a redeploy does not discard durable session state: since eve 0.22.0, eve keys session sandboxes per durable session, not per deployment, so an `appRoot`-derived default would silently destroy every session's `/workspace` on the next redeploy. The generated eveland module always sets this from `EVELAND_SANDBOX_CACHE_DIR` (see `docs/deploy/linux.md`). |
-| `templateRevision` | `null` | Optional immutable release identity included in the template cache key but not the session path. Change it when seed files change so new Sessions use a fresh template without overwriting durable workspaces. Eveland sets it from its internal `EVELAND_SANDBOX_TEMPLATE_REVISION`. |
+| Option             | Default                              | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `env`              | `{}`                                 | Environment variables set for every sandboxed command.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `networkPolicy`    | `"allow-all"`                        | `"allow-all"` shares the host network; `"deny-all"` runs each command with no network (`--unshare-net`). `setNetworkPolicy` can switch between the two at run time; granular domain policies are rejected (use the Vercel backend for those).                                                                                                                                                                                                                                  |
+| `hidePaths`        | `[]`                                 | Extra host paths hidden from the sandbox (each covered by an empty tmpfs).                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `bwrapPath`        | `"bwrap"`                            | bwrap executable to invoke.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `cacheDir`         | `<appRoot>/.eve/sandbox-cache/bwrap` | Absolute directory holding templates and durable session workspaces. Pin this outside the release directory so a redeploy does not discard durable session state: since eve 0.22.0, eve keys session sandboxes per durable session, not per deployment, so an `appRoot`-derived default would silently destroy every session's `/workspace` on the next redeploy. The generated eveland module always sets this from `EVELAND_SANDBOX_CACHE_DIR` (see `docs/deploy/linux.md`). |
+| `templateRevision` | `null`                               | Optional immutable release identity included in the template cache key but not the session path. Change it when seed files change so new Sessions use a fresh template without overwriting durable workspaces. Eveland sets it from its internal `EVELAND_SANDBOX_TEMPLATE_REVISION`.                                                                                                                                                                                          |
 
 ## How it works
 
@@ -119,10 +119,10 @@ Reclaiming space today requires manual intervention: identify which sessions are
   `/workspace`. Only the write and remove calls (`writeFile`, `writeTextFile`,
   `writeBinaryFile`, `removePath`) are confined to the workspace, via the
   realpath-aware check described below. In other words, the tmpfs above is a
-  boundary against a *sandboxed process*, not a boundary between sessions of
+  boundary against a _sandboxed process_, not a boundary between sessions of
   the same agent — all of an app's sessions and templates share one trust
   domain on the host.
-- The rest of the host filesystem is *visible read-only* to sandboxed code, and the
+- The rest of the host filesystem is _visible read-only_ to sandboxed code, and the
   sandbox shares the host kernel. This is protection against mistakes and prompt
   injection — not multi-tenant isolation. If untrusted tenants or code that routinely
   handles customer credentials must run here, move to VM-level isolation
@@ -162,7 +162,7 @@ production topology uses the unprivileged systemd path below.
 - Linux with unprivileged user namespaces available to the calling process. Ubuntu's
   packaged bubblewrap (0.9.0-1ubuntu0.1 on 24.04) ships **no** AppArmor profile. Since
   Ubuntu sets `kernel.apparmor_restrict_unprivileged_userns=1` by default, an
-  *unconfined non-root* process calling `bwrap` fails with
+  _unconfined non-root_ process calling `bwrap` fails with
   `bwrap: setting up uid map: Permission denied` unless the host loads an AppArmor
   profile that grants `bwrap` the `userns` permission. Root is unaffected by this
   sysctl, but nothing here runs as root: eveland's systemd runtime runs both this

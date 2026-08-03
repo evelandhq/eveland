@@ -5,7 +5,10 @@ import type { FileUIPart, UserContent } from "ai";
 // module a pure transport surface (groupPlaygroundParts and the route-auth
 // protocol are this module's neighbors).
 
-export function createPlaygroundMessage(text: string, files: readonly FileUIPart[]): string | UserContent {
+export function createPlaygroundMessage(
+  text: string,
+  files: readonly FileUIPart[],
+): string | UserContent {
   const trimmed = text.trim();
   if (files.length === 0) {
     return trimmed;

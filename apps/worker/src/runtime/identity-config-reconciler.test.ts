@@ -35,15 +35,12 @@ describe("reconcileIdentityDeploymentConfiguration", () => {
       hostPort: 41050,
       runtimeKind: "docker",
     });
-    const dataDir = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-identity-config-"),
-    );
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-identity-config-"));
 
     const jobs = await reconcileIdentityDeploymentConfiguration(store, {
       dataDir,
       issuer: "http://localhost:4000",
-      jwksUrl:
-        "http://host.docker.internal:4000/.well-known/jwks.json",
+      jwksUrl: "http://host.docker.internal:4000/.well-known/jwks.json",
     });
 
     expect(jobs).toEqual([
@@ -60,8 +57,7 @@ describe("reconcileIdentityDeploymentConfiguration", () => {
       reconcileIdentityDeploymentConfiguration(store, {
         dataDir,
         issuer: "http://localhost:4000",
-        jwksUrl:
-          "http://host.docker.internal:4000/.well-known/jwks.json",
+        jwksUrl: "http://host.docker.internal:4000/.well-known/jwks.json",
       }),
     ).resolves.toEqual([]);
     const queued = await store.claimNextJob("worker-a");
@@ -71,13 +67,8 @@ describe("reconcileIdentityDeploymentConfiguration", () => {
   });
 
   test("runs Identity configuration reconciliation before the Worker accepts jobs", async () => {
-    const workerSource = await readFile(
-      new URL("../worker.ts", import.meta.url),
-      "utf8",
-    );
+    const workerSource = await readFile(new URL("../worker.ts", import.meta.url), "utf8");
 
-    expect(workerSource).toMatch(
-      /await\s+reconcileIdentityDeploymentConfiguration/,
-    );
+    expect(workerSource).toMatch(/await\s+reconcileIdentityDeploymentConfiguration/);
   });
 });

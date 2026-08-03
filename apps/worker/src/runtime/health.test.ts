@@ -21,16 +21,22 @@ describe("waitForHttpHealth", () => {
     const port = await listen(server);
 
     try {
-      await expect(waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 2000 })).resolves.toBeUndefined();
+      await expect(
+        waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 2000 }),
+      ).resolves.toBeUndefined();
     } finally {
-      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
     }
   });
 
   test("rejects with the last connection error when nothing listens", async () => {
     const server = http.createServer();
     const port = await listen(server);
-    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
 
     await expect(waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 700 })).rejects.toThrow(
       /did not respond within 700ms.*ECONNREFUSED/s,
@@ -46,20 +52,26 @@ describe("waitForHttpHealth", () => {
 
     try {
       const start = Date.now();
-      await expect(waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 700 })).rejects.toThrow();
+      await expect(
+        waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 700 }),
+      ).rejects.toThrow();
       const elapsed = Date.now() - start;
       // Generous margin over the 700ms budget for scheduling jitter, but tight
       // enough to catch the unclamped-attempt bug (~1250ms observed pre-fix).
       expect(elapsed).toBeLessThan(1000);
     } finally {
-      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
     }
   });
 
   test("retries past initial connection failures and resolves once the target starts", async () => {
     const probe = http.createServer();
     const port = await listen(probe);
-    await new Promise<void>((resolve, reject) => probe.close((error) => (error ? reject(error) : resolve())));
+    await new Promise<void>((resolve, reject) =>
+      probe.close((error) => (error ? reject(error) : resolve())),
+    );
 
     const healthPromise = waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 5000 });
 
@@ -74,17 +86,21 @@ describe("waitForHttpHealth", () => {
     try {
       await expect(healthPromise).resolves.toBeUndefined();
     } finally {
-      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
     }
   });
 });
 
 describe("waitForOwnedHttpHealth", () => {
   test("fails immediately and loudly when the port is held by a foreign process", async () => {
-    const verifyPortOwnership = vi.fn(async (): Promise<PortOwnership> => ({
-      status: "foreign",
-      holder: "pid 9876 (unit eveland-proj_other-dep_9.service)",
-    }));
+    const verifyPortOwnership = vi.fn(
+      async (): Promise<PortOwnership> => ({
+        status: "foreign",
+        holder: "pid 9876 (unit eveland-proj_other-dep_9.service)",
+      }),
+    );
     const waitForHealth = vi.fn();
 
     const start = Date.now();
@@ -128,7 +144,9 @@ describe("waitForOwnedHttpHealth", () => {
       { status: "unbound" },
       { status: "owned" },
     ];
-    const verifyPortOwnership = vi.fn(async (): Promise<PortOwnership> => answers.shift() ?? { status: "owned" });
+    const verifyPortOwnership = vi.fn(
+      async (): Promise<PortOwnership> => answers.shift() ?? { status: "owned" },
+    );
     const waitForHealth = vi.fn(async () => undefined);
 
     await expect(

@@ -71,8 +71,7 @@ describe("policy-managed Agent telemetry", () => {
           resolveReload = resolve;
         });
       },
-      createRuntime: ({ policy: loadedPolicy }) =>
-        loadedPolicy.revision === 1 ? first : second,
+      createRuntime: ({ policy: loadedPolicy }) => (loadedPolicy.revision === 1 ? first : second),
     });
 
     await managed.capture(event(), context());
@@ -144,52 +143,44 @@ describe("policy-managed Agent telemetry", () => {
     await managed.capture(event(), context());
     currentPolicy = policy(2);
     now = 5_000;
-    await expect(
-      managed.capture(event(), context()),
-    ).resolves.toBeUndefined();
+    await expect(managed.capture(event(), context())).resolves.toBeUndefined();
 
     expect(firstCapture).toHaveBeenCalledOnce();
     expect(secondCapture).toHaveBeenCalledOnce();
-    expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "shutdown failed" }),
-    );
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ message: "shutdown failed" }));
     await managed.shutdown();
   });
 
-  test(
-    "bounds private Provider flush and shutdown without failing the Agent hook",
-    async () => {
-      const never = () => new Promise<void>(() => undefined);
-      const warn = vi.fn();
-      const managed = createManaged({
-        operationTimeoutMillis: 10,
-        warn,
-        loadPolicy: async () => policy(1),
-        createRuntime: () => ({
-          capture: async () => undefined,
-          forceFlush: never,
-          shutdown: never,
-        }),
-      });
+  test("bounds private Provider flush and shutdown without failing the Agent hook", async () => {
+    const never = () => new Promise<void>(() => undefined);
+    const warn = vi.fn();
+    const managed = createManaged({
+      operationTimeoutMillis: 10,
+      warn,
+      loadPolicy: async () => policy(1),
+      createRuntime: () => ({
+        capture: async () => undefined,
+        forceFlush: never,
+        shutdown: never,
+      }),
+    });
 
-      await managed.capture(event(), context());
-      await expect(managed.forceFlush()).resolves.toBeUndefined();
-      await expect(managed.shutdown()).resolves.toBeUndefined();
+    await managed.capture(event(), context());
+    await expect(managed.forceFlush()).resolves.toBeUndefined();
+    await expect(managed.shutdown()).resolves.toBeUndefined();
 
-      expect(warn).toHaveBeenCalledTimes(2);
-      expect(warn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: expect.stringMatching(/forceFlush.*10 ms/),
-        }),
-      );
-      expect(warn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: expect.stringMatching(/shutdown.*10 ms/),
-        }),
-      );
-    },
-    500,
-  );
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringMatching(/forceFlush.*10 ms/),
+      }),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringMatching(/shutdown.*10 ms/),
+      }),
+    );
+  }, 500);
 });
 
 function createManaged(
@@ -202,10 +193,7 @@ function createManaged(
 }
 
 function fakeRuntime(
-  capture: (
-    event: AgentTelemetryEvent,
-    context: AgentTelemetryHookContext,
-  ) => Promise<void>,
+  capture: (event: AgentTelemetryEvent, context: AgentTelemetryHookContext) => Promise<void>,
   shutdown: () => Promise<void>,
   forceFlush: () => Promise<void> = async () => undefined,
 ): PrivateAgentTelemetryRuntime {

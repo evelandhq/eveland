@@ -4,9 +4,7 @@ import type { EvelandBuildInfo } from "@eveland/core/build-info";
 import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
 import type { ActivationLeaseClaim, RuntimeInstance } from "@eveland/core/contracts";
 import type { InstanceComponentHealth } from "@eveland/core/instance-health";
-import type {
-  ExternalDestinationConfig,
-} from "@eveland/core/observability";
+import type { ExternalDestinationConfig } from "@eveland/core/observability";
 import type {
   ExternalObservabilityRequestInput,
   ExternalObservabilityResponse,
@@ -37,9 +35,7 @@ export type AppOptions = {
   schedulerRuntimeSecret?: string;
   gatewayServiceToken?: string;
   otlpServiceToken?: string;
-  validateObservabilityDestination?: (
-    config: ExternalDestinationConfig,
-  ) => Promise<void>;
+  validateObservabilityDestination?: (config: ExternalDestinationConfig) => Promise<void>;
   forwardExternalObservabilityRequest?: (
     input: ExternalObservabilityRequestInput,
   ) => Promise<ExternalObservabilityResponse>;

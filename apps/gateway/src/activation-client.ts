@@ -23,8 +23,9 @@ export function createApiActivationClient(input: {
         if (response.status !== 425) break;
         await waitForRetry(input.drainRetryMs ?? 25, signal);
       }
-      if (!response.ok) throw new Error(`Control API activation failed with HTTP ${response.status}.`);
-      const value = await response.json().catch(() => null) as {
+      if (!response.ok)
+        throw new Error(`Control API activation failed with HTTP ${response.status}.`);
+      const value = (await response.json().catch(() => null)) as {
         lease?: { id?: unknown };
         runtimeInstance?: { endpointPort?: unknown };
       } | null;
@@ -38,18 +39,26 @@ export function createApiActivationClient(input: {
       return { leaseId: value.lease.id, endpointPort: value.runtimeInstance.endpointPort };
     },
     async renew(leaseId) {
-      const response = await fetch(`${apiUrl}/internal/runtime/activations/${encodeURIComponent(leaseId)}/renew`, {
-        method: "POST",
-        headers,
-      });
-      if (!response.ok) throw new Error(`Control API activation renewal failed with HTTP ${response.status}.`);
+      const response = await fetch(
+        `${apiUrl}/internal/runtime/activations/${encodeURIComponent(leaseId)}/renew`,
+        {
+          method: "POST",
+          headers,
+        },
+      );
+      if (!response.ok)
+        throw new Error(`Control API activation renewal failed with HTTP ${response.status}.`);
     },
     async release(leaseId) {
-      const response = await fetch(`${apiUrl}/internal/runtime/activations/${encodeURIComponent(leaseId)}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (!response.ok) throw new Error(`Control API activation release failed with HTTP ${response.status}.`);
+      const response = await fetch(
+        `${apiUrl}/internal/runtime/activations/${encodeURIComponent(leaseId)}`,
+        {
+          method: "DELETE",
+          headers,
+        },
+      );
+      if (!response.ok)
+        throw new Error(`Control API activation release failed with HTTP ${response.status}.`);
     },
   };
 }

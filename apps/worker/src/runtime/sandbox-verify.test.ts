@@ -5,7 +5,12 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { buildSandboxVerifyArgs, buildSandboxVerifyScript, SANDBOX_VERIFY_SCRIPT_PATH, verifySandbox } from "./sandbox-verify.js";
+import {
+  buildSandboxVerifyArgs,
+  buildSandboxVerifyScript,
+  SANDBOX_VERIFY_SCRIPT_PATH,
+  verifySandbox,
+} from "./sandbox-verify.js";
 import { SANDBOX_TOOLCHAIN_COMMANDS } from "./sandbox-toolchain.js";
 
 const execFileAsync = promisify(execFile);
@@ -32,7 +37,9 @@ describe("buildSandboxVerifyScript", () => {
     }
     expect(script).toContain('command -v "$command"');
     expect(script).toContain("rg -n --color=never -i -m 1 -- 'eveland-typescript-ok' .");
-    expect(script).toContain("grep -r -n --color=never --exclude-dir=.git -i -E -m 1 -- 'eveland-typescript-ok' .");
+    expect(script).toContain(
+      "grep -r -n --color=never --exclude-dir=.git -i -E -m 1 -- 'eveland-typescript-ok' .",
+    );
     expect(script).toContain("missing sandbox commands:");
   });
 
@@ -111,7 +118,7 @@ describe("buildSandboxVerifyScript, executed end-to-end against a stub backend",
         "    create: async () => ({",
         "      session: {",
         "        writeTextFile: async () => {},",
-        "        run: async () => ({ exitCode: 0, stdout: \"eveland-typescript-ok\\n\", stderr: \"\" }),",
+        '        run: async () => ({ exitCode: 0, stdout: "eveland-typescript-ok\\n", stderr: "" }),',
         "      },",
         "      shutdown: async () => {},",
         "    }),",
@@ -134,7 +141,11 @@ describe("buildSandboxVerifyScript, executed end-to-end against a stub backend",
 
 describe("buildSandboxVerifyArgs", () => {
   test("runs under the deployment's hardening as the deployment user", () => {
-    const args = buildSandboxVerifyArgs({ releaseDir: "/rel", user: "eveland-app", cacheDir: "/cache/p" });
+    const args = buildSandboxVerifyArgs({
+      releaseDir: "/rel",
+      user: "eveland-app",
+      cacheDir: "/cache/p",
+    });
     expect(args).toContain("--property=User=eveland-app");
     expect(args).toContain("--property=NoNewPrivileges=yes");
     expect(args).toContain("--property=ProtectSystem=strict");
@@ -155,14 +166,21 @@ describe("verifySandbox", () => {
   });
 
   test("throws an actionable error naming the sandbox and toolchain host prerequisites when the check fails", async () => {
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, all: "bwrap: setting up uid map: Permission denied" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      exitCode: 1,
+      all: "bwrap: setting up uid map: Permission denied",
+    } as never);
     const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-verify-"));
-    await expect(verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" })).rejects.toThrow(/sandbox toolchain/is);
+    await expect(
+      verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" }),
+    ).rejects.toThrow(/sandbox toolchain/is);
   });
 
   test("throws when the marker is missing even on exit 0", async () => {
     vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, all: "" } as never);
     const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-verify-"));
-    await expect(verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" })).rejects.toThrow();
+    await expect(
+      verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" }),
+    ).rejects.toThrow();
   });
 });

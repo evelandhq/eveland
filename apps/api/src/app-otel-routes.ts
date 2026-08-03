@@ -45,38 +45,22 @@ export function registerOtlpRoutes(input: {
   // whose credential is absent or forged projects nothing and counts as rejected.
   const resolveDeploymentId = (credential: string | undefined) =>
     credential
-      ? verifyAgentTelemetryCredential(credential, telemetrySecret)
-          ?.deploymentId
+      ? verifyAgentTelemetryCredential(credential, telemetrySecret)?.deploymentId
       : undefined;
 
   app.post("/internal/otel/v1/:signal", async (c) => {
-    const token =
-      options.otlpServiceToken ??
-      resolvePlatformOtlpServiceToken(process.env);
+    const token = options.otlpServiceToken ?? resolvePlatformOtlpServiceToken(process.env);
     if (!isServiceRequest(c.req.header("authorization"), token)) {
       return c.json({ error: "Not found" }, 404);
     }
     const signal = parseSignal(c.req.param("signal"));
     if (!signal) return c.json({ error: "Not found" }, 404);
-    const contentType = c.req
-      .header("content-type")
-      ?.split(";", 1)[0]
-      ?.trim()
-      .toLowerCase();
-    if (
-      contentType !== otlpJsonContentType &&
-      contentType !== otlpProtobufContentType
-    ) {
-      return c.json(
-        { error: "OTLP/HTTP JSON or protobuf is required" },
-        415,
-      );
+    const contentType = c.req.header("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+    if (contentType !== otlpJsonContentType && contentType !== otlpProtobufContentType) {
+      return c.json({ error: "OTLP/HTTP JSON or protobuf is required" }, 415);
     }
     const contentLength = Number(c.req.header("content-length") ?? 0);
-    if (
-      Number.isFinite(contentLength) &&
-      contentLength > maxOtlpRequestBytes
-    ) {
+    if (Number.isFinite(contentLength) && contentLength > maxOtlpRequestBytes) {
       return c.json({ error: "OTLP request is too large" }, 413);
     }
 
@@ -118,15 +102,10 @@ export function registerOtlpRoutes(input: {
         }
       }
       if (signal === "metrics") {
-        const projection =
-          projectInstanceTelemetryFromOtlpMetrics(payload);
+        const projection = projectInstanceTelemetryFromOtlpMetrics(payload);
         await Promise.all([
-          ...projection.heartbeats.map((heartbeat) =>
-            store.upsertWorkerHeartbeat(heartbeat),
-          ),
-          ...projection.hostMetrics.map((sample) =>
-            store.recordHostMetric(sample),
-          ),
+          ...projection.heartbeats.map((heartbeat) => store.upsertWorkerHeartbeat(heartbeat)),
+          ...projection.hostMetrics.map((sample) => store.recordHostMetric(sample)),
         ]);
         acceptedItems = projection.acceptedDataPoints;
       }
@@ -146,19 +125,13 @@ export function registerOtlpRoutes(input: {
 }
 
 function parseSignal(value: string): ObservabilitySignal | null {
-  return value === "traces" || value === "logs" || value === "metrics"
-    ? value
-    : null;
+  return value === "traces" || value === "logs" || value === "metrics" ? value : null;
 }
 
-function parseJsonPayload(
-  bytes: Uint8Array,
-): Record<string, unknown> | null {
+function parseJsonPayload(bytes: Uint8Array): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
-    return typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed)
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;
   } catch {
@@ -166,13 +139,8 @@ function parseJsonPayload(
   }
 }
 
-function matchesSignal(
-  payload: Record<string, unknown>,
-  signal: ObservabilitySignal,
-): boolean {
+function matchesSignal(payload: Record<string, unknown>, signal: ObservabilitySignal): boolean {
   const expected = signalFields[signal];
   if (expected in payload && !Array.isArray(payload[expected])) return false;
-  return Object.values(signalFields).every(
-    (field) => field === expected || !(field in payload),
-  );
+  return Object.values(signalFields).every((field) => field === expected || !(field in payload));
 }

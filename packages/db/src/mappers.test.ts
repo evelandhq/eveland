@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { deploymentRowToDeployment, projectRowToProject, sessionRowToSession, timestampToIso } from "./mappers.js";
+import {
+  deploymentRowToDeployment,
+  projectRowToProject,
+  sessionRowToSession,
+  timestampToIso,
+} from "./mappers.js";
 
 describe("db mappers", () => {
   test("converts nullable project timestamp fields to public API shape", () => {

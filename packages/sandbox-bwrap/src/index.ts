@@ -2,7 +2,11 @@ import type { SandboxBackend } from "eve/sandbox";
 import { createBwrapSandboxBackend } from "./backend.js";
 import type { BwrapSandboxCreateOptions } from "./options.js";
 
-export { BWRAP_BACKEND_NAME, createBwrapSandboxBackend, type CreateBwrapSandboxBackendInput } from "./backend.js";
+export {
+  BWRAP_BACKEND_NAME,
+  createBwrapSandboxBackend,
+  type CreateBwrapSandboxBackendInput,
+} from "./backend.js";
 export type { BwrapNetworkPolicy, BwrapSandboxCreateOptions } from "./options.js";
 export { isBwrapAvailable } from "./process.js";
 export type { ProcessRunner, SpawnedProcess } from "./process.js";

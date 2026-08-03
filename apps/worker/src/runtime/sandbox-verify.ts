@@ -165,7 +165,10 @@ export async function writeSandboxVerifyScript(releaseDir: string): Promise<stri
 export async function verifySandbox(input: VerifySandboxInput): Promise<void> {
   await writeSandboxVerifyScript(input.releaseDir);
 
-  const result = await execa("systemd-run", buildSandboxVerifyArgs(input), { all: true, reject: false });
+  const result = await execa("systemd-run", buildSandboxVerifyArgs(input), {
+    all: true,
+    reject: false,
+  });
   const output = result.all ?? "";
   if (result.exitCode !== 0 || !output.includes("SANDBOX VERIFY OK")) {
     throw new Error(

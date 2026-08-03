@@ -21,24 +21,18 @@ function mockFetch(response: Response) {
 // already on the page that signs them in.
 describe("credential rejection reaches the user", () => {
   test("a wrong password surfaces the API's message, not a session-expiry line", async () => {
-    mockFetch(
-      Response.json({ error: "Invalid email or password" }, { status: 401 }),
-    );
+    mockFetch(Response.json({ error: "Invalid email or password" }, { status: 401 }));
     const assign = vi.fn();
     vi.stubGlobal("window", {
       location: { pathname: "/login", search: "", assign },
     });
 
-    await expect(signIn("admin@example.com", "wrong")).rejects.toThrow(
-      "Invalid email or password",
-    );
+    await expect(signIn("admin@example.com", "wrong")).rejects.toThrow("Invalid email or password");
     expect(assign).not.toHaveBeenCalled();
   });
 
   test("an invitation accepted with a rejected credential surfaces its own message", async () => {
-    mockFetch(
-      Response.json({ error: "Invalid email or password" }, { status: 401 }),
-    );
+    mockFetch(Response.json({ error: "Invalid email or password" }, { status: 401 }));
     const assign = vi.fn();
     vi.stubGlobal("window", {
       location: { pathname: "/accept-invite", search: "?token=invh_1", assign },

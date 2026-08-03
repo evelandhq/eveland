@@ -11,9 +11,9 @@ describe("observability policy store", () => {
       importKind: "zip",
     });
 
-    await expect(
-      store.getObservabilityPolicy(DEFAULT_TEAM_ID),
-    ).resolves.toEqual(createDefaultObservabilityPolicy(1));
+    await expect(store.getObservabilityPolicy(DEFAULT_TEAM_ID)).resolves.toEqual(
+      createDefaultObservabilityPolicy(1),
+    );
 
     const updated = await store.saveObservabilityPolicy({
       teamId: DEFAULT_TEAM_ID,
@@ -40,9 +40,7 @@ describe("observability policy store", () => {
       },
       externalDestinations: [],
     });
-    await expect(
-      store.getObservabilityPolicy(DEFAULT_TEAM_ID),
-    ).resolves.toEqual(updated);
+    await expect(store.getObservabilityPolicy(DEFAULT_TEAM_ID)).resolves.toEqual(updated);
     await expect(
       store.saveObservabilityPolicy({
         teamId: DEFAULT_TEAM_ID,

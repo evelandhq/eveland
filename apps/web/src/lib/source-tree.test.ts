@@ -32,11 +32,7 @@ describe("source tree selection", () => {
 
     expect(sourceTree).not.toBeNull();
     expect(
-      sourceTree?.getNextSourcePath(
-        ["agent"],
-        "AGENTS.md",
-        new Set(["AGENTS.md", "package.json"]),
-      ),
+      sourceTree?.getNextSourcePath(["agent"], "AGENTS.md", new Set(["AGENTS.md", "package.json"])),
     ).toBeNull();
   });
 });

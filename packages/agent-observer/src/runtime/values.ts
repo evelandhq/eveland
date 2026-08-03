@@ -1,6 +1,4 @@
-export function asRecord(
-  value: unknown,
-): Record<string, unknown> | undefined {
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
@@ -11,17 +9,11 @@ export function asString(value: unknown): string | undefined {
 }
 
 export function asNonNegativeInteger(value: unknown): number | undefined {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value >= 0
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 export function asNonNegativeNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 export function canonicalJson(value: unknown): string {
@@ -29,12 +21,9 @@ export function canonicalJson(value: unknown): string {
 }
 
 export function serializeAttribute(value: unknown): string {
-  const serialized =
-    typeof value === "string" ? JSON.stringify(value) : canonicalJson(value);
+  const serialized = typeof value === "string" ? JSON.stringify(value) : canonicalJson(value);
   const maxLength = 65_536;
-  return serialized.length <= maxLength
-    ? serialized
-    : `${serialized.slice(0, maxLength)}…`;
+  return serialized.length <= maxLength ? serialized : `${serialized.slice(0, maxLength)}…`;
 }
 
 export function asDate(value: unknown): Date | undefined {

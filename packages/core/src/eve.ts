@@ -13,7 +13,8 @@ export type ModelStepUsage = {
 export const PLAYGROUND_MAX_FILES = 4;
 export const PLAYGROUND_MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const PLAYGROUND_MAX_TOTAL_FILE_BYTES = 10 * 1024 * 1024;
-export const PLAYGROUND_MAX_TRANSPORT_BYTES = Math.ceil((PLAYGROUND_MAX_TOTAL_FILE_BYTES * 4) / 3) + 64 * 1024;
+export const PLAYGROUND_MAX_TRANSPORT_BYTES =
+  Math.ceil((PLAYGROUND_MAX_TOTAL_FILE_BYTES * 4) / 3) + 64 * 1024;
 export const PLAYGROUND_ATTACHMENT_ACCEPT = [
   "image/*",
   "application/pdf",
@@ -60,9 +61,13 @@ export function validatePlaygroundTurn(
   const hasMessage = value.message !== undefined;
   const responses = value.inputResponses;
   const hasInputResponses = Array.isArray(responses) && responses.length > 0;
-  if (!hasMessage && !hasInputResponses) throw new Error("Playground turn requires a message or input response.");
+  if (!hasMessage && !hasInputResponses)
+    throw new Error("Playground turn requires a message or input response.");
 
-  if (value.continuationToken !== undefined && (typeof value.continuationToken !== "string" || value.continuationToken.length === 0)) {
+  if (
+    value.continuationToken !== undefined &&
+    (typeof value.continuationToken !== "string" || value.continuationToken.length === 0)
+  ) {
     throw new Error("Playground continuation token must be a non-empty string.");
   }
   if (responses !== undefined) validateInputResponses(responses);
@@ -81,19 +86,28 @@ export function validatePlaygroundTurn(
   for (const part of value.message) {
     if (!isEveRecord(part)) throw new Error("Playground message parts must be objects.");
     if (part.type === "text") {
-      if (typeof part.text !== "string" || part.text.trim().length === 0) throw new Error("Playground text parts must not be empty.");
+      if (typeof part.text !== "string" || part.text.trim().length === 0)
+        throw new Error("Playground text parts must not be empty.");
       continue;
     }
-    if (part.type !== "file") throw new Error(`Playground message part type ${String(part.type)} is not supported.`);
+    if (part.type !== "file")
+      throw new Error(`Playground message part type ${String(part.type)} is not supported.`);
     fileCount += 1;
-    if (fileCount > limits.maxFiles) throw new Error(`Playground accepts at most ${limits.maxFiles} file${limits.maxFiles === 1 ? "" : "s"}.`);
+    if (fileCount > limits.maxFiles)
+      throw new Error(
+        `Playground accepts at most ${limits.maxFiles} file${limits.maxFiles === 1 ? "" : "s"}.`,
+      );
     const fileBytes = validatePlaygroundFilePart(part);
     if (fileBytes > limits.maxFileBytes) {
-      throw new Error(`Playground file is ${fileBytes} bytes; the limit is ${limits.maxFileBytes} bytes.`);
+      throw new Error(
+        `Playground file is ${fileBytes} bytes; the limit is ${limits.maxFileBytes} bytes.`,
+      );
     }
     totalFileBytes += fileBytes;
     if (totalFileBytes > limits.maxTotalFileBytes) {
-      throw new Error(`Playground attachments total ${totalFileBytes} bytes; the limit is ${limits.maxTotalFileBytes} bytes.`);
+      throw new Error(
+        `Playground attachments total ${totalFileBytes} bytes; the limit is ${limits.maxTotalFileBytes} bytes.`,
+      );
     }
   }
 
@@ -118,7 +132,10 @@ export function getEveString(parsed: Record<string, unknown> | null, key: string
   return typeof value === "string" ? value : null;
 }
 
-export function classifyEveSessionRequest(method: string, pathname: string): EveSessionRequest | null {
+export function classifyEveSessionRequest(
+  method: string,
+  pathname: string,
+): EveSessionRequest | null {
   if (method === "POST" && pathname === "/eve/v1/session") {
     return { kind: "initial", sessionId: null };
   }
@@ -147,10 +164,7 @@ export function classifyEveSessionRequest(method: string, pathname: string): Eve
 }
 
 export function isEveSessionNamespace(pathname: string): boolean {
-  return (
-    pathname === "/eve/v1/session" ||
-    pathname.startsWith("/eve/v1/session/")
-  );
+  return pathname === "/eve/v1/session" || pathname.startsWith("/eve/v1/session/");
 }
 
 export function parseStepUsageEvent(type: string, payload: unknown): ModelStepUsage | null {
@@ -180,7 +194,9 @@ export function parseStepUsageEvent(type: string, payload: unknown): ModelStepUs
     cacheReadTokens,
     cacheWriteTokens,
     costUsd,
-    usageReported: [inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd].some((value) => value !== null),
+    usageReported: [inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd].some(
+      (value) => value !== null,
+    ),
   };
 }
 
@@ -193,9 +209,14 @@ function readNonNegativeNumber(value: unknown): number | null {
 }
 
 function validateInputResponses(value: unknown): void {
-  if (!Array.isArray(value) || value.length === 0) throw new Error("Playground input responses must be a non-empty array.");
+  if (!Array.isArray(value) || value.length === 0)
+    throw new Error("Playground input responses must be a non-empty array.");
   for (const response of value) {
-    if (!isEveRecord(response) || typeof response.requestId !== "string" || response.requestId.length === 0) {
+    if (
+      !isEveRecord(response) ||
+      typeof response.requestId !== "string" ||
+      response.requestId.length === 0
+    ) {
       throw new Error("Each Playground input response requires a request ID.");
     }
     const hasOption = typeof response.optionId === "string" && response.optionId.trim().length > 0;
@@ -209,12 +230,15 @@ function validateInputResponses(value: unknown): void {
 function validatePlaygroundFilePart(part: Record<string, unknown>): number {
   const filename = typeof part.filename === "string" ? part.filename : "";
   const mediaType = typeof part.mediaType === "string" ? part.mediaType.toLowerCase() : "";
-  if (!filename || filename.includes("/") || filename.includes("\\")) throw new Error("Playground files require a safe filename.");
-  if (!isSupportedPlaygroundFile(mediaType, filename)) throw new Error(`Playground file type ${mediaType || "unknown"} is not supported.`);
+  if (!filename || filename.includes("/") || filename.includes("\\"))
+    throw new Error("Playground files require a safe filename.");
+  if (!isSupportedPlaygroundFile(mediaType, filename))
+    throw new Error(`Playground file type ${mediaType || "unknown"} is not supported.`);
   if (typeof part.data !== "string") throw new Error("Playground files must use data URLs.");
 
   const match = /^data:([^;,]+)(?:;[^,]*)*;base64,([A-Za-z0-9+/]*={0,2})$/.exec(part.data);
-  if (!match || match[1]?.toLowerCase() !== mediaType) throw new Error("Playground files must use matching base64 data URLs.");
+  if (!match || match[1]?.toLowerCase() !== mediaType)
+    throw new Error("Playground files must use matching base64 data URLs.");
   const encoded = match[2] ?? "";
   if (encoded.length % 4 !== 0) throw new Error("Playground file data URL is malformed.");
   const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
@@ -236,7 +260,9 @@ function isSupportedPlaygroundFile(mediaType: string, filename: string): boolean
     return true;
   }
   if (mediaType !== "application/octet-stream") return false;
-  return /\.(?:c|cc|cpp|css|csv|go|h|hpp|html|java|js|jsx|json|md|mdx|py|rb|rs|sh|sql|toml|ts|tsx|txt|xml|ya?ml)$/i.test(filename);
+  return /\.(?:c|cc|cpp|css|csv|go|h|hpp|html|java|js|jsx|json|md|mdx|py|rb|rs|sh|sql|toml|ts|tsx|txt|xml|ya?ml)$/i.test(
+    filename,
+  );
 }
 
 /**
@@ -283,19 +309,10 @@ export function scheduleExecutionStatusFromEveEvent(
   type: string | undefined,
   sessionStatus: string,
 ): "running" | "succeeded" | "failed" | "parked" {
-  if (
-    type === "turn.failed" ||
-    type === "turn.cancelled" ||
-    type === "session.failed"
-  )
+  if (type === "turn.failed" || type === "turn.cancelled" || type === "session.failed")
     return "failed";
-  if (type === "session.waiting" && sessionStatus === "waiting_approval")
-    return "parked";
-  if (
-    type === "turn.completed" ||
-    type === "session.waiting" ||
-    type === "session.completed"
-  )
+  if (type === "session.waiting" && sessionStatus === "waiting_approval") return "parked";
+  if (type === "turn.completed" || type === "session.waiting" || type === "session.completed")
     return "succeeded";
   return "running";
 }
@@ -306,9 +323,7 @@ export function scheduleExecutionErrorFromEveEvent(
   payload: unknown,
 ): string {
   const message =
-    isEveRecord(payload) && typeof payload.message === "string"
-      ? payload.message
-      : null;
+    isEveRecord(payload) && typeof payload.message === "string" ? payload.message : null;
   return message
     ? `Scheduled Session ${type ?? "failed"}: ${message}`
     : `Scheduled Session ended with ${type ?? "failure"}.`;

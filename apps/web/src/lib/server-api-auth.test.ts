@@ -27,7 +27,10 @@ describe("server auth API", () => {
   });
 
   test("returns null for an invalid or missing session", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 401 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 401 })),
+    );
 
     await expect(getCurrentMemberOrNull()).resolves.toBeNull();
   });

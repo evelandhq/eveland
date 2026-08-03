@@ -1,9 +1,6 @@
 import { createId } from "@eveland/core/ids";
 import { decodeJobPayload } from "@eveland/core/jobs";
-import type {
-  Job,
-  JobType,
-} from "@eveland/core/contracts";
+import type { Job, JobType } from "@eveland/core/contracts";
 import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import {
   InvalidJobRecordError,
@@ -65,27 +62,19 @@ export function createPostgresJobSourceStore({
     return job as Job<Type>;
   };
 
-  const getCurrentSourceRevision: SourceStore["getCurrentSourceRevision"] =
-    async (projectId) => {
-      const [project] = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
-      if (!project?.sourceRevisionId) return null;
+  const getCurrentSourceRevision: SourceStore["getCurrentSourceRevision"] = async (projectId) => {
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+    if (!project?.sourceRevisionId) return null;
 
-      const [revision] = await db
-        .select()
-        .from(sourceRevisions)
-        .where(eq(sourceRevisions.id, project.sourceRevisionId))
-        .limit(1);
-      return revision ? sourceRevisionRowToSourceRevision(revision) : null;
-    };
+    const [revision] = await db
+      .select()
+      .from(sourceRevisions)
+      .where(eq(sourceRevisions.id, project.sourceRevisionId))
+      .limit(1);
+    return revision ? sourceRevisionRowToSourceRevision(revision) : null;
+  };
 
-  async function listProjectJobs(
-    projectId: string,
-    options?: { limit?: number },
-  ): Promise<Job[]>;
+  async function listProjectJobs(projectId: string, options?: { limit?: number }): Promise<Job[]>;
   async function listProjectJobs<Type extends JobType>(
     projectId: string,
     options: { type: Type; limit?: number },
@@ -209,10 +198,7 @@ export function createPostgresJobSourceStore({
               .set({ status: "queued", lockedAt: null, updatedAt: now })
               .where(eq(jobs.id, existing.id))
               .returning();
-            if (!recovered)
-              throw new Error(
-                "Failed to recover stale Deployment activation job.",
-              );
+            if (!recovered) throw new Error("Failed to recover stale Deployment activation job.");
             return jobRowToJob(recovered);
           }
           return jobRowToJob(existing);
@@ -224,8 +210,7 @@ export function createPostgresJobSourceStore({
           createdAt: now,
           updatedAt: now,
         });
-        if (!created)
-          throw new Error("Failed to enqueue Deployment activation.");
+        if (!created) throw new Error("Failed to enqueue Deployment activation.");
         return jobRowToJob(created);
       });
     },
@@ -285,11 +270,7 @@ export function createPostgresJobSourceStore({
               updatedAt: now,
             })
             .where(
-              and(
-                eq(jobs.id, row.id),
-                eq(jobs.status, "running"),
-                eq(jobs.attempts, row.attempts),
-              ),
+              and(eq(jobs.id, row.id), eq(jobs.status, "running"), eq(jobs.attempts, row.attempts)),
             )
             .returning({ id: jobs.id });
           if (quarantined.length !== 1) {
@@ -299,11 +280,7 @@ export function createPostgresJobSourceStore({
       }
     },
 
-    async recoverStaleJobs(
-      now = new Date(),
-      staleAfterMs = 300_000,
-      limit = 25,
-    ) {
+    async recoverStaleJobs(now = new Date(), staleAfterMs = 300_000, limit = 25) {
       const cutoff = new Date(now.getTime() - staleAfterMs);
       const recovered = await db
         .update(jobs)
@@ -314,9 +291,7 @@ export function createPostgresJobSourceStore({
             db
               .select({ id: jobs.id })
               .from(jobs)
-              .where(
-                and(eq(jobs.status, "running"), lte(jobs.lockedAt, cutoff)),
-              )
+              .where(and(eq(jobs.status, "running"), lte(jobs.lockedAt, cutoff)))
               .orderBy(asc(jobs.lockedAt))
               .limit(limit),
           ),
@@ -329,13 +304,7 @@ export function createPostgresJobSourceStore({
       const renewed = await db
         .update(jobs)
         .set({ lockedAt: now, updatedAt: now })
-        .where(
-          and(
-            eq(jobs.id, jobId),
-            eq(jobs.status, "running"),
-            eq(jobs.attempts, attempt),
-          ),
-        )
+        .where(and(eq(jobs.id, jobId), eq(jobs.status, "running"), eq(jobs.attempts, attempt)))
         .returning({ id: jobs.id });
       return renewed.length === 1;
     },
@@ -368,11 +337,7 @@ export function createPostgresJobSourceStore({
         .where(
           attempt === undefined
             ? eq(jobs.id, jobId)
-            : and(
-                eq(jobs.id, jobId),
-                eq(jobs.status, "running"),
-                eq(jobs.attempts, attempt),
-              ),
+            : and(eq(jobs.id, jobId), eq(jobs.status, "running"), eq(jobs.attempts, attempt)),
         )
         .returning({ id: jobs.id });
       return completed.length === 1;
@@ -390,11 +355,7 @@ export function createPostgresJobSourceStore({
         .where(
           attempt === undefined
             ? eq(jobs.id, jobId)
-            : and(
-                eq(jobs.id, jobId),
-                eq(jobs.status, "running"),
-                eq(jobs.attempts, attempt),
-              ),
+            : and(eq(jobs.id, jobId), eq(jobs.status, "running"), eq(jobs.attempts, attempt)),
         )
         .returning({ id: jobs.id });
       return failed.length === 1;
@@ -469,9 +430,7 @@ export function createPostgresJobSourceStore({
           );
         }
 
-        await tx
-          .delete(schedules)
-          .where(eq(schedules.projectId, input.projectId));
+        await tx.delete(schedules).where(eq(schedules.projectId, input.projectId));
         if (input.schedules.length > 0) {
           await tx.insert(schedules).values(
             input.schedules.map((schedule) => ({
@@ -547,12 +506,7 @@ export function createPostgresJobSourceStore({
       const [row] = await db
         .select()
         .from(sourceFiles)
-        .where(
-          and(
-            eq(sourceFiles.revisionId, revision.id),
-            eq(sourceFiles.path, filePath),
-          ),
-        )
+        .where(and(eq(sourceFiles.revisionId, revision.id), eq(sourceFiles.path, filePath)))
         .limit(1);
       return row ? sourceFileRowToSourceFile(row) : null;
     },

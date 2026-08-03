@@ -54,12 +54,14 @@ describe("Eveland build information", () => {
     });
 
     expect(
-      buildInfoModule?.formatBuildInfo?.(buildInfo as {
-        component: string;
-        version: string;
-        revision: string;
-        channel: string;
-      }),
+      buildInfoModule?.formatBuildInfo?.(
+        buildInfo as {
+          component: string;
+          version: string;
+          revision: string;
+          channel: string;
+        },
+      ),
     ).toBe(`Eveland ${EVELAND_VERSION} (gateway, stable, 6bb1d53f51ab)`);
   });
 
@@ -86,7 +88,9 @@ describe("Eveland build information", () => {
 
   test("reads revision and channel from the runtime environment with safe development defaults", async () => {
     const modulePath = "./server/build-info.js";
-    const buildInfoModule = (await import(modulePath).catch(() => null)) as ServerBuildInfoModule | null;
+    const buildInfoModule = (await import(modulePath).catch(
+      () => null,
+    )) as ServerBuildInfoModule | null;
 
     expect(
       buildInfoModule?.createBuildInfoFromEnv?.("worker", {

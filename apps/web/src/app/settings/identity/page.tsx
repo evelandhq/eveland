@@ -1,11 +1,5 @@
 import { IdentitySettings } from "@/components/identity-settings";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getCurrentMember,
   getIdentityProviders,
@@ -29,9 +23,7 @@ export default async function IdentitySettingsPage() {
             Only workspace administrators can configure Agent-user identity.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          Ask an administrator to manage Identity Providers and Realms.
-        </CardContent>
+        <CardContent>Ask an administrator to manage Identity Providers and Realms.</CardContent>
       </Card>
     );
   }
@@ -46,9 +38,7 @@ export default async function IdentitySettingsPage() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h2 className="text-xl font-semibold tracking-tight">Identity</h2>
-        <p className="text-sm text-muted-foreground">
-          Configure how people sign in to Agents.
-        </p>
+        <p className="text-sm text-muted-foreground">Configure how people sign in to Agents.</p>
       </header>
       <IdentitySettings
         initialProviders={providers}

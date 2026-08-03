@@ -19,10 +19,15 @@ export interface BwrapExecInput {
 export function buildBwrapExecArgs(input: BwrapExecInput): string[] {
   const args = [
     input.bwrapPath,
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    "--proc", "/proc",
-    "--tmpfs", "/tmp",
+    "--ro-bind",
+    "/",
+    "/",
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
+    "--tmpfs",
+    "/tmp",
   ];
   // Hide paths BEFORE re-binding the workspace: bind sources resolve against
   // the host filesystem, so a later bind punches through an earlier tmpfs.

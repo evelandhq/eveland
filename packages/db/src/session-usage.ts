@@ -16,12 +16,18 @@ export function summarizeSessionUsage(sessions: Session[]): SessionTokenUsage {
     usage.outputTokens += session.usage.outputTokens;
     usage.cacheReadTokens += session.usage.cacheReadTokens;
     usage.cacheWriteTokens += session.usage.cacheWriteTokens;
-    if (session.usage.costUsd !== null) usage.costUsd = (usage.costUsd ?? 0) + session.usage.costUsd;
+    if (session.usage.costUsd !== null)
+      usage.costUsd = (usage.costUsd ?? 0) + session.usage.costUsd;
     usage.reportedSteps += session.usage.reportedSteps;
     usage.missingSteps += session.usage.missingSteps;
   }
-  usage.status = usage.reportedSteps > 0
-    ? usage.missingSteps > 0 ? "partial" : "reported"
-    : usage.missingSteps > 0 ? "missing" : "none";
+  usage.status =
+    usage.reportedSteps > 0
+      ? usage.missingSteps > 0
+        ? "partial"
+        : "reported"
+      : usage.missingSteps > 0
+        ? "missing"
+        : "none";
   return usage;
 }

@@ -263,6 +263,8 @@ the observability architecture.
 pnpm test
 pnpm typecheck
 pnpm build
+pnpm lint       # oxlint; `pnpm lint:fix` applies safe fixes
+pnpm fmt:check  # oxfmt; `pnpm fmt` rewrites in place (a pre-commit hook formats staged files)
 # Requires a running local Docker engine; builds a fixture, starts the Agent,
 # and proves a real HTTP turn can execute TypeScript through the bash tool.
 pnpm --filter @eveland/worker smoke:docker-sandbox

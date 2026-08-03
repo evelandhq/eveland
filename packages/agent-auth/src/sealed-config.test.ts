@@ -9,9 +9,14 @@ describe("sealed Agent Auth config", () => {
     const sealed = sealAgentAuthConfig({ username: "alice", password: "secret" }, key, binding);
 
     expect(sealed).not.toContain("secret");
-    expect(openAgentAuthConfig(sealed, key, binding)).toEqual({ username: "alice", password: "secret" });
+    expect(openAgentAuthConfig(sealed, key, binding)).toEqual({
+      username: "alice",
+      password: "secret",
+    });
     expect(() => openAgentAuthConfig(sealed, key, { ...binding, securityRevision: 4 })).toThrow();
     expect(() => openAgentAuthConfig(sealed, key, { ...binding, method: "bearer" })).toThrow();
-    expect(() => openAgentAuthConfig(sealed, key, { ...binding, agentConnectionId: "acon_2" })).toThrow();
+    expect(() =>
+      openAgentAuthConfig(sealed, key, { ...binding, agentConnectionId: "acon_2" }),
+    ).toThrow();
   });
 });

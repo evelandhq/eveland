@@ -12,9 +12,7 @@ function respond(error: unknown) {
 
 describe("auth error -> HTTP status mapping", () => {
   test("a typed AuthFlowError carries its own status", async () => {
-    const response = await respond(
-      new AuthFlowError("Cannot demote the last admin", 409),
-    );
+    const response = await respond(new AuthFlowError("Cannot demote the last admin", 409));
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: "Cannot demote the last admin",

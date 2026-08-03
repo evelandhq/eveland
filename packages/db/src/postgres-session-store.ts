@@ -1,13 +1,15 @@
 import { createId } from "@eveland/core/ids";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import {
-  sessionEventRowToSessionEvent,
-  sessionRowToSession,
-} from "./mappers.js";
+import { sessionEventRowToSessionEvent, sessionRowToSession } from "./mappers.js";
 import { modelUsageEvents, projects, sessionBindings, sessionNodes, sessions } from "./schema.js";
 import type { SessionStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
-import { appendRuntimeLostEventTx, appendSessionEventRow, mergeSessionRows, modelUsageRowToModelUsageEvent } from "./postgres-store-support.js";
+import {
+  appendRuntimeLostEventTx,
+  appendSessionEventRow,
+  mergeSessionRows,
+  modelUsageRowToModelUsageEvent,
+} from "./postgres-store-support.js";
 
 type PostgresSessionMutationDomain = Pick<
   SessionStore,
@@ -62,12 +64,7 @@ export function createPostgresSessionStore({
       const [row] = await db
         .select()
         .from(sessions)
-        .where(
-          and(
-            eq(sessions.projectId, projectId),
-            eq(sessions.eveSessionId, eveSessionId),
-          ),
-        )
+        .where(and(eq(sessions.projectId, projectId), eq(sessions.eveSessionId, eveSessionId)))
         .limit(1);
       return row ? sessionRowToSession(row) : null;
     },
@@ -126,10 +123,7 @@ export function createPostgresSessionStore({
             .where(
               and(
                 eq(modelUsageEvents.sessionId, sessionId),
-                eq(
-                  modelUsageEvents.eveSessionId,
-                  usage.eveSessionId ?? sessionId,
-                ),
+                eq(modelUsageEvents.eveSessionId, usage.eveSessionId ?? sessionId),
                 eq(modelUsageEvents.turnId, usage.turnId),
                 eq(modelUsageEvents.stepIndex, usage.stepIndex),
               ),
@@ -165,11 +159,7 @@ export function createPostgresSessionStore({
 
     async completeSession(sessionId, input) {
       return db.transaction(async (tx) => {
-        let [current] = await tx
-          .select()
-          .from(sessions)
-          .where(eq(sessions.id, sessionId))
-          .limit(1);
+        let [current] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
         if (!current) return null;
 
         if (input.eveSessionId) {
@@ -225,9 +215,7 @@ export function createPostgresSessionStore({
                 }
               : {}),
             completedAt:
-              input.status === "completed" || input.status === "failed"
-                ? new Date()
-                : null,
+              input.status === "completed" || input.status === "failed" ? new Date() : null,
           })
           .where(eq(sessions.id, sessionId))
           .returning();
@@ -241,11 +229,7 @@ export function createPostgresSessionStore({
       });
     },
 
-    async failRunningSessionsForRuntimeInstance(
-      runtimeInstanceId,
-      reason,
-      now = new Date(),
-    ) {
+    async failRunningSessionsForRuntimeInstance(runtimeInstanceId, reason, now = new Date()) {
       return db.transaction(async (tx) => {
         const interrupted = await tx
           .select({
@@ -257,18 +241,12 @@ export function createPostgresSessionStore({
           .from(sessions)
           .innerJoin(
             sessionNodes,
-            and(
-              eq(sessionNodes.rootSessionId, sessions.id),
-              isNull(sessionNodes.parentNodeId),
-            ),
+            and(eq(sessionNodes.rootSessionId, sessions.id), isNull(sessionNodes.parentNodeId)),
           )
           .where(
             and(
               eq(sessions.status, "running"),
-              eq(
-                sessionNodes.lastObservedRuntimeInstanceId,
-                runtimeInstanceId,
-              ),
+              eq(sessionNodes.lastObservedRuntimeInstanceId, runtimeInstanceId),
             ),
           );
         if (interrupted.length === 0) return 0;
@@ -278,12 +256,7 @@ export function createPostgresSessionStore({
         await tx
           .update(sessions)
           .set({ status: "failed", completedAt: now })
-          .where(
-            and(
-              inArray(sessions.id, sessionIds),
-              eq(sessions.status, "running"),
-            ),
-          );
+          .where(and(inArray(sessions.id, sessionIds), eq(sessions.status, "running")));
         await tx
           .update(sessionNodes)
           .set({ status: "failed", updatedAt: now })
@@ -302,12 +275,7 @@ export function createPostgresSessionStore({
           .update(projects)
           .set({ latestSessionStatus: "failed", updatedAt: now })
           .where(
-            inArray(
-              projects.id,
-              [...new Set(
-                interrupted.map((session) => session.projectId),
-              )],
-            ),
+            inArray(projects.id, [...new Set(interrupted.map((session) => session.projectId))]),
           );
         return interrupted.length;
       });

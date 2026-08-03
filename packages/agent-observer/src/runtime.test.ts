@@ -51,7 +51,10 @@ describe("private Agent telemetry runtime", () => {
       context,
     );
     await runtime.capture(
-      { type: "message.received", data: { sequence: 2, turnId: "turn_1", message: "private prompt" } },
+      {
+        type: "message.received",
+        data: { sequence: 2, turnId: "turn_1", message: "private prompt" },
+      },
       context,
     );
     await runtime.capture(
@@ -67,7 +70,12 @@ describe("private Agent telemetry runtime", () => {
           stepIndex: 0,
           actions: [
             { kind: "tool-call", callId: "call_1", toolName: "search", input: { q: "otel" } },
-            { kind: "tool-call", callId: "call_2", toolName: "fetch", input: { url: "https://example.com" } },
+            {
+              kind: "tool-call",
+              callId: "call_2",
+              toolName: "fetch",
+              input: { url: "https://example.com" },
+            },
           ],
         },
       },
@@ -154,12 +162,8 @@ describe("private Agent telemetry runtime", () => {
       "gen_ai.agent.name": "Researcher",
       "gen_ai.conversation.id": "eve_session_1",
       "eveland.eve.turn.id": "turn_1",
-      "gen_ai.input.messages": JSON.stringify([
-        { content: "private prompt", role: "user" },
-      ]),
-      "gen_ai.output.messages": JSON.stringify([
-        { content: "final answer", role: "assistant" },
-      ]),
+      "gen_ai.input.messages": JSON.stringify([{ content: "private prompt", role: "user" }]),
+      "gen_ai.output.messages": JSON.stringify([{ content: "final answer", role: "assistant" }]),
     });
     expect(modelSpan?.parentSpanContext?.spanId).toBe(turnSpan?.spanContext().spanId);
     expect(toolSpan?.parentSpanContext?.spanId).toBe(turnSpan?.spanContext().spanId);
@@ -171,9 +175,7 @@ describe("private Agent telemetry runtime", () => {
       "gen_ai.usage.cache_read.input_tokens": 10,
       "gen_ai.usage.cache_creation.input_tokens": 4,
       "eveland.gen_ai.usage.cost_usd": 0.012,
-      "gen_ai.output.messages": JSON.stringify([
-        { content: "final answer", role: "assistant" },
-      ]),
+      "gen_ai.output.messages": JSON.stringify([{ content: "final answer", role: "assistant" }]),
     });
     expect(toolSpan?.attributes).toMatchObject({
       "gen_ai.operation.name": "execute_tool",
@@ -202,9 +204,7 @@ describe("private Agent telemetry runtime", () => {
 
     const logRecords = logs.getFinishedLogRecords();
     expect(logRecords.map((record) => record.eventName)).toContain("eve.message.received");
-    const messageLog = logRecords.find(
-      (record) => record.eventName === "eve.message.received",
-    );
+    const messageLog = logRecords.find((record) => record.eventName === "eve.message.received");
     expect(messageLog?.body).toMatchObject({
       data: { message: "private prompt" },
     });
@@ -353,9 +353,9 @@ describe("private Agent telemetry runtime", () => {
     expect(serializedLogs).not.toContain("private-production");
     expect(serializedLogs).toContain("inputTokens");
     expect(serializedLogs).toContain("call_1");
-    expect(
-      logs.getFinishedLogRecords().map((record) => record.eventName),
-    ).toContain("eve.input.requested");
+    expect(logs.getFinishedLogRecords().map((record) => record.eventName)).toContain(
+      "eve.input.requested",
+    );
     expect(logs.getFinishedLogRecords().map((record) => record.eventName)).not.toContain(
       "eve.reasoning.completed",
     );
@@ -480,21 +480,19 @@ describe("private Agent telemetry runtime", () => {
     );
     await runtime.forceFlush();
 
-    expect(traces.getFinishedSpans().map((span) => span.name).sort()).toEqual([
-      "execute_tool slow_tool",
-      "invoke_agent Researcher",
-    ]);
     expect(
       traces
         .getFinishedSpans()
-        .find((span) => span.name === "invoke_agent Researcher")?.attributes,
+        .map((span) => span.name)
+        .sort(),
+    ).toEqual(["execute_tool slow_tool", "invoke_agent Researcher"]);
+    expect(
+      traces.getFinishedSpans().find((span) => span.name === "invoke_agent Researcher")?.attributes,
     ).toMatchObject({ "eveland.turn.cancelled": true });
   });
 });
 
-function policy(
-  capture: Partial<RuntimeAgentPolicy["capture"]> = {},
-): RuntimeAgentPolicy {
+function policy(capture: Partial<RuntimeAgentPolicy["capture"]> = {}): RuntimeAgentPolicy {
   return {
     schemaVersion: 1,
     revision: 1,

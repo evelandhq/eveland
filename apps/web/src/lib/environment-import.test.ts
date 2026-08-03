@@ -13,7 +13,9 @@ type EnvironmentImportModule = {
 };
 
 async function loadModule(): Promise<EnvironmentImportModule | null> {
-  return import("./environment-import.js").catch(() => null) as Promise<EnvironmentImportModule | null>;
+  return import("./environment-import.js").catch(
+    () => null,
+  ) as Promise<EnvironmentImportModule | null>;
 }
 
 describe(".env import parsing", () => {
@@ -22,13 +24,17 @@ describe(".env import parsing", () => {
     expect(module).not.toBeNull();
     if (!module) return;
 
-    expect(module.parseDotenvImport([
-      "# Provider credentials",
-      "",
-      "export OPENAI_API_KEY=\"sk-test=with-equals\"",
-      "MODEL_NAME='gpt-5.4'",
-      "REGION=us-east-1",
-    ].join("\n"))).toEqual({
+    expect(
+      module.parseDotenvImport(
+        [
+          "# Provider credentials",
+          "",
+          'export OPENAI_API_KEY="sk-test=with-equals"',
+          "MODEL_NAME='gpt-5.4'",
+          "REGION=us-east-1",
+        ].join("\n"),
+      ),
+    ).toEqual({
       entries: [
         { line: 3, key: "OPENAI_API_KEY", value: "sk-test=with-equals", kind: "secret" },
         { line: 4, key: "MODEL_NAME", value: "gpt-5.4", kind: "secret" },
@@ -43,13 +49,15 @@ describe(".env import parsing", () => {
     expect(module).not.toBeNull();
     if (!module) return;
 
-    const result = module.parseDotenvImport([
-      "lowercase=do-not-echo",
-      "DOTTED.KEY=do-not-echo",
-      "MISSING_SEPARATOR",
-      "EMPTY=",
-      "UNFINISHED=\"do-not-echo",
-    ].join("\n"));
+    const result = module.parseDotenvImport(
+      [
+        "lowercase=do-not-echo",
+        "DOTTED.KEY=do-not-echo",
+        "MISSING_SEPARATOR",
+        "EMPTY=",
+        'UNFINISHED="do-not-echo',
+      ].join("\n"),
+    );
 
     expect(result.entries).toEqual([]);
     expect(result.errors.map((error) => error.line)).toEqual([1, 2, 3, 4, 5]);
@@ -67,9 +75,7 @@ describe(".env import parsing", () => {
 
     const result = module.parseDotenvImport("MODEL=gpt-5\nREGION=us\nMODEL=gpt-5-mini");
 
-    expect(result.entries).toEqual([
-      { line: 2, key: "REGION", value: "us", kind: "secret" },
-    ]);
+    expect(result.entries).toEqual([{ line: 2, key: "REGION", value: "us", kind: "secret" }]);
     expect(result.errors).toEqual([
       { line: 1, message: "Environment variable names must be unique." },
       { line: 3, message: "Environment variable names must be unique." },

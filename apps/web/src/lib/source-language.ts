@@ -1,6 +1,6 @@
-import type { BundledLanguage } from "shiki"
+import type { BundledLanguage } from "shiki";
 
-type SourceLanguage = BundledLanguage | "text"
+type SourceLanguage = BundledLanguage | "text";
 
 const languageByExtension: Record<string, SourceLanguage> = {
   bash: "bash",
@@ -21,14 +21,14 @@ const languageByExtension: Record<string, SourceLanguage> = {
   tsx: "tsx",
   yaml: "yaml",
   yml: "yaml",
-}
+};
 
 export function getSourceLanguage(filePath: string): SourceLanguage {
-  const fileName = filePath.split("/").at(-1)?.toLowerCase() ?? ""
+  const fileName = filePath.split("/").at(-1)?.toLowerCase() ?? "";
 
-  if (fileName === "dockerfile") return "dockerfile"
-  if (fileName === "makefile") return "makefile"
+  if (fileName === "dockerfile") return "dockerfile";
+  if (fileName === "makefile") return "makefile";
 
-  const extension = fileName.includes(".") ? fileName.split(".").at(-1) ?? "" : ""
-  return languageByExtension[extension] ?? "text"
+  const extension = fileName.includes(".") ? (fileName.split(".").at(-1) ?? "") : "";
+  return languageByExtension[extension] ?? "text";
 }

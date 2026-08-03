@@ -1,11 +1,5 @@
 import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
-import {
-  mkdir,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { renderCollectorConfig } from "./config.js";
 import {
@@ -25,10 +19,8 @@ export function createCollectorObservabilityReconciler(input: {
   let appliedRevision: number | undefined;
   let inFlight: Promise<number> | undefined;
   const validateConfig =
-    input.validateConfig ??
-    ((location) => validateCollectorConfig(location, input.env));
-  const restartCollector =
-    input.restartCollector ?? (() => restartCollectorContainer(input.env));
+    input.validateConfig ?? ((location) => validateCollectorConfig(location, input.env));
+  const restartCollector = input.restartCollector ?? (() => restartCollectorContainer(input.env));
 
   const reconcile = async (): Promise<number> => {
     const policy = await input.store.getObservabilityPolicy(DEFAULT_TEAM_ID);
@@ -38,14 +30,9 @@ export function createCollectorObservabilityReconciler(input: {
       policy,
       appSecretKey: input.env.APP_SECRET_KEY ?? devSecretKey,
     });
-    const configDirectory = path.resolve(
-      input.env.EVELAND_DATA_DIR ?? ".eveland-data",
-      "otel",
-    );
+    const configDirectory = path.resolve(input.env.EVELAND_DATA_DIR ?? ".eveland-data", "otel");
     const hostConfigDirectory = path.resolve(
-      input.env.EVELAND_HOST_DATA_DIR ??
-        input.env.EVELAND_DATA_DIR ??
-        ".eveland-data",
+      input.env.EVELAND_HOST_DATA_DIR ?? input.env.EVELAND_DATA_DIR ?? ".eveland-data",
       "otel",
     );
     const finalPath = path.join(configDirectory, "collector.yaml");

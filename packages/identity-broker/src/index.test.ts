@@ -2,11 +2,7 @@ import { createPublicKey, verify } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import { createTestStore } from "@eveland/db/vitest";
 
-import {
-  IdentityBrokerError,
-  createIdentityBroker,
-  hashIdentityToken,
-} from "./index.js";
+import { IdentityBrokerError, createIdentityBroker, hashIdentityToken } from "./index.js";
 
 const appSecretKey = "identity-test-secret-key-0000001";
 
@@ -63,15 +59,17 @@ describe("Identity Broker", () => {
       appSecretKey,
     });
 
-    await expect(broker.finalizeIdentity({
-      providerConnectionId: connection.id,
-      providerSecurityRevision: connection.securityRevision,
-      identity: {
-        externalRealmId: "browser-supplied-realm",
-        externalRealmKind: "internal",
-        externalSubject: "user_123",
-      },
-    })).rejects.toMatchObject({
+    await expect(
+      broker.finalizeIdentity({
+        providerConnectionId: connection.id,
+        providerSecurityRevision: connection.securityRevision,
+        identity: {
+          externalRealmId: "browser-supplied-realm",
+          externalRealmKind: "internal",
+          externalSubject: "user_123",
+        },
+      }),
+    ).rejects.toMatchObject({
       code: "identity_realm_not_allowed",
       status: 403,
     });
@@ -129,12 +127,14 @@ describe("Identity Broker", () => {
     });
     expect(payload).not.toHaveProperty("external_subject");
     expect(payload).not.toHaveProperty("provider");
-    expect(verify(
-      "sha256",
-      Buffer.from(`${encodedHeader}.${encodedPayload}`),
-      { key: publicKey, dsaEncoding: "ieee-p1363" },
-      Buffer.from(encodedSignature!, "base64url"),
-    )).toBe(true);
+    expect(
+      verify(
+        "sha256",
+        Buffer.from(`${encodedHeader}.${encodedPayload}`),
+        { key: publicKey, dsaEncoding: "ieee-p1363" },
+        Buffer.from(encodedSignature!, "base64url"),
+      ),
+    ).toBe(true);
     expect(issued.expiresAt).toBe("2029-01-01T00:01:00.000Z");
   });
 
@@ -162,14 +162,18 @@ describe("Identity Broker", () => {
       enabled: false,
     });
 
-    await expect(broker.issueCallerToken({
-      sessionToken: finalized.sessionToken,
-      projectId: project.id,
-    })).rejects.toBeInstanceOf(IdentityBrokerError);
-    await expect(broker.issueCallerToken({
-      sessionToken: finalized.sessionToken,
-      projectId: project.id,
-    })).rejects.toMatchObject({ code: "identity_session_invalid", status: 401 });
+    await expect(
+      broker.issueCallerToken({
+        sessionToken: finalized.sessionToken,
+        projectId: project.id,
+      }),
+    ).rejects.toBeInstanceOf(IdentityBrokerError);
+    await expect(
+      broker.issueCallerToken({
+        sessionToken: finalized.sessionToken,
+        projectId: project.id,
+      }),
+    ).rejects.toMatchObject({ code: "identity_session_invalid", status: 401 });
   });
 
   test("allows only registered origins and relative return paths", async () => {
@@ -185,12 +189,15 @@ describe("Identity Broker", () => {
       appSecretKey,
     });
 
-    await expect(broker.resolveReturnTarget("eve-chats", "/agents/agent_123"))
-      .resolves.toBe("https://chat.example.com/agents/agent_123");
-    await expect(broker.resolveReturnTarget("eve-chats", "https://evil.example"))
-      .rejects.toMatchObject({ code: "identity_return_target_invalid" });
-    await expect(broker.resolveReturnTarget("unknown", "/"))
-      .rejects.toMatchObject({ code: "identity_return_target_invalid" });
+    await expect(broker.resolveReturnTarget("eve-chats", "/agents/agent_123")).resolves.toBe(
+      "https://chat.example.com/agents/agent_123",
+    );
+    await expect(
+      broker.resolveReturnTarget("eve-chats", "https://evil.example"),
+    ).rejects.toMatchObject({ code: "identity_return_target_invalid" });
+    await expect(broker.resolveReturnTarget("unknown", "/")).rejects.toMatchObject({
+      code: "identity_return_target_invalid",
+    });
   });
 });
 

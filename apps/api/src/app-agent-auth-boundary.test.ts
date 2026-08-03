@@ -18,15 +18,12 @@ describe("Agent authentication API boundary", () => {
     const agentAuth = createAgentAuthService({
       store,
       appSecretKey,
-      oidcCallbackUrl:
-        "http://localhost:3000/agent-auth/oidc/callback",
+      oidcCallbackUrl: "http://localhost:3000/agent-auth/oidc/callback",
     });
     registerAgentAuthRoutes({ app, store, agentAuth });
 
     const methods = await app.request("/agent-auth/methods");
-    const connection = await app.request(
-      `/projects/${project.id}/playground/connection`,
-    );
+    const connection = await app.request(`/projects/${project.id}/playground/connection`);
 
     expect(methods.status).toBe(200);
     await expect(methods.json()).resolves.toMatchObject({

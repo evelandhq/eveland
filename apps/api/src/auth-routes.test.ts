@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  createAuthApp,
-  invite,
-  signIn,
-} from "./auth-routes.test-support.js";
+import { createAuthApp, invite, signIn } from "./auth-routes.test-support.js";
 
 describe("control-plane auth routes", () => {
   test("keeps health and Better Auth public while rejecting anonymous control-plane requests", async () => {
@@ -57,21 +53,40 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie } = await signIn(app);
 
-    expect((await app.request("/api/auth/sign-up/email", {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
-      body: JSON.stringify({ email: "attacker@example.com", name: "Attacker", password: "attacker-password" }),
-    })).status).toBe(404);
-    expect((await app.request("/api/auth/organization/remove-member", {
-      method: "POST",
-      headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
-      body: JSON.stringify({ memberIdOrEmail: "admin@example.com", organizationId: "team_local" }),
-    })).status).toBe(404);
-    expect((await app.request("/api/auth/update-user", {
-      method: "POST",
-      headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
-      body: JSON.stringify({ image: "data:image/svg+xml;base64,PHN2Zy8+" }),
-    })).status).toBe(404);
+    expect(
+      (
+        await app.request("/api/auth/sign-up/email", {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+          body: JSON.stringify({
+            email: "attacker@example.com",
+            name: "Attacker",
+            password: "attacker-password",
+          }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await app.request("/api/auth/organization/remove-member", {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
+          body: JSON.stringify({
+            memberIdOrEmail: "admin@example.com",
+            organizationId: "team_local",
+          }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await app.request("/api/auth/update-user", {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json", origin: "http://localhost:3000" },
+          body: JSON.stringify({ image: "data:image/svg+xml;base64,PHN2Zy8+" }),
+        })
+      ).status,
+    ).toBe(404);
   });
 
   test("signs in through Better Auth and returns the current member", async () => {
@@ -95,13 +110,21 @@ describe("control-plane auth routes", () => {
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Member", password: "member-password" }),
+      body: JSON.stringify({
+        token: new URL(issued.body.inviteUrl).searchParams.get("token")!,
+        name: "Member",
+        password: "member-password",
+      }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
     expect((await app.request("/system/configuration")).status).toBe(401);
-    const adminResponse = await app.request("/system/configuration", { headers: { cookie: adminCookie } });
-    const memberResponse = await app.request("/system/configuration", { headers: { cookie: memberCookie } });
+    const adminResponse = await app.request("/system/configuration", {
+      headers: { cookie: adminCookie },
+    });
+    const memberResponse = await app.request("/system/configuration", {
+      headers: { cookie: memberCookie },
+    });
 
     expect(adminResponse.status).toBe(200);
     await expect(adminResponse.json()).resolves.toEqual({ components: [] });
@@ -131,13 +154,21 @@ describe("control-plane auth routes", () => {
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Member", password: "member-password" }),
+      body: JSON.stringify({
+        token: new URL(issued.body.inviteUrl).searchParams.get("token")!,
+        name: "Member",
+        password: "member-password",
+      }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
     expect((await app.request("/system/health")).status).toBe(401);
-    expect((await app.request("/system/health", { headers: { cookie: adminCookie } })).status).toBe(200);
-    expect((await app.request("/system/health", { headers: { cookie: memberCookie } })).status).toBe(403);
+    expect((await app.request("/system/health", { headers: { cookie: adminCookie } })).status).toBe(
+      200,
+    );
+    expect(
+      (await app.request("/system/health", { headers: { cookie: memberCookie } })).status,
+    ).toBe(403);
   });
 
   test("allows only administrators to manage the shared Agent environment", async () => {
@@ -147,13 +178,21 @@ describe("control-plane auth routes", () => {
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Profile Member", password: "member-password" }),
+      body: JSON.stringify({
+        token: new URL(issued.body.inviteUrl).searchParams.get("token")!,
+        name: "Profile Member",
+        password: "member-password",
+      }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
-    const input = { entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "operator-secret" }] };
+    const input = {
+      entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "operator-secret" }],
+    };
 
     expect((await app.request("/platform/shared-agent-environment")).status).toBe(401);
-    const memberResponse = await app.request("/platform/shared-agent-environment", { headers: { cookie: memberCookie } });
+    const memberResponse = await app.request("/platform/shared-agent-environment", {
+      headers: { cookie: memberCookie },
+    });
     expect(memberResponse.status).toBe(403);
     await expect(memberResponse.json()).resolves.toEqual({ error: "Admin access required" });
 
@@ -186,20 +225,29 @@ describe("control-plane auth routes", () => {
         role: "admin",
       }),
     });
-    await expect((await app.request("/auth/session", { headers: { cookie } })).json()).resolves.toEqual({
+    await expect(
+      (await app.request("/auth/session", { headers: { cookie } })).json(),
+    ).resolves.toEqual({
       member: expect.objectContaining({ image, name: "Eveland Admin" }),
     });
 
     const password = await app.request("/profile/password", {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
-      body: JSON.stringify({ currentPassword: "admin-password", newPassword: "new-admin-password" }),
+      body: JSON.stringify({
+        currentPassword: "admin-password",
+        newPassword: "new-admin-password",
+      }),
     });
 
     expect(password.status).toBe(204);
-    expect((await app.request("/auth/session", { headers: { cookie: otherCookie } })).status).toBe(401);
+    expect((await app.request("/auth/session", { headers: { cookie: otherCookie } })).status).toBe(
+      401,
+    );
     expect((await signIn(app)).response.status).toBe(401);
-    expect((await signIn(app, "admin@example.com", "new-admin-password")).response.status).toBe(200);
+    expect((await signIn(app, "admin@example.com", "new-admin-password")).response.status).toBe(
+      200,
+    );
   });
 
   test("persists a valid personal display timezone and returns it with the session", async () => {
@@ -256,7 +304,10 @@ describe("control-plane auth routes", () => {
     const oversized = await app.request("/profile", {
       method: "PATCH",
       headers: { cookie, "content-type": "application/json" },
-      body: JSON.stringify({ name: "Admin", image: `data:image/png;base64,${"A".repeat(700_000)}` }),
+      body: JSON.stringify({
+        name: "Admin",
+        image: `data:image/png;base64,${"A".repeat(700_000)}`,
+      }),
     });
 
     expect(unsupported.status).toBe(400);
@@ -271,14 +322,20 @@ describe("control-plane auth routes", () => {
     expect(issued.response.status).toBe(201);
     expect(issued.body).toMatchObject({
       invitation: { role: "member", status: "pending" },
-      inviteUrl: expect.stringMatching(/^http:\/\/localhost:3000\/accept-invite\?token=invitation_/),
+      inviteUrl: expect.stringMatching(
+        /^http:\/\/localhost:3000\/accept-invite\?token=invitation_/,
+      ),
     });
     expect(JSON.stringify(issued.body)).not.toContain("password");
 
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Member", password: "member-password" }),
+      body: JSON.stringify({
+        token: new URL(issued.body.inviteUrl).searchParams.get("token")!,
+        name: "Member",
+        password: "member-password",
+      }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
@@ -297,33 +354,67 @@ describe("control-plane auth routes", () => {
   test("protects the last admin and revokes a removed member's Better Auth sessions", async () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
-    const membersBefore = await (await app.request("/members", { headers: { cookie: adminCookie } })).json();
+    const membersBefore = await (
+      await app.request("/members", { headers: { cookie: adminCookie } })
+    ).json();
     const adminId = membersBefore.members[0].userId as string;
 
-    expect((await app.request(`/members/${adminId}`, { method: "DELETE", headers: { cookie: adminCookie } })).status).toBe(409);
-    expect((await app.request(`/members/${adminId}`, {
-      method: "PATCH",
-      headers: { cookie: adminCookie, "content-type": "application/json" },
-      body: JSON.stringify({ role: "member" }),
-    })).status).toBe(409);
+    expect(
+      (
+        await app.request(`/members/${adminId}`, {
+          method: "DELETE",
+          headers: { cookie: adminCookie },
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await app.request(`/members/${adminId}`, {
+          method: "PATCH",
+          headers: { cookie: adminCookie, "content-type": "application/json" },
+          body: JSON.stringify({ role: "member" }),
+        })
+      ).status,
+    ).toBe(409);
 
     const issued = await invite(app, adminCookie);
     const accepted = await app.request("/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: new URL(issued.body.inviteUrl).searchParams.get("token")!, name: "Member", password: "member-password" }),
+      body: JSON.stringify({
+        token: new URL(issued.body.inviteUrl).searchParams.get("token")!,
+        name: "Member",
+        password: "member-password",
+      }),
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
-    const members = await (await app.request("/members", { headers: { cookie: adminCookie } })).json();
-    const memberId = members.members.find((member: { email: string }) => member.email === "member@example.com").userId as string;
+    const members = await (
+      await app.request("/members", { headers: { cookie: adminCookie } })
+    ).json();
+    const memberId = members.members.find(
+      (member: { email: string }) => member.email === "member@example.com",
+    ).userId as string;
 
-    expect((await app.request(`/members/${memberId}`, {
-      method: "PATCH",
-      headers: { cookie: adminCookie, "content-type": "application/json" },
-      body: JSON.stringify({ role: "admin" }),
-    })).status).toBe(200);
-    expect((await app.request(`/members/${memberId}`, { method: "DELETE", headers: { cookie: adminCookie } })).status).toBe(204);
-    expect((await app.request("/auth/session", { headers: { cookie: memberCookie } })).status).toBe(401);
+    expect(
+      (
+        await app.request(`/members/${memberId}`, {
+          method: "PATCH",
+          headers: { cookie: adminCookie, "content-type": "application/json" },
+          body: JSON.stringify({ role: "admin" }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(`/members/${memberId}`, {
+          method: "DELETE",
+          headers: { cookie: adminCookie },
+        })
+      ).status,
+    ).toBe(204);
+    expect((await app.request("/auth/session", { headers: { cookie: memberCookie } })).status).toBe(
+      401,
+    );
   });
 
   test("rotates and revokes pending invitation links", async () => {
@@ -331,18 +422,39 @@ describe("control-plane auth routes", () => {
     const { cookie } = await signIn(app);
     const issued = await invite(app, cookie);
 
-    const reissued = await app.request(`/invitations/${issued.body.invitation.id}/resend`, { method: "POST", headers: { cookie } });
+    const reissued = await app.request(`/invitations/${issued.body.invitation.id}/resend`, {
+      method: "POST",
+      headers: { cookie },
+    });
     expect(reissued.status).toBe(200);
-    const reissuedBody = await reissued.json() as { invitation: { id: string }; inviteUrl: string };
+    const reissuedBody = (await reissued.json()) as {
+      invitation: { id: string };
+      inviteUrl: string;
+    };
     expect(reissuedBody.invitation.id).not.toBe(issued.body.invitation.id);
     const reissuedToken = new URL(reissuedBody.inviteUrl).searchParams.get("token")!;
 
-    expect((await app.request(`/invitations/${reissuedBody.invitation.id}`, { method: "DELETE", headers: { cookie } })).status).toBe(204);
-    expect((await app.request("/invitations/accept", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: reissuedToken, name: "Member", password: "member-password" }),
-    })).status).toBe(409);
+    expect(
+      (
+        await app.request(`/invitations/${reissuedBody.invitation.id}`, {
+          method: "DELETE",
+          headers: { cookie },
+        })
+      ).status,
+    ).toBe(204);
+    expect(
+      (
+        await app.request("/invitations/accept", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            token: reissuedToken,
+            name: "Member",
+            password: "member-password",
+          }),
+        })
+      ).status,
+    ).toBe(409);
   });
 
   test("management responses carry an invitation handle, never the acceptance token", async () => {
@@ -362,17 +474,23 @@ describe("control-plane auth routes", () => {
     expect(listBody).not.toContain(token);
 
     // The handle from the list remains a working management reference.
-    const listed = (JSON.parse(listBody) as { invitations: { id: string; email: string }[] })
-      .invitations.find((candidate) => candidate.email === "tokenless@example.com");
+    const listed = (
+      JSON.parse(listBody) as { invitations: { id: string; email: string }[] }
+    ).invitations.find((candidate) => candidate.email === "tokenless@example.com");
     expect(listed).toBeDefined();
     expect(
-      (await app.request(`/invitations/${listed!.id}`, { method: "DELETE", headers: { cookie } })).status,
+      (await app.request(`/invitations/${listed!.id}`, { method: "DELETE", headers: { cookie } }))
+        .status,
     ).toBe(204);
     // A revoked token no longer opens an account.
-    expect((await app.request("/invitations/accept", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token, name: "Member", password: "member-password" }),
-    })).status).toBe(409);
+    expect(
+      (
+        await app.request("/invitations/accept", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token, name: "Member", password: "member-password" }),
+        })
+      ).status,
+    ).toBe(409);
   });
 });

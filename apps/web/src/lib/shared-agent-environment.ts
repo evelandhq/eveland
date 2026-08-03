@@ -15,8 +15,9 @@ export function updateSharedAgentEnvironmentEntry(
   entry: SharedAgentEnvironmentEntry,
   patch: Partial<SharedAgentEnvironmentEntry>,
 ): SharedAgentEnvironmentEntry {
-  const identityChanged = (patch.key !== undefined && patch.key !== entry.key)
-    || (patch.kind !== undefined && patch.kind !== entry.kind);
+  const identityChanged =
+    (patch.key !== undefined && patch.key !== entry.key) ||
+    (patch.kind !== undefined && patch.kind !== entry.kind);
   return {
     ...entry,
     ...patch,

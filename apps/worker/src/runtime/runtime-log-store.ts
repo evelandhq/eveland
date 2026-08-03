@@ -9,10 +9,7 @@ type RuntimeLogEmitter = {
   }): void;
 };
 
-export function instrumentRuntimeLogStore(
-  store: Store,
-  telemetry: RuntimeLogEmitter,
-): Store {
+export function instrumentRuntimeLogStore(store: Store, telemetry: RuntimeLogEmitter): Store {
   return new Proxy(store, {
     get(target, property, receiver) {
       if (property !== "appendLog") {
@@ -26,9 +23,7 @@ export function instrumentRuntimeLogStore(
           body: record.line,
           attributes: {
             "eveland.project.id": record.projectId,
-            ...(record.deploymentId
-              ? { "eveland.deployment.id": record.deploymentId }
-              : {}),
+            ...(record.deploymentId ? { "eveland.deployment.id": record.deploymentId } : {}),
             "eveland.log.type": record.type,
           },
         });

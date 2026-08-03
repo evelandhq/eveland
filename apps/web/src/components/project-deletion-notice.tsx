@@ -16,7 +16,8 @@ export function ProjectDeletionNotice({
       <Spinner />
       <AlertTitle>Deleting project…</AlertTitle>
       <AlertDescription>
-        Deployments and platform-managed data are being removed. Project changes are disabled until this finishes.
+        Deployments and platform-managed data are being removed. Project changes are disabled until
+        this finishes.
       </AlertDescription>
     </Alert>
   ) : (
@@ -24,7 +25,8 @@ export function ProjectDeletionNotice({
       <AlertTriangleIcon />
       <AlertTitle>Project deletion failed</AlertTitle>
       <AlertDescription>
-        {error ?? "The project record remains. Some runtime resources may already be removed; review the failure and retry deletion."}
+        {error ??
+          "The project record remains. Some runtime resources may already be removed; review the failure and retry deletion."}
       </AlertDescription>
     </Alert>
   );

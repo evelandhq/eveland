@@ -59,18 +59,34 @@ async function main(): Promise<void> {
     // scoped to the disposable test Agent and never changes platform TLS.
     ["NODE_TLS_REJECT_UNAUTHORIZED", "0"],
   ] as const) {
-    await store.upsertSecret(project.id, key, JSON.stringify(encryptSecretValue(value, APP_SECRET_KEY)));
+    await store.upsertSecret(
+      project.id,
+      key,
+      JSON.stringify(encryptSecretValue(value, APP_SECRET_KEY)),
+    );
   }
 
   const deployments = new Map<string, DeploymentRecord>();
   const releases = new Map<string, ReleaseRecord>();
   const processOptions = { appSecretKey: APP_SECRET_KEY, runtime };
   try {
-    assert.equal(await processNextJob(store, "connections-e2e", processOptions), true, "import_source job did not run");
-    assert.equal((await store.getProject(project.id))?.status, "imported", "Connection fixture import failed");
+    assert.equal(
+      await processNextJob(store, "connections-e2e", processOptions),
+      true,
+      "import_source job did not run",
+    );
+    assert.equal(
+      (await store.getProject(project.id))?.status,
+      "imported",
+      "Connection fixture import failed",
+    );
 
     await store.enqueueJob(project.id, "build_deploy");
-    assert.equal(await processNextJob(store, "connections-e2e", processOptions), true, "first build_deploy job did not run");
+    assert.equal(
+      await processNextJob(store, "connections-e2e", processOptions),
+      true,
+      "first build_deploy job did not run",
+    );
     const deployment1 = await requireCurrentDeployment(store, project.id, "first deploy");
     deployments.set(deployment1.id, deployment1);
     releases.set(deployment1.releaseId, await requireRelease(store, deployment1.releaseId));
@@ -81,20 +97,46 @@ async function main(): Promise<void> {
 
     const beforeRestart = { ...connectionServer.counts };
     await store.enqueueJob(project.id, "restart_deployment");
-    assert.equal(await processNextJob(store, "connections-e2e", processOptions), true, "restart_deployment job did not run");
+    assert.equal(
+      await processNextJob(store, "connections-e2e", processOptions),
+      true,
+      "restart_deployment job did not run",
+    );
     await verifyRootConnections(deployment1.hostPort, connectionServer.counts);
-    assert.ok(connectionServer.counts.openapiCalls > beforeRestart.openapiCalls, "OpenAPI Connection was not usable after restart");
-    assert.ok(connectionServer.counts.mcpCalls > beforeRestart.mcpCalls, "MCP Connection was not usable after restart");
+    assert.ok(
+      connectionServer.counts.openapiCalls > beforeRestart.openapiCalls,
+      "OpenAPI Connection was not usable after restart",
+    );
+    assert.ok(
+      connectionServer.counts.mcpCalls > beforeRestart.mcpCalls,
+      "MCP Connection was not usable after restart",
+    );
 
-    const knownDeploymentIds = new Set((await store.listDeployments(project.id)).map((deployment) => deployment.id));
+    const knownDeploymentIds = new Set(
+      (await store.listDeployments(project.id)).map((deployment) => deployment.id),
+    );
     await store.enqueueJob(project.id, "build_deploy");
-    assert.equal(await processNextJob(store, "connections-e2e", processOptions), true, "second build_deploy job did not run");
-    const newDeployments = (await store.listDeployments(project.id)).filter((deployment) => !knownDeploymentIds.has(deployment.id));
-    assert.equal(newDeployments.length, 1, "second build must create one concurrent preview Deployment");
+    assert.equal(
+      await processNextJob(store, "connections-e2e", processOptions),
+      true,
+      "second build_deploy job did not run",
+    );
+    const newDeployments = (await store.listDeployments(project.id)).filter(
+      (deployment) => !knownDeploymentIds.has(deployment.id),
+    );
+    assert.equal(
+      newDeployments.length,
+      1,
+      "second build must create one concurrent preview Deployment",
+    );
     const deployment2 = newDeployments[0]!;
     deployments.set(deployment2.id, deployment2);
     releases.set(deployment2.releaseId, await requireRelease(store, deployment2.releaseId));
-    assert.notEqual(deployment2.releaseId, deployment1.releaseId, "second build did not create a new immutable Release");
+    assert.notEqual(
+      deployment2.releaseId,
+      deployment1.releaseId,
+      "second build did not create a new immutable Release",
+    );
     assertReleaseSummary(releases.get(deployment2.releaseId)!);
 
     // A fresh Eve workflow world can report HTTP health before its first
@@ -103,17 +145,33 @@ async function main(): Promise<void> {
     await runWarmupTurn(deployment2.hostPort);
     const beforeSecondRelease = { ...connectionServer.counts };
     await verifyRootConnections(deployment2.hostPort, connectionServer.counts);
-    assert.ok(connectionServer.counts.openapiCalls > beforeSecondRelease.openapiCalls, "OpenAPI Connection was not usable in the new Release");
-    assert.ok(connectionServer.counts.mcpCalls > beforeSecondRelease.mcpCalls, "MCP Connection was not usable in the new Release");
+    assert.ok(
+      connectionServer.counts.openapiCalls > beforeSecondRelease.openapiCalls,
+      "OpenAPI Connection was not usable in the new Release",
+    );
+    assert.ok(
+      connectionServer.counts.mcpCalls > beforeSecondRelease.mcpCalls,
+      "MCP Connection was not usable in the new Release",
+    );
 
-    assert.equal(connectionServer.counts.rejectedAuth, 0, "a Connection request used a missing or incorrect Project Secret");
+    assert.equal(
+      connectionServer.counts.rejectedAuth,
+      0,
+      "a Connection request used a missing or incorrect Project Secret",
+    );
     const logs = await store.listLogs(project.id);
     const persistedText = JSON.stringify({
       logs,
       summaries: await store.listReleaseSummaries(project.id),
     });
-    assert.ok(!persistedText.includes(OPENAPI_TOKEN), "OpenAPI Project Secret leaked into logs or Release summaries");
-    assert.ok(!persistedText.includes(MCP_TOKEN), "MCP Project Secret leaked into logs or Release summaries");
+    assert.ok(
+      !persistedText.includes(OPENAPI_TOKEN),
+      "OpenAPI Project Secret leaked into logs or Release summaries",
+    );
+    assert.ok(
+      !persistedText.includes(MCP_TOKEN),
+      "MCP Project Secret leaked into logs or Release summaries",
+    );
 
     console.log(
       `MANAGED CONNECTIONS E2E OK runtime=${runtime.name} releases=2 restart=1 openapiCalls=${connectionServer.counts.openapiCalls} mcpLists=${connectionServer.counts.mcpLists} mcpCalls=${connectionServer.counts.mcpCalls} subagent=1 secretLeaks=0`,
@@ -123,7 +181,9 @@ async function main(): Promise<void> {
       ? await Promise.all(
           [...deployments.values()].map(async (deployment) => ({
             deploymentId: deployment.id,
-            diagnostics: await runtime.getProcessDiagnostics!(deployment.containerName).catch(() => null),
+            diagnostics: await runtime.getProcessDiagnostics!(deployment.containerName).catch(
+              () => null,
+            ),
           })),
         )
       : [];
@@ -155,8 +215,15 @@ async function materializeConnectionOrigin(sourcePath: string, origin: string): 
   for (const relativePath of CONNECTION_MODULES) {
     const filePath = path.join(sourcePath, relativePath);
     const source = await readFile(filePath, "utf8");
-    assert.ok(source.includes("__EVELAND_CONNECTION_TEST_ORIGIN__"), `${relativePath} has no Connection origin placeholder`);
-    await writeFile(filePath, source.replaceAll("__EVELAND_CONNECTION_TEST_ORIGIN__", origin), "utf8");
+    assert.ok(
+      source.includes("__EVELAND_CONNECTION_TEST_ORIGIN__"),
+      `${relativePath} has no Connection origin placeholder`,
+    );
+    await writeFile(
+      filePath,
+      source.replaceAll("__EVELAND_CONNECTION_TEST_ORIGIN__", origin),
+      "utf8",
+    );
   }
 }
 
@@ -167,7 +234,9 @@ async function requireCurrentDeployment(
 ): Promise<DeploymentRecord> {
   const deployment = await store.getCurrentDeployment(projectId);
   if (!deployment || deployment.status !== "running") {
-    throw new Error(`${label} failed: ${JSON.stringify({ deployment, logs: await store.listLogs(projectId, "runtime") })}`);
+    throw new Error(
+      `${label} failed: ${JSON.stringify({ deployment, logs: await store.listLogs(projectId, "runtime") })}`,
+    );
   }
   return deployment;
 }
@@ -201,7 +270,11 @@ async function verifyRootConnections(port: number, counts: ConnectionServerCount
     message:
       'Use connection_search with connection "warehouse" and keywords "connection status", then call warehouse__getConnectionStatus.',
   });
-  assert.equal(counts.openapiCalls, beforeOpenapi + 1, "root OpenAPI operation was not called exactly once");
+  assert.equal(
+    counts.openapiCalls,
+    beforeOpenapi + 1,
+    "root OpenAPI operation was not called exactly once",
+  );
 
   const beforeMcpLists = counts.mcpLists;
   const beforeMcpCalls = counts.mcpCalls;
@@ -214,7 +287,10 @@ async function verifyRootConnections(port: number, counts: ConnectionServerCount
   assert.equal(counts.mcpCalls, beforeMcpCalls + 1, "root MCP tool was not called exactly once");
 }
 
-async function verifySubagentConnection(port: number, counts: ConnectionServerCounts): Promise<void> {
+async function verifySubagentConnection(
+  port: number,
+  counts: ConnectionServerCounts,
+): Promise<void> {
   const beforeMcpLists = counts.mcpLists;
   const beforeMcpCalls = counts.mcpCalls;
   const session = await startSession(
@@ -229,14 +305,18 @@ async function verifySubagentConnection(port: number, counts: ConnectionServerCo
     ),
     "root did not invoke the directory-form researcher",
   );
-  assert.ok(counts.mcpLists > beforeMcpLists, "subagent-owned MCP Connection did not discover its tools");
-  assert.equal(counts.mcpCalls, beforeMcpCalls + 1, "subagent-owned MCP Connection did not call its tool exactly once");
+  assert.ok(
+    counts.mcpLists > beforeMcpLists,
+    "subagent-owned MCP Connection did not discover its tools",
+  );
+  assert.equal(
+    counts.mcpCalls,
+    beforeMcpCalls + 1,
+    "subagent-owned MCP Connection did not call its tool exactly once",
+  );
 }
 
-async function runConnectionFlow(input: {
-  port: number;
-  message: string;
-}): Promise<void> {
+async function runConnectionFlow(input: { port: number; message: string }): Promise<void> {
   const session = await startSession(input.port, input.message);
   assert.ok(
     session.events.some((event) => event.type === "action.result"),
@@ -252,7 +332,10 @@ async function runWarmupTurn(port: number): Promise<void> {
   );
 }
 
-async function startSession(port: number, message: string): Promise<{
+async function startSession(
+  port: number,
+  message: string,
+): Promise<{
   sessionId: string;
   continuationToken: string;
   nextIndex: number;
@@ -267,7 +350,10 @@ async function startSession(port: number, message: string): Promise<{
   const body = await response.text();
   assert.ok(response.ok, `session creation failed (${response.status}): ${body}`);
   const parsed = JSON.parse(body) as { sessionId?: unknown };
-  const sessionId = typeof parsed.sessionId === "string" ? parsed.sessionId : response.headers.get("x-eve-session-id");
+  const sessionId =
+    typeof parsed.sessionId === "string"
+      ? parsed.sessionId
+      : response.headers.get("x-eve-session-id");
   assert.ok(sessionId, `session creation returned no session id: ${body}`);
   return { sessionId, ...(await readUntilWaiting(port, sessionId, 0)) };
 }
@@ -304,20 +390,32 @@ async function readUntilWaiting(
         }
         if (event.type === "session.waiting") {
           const data = event.data as { continuationToken?: unknown } | undefined;
-          if (typeof data?.continuationToken === "string") continuationToken = data.continuationToken;
+          if (typeof data?.continuationToken === "string")
+            continuationToken = data.continuationToken;
         }
       }
     }
   } catch (error) {
-    throw new Error(`session ${sessionId} stream aborted; events=${JSON.stringify(events)}`, { cause: error });
+    throw new Error(`session ${sessionId} stream aborted; events=${JSON.stringify(events)}`, {
+      cause: error,
+    });
   }
   await reader.cancel().catch(() => undefined);
-  assert.ok(continuationToken, `session ${sessionId} never reached session.waiting: ${JSON.stringify(events)}`);
-  assert.ok(events.some((event) => event.type === "turn.completed"), `session ${sessionId} never completed its turn`);
+  assert.ok(
+    continuationToken,
+    `session ${sessionId} never reached session.waiting: ${JSON.stringify(events)}`,
+  );
+  assert.ok(
+    events.some((event) => event.type === "turn.completed"),
+    `session ${sessionId} never completed its turn`,
+  );
   return { continuationToken, nextIndex: startIndex + events.length, events };
 }
 
-async function startConnectionServer(host: string, tlsRoot: string): Promise<{
+async function startConnectionServer(
+  host: string,
+  tlsRoot: string,
+): Promise<{
   port: number;
   counts: ConnectionServerCounts;
   close: () => Promise<void>;
@@ -357,7 +455,9 @@ async function startConnectionServer(host: string, tlsRoot: string): Promise<{
       void handleConnectionRequest(request, response, counts).catch((error) => {
         response.statusCode = 500;
         response.setHeader("content-type", "application/json");
-        response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        response.end(
+          JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+        );
       });
     },
   );
@@ -416,7 +516,10 @@ async function handleConnectionRequest(
   if (message.method === "initialize") {
     counts.mcpInitializes += 1;
     jsonRpc(response, message.id, {
-      protocolVersion: typeof message.params?.protocolVersion === "string" ? message.params.protocolVersion : "2025-06-18",
+      protocolVersion:
+        typeof message.params?.protocolVersion === "string"
+          ? message.params.protocolVersion
+          : "2025-06-18",
       capabilities: { tools: {} },
       serverInfo: { name: "eveland-managed-connections-e2e", version: "1.0.0" },
     });
@@ -461,7 +564,8 @@ function authorize(
 
 async function readRequestBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  for await (const chunk of request)
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   return Buffer.concat(chunks).toString("utf8");
 }
 

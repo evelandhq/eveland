@@ -20,7 +20,10 @@ import { registerObservabilityRoutes } from "./app-observability-routes.js";
 import { createAgentAuthService } from "./agent-auth-service.js";
 import { registerAgentAuthRoutes } from "./app-agent-auth-routes.js";
 import { registerCanonicalPlaygroundRoute } from "./app-canonical-playground-route.js";
-import { registerAdminOnlyBoundary, registerControlPlaneAuthBoundary } from "./app-control-plane-auth-boundary.js";
+import {
+  registerAdminOnlyBoundary,
+  registerControlPlaneAuthBoundary,
+} from "./app-control-plane-auth-boundary.js";
 import { registerMemberRoutes } from "./app-member-routes.js";
 import { registerSystemDiagnosticsRoutes } from "./app-system-diagnostics-routes.js";
 export type { AppOptions } from "./app-types.js";
@@ -35,19 +38,25 @@ const identityBrowserCorsPaths = new Set([
   "/identity/logout",
 ]);
 
-export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variables: { principal: AuthPrincipal } }> {
+export function createApp(
+  store: Store,
+  options: AppOptions = {},
+): Hono<{ Variables: { principal: AuthPrincipal } }> {
   const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
   const buildInfo = options.buildInfo ?? createBuildInfoFromEnv("api", process.env);
   const runtimeActivationLeaseTtlMs = positiveDuration(
-    options.runtimeActivationLeaseTtlMs ?? Number(process.env.EVELAND_ACTIVATION_LEASE_TTL_MS ?? 180_000),
+    options.runtimeActivationLeaseTtlMs ??
+      Number(process.env.EVELAND_ACTIVATION_LEASE_TTL_MS ?? 180_000),
     "runtime activation lease TTL",
   );
   const runtimeActivationWaitTimeoutMs = positiveDuration(
-    options.runtimeActivationWaitTimeoutMs ?? Number(process.env.EVELAND_COLD_START_TIMEOUT_MS ?? 30_000),
+    options.runtimeActivationWaitTimeoutMs ??
+      Number(process.env.EVELAND_COLD_START_TIMEOUT_MS ?? 30_000),
     "runtime activation wait timeout",
   );
   const sourcePreflightTtlMs = positiveDuration(
-    options.sourcePreflightTtlMs ?? Number(process.env.EVELAND_SOURCE_PREFLIGHT_TTL_MS ?? 3_600_000),
+    options.sourcePreflightTtlMs ??
+      Number(process.env.EVELAND_SOURCE_PREFLIGHT_TTL_MS ?? 3_600_000),
     "source preflight TTL",
   );
   if (!options.auth && process.env.NODE_ENV !== "test") {
@@ -64,20 +73,13 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     store,
     appSecretKey,
     oidcCallbackUrl:
-      options.oidcCallbackUrl ??
-      `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
-    ...(options.agentAuthProviders
-      ? { agentAuthProviders: options.agentAuthProviders }
-      : {}),
-    ...(options.oidcProtocol
-      ? { oidcProtocol: options.oidcProtocol }
-      : {}),
+      options.oidcCallbackUrl ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
+    ...(options.agentAuthProviders ? { agentAuthProviders: options.agentAuthProviders } : {}),
+    ...(options.oidcProtocol ? { oidcProtocol: options.oidcProtocol } : {}),
     ...(options.oidcVerifyAccessToken
       ? { oidcVerifyAccessToken: options.oidcVerifyAccessToken }
       : {}),
-    ...(options.agentAuthNow
-      ? { agentAuthNow: options.agentAuthNow }
-      : {}),
+    ...(options.agentAuthNow ? { agentAuthNow: options.agentAuthNow } : {}),
   });
   const enqueueLiveDeploymentRestarts = async (projectId: string) => {
     const deployments = (await store.listDeployments(projectId)).filter(
@@ -104,7 +106,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
       credentials: true,
     }),
   );
-
 
   registerInternalRoutes({
     app,
@@ -137,7 +138,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
 
   registerAgentAuthRoutes({ app, store, agentAuth });
 
-
   registerProjectRoutes({ app, store, options, dataDir, appSecretKey, sourcePreflightTtlMs });
 
   registerCanonicalPlaygroundRoute({
@@ -146,7 +146,6 @@ export function createApp(store: Store, options: AppOptions = {}): Hono<{ Variab
     agentAuth,
     playgroundProxy,
   });
-
 
   registerSecretRoutes({
     app,

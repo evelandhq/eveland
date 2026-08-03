@@ -8,7 +8,14 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatTokenCount } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
@@ -46,8 +53,8 @@ export default async function SchedulesPage({
       <CardHeader>
         <CardTitle>Schedules</CardTitle>
         <CardDescription>
-          Eveland executes Markdown and TypeScript schedules from the promoted
-          scheduler target. Cron definitions use UTC; run timestamps use your display timezone.
+          Eveland executes Markdown and TypeScript schedules from the promoted scheduler target.
+          Cron definitions use UTC; run timestamps use your display timezone.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
@@ -56,8 +63,8 @@ export default async function SchedulesPage({
             <EmptyHeader>
               <EmptyTitle>No schedules discovered</EmptyTitle>
               <EmptyDescription>
-                Deploy an Eve 0.27.x, 0.28.x, or 0.29.x project with definitions
-                under agent/schedules.
+                Deploy an Eve 0.27.x, 0.28.x, or 0.29.x project with definitions under
+                agent/schedules.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -73,64 +80,55 @@ export default async function SchedulesPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {schedules.map(
-                ({ schedule, version, targetDeploymentId }) => (
-                  <TableRow key={schedule.id}>
-                    <TableCell>
+              {schedules.map(({ schedule, version, targetDeploymentId }) => (
+                <TableRow key={schedule.id}>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium">{schedule.key}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {version?.sourcePath ?? "Not present in the target Release"}
+                      </span>
+                      <StatusBadge status={version && schedule.enabled ? "running" : "stopped"} />
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {version ? (
                       <div className="flex flex-col gap-1">
-                        <span className="font-medium">{schedule.key}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {version?.sourcePath ??
-                            "Not present in the target Release"}
+                        <span>{describeScheduleCron(version.cron)}</span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {version.cron}
                         </span>
-                        <StatusBadge
-                          status={
-                            version && schedule.enabled ? "running" : "stopped"
-                          }
-                        />
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {version ? (
-                        <div className="flex flex-col gap-1">
-                          <span>{describeScheduleCron(version.cron)}</span>
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {version.cron}
-                          </span>
-                        </div>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {schedule.nextRunAt
-                        ? <DateTime value={schedule.nextRunAt} />
-                        : "Not scheduled"}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {targetDeploymentId ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-start justify-end gap-2">
-                        <Link
-                          href={`?schedule=${encodeURIComponent(schedule.id)}#recent-runs`}
-                          className={buttonVariants({
-                            variant: "outline",
-                            size: "sm",
-                          })}
-                        >
-                          View history
-                        </Link>
-                        <RunScheduleAction
-                          projectId={projectId}
-                          scheduleId={schedule.id}
-                          disabled={!version || !schedule.enabled}
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ),
-              )}
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {schedule.nextRunAt ? <DateTime value={schedule.nextRunAt} /> : "Not scheduled"}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {targetDeploymentId ?? "—"}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap items-start justify-end gap-2">
+                      <Link
+                        href={`?schedule=${encodeURIComponent(schedule.id)}#recent-runs`}
+                        className={buttonVariants({
+                          variant: "outline",
+                          size: "sm",
+                        })}
+                      >
+                        View history
+                      </Link>
+                      <RunScheduleAction
+                        projectId={projectId}
+                        scheduleId={schedule.id}
+                        disabled={!version || !schedule.enabled}
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         )}
@@ -146,8 +144,7 @@ export default async function SchedulesPage({
                   : "Recent runs"}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                The latest schedule executions, including runs that produced no
-                Session.
+                The latest schedule executions, including runs that produced no Session.
               </p>
             </div>
             {query.schedule ? (
@@ -164,9 +161,7 @@ export default async function SchedulesPage({
             <Empty className="py-8">
               <EmptyHeader>
                 <EmptyTitle>No recent runs</EmptyTitle>
-                <EmptyDescription>
-                  Cron and manual executions will appear here.
-                </EmptyDescription>
+                <EmptyDescription>Cron and manual executions will appear here.</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -183,8 +178,7 @@ export default async function SchedulesPage({
               </TableHeader>
               <TableBody>
                 {runPage.runs.map((run) => {
-                  const onlySession =
-                    run.sessions.length === 1 ? run.sessions[0] : undefined;
+                  const onlySession = run.sessions.length === 1 ? run.sessions[0] : undefined;
                   const destination = onlySession
                     ? `/projects/${projectId}/sessions/${onlySession.id}`
                     : `/projects/${projectId}/schedule-runs/${run.id}`;
@@ -192,10 +186,7 @@ export default async function SchedulesPage({
                   return (
                     <TableRow key={run.id}>
                       <TableCell>
-                        <Link
-                          href={destination}
-                          className="font-medium hover:underline"
-                        >
+                        <Link href={destination} className="font-medium hover:underline">
                           {run.scheduleKey}
                         </Link>
                         <p className="mt-1 font-mono text-xs text-muted-foreground">
@@ -219,9 +210,13 @@ export default async function SchedulesPage({
                         {tokenTotal(run.usage)}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {run.startedAt
-                          ? <DateTime value={run.startedAt} />
-                          : <>Due <DateTime value={run.dueAt} /></>}
+                        {run.startedAt ? (
+                          <DateTime value={run.startedAt} />
+                        ) : (
+                          <>
+                            Due <DateTime value={run.dueAt} />
+                          </>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -246,11 +241,7 @@ export default async function SchedulesPage({
   );
 }
 
-function tokenTotal(usage: {
-  status: string;
-  inputTokens: number;
-  outputTokens: number;
-}): string {
+function tokenTotal(usage: { status: string; inputTokens: number; outputTokens: number }): string {
   return usage.status === "none" || usage.status === "missing"
     ? "—"
     : formatTokenCount(usage.inputTokens + usage.outputTokens);

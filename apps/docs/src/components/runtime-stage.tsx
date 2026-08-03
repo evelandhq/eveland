@@ -11,10 +11,17 @@ export function RuntimeStage({ lang }: { lang: Language }) {
         <strong>{t.route}</strong>
       </div>
 
-      <div className="topology-rail" aria-hidden="true"><i /><i /><i /></div>
+      <div className="topology-rail" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
 
       <div className="topology-plane">
-        <header><span>{t.plane}</span><b>healthy</b></header>
+        <header>
+          <span>{t.plane}</span>
+          <b>healthy</b>
+        </header>
         <strong>{t.planeServices}</strong>
         <div className="plane-boundary">
           <span>public traffic</span>
@@ -23,11 +30,16 @@ export function RuntimeStage({ lang }: { lang: Language }) {
       </div>
 
       <div className="topology-handoff" aria-hidden="true">
-        <span>jobs</span><i /><span>events</span>
+        <span>jobs</span>
+        <i />
+        <span>events</span>
       </div>
 
       <div className="topology-runtime" data-runtime="systemd">
-        <header><span>{t.host}</span><b>{t.worker}</b></header>
+        <header>
+          <span>{t.host}</span>
+          <b>{t.worker}</b>
+        </header>
         <div className="runtime-unit">
           <span>{t.runtime}</span>
           <strong>eveland-agent-dep_42.service</strong>
@@ -35,7 +47,11 @@ export function RuntimeStage({ lang }: { lang: Language }) {
         </div>
         <footer>
           <span>{t.resources}</span>
-          <ol>{t.states.map((state) => <li key={state}>{state}</li>)}</ol>
+          <ol>
+            {t.states.map((state) => (
+              <li key={state}>{state}</li>
+            ))}
+          </ol>
         </footer>
       </div>
     </div>

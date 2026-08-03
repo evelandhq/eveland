@@ -17,9 +17,7 @@ export function resolveIdentityDeploymentConfiguration(input: {
   jwksUrl?: string;
 }): IdentityDeploymentConfiguration | null {
   const isProduction = input.nodeEnv === "production";
-  const issuer =
-    input.issuer ||
-    (!isProduction ? "http://localhost:4000" : undefined);
+  const issuer = input.issuer || (!isProduction ? "http://localhost:4000" : undefined);
   if (!issuer) return null;
   const normalizedIssuer = issuer.replace(/\/$/, "");
   const jwksUrl =
@@ -49,12 +47,7 @@ export async function reconcileIdentityDeploymentConfiguration(
   const stateDir = path.join(configuration.dataDir, "runtime-state");
   const statePath = path.join(stateDir, "identity-configuration.sha256");
   const previous = await readFile(statePath, "utf8").catch((error: unknown) => {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       return "";
     }
     throw error;
@@ -65,10 +58,7 @@ export async function reconcileIdentityDeploymentConfiguration(
   for (const project of await store.listProjects()) {
     const deployments = await store.listDeployments(project.id);
     for (const deployment of deployments) {
-      if (
-        deployment.status !== "running" &&
-        deployment.status !== "draining"
-      ) {
+      if (deployment.status !== "running" && deployment.status !== "draining") {
         continue;
       }
       jobs.push(

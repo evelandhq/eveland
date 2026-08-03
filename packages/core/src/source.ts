@@ -1,7 +1,4 @@
-import {
-  isSupportedEveDependency,
-  unsupportedEveVersionMessage,
-} from "./eve-compatibility.js";
+import { isSupportedEveDependency, unsupportedEveVersionMessage } from "./eve-compatibility.js";
 import { parseScheduleSource, type DiscoveredSchedule } from "./schedules.js";
 
 // Browser-safe module: pure string handling instead of node:path.
@@ -104,7 +101,11 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
       summary.sandbox.push(file.path);
     }
 
-    if (root === "agent/" && isUnder(file.path, `${root}schedules/`) && /\.(md|[cm]?[jt]s)$/.test(file.path)) {
+    if (
+      root === "agent/" &&
+      isUnder(file.path, `${root}schedules/`) &&
+      /\.(md|[cm]?[jt]s)$/.test(file.path)
+    ) {
       summary.schedules.push(file.path);
       try {
         schedules.push(parseScheduleSource(file.path, file.content));
@@ -155,8 +156,7 @@ function detectsEveChatCapability(
   return (
     /import\s*\{[^}]*\beveChannel\b[^}]*\}\s*from\s*["']eve\/channels\/eve["']/.test(
       channel.content,
-    ) &&
-    /export\s+default\s+eveChannel\s*\(/.test(channel.content)
+    ) && /export\s+default\s+eveChannel\s*\(/.test(channel.content)
   );
 }
 
@@ -236,7 +236,9 @@ function readProjectName(files: Array<{ path: string; content: string }>): strin
   }
 }
 
-export function readDeclaredEveVersion(files: Array<{ path: string; content: string }>): string | null {
+export function readDeclaredEveVersion(
+  files: Array<{ path: string; content: string }>,
+): string | null {
   const packageJson = files.find((file) => file.path === "package.json");
   if (!packageJson) return null;
 

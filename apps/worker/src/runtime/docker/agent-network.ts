@@ -11,13 +11,8 @@ export type ManagedAgentTelemetryNetwork = {
   processName: string;
 };
 
-export function resolveAgentTelemetryNetworkName(
-  processName: string,
-): string {
-  const digest = createHash("sha256")
-    .update(processName)
-    .digest("hex")
-    .slice(0, 24);
+export function resolveAgentTelemetryNetworkName(processName: string): string {
+  const digest = createHash("sha256").update(processName).digest("hex").slice(0, 24);
   return `eveland-agent-${digest}`;
 }
 
@@ -60,11 +55,7 @@ export async function ensureAgentTelemetryNetwork(
     }
   }
 
-  await connectCollectorToAgentNetwork(
-    networkName,
-    collectorContainerName,
-    true,
-  );
+  await connectCollectorToAgentNetwork(networkName, collectorContainerName, true);
 }
 
 export async function removeAgentTelemetryNetwork(
@@ -77,9 +68,7 @@ export async function removeAgentTelemetryNetwork(
   );
 }
 
-export async function listManagedAgentTelemetryNetworks(): Promise<
-  ManagedAgentTelemetryNetwork[]
-> {
+export async function listManagedAgentTelemetryNetworks(): Promise<ManagedAgentTelemetryNetwork[]> {
   const list = await execa(
     "docker",
     [
@@ -112,8 +101,7 @@ export async function listManagedAgentTelemetryNetworks(): Promise<
       (network) =>
         network.name.length > 0 &&
         network.processName.length > 0 &&
-        network.name ===
-          resolveAgentTelemetryNetworkName(network.processName),
+        network.name === resolveAgentTelemetryNetworkName(network.processName),
     );
 }
 
@@ -149,19 +137,14 @@ export function createAgentTelemetryNetworkReconciler(
     const networks = await listManagedAgentTelemetryNetworks();
     for (const network of networks) {
       if (!(await dockerContainerExists(network.processName))) continue;
-      const connected = await connectCollectorToAgentNetwork(
-        network.name,
-        collectorContainerName,
-      );
+      const connected = await connectCollectorToAgentNetwork(network.name, collectorContainerName);
       if (!connected) return;
     }
     lastCollectorId = collectorId;
   };
 }
 
-export async function listOrphanAgentTelemetryNetworks(): Promise<
-  ManagedAgentTelemetryNetwork[]
-> {
+export async function listOrphanAgentTelemetryNetworks(): Promise<ManagedAgentTelemetryNetwork[]> {
   const networks = await listManagedAgentTelemetryNetworks();
   const orphaned: ManagedAgentTelemetryNetwork[] = [];
   for (const network of networks) {
@@ -177,10 +160,7 @@ export async function removeOrphanAgentTelemetryNetwork(
   collectorContainerName = defaultCollectorContainerName,
 ): Promise<boolean> {
   if (await dockerContainerExists(network.processName)) return false;
-  await removeAgentTelemetryNetworkByName(
-    network.name,
-    collectorContainerName,
-  );
+  await removeAgentTelemetryNetworkByName(network.name, collectorContainerName);
   return true;
 }
 
@@ -201,10 +181,7 @@ async function connectCollectorToAgentNetwork(
     ],
     { all: true, reject: false },
   );
-  if (
-    connect.failed &&
-    /No such (container|object)/i.test(connect.all ?? "")
-  ) {
+  if (connect.failed && /No such (container|object)/i.test(connect.all ?? "")) {
     if (warnWhenCollectorMissing) {
       console.warn(
         `OpenTelemetry Collector "${collectorContainerName}" is unavailable; Agent telemetry network "${networkName}" will be reconnected after the Collector returns.`,
@@ -212,10 +189,7 @@ async function connectCollectorToAgentNetwork(
     }
     return false;
   }
-  if (
-    connect.failed &&
-    !/already exists in network|already connected/i.test(connect.all ?? "")
-  ) {
+  if (connect.failed && !/already exists in network|already connected/i.test(connect.all ?? "")) {
     throw new Error(
       `Could not connect Collector "${collectorContainerName}" to Docker network "${networkName}": ${
         connect.all?.trim() || "docker network connect failed"
@@ -226,11 +200,10 @@ async function connectCollectorToAgentNetwork(
 }
 
 async function dockerContainerExists(containerName: string): Promise<boolean> {
-  const inspect = await execa(
-    "docker",
-    ["inspect", "--type", "container", containerName],
-    { all: true, reject: false },
-  );
+  const inspect = await execa("docker", ["inspect", "--type", "container", containerName], {
+    all: true,
+    reject: false,
+  });
   if (!inspect.failed) return true;
   if (/No such (container|object)/i.test(inspect.all ?? "")) return false;
   throw new Error(
@@ -246,20 +219,12 @@ async function removeAgentTelemetryNetworkByName(
 ): Promise<void> {
   const disconnect = await execa(
     "docker",
-    [
-      "network",
-      "disconnect",
-      "--force",
-      networkName,
-      collectorContainerName,
-    ],
+    ["network", "disconnect", "--force", networkName, collectorContainerName],
     { all: true, reject: false },
   );
   if (
     disconnect.failed &&
-    !/not connected|No such (container|network)|not found/i.test(
-      disconnect.all ?? "",
-    )
+    !/not connected|No such (container|network)|not found/i.test(disconnect.all ?? "")
   ) {
     throw new Error(
       `Could not disconnect Collector "${collectorContainerName}" from Docker network "${networkName}": ${

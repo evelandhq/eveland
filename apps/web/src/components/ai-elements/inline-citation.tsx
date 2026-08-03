@@ -2,56 +2,28 @@
 
 import { Badge } from "@/components/ui/badge";
 import type { CarouselApi } from "@/components/ui/carousel";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-} from "@/components/ui/carousel";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
+import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 export type InlineCitationProps = ComponentProps<"span">;
 
-export const InlineCitation = ({
-  className,
-  ...props
-}: InlineCitationProps) => (
-  <span
-    className={cn("group inline items-center gap-1", className)}
-    {...props}
-  />
+export const InlineCitation = ({ className, ...props }: InlineCitationProps) => (
+  <span className={cn("group inline items-center gap-1", className)} {...props} />
 );
 
 export type InlineCitationTextProps = ComponentProps<"span">;
 
-export const InlineCitationText = ({
-  className,
-  ...props
-}: InlineCitationTextProps) => (
-  <span
-    className={cn("transition-colors group-hover:bg-accent", className)}
-    {...props}
-  />
+export const InlineCitationText = ({ className, ...props }: InlineCitationTextProps) => (
+  <span className={cn("transition-colors group-hover:bg-accent", className)} {...props} />
 );
 
 export type InlineCitationCardProps = ComponentProps<typeof HoverCard>;
 
-export const InlineCitationCard = (props: InlineCitationCardProps) => (
-  <HoverCard {...props} />
-);
+export const InlineCitationCard = (props: InlineCitationCardProps) => <HoverCard {...props} />;
 
 export type InlineCitationCardTriggerProps = ComponentProps<typeof Badge> & {
   sources: string[];
@@ -62,22 +34,24 @@ export const InlineCitationCardTrigger = ({
   className,
   ...props
 }: InlineCitationCardTriggerProps) => (
-  <HoverCardTrigger closeDelay={0} delay={0} render={<Badge className={cn("ml-1 rounded-full", className)} variant="secondary" {...props} />}>{sources[0] ? (
-            <>
-              {new URL(sources[0]).hostname}{" "}
-              {sources.length > 1 && `+${sources.length - 1}`}
-            </>
-          ) : (
-            "unknown"
-          )}</HoverCardTrigger>
+  <HoverCardTrigger
+    closeDelay={0}
+    delay={0}
+    render={<Badge className={cn("ml-1 rounded-full", className)} variant="secondary" {...props} />}
+  >
+    {sources[0] ? (
+      <>
+        {new URL(sources[0]).hostname} {sources.length > 1 && `+${sources.length - 1}`}
+      </>
+    ) : (
+      "unknown"
+    )}
+  </HoverCardTrigger>
 );
 
 export type InlineCitationCardBodyProps = ComponentProps<"div">;
 
-export const InlineCitationCardBody = ({
-  className,
-  ...props
-}: InlineCitationCardBodyProps) => (
+export const InlineCitationCardBody = ({ className, ...props }: InlineCitationCardBodyProps) => (
   <HoverCardContent className={cn("relative w-80 p-0", className)} {...props} />
 );
 
@@ -108,9 +82,9 @@ export const InlineCitationCarousel = ({
 
 export type InlineCitationCarouselContentProps = ComponentProps<"div">;
 
-export const InlineCitationCarouselContent = (
-  props: InlineCitationCarouselContentProps
-) => <CarouselContent {...props} />;
+export const InlineCitationCarouselContent = (props: InlineCitationCarouselContentProps) => (
+  <CarouselContent {...props} />
+);
 
 export type InlineCitationCarouselItemProps = ComponentProps<"div">;
 
@@ -118,10 +92,7 @@ export const InlineCitationCarouselItem = ({
   className,
   ...props
 }: InlineCitationCarouselItemProps) => (
-  <CarouselItem
-    className={cn("w-full space-y-2 p-4 pl-8", className)}
-    {...props}
-  />
+  <CarouselItem className={cn("w-full space-y-2 p-4 pl-8", className)} {...props} />
 );
 
 export type InlineCitationCarouselHeaderProps = ComponentProps<"div">;
@@ -133,7 +104,7 @@ export const InlineCitationCarouselHeader = ({
   <div
     className={cn(
       "flex items-center justify-between gap-2 rounded-t-md bg-secondary p-2",
-      className
+      className,
     )}
     {...props}
   />
@@ -176,7 +147,7 @@ export const InlineCitationCarouselIndex = ({
     <div
       className={cn(
         "flex flex-1 items-center justify-end px-3 py-1 text-muted-foreground text-xs",
-        className
+        className,
       )}
       {...props}
     >
@@ -254,16 +225,10 @@ export const InlineCitationSource = ({
   ...props
 }: InlineCitationSourceProps) => (
   <div className={cn("space-y-1", className)} {...props}>
-    {title && (
-      <h4 className="truncate font-medium text-sm leading-tight">{title}</h4>
-    )}
-    {url && (
-      <p className="truncate break-all text-muted-foreground text-xs">{url}</p>
-    )}
+    {title && <h4 className="truncate font-medium text-sm leading-tight">{title}</h4>}
+    {url && <p className="truncate break-all text-muted-foreground text-xs">{url}</p>}
     {description && (
-      <p className="line-clamp-3 text-muted-foreground text-sm leading-relaxed">
-        {description}
-      </p>
+      <p className="line-clamp-3 text-muted-foreground text-sm leading-relaxed">{description}</p>
     )}
     {children}
   </div>
@@ -277,10 +242,7 @@ export const InlineCitationQuote = ({
   ...props
 }: InlineCitationQuoteProps) => (
   <blockquote
-    className={cn(
-      "border-muted border-l-2 pl-3 text-muted-foreground text-sm italic",
-      className
-    )}
+    className={cn("border-muted border-l-2 pl-3 text-muted-foreground text-sm italic", className)}
     {...props}
   >
     {children}

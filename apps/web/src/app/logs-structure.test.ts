@@ -15,7 +15,7 @@ describe("project logs surface", () => {
     expect(logs).not.toContain("searchParams");
     expect(viewer).toContain('"use client"');
     expect(viewer).toContain("Search logs");
-    expect(viewer).toContain("aria-label=\"Filter project logs\"");
+    expect(viewer).toContain('aria-label="Filter project logs"');
     expect(viewer).toContain("selectProjectLogs");
     expect(viewer).toContain("ToggleGroup");
     expect(viewer).toContain("ScrollArea");

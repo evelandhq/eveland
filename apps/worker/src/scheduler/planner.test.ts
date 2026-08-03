@@ -21,13 +21,15 @@ describe("planDueSchedules", () => {
     await store.recordScheduleVersions({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "heartbeat",
-        kind: "handler",
-        cron: "* * * * *",
-        sourcePath: "agent/schedules/heartbeat.ts",
-        definitionHash: "heartbeat-v1",
-      }],
+      definitions: [
+        {
+          key: "heartbeat",
+          kind: "handler",
+          cron: "* * * * *",
+          sourcePath: "agent/schedules/heartbeat.ts",
+          definitionHash: "heartbeat-v1",
+        },
+      ],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -39,23 +41,35 @@ describe("planDueSchedules", () => {
       runtimeKind: "docker",
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
-    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-16T03:00:00.000Z"));
+    await store.setProjectSchedulerTarget(
+      project.id,
+      deployment.id,
+      new Date("2026-07-16T03:00:00.000Z"),
+    );
 
-    await expect(planDueSchedules(store, {
-      now: new Date("2026-07-16T03:01:00.000Z"),
-      limit: 10,
-      prewarmMs: 60_000,
-      activationLeaseTtlMs: 70_000,
-    })).resolves.toBe(1);
+    await expect(
+      planDueSchedules(store, {
+        now: new Date("2026-07-16T03:01:00.000Z"),
+        limit: 10,
+        prewarmMs: 60_000,
+        activationLeaseTtlMs: 70_000,
+      }),
+    ).resolves.toBe(1);
 
     const scheduleJob = await store.claimNextJob("due-worker");
-    expect(scheduleJob).toMatchObject({ type: "trigger_schedule", payload: { scheduleRunId: expect.any(String) } });
+    expect(scheduleJob).toMatchObject({
+      type: "trigger_schedule",
+      payload: { scheduleRunId: expect.any(String) },
+    });
     await expect(store.listDeploymentRuntimeInstances(deployment.id)).resolves.toEqual([]);
   });
 
   test("prewarms a stopped scheduler target before its next run becomes due", async () => {
     const store = createTestStore();
-    const project = await store.createProject({ name: "Prewarm Scheduler Agent", importKind: "zip" });
+    const project = await store.createProject({
+      name: "Prewarm Scheduler Agent",
+      importKind: "zip",
+    });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
     const revision = await store.recordSourceRevision({
@@ -70,13 +84,15 @@ describe("planDueSchedules", () => {
     await store.recordScheduleVersions({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "heartbeat",
-        kind: "handler",
-        cron: "* * * * *",
-        sourcePath: "agent/schedules/heartbeat.ts",
-        definitionHash: "heartbeat-v1",
-      }],
+      definitions: [
+        {
+          key: "heartbeat",
+          kind: "handler",
+          cron: "* * * * *",
+          sourcePath: "agent/schedules/heartbeat.ts",
+          definitionHash: "heartbeat-v1",
+        },
+      ],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -88,14 +104,20 @@ describe("planDueSchedules", () => {
       runtimeKind: "docker",
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
-    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-16T03:00:00.000Z"));
+    await store.setProjectSchedulerTarget(
+      project.id,
+      deployment.id,
+      new Date("2026-07-16T03:00:00.000Z"),
+    );
 
-    await expect(planDueSchedules(store, {
-      now: new Date("2026-07-16T03:00:10.000Z"),
-      limit: 10,
-      prewarmMs: 60_000,
-      activationLeaseTtlMs: 70_000,
-    })).resolves.toBe(0);
+    await expect(
+      planDueSchedules(store, {
+        now: new Date("2026-07-16T03:00:10.000Z"),
+        limit: 10,
+        prewarmMs: 60_000,
+        activationLeaseTtlMs: 70_000,
+      }),
+    ).resolves.toBe(0);
 
     const activationJob = await store.claimNextJob("prewarm-worker");
     expect(activationJob).toMatchObject({
@@ -115,10 +137,14 @@ describe("planDueSchedules", () => {
   });
 
   test("uses the durable bounded Store claim as the complete planning transaction", async () => {
-    const claimDueScheduleRuns = vi.fn().mockResolvedValue([{ id: "srun_one" }, { id: "srun_two" }]);
+    const claimDueScheduleRuns = vi
+      .fn()
+      .mockResolvedValue([{ id: "srun_one" }, { id: "srun_two" }]);
     const now = new Date("2026-07-15T03:04:05.000Z");
 
-    await expect(planDueSchedules({ claimDueScheduleRuns } as unknown as Store, { now, limit: 25 })).resolves.toBe(2);
+    await expect(
+      planDueSchedules({ claimDueScheduleRuns } as unknown as Store, { now, limit: 25 }),
+    ).resolves.toBe(2);
     expect(claimDueScheduleRuns).toHaveBeenCalledWith({ now, limit: 25 });
   });
 });

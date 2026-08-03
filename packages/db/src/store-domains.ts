@@ -86,9 +86,7 @@ import type {
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
   protected: boolean;
-  reasons: Array<
-    "route_target" | "active_session" | "active_request" | "recent_artifact"
-  >;
+  reasons: Array<"route_target" | "active_session" | "active_request" | "recent_artifact">;
 };
 
 export type DeploymentRetentionOptions = SessionBindingIdlePolicy & {
@@ -144,7 +142,12 @@ export type ProjectDeletionRequest =
 
 export type AgentAuthCredentialKey = Pick<
   AgentAuthCredential,
-  "agentConnectionId" | "securityRevision" | "authMethod" | "credentialScope" | "scopeSubject" | "credentialKey"
+  | "agentConnectionId"
+  | "securityRevision"
+  | "authMethod"
+  | "credentialScope"
+  | "scopeSubject"
+  | "credentialKey"
 >;
 
 export interface ProjectStore {
@@ -210,7 +213,11 @@ export interface SourceStore {
 export interface GitCredentialStore {
   listGitCredentials(userId: string): Promise<PublicGitCredential[]>;
   getGitCredential(userId: string, host: string): Promise<GitCredentialRecord | null>;
-  upsertGitCredential(userId: string, host: string, encryptedToken: string): Promise<GitCredentialRecord>;
+  upsertGitCredential(
+    userId: string,
+    host: string,
+    encryptedToken: string,
+  ): Promise<GitCredentialRecord>;
   deleteGitCredential(userId: string, credentialId: string): Promise<boolean>;
 }
 
@@ -230,38 +237,51 @@ export interface AgentAuthStore {
     configEncrypted: string;
     securityChanged: boolean;
   }): Promise<AgentConnection | null>;
-  putAgentAuthCredential(input: AgentAuthCredentialKey & {
-    payloadEncrypted: string;
-    expiresAt: Date | null;
-  }): Promise<AgentAuthCredential>;
+  putAgentAuthCredential(
+    input: AgentAuthCredentialKey & {
+      payloadEncrypted: string;
+      expiresAt: Date | null;
+    },
+  ): Promise<AgentAuthCredential>;
   getAgentAuthCredential(key: AgentAuthCredentialKey): Promise<AgentAuthCredential | null>;
-  deleteAgentAuthCredential(key: AgentAuthCredentialKey, expectedRotationSeq: number): Promise<boolean>;
-  replaceAgentAuthCredential(input: AgentAuthCredentialKey & {
-    expectedRotationSeq: number;
-    payloadEncrypted: string;
-    expiresAt: Date | null;
-  }): Promise<AgentAuthCredential | null>;
-  claimAgentAuthCredentialRefresh(input: AgentAuthCredentialKey & {
-    expectedRotationSeq: number;
-    owner: string;
-    leaseId: string;
-    leaseUntil: Date;
-    now: Date;
-  }): Promise<AgentAuthCredential | null>;
-  completeAgentAuthCredentialRefresh(input: AgentAuthCredentialKey & {
-    expectedRotationSeq: number;
-    owner: string;
-    leaseId: string;
-    now: Date;
-    payloadEncrypted: string;
-    expiresAt: Date | null;
-  }): Promise<AgentAuthCredential | null>;
-  releaseAgentAuthCredentialRefresh(input: AgentAuthCredentialKey & {
-    expectedRotationSeq: number;
-    owner: string;
-    leaseId: string;
-    now: Date;
-  }): Promise<AgentAuthCredential | null>;
+  deleteAgentAuthCredential(
+    key: AgentAuthCredentialKey,
+    expectedRotationSeq: number,
+  ): Promise<boolean>;
+  replaceAgentAuthCredential(
+    input: AgentAuthCredentialKey & {
+      expectedRotationSeq: number;
+      payloadEncrypted: string;
+      expiresAt: Date | null;
+    },
+  ): Promise<AgentAuthCredential | null>;
+  claimAgentAuthCredentialRefresh(
+    input: AgentAuthCredentialKey & {
+      expectedRotationSeq: number;
+      owner: string;
+      leaseId: string;
+      leaseUntil: Date;
+      now: Date;
+    },
+  ): Promise<AgentAuthCredential | null>;
+  completeAgentAuthCredentialRefresh(
+    input: AgentAuthCredentialKey & {
+      expectedRotationSeq: number;
+      owner: string;
+      leaseId: string;
+      now: Date;
+      payloadEncrypted: string;
+      expiresAt: Date | null;
+    },
+  ): Promise<AgentAuthCredential | null>;
+  releaseAgentAuthCredentialRefresh(
+    input: AgentAuthCredentialKey & {
+      expectedRotationSeq: number;
+      owner: string;
+      leaseId: string;
+      now: Date;
+    },
+  ): Promise<AgentAuthCredential | null>;
   createAgentAuthTransaction(input: {
     agentConnectionId: string;
     stateHash: string;
@@ -270,7 +290,10 @@ export interface AgentAuthStore {
   }): Promise<AgentAuthTransaction>;
   consumeAgentAuthTransaction(stateHash: string, now?: Date): Promise<AgentAuthTransaction | null>;
   deleteExpiredAgentAuthTransactions(now?: Date, limit?: number): Promise<number>;
-  deleteStaleAgentAuthCredentials(agentConnectionId: string, currentSecurityRevision: number): Promise<number>;
+  deleteStaleAgentAuthCredentials(
+    agentConnectionId: string,
+    currentSecurityRevision: number,
+  ): Promise<number>;
 }
 
 export interface IdentityStore {
@@ -419,26 +442,24 @@ export interface SecretStore {
   ): Promise<PublicSecret | null>;
   deleteSecret(projectId: string, secretId: string): Promise<boolean>;
   listSecretRecords(projectId: string): Promise<SecretRecord[]>;
-  saveSharedAgentEnvironment(input: SaveSharedAgentEnvironmentInput): Promise<SharedAgentEnvironment>;
+  saveSharedAgentEnvironment(
+    input: SaveSharedAgentEnvironmentInput,
+  ): Promise<SharedAgentEnvironment>;
   getSharedAgentEnvironmentRecord(): Promise<SharedAgentEnvironmentRecord | null>;
 }
 
-export type EnqueueJobArguments<Type extends JobType> =
-  Type extends JobType
-    ? {} extends JobPayloadMap[Type]
-      ? [type: Type, payload?: JobPayloadMap[Type]]
-      : [type: Type, payload: JobPayloadMap[Type]]
-    : never;
+export type EnqueueJobArguments<Type extends JobType> = Type extends JobType
+  ? {} extends JobPayloadMap[Type]
+    ? [type: Type, payload?: JobPayloadMap[Type]]
+    : [type: Type, payload: JobPayloadMap[Type]]
+  : never;
 
 export interface JobStore {
   enqueueJob<Type extends JobType>(
     projectId: string,
     ...job: EnqueueJobArguments<Type>
   ): Promise<Job<Type>>;
-  listProjectJobs(
-    projectId: string,
-    options?: { limit?: number },
-  ): Promise<Job[]>;
+  listProjectJobs(projectId: string, options?: { limit?: number }): Promise<Job[]>;
   listProjectJobs<Type extends JobType>(
     projectId: string,
     options: { type: Type; limit?: number },
@@ -497,7 +518,10 @@ export interface DeploymentStore {
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
   getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
   getDeploymentByContainerName(containerName: string): Promise<DeploymentRecord | null>;
-  updateDeploymentStatus(deploymentId: string, status: DeploymentStatus): Promise<DeploymentRecord | null>;
+  updateDeploymentStatus(
+    deploymentId: string,
+    status: DeploymentStatus,
+  ): Promise<DeploymentRecord | null>;
   /**
    * Compare-and-set on a Deployment's status: writes `to` only while the row
    * still reads one of `from`, and returns null when it does not. Callers that
@@ -520,12 +544,19 @@ export interface DeploymentStore {
 }
 
 export interface RoutingStore {
-  ensureDeploymentRoutes(projectId: string, deploymentId: string, baseDomain: string): Promise<AgentRoute[]>;
+  ensureDeploymentRoutes(
+    projectId: string,
+    deploymentId: string,
+    baseDomain: string,
+  ): Promise<AgentRoute[]>;
   reconcileAgentRoutes(baseDomain: string): Promise<void>;
   findRouteByHostname(hostname: string): Promise<ResolvedAgentRoute | null>;
   findProjectRoute(projectId: string): Promise<ResolvedAgentRoute | null>;
   listProjectRoutes(projectId: string): Promise<ResolvedAgentRoute[]>;
-  updateRouteTargets(routeId: string, targets: Array<Omit<RouteTarget, "routeId">>): Promise<ResolvedAgentRoute>;
+  updateRouteTargets(
+    routeId: string,
+    targets: Array<Omit<RouteTarget, "routeId">>,
+  ): Promise<ResolvedAgentRoute>;
   promoteDeployment(projectId: string, deploymentId: string): Promise<ResolvedAgentRoute>;
   ensureAliasRoute(
     projectId: string,
@@ -569,11 +600,19 @@ export interface SessionStore {
   appendSessionEvent(sessionId: string, type: string, payload: unknown): Promise<SessionEvent>;
   recordModelUsage(
     sessionId: string,
-    usage: ModelStepUsage & { eveSessionId?: string; agentId?: string | null; agentName?: string | null },
+    usage: ModelStepUsage & {
+      eveSessionId?: string;
+      agentId?: string | null;
+      agentName?: string | null;
+    },
   ): Promise<ModelUsageEvent>;
   completeSession(
     sessionId: string,
-    input: { status: SessionStatus; eveSessionId?: string | null; continuationToken?: string | null },
+    input: {
+      status: SessionStatus;
+      eveSessionId?: string | null;
+      continuationToken?: string | null;
+    },
   ): Promise<Session | null>;
   listSessions(projectId: string): Promise<Session[]>;
   getSession(sessionId: string): Promise<Session | null>;
@@ -640,15 +679,24 @@ export interface ScheduleStore {
       definitionHash: string;
     }>;
   }): Promise<ProjectScheduleVersion[]>;
-  listProjectScheduleVersions(projectId: string, sourceRevisionId: string): Promise<ProjectScheduleVersion[]>;
+  listProjectScheduleVersions(
+    projectId: string,
+    sourceRevisionId: string,
+  ): Promise<ProjectScheduleVersion[]>;
   listProjectScheduleSummaries(projectId: string): Promise<ProjectScheduleSummary[]>;
   getProjectSchedule(scheduleId: string): Promise<ProjectSchedule | null>;
-  setProjectSchedulerTarget(projectId: string, deploymentId: string, now?: Date): Promise<ProjectSchedulerTarget>;
+  setProjectSchedulerTarget(
+    projectId: string,
+    deploymentId: string,
+    now?: Date,
+  ): Promise<ProjectSchedulerTarget>;
   listUpcomingScheduleTargets(input: {
     after: Date;
     before: Date;
     limit: number;
-  }): Promise<Array<{ scheduleId: string; projectId: string; deploymentId: string; nextRunAt: string }>>;
+  }): Promise<
+    Array<{ scheduleId: string; projectId: string; deploymentId: string; nextRunAt: string }>
+  >;
   createManualScheduleRun(projectId: string, scheduleId: string, now?: Date): Promise<ScheduleRun>;
   claimDueScheduleRuns(input: { now: Date; limit: number }): Promise<ScheduleRun[]>;
   getScheduleRun(scheduleRunId: string): Promise<ScheduleRun | null>;
@@ -663,11 +711,22 @@ export interface ScheduleStore {
     },
   ): Promise<CursorPage<ScheduleRunListItem>>;
   getScheduleRunDetail(scheduleRunId: string): Promise<ScheduleRunDetail | null>;
-  claimScheduleRunActivation(scheduleRunId: string, now?: Date, staleAfterMs?: number): Promise<ScheduleRun | null>;
-  redeemScheduleRunDispatch(scheduleRunId: string, deploymentId: string): Promise<ScheduleRun | null>;
+  claimScheduleRunActivation(
+    scheduleRunId: string,
+    now?: Date,
+    staleAfterMs?: number,
+  ): Promise<ScheduleRun | null>;
+  redeemScheduleRunDispatch(
+    scheduleRunId: string,
+    deploymentId: string,
+  ): Promise<ScheduleRun | null>;
   completeScheduleRun(
     scheduleRunId: string,
-    input: { status: "succeeded" | "failed" | "dispatch_unknown"; error?: string | null; eveSessionIds?: string[] },
+    input: {
+      status: "succeeded" | "failed" | "dispatch_unknown";
+      error?: string | null;
+      eveSessionIds?: string[];
+    },
   ): Promise<ScheduleRun | null>;
   failScheduleExecutionsForRuntimeInstance(
     runtimeInstanceId: string,
@@ -686,7 +745,10 @@ export interface RuntimeStore {
     now?: Date;
   }): Promise<ActivationLeaseClaim>;
   getRuntimeInstance(runtimeInstanceId: string): Promise<RuntimeInstance | null>;
-  listRuntimeInstances(statuses: RuntimeInstanceStatus[], limit: number): Promise<RuntimeInstance[]>;
+  listRuntimeInstances(
+    statuses: RuntimeInstanceStatus[],
+    limit: number,
+  ): Promise<RuntimeInstance[]>;
   listDeploymentRuntimeInstances(deploymentId: string): Promise<RuntimeInstance[]>;
   /**
    * Brings an already-running but unmanaged host process under RuntimeInstance
@@ -715,7 +777,11 @@ export interface RuntimeStore {
    */
   reserveRuntimeInstancePort(runtimeInstanceId: string, port: number): Promise<boolean>;
   getActivationLease(leaseId: string): Promise<ActivationLease | null>;
-  renewActivationLease(leaseId: string, expiresAt: Date, now?: Date): Promise<ActivationLease | null>;
+  renewActivationLease(
+    leaseId: string,
+    expiresAt: Date,
+    now?: Date,
+  ): Promise<ActivationLease | null>;
   releaseActivationLease(leaseId: string, now?: Date): Promise<ActivationLease | null>;
   hasActiveActivationLeases(deploymentId: string, now?: Date): Promise<boolean>;
   claimIdleRuntimeInstances(input: {
@@ -740,7 +806,11 @@ export interface InstanceHealthStore {
   upsertWorkerHeartbeat(heartbeat: WorkerHeartbeat): Promise<WorkerHeartbeat>;
   listWorkerHeartbeats(): Promise<WorkerHeartbeat[]>;
   recordHostMetric(sample: Omit<HostMetricSample, "id">): Promise<HostMetricSample>;
-  listHostMetrics(input: { workerId?: string; since?: Date; limit: number }): Promise<HostMetricSample[]>;
+  listHostMetrics(input: {
+    workerId?: string;
+    since?: Date;
+    limit: number;
+  }): Promise<HostMetricSample[]>;
   pruneHostMetrics(before: Date): Promise<number>;
   getInstanceWorkload(): Promise<InstanceWorkload>;
 }
@@ -753,9 +823,7 @@ export interface ObservabilityStore {
     agentCapture: AgentCapturePolicy;
     externalDestinations: ExternalObservabilityDestination[];
   }): Promise<ObservabilityPolicy | null>;
-  listExternalObservabilityDestinationHealth(): Promise<
-    ExternalDestinationHealth[]
-  >;
+  listExternalObservabilityDestinationHealth(): Promise<ExternalDestinationHealth[]>;
   upsertExternalObservabilityDestinationHealth(
     health: ExternalDestinationHealth,
   ): Promise<ExternalDestinationHealth>;
@@ -771,12 +839,8 @@ export interface ObservabilityStore {
     accepted: true;
     duplicate: boolean;
   }>;
-  latestOtlpBatchReceivedAt(input?: {
-    signal?: ObservabilitySignal;
-  }): Promise<string | null>;
-  pruneOtlpTelemetry(input: {
-    receiptsBefore: Date;
-  }): Promise<{ receipts: number }>;
+  latestOtlpBatchReceivedAt(input?: { signal?: ObservabilitySignal }): Promise<string | null>;
+  pruneOtlpTelemetry(input: { receiptsBefore: Date }): Promise<{ receipts: number }>;
   pruneDerivedAgentTelemetry(before: Date): Promise<{
     sessions: number;
     nodes: number;

@@ -1,10 +1,6 @@
 import type { Job } from "@eveland/core/contracts";
 import type { Store } from "@eveland/db";
-import {
-  SpanKind,
-  SpanStatusCode,
-  trace,
-} from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 
 import { dispatchJob, settleJobFailure } from "./job-registry.js";
 import { errorMessage } from "./process-support.js";
@@ -17,15 +13,17 @@ export {
   resolveSandboxCacheDirs,
 } from "./process-support.js";
 
-export async function processNextJob(store: Store, workerId: string, options: ProcessJobOptions = {}): Promise<boolean> {
+export async function processNextJob(
+  store: Store,
+  workerId: string,
+  options: ProcessJobOptions = {},
+): Promise<boolean> {
   const job = await store.claimNextJob(workerId);
   if (!job) {
     return false;
   }
 
-  const tracer =
-    options.tracer ??
-    trace.getTracer("@eveland/worker-jobs");
+  const tracer = options.tracer ?? trace.getTracer("@eveland/worker-jobs");
   return tracer.startActiveSpan(
     `eveland.job ${job.type}`,
     {
@@ -43,9 +41,7 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
         await runWithJobHeartbeat({
           intervalMs:
             options.jobHeartbeatIntervalMs ??
-            Number(
-              process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000,
-            ),
+            Number(process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000),
           heartbeat: () => store.heartbeatJob(job.id, job.attempts),
           work: (signal) => dispatchJob(store, job, { ...options, signal }),
         });
@@ -55,9 +51,7 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
         return true;
       } catch (error) {
         const message = errorMessage(error);
-        span.recordException(
-          error instanceof Error ? error : new Error(message),
-        );
+        span.recordException(error instanceof Error ? error : new Error(message));
         span.setStatus({ code: SpanStatusCode.ERROR, message });
         await clearTemporaryGitCredential(store, job);
         const failed = await store.failJob(job.id, message, job.attempts);
@@ -80,12 +74,7 @@ export async function processNextJob(store: Store, workerId: string, options: Pr
 async function clearTemporaryGitCredential(store: Store, job: Job): Promise<void> {
   if (job.type !== "import_source" || !job.payload.gitCredential) return;
   const { gitCredential: _gitCredential, ...payload } = job.payload;
-  await store.replaceJobPayload(
-    job.id,
-    "import_source",
-    payload,
-    job.attempts,
-  );
+  await store.replaceJobPayload(job.id, "import_source", payload, job.attempts);
 }
 
 /** The job row was fenced away from this execution (recovered as stale and re-claimed). */

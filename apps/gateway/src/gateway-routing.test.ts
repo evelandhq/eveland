@@ -9,7 +9,9 @@ const repository = {
   },
 } as unknown as GatewayRepository;
 
-function routeWith(targets: Array<{ deploymentId: string; weight: number; status: string; hostPort: number }>): ResolvedAgentRoute {
+function routeWith(
+  targets: Array<{ deploymentId: string; weight: number; status: string; hostPort: number }>,
+): ResolvedAgentRoute {
   return {
     id: "route_failover",
     projectId: "proj_failover",

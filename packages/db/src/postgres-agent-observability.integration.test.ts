@@ -16,9 +16,7 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
     const store = createPostgresStore(database!);
 
     await expect(
-      store.pruneDerivedAgentTelemetry(
-        new Date("2000-01-01T00:00:00.000Z"),
-      ),
+      store.pruneDerivedAgentTelemetry(new Date("2000-01-01T00:00:00.000Z")),
     ).resolves.toEqual({
       sessions: 0,
       nodes: 0,
@@ -29,7 +27,10 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
 
   test("merges provenance, child lineage, and replay-safe usage on the real schema", async () => {
     const store = createPostgresStore(database!);
-    const project = await store.createProject({ name: `Observer integration ${Date.now()}`, importKind: "zip" });
+    const project = await store.createProject({
+      name: `Observer integration ${Date.now()}`,
+      importKind: "zip",
+    });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
       kind: "zip",
@@ -58,7 +59,10 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
     const step = envelope(deployment.id, {
       telemetryEventId: "root-step",
       eventFingerprint: "root-step-fingerprint",
-      event: { type: "step.completed", data: { turnId: "turn_1", stepIndex: 0, usage: { inputTokens: 12, outputTokens: 3 } } },
+      event: {
+        type: "step.completed",
+        data: { turnId: "turn_1", stepIndex: 0, usage: { inputTokens: 12, outputTokens: 3 } },
+      },
     });
     await store.ingestAgentEvent(
       envelope(deployment.id, {
@@ -66,7 +70,10 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
         eventFingerprint: "child-step-fingerprint",
         eveSessionId: "eve_child",
         parentEveSessionId: "eve_root",
-        event: { type: "step.completed", data: { turnId: "turn_child", stepIndex: 0, usage: { inputTokens: 7, outputTokens: 2 } } },
+        event: {
+          type: "step.completed",
+          data: { turnId: "turn_child", stepIndex: 0, usage: { inputTokens: 7, outputTokens: 2 } },
+        },
       }),
     );
     await store.ingestAgentEvent(
@@ -161,9 +168,7 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       // can still read the stale max(source_sequence). The old implementation
       // then lets both transactions project and the late lower sequence wins.
       lockTransaction = database!.db.transaction(async (tx) => {
-        await tx.execute(
-          sql`select id from sessions where id = ${started.session.id} for update`,
-        );
+        await tx.execute(sql`select id from sessions where id = ${started.session.id} for update`);
         sessionLockHeld();
         await waitForRelease;
       });
@@ -194,9 +199,7 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       await expect(store.listSessions(project.id)).resolves.toEqual([
         expect.objectContaining({ status: "completed" }),
       ]);
-      await expect(
-        store.listSessionEvents(started.session.id),
-      ).resolves.toHaveLength(3);
+      await expect(store.listSessionEvents(started.session.id)).resolves.toHaveLength(3);
     } finally {
       releaseSessionLock();
       await lockTransaction?.catch(() => undefined);
@@ -205,7 +208,10 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
   }, 30_000);
 });
 
-function envelope(deploymentId: string, overrides: Partial<AgentEventObservation> = {}): AgentEventObservation {
+function envelope(
+  deploymentId: string,
+  overrides: Partial<AgentEventObservation> = {},
+): AgentEventObservation {
   return {
     telemetryEventId: "evt_1",
     eventFingerprint: "evt_1-fingerprint",

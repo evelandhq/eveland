@@ -7,14 +7,14 @@ description: 查看应用 Ownership、Dependency Direction、Data Path 与 Publi
 
 ## 应用 Ownership
 
-| 组件 | 职责 |
-| --- | --- |
-| Web | 经过认证的团队控制面 |
-| API | Control-plane Contract、Persistence、Auth、Import Handling 与 Built-in OTLP Ingest |
-| Gateway | Public Agent Data Plane、Trusted Routing、Affinity、Streaming 与 Private Playground Path |
-| Worker | Import、Build、systemd Runtime Control、Schedule、Recovery 与 Cleanup |
-| OpenTelemetry Collector | OTLP 接收、Domain Filter、Retry Queue 与 Destination Fan-out |
-| Postgres | 控制面状态与平台管理的 Durable Workflow Database |
+| 组件                    | 职责                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| Web                     | 经过认证的团队控制面                                                                     |
+| API                     | Control-plane Contract、Persistence、Auth、Import Handling 与 Built-in OTLP Ingest       |
+| Gateway                 | Public Agent Data Plane、Trusted Routing、Affinity、Streaming 与 Private Playground Path |
+| Worker                  | Import、Build、systemd Runtime Control、Schedule、Recovery 与 Cleanup                    |
+| OpenTelemetry Collector | OTLP 接收、Domain Filter、Retry Queue 与 Destination Fan-out                             |
+| Postgres                | 控制面状态与平台管理的 Durable Workflow Database                                         |
 
 ## Dependency Direction
 

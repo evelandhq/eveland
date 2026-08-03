@@ -53,10 +53,8 @@ import type {
 import type { CurrentMember, Invitation, Member } from "./client-api";
 
 type Equal<Left, Right> =
-  (<Value>() => Value extends Left ? 1 : 2) extends
-  (<Value>() => Value extends Right ? 1 : 2)
-    ? (<Value>() => Value extends Right ? 1 : 2) extends
-        (<Value>() => Value extends Left ? 1 : 2)
+  (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
+    ? (<Value>() => Value extends Right ? 1 : 2) extends <Value>() => Value extends Left ? 1 : 2
       ? true
       : false
     : false;
@@ -73,10 +71,7 @@ type ControlPlaneDomainContracts = [
   Assert<Equal<ProjectScheduleSummary, CoreProjectScheduleSummary>>,
   Assert<Equal<Session, CorePublicSession>>,
   Assert<
-    Equal<
-      ScheduleRun,
-      Omit<ScheduleRunListItem, "sessions"> & { sessions: CorePublicSession[] }
-    >
+    Equal<ScheduleRun, Omit<ScheduleRunListItem, "sessions"> & { sessions: CorePublicSession[] }>
   >,
   Assert<Equal<SessionTokenUsage, CoreSessionTokenUsage>>,
   Assert<Equal<SessionEvent, CoreSessionEvent>>,

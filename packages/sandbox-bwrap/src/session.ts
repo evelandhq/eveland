@@ -7,7 +7,13 @@ import { createWriteStream } from "node:fs";
 import type { SandboxNetworkPolicy, SandboxSession } from "eve/sandbox";
 import { buildBwrapExecArgs, DEFAULT_SANDBOX_PATH } from "./args.js";
 import type { ResolvedBwrapSandboxOptions } from "./options.js";
-import { isWithinWorkspaceReal, resolveBwrapCacheRoot, resolveWorkspacePath, toHostPath, WORKSPACE_ROOT } from "./paths.js";
+import {
+  isWithinWorkspaceReal,
+  resolveBwrapCacheRoot,
+  resolveWorkspacePath,
+  toHostPath,
+  WORKSPACE_ROOT,
+} from "./paths.js";
 import type { ProcessRunner, SpawnedProcess } from "./process.js";
 
 export interface CreateBwrapSessionInput {
@@ -19,7 +25,11 @@ export interface CreateBwrapSessionInput {
 }
 
 function isMissingFileError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as NodeJS.ErrnoException).code === "ENOENT";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
 }
 
 async function collectStream(stream: ReadableStream<Uint8Array>): Promise<string> {
@@ -104,7 +114,12 @@ export function createBwrapSession(input: CreateBwrapSessionInput): BwrapSession
     return wrapped;
   }
 
-  async function spawnProcess(spawnOptions: { command: string; workingDirectory?: string; env?: Record<string, string>; abortSignal?: AbortSignal }) {
+  async function spawnProcess(spawnOptions: {
+    command: string;
+    workingDirectory?: string;
+    env?: Record<string, string>;
+    abortSignal?: AbortSignal;
+  }) {
     const env = {
       PATH: DEFAULT_SANDBOX_PATH,
       HOME: WORKSPACE_ROOT,
@@ -112,7 +127,10 @@ export function createBwrapSession(input: CreateBwrapSessionInput): BwrapSession
       ...options.env,
       ...spawnOptions.env,
     };
-    const hidePaths = [resolveBwrapCacheRoot(appRoot, options.cacheDir), ...options.hidePaths].filter((path) => existsSync(path));
+    const hidePaths = [
+      resolveBwrapCacheRoot(appRoot, options.cacheDir),
+      ...options.hidePaths,
+    ].filter((path) => existsSync(path));
     const argv = buildBwrapExecArgs({
       bwrapPath: options.bwrapPath,
       workspaceDir,
@@ -141,14 +159,19 @@ export function createBwrapSession(input: CreateBwrapSessionInput): BwrapSession
 
     async run(runOptions) {
       const proc = await spawnProcess(runOptions);
-      const [stdout, stderr] = await Promise.all([collectStream(proc.stdout), collectStream(proc.stderr)]);
+      const [stdout, stderr] = await Promise.all([
+        collectStream(proc.stdout),
+        collectStream(proc.stderr),
+      ]);
       const { exitCode } = await proc.wait();
       return { exitCode, stdout, stderr };
     },
 
     async setNetworkPolicy(policy: SandboxNetworkPolicy) {
       if (policy !== "allow-all" && policy !== "deny-all") {
-        throw new Error('bwrap backend supports only the "allow-all" and "deny-all" network policies');
+        throw new Error(
+          'bwrap backend supports only the "allow-all" and "deny-all" network policies',
+        );
       }
       networkPolicy = policy;
     },

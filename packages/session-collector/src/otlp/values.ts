@@ -7,25 +7,15 @@ export function attributesFrom(value: unknown): Record<string, unknown> {
   );
 }
 
-export function metricDataPoints(
-  metric: Record<string, unknown>,
-): Record<string, unknown>[] {
-  for (const kind of [
-    "gauge",
-    "sum",
-    "histogram",
-    "exponentialHistogram",
-    "summary",
-  ] as const) {
+export function metricDataPoints(metric: Record<string, unknown>): Record<string, unknown>[] {
+  for (const kind of ["gauge", "sum", "histogram", "exponentialHistogram", "summary"] as const) {
     const data = recordValue(metric[kind]);
     if (data) return arrayOfRecords(data.dataPoints);
   }
   return [];
 }
 
-export function numberValue(
-  point: Record<string, unknown> | undefined,
-): number | undefined {
+export function numberValue(point: Record<string, unknown> | undefined): number | undefined {
   if (!point) return undefined;
   for (const field of ["asDouble", "asInt"] as const) {
     if (!(field in point)) continue;
@@ -35,17 +25,11 @@ export function numberValue(
   return undefined;
 }
 
-export function histogramMean(
-  point: Record<string, unknown> | undefined,
-): number | undefined {
+export function histogramMean(point: Record<string, unknown> | undefined): number | undefined {
   if (!point) return undefined;
   const count = Number(point.count);
   const sum = Number(point.sum);
-  return Number.isFinite(count) &&
-    count > 0 &&
-    Number.isFinite(sum)
-    ? sum / count
-    : undefined;
+  return Number.isFinite(count) && count > 0 && Number.isFinite(sum) ? sum / count : undefined;
 }
 
 export function anyValue(value: unknown): unknown {
@@ -57,9 +41,7 @@ export function anyValue(value: unknown): unknown {
   if ("boolValue" in record) return record.boolValue === true;
   if ("intValue" in record) {
     const parsed = Number(record.intValue);
-    return Number.isSafeInteger(parsed)
-      ? parsed
-      : String(record.intValue);
+    return Number.isSafeInteger(parsed) ? parsed : String(record.intValue);
   }
   if ("doubleValue" in record) {
     const parsed = Number(record.doubleValue);
@@ -82,16 +64,12 @@ export function anyValue(value: unknown): unknown {
   return null;
 }
 
-export function unixNanoToIso(
-  value: string | undefined,
-): string | undefined {
+export function unixNanoToIso(value: string | undefined): string | undefined {
   if (!value || !/^\d+$/.test(value)) return undefined;
   try {
     const milliseconds = Number(BigInt(value) / 1_000_000n);
     const date = new Date(milliseconds);
-    return Number.isNaN(date.getTime())
-      ? undefined
-      : date.toISOString();
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
   } catch {
     return undefined;
   }
@@ -101,12 +79,7 @@ export function durationBetweenUnixNano(
   start: string | undefined,
   end: string | undefined,
 ): number | undefined {
-  if (
-    !start ||
-    !end ||
-    !/^\d+$/.test(start) ||
-    !/^\d+$/.test(end)
-  ) {
+  if (!start || !end || !/^\d+$/.test(start) || !/^\d+$/.test(end)) {
     return undefined;
   }
   try {
@@ -119,9 +92,7 @@ export function durationBetweenUnixNano(
   }
 }
 
-export function arrayOfRecords(
-  value: unknown,
-): Record<string, unknown>[] {
+export function arrayOfRecords(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
     ? value.flatMap((item) => {
         const record = recordValue(item);
@@ -130,26 +101,16 @@ export function arrayOfRecords(
     : [];
 }
 
-export function recordValue(
-  value: unknown,
-): Record<string, unknown> | undefined {
-  return typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
+export function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
 
 export function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0
-    ? value
-    : undefined;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 export function nonNegativeInteger(value: unknown): number | undefined {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value >= 0
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }

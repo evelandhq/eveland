@@ -9,25 +9,17 @@ import {
   type OidcAuthorizationCodeProviderOptions,
   type OidcProtocol,
 } from "@eveland/agent-auth/oidc";
-import {
-  openAgentAuthConfig,
-  sealAgentAuthConfig,
-} from "@eveland/agent-auth/sealed-config";
+import { openAgentAuthConfig, sealAgentAuthConfig } from "@eveland/agent-auth/sealed-config";
 import type { AgentAuthSecretReference } from "@eveland/core/agent-auth";
 import type { AgentConnection } from "@eveland/core/contracts";
 import { createId } from "@eveland/core/ids";
-import {
-  decryptSecretValue,
-  type EncryptedSecret,
-} from "@eveland/core/server/secrets";
+import { decryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
 import type { AgentAuthStore, SecretStore } from "@eveland/db";
 
 export type AgentAuthServiceStore = OidcAuthorizationCodePersistence &
   Pick<
     AgentAuthStore,
-    | "createAgentConnection"
-    | "getAgentConnection"
-    | "getProjectAgentConnection"
+    "createAgentConnection" | "getAgentConnection" | "getProjectAgentConnection"
   > &
   Pick<SecretStore, "listSecretRecords">;
 
@@ -42,16 +34,9 @@ export type AgentAuthServiceOptions = {
 };
 
 export function createAgentAuthService(options: AgentAuthServiceOptions) {
-  const {
-    store,
-    appSecretKey,
-    oidcCallbackUrl,
-    agentAuthProviders = [],
-  } = options;
+  const { store, appSecretKey, oidcCallbackUrl, agentAuthProviders = [] } = options;
 
-  const ensureProjectAgentConnection = async (
-    projectId: string,
-  ): Promise<AgentConnection> => {
+  const ensureProjectAgentConnection = async (projectId: string): Promise<AgentConnection> => {
     const existing = await store.getProjectAgentConnection(projectId);
     if (existing) return existing;
     const id = createId("acon");
@@ -76,10 +61,7 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
 
   const sealConnectionConfig = (
     config: unknown,
-    connection: Pick<
-      AgentConnection,
-      "id" | "method" | "securityRevision"
-    >,
+    connection: Pick<AgentConnection, "id" | "method" | "securityRevision">,
   ): string =>
     sealAgentAuthConfig(config, appSecretKey, {
       agentConnectionId: connection.id,
@@ -95,15 +77,10 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
       (secret) => secret.key === reference.key,
     )?.encryptedValue;
     if (!encryptedValue) {
-      throw new Error(
-        "The configured Playground authentication secret reference is unavailable.",
-      );
+      throw new Error("The configured Playground authentication secret reference is unavailable.");
     }
     try {
-      return decryptSecretValue(
-        JSON.parse(encryptedValue) as EncryptedSecret,
-        appSecretKey,
-      );
+      return decryptSecretValue(JSON.parse(encryptedValue) as EncryptedSecret, appSecretKey);
     } catch {
       throw new Error(
         "The configured Playground authentication secret reference cannot be decrypted.",
@@ -117,27 +94,17 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
     callbackUrl: oidcCallbackUrl,
     resolveClientSecret: async (config, connection) => {
       if (!config.clientSecretRef) return undefined;
-      return resolveAgentAuthSecret(
-        connection.target.projectId,
-        config.clientSecretRef,
-      );
+      return resolveAgentAuthSecret(connection.target.projectId, config.clientSecretRef);
     },
     ...(options.oidcProtocol ? { protocol: options.oidcProtocol } : {}),
-    ...(options.oidcVerifyAccessToken
-      ? { verifyAccessToken: options.oidcVerifyAccessToken }
-      : {}),
+    ...(options.oidcVerifyAccessToken ? { verifyAccessToken: options.oidcVerifyAccessToken } : {}),
     ...(options.agentAuthNow ? { now: options.agentAuthNow } : {}),
     getConnection: async (connectionId) => {
       const connection = await store.getAgentConnection(connectionId);
-      return connection
-        ? { ...connection, config: readConnectionConfig(connection) }
-        : null;
+      return connection ? { ...connection, config: readConnectionConfig(connection) } : null;
     },
   });
-  const registry = createAgentAuthRegistry([
-    oidcRegistration,
-    ...agentAuthProviders,
-  ]);
+  const registry = createAgentAuthRegistry([oidcRegistration, ...agentAuthProviders]);
 
   const credentialContext = (
     connection: AgentConnection,
@@ -150,14 +117,10 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
     },
     callerPrincipalId,
     ...(returnPath ? { returnPath } : {}),
-    resolveSecret: (reference) =>
-      resolveAgentAuthSecret(connection.target.projectId, reference),
+    resolveSecret: (reference) => resolveAgentAuthSecret(connection.target.projectId, reference),
   });
 
-  const publicConnection = async (
-    connection: AgentConnection,
-    callerPrincipalId?: string,
-  ) => {
+  const publicConnection = async (connection: AgentConnection, callerPrincipalId?: string) => {
     const provider = registry.get(connection.method);
     if (!provider) {
       return {
@@ -216,8 +179,7 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
         connection: { ...safe, config: provider.redactConfig({}) },
         status: {
           state: "misconfigured" as const,
-          message:
-            "The stored Playground authentication configuration cannot be decrypted.",
+          message: "The stored Playground authentication configuration cannot be decrypted.",
         },
       };
     }
@@ -230,9 +192,7 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
     const connection = await ensureProjectAgentConnection(projectId);
     const provider = registry.get(connection.method);
     if (!provider) {
-      throw new Error(
-        `Unsupported Playground authentication method: ${connection.method}.`,
-      );
+      throw new Error(`Unsupported Playground authentication method: ${connection.method}.`);
     }
     const context = credentialContext(
       connection,
@@ -257,11 +217,7 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
     if (!connection || connection.method !== expectedMethod) return null;
     const provider = registry.get(connection.method);
     if (!provider) return null;
-    const context = credentialContext(
-      connection,
-      callerPrincipalId,
-      returnPath,
-    );
+    const context = credentialContext(connection, callerPrincipalId, returnPath);
     return {
       context,
       resolution: await provider.getCredential(context),

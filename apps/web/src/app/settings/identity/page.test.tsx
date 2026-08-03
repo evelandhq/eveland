@@ -10,8 +10,7 @@ const server = vi.hoisted(() => ({
 
 vi.mock("@/lib/server-api", () => server);
 vi.mock("@/components/identity-settings", () => ({
-  IdentitySettings: (props: unknown) =>
-    React.createElement("identity-settings", { value: props }),
+  IdentitySettings: (props: unknown) => React.createElement("identity-settings", { value: props }),
 }));
 vi.mock("@/components/ui/card", () => ({
   Card: "div",
@@ -34,9 +33,7 @@ describe("Identity settings page", () => {
     server.getIdentityProviders.mockResolvedValue([
       { id: "idpc_1", type: "internal", displayName: "Eveland Internal" },
     ]);
-    server.getIdentityRealms.mockResolvedValue([
-      { id: "irlm_1", providerConnectionId: "idpc_1" },
-    ]);
+    server.getIdentityRealms.mockResolvedValue([{ id: "irlm_1", providerConnectionId: "idpc_1" }]);
     server.getIdentityReturnTargets.mockResolvedValue([
       { id: "irtg_1", key: "eve-chats", origin: "http://localhost:3010", enabled: true },
     ]);

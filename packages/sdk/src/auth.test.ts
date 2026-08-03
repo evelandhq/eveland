@@ -1,17 +1,9 @@
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 
 import { describe, expect, test, vi } from "vitest";
-import {
-  httpBasic,
-  UnauthenticatedError,
-  localDev,
-  routeAuth,
-} from "eve/channels/auth";
+import { httpBasic, UnauthenticatedError, localDev, routeAuth } from "eve/channels/auth";
 
-import {
-  evelandIdentity,
-  parseEvelandAuthenticationChallenge,
-} from "./auth.js";
+import { evelandIdentity, parseEvelandAuthenticationChallenge } from "./auth.js";
 
 const issuer = "https://identity.eveland.example";
 const projectId = "proj_agent";
@@ -137,9 +129,7 @@ describe("evelandIdentity", () => {
       now: () => new Date("2029-01-01T00:00:30.000Z"),
     });
 
-    await expect(
-      auth(request(fixture.token({ name: 42 }))),
-    ).resolves.toBeNull();
+    await expect(auth(request(fixture.token({ name: 42 })))).resolves.toBeNull();
   });
 
   test("rejects a Caller Token carrying a raw external Realm value", async () => {
@@ -152,9 +142,7 @@ describe("evelandIdentity", () => {
       now: () => new Date("2029-01-01T00:00:30.000Z"),
     });
 
-    await expect(
-      auth(request(fixture.token({ realm_id: "github-org-123" }))),
-    ).resolves.toBeNull();
+    await expect(auth(request(fixture.token({ realm_id: "github-org-123" })))).resolves.toBeNull();
   });
 
   test("rejects a Caller Token carrying a non-Eveland principal id", async () => {
@@ -166,9 +154,7 @@ describe("evelandIdentity", () => {
       fetch: fixture.fetch,
     });
 
-    await expect(
-      auth(request(fixture.token({ sub: "github-user-123" }))),
-    ).resolves.toBeNull();
+    await expect(auth(request(fixture.token({ sub: "github-user-123" })))).resolves.toBeNull();
   });
 
   test("rejects malformed optional profile claims instead of dropping them", async () => {
@@ -180,9 +166,7 @@ describe("evelandIdentity", () => {
       fetch: fixture.fetch,
     });
 
-    await expect(
-      auth(request(fixture.token({ email: 123 }))),
-    ).resolves.toBeNull();
+    await expect(auth(request(fixture.token({ email: 123 })))).resolves.toBeNull();
   });
 
   test("fails closed when a Caller Token reaches an unconfigured Agent", async () => {
@@ -194,9 +178,7 @@ describe("evelandIdentity", () => {
       fetch: fixture.fetch,
     });
 
-    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(
-      UnauthenticatedError,
-    );
+    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(UnauthenticatedError);
   });
 
   test("fails closed when Eveland signing keys are unavailable", async () => {
@@ -210,9 +192,7 @@ describe("evelandIdentity", () => {
       },
     });
 
-    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(
-      UnauthenticatedError,
-    );
+    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(UnauthenticatedError);
   });
 
   test("fails closed when a matching Eveland signing key is malformed", async () => {
@@ -227,9 +207,7 @@ describe("evelandIdentity", () => {
         }),
     });
 
-    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(
-      UnauthenticatedError,
-    );
+    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(UnauthenticatedError);
   });
 
   test("caches verified signing keys between requests", async () => {
@@ -266,10 +244,7 @@ describe("evelandIdentity", () => {
       .mockResolvedValueOnce(Response.json({ keys: [jwk(first.publicKey, "key-1")] }))
       .mockResolvedValueOnce(
         Response.json({
-          keys: [
-            jwk(first.publicKey, "key-1"),
-            jwk(rotated.publicKey, "key-2"),
-          ],
+          keys: [jwk(first.publicKey, "key-1"), jwk(rotated.publicKey, "key-2")],
         }),
       );
     const auth = evelandIdentity({
@@ -311,9 +286,7 @@ describe("evelandIdentity", () => {
       now: () => new Date("2029-01-01T00:00:30.000Z"),
     });
 
-    await expect(
-      auth(request(fixture.token({ iat: 2_000_000_000 }))),
-    ).resolves.toBeNull();
+    await expect(auth(request(fixture.token({ iat: 2_000_000_000 })))).resolves.toBeNull();
   });
 
   test("rejects a Caller Token without a replay-trace identifier", async () => {
@@ -325,9 +298,7 @@ describe("evelandIdentity", () => {
       fetch: fixture.fetch,
     });
 
-    await expect(
-      auth(request(fixture.token({ jti: undefined }))),
-    ).resolves.toBeNull();
+    await expect(auth(request(fixture.token({ jti: undefined })))).resolves.toBeNull();
   });
 
   test("requires the complete Caller Token time window", async () => {
@@ -339,9 +310,7 @@ describe("evelandIdentity", () => {
       fetch: fixture.fetch,
     });
 
-    await expect(
-      auth(request(fixture.token({ nbf: undefined }))),
-    ).resolves.toBeNull();
+    await expect(auth(request(fixture.token({ nbf: undefined })))).resolves.toBeNull();
   });
 
   test("rejects a token whose protected header is not an ES256 JWT", async () => {
@@ -353,9 +322,7 @@ describe("evelandIdentity", () => {
       fetch: fixture.fetch,
     });
 
-    await expect(
-      auth(request(fixture.token({}, { typ: "JOSE" }))),
-    ).resolves.toBeNull();
+    await expect(auth(request(fixture.token({}, { typ: "JOSE" })))).resolves.toBeNull();
   });
 
   test("lets an explicit localDev fallback handle unrecognized credentials", async () => {
@@ -368,10 +335,7 @@ describe("evelandIdentity", () => {
     });
 
     await expect(
-      routeAuth(
-        request("not-a-jwt", "http://localhost/eve/v1/session"),
-        [auth, localDev()],
-      ),
+      routeAuth(request("not-a-jwt", "http://localhost/eve/v1/session"), [auth, localDev()]),
     ).resolves.toMatchObject({
       authenticator: "local-dev",
       principalType: "local-dev",
@@ -387,13 +351,7 @@ describe("evelandIdentity", () => {
 
     const result = await routeAuth(
       new Request("https://agent.example/eve/v1/session", { method: "POST" }),
-      [
-        auth,
-        httpBasic(
-          { username: "agent", password: "secret" },
-          { realm: "agent" },
-        ),
-      ],
+      [auth, httpBasic({ username: "agent", password: "secret" }, { realm: "agent" })],
     );
 
     expect(result).toBeInstanceOf(Response);
@@ -431,20 +389,25 @@ function tokenFixture() {
       overrides: Record<string, unknown> = {},
       headerOverrides: Record<string, unknown> = {},
     ) =>
-      signedToken(privateKey, kid, {
-        iss: issuer,
-        sub: "iprn_user",
-        aud: `eveland:project:${projectId}`,
-        principal_type: "user",
-        realm_id: "irlm_members",
-        name: "测试用户",
-        email: "user@example.com",
-        iat: 1_700_000_000,
-        nbf: 1_700_000_000,
-        exp: 2_000_000_000,
-        jti: "jti-1",
-        ...overrides,
-      }, headerOverrides),
+      signedToken(
+        privateKey,
+        kid,
+        {
+          iss: issuer,
+          sub: "iprn_user",
+          aud: `eveland:project:${projectId}`,
+          principal_type: "user",
+          realm_id: "irlm_members",
+          name: "测试用户",
+          email: "user@example.com",
+          iat: 1_700_000_000,
+          nbf: 1_700_000_000,
+          exp: 2_000_000_000,
+          jti: "jti-1",
+          ...overrides,
+        },
+        headerOverrides,
+      ),
   };
 }
 
@@ -466,10 +429,7 @@ function signedToken(
   return `${input}.${signature}`;
 }
 
-function request(
-  token: string,
-  url = "https://agent.example/eve/v1/session",
-): Request {
+function request(token: string, url = "https://agent.example/eve/v1/session"): Request {
   return new Request(url, {
     method: "POST",
     headers: { authorization: `Bearer ${token}` },

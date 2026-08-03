@@ -12,7 +12,12 @@ import type { AgentConnection } from "@eveland/core/contracts";
 const VERCEL_TRUSTED_OIDC_IDP_TOKEN_HEADER = "x-vercel-trusted-oidc-idp-token";
 
 export type AgentAuthFailure = {
-  code: "interaction_required" | "configuration_invalid" | "provider_unavailable" | "credential_rejected" | "retry_required";
+  code:
+    | "interaction_required"
+    | "configuration_invalid"
+    | "provider_unavailable"
+    | "credential_rejected"
+    | "retry_required";
   method: string;
   message: string;
   interaction?: { type: "redirect"; url: string };
@@ -36,7 +41,9 @@ export type UnauthorizedRecoveryResult =
   | { action: "give_up"; failure: AgentAuthFailure };
 
 export type AgentAuthInteractionHandler = {
-  start(context: AgentCredentialContext & { returnPath: string }): Promise<{ authorizationUrl: string }>;
+  start(
+    context: AgentCredentialContext & { returnPath: string },
+  ): Promise<{ authorizationUrl: string }>;
   callback(context: { search: string; callerPrincipalId: string }): Promise<{ returnPath: string }>;
 };
 
@@ -49,10 +56,12 @@ export type AgentAuthProviderRegistration = {
   redactConfig(config: unknown): Record<string, unknown>;
   preflight?(context: AgentCredentialContext): Promise<void>;
   getCredential(context: AgentCredentialContext): Promise<AgentCredentialResolution>;
-  recoverUnauthorized?(context: AgentCredentialContext & {
-    rejectedVersion: unknown;
-    attempt: 0 | 1;
-  }): Promise<UnauthorizedRecoveryResult>;
+  recoverUnauthorized?(
+    context: AgentCredentialContext & {
+      rejectedVersion: unknown;
+      attempt: 0 | 1;
+    },
+  ): Promise<UnauthorizedRecoveryResult>;
   interaction?: AgentAuthInteractionHandler;
 };
 
@@ -73,7 +82,9 @@ export type AgentAuthRegistry = {
   listDescriptors(): AgentAuthMethodDescriptor[];
 };
 
-export function createAgentAuthRegistry(extensions: AgentAuthProviderRegistration[] = []): AgentAuthRegistry {
+export function createAgentAuthRegistry(
+  extensions: AgentAuthProviderRegistration[] = [],
+): AgentAuthRegistry {
   const providers = new Map<string, AgentAuthProviderRegistration>();
   for (const provider of [...builtinProviders, ...extensions]) {
     validateProvider(provider, providers);
@@ -84,7 +95,8 @@ export function createAgentAuthRegistry(extensions: AgentAuthProviderRegistratio
       return providers.get(method) ?? null;
     },
     listDescriptors() {
-      return [...providers.values()].sort((left, right) => providerOrder(left.method) - providerOrder(right.method))
+      return [...providers.values()]
+        .sort((left, right) => providerOrder(left.method) - providerOrder(right.method))
         .map(({ descriptor }) => ({
           ...descriptor,
           fields: descriptor.fields.map((field) => ({
@@ -122,7 +134,14 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
       credentialScope: "connection",
       interactive: false,
       fields: [
-        { key: "username", label: "Username", input: "text", required: true, secret: false, valueType: "string" },
+        {
+          key: "username",
+          label: "Username",
+          input: "text",
+          required: true,
+          secret: false,
+          valueType: "string",
+        },
         {
           key: "password",
           label: "Password",
@@ -139,11 +158,19 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
     normalizeConfig(input, existing) {
       const next = record(input, "HTTP Basic configuration must be an object.");
       const previous = optionalRecord(existing);
-      const username = requiredString(next.username ?? previous?.username, "Basic username is required.");
+      const username = requiredString(
+        next.username ?? previous?.username,
+        "Basic username is required.",
+      );
       if (username.includes(":")) throw new Error("Basic username must not contain a colon.");
-      const referenceInput = next.passwordRef ?? (next.password === undefined ? previous?.passwordRef : undefined);
-      if (referenceInput !== undefined) return { username, passwordRef: secretReference(referenceInput) };
-      const password = requiredString(next.password ?? previous?.password, "Basic password is required.");
+      const referenceInput =
+        next.passwordRef ?? (next.password === undefined ? previous?.passwordRef : undefined);
+      if (referenceInput !== undefined)
+        return { username, passwordRef: secretReference(referenceInput) };
+      const password = requiredString(
+        next.password ?? previous?.password,
+        "Basic password is required.",
+      );
       return { username, password };
     },
     redactConfig(config) {
@@ -158,8 +185,21 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
     async getCredential({ connection: { config }, resolveSecret }) {
       const value = record(config, "Invalid HTTP Basic configuration.");
       const username = requiredString(value.username, "Basic username is required.");
-      const password = await resolveConfiguredSecret(value, "password", "passwordRef", resolveSecret, "Basic password is required.");
-      return { envelope: envelope("canonical", [["authorization", `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`]]) };
+      const password = await resolveConfiguredSecret(
+        value,
+        "password",
+        "passwordRef",
+        resolveSecret,
+        "Basic password is required.",
+      );
+      return {
+        envelope: envelope("canonical", [
+          [
+            "authorization",
+            `Basic ${Buffer.from(`${username}:${password}`, "utf8").toString("base64")}`,
+          ],
+        ]),
+      };
     },
   },
   {
@@ -170,22 +210,25 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
       description: "Send an externally issued JWT or opaque access token as a Bearer credential.",
       credentialScope: "connection",
       interactive: false,
-      fields: [{
-        key: "token",
-        label: "Token",
-        input: "password",
-        required: true,
-        secret: true,
-        valueType: "string",
-        secretReferenceKey: "tokenRef",
-      }],
+      fields: [
+        {
+          key: "token",
+          label: "Token",
+          input: "password",
+          required: true,
+          secret: true,
+          valueType: "string",
+          secretReferenceKey: "tokenRef",
+        },
+      ],
     },
     credentialScope: "connection",
     authority: "canonical",
     normalizeConfig(input, existing) {
       const next = record(input, "Bearer configuration must be an object.");
       const previous = optionalRecord(existing);
-      const referenceInput = next.tokenRef ?? (next.token === undefined ? previous?.tokenRef : undefined);
+      const referenceInput =
+        next.tokenRef ?? (next.token === undefined ? previous?.tokenRef : undefined);
       if (referenceInput !== undefined) return { tokenRef: secretReference(referenceInput) };
       return { token: requiredString(next.token ?? previous?.token, "Bearer token is required.") };
     },
@@ -199,7 +242,15 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
     },
     async getCredential({ connection: { config }, resolveSecret }) {
       const value = record(config, "Invalid Bearer configuration.");
-      const token = (await resolveConfiguredSecret(value, "token", "tokenRef", resolveSecret, "Bearer token is required.")).trim();
+      const token = (
+        await resolveConfiguredSecret(
+          value,
+          "token",
+          "tokenRef",
+          resolveSecret,
+          "Bearer token is required.",
+        )
+      ).trim();
       if (!token) throw new Error("Bearer token is required.");
       return { envelope: envelope("canonical", [["authorization", `Bearer ${token}`]]) };
     },
@@ -209,27 +260,33 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
     descriptor: {
       method: "vercel-oidc",
       label: "Vercel OIDC",
-      description: "Send a Vercel-issued OIDC token using Eve 0.29.4's trusted deployment and Agent headers.",
+      description:
+        "Send a Vercel-issued OIDC token using Eve 0.29.4's trusted deployment and Agent headers.",
       credentialScope: "connection",
       interactive: false,
-      fields: [{
-        key: "token",
-        label: "Vercel OIDC token",
-        input: "password",
-        required: true,
-        secret: true,
-        valueType: "string",
-        secretReferenceKey: "tokenRef",
-      }],
+      fields: [
+        {
+          key: "token",
+          label: "Vercel OIDC token",
+          input: "password",
+          required: true,
+          secret: true,
+          valueType: "string",
+          secretReferenceKey: "tokenRef",
+        },
+      ],
     },
     credentialScope: "connection",
     authority: "canonical",
     normalizeConfig(input, existing) {
       const next = record(input, "Vercel OIDC configuration must be an object.");
       const previous = optionalRecord(existing);
-      const referenceInput = next.tokenRef ?? (next.token === undefined ? previous?.tokenRef : undefined);
+      const referenceInput =
+        next.tokenRef ?? (next.token === undefined ? previous?.tokenRef : undefined);
       if (referenceInput !== undefined) return { tokenRef: secretReference(referenceInput) };
-      return { token: requiredString(next.token ?? previous?.token, "Vercel OIDC token is required.") };
+      return {
+        token: requiredString(next.token ?? previous?.token, "Vercel OIDC token is required."),
+      };
     },
     redactConfig(config) {
       const value = optionalRecord(config);
@@ -241,12 +298,22 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
     },
     async getCredential({ connection: { config }, resolveSecret }) {
       const value = record(config, "Invalid Vercel OIDC configuration.");
-      const token = (await resolveConfiguredSecret(value, "token", "tokenRef", resolveSecret, "Vercel OIDC token is required.")).trim();
+      const token = (
+        await resolveConfiguredSecret(
+          value,
+          "token",
+          "tokenRef",
+          resolveSecret,
+          "Vercel OIDC token is required.",
+        )
+      ).trim();
       if (!token) throw new Error("Vercel OIDC token is required.");
-      return { envelope: envelope("canonical", [
-        ["authorization", `Bearer ${token}`],
-        [VERCEL_TRUSTED_OIDC_IDP_TOKEN_HEADER, token],
-      ]) };
+      return {
+        envelope: envelope("canonical", [
+          ["authorization", `Bearer ${token}`],
+          [VERCEL_TRUSTED_OIDC_IDP_TOKEN_HEADER, token],
+        ]),
+      };
     },
   },
   {
@@ -257,53 +324,111 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
       description: "Send configured credential headers for a custom Eve route AuthFn.",
       credentialScope: "connection",
       interactive: false,
-      fields: [{ key: "headers", label: "Headers (JSON)", input: "textarea", required: true, secret: true, valueType: "json-record" }],
+      fields: [
+        {
+          key: "headers",
+          label: "Headers (JSON)",
+          input: "textarea",
+          required: true,
+          secret: true,
+          valueType: "json-record",
+        },
+      ],
     },
     credentialScope: "connection",
     authority: "canonical",
     normalizeConfig(input, existing) {
       const next = record(input, "Custom header configuration must be an object.");
       const previous = optionalRecord(existing);
-      const configured = record(next.headers ?? previous?.headers, "Custom credential headers must be an object.");
-      const parsed = parseAgentCredentialHeaders(Object.entries(configured).map(([name, value]) => [name,
-        typeof value === "string" ? value : "secret-reference",
-      ]));
+      const configured = record(
+        next.headers ?? previous?.headers,
+        "Custom credential headers must be an object.",
+      );
+      const parsed = parseAgentCredentialHeaders(
+        Object.entries(configured).map(([name, value]) => [
+          name,
+          typeof value === "string" ? value : "secret-reference",
+        ]),
+      );
       return {
-        headers: Object.fromEntries(parsed
-          .map(([name]) => [name.toLowerCase(), typeof configured[name] === "string"
-            ? configured[name]
-            : secretReference(configured[name])] as const)
-          .sort(([left], [right]) => left.localeCompare(right))),
+        headers: Object.fromEntries(
+          parsed
+            .map(
+              ([name]) =>
+                [
+                  name.toLowerCase(),
+                  typeof configured[name] === "string"
+                    ? configured[name]
+                    : secretReference(configured[name]),
+                ] as const,
+            )
+            .sort(([left], [right]) => left.localeCompare(right)),
+        ),
       };
     },
     redactConfig(config) {
       const headers = optionalRecord(optionalRecord(config)?.headers);
-      return { headerNames: Object.keys(headers ?? {}).map((name) => name.toLowerCase()).sort() };
+      return {
+        headerNames: Object.keys(headers ?? {})
+          .map((name) => name.toLowerCase())
+          .sort(),
+      };
     },
     async getCredential({ connection: { config }, resolveSecret }) {
-      const configured = record(record(config, "Invalid custom header configuration.").headers, "Custom credential headers must be an object.");
-      return { envelope: envelope("canonical", await Promise.all(Object.entries(configured).map(async ([name, value]) => [
-        name,
-        typeof value === "string"
-          ? value
-          : await resolveSecretReference(secretReference(value), resolveSecret),
-      ] as const))) };
+      const configured = record(
+        record(config, "Invalid custom header configuration.").headers,
+        "Custom credential headers must be an object.",
+      );
+      return {
+        envelope: envelope(
+          "canonical",
+          await Promise.all(
+            Object.entries(configured).map(
+              async ([name, value]) =>
+                [
+                  name,
+                  typeof value === "string"
+                    ? value
+                    : await resolveSecretReference(secretReference(value), resolveSecret),
+                ] as const,
+            ),
+          ),
+        ),
+      };
     },
   },
 ];
 
-export function createOidcProviderDefinition(): Omit<AgentAuthProviderRegistration, "getCredential"> {
+export function createOidcProviderDefinition(): Omit<
+  AgentAuthProviderRegistration,
+  "getCredential"
+> {
   return {
     method: "oidc",
     descriptor: {
       method: "oidc",
       label: "OIDC Authorization Code",
-      description: "Let each Playground caller authorize with the Agent's OIDC provider using Authorization Code and PKCE.",
+      description:
+        "Let each Playground caller authorize with the Agent's OIDC provider using Authorization Code and PKCE.",
       credentialScope: "principal",
       interactive: true,
       fields: [
-        { key: "issuer", label: "Issuer", input: "text", required: true, secret: false, valueType: "string" },
-        { key: "clientId", label: "Client ID", input: "text", required: true, secret: false, valueType: "string" },
+        {
+          key: "issuer",
+          label: "Issuer",
+          input: "text",
+          required: true,
+          secret: false,
+          valueType: "string",
+        },
+        {
+          key: "clientId",
+          label: "Client ID",
+          input: "text",
+          required: true,
+          secret: false,
+          valueType: "string",
+        },
         {
           key: "clientSecret",
           label: "Client secret",
@@ -313,23 +438,71 @@ export function createOidcProviderDefinition(): Omit<AgentAuthProviderRegistrati
           valueType: "string",
           secretReferenceKey: "clientSecretRef",
         },
-        { key: "scopes", label: "Scopes", input: "text", required: true, secret: false, valueType: "string-list", defaultValue: "openid offline_access" },
-        { key: "audience", label: "Audience", input: "text", required: false, secret: false, valueType: "string" },
-        { key: "audienceMode", label: "Audience parameter mode", input: "select", required: false, secret: false, valueType: "string", options: [
-          { value: "resource", label: "Resource indicator" },
-          { value: "audience", label: "Audience parameter" },
-          { value: "both", label: "Both parameters" },
-        ] },
-        { key: "tokenEndpointAuthMethod", label: "Token endpoint auth method", input: "select", required: true, secret: false, valueType: "string", defaultValue: "none", options: [
-          { value: "client_secret_basic", label: "Client secret basic" },
-          { value: "client_secret_post", label: "Client secret post" },
-          { value: "none", label: "None (public client)" },
-        ] },
-        { key: "authorizationParams", label: "Additional authorization parameters (JSON)", input: "textarea", required: false, secret: false, valueType: "json-record" },
-        { key: "accessTokenVerification", label: "Access token verification", input: "select", required: true, secret: false, valueType: "string", defaultValue: "userinfo", options: [
-          { value: "eve-jwt", label: "Eve OIDC JWT verification" },
-          { value: "userinfo", label: "OIDC UserInfo" },
-        ] },
+        {
+          key: "scopes",
+          label: "Scopes",
+          input: "text",
+          required: true,
+          secret: false,
+          valueType: "string-list",
+          defaultValue: "openid offline_access",
+        },
+        {
+          key: "audience",
+          label: "Audience",
+          input: "text",
+          required: false,
+          secret: false,
+          valueType: "string",
+        },
+        {
+          key: "audienceMode",
+          label: "Audience parameter mode",
+          input: "select",
+          required: false,
+          secret: false,
+          valueType: "string",
+          options: [
+            { value: "resource", label: "Resource indicator" },
+            { value: "audience", label: "Audience parameter" },
+            { value: "both", label: "Both parameters" },
+          ],
+        },
+        {
+          key: "tokenEndpointAuthMethod",
+          label: "Token endpoint auth method",
+          input: "select",
+          required: true,
+          secret: false,
+          valueType: "string",
+          defaultValue: "none",
+          options: [
+            { value: "client_secret_basic", label: "Client secret basic" },
+            { value: "client_secret_post", label: "Client secret post" },
+            { value: "none", label: "None (public client)" },
+          ],
+        },
+        {
+          key: "authorizationParams",
+          label: "Additional authorization parameters (JSON)",
+          input: "textarea",
+          required: false,
+          secret: false,
+          valueType: "json-record",
+        },
+        {
+          key: "accessTokenVerification",
+          label: "Access token verification",
+          input: "select",
+          required: true,
+          secret: false,
+          valueType: "string",
+          defaultValue: "userinfo",
+          options: [
+            { value: "eve-jwt", label: "Eve OIDC JWT verification" },
+            { value: "userinfo", label: "OIDC UserInfo" },
+          ],
+        },
       ],
     },
     credentialScope: "principal",
@@ -345,7 +518,9 @@ export function createOidcProviderDefinition(): Omit<AgentAuthProviderRegistrati
         clientId: value?.clientId,
         clientSecretConfigured: typeof secretRef?.key === "string" && secretRef.key.length > 0,
         scopes: value?.scopes,
-        ...(value?.audience === undefined ? {} : { audience: value.audience, audienceMode: value.audienceMode }),
+        ...(value?.audience === undefined
+          ? {}
+          : { audience: value.audience, audienceMode: value.audienceMode }),
         tokenEndpointAuthMethod: value?.tokenEndpointAuthMethod,
         authorizationParams: value?.authorizationParams,
         accessTokenVerification: value?.accessTokenVerification,
@@ -370,8 +545,13 @@ const reservedOidcAuthorizationParameters = new Set([
 function normalizeOidcConfig(input: unknown, existing?: unknown): OidcAuthorizationCodeConfig {
   const next = record(input, "OIDC configuration must be an object.");
   const previous = optionalRecord(existing);
-  const issuer = normalizeHttpsIssuer(requiredString(next.issuer ?? previous?.issuer, "OIDC issuer is required."));
-  const clientId = requiredString(next.clientId ?? previous?.clientId, "OIDC client ID is required.").trim();
+  const issuer = normalizeHttpsIssuer(
+    requiredString(next.issuer ?? previous?.issuer, "OIDC issuer is required."),
+  );
+  const clientId = requiredString(
+    next.clientId ?? previous?.clientId,
+    "OIDC client ID is required.",
+  ).trim();
   if (!clientId) throw new Error("OIDC client ID is required.");
   const tokenEndpointAuthMethod = oneOf(
     next.tokenEndpointAuthMethod ?? previous?.tokenEndpointAuthMethod ?? "none",
@@ -383,18 +563,28 @@ function normalizeOidcConfig(input: unknown, existing?: unknown): OidcAuthorizat
     ["eve-jwt", "userinfo"] as const,
     "Unsupported OIDC access-token verification mode.",
   );
-  const legacySecretKey = typeof next.clientSecretKey === "string" && next.clientSecretKey.trim()
-    ? next.clientSecretKey.trim()
-    : undefined;
-  const referenceInput = next.clientSecretRef
-    ?? (legacySecretKey ? { kind: "project-secret", key: legacySecretKey } : undefined)
-    ?? (next.clientSecretRef === undefined && next.clientSecretKey === undefined ? previous?.clientSecretRef : undefined);
-  const clientSecretRef = referenceInput === undefined ? undefined : secretReference(referenceInput);
+  const legacySecretKey =
+    typeof next.clientSecretKey === "string" && next.clientSecretKey.trim()
+      ? next.clientSecretKey.trim()
+      : undefined;
+  const referenceInput =
+    next.clientSecretRef ??
+    (legacySecretKey ? { kind: "project-secret", key: legacySecretKey } : undefined) ??
+    (next.clientSecretRef === undefined && next.clientSecretKey === undefined
+      ? previous?.clientSecretRef
+      : undefined);
+  const clientSecretRef =
+    referenceInput === undefined ? undefined : secretReference(referenceInput);
   if (tokenEndpointAuthMethod !== "none" && !clientSecretRef) {
-    throw new Error(`OIDC ${tokenEndpointAuthMethod} authentication requires a client secret reference.`);
+    throw new Error(
+      `OIDC ${tokenEndpointAuthMethod} authentication requires a client secret reference.`,
+    );
   }
   const configuredScopes = next.scopes ?? previous?.scopes ?? ["openid", "offline_access"];
-  if (!Array.isArray(configuredScopes) || configuredScopes.some((scope) => typeof scope !== "string" || !scope.trim())) {
+  if (
+    !Array.isArray(configuredScopes) ||
+    configuredScopes.some((scope) => typeof scope !== "string" || !scope.trim())
+  ) {
     throw new Error("OIDC scopes must be a list of non-empty strings.");
   }
   const uniqueScopes = new Set(configuredScopes.map((scope) => (scope as string).trim()));
@@ -402,20 +592,29 @@ function normalizeOidcConfig(input: unknown, existing?: unknown): OidcAuthorizat
   const scopes = ["openid", ...[...uniqueScopes].sort()];
 
   const audienceInput = next.audience ?? previous?.audience;
-  const audience = audienceInput === undefined ? undefined : requiredString(audienceInput, "OIDC audience must not be empty.").trim();
+  const audience =
+    audienceInput === undefined
+      ? undefined
+      : requiredString(audienceInput, "OIDC audience must not be empty.").trim();
   const audienceModeInput = next.audienceMode ?? previous?.audienceMode;
-  if (!audience && audienceModeInput !== undefined) throw new Error("OIDC audience mode requires an audience.");
+  if (!audience && audienceModeInput !== undefined)
+    throw new Error("OIDC audience mode requires an audience.");
   const audienceMode = audience
-    ? oneOf(audienceModeInput ?? "resource", ["resource", "audience", "both"] as const, "Unsupported OIDC audience mode.")
+    ? oneOf(
+        audienceModeInput ?? "resource",
+        ["resource", "audience", "both"] as const,
+        "Unsupported OIDC audience mode.",
+      )
     : undefined;
   if (accessTokenVerification === "eve-jwt" && !audience) {
     throw new Error("OIDC eve-jwt access-token verification requires an audience.");
   }
 
   const authorizationParamsInput = next.authorizationParams ?? previous?.authorizationParams;
-  const authorizationParams = authorizationParamsInput === undefined
-    ? undefined
-    : normalizeAuthorizationParams(authorizationParamsInput);
+  const authorizationParams =
+    authorizationParamsInput === undefined
+      ? undefined
+      : normalizeAuthorizationParams(authorizationParamsInput);
   return {
     issuer,
     clientId,
@@ -423,7 +622,9 @@ function normalizeOidcConfig(input: unknown, existing?: unknown): OidcAuthorizat
     scopes,
     ...(audience ? { audience, audienceMode } : {}),
     tokenEndpointAuthMethod,
-    ...(authorizationParams && Object.keys(authorizationParams).length > 0 ? { authorizationParams } : {}),
+    ...(authorizationParams && Object.keys(authorizationParams).length > 0
+      ? { authorizationParams }
+      : {}),
     accessTokenVerification,
   };
 }
@@ -440,15 +641,26 @@ function normalizeHttpsIssuer(value: string): string {
 
 function normalizeAuthorizationParams(value: unknown): Record<string, string> {
   const params = record(value, "OIDC authorization parameters must be an object.");
-  return Object.fromEntries(Object.entries(params).sort(([left], [right]) => left.localeCompare(right)).map(([key, candidate]) => {
-    if (reservedOidcAuthorizationParameters.has(key)) {
-      throw new Error(`OIDC authorization parameter ${key} is managed by Eveland.`);
-    }
-    return [key, requiredString(candidate, `OIDC authorization parameter ${key} must be a string.`)];
-  }));
+  return Object.fromEntries(
+    Object.entries(params)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, candidate]) => {
+        if (reservedOidcAuthorizationParameters.has(key)) {
+          throw new Error(`OIDC authorization parameter ${key} is managed by Eveland.`);
+        }
+        return [
+          key,
+          requiredString(candidate, `OIDC authorization parameter ${key} must be a string.`),
+        ];
+      }),
+  );
 }
 
-function oneOf<const T extends readonly string[]>(value: unknown, allowed: T, message: string): T[number] {
+function oneOf<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+  message: string,
+): T[number] {
   if (typeof value !== "string" || !allowed.includes(value)) throw new Error(message);
   return value as T[number];
 }
@@ -461,7 +673,14 @@ function noCredentialProvider(
 ): AgentAuthProviderRegistration {
   return {
     method,
-    descriptor: { method, label, description, credentialScope: "connection", interactive: false, fields: [] },
+    descriptor: {
+      method,
+      label,
+      description,
+      credentialScope: "connection",
+      interactive: false,
+      fields: [],
+    },
     credentialScope: "connection",
     authority,
     normalizeConfig(input) {
@@ -479,13 +698,19 @@ function validateProvider(
   provider: AgentAuthProviderRegistration,
   existing: Map<string, AgentAuthProviderRegistration>,
 ): void {
-  if (!/^[a-z][a-z0-9-]*$/.test(provider.method)) throw new Error(`Invalid Playground authentication method: ${provider.method}.`);
-  if (existing.has(provider.method)) throw new Error(`Duplicate Playground authentication method: ${provider.method}.`);
+  if (!/^[a-z][a-z0-9-]*$/.test(provider.method))
+    throw new Error(`Invalid Playground authentication method: ${provider.method}.`);
+  if (existing.has(provider.method))
+    throw new Error(`Duplicate Playground authentication method: ${provider.method}.`);
   if (provider.descriptor.method !== provider.method) {
-    throw new Error(`Playground authentication descriptor method must match provider ${provider.method}.`);
+    throw new Error(
+      `Playground authentication descriptor method must match provider ${provider.method}.`,
+    );
   }
   if (provider.descriptor.credentialScope !== provider.credentialScope) {
-    throw new Error(`Playground authentication descriptor credential scope must match provider ${provider.method}.`);
+    throw new Error(
+      `Playground authentication descriptor credential scope must match provider ${provider.method}.`,
+    );
   }
 }
 
@@ -506,7 +731,7 @@ function record(value: unknown, message: string): Record<string, unknown> {
 
 function optionalRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -520,8 +745,12 @@ function secretReference(value: unknown): AgentAuthSecretReference {
   if (candidate.kind !== "project-secret") {
     throw new Error("Playground authentication secret reference kind is invalid.");
   }
-  const key = requiredString(candidate.key, "Playground authentication secret reference key is required.");
-  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error("Playground authentication secret reference key is invalid.");
+  const key = requiredString(
+    candidate.key,
+    "Playground authentication secret reference key is required.",
+  );
+  if (!/^[A-Z][A-Z0-9_]*$/.test(key))
+    throw new Error("Playground authentication secret reference key is invalid.");
   return { kind: candidate.kind, key };
 }
 
@@ -541,7 +770,8 @@ async function resolveConfiguredSecret(
   resolver: ((reference: AgentAuthSecretReference) => Promise<string>) | undefined,
   missingMessage: string,
 ): Promise<string> {
-  if (config[referenceKey] !== undefined) return resolveSecretReference(secretReference(config[referenceKey]), resolver);
+  if (config[referenceKey] !== undefined)
+    return resolveSecretReference(secretReference(config[referenceKey]), resolver);
   return requiredString(config[inlineKey], missingMessage);
 }
 
@@ -549,7 +779,8 @@ async function resolveSecretReference(
   reference: AgentAuthSecretReference,
   resolver: ((reference: AgentAuthSecretReference) => Promise<string>) | undefined,
 ): Promise<string> {
-  if (!resolver) throw new Error("Playground authentication secret reference resolver is unavailable.");
+  if (!resolver)
+    throw new Error("Playground authentication secret reference resolver is unavailable.");
   return resolver(reference);
 }
 
@@ -561,5 +792,9 @@ function sortValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortValue);
   const object = optionalRecord(value);
   if (!object) return value;
-  return Object.fromEntries(Object.keys(object).sort().map((key) => [key, sortValue(object[key])]));
+  return Object.fromEntries(
+    Object.keys(object)
+      .sort()
+      .map((key) => [key, sortValue(object[key])]),
+  );
 }

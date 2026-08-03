@@ -34,9 +34,7 @@ export function registerControlPlaneAuthBoundary(input: {
   });
 
   app.post("/invitations/accept", async (c) => {
-    const parsed = acceptInvitationSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = acceptInvitationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         {

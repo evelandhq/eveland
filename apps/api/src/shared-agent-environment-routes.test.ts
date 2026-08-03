@@ -25,7 +25,7 @@ describe("shared Agent environment routes", () => {
       }),
     });
     expect(savedResponse.status).toBe(200);
-    const saved = await savedResponse.json() as Record<string, unknown>;
+    const saved = (await savedResponse.json()) as Record<string, unknown>;
     expect(saved).toMatchObject({
       environment: {
         revision: 1,
@@ -49,7 +49,10 @@ describe("shared Agent environment routes", () => {
   test("restarts every live Deployment when the global environment changes", async () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });
-    const firstProject = await store.createProject({ name: "Shared Environment Restart Agent", importKind: "zip" });
+    const firstProject = await store.createProject({
+      name: "Shared Environment Restart Agent",
+      importKind: "zip",
+    });
     const firstRevision = await store.recordSourceRevision({
       projectId: firstProject.id,
       kind: "zip",
@@ -77,7 +80,10 @@ describe("shared Agent environment routes", () => {
       hostPort: 42002,
       runtimeKind: "docker",
     });
-    const secondProject = await store.createProject({ name: "Other Shared Environment Agent", importKind: "zip" });
+    const secondProject = await store.createProject({
+      name: "Other Shared Environment Agent",
+      importKind: "zip",
+    });
     const secondRevision = await store.recordSourceRevision({
       projectId: secondProject.id,
       kind: "zip",
@@ -110,10 +116,12 @@ describe("shared Agent environment routes", () => {
     const savedResponse = await app.request("/platform/shared-agent-environment", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "shared-key" }] }),
+      body: JSON.stringify({
+        entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "shared-key" }],
+      }),
     });
     expect(savedResponse.status).toBe(200);
-    const saved = await savedResponse.json() as {
+    const saved = (await savedResponse.json()) as {
       jobs: Array<{ id: string; payload: Record<string, never> }>;
     };
     expect(saved.jobs).toHaveLength(3);
@@ -123,12 +131,12 @@ describe("shared Agent environment routes", () => {
       ...(await store.listProjectJobs(firstProject.id, { type: "restart_deployment" })),
       ...(await store.listProjectJobs(secondProject.id, { type: "restart_deployment" })),
     ].filter((job) => savedIds.has(job.id));
-    expect(savedInternalJobs.map((job) => job.payload.deploymentId).sort()).toEqual([
-      firstDeployment.id,
-      secondDeployment.id,
-      otherLiveDeployment.id,
-    ].sort());
-    expect(savedInternalJobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
+    expect(savedInternalJobs.map((job) => job.payload.deploymentId).sort()).toEqual(
+      [firstDeployment.id, secondDeployment.id, otherLiveDeployment.id].sort(),
+    );
+    expect(
+      savedInternalJobs.every((job) => job.payload.reason === "shared_agent_environment_changed"),
+    ).toBe(true);
 
     const unchangedResponse = await app.request("/platform/shared-agent-environment", {
       method: "PUT",
@@ -141,10 +149,12 @@ describe("shared Agent environment routes", () => {
     const rotatedResponse = await app.request("/platform/shared-agent-environment", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "shared-key-v2" }] }),
+      body: JSON.stringify({
+        entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "shared-key-v2" }],
+      }),
     });
     expect(rotatedResponse.status).toBe(200);
-    const rotated = await rotatedResponse.json() as {
+    const rotated = (await rotatedResponse.json()) as {
       jobs: Array<{ id: string; payload: Record<string, never> }>;
     };
     expect(rotated.jobs).toHaveLength(3);
@@ -154,12 +164,11 @@ describe("shared Agent environment routes", () => {
       ...(await store.listProjectJobs(firstProject.id, { type: "restart_deployment" })),
       ...(await store.listProjectJobs(secondProject.id, { type: "restart_deployment" })),
     ].filter((job) => rotatedIds.has(job.id));
-    expect(rotatedInternalJobs.map((job) => job.payload.deploymentId).sort()).toEqual([
-      firstDeployment.id,
-      secondDeployment.id,
-      otherLiveDeployment.id,
-    ].sort());
-    expect(rotatedInternalJobs.every((job) => job.payload.reason === "shared_agent_environment_changed")).toBe(true);
+    expect(rotatedInternalJobs.map((job) => job.payload.deploymentId).sort()).toEqual(
+      [firstDeployment.id, secondDeployment.id, otherLiveDeployment.id].sort(),
+    );
+    expect(
+      rotatedInternalJobs.every((job) => job.payload.reason === "shared_agent_environment_changed"),
+    ).toBe(true);
   });
-
 });

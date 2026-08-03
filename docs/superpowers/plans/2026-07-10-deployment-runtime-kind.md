@@ -36,6 +36,7 @@ stoppable, not to make mixed hosts a supported topology.
 ## Task 1: Data layer — runtimeKind column, release/revision lookups
 
 **Files:**
+
 - Edit `apps/api/src/types.ts`
 - Edit `apps/api/src/db/schema.ts`
 - Generate + hand-edit a new migration under `apps/api/drizzle/`
@@ -46,6 +47,7 @@ stoppable, not to make mixed hosts a supported topology.
 - Edit `apps/api/src/db/mappers.test.ts`
 
 **types.ts:**
+
 - Add `export type RuntimeKind = "docker" | "systemd";`
 - Add `runtimeKind: RuntimeKind;` to `DeploymentRecord`.
 
@@ -65,11 +67,12 @@ which has no default.) State in your report that the SQL was hand-edited and why
 **mappers.ts:** `deploymentRowToDeployment` gains `runtimeKind: row.runtimeKind as RuntimeKind` (and its row type gains `runtimeKind: string`). Update mappers.test.ts fixtures.
 
 **Store interface (store.ts):**
+
 - `recordDeployment` input gains `runtimeKind: RuntimeKind` (required).
 - New method `getRelease(releaseId: string): Promise<ReleaseRecord | null>`.
 - New method `getSourceRevision(revisionId: string): Promise<SourceRevision | null>`
   (by revision id — the existing `getCurrentSourceRevision` is by project and only
-  returns the latest; restart needs the revision of the *deployed* release).
+  returns the latest; restart needs the revision of the _deployed_ release).
 
 **Memory store:** implement all three (deployments store the field; lookups scan
 `state.releases` / `state.sourceRevisions`).
@@ -91,6 +94,7 @@ planned).
 ## Task 2: Per-kind adapter construction
 
 **Files:**
+
 - Edit `apps/worker/src/runtime/types.ts`
 - Edit `apps/worker/src/runtime/select.ts`
 - Edit `apps/worker/src/runtime/select.test.ts`
@@ -101,7 +105,10 @@ planned).
 **select.ts:** refactor so kind resolution and construction are separable:
 
 ```ts
-export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: NodeJS.ProcessEnv = process.env): RuntimeAdapter
+export function createRuntimeAdapterForKind(
+  kind: "docker" | "systemd",
+  env: NodeJS.ProcessEnv = process.env,
+): RuntimeAdapter;
 ```
 
 containing the existing docker/systemd construction bodies verbatim (including the
@@ -123,6 +130,7 @@ status, and note remaining breakage in your report).
 ## Task 3: build_deploy records runtimeKind; redeploy stops the old runtime's process
 
 **Files:**
+
 - Edit `apps/worker/src/jobs/process.ts`
 - Edit `apps/worker/src/jobs/process.test.ts`
 
@@ -131,14 +139,16 @@ status, and note remaining breakage in your report).
 point mirroring the existing `runtime` option.
 
 **In `build_deploy`:**
+
 - `recordDeployment` call passes `runtimeKind: runtime.name`.
 - Replace the current-deployment stop (`await runtime.stopProcess(currentDeployment.containerName)`)
   with a stop through the adapter that owns the old deployment:
 
 ```ts
-const stopAdapter = currentDeployment.runtimeKind === runtime.name
-  ? runtime
-  : (options.runtimeForKind ?? createRuntimeAdapterForKind)(currentDeployment.runtimeKind);
+const stopAdapter =
+  currentDeployment.runtimeKind === runtime.name
+    ? runtime
+    : (options.runtimeForKind ?? createRuntimeAdapterForKind)(currentDeployment.runtimeKind);
 await stopAdapter.stopProcess(currentDeployment.containerName);
 ```
 
@@ -148,7 +158,7 @@ runtime.
 
 **Tests (process.test.ts):** existing fake-runtime tests updated for the new
 `recordDeployment` field (assert the stored deployment carries the fake runtime's
-name). New test: a current deployment recorded with the *other* runtimeKind causes
+name). New test: a current deployment recorded with the _other_ runtimeKind causes
 `runtimeForKind` to be called with that kind and the returned adapter's `stopProcess`
 to receive the old containerName, while the active runtime's `stopProcess` is not
 called for it.
@@ -159,21 +169,27 @@ After this task the worker package must compile again: run the full
 ## Task 4: restart_deployment actually restarts
 
 **Files:**
+
 - Edit `apps/worker/src/jobs/process.ts`
 - Edit `apps/worker/src/jobs/process.test.ts`
 
 Extract from `build_deploy` a helper used by both paths (same file):
 
 ```ts
-async function composeDeploymentEnv(store: Store, projectId: string, options: ProcessJobOptions): Promise<{ env: Record<string, string>; secretValues: string[] }>
+async function composeDeploymentEnv(
+  store: Store,
+  projectId: string,
+  options: ProcessJobOptions,
+): Promise<{ env: Record<string, string>; secretValues: string[] }>;
 ```
 
 covering what build_deploy currently assembles: decrypted project secrets,
 platform-injected `WORKFLOW_POSTGRES_URL` (project secret of the same name wins), and
-`NODE_ENV=production` when in production. build_deploy's durable-workflow *gating*
+`NODE_ENV=production` when in production. build_deploy's durable-workflow _gating_
 stays in build_deploy — restart never re-gates an already-deployed release.
 
 **New `restart_deployment` handler** (replacing the status-flip stub):
+
 1. Load project (throw if missing) and current deployment (throw
    `"No deployment to restart."` if none — the job fails and the existing
    failure path marks the project failed).
@@ -194,7 +210,7 @@ stays in build_deploy — restart never re-gates an already-deployed release.
 8. On success: `deploymentStatus: "running"` and a log line naming the port.
 
 **Tests:** with fake runtime + fake store state (project, revision, release,
-deployment with runtimeKind): restart calls stop then start on the *deployment's*
+deployment with runtimeKind): restart calls stop then start on the _deployment's_
 kind adapter with the recorded containerName/hostPort/releaseRef; secrets and
 WORKFLOW_POSTGRES_URL appear in the start env; restart with no deployment fails the
 job and marks the project failed; restart with a missing release record fails.
@@ -203,6 +219,7 @@ Full worker suite green.
 ## Task 5: delete_project stops the process before deleting rows
 
 **Files:**
+
 - Edit `apps/api/src/types.ts` (JobType union)
 - Edit `apps/api/src/app.ts` (DELETE endpoint)
 - Edit `apps/api/src/app.test.ts`
@@ -221,6 +238,7 @@ and return `202 { job }` (mirrors the restart endpoint). No web code consumes th
 202 with a `delete_project` job, and the project still exists until the worker runs.
 
 **Worker handler (`process.ts`):**
+
 1. `getProject` — if already gone, return silently (idempotent re-run of a
    half-finished delete).
 2. `getCurrentDeployment` — if present, log
@@ -247,11 +265,13 @@ Full api + worker + web suites green.
 ## Task 6: Integration coverage and docs
 
 **Files:**
+
 - Edit `apps/worker/src/integration/systemd-smoke.ts`
 - Edit `docs/deploy/linux.md`
 
 **systemd-smoke.ts:** after the existing deploy + health-check + fetch steps, extend
 the script (keep its style and its final teardown):
+
 1. Read the unit's `MainPID` (`systemctl show --property=MainPID --value <unit>`).
 2. Enqueue `restart_deployment` via the same store, `processNextJob`, assert it
    reports success, the unit's MainPID **changed**, and the HTTP endpoint still

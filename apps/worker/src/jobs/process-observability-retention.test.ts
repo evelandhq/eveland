@@ -1,7 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import {
-  createObservabilityRetentionReconciler,
-} from "./process-observability-retention.js";
+import { createObservabilityRetentionReconciler } from "./process-observability-retention.js";
 
 describe("Built-in observability retention", () => {
   test("applies receipt, Session, and capacity windows at a bounded cadence", async () => {
@@ -29,12 +27,8 @@ describe("Built-in observability retention", () => {
     expect(pruneOtlpTelemetry).toHaveBeenCalledWith({
       receiptsBefore: new Date("2026-07-22T12:00:00.000Z"),
     });
-    expect(pruneDerivedAgentTelemetry).toHaveBeenCalledWith(
-      new Date("2026-04-24T12:00:00.000Z"),
-    );
-    expect(pruneHostMetrics).toHaveBeenCalledWith(
-      new Date("2026-06-23T12:00:00.000Z"),
-    );
+    expect(pruneDerivedAgentTelemetry).toHaveBeenCalledWith(new Date("2026-04-24T12:00:00.000Z"));
+    expect(pruneHostMetrics).toHaveBeenCalledWith(new Date("2026-06-23T12:00:00.000Z"));
 
     now = new Date("2026-07-24T12:00:00.000Z");
     await expect(reconcile()).resolves.toBe(33);

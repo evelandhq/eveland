@@ -125,7 +125,10 @@ describe("bootstrapWorkflowWorld", () => {
 
   test("fails without leaking the configured database URL after retries are exhausted", async () => {
     const workflowPostgresUrl = "postgres://world:secret@db:5432/eveland";
-    const run = vi.fn(async () => ({ exitCode: 1, all: `could not connect to ${workflowPostgresUrl}` }));
+    const run = vi.fn(async () => ({
+      exitCode: 1,
+      all: `could not connect to ${workflowPostgresUrl}`,
+    }));
 
     await expect(
       bootstrapWorkflowWorld(
@@ -158,7 +161,10 @@ describe("deriveProjectWorkflowDatabaseName", () => {
 
 describe("deriveProjectWorkflowUrl", () => {
   test("replaces only the database name, preserving credentials, host, and query", () => {
-    const url = deriveProjectWorkflowUrl("postgres://world:secret@db:5432/eveland?sslmode=require", "proj_abc123");
+    const url = deriveProjectWorkflowUrl(
+      "postgres://world:secret@db:5432/eveland?sslmode=require",
+      "proj_abc123",
+    );
 
     const parsed = new URL(url);
     expect(parsed.username).toBe("world");
@@ -201,16 +207,12 @@ describe("ensureProjectWorkflowWorld", () => {
       "postgres://world:secret@postgres:5432/eveland",
       databaseName,
     );
-    expect(run).toHaveBeenCalledExactlyOnceWith(
-      process.execPath,
-      ["/bootstrap.js"],
-      {
-        all: true,
-        reject: false,
-        extendEnv: false,
-        env: { WORKFLOW_POSTGRES_URL: `postgres://world:secret@postgres:5432/${databaseName}` },
-      },
-    );
+    expect(run).toHaveBeenCalledExactlyOnceWith(process.execPath, ["/bootstrap.js"], {
+      all: true,
+      reject: false,
+      extendEnv: false,
+      env: { WORKFLOW_POSTGRES_URL: `postgres://world:secret@postgres:5432/${databaseName}` },
+    });
   });
 
   test("memoizes per project so repeated activations skip database work", async () => {
@@ -239,13 +241,23 @@ describe("ensureProjectWorkflowWorld", () => {
 
   test("fails without leaking the project database URL when bootstrap keeps failing", async () => {
     const ensureDatabase = vi.fn(async () => {});
-    const run = vi.fn(async () => ({ exitCode: 1, all: "could not connect to postgres://world:secret@db:5432" }));
+    const run = vi.fn(async () => ({
+      exitCode: 1,
+      all: "could not connect to postgres://world:secret@db:5432",
+    }));
 
     await expect(
       ensureProjectWorkflowWorld(
         { WORKFLOW_POSTGRES_URL: "postgres://world:secret@db:5432/eveland" },
         "proj_abc123",
-        { ensureDatabase, run, wait: async () => {}, maxAttempts: 2, resolveBin: () => "/bootstrap.js", cache: new Set() },
+        {
+          ensureDatabase,
+          run,
+          wait: async () => {},
+          maxAttempts: 2,
+          resolveBin: () => "/bootstrap.js",
+          cache: new Set(),
+        },
       ),
     ).rejects.toThrow(/\[redacted\]/);
     expect(run).toHaveBeenCalledTimes(2);

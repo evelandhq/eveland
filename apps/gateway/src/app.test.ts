@@ -3,7 +3,13 @@ import { describe, expect, test, vi } from "vitest";
 import { createBuildInfo } from "@eveland/core/build-info";
 import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
 import { createGatewayApp, type GatewayRepository } from "./app.js";
-import { affinitySecret, registerGatewayTestCleanup, repository, route, startUpstream } from "./app.test-support.js";
+import {
+  affinitySecret,
+  registerGatewayTestCleanup,
+  repository,
+  route,
+  startUpstream,
+} from "./app.test-support.js";
 
 registerGatewayTestCleanup();
 
@@ -49,14 +55,19 @@ describe("Gateway", () => {
   });
 
   test("fails closed on missing affinity signing material or invalid body limits", () => {
-    expect(() => createGatewayApp(repository([]), { allowedBaseDomains: ["agent.localhost"], affinitySecret: "" })).toThrow(
-      /affinity secret/i,
-    );
-    expect(() => createGatewayApp(repository([]), {
-      allowedBaseDomains: ["agent.localhost"],
-      affinitySecret,
-      maxRequestBodyBytes: -1,
-    })).toThrow(/request body limit/i);
+    expect(() =>
+      createGatewayApp(repository([]), {
+        allowedBaseDomains: ["agent.localhost"],
+        affinitySecret: "",
+      }),
+    ).toThrow(/affinity secret/i);
+    expect(() =>
+      createGatewayApp(repository([]), {
+        allowedBaseDomains: ["agent.localhost"],
+        affinitySecret,
+        maxRequestBodyBytes: -1,
+      }),
+    ).toThrow(/request body limit/i);
   });
 
   test("routes stable and immutable preview hosts to their selected deployment", async () => {
@@ -65,17 +76,33 @@ describe("Gateway", () => {
       response.end(JSON.stringify({ path: request.url, host: request.headers.host }));
     });
     const stable = route({ hostname: "p-alpha.agent.localhost", hostPort: upstream.port });
-    const preview = route({ id: "route_preview", hostname: "d-v1--p-alpha.agent.localhost", kind: "deployment", hostPort: upstream.port });
-    const app = createGatewayApp(repository([stable, preview]), { allowedBaseDomains: ["agent.localhost"], affinitySecret });
+    const preview = route({
+      id: "route_preview",
+      hostname: "d-v1--p-alpha.agent.localhost",
+      kind: "deployment",
+      hostPort: upstream.port,
+    });
+    const app = createGatewayApp(repository([stable, preview]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
 
-    const stableResponse = await app.request("http://p-alpha.agent.localhost/eve/v1/health", { headers: { host: "p-alpha.agent.localhost:4080" } });
+    const stableResponse = await app.request("http://p-alpha.agent.localhost/eve/v1/health", {
+      headers: { host: "p-alpha.agent.localhost:4080" },
+    });
     const previewResponse = await app.request("http://d-v1--p-alpha.agent.localhost/custom", {
       headers: { host: "d-v1--p-alpha.agent.localhost:4080" },
     });
 
     expect(stableResponse.status).toBe(200);
-    await expect(stableResponse.json()).resolves.toEqual({ path: "/eve/v1/health", host: "p-alpha.agent.localhost:4080" });
-    await expect(previewResponse.json()).resolves.toEqual({ path: "/custom", host: "d-v1--p-alpha.agent.localhost:4080" });
+    await expect(stableResponse.json()).resolves.toEqual({
+      path: "/eve/v1/health",
+      host: "p-alpha.agent.localhost:4080",
+    });
+    await expect(previewResponse.json()).resolves.toEqual({
+      path: "/custom",
+      host: "d-v1--p-alpha.agent.localhost:4080",
+    });
   });
 
   test("fails closed on non-canonical requests in the public Eve session namespace", async () => {
@@ -92,14 +119,11 @@ describe("Gateway", () => {
       renew: vi.fn(async () => {}),
       release: vi.fn(async () => {}),
     };
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      {
-        allowedBaseDomains: ["agent.localhost"],
-        affinitySecret,
-        activationClient,
-      },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+    });
 
     for (const request of [
       { method: "POST", path: "/eve/v1/session/" },
@@ -108,13 +132,10 @@ describe("Gateway", () => {
       { method: "POST", path: "/eve/v1/session/eve_1/unknown" },
       { method: "POST", path: "/eve/v1/session/%E0%A4%A" },
     ]) {
-      const response = await app.request(
-        `http://p-alpha.agent.localhost${request.path}`,
-        {
-          method: request.method,
-          headers: { host: "p-alpha.agent.localhost" },
-        },
-      );
+      const response = await app.request(`http://p-alpha.agent.localhost${request.path}`, {
+        method: request.method,
+        headers: { host: "p-alpha.agent.localhost" },
+      });
       expect(response.status, `${request.method} ${request.path}`).toBe(404);
     }
 
@@ -179,7 +200,8 @@ describe("Gateway", () => {
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toEqual({
         error: "Unsupported Eve version",
-        detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.27.x, 0.28.x, or 0.29.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+        detail:
+          'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.27.x, 0.28.x, or 0.29.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
         eveVersion: {
           version: "0.22.6",
           expected: "0.27.x, 0.28.x, or 0.29.x",
@@ -199,41 +221,77 @@ describe("Gateway", () => {
   test("hides unknown and disabled hosts, and reports routes without a running target", async () => {
     const disabled = route({ hostname: "p-disabled.agent.localhost", enabled: false });
     const stopped = route({ hostname: "p-stopped.agent.localhost", deploymentStatus: "stopped" });
-    const app = createGatewayApp(repository([disabled, stopped]), { allowedBaseDomains: ["agent.localhost"], affinitySecret });
+    const app = createGatewayApp(repository([disabled, stopped]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
 
-    expect((await app.request("http://unknown.invalid/", { headers: { host: "unknown.invalid" } })).status).toBe(404);
-    expect((await app.request("http://p-missing.agent.localhost/", { headers: { host: "p-missing.agent.localhost" } })).status).toBe(404);
-    expect((await app.request("http://p-disabled.agent.localhost/", { headers: { host: "p-disabled.agent.localhost" } })).status).toBe(404);
-    expect((await app.request("http://p-stopped.agent.localhost/", { headers: { host: "p-stopped.agent.localhost" } })).status).toBe(503);
+    expect(
+      (await app.request("http://unknown.invalid/", { headers: { host: "unknown.invalid" } }))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await app.request("http://p-missing.agent.localhost/", {
+          headers: { host: "p-missing.agent.localhost" },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await app.request("http://p-disabled.agent.localhost/", {
+          headers: { host: "p-disabled.agent.localhost" },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await app.request("http://p-stopped.agent.localhost/", {
+          headers: { host: "p-stopped.agent.localhost" },
+        })
+      ).status,
+    ).toBe(503);
   });
 
   test("wakes a stopped target before proxying and releases its request lease after the response body", async () => {
     const upstream = await startUpstream((request, response) => {
       const chunks: Buffer[] = [];
       request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-      request.on("end", () => response.end(`${request.headers.authorization}:${Buffer.concat(chunks).toString("utf8")}`));
+      request.on("end", () =>
+        response.end(`${request.headers.authorization}:${Buffer.concat(chunks).toString("utf8")}`),
+      );
     });
     const activationClient = {
       activate: vi.fn(async () => ({ leaseId: "lease_gateway", endpointPort: upstream.port })),
       renew: vi.fn(async () => {}),
       release: vi.fn(async () => {}),
     };
-    const app = createGatewayApp(repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]), {
-      allowedBaseDomains: ["agent.localhost"],
-      affinitySecret,
-      activationClient,
-    });
+    const app = createGatewayApp(
+      repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]),
+      {
+        allowedBaseDomains: ["agent.localhost"],
+        affinitySecret,
+        activationClient,
+      },
+    );
 
     const response = await app.request("http://p-alpha.agent.localhost/channels/webhook", {
       method: "POST",
-      headers: { host: "p-alpha.agent.localhost", authorization: "Bearer agent-owned", "content-type": "text/plain" },
+      headers: {
+        host: "p-alpha.agent.localhost",
+        authorization: "Bearer agent-owned",
+        "content-type": "text/plain",
+      },
       body: "wake-body",
     });
 
-    expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({
-      deploymentId: "dep_1",
-      kind: "public_request",
-    }), expect.any(AbortSignal));
+    expect(activationClient.activate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deploymentId: "dep_1",
+        kind: "public_request",
+      }),
+      expect.any(AbortSignal),
+    );
     expect(activationClient.release).not.toHaveBeenCalled();
     await expect(response.text()).resolves.toBe("Bearer agent-owned:wake-body");
     expect(activationClient.release).toHaveBeenCalledWith("lease_gateway");
@@ -250,16 +308,22 @@ describe("Gateway", () => {
       renew: vi.fn(async () => {}),
       release: vi.fn(async () => {}),
     };
-    const app = createGatewayApp(repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]), {
-      allowedBaseDomains: ["agent.localhost"],
-      affinitySecret,
-      activationClient,
-      activationRenewIntervalMs: 5,
-    });
+    const app = createGatewayApp(
+      repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]),
+      {
+        allowedBaseDomains: ["agent.localhost"],
+        affinitySecret,
+        activationClient,
+        activationRenewIntervalMs: 5,
+      },
+    );
 
-    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_stream/stream", {
-      headers: { host: "p-alpha.agent.localhost", accept: "application/x-ndjson" },
-    });
+    const response = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session/eve_stream/stream",
+      {
+        headers: { host: "p-alpha.agent.localhost", accept: "application/x-ndjson" },
+      },
+    );
     await expect(response.text()).resolves.toContain("turn.completed");
 
     expect(activationClient.renew).toHaveBeenCalledWith("lease_stream");
@@ -269,12 +333,21 @@ describe("Gateway", () => {
   test("returns 499 when the client aborts a cold activation", async () => {
     const controller = new AbortController();
     let activationStarted!: () => void;
-    const started = new Promise<void>((resolve) => { activationStarted = resolve; });
+    const started = new Promise<void>((resolve) => {
+      activationStarted = resolve;
+    });
     const activationClient = {
-      activate: vi.fn((_input: unknown, signal: AbortSignal) => new Promise<never>((_resolve, reject) => {
-        activationStarted();
-        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-      })),
+      activate: vi.fn(
+        (_input: unknown, signal: AbortSignal) =>
+          new Promise<never>((_resolve, reject) => {
+            activationStarted();
+            signal.addEventListener(
+              "abort",
+              () => reject(new DOMException("aborted", "AbortError")),
+              { once: true },
+            );
+          }),
+      ),
       renew: vi.fn(async () => {}),
       release: vi.fn(async () => {}),
     };
@@ -300,8 +373,22 @@ describe("Gateway", () => {
     const bound = await startUpstream((_request, response) => response.end("bound"));
     const routed = route({
       targets: [
-        { routeId: "route_project", deploymentId: "dep_current", weight: 10_000, variantName: "current", hostPort: current.port, status: "running" },
-        { routeId: "route_project", deploymentId: "dep_bound", weight: 0, variantName: "previous", hostPort: bound.port, status: "stopped" },
+        {
+          routeId: "route_project",
+          deploymentId: "dep_current",
+          weight: 10_000,
+          variantName: "current",
+          hostPort: current.port,
+          status: "running",
+        },
+        {
+          routeId: "route_project",
+          deploymentId: "dep_bound",
+          weight: 0,
+          variantName: "previous",
+          hostPort: bound.port,
+          status: "stopped",
+        },
       ],
     });
     const repo = repository([routed]);
@@ -334,16 +421,22 @@ describe("Gateway", () => {
       now: () => new Date("2026-07-16T00:00:00.000Z"),
     });
 
-    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session/eve_stopped_bound", {
-      method: "POST",
-      headers: { host: "p-alpha.agent.localhost" },
-    });
+    const response = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session/eve_stopped_bound",
+      {
+        method: "POST",
+        headers: { host: "p-alpha.agent.localhost" },
+      },
+    );
 
     await expect(response.text()).resolves.toBe("bound");
-    expect(activationClient.activate).toHaveBeenCalledWith(expect.objectContaining({
-      deploymentId: "dep_bound",
-      kind: "turn",
-    }), expect.any(AbortSignal));
+    expect(activationClient.activate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deploymentId: "dep_bound",
+        kind: "turn",
+      }),
+      expect.any(AbortSignal),
+    );
     expect(repo.getDeploymentEveVersion).toHaveBeenCalledWith("dep_bound");
   });
 
@@ -353,7 +446,10 @@ describe("Gateway", () => {
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify(request.headers));
     });
-    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), { allowedBaseDomains: ["agent.localhost"], affinitySecret });
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
 
     const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
       method: "POST",
@@ -378,7 +474,10 @@ describe("Gateway", () => {
     expect(headers.forwarded).not.toContain("attacker");
     expect(headers["x-eveland-deployment-id"]).toBeUndefined();
     expect(headers["x-eveland-version-key"]).toBeUndefined();
-    expect(response.headers.getSetCookie()).toEqual(["eve_session=abc; HttpOnly", "variant=v1; HttpOnly"]);
+    expect(response.headers.getSetCookie()).toEqual([
+      "eve_session=abc; HttpOnly",
+      "variant=v1; HttpOnly",
+    ]);
   });
 
   test("transparently forwards Agent authentication challenges", async () => {
@@ -397,22 +496,19 @@ describe("Gateway", () => {
         }),
       );
     });
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      { allowedBaseDomains: ["agent.localhost"], affinitySecret },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
 
-    const response = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ message: "hello" }),
+    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({ message: "hello" }),
+    });
 
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toBe(challenge);
@@ -422,7 +518,6 @@ describe("Gateway", () => {
       error: "Eveland authentication is required.",
     });
   });
-
 });
 
 describe("Gateway resource bounds", () => {
@@ -467,14 +562,11 @@ describe("Gateway resource bounds", () => {
     if (!address || typeof address === "string") throw new Error("Expected TCP address.");
 
     try {
-      const app = createGatewayApp(
-        repository([route({ hostPort: address.port })]),
-        {
-          allowedBaseDomains: ["agent.localhost"],
-          affinitySecret,
-          upstreamTimeoutMs: 300,
-        },
-      );
+      const app = createGatewayApp(repository([route({ hostPort: address.port })]), {
+        allowedBaseDomains: ["agent.localhost"],
+        affinitySecret,
+        upstreamTimeoutMs: 300,
+      });
 
       const started = Date.now();
       const response = await app.request("/eve/v1/health", {

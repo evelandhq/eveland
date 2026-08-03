@@ -4,14 +4,7 @@ import {
 } from "@eveland/core/server/agent-telemetry-credential";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import { createTestStore } from "@eveland/db/vitest";
-import {
-  mkdtemp,
-  mkdir,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -25,9 +18,7 @@ import {
 
 describe("deployment launch context", () => {
   test("resolves runtime inputs once and materializes adapter-visible directories", async () => {
-    const temporaryRoot = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-launch-context-"),
-    );
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-launch-context-"));
     const sourcePath = path.join(temporaryRoot, "source");
     const dataDir = path.join(temporaryRoot, "worker-data");
     const hostDataDir = path.join(temporaryRoot, "host-data");
@@ -56,9 +47,7 @@ describe("deployment launch context", () => {
           {
             key: "SHARED_TOKEN",
             kind: "secret",
-            encryptedValue: JSON.stringify(
-              encryptSecretValue("shared-value", appSecretKey),
-            ),
+            encryptedValue: JSON.stringify(encryptSecretValue("shared-value", appSecretKey)),
           },
         ],
       });
@@ -90,10 +79,7 @@ describe("deployment launch context", () => {
           SHARED_TOKEN: "shared-value",
           EVELAND_PROJECT_ID: project.id,
         },
-        secretValues: expect.arrayContaining([
-          "project-value",
-          "shared-value",
-        ]),
+        secretValues: expect.arrayContaining(["project-value", "shared-value"]),
         commandContext: { packageManager: "pnpm", hasLockfile: true },
       });
       await expect(
@@ -135,32 +121,17 @@ describe("deployment launch context", () => {
           hostDir: path.join(hostDataDir, "sandbox", safeProjectId),
         },
         observabilityPolicyDirs: {
-          workerDir: path.join(
-            dataDir,
-            "observability",
-            safeProjectId,
-            "dep_launch_context",
-          ),
-          hostDir: path.join(
-            hostDataDir,
-            "observability",
-            safeProjectId,
-            "dep_launch_context",
-          ),
+          workerDir: path.join(dataDir, "observability", safeProjectId, "dep_launch_context"),
+          hostDir: path.join(hostDataDir, "observability", safeProjectId, "dep_launch_context"),
         },
       });
       expect(context).not.toHaveProperty("observability");
       await expect(
-        stat(context.sandboxCacheDirs.workerDir).then((entry) =>
-          entry.isDirectory(),
-        ),
+        stat(context.sandboxCacheDirs.workerDir).then((entry) => entry.isDirectory()),
       ).resolves.toBe(true);
       const policy = JSON.parse(
         await readFile(
-          path.join(
-            context.observabilityPolicyDirs.workerDir,
-            "agent-policy.json",
-          ),
+          path.join(context.observabilityPolicyDirs.workerDir, "agent-policy.json"),
           "utf8",
         ),
       ) as { deploymentCredential: string };

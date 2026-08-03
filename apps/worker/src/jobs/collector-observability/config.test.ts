@@ -17,10 +17,7 @@ describe("managed OpenTelemetry Collector configuration", () => {
   test("keeps the Compose seed aligned with the default managed config", async () => {
     const seed = parse(
       await readFile(
-        path.resolve(
-          import.meta.dirname,
-          "../../../../../infra/otel/collector.yaml",
-        ),
+        path.resolve(import.meta.dirname, "../../../../../infra/otel/collector.yaml"),
         "utf8",
       ),
     );
@@ -46,9 +43,7 @@ describe("managed OpenTelemetry Collector configuration", () => {
       endpoint: "${env:EVELAND_BUILTIN_OTLP_ENDPOINT}",
       compression: "none",
     });
-    expect(config.exporters["otlp_http/builtin"]).not.toHaveProperty(
-      "encoding",
-    );
+    expect(config.exporters["otlp_http/builtin"]).not.toHaveProperty("encoding");
     expect(config.extensions["bearertokenauth/platform"]).toEqual({
       token: "${env:EVELAND_OTLP_SERVICE_TOKEN}",
     });
@@ -85,15 +80,9 @@ describe("managed OpenTelemetry Collector configuration", () => {
       ],
     });
     expect(config.processors["filter/trusted_agent"]).toMatchObject({
-      trace_conditions: [
-        'scope.name != "@eveland/eve-runtime"',
-      ],
-      log_conditions: [
-        'scope.name != "@eveland/eve-runtime"',
-      ],
-      metric_conditions: [
-        'scope.name != "@eveland/eve-runtime"',
-      ],
+      trace_conditions: ['scope.name != "@eveland/eve-runtime"'],
+      log_conditions: ['scope.name != "@eveland/eve-runtime"'],
+      metric_conditions: ['scope.name != "@eveland/eve-runtime"'],
     });
     // No builtin traces pipeline: Built-in keeps no span read model, so spans go to
     // external destinations only.
@@ -101,30 +90,19 @@ describe("managed OpenTelemetry Collector configuration", () => {
     expect(config.service.pipelines).toMatchObject({
       logs: {
         receivers: ["otlp/agent"],
-        processors: [
-          "memory_limiter",
-          "resource/trusted_agent",
-          "filter/trusted_agent",
-          "batch",
-        ],
+        processors: ["memory_limiter", "resource/trusted_agent", "filter/trusted_agent", "batch"],
         exporters: ["otlp_http/builtin"],
       },
       metrics: {
         receivers: ["otlp/platform"],
-        processors: [
-          "memory_limiter",
-          "filter/builtin_capacity",
-          "batch",
-        ],
+        processors: ["memory_limiter", "filter/builtin_capacity", "batch"],
         exporters: ["otlp_http/builtin"],
       },
     });
     // The Collector's own metrics never reach Built-in: no self-metrics pipeline
     // exports to it. They are only forwarded to external destinations that take
     // metrics for the platform domain.
-    expect(config.service.pipelines).not.toHaveProperty(
-      "metrics/collector_self",
-    );
+    expect(config.service.pipelines).not.toHaveProperty("metrics/collector_self");
     expect(config.processors).not.toHaveProperty("filter/collector_self");
     expect(config.service.telemetry.metrics.level).toBe("normal");
     expect(config.receivers["prometheus/collector_self"]).toMatchObject({
@@ -262,8 +240,7 @@ describe("managed OpenTelemetry Collector configuration", () => {
     const config = parse(renderCollectorConfig({ policy, appSecretKey }));
 
     expect(config.exporters["otlp_http/destination_elastic"]).toMatchObject({
-      endpoint:
-        "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/destination_elastic",
+      endpoint: "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/destination_elastic",
       headers: {
         authorization: "Bearer ${env:EVELAND_OTLP_SERVICE_TOKEN}",
       },
@@ -274,16 +251,14 @@ describe("managed OpenTelemetry Collector configuration", () => {
       },
     });
     expect(config.exporters["otlp_http/destination_langfuse"]).toMatchObject({
-      traces_endpoint:
-        "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/destination_langfuse/v1/traces",
+      traces_endpoint: "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/destination_langfuse/v1/traces",
       headers: {
         authorization: "Bearer ${env:EVELAND_OTLP_SERVICE_TOKEN}",
       },
       compression: "none",
     });
     expect(config.exporters["otlp_http/destination_custom"]).toMatchObject({
-      endpoint:
-        "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/destination_custom",
+      endpoint: "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/destination_custom",
       headers: {
         authorization: "Bearer ${env:EVELAND_OTLP_SERVICE_TOKEN}",
       },
@@ -295,19 +270,13 @@ describe("managed OpenTelemetry Collector configuration", () => {
     expect(JSON.stringify(config)).not.toContain("elastic.example.com");
     expect(JSON.stringify(config)).not.toContain("langfuse.example.com");
     expect(JSON.stringify(config)).not.toContain("otel.example.com");
-    expect(config.exporters).not.toHaveProperty(
-      "otlp_http/destination_paused",
-    );
+    expect(config.exporters).not.toHaveProperty("otlp_http/destination_paused");
 
-    expect(
-      config.processors["filter/destination_langfuse"].trace_conditions,
-    ).toEqual([
+    expect(config.processors["filter/destination_langfuse"].trace_conditions).toEqual([
       'resource.attributes["eveland.telemetry.domain"] != "agent"',
     ]);
     expect(
-      config.processors[
-        "transform/langfuse_destination_langfuse"
-      ].trace_statements[0].statements,
+      config.processors["transform/langfuse_destination_langfuse"].trace_statements[0].statements,
     ).toEqual(
       expect.arrayContaining([
         'set(span.attributes["langfuse.session.id"], span.attributes["session.id"]) where span.attributes["session.id"] != nil',
@@ -323,72 +292,42 @@ describe("managed OpenTelemetry Collector configuration", () => {
         'set(span.attributes["langfuse.observation.cost_details"], Format("{\\"total\\":%v}", [span.attributes["eveland.gen_ai.usage.cost_usd"]])) where span.attributes["eveland.gen_ai.usage.cost_usd"] != nil',
       ]),
     );
-    expect(
-      config.service.pipelines[
-        "traces/langfuse_destination_langfuse"
-      ],
-    ).toMatchObject({
+    expect(config.service.pipelines["traces/langfuse_destination_langfuse"]).toMatchObject({
       receivers: ["otlp/agent"],
       processors: [
-      "memory_limiter",
-      "resource/trusted_agent",
-      "filter/trusted_agent",
-      "filter/destination_langfuse",
-      "transform/langfuse_destination_langfuse",
-      "batch",
+        "memory_limiter",
+        "resource/trusted_agent",
+        "filter/trusted_agent",
+        "filter/destination_langfuse",
+        "transform/langfuse_destination_langfuse",
+        "batch",
       ],
     });
-    expect(
-      config.exporters["otlp_http/destination_langfuse"],
-    ).toMatchObject({ encoding: "json" });
-    expect(config.processors).not.toHaveProperty(
-      "resource/redact_agent_credential",
-    );
-    expect(
-      config.processors["filter/destination_custom"].log_conditions,
-    ).toEqual([
+    expect(config.exporters["otlp_http/destination_langfuse"]).toMatchObject({ encoding: "json" });
+    expect(config.processors).not.toHaveProperty("resource/redact_agent_credential");
+    expect(config.processors["filter/destination_custom"].log_conditions).toEqual([
       'resource.attributes["eveland.telemetry.domain"] != "platform" and resource.attributes["eveland.telemetry.domain"] != "capacity"',
     ]);
-    expect(config.service.pipelines).toHaveProperty(
-      "traces/elastic_destination_elastic",
+    expect(config.service.pipelines).toHaveProperty("traces/elastic_destination_elastic");
+    expect(config.service.pipelines["traces/elastic_destination_elastic"].processors).toContain(
+      "filter/destination_elastic",
     );
-    expect(
-      config.service.pipelines[
-        "traces/elastic_destination_elastic"
-      ].processors,
-    ).toContain("filter/destination_elastic");
-    expect(config.service.pipelines).toHaveProperty(
-      "traces/langfuse_destination_langfuse",
-    );
-    expect(config.service.pipelines).not.toHaveProperty(
-      "traces/custom_destination_custom",
-    );
-    expect(config.service.pipelines).toHaveProperty(
-      "logs/custom_destination_custom",
-    );
-    expect(config.service.pipelines).toHaveProperty(
-      "metrics/custom_destination_custom",
-    );
+    expect(config.service.pipelines).toHaveProperty("traces/langfuse_destination_langfuse");
+    expect(config.service.pipelines).not.toHaveProperty("traces/custom_destination_custom");
+    expect(config.service.pipelines).toHaveProperty("logs/custom_destination_custom");
+    expect(config.service.pipelines).toHaveProperty("metrics/custom_destination_custom");
     expect(config.service.pipelines).toMatchObject({
       "logs/custom_destination_custom": {
         receivers: ["otlp/platform"],
       },
       "metrics/collector_self_elastic_destination_elastic": {
         receivers: ["prometheus/collector_self"],
-        processors: [
-          "memory_limiter",
-          "resource/collector_self",
-          "batch",
-        ],
+        processors: ["memory_limiter", "resource/collector_self", "batch"],
         exporters: ["otlp_http/destination_elastic"],
       },
       "metrics/collector_self_custom_destination_custom": {
         receivers: ["prometheus/collector_self"],
-        processors: [
-          "memory_limiter",
-          "resource/collector_self",
-          "batch",
-        ],
+        processors: ["memory_limiter", "resource/collector_self", "batch"],
         exporters: ["otlp_http/destination_custom"],
       },
     });
@@ -455,11 +394,8 @@ describe("managed OpenTelemetry Collector configuration", () => {
     // the id, and the persistent queue holds telemetry until the Admin repairs it.
     expect(config.exporters).toHaveProperty("otlp_http/destination_sealed");
     // A kind mismatch is skipped rather than fatal.
-    expect(config.exporters).not.toHaveProperty(
-      "otlp_http/destination_mismatched",
-    );
+    expect(config.exporters).not.toHaveProperty("otlp_http/destination_mismatched");
     // Neither may block an unrelated healthy destination from being applied.
     expect(config.exporters).toHaveProperty("otlp_http/destination_healthy");
   });
-
 });

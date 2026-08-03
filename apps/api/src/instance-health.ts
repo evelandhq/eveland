@@ -25,17 +25,16 @@ export async function collectInstanceHealth(
 ): Promise<InstanceHealthReport> {
   const now = options.now?.() ?? new Date();
   const since = new Date(now.getTime() - options.historyHours * 3_600_000);
-  const [heartbeats, metrics, workload, gateway, lastBatchAt] =
-    await Promise.all([
-      store.listWorkerHeartbeats(),
-      store.listHostMetrics({
-        since,
-        limit: Math.min(10_100, options.historyHours * 60 + 100),
-      }),
-      store.getInstanceWorkload(),
-      options.gatewayHealth(),
-      store.latestOtlpBatchReceivedAt(),
-    ]);
+  const [heartbeats, metrics, workload, gateway, lastBatchAt] = await Promise.all([
+    store.listWorkerHeartbeats(),
+    store.listHostMetrics({
+      since,
+      limit: Math.min(10_100, options.historyHours * 60 + 100),
+    }),
+    store.getInstanceWorkload(),
+    options.gatewayHealth(),
+    store.latestOtlpBatchReceivedAt(),
+  ]);
   const worker = summarizeWorkerHealth(heartbeats[0] ?? null, now);
   // The Collector is the only sender to Built-in, so a recent batch is what proves it
   // is alive. Eveland keeps no monitoring of the Collector beyond this liveness fact;
@@ -59,8 +58,20 @@ export async function collectInstanceHealth(
             observedAt: lastBatchAt,
           };
   const components: InstanceComponentHealth[] = [
-    { key: "api", label: "API", status: "healthy", message: "Control-plane API is serving this report.", observedAt: now.toISOString() },
-    { key: "postgres", label: "Postgres", status: "healthy", message: "Health and workload queries succeeded.", observedAt: now.toISOString() },
+    {
+      key: "api",
+      label: "API",
+      status: "healthy",
+      message: "Control-plane API is serving this report.",
+      observedAt: now.toISOString(),
+    },
+    {
+      key: "postgres",
+      label: "Postgres",
+      status: "healthy",
+      message: "Health and workload queries succeeded.",
+      observedAt: now.toISOString(),
+    },
     { key: "gateway", label: "Gateway", ...gateway },
     { key: "worker", label: "Worker", ...worker },
     { key: "collector", label: "OpenTelemetry", ...collectorObservation },
@@ -82,15 +93,22 @@ export async function probeGatewayHealth(
   fetcher: Fetch = fetch,
   now: () => Date = () => new Date(),
 ): Promise<ComponentObservation> {
-  const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(/\/$/, "");
+  const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(
+    /\/$/,
+    "",
+  );
   try {
     const response = await fetcher(`${gatewayUrl}/health`, {
       cache: "no-store",
       signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) throw new Error("Gateway returned an unhealthy response.");
-    const body = await response.json().catch(() => null) as { ok?: unknown; component?: unknown } | null;
-    if (body?.ok !== true || body.component !== "gateway") throw new Error("Gateway returned invalid health data.");
+    const body = (await response.json().catch(() => null)) as {
+      ok?: unknown;
+      component?: unknown;
+    } | null;
+    if (body?.ok !== true || body.component !== "gateway")
+      throw new Error("Gateway returned invalid health data.");
     return {
       status: "healthy",
       message: "Gateway health endpoint is reachable.",
@@ -110,7 +128,9 @@ function overallStatus(
   capacity: "healthy" | "warning" | "critical",
 ): InstanceHealthReport["status"] {
   if (components.some((component) => component.status === "unavailable")) return "unavailable";
-  if (capacity === "critical" || components.some((component) => component.status === "critical")) return "critical";
-  if (capacity === "warning" || components.some((component) => component.status === "warning")) return "warning";
+  if (capacity === "critical" || components.some((component) => component.status === "critical"))
+    return "critical";
+  if (capacity === "warning" || components.some((component) => component.status === "warning"))
+    return "warning";
   return "healthy";
 }

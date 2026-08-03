@@ -10,10 +10,7 @@ import {
   endAllAgentTelemetrySpans,
   mapAgentTelemetryLifecycle,
 } from "./runtime/lifecycle.js";
-import {
-  emitAgentTelemetryEventLog,
-  shouldCollectAgentTelemetryEvent,
-} from "./runtime/logs.js";
+import { emitAgentTelemetryEventLog, shouldCollectAgentTelemetryEvent } from "./runtime/logs.js";
 import { createAgentTelemetryMetrics } from "./runtime/metrics.js";
 import { createAgentTelemetryProviders } from "./runtime/provider.js";
 import { asRecord, asString } from "./runtime/values.js";
@@ -53,10 +50,7 @@ export function createPrivateAgentTelemetryRuntime(input: {
       const eventType = asString(event.type);
       if (
         !eventType ||
-        !shouldCollectAgentTelemetryEvent(
-          eventType,
-          policy.capture.includeReasoning,
-        )
+        !shouldCollectAgentTelemetryEvent(eventType, policy.capture.includeReasoning)
       ) {
         return;
       }

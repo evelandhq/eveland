@@ -4,10 +4,7 @@ import {
   type ObservabilityPolicy,
 } from "@eveland/core/observability";
 import { eq } from "drizzle-orm";
-import {
-  observabilityDestinationHealth,
-  observabilityPolicies,
-} from "./schema.js";
+import { observabilityDestinationHealth, observabilityPolicies } from "./schema.js";
 import type { ObservabilityStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 
@@ -79,9 +76,7 @@ export function createPostgresObservabilityStore(
     },
 
     async listExternalObservabilityDestinationHealth() {
-      const rows = await db
-        .select()
-        .from(observabilityDestinationHealth);
+      const rows = await db.select().from(observabilityDestinationHealth);
       return rows.map(healthFromRow);
     },
 
@@ -90,9 +85,7 @@ export function createPostgresObservabilityStore(
         destinationId: health.destinationId,
         status: health.status,
         checkedAt: health.checkedAt ? new Date(health.checkedAt) : null,
-        lastSuccessAt: health.lastSuccessAt
-          ? new Date(health.lastSuccessAt)
-          : null,
+        lastSuccessAt: health.lastSuccessAt ? new Date(health.lastSuccessAt) : null,
         lastError: health.lastError,
         updatedAt: new Date(),
       };
@@ -105,34 +98,24 @@ export function createPostgresObservabilityStore(
         })
         .returning();
       if (!row) {
-        throw new Error(
-          "Failed to update observability destination health.",
-        );
+        throw new Error("Failed to update observability destination health.");
       }
       return healthFromRow(row);
     },
   };
 }
 
-function healthFromRow(
-  row: typeof observabilityDestinationHealth.$inferSelect,
-) {
+function healthFromRow(row: typeof observabilityDestinationHealth.$inferSelect) {
   return {
     destinationId: row.destinationId,
-    status: row.status as
-      | "pending"
-      | "healthy"
-      | "degraded"
-      | "paused",
+    status: row.status as "pending" | "healthy" | "degraded" | "paused",
     checkedAt: row.checkedAt?.toISOString() ?? null,
     lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
     lastError: row.lastError,
   };
 }
 
-function policyFromRow(
-  row: typeof observabilityPolicies.$inferSelect,
-): ObservabilityPolicy {
+function policyFromRow(row: typeof observabilityPolicies.$inferSelect): ObservabilityPolicy {
   return observabilityPolicySchema.parse({
     ...asRecord(row.document),
     revision: row.revision,

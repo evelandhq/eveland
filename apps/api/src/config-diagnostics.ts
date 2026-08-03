@@ -29,10 +29,17 @@ export async function collectSystemConfigurationDiagnostics(
 }
 
 async function readGatewaySnapshot(env: Environment, fetchDiagnostics: Fetch) {
-  const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(/\/$/, "");
-  const serviceToken =
-    resolveSecretWithDevFallback(env, env.EVELAND_GATEWAY_SERVICE_TOKEN, "eveland-dev-gateway-token");
-  if (!serviceToken) return unavailable("gateway", "Gateway diagnostics credentials are not configured.");
+  const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(
+    /\/$/,
+    "",
+  );
+  const serviceToken = resolveSecretWithDevFallback(
+    env,
+    env.EVELAND_GATEWAY_SERVICE_TOKEN,
+    "eveland-dev-gateway-token",
+  );
+  if (!serviceToken)
+    return unavailable("gateway", "Gateway diagnostics credentials are not configured.");
 
   try {
     const response = await fetchDiagnostics(`${gatewayUrl}/internal/diagnostics/config`, {
@@ -42,7 +49,9 @@ async function readGatewaySnapshot(env: Environment, fetchDiagnostics: Fetch) {
     });
     if (!response.ok) return unavailable("gateway", "Gateway diagnostics are unavailable.");
     const snapshot = (await response.json()) as unknown;
-    return isSnapshot(snapshot, "gateway") ? snapshot : unavailable("gateway", "Gateway returned invalid diagnostics.");
+    return isSnapshot(snapshot, "gateway")
+      ? snapshot
+      : unavailable("gateway", "Gateway returned invalid diagnostics.");
   } catch {
     return unavailable("gateway", "Gateway diagnostics are unavailable.");
   }
@@ -66,8 +75,15 @@ function unavailable(
   return { component, observedAt: null, entries: [], unavailableReason };
 }
 
-function isSnapshot(value: unknown, component: ConfigurationSnapshot["component"]): value is ConfigurationSnapshot {
+function isSnapshot(
+  value: unknown,
+  component: ConfigurationSnapshot["component"],
+): value is ConfigurationSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<ConfigurationSnapshot>;
-  return candidate.component === component && typeof candidate.observedAt === "string" && Array.isArray(candidate.entries);
+  return (
+    candidate.component === component &&
+    typeof candidate.observedAt === "string" &&
+    Array.isArray(candidate.entries)
+  );
 }

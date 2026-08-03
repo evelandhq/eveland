@@ -40,7 +40,11 @@ export function inferProjectSlugFromGitUrl(input: string): string | null {
     pathname = scpMatch[1];
   }
 
-  const encodedName = pathname.split("/").filter(Boolean).at(-1)?.replace(/\.git$/i, "");
+  const encodedName = pathname
+    .split("/")
+    .filter(Boolean)
+    .at(-1)
+    ?.replace(/\.git$/i, "");
   if (!encodedName) return null;
   try {
     return slugifyProjectName(decodeURIComponent(encodedName));

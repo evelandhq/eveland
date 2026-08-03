@@ -1,42 +1,29 @@
 import type { Attributes, Span } from "@opentelemetry/api";
 import type { MeterProvider } from "@opentelemetry/sdk-metrics";
-import {
-  asNonNegativeInteger,
-  asNonNegativeNumber,
-  asRecord,
-} from "./values.js";
+import { asNonNegativeInteger, asNonNegativeNumber, asRecord } from "./values.js";
 
 type Meter = ReturnType<MeterProvider["getMeter"]>;
 
-export type AgentTelemetryMetrics = ReturnType<
-  typeof createAgentTelemetryMetrics
->;
+export type AgentTelemetryMetrics = ReturnType<typeof createAgentTelemetryMetrics>;
 
 export function createAgentTelemetryMetrics(meter: Meter) {
   return {
     tokenUsage: meter.createHistogram("gen_ai.client.token.usage", {
       unit: "{token}",
-      description:
-        "Number of input and output tokens used by a generative AI operation.",
+      description: "Number of input and output tokens used by a generative AI operation.",
     }),
-    cacheTokenUsage: meter.createHistogram(
-      "eveland.gen_ai.cache.token.usage",
-      {
-        unit: "{token}",
-        description: "Number of cache read and write tokens reported by Eve.",
-      },
-    ),
+    cacheTokenUsage: meter.createHistogram("eveland.gen_ai.cache.token.usage", {
+      unit: "{token}",
+      description: "Number of cache read and write tokens reported by Eve.",
+    }),
     cost: meter.createCounter("eveland.gen_ai.cost", {
       unit: "USD",
       description: "Provider-reported generative AI cost.",
     }),
-    operationDuration: meter.createHistogram(
-      "gen_ai.client.operation.duration",
-      {
-        unit: "s",
-        description: "Duration of a generative AI operation.",
-      },
-    ),
+    operationDuration: meter.createHistogram("gen_ai.client.operation.duration", {
+      unit: "s",
+      description: "Duration of a generative AI operation.",
+    }),
     agentInvocations: meter.createCounter("eveland.agent.invocations", {
       unit: "{invocation}",
       description: "Number of Eve Agent turn invocations.",
@@ -84,20 +71,14 @@ export function recordUsage(input: {
     });
   }
   if (cacheReadTokens !== undefined) {
-    input.span.setAttribute(
-      "gen_ai.usage.cache_read.input_tokens",
-      cacheReadTokens,
-    );
+    input.span.setAttribute("gen_ai.usage.cache_read.input_tokens", cacheReadTokens);
     input.metrics.cacheTokenUsage.record(cacheReadTokens, {
       ...modelAttributes,
       "eveland.cache.operation": "read",
     });
   }
   if (cacheWriteTokens !== undefined) {
-    input.span.setAttribute(
-      "gen_ai.usage.cache_creation.input_tokens",
-      cacheWriteTokens,
-    );
+    input.span.setAttribute("gen_ai.usage.cache_creation.input_tokens", cacheWriteTokens);
     input.metrics.cacheTokenUsage.record(cacheWriteTokens, {
       ...modelAttributes,
       "eveland.cache.operation": "write",

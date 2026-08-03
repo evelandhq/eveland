@@ -17,20 +17,27 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
 );
 
 describe("Eve observer hook compatibility matrix", () => {
-  test.each(compatibilityMatrix)("runs observer coverage against Eve $version", async ({ packageName, version }) => {
-    const { stdout } = await execFileAsync(process.execPath, [eveBin(packageName), "--version"]);
+  test.each(compatibilityMatrix)(
+    "runs observer coverage against Eve $version",
+    async ({ packageName, version }) => {
+      const { stdout } = await execFileAsync(process.execPath, [eveBin(packageName), "--version"]);
 
-    expect(stdout.trim()).toBe(version);
-  });
+      expect(stdout.trim()).toBe(version);
+    },
+  );
 
   test.each(compatibilityMatrix)(
     "Eve $version discovers packaged skills and exposes directory-form hook slots",
     async ({ fixtureName, packageName }) => {
       const fixtureDir = await prepareFixture(fixtureName, packageName);
       try {
-        const { stdout } = await execFileAsync(process.execPath, [eveBin(packageName), "info", "--json"], {
-          cwd: fixtureDir,
-        });
+        const { stdout } = await execFileAsync(
+          process.execPath,
+          [eveBin(packageName), "info", "--json"],
+          {
+            cwd: fixtureDir,
+          },
+        );
         const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
           artifacts: { discoveryManifest: string };
         };
@@ -72,15 +79,22 @@ describe("Eve observer hook compatibility matrix", () => {
             ?.manifest.hooks.map((hook) => hook.logicalPath),
         ).toContain("hooks/child-observer.ts");
         expect(
-          manifest.subagents.find((subagent) => subagent.subagentId === "directory-child")?.manifest.connections,
+          manifest.subagents.find((subagent) => subagent.subagentId === "directory-child")?.manifest
+            .connections,
         ).toContainEqual(
           expect.objectContaining({
             connectionName: "research",
             logicalPath: "connections/research.ts",
           }),
         );
-        expect(manifest.subagents.find((subagent) => subagent.subagentId === "file-child")?.manifest.hooks ?? []).toEqual([]);
-        expect(manifest.subagents.find((subagent) => subagent.subagentId === "remote-child")?.manifest.hooks ?? []).toEqual([]);
+        expect(
+          manifest.subagents.find((subagent) => subagent.subagentId === "file-child")?.manifest
+            .hooks ?? [],
+        ).toEqual([]);
+        expect(
+          manifest.subagents.find((subagent) => subagent.subagentId === "remote-child")?.manifest
+            .hooks ?? [],
+        ).toEqual([]);
 
         // The platform's build-time summary projection must understand every
         // matrix version's real manifest -- this is the drift guard for
@@ -121,7 +135,11 @@ describe("Eve observer hook compatibility matrix", () => {
           workspaceResourceRoot: { logicalPath: string };
         };
         expect(compiledManifest.remoteAgents).toContainEqual(
-          expect.objectContaining({ name: "remote-child", url: "https://remote.example.com", path: "/eve/v1/session" }),
+          expect.objectContaining({
+            name: "remote-child",
+            url: "https://remote.example.com",
+            path: "/eve/v1/session",
+          }),
         );
         expect(compiledManifest.skills).toContainEqual(
           expect.objectContaining({ name: "compatibility", sourceKind: "skill-package" }),
@@ -135,9 +153,9 @@ describe("Eve observer hook compatibility matrix", () => {
         await expect(readFile(path.join(skillRoot, "SKILL.md"), "utf8")).resolves.toContain(
           "Follow the packaged compatibility checklist",
         );
-        await expect(readFile(path.join(skillRoot, "references/checklist.md"), "utf8")).resolves.toContain(
-          "Confirm the packaged reference",
-        );
+        await expect(
+          readFile(path.join(skillRoot, "references/checklist.md"), "utf8"),
+        ).resolves.toContain("Confirm the packaged reference");
       } finally {
         await rm(fixtureDir, { recursive: true, force: true });
       }

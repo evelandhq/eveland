@@ -1,10 +1,10 @@
-import { BadgeCheckIcon } from "lucide-react"
-import { DateTime } from "@/components/date-time"
-import { DeploymentActions } from "@/components/deployment-actions"
-import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions"
-import { EveVersionStatus } from "@/components/eve-version-status"
-import { StatusBadge } from "@/components/status-badge"
-import { Badge } from "@/components/ui/badge"
+import { BadgeCheckIcon } from "lucide-react";
+import { DateTime } from "@/components/date-time";
+import { DeploymentActions } from "@/components/deployment-actions";
+import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
+import { EveVersionStatus } from "@/components/eve-version-status";
+import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
 import {
   getAgentEndpoints,
   getDeploymentOverview,
@@ -12,19 +12,19 @@ import {
   getProject,
   getProjectJobs,
   getSourceRevision,
-} from "@/lib/server-api"
+} from "@/lib/server-api";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Deployments",
-}
+};
 
 export default async function ProjectDeploymentsPage({
   params,
 }: {
-  params: Promise<{ projectId: string }>
+  params: Promise<{ projectId: string }>;
 }) {
-  const { projectId } = await params
+  const { projectId } = await params;
   const [project, jobs, endpoints, eveVersion, overview, sourceRevision] = await Promise.all([
     getProject(projectId),
     getProjectJobs(projectId),
@@ -32,11 +32,9 @@ export default async function ProjectDeploymentsPage({
     getEveVersion(projectId),
     getDeploymentOverview(projectId),
     getSourceRevision(projectId),
-  ])
-  const latestImportJob =
-    jobs.find((job) => job.type === "import_source") ?? null
-  const stableRoute =
-    overview.routes.find((route) => route.kind === "project") ?? null
+  ]);
+  const latestImportJob = jobs.find((job) => job.type === "import_source") ?? null;
+  const stableRoute = overview.routes.find((route) => route.kind === "project") ?? null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -114,19 +112,17 @@ export default async function ProjectDeploymentsPage({
             Deployments &amp; traffic
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Stable marks deployments receiving production traffic; manage previews,
-            rollbacks, splits, drain, and retention.
+            Stable marks deployments receiving production traffic; manage previews, rollbacks,
+            splits, drain, and retention.
           </p>
         </div>
         <div className="mt-3 divide-y divide-border border-y border-border">
           {overview.deployments.map((deployment) => {
             const stableTarget =
-              stableRoute?.targets.find(
-                (target) => target.deploymentId === deployment.id,
-              ) ?? null
+              stableRoute?.targets.find((target) => target.deploymentId === deployment.id) ?? null;
             const retention = overview.retention.find(
               (entry) => entry.deployment.id === deployment.id,
-            )
+            );
             return (
               <div
                 key={deployment.id}
@@ -134,9 +130,7 @@ export default async function ProjectDeploymentsPage({
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono font-medium">
-                      {deployment.deploymentKey}
-                    </span>
+                    <span className="font-mono font-medium">{deployment.deploymentKey}</span>
                     {stableTarget ? (
                       <Badge>
                         <BadgeCheckIcon data-icon="inline-start" />
@@ -164,16 +158,13 @@ export default async function ProjectDeploymentsPage({
                   retentionProtected={retention?.protected ?? true}
                 />
               </div>
-            )
+            );
           })}
           {overview.deployments.length === 0 ? (
-            <p className="py-6 text-sm text-muted-foreground">
-              No deployments yet.
-            </p>
+            <p className="py-6 text-sm text-muted-foreground">No deployments yet.</p>
           ) : null}
         </div>
       </section>
-
     </div>
-  )
+  );
 }

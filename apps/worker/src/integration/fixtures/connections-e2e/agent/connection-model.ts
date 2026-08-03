@@ -108,7 +108,9 @@ function usage(): GenerateResult["usage"] {
   };
 }
 
-function streamResult(result: GenerateResult): Awaited<ReturnType<MockLanguageModelV3["doStream"]>> {
+function streamResult(
+  result: GenerateResult,
+): Awaited<ReturnType<MockLanguageModelV3["doStream"]>> {
   const chunks: Array<unknown> = [{ type: "stream-start", warnings: result.warnings }];
   let textIndex = 0;
   for (const content of result.content) {

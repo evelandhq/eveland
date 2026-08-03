@@ -26,14 +26,12 @@ describe("invalid persisted jobs", () => {
           secret: "must-not-appear-in-last-error",
         },
       });
-      const validJob = await database.store.enqueueJob(
-        project.id,
-        "build_deploy",
-      );
+      const validJob = await database.store.enqueueJob(project.id, "build_deploy");
 
-      await expect(
-        database.store.claimNextJob("worker-a"),
-      ).resolves.toMatchObject({ id: validJob.id, type: "build_deploy" });
+      await expect(database.store.claimNextJob("worker-a")).resolves.toMatchObject({
+        id: validJob.id,
+        type: "build_deploy",
+      });
 
       const [quarantined] = await database.db
         .select()
@@ -45,9 +43,7 @@ describe("invalid persisted jobs", () => {
         attempts: 1,
         lastError: expect.stringMatching(/invalid persisted job contract/i),
       });
-      expect(quarantined?.lastError).not.toContain(
-        "must-not-appear-in-last-error",
-      );
+      expect(quarantined?.lastError).not.toContain("must-not-appear-in-last-error");
     } finally {
       await database.close();
     }

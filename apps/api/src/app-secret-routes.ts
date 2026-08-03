@@ -1,7 +1,4 @@
-import type {
-  Job,
-  SharedAgentEnvironmentRecord,
-} from "@eveland/core/contracts";
+import type { Job, SharedAgentEnvironmentRecord } from "@eveland/core/contracts";
 import { toPublicJob } from "@eveland/core/jobs";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import type { Store } from "@eveland/db";
@@ -19,12 +16,7 @@ export function registerSecretRoutes(input: {
   appSecretKey: string;
   enqueueLiveDeploymentRestarts(projectId: string): Promise<Job[]>;
 }): void {
-  const {
-    app,
-    store,
-    appSecretKey,
-    enqueueLiveDeploymentRestarts,
-  } = input;
+  const { app, store, appSecretKey, enqueueLiveDeploymentRestarts } = input;
 
   app.get("/projects/:projectId/secrets", async (c) => {
     return c.json({
@@ -35,10 +27,7 @@ export function registerSecretRoutes(input: {
   app.post("/projects/:projectId/secrets", async (c) => {
     const parsed = secretSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid secret input", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid secret input", issues: parsed.error.issues }, 400);
     }
     const encrypted = encryptSecretValue(parsed.data.value, appSecretKey);
     const projectId = c.req.param("projectId");
@@ -69,11 +58,13 @@ export function registerSecretRoutes(input: {
       return c.json(
         {
           error: "A project can have at most 50 environment entries.",
-          issues: [{
-            code: "custom",
-            path: ["entries"],
-            message: "Remove an existing entry or import fewer new names.",
-          }],
+          issues: [
+            {
+              code: "custom",
+              path: ["entries"],
+              message: "Remove an existing entry or import fewer new names.",
+            },
+          ],
         },
         400,
       );
@@ -94,10 +85,7 @@ export function registerSecretRoutes(input: {
   app.put("/projects/:projectId/secrets/:secretId", async (c) => {
     const parsed = updateSecretSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid environment entry input", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid environment entry input", issues: parsed.error.issues }, 400);
     }
     const projectId = c.req.param("projectId");
     const secret = await store.updateSecret(projectId, c.req.param("secretId"), {
@@ -114,10 +102,7 @@ export function registerSecretRoutes(input: {
 
   app.delete("/projects/:projectId/secrets/:secretId", async (c) => {
     const projectId = c.req.param("projectId");
-    const deleted = await store.deleteSecret(
-      projectId,
-      c.req.param("secretId"),
-    );
+    const deleted = await store.deleteSecret(projectId, c.req.param("secretId"));
     const jobs = deleted ? await enqueueLiveDeploymentRestarts(projectId) : [];
     return c.json({ deleted, jobs: jobs.map(toPublicJob) });
   });
@@ -130,9 +115,7 @@ export function registerSecretRoutes(input: {
   });
 
   app.put("/platform/shared-agent-environment", async (c) => {
-    const parsed = sharedAgentEnvironmentSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = sharedAgentEnvironmentSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         { error: "Invalid shared Agent environment", issues: parsed.error.issues },
@@ -148,9 +131,10 @@ export function registerSecretRoutes(input: {
       return {
         key: entry.key,
         kind: entry.kind,
-        encryptedValue: entry.value === undefined
-          ? previous!.encryptedValue
-          : JSON.stringify(encryptSecretValue(entry.value, appSecretKey)),
+        encryptedValue:
+          entry.value === undefined
+            ? previous!.encryptedValue
+            : JSON.stringify(encryptSecretValue(entry.value, appSecretKey)),
       };
     });
     if (entries.some((entry) => entry === null)) {
@@ -163,25 +147,35 @@ export function registerSecretRoutes(input: {
     const environment = await store.saveSharedAgentEnvironment({
       entries: entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
     });
-    const jobs = environment.revision === previousRevision
-      ? []
-      : await enqueueAllLiveDeploymentRestarts(store);
+    const jobs =
+      environment.revision === previousRevision
+        ? []
+        : await enqueueAllLiveDeploymentRestarts(store);
     return c.json({ environment, jobs: jobs.map(toPublicJob) });
   });
 }
 
 async function enqueueAllLiveDeploymentRestarts(store: Store) {
   const projects = await store.listProjects();
-  const targets = (await Promise.all(projects.map(async (project) =>
-    (await store.listDeployments(project.id))
-      .filter((deployment) => deployment.status === "running" || deployment.status === "draining")
-      .map((deployment) => ({ projectId: project.id, deploymentId: deployment.id })),
-  ))).flat();
-  return Promise.all(targets.map((target) => store.enqueueJob(
-    target.projectId,
-    "restart_deployment",
-    { deploymentId: target.deploymentId, reason: "shared_agent_environment_changed" },
-  )));
+  const targets = (
+    await Promise.all(
+      projects.map(async (project) =>
+        (await store.listDeployments(project.id))
+          .filter(
+            (deployment) => deployment.status === "running" || deployment.status === "draining",
+          )
+          .map((deployment) => ({ projectId: project.id, deploymentId: deployment.id })),
+      ),
+    )
+  ).flat();
+  return Promise.all(
+    targets.map((target) =>
+      store.enqueueJob(target.projectId, "restart_deployment", {
+        deploymentId: target.deploymentId,
+        reason: "shared_agent_environment_changed",
+      }),
+    ),
+  );
 }
 
 function publicSharedAgentEnvironment(record: SharedAgentEnvironmentRecord) {

@@ -4,8 +4,14 @@ import { createEveVersionInfo, inspectEveProject, isSupportedEveDependency } fro
 describe("inspectEveProject", () => {
   test("recognizes nested eve agent layout and summarizes authored slots", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.29.4" } }) },
-      { path: "agent/agent.ts", content: `export default defineAgent({ model: process.env.DEFAULT_MODEL })` },
+      {
+        path: "package.json",
+        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.29.4" } }),
+      },
+      {
+        path: "agent/agent.ts",
+        content: `export default defineAgent({ model: process.env.DEFAULT_MODEL })`,
+      },
       { path: "agent/instructions.md", content: "You are a weather agent." },
       {
         path: "agent/channels/eve.ts",
@@ -14,9 +20,12 @@ describe("inspectEveProject", () => {
       { path: "agent/tools/get_weather.ts", content: "export default defineTool({})" },
       { path: "agent/skills/report.md", content: "---\ndescription: Report\n---" },
       { path: "agent/connections/linear.ts", content: "process.env.LINEAR_API_TOKEN" },
-      { path: "agent/subagents/researcher/agent.ts", content: "export default defineAgent({ description: 'Research' })" },
+      {
+        path: "agent/subagents/researcher/agent.ts",
+        content: "export default defineAgent({ description: 'Research' })",
+      },
       { path: "agent/sandbox/sandbox.ts", content: "export default defineSandbox({})" },
-      { path: "agent/schedules/daily.md", content: "---\ncron: \"0 8 * * *\"\n---\nReport." },
+      { path: "agent/schedules/daily.md", content: '---\ncron: "0 8 * * *"\n---\nReport.' },
       { path: ".env.example", content: "OPENAI_API_KEY=\nANTHROPIC_API_KEY=example\n" },
     ]);
 
@@ -35,7 +44,12 @@ describe("inspectEveProject", () => {
       schedules: ["agent/schedules/daily.md"],
       sandbox: ["agent/sandbox/sandbox.ts"],
     });
-    expect(result.envVars).toEqual(["ANTHROPIC_API_KEY", "DEFAULT_MODEL", "LINEAR_API_TOKEN", "OPENAI_API_KEY"]);
+    expect(result.envVars).toEqual([
+      "ANTHROPIC_API_KEY",
+      "DEFAULT_MODEL",
+      "LINEAR_API_TOKEN",
+      "OPENAI_API_KEY",
+    ]);
   });
 
   test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
@@ -82,7 +96,9 @@ describe("inspectEveProject", () => {
     const result = inspectEveProject([{ path: "agent/tools/get_weather.ts", content: "" }]);
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Missing root instructions.md, instructions.ts, or instructions/.");
+    expect(result.errors).toContain(
+      "Missing root instructions.md, instructions.ts, or instructions/.",
+    );
   });
 
   test("fails closed with an upgrade diagnostic outside the supported Eve line", () => {
@@ -100,13 +116,39 @@ describe("inspectEveProject", () => {
 
   test("accepts dependency declarations contained inside the three verified Eve minors", () => {
     for (const version of [
-      "0.27.0", "0.27.13", "~0.27.2", "^0.27.0", "0.27", "0.27.x", "0.27.*",
-      "0.28.0", "~0.28.0", "^0.28.0", "0.28", "0.28.x", "0.28.*",
-      "0.29.0", "0.29.4", "~0.29.0", "^0.29.0", "0.29", "0.29.x", "0.29.*",
+      "0.27.0",
+      "0.27.13",
+      "~0.27.2",
+      "^0.27.0",
+      "0.27",
+      "0.27.x",
+      "0.27.*",
+      "0.28.0",
+      "~0.28.0",
+      "^0.28.0",
+      "0.28",
+      "0.28.x",
+      "0.28.*",
+      "0.29.0",
+      "0.29.4",
+      "~0.29.0",
+      "^0.29.0",
+      "0.29",
+      "0.29.x",
+      "0.29.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
-    for (const version of ["0.25.3", "0.26.2", "0.30.0", ">=0.27.0", ">=0.28.0", ">=0.29.0", "*", "latest"]) {
+    for (const version of [
+      "0.25.3",
+      "0.26.2",
+      "0.30.0",
+      ">=0.27.0",
+      ">=0.28.0",
+      ">=0.29.0",
+      "*",
+      "latest",
+    ]) {
       expect(isSupportedEveDependency(version)).toBe(false);
     }
   });

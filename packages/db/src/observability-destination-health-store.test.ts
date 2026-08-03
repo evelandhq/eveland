@@ -19,9 +19,7 @@ describe("external observability destination health store", () => {
       lastError: null,
     });
 
-    await expect(
-      store.listExternalObservabilityDestinationHealth(),
-    ).resolves.toEqual([
+    await expect(store.listExternalObservabilityDestinationHealth()).resolves.toEqual([
       {
         destinationId: "destination_1",
         status: "healthy",

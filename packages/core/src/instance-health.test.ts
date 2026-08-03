@@ -7,10 +7,7 @@ import {
 
 const gibibyte = 1024 ** 3;
 
-function sample(
-  observedAt: string,
-  overrides: Partial<HostMetricSample> = {},
-): HostMetricSample {
+function sample(observedAt: string, overrides: Partial<HostMetricSample> = {}): HostMetricSample {
   return {
     id: `metric-${observedAt}`,
     workerId: "worker-1",
@@ -100,9 +97,7 @@ describe("instance health analysis", () => {
   });
 
   test("does not invent a disk forecast without enough history", () => {
-    const analysis = analyzeHostCapacity([
-      sample("2026-07-18T10:00:00.000Z"),
-    ]);
+    const analysis = analyzeHostCapacity([sample("2026-07-18T10:00:00.000Z")]);
 
     expect(analysis.disk.projectedDaysRemaining).toBeNull();
     expect(analysis.risks).toEqual([]);

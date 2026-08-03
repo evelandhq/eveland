@@ -10,7 +10,12 @@ import type { ProcessRunner } from "./process.js";
 const fakeRunner: ProcessRunner = {
   spawn() {
     const empty = () => new ReadableStream<Uint8Array>({ start: (c) => c.close() });
-    return { stdout: empty(), stderr: empty(), wait: async () => ({ exitCode: 0 }), kill: async () => {} };
+    return {
+      stdout: empty(),
+      stderr: empty(),
+      wait: async () => ({ exitCode: 0 }),
+      kill: async () => {},
+    };
   },
 };
 
@@ -38,15 +43,25 @@ describe("prewarm", () => {
       ],
     });
 
-    const handle = await backend.create({ templateKey: "skills", sessionKey: "skills-session", runtimeContext });
+    const handle = await backend.create({
+      templateKey: "skills",
+      sessionKey: "skills-session",
+      runtimeContext,
+    });
 
-    expect(await handle.session.readTextFile({ path: "/workspace/.agents/skills/research/SKILL.md" })).toBe(
-      "Use this research procedure.",
-    );
-    expect(await handle.session.readTextFile({ path: "/workspace/$HOME/.agents/skills/research/SKILL.md" })).toBeNull();
-    expect(await handle.session.readBinaryFile({ path: "/workspace/.agents/skills/research/assets/example.bin" })).toEqual(
-      new Uint8Array([0, 1, 2, 255]),
-    );
+    expect(
+      await handle.session.readTextFile({ path: "/workspace/.agents/skills/research/SKILL.md" }),
+    ).toBe("Use this research procedure.");
+    expect(
+      await handle.session.readTextFile({
+        path: "/workspace/$HOME/.agents/skills/research/SKILL.md",
+      }),
+    ).toBeNull();
+    expect(
+      await handle.session.readBinaryFile({
+        path: "/workspace/.agents/skills/research/assets/example.bin",
+      }),
+    ).toEqual(new Uint8Array([0, 1, 2, 255]));
   });
 
   test("captures a template once and reuses it after", async () => {
@@ -84,18 +99,34 @@ describe("create", () => {
       seedFiles: [{ path: "seed.txt", content: "seeded" }],
     });
 
-    const handle = await backend.create({ templateKey: "tpl-1", sessionKey: "sess-1", runtimeContext });
+    const handle = await backend.create({
+      templateKey: "tpl-1",
+      sessionKey: "sess-1",
+      runtimeContext,
+    });
     expect(await handle.session.readTextFile({ path: "seed.txt" })).toBe("seeded");
     expect(await handle.useSessionFn()).toBe(handle.session);
-    expect(await handle.captureState()).toEqual({ backendName: "bwrap", metadata: {}, sessionKey: "sess-1" });
+    expect(await handle.captureState()).toEqual({
+      backendName: "bwrap",
+      metadata: {},
+      sessionKey: "sess-1",
+    });
 
     await handle.session.writeTextFile({ path: "state.txt", content: "persisted" });
     await handle.shutdown();
 
-    const again = await backend.create({ templateKey: "tpl-1", sessionKey: "sess-1", runtimeContext });
+    const again = await backend.create({
+      templateKey: "tpl-1",
+      sessionKey: "sess-1",
+      runtimeContext,
+    });
     expect(await again.session.readTextFile({ path: "state.txt" })).toBe("persisted");
 
-    const other = await backend.create({ templateKey: "tpl-1", sessionKey: "sess-2", runtimeContext });
+    const other = await backend.create({
+      templateKey: "tpl-1",
+      sessionKey: "sess-2",
+      runtimeContext,
+    });
     expect(await other.session.readTextFile({ path: "state.txt" })).toBeNull();
   });
 
@@ -108,9 +139,9 @@ describe("create", () => {
 
   test("missing template throws the typed eve error", async () => {
     const { backend, runtimeContext } = await makeBackend();
-    await expect(backend.create({ templateKey: "never-prewarmed", sessionKey: "s", runtimeContext })).rejects.toSatisfy(
-      (error: unknown) => SandboxTemplateNotProvisionedError.is(error),
-    );
+    await expect(
+      backend.create({ templateKey: "never-prewarmed", sessionKey: "s", runtimeContext }),
+    ).rejects.toSatisfy((error: unknown) => SandboxTemplateNotProvisionedError.is(error));
   });
 
   test("options changes re-key templates but not sessions", async () => {
@@ -120,19 +151,27 @@ describe("create", () => {
     const b = createBwrapSandboxBackend({ runner: fakeRunner, createOptions: { env: { A: "2" } } });
     await a.prewarm({ templateKey: "tpl", runtimeContext, seedFiles: [] });
     // same templateKey under different options is a distinct template
-    await expect(b.create({ templateKey: "tpl", sessionKey: "s", runtimeContext })).rejects.toSatisfy(
-      (error: unknown) => SandboxTemplateNotProvisionedError.is(error),
-    );
+    await expect(
+      b.create({ templateKey: "tpl", sessionKey: "s", runtimeContext }),
+    ).rejects.toSatisfy((error: unknown) => SandboxTemplateNotProvisionedError.is(error));
   });
 
   test("shutdown kills the session's live processes and leaves the workspace on disk", async () => {
     const { backend, runtimeContext } = await makeBackend();
-    const handle = await backend.create({ templateKey: null, sessionKey: "sess-shutdown", runtimeContext });
+    const handle = await backend.create({
+      templateKey: null,
+      sessionKey: "sess-shutdown",
+      runtimeContext,
+    });
     await handle.session.writeTextFile({ path: "keep.txt", content: "durable" });
 
     await handle.shutdown();
 
-    const again = await backend.create({ templateKey: null, sessionKey: "sess-shutdown", runtimeContext });
+    const again = await backend.create({
+      templateKey: null,
+      sessionKey: "sess-shutdown",
+      runtimeContext,
+    });
     expect(await again.session.readTextFile({ path: "keep.txt" })).toBe("durable");
   });
 
@@ -141,12 +180,20 @@ describe("create", () => {
     const cacheDir = path.join(root, "stable");
     const backend = createBwrapSandboxBackend({ runner: fakeRunner, createOptions: { cacheDir } });
 
-    const first = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-1") } });
+    const first = await backend.create({
+      templateKey: null,
+      sessionKey: "s",
+      runtimeContext: { appRoot: path.join(root, "release-1") },
+    });
     await first.session.writeTextFile({ path: "state.txt", content: "kept" });
     await first.shutdown();
 
     // Redeploy: brand-new appRoot, same project cache.
-    const second = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-2") } });
+    const second = await backend.create({
+      templateKey: null,
+      sessionKey: "s",
+      runtimeContext: { appRoot: path.join(root, "release-2") },
+    });
     expect(await second.session.readTextFile({ path: "state.txt" })).toBe("kept");
   });
 
@@ -163,7 +210,11 @@ describe("create", () => {
       runtimeContext,
       seedFiles: [{ path: "knowledge.md", content: "first release" }],
     });
-    const existing = await first.create({ templateKey: "tpl", sessionKey: "existing", runtimeContext });
+    const existing = await first.create({
+      templateKey: "tpl",
+      sessionKey: "existing",
+      runtimeContext,
+    });
     await existing.session.writeTextFile({ path: "runtime-note.txt", content: "keep me" });
     await existing.shutdown();
 
@@ -181,7 +232,11 @@ describe("create", () => {
     const fresh = await second.create({ templateKey: "tpl", sessionKey: "fresh", runtimeContext });
     expect(await fresh.session.readTextFile({ path: "knowledge.md" })).toBe("second release");
 
-    const reattached = await second.create({ templateKey: "tpl", sessionKey: "existing", runtimeContext });
+    const reattached = await second.create({
+      templateKey: "tpl",
+      sessionKey: "existing",
+      runtimeContext,
+    });
     expect(await reattached.session.readTextFile({ path: "knowledge.md" })).toBe("first release");
     expect(await reattached.session.readTextFile({ path: "runtime-note.txt" })).toBe("keep me");
   });

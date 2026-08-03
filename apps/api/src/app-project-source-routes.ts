@@ -1,14 +1,22 @@
 import { rm } from "node:fs/promises";
-import {
-  inferProjectSlugFromGitUrl,
-  normalizeGitHttpHost,
-} from "@eveland/core/ids";
+import { inferProjectSlugFromGitUrl, normalizeGitHttpHost } from "@eveland/core/ids";
 import { encryptSecretValue } from "@eveland/core/server/secrets";
 import { ProjectSlugConflictError, type Store } from "@eveland/db";
 import type { ApiApp } from "./app-types.js";
-import { createGitSourcePreflightSchema, createProjectFromPreflightSchema, createProjectSchema, projectNameSchema } from "./app-schemas.js";
+import {
+  createGitSourcePreflightSchema,
+  createProjectFromPreflightSchema,
+  createProjectSchema,
+  projectNameSchema,
+} from "./app-schemas.js";
 import { bodyLimit } from "hono/body-limit";
-import { createZipProjectFromUpload, currentUserId, extractZipUpload, InvalidZipUploadError, isMultipartRequest } from "./app-support.js";
+import {
+  createZipProjectFromUpload,
+  currentUserId,
+  extractZipUpload,
+  InvalidZipUploadError,
+  isMultipartRequest,
+} from "./app-support.js";
 
 type CreateGitCredentialInput = {
   userId: string;
@@ -41,10 +49,7 @@ export function registerProjectSourceRoutes(input: {
   app.get("/projects/name-availability", async (c) => {
     const parsed = projectNameSchema.safeParse(c.req.query("name"));
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid project name", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid project name", issues: parsed.error.issues }, 400);
     }
     return c.json({
       available: await store.isProjectSlugAvailable(parsed.data),
@@ -58,13 +63,8 @@ export function registerProjectSourceRoutes(input: {
   });
 
   app.delete("/git-credentials/:credentialId", async (c) => {
-    const deleted = await store.deleteGitCredential(
-      currentUserId(c),
-      c.req.param("credentialId"),
-    );
-    return deleted
-      ? c.body(null, 204)
-      : c.json({ error: "Git credential not found" }, 404);
+    const deleted = await store.deleteGitCredential(currentUserId(c), c.req.param("credentialId"));
+    return deleted ? c.body(null, 204) : c.json({ error: "Git credential not found" }, 404);
   });
 
   // Uploads were previously unbounded: c.req.formData() buffers the archive
@@ -84,9 +84,7 @@ export function registerProjectSourceRoutes(input: {
         return c.json(
           {
             error: "Invalid zip upload",
-            issues: [
-              { path: ["archive"], message: "Source archive is required" },
-            ],
+            issues: [{ path: ["archive"], message: "Source archive is required" }],
           },
           400,
         );
@@ -97,7 +95,10 @@ export function registerProjectSourceRoutes(input: {
       } catch (error) {
         if (error instanceof InvalidZipUploadError) {
           return c.json(
-            { error: "Invalid zip upload", issues: [{ path: ["archive"], message: error.message }] },
+            {
+              error: "Invalid zip upload",
+              issues: [{ path: ["archive"], message: error.message }],
+            },
             400,
           );
         }
@@ -118,9 +119,7 @@ export function registerProjectSourceRoutes(input: {
       }
     }
 
-    const parsed = createGitSourcePreflightSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = createGitSourcePreflightSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
       return c.json(
         {
@@ -141,17 +140,13 @@ export function registerProjectSourceRoutes(input: {
       );
     }
     const stored =
-      host && !parsed.data.gitlabPat
-        ? await store.getGitCredential(userId, host)
-        : null;
+      host && !parsed.data.gitlabPat ? await store.getGitCredential(userId, host) : null;
     const gitCredential: CreateGitCredentialInput | undefined =
       parsed.data.gitlabPat && host
         ? {
             userId,
             host,
-            encryptedToken: JSON.stringify(
-              encryptSecretValue(parsed.data.gitlabPat, appSecretKey),
-            ),
+            encryptedToken: JSON.stringify(encryptSecretValue(parsed.data.gitlabPat, appSecretKey)),
             persistAfterImport: true,
           }
         : stored
@@ -173,13 +168,8 @@ export function registerProjectSourceRoutes(input: {
   });
 
   app.get("/source-preflights/:preflightId", async (c) => {
-    const preflight = await store.getSourcePreflight(
-      c.req.param("preflightId"),
-      currentUserId(c),
-    );
-    return preflight
-      ? c.json({ preflight })
-      : c.json({ error: "Source preflight not found" }, 404);
+    const preflight = await store.getSourcePreflight(c.req.param("preflightId"), currentUserId(c));
+    return preflight ? c.json({ preflight }) : c.json({ error: "Source preflight not found" }, 404);
   });
 
   app.post("/projects", uploadBodyLimit, async (c) => {
@@ -207,9 +197,7 @@ export function registerProjectSourceRoutes(input: {
           secrets: environmentVariables.map((variable) => ({
             key: variable.key,
             kind: variable.kind,
-            encryptedValue: JSON.stringify(
-              encryptSecretValue(variable.value, appSecretKey),
-            ),
+            encryptedValue: JSON.stringify(encryptSecretValue(variable.value, appSecretKey)),
           })),
         });
         if (result.outcome === "not_found")
@@ -217,24 +205,17 @@ export function registerProjectSourceRoutes(input: {
         if (result.outcome === "not_ready")
           return c.json({ error: "Source preflight is not ready" }, 409);
         if (result.outcome === "consumed")
-          return c.json(
-            { error: "Source preflight has already been used" },
-            409,
-          );
+          return c.json({ error: "Source preflight has already been used" }, 409);
         return c.json({ project: result.project }, 201);
       } catch (error) {
-        if (error instanceof ProjectSlugConflictError)
-          return c.json({ error: error.message }, 409);
+        if (error instanceof ProjectSlugConflictError) return c.json({ error: error.message }, 409);
         throw error;
       }
     }
 
     const parsed = createProjectSchema.safeParse(input);
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid project input", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid project input", issues: parsed.error.issues }, 400);
     }
 
     const name =
@@ -258,16 +239,12 @@ export function registerProjectSourceRoutes(input: {
       }
       if (host) {
         const userId = currentUserId(c);
-        const stored = parsed.data.gitlabPat
-          ? null
-          : await store.getGitCredential(userId, host);
+        const stored = parsed.data.gitlabPat ? null : await store.getGitCredential(userId, host);
         if (parsed.data.gitlabPat) {
           gitCredential = {
             userId,
             host,
-            encryptedToken: JSON.stringify(
-              encryptSecretValue(parsed.data.gitlabPat, appSecretKey),
-            ),
+            encryptedToken: JSON.stringify(encryptSecretValue(parsed.data.gitlabPat, appSecretKey)),
             persistAfterImport: true,
           };
         } else if (stored) {
@@ -304,5 +281,4 @@ export function registerProjectSourceRoutes(input: {
       throw error;
     }
   });
-
 }

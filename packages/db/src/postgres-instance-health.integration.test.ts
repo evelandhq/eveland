@@ -45,13 +45,14 @@ describe.skipIf(!database)("Postgres instance health", () => {
         });
       }
 
-      expect((await store.listWorkerHeartbeats()).filter((entry) => entry.workerId === workerId)).toEqual([
+      expect(
+        (await store.listWorkerHeartbeats()).filter((entry) => entry.workerId === workerId),
+      ).toEqual([
         expect.objectContaining({ observedAt: "2026-07-18T10:00:05.000Z", lastTickDurationMs: 90 }),
       ]);
-      expect((await store.listHostMetrics({ workerId, limit: 10 })).map((sample) => sample.observedAt)).toEqual([
-        "2026-07-18T09:59:00.000Z",
-        "2026-07-18T10:00:00.000Z",
-      ]);
+      expect(
+        (await store.listHostMetrics({ workerId, limit: 10 })).map((sample) => sample.observedAt),
+      ).toEqual(["2026-07-18T09:59:00.000Z", "2026-07-18T10:00:00.000Z"]);
     } finally {
       await database!.db.delete(hostMetricSamples).where(eq(hostMetricSamples.workerId, workerId));
       await database!.db.delete(workerHeartbeats).where(eq(workerHeartbeats.workerId, workerId));

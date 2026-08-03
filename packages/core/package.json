@@ -1,8 +1,8 @@
 {
   "name": "@eveland/core",
   "version": "0.0.0",
-  "license": "AGPL-3.0-only",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": {
     "./agent-auth": "./src/agent-auth.ts",

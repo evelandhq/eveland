@@ -44,11 +44,13 @@ describe.skipIf(!databaseUrl)("Postgres source preflights", () => {
     if (created.outcome !== "created") throw new Error("Expected Project creation.");
 
     try {
-      await expect(store.createProjectFromSourcePreflight({
-        preflightId: preflight.id,
-        userId: "user_local_admin",
-        name: `preflight-second-${suffix}`,
-      })).resolves.toEqual({ outcome: "consumed" });
+      await expect(
+        store.createProjectFromSourcePreflight({
+          preflightId: preflight.id,
+          userId: "user_local_admin",
+          name: `preflight-second-${suffix}`,
+        }),
+      ).resolves.toEqual({ outcome: "consumed" });
       await expect(store.listProjectJobs(created.project.id)).resolves.toEqual([
         expect.objectContaining({
           type: "import_source",
@@ -59,7 +61,10 @@ describe.skipIf(!databaseUrl)("Postgres source preflights", () => {
         }),
       ]);
       await expect(store.listSecretRecords(created.project.id)).resolves.toEqual([
-        expect.objectContaining({ key: "OPENAI_API_KEY", encryptedValue: "postgres-encrypted-key" }),
+        expect.objectContaining({
+          key: "OPENAI_API_KEY",
+          encryptedValue: "postgres-encrypted-key",
+        }),
       ]);
     } finally {
       await store.deleteProject(created.project.id);

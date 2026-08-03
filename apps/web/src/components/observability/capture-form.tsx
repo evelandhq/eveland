@@ -42,9 +42,8 @@ export function ObservabilityCaptureForm({
       <CardHeader>
         <CardTitle>Agent capture</CardTitle>
         <CardDescription>
-          Controls only telemetry injected by Eveland. User instrumentation
-          remains unchanged and continues to use its own providers and
-          exporters.
+          Controls only telemetry injected by Eveland. User instrumentation remains unchanged and
+          continues to use its own providers and exporters.
         </CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit}>
@@ -54,8 +53,7 @@ export function ObservabilityCaptureForm({
               <FieldContent>
                 <FieldTitle>Capture Agent telemetry</FieldTitle>
                 <FieldDescription>
-                  Turn Eveland&apos;s private Agent traces, logs, and metrics on
-                  or off.
+                  Turn Eveland&apos;s private Agent traces, logs, and metrics on or off.
                 </FieldDescription>
               </FieldContent>
               <Switch
@@ -66,9 +64,7 @@ export function ObservabilityCaptureForm({
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="agent-sampling-ratio">
-                Trace sampling
-              </FieldLabel>
+              <FieldLabel htmlFor="agent-sampling-ratio">Trace sampling</FieldLabel>
               <div className="flex items-center gap-3">
                 <Input
                   id="agent-sampling-ratio"
@@ -91,8 +87,8 @@ export function ObservabilityCaptureForm({
                 <span className="text-sm text-muted-foreground">%</span>
               </div>
               <FieldDescription>
-                Applies to Eveland-injected root Agent spans. Child spans keep
-                the parent sampling decision.
+                Applies to Eveland-injected root Agent spans. Child spans keep the parent sampling
+                decision.
               </FieldDescription>
             </Field>
 
@@ -115,9 +111,7 @@ export function ObservabilityCaptureForm({
               description="Allow reasoning content in Eveland telemetry when Eve exposes it."
               checked={capture.includeReasoning}
               disabled={!capture.enabled}
-              onCheckedChange={(includeReasoning) =>
-                onChange({ includeReasoning })
-              }
+              onCheckedChange={(includeReasoning) => onChange({ includeReasoning })}
             />
           </FieldGroup>
 
@@ -131,11 +125,7 @@ export function ObservabilityCaptureForm({
         </CardContent>
         <CardFooter className="mt-6 border-t">
           <Button type="submit" disabled={pending}>
-            {pending ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <SaveIcon data-icon="inline-start" />
-            )}
+            {pending ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
             {pending ? "Saving…" : "Save policy"}
           </Button>
         </CardFooter>

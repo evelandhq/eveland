@@ -62,8 +62,14 @@ describe("schedule persistence", () => {
       hostPort: 41987,
       runtimeKind: "docker",
     });
-    await store.setProjectSchedulerTarget(project.id, firstDeployment.id, new Date("2026-07-15T00:00:00.000Z"));
-    await expect(store.getProjectSchedule(cleanupId!)).resolves.toMatchObject({ nextRunAt: expect.any(String) });
+    await store.setProjectSchedulerTarget(
+      project.id,
+      firstDeployment.id,
+      new Date("2026-07-15T00:00:00.000Z"),
+    );
+    await expect(store.getProjectSchedule(cleanupId!)).resolves.toMatchObject({
+      nextRunAt: expect.any(String),
+    });
 
     const secondRevision = await store.recordSourceRevision({
       projectId: project.id,
@@ -101,9 +107,15 @@ describe("schedule persistence", () => {
       hostPort: 41988,
       runtimeKind: "docker",
     });
-    await store.setProjectSchedulerTarget(project.id, secondDeployment.id, new Date("2026-07-15T01:00:00.000Z"));
+    await store.setProjectSchedulerTarget(
+      project.id,
+      secondDeployment.id,
+      new Date("2026-07-15T01:00:00.000Z"),
+    );
     await expect(store.getProjectSchedule(cleanupId!)).resolves.toMatchObject({ nextRunAt: null });
-    await expect(store.listProjectScheduleVersions(project.id, firstRevision.id)).resolves.toHaveLength(3);
+    await expect(
+      store.listProjectScheduleVersions(project.id, firstRevision.id),
+    ).resolves.toHaveLength(3);
   });
 
   test("coalesces due ticks and atomically creates one run and one job under concurrent planners", async () => {
@@ -143,7 +155,11 @@ describe("schedule persistence", () => {
       hostPort: 41990,
       runtimeKind: "docker",
     });
-    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-15T00:00:30.000Z"));
+    await store.setProjectSchedulerTarget(
+      project.id,
+      deployment.id,
+      new Date("2026-07-15T00:00:30.000Z"),
+    );
 
     const results = await Promise.all([
       store.claimDueScheduleRuns({ now: new Date("2026-07-15T00:05:10.000Z"), limit: 10 }),
@@ -222,13 +238,15 @@ describe("schedule persistence", () => {
     const versions = await store.recordScheduleVersions({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "billing/sweep",
-        kind: "handler",
-        cron: "0 3 * * *",
-        sourcePath: "agent/schedules/billing/sweep.ts",
-        definitionHash: "manual-v1",
-      }],
+      definitions: [
+        {
+          key: "billing/sweep",
+          kind: "handler",
+          cron: "0 3 * * *",
+          sourcePath: "agent/schedules/billing/sweep.ts",
+          definitionHash: "manual-v1",
+        },
+      ],
     });
     const schedule = versions[0]?.schedule;
     if (!schedule) throw new Error("Expected the schedule version fixture.");
@@ -255,7 +273,11 @@ describe("schedule persistence", () => {
     await store.setProjectSchedulerTarget(project.id, preview.id);
 
     await store.promoteDeployment(project.id, production.id);
-    const run = await store.createManualScheduleRun(project.id, schedule.id, new Date("2026-07-15T01:02:03.000Z"));
+    const run = await store.createManualScheduleRun(
+      project.id,
+      schedule.id,
+      new Date("2026-07-15T01:02:03.000Z"),
+    );
 
     expect(run).toMatchObject({
       scheduleId: schedule.id,
@@ -272,7 +294,9 @@ describe("schedule persistence", () => {
 
     await store.claimScheduleRunActivation(run.id);
     await store.redeemScheduleRunDispatch(run.id, production.id);
-    await expect(store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: [] })).resolves.toMatchObject({
+    await expect(
+      store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: [] }),
+    ).resolves.toMatchObject({
       id: run.id,
       status: "succeeded",
     });
@@ -298,13 +322,15 @@ describe("schedule persistence", () => {
     const [recorded] = await store.recordScheduleVersions({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "daily-topics",
-        kind: "markdown",
-        cron: "0 2 * * *",
-        sourcePath: "agent/schedules/daily-topics.md",
-        definitionHash: "running-v1",
-      }],
+      definitions: [
+        {
+          key: "daily-topics",
+          kind: "markdown",
+          cron: "0 2 * * *",
+          sourcePath: "agent/schedules/daily-topics.md",
+          definitionHash: "running-v1",
+        },
+      ],
     });
     if (!recorded) throw new Error("Expected schedule fixture.");
     const deployment = await store.recordDeployment({
@@ -360,13 +386,15 @@ describe("schedule persistence", () => {
     const recorded = await store.recordScheduleVersions({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "billing/sweep",
-        kind: "handler",
-        cron: "0 3 * * *",
-        sourcePath: "agent/schedules/billing/sweep.ts",
-        definitionHash: "history-v1",
-      }],
+      definitions: [
+        {
+          key: "billing/sweep",
+          kind: "handler",
+          cron: "0 3 * * *",
+          sourcePath: "agent/schedules/billing/sweep.ts",
+          definitionHash: "history-v1",
+        },
+      ],
     });
     const entry = recorded[0];
     if (!entry) throw new Error("Expected schedule history fixture.");
@@ -380,44 +408,102 @@ describe("schedule persistence", () => {
       hostPort: 41994,
       runtimeKind: "docker",
     });
-    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-15T00:00:00.000Z"));
-    const zeroSessionRun = await store.createManualScheduleRun(project.id, schedule.id, new Date("2026-07-15T01:00:00.000Z"));
+    await store.setProjectSchedulerTarget(
+      project.id,
+      deployment.id,
+      new Date("2026-07-15T00:00:00.000Z"),
+    );
+    const zeroSessionRun = await store.createManualScheduleRun(
+      project.id,
+      schedule.id,
+      new Date("2026-07-15T01:00:00.000Z"),
+    );
     await store.completeScheduleRun(zeroSessionRun.id, { status: "succeeded", eveSessionIds: [] });
-    const usedRun = await store.createManualScheduleRun(project.id, schedule.id, new Date("2026-07-15T02:00:00.000Z"));
-    await store.completeScheduleRun(usedRun.id, { status: "succeeded", eveSessionIds: ["eve_history_one", "eve_history_two"] });
+    const usedRun = await store.createManualScheduleRun(
+      project.id,
+      schedule.id,
+      new Date("2026-07-15T02:00:00.000Z"),
+    );
+    await store.completeScheduleRun(usedRun.id, {
+      status: "succeeded",
+      eveSessionIds: ["eve_history_one", "eve_history_two"],
+    });
     const linked = await store.listSessions(project.id);
     await store.recordModelUsage(linked[0]!.id, {
-      eveSessionId: linked[0]!.eveSessionId!, turnId: "turn_1", stepIndex: 0, inputTokens: 8, outputTokens: 5,
-      cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, finishReason: "stop", usageReported: true,
+      eveSessionId: linked[0]!.eveSessionId!,
+      turnId: "turn_1",
+      stepIndex: 0,
+      inputTokens: 8,
+      outputTokens: 5,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: null,
+      finishReason: "stop",
+      usageReported: true,
     });
     await store.recordModelUsage(linked[1]!.id, {
-      eveSessionId: linked[1]!.eveSessionId!, turnId: "turn_2", stepIndex: 0, inputTokens: 3, outputTokens: 2,
-      cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, finishReason: "stop", usageReported: true,
+      eveSessionId: linked[1]!.eveSessionId!,
+      turnId: "turn_2",
+      stepIndex: 0,
+      inputTokens: 3,
+      outputTokens: 2,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: null,
+      finishReason: "stop",
+      usageReported: true,
     });
 
     await expect(store.listProjectScheduleSummaries(project.id)).resolves.toEqual([
-      { schedule: expect.objectContaining({ id: schedule.id, key: "billing/sweep" }), version, targetDeploymentId: deployment.id },
+      {
+        schedule: expect.objectContaining({ id: schedule.id, key: "billing/sweep" }),
+        version,
+        targetDeploymentId: deployment.id,
+      },
     ]);
-    const firstPage = await store.listScheduleRuns(project.id, { scheduleId: schedule.id, trigger: "manual", limit: 1 });
+    const firstPage = await store.listScheduleRuns(project.id, {
+      scheduleId: schedule.id,
+      trigger: "manual",
+      limit: 1,
+    });
     expect(firstPage).toMatchObject({
-      items: [expect.objectContaining({
-        id: usedRun.id,
-        scheduleKey: "billing/sweep",
-        sessionCount: 2,
-        usage: expect.objectContaining({ inputTokens: 11, outputTokens: 7 }),
-      })],
+      items: [
+        expect.objectContaining({
+          id: usedRun.id,
+          scheduleKey: "billing/sweep",
+          sessionCount: 2,
+          usage: expect.objectContaining({ inputTokens: 11, outputTokens: 7 }),
+        }),
+      ],
       nextCursor: usedRun.id,
     });
-    await expect(store.listScheduleRuns(project.id, { scheduleId: schedule.id, cursor: firstPage.nextCursor!, limit: 1 })).resolves.toMatchObject({
-      items: [expect.objectContaining({
-        id: zeroSessionRun.id,
-        sessionCount: 0,
-        usage: expect.objectContaining({ status: "none" }),
-      })],
+    await expect(
+      store.listScheduleRuns(project.id, {
+        scheduleId: schedule.id,
+        cursor: firstPage.nextCursor!,
+        limit: 1,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: zeroSessionRun.id,
+          sessionCount: 0,
+          usage: expect.objectContaining({ status: "none" }),
+        }),
+      ],
       nextCursor: null,
     });
-    await expect(store.listSessionsPage(project.id, { scheduleRunId: usedRun.id, trigger: "manual", limit: 10 })).resolves.toMatchObject({
-      items: [expect.objectContaining({ scheduleRunId: usedRun.id }), expect.objectContaining({ scheduleRunId: usedRun.id })],
+    await expect(
+      store.listSessionsPage(project.id, {
+        scheduleRunId: usedRun.id,
+        trigger: "manual",
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({ scheduleRunId: usedRun.id }),
+        expect.objectContaining({ scheduleRunId: usedRun.id }),
+      ],
       nextCursor: null,
     });
     await expect(store.getScheduleRunDetail(usedRun.id)).resolves.toMatchObject({

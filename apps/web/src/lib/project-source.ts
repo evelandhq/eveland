@@ -11,11 +11,8 @@ export function describeProjectSource(
   }
 
   const source = parseGitSource(gitUrl);
-  const kind = source.host === "github.com"
-    ? "github"
-    : source.host === "gitlab.com"
-      ? "gitlab"
-      : "git";
+  const kind =
+    source.host === "github.com" ? "github" : source.host === "gitlab.com" ? "gitlab" : "git";
 
   return {
     kind,

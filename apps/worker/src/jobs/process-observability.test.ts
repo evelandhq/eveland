@@ -40,10 +40,7 @@ describe("Deployment observability policy", () => {
       },
       externalDestinations: [],
     });
-    const dataDir = path.join(
-      os.tmpdir(),
-      `eveland-policy-delivery-${Date.now()}`,
-    );
+    const dataDir = path.join(os.tmpdir(), `eveland-policy-delivery-${Date.now()}`);
     temporaryDirectories.push(dataDir);
 
     const prepared = await prepareDeploymentObservability({
@@ -81,16 +78,9 @@ describe("Deployment observability policy", () => {
       hostDir: "/host/eveland-data/observability/proj_1/dep_1",
     });
     expect(
-      JSON.parse(
-        await readFile(
-          path.join(prepared.workerDir, "agent-policy.json"),
-          "utf8",
-        ),
-      ),
+      JSON.parse(await readFile(path.join(prepared.workerDir, "agent-policy.json"), "utf8")),
     ).toEqual(prepared.policy);
-    expect(JSON.stringify(prepared.policy)).not.toContain(
-      "externalDestinations",
-    );
+    expect(JSON.stringify(prepared.policy)).not.toContain("externalDestinations");
   });
 
   test("delivers the current observer runtime bundle next to the policy", async () => {
@@ -99,10 +89,7 @@ describe("Deployment observability policy", () => {
       name: "Runtime Delivery Agent",
       importKind: "zip",
     });
-    const dataDir = path.join(
-      os.tmpdir(),
-      `eveland-runtime-delivery-${Date.now()}`,
-    );
+    const dataDir = path.join(os.tmpdir(), `eveland-runtime-delivery-${Date.now()}`);
     temporaryDirectories.push(dataDir);
 
     const prepared = await prepareDeploymentObservability({
@@ -115,10 +102,7 @@ describe("Deployment observability policy", () => {
       nodeEnv: "production",
     });
 
-    const runtime = await readFile(
-      path.join(prepared.workerDir, "runtime.mjs"),
-      "utf8",
-    );
+    const runtime = await readFile(path.join(prepared.workerDir, "runtime.mjs"), "utf8");
     // The mount-delivered bundle must be self-contained: the Agent cannot
     // resolve platform packages from inside the observability mount.
     expect(runtime).toContain("OTLPTraceExporter");
@@ -185,9 +169,7 @@ describe("Deployment observability policy", () => {
       release: currentRelease!,
     });
 
-    await expect(store.listLogs(project.id, "runtime")).resolves.toHaveLength(
-      1,
-    );
+    await expect(store.listLogs(project.id, "runtime")).resolves.toHaveLength(1);
   });
 
   test("refreshes every running Deployment after a policy revision without touching its runtime", async () => {
@@ -216,10 +198,7 @@ describe("Deployment observability policy", () => {
       hostPort: 41995,
       runtimeKind: "docker",
     });
-    const dataDir = path.join(
-      os.tmpdir(),
-      `eveland-policy-reconcile-${Date.now()}`,
-    );
+    const dataDir = path.join(os.tmpdir(), `eveland-policy-reconcile-${Date.now()}`);
     temporaryDirectories.push(dataDir);
     const reconcile = createDeploymentObservabilityReconciler({
       store,
@@ -247,9 +226,7 @@ describe("Deployment observability policy", () => {
     });
 
     await expect(reconcile()).resolves.toBe(1);
-    await expect(
-      readRuntimePolicy(dataDir, project.id, deployment.id),
-    ).resolves.toMatchObject({
+    await expect(readRuntimePolicy(dataDir, project.id, deployment.id)).resolves.toMatchObject({
       revision: 2,
       capture: { enabled: false, sampleRatio: 0.25 },
       resource: {
@@ -266,17 +243,11 @@ describe("Deployment observability policy", () => {
  * path segments are process-safe names, so a mixed-case id only matches on a
  * case-insensitive filesystem.
  */
-async function readRuntimePolicy(
-  dataDir: string,
-  projectId: string,
-  deploymentId: string,
-) {
+async function readRuntimePolicy(dataDir: string, projectId: string, deploymentId: string) {
   const { workerDir } = resolveAgentObservabilityDirs(
     { EVELAND_DATA_DIR: dataDir },
     projectId,
     deploymentId,
   );
-  return JSON.parse(
-    await readFile(path.join(workerDir, "agent-policy.json"), "utf8"),
-  );
+  return JSON.parse(await readFile(path.join(workerDir, "agent-policy.json"), "utf8"));
 }

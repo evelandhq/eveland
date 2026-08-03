@@ -55,12 +55,12 @@ Team
 
 控制面使用邮箱和密码登录。首次启动时平台幂等创建默认 Admin：
 
-* 默认邮箱：`admin@example.com`，可由 `EVELAND_ADMIN_EMAIL` 覆盖
-* 初始密码：必须由 `EVELAND_ADMIN_PASSWORD` 提供，至少 12 个字符
-* 用户、密码账户与 Session 使用 Better Auth；团队成员与邀请使用 Organization plugin
-* 不内置生产默认密码；`BETTER_AUTH_SECRET` 必须独立配置且至少 32 个字符
-* 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
-* 已有有效成员 Session 时访问 `/login`，直接跳转到 `/projects`
+- 默认邮箱：`admin@example.com`，可由 `EVELAND_ADMIN_EMAIL` 覆盖
+- 初始密码：必须由 `EVELAND_ADMIN_PASSWORD` 提供，至少 12 个字符
+- 用户、密码账户与 Session 使用 Better Auth；团队成员与邀请使用 Organization plugin
+- 不内置生产默认密码；`BETTER_AUTH_SECRET` 必须独立配置且至少 32 个字符
+- 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
+- 已有有效成员 Session 时访问 `/login`，直接跳转到 `/projects`
 
 除健康检查和邀请接受外，所有控制面 API 都要求有效成员 Session。公开 Agent Gateway 流量使用独立认证边界。
 API 与 Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `version`、Git
@@ -127,19 +127,19 @@ Gateway 必须透明转发 challenge、请求 credential 与响应，不解释�
 
 展示用户全部项目：
 
-* 项目名称
-* 当前部署状态
-* 最近一次更新时间
-* 当前 Eve 版本；落后于最新支持版本或不受支持时以红色显示，信息提示说明升级目标
-* 最近 Session 状态
-* 下一次 Schedule 时间（如有）；按个人 Display timezone 显示，当天只显示 24 小时制的
+- 项目名称
+- 当前部署状态
+- 最近一次更新时间
+- 当前 Eve 版本；落后于最新支持版本或不受支持时以红色显示，信息提示说明升级目标
+- 最近 Session 状态
+- 下一次 Schedule 时间（如有）；按个人 Display timezone 显示，当天只显示 24 小时制的
   `HH:mm`，其他日期显示 `MM-DD HH:mm`
 
 支持：
 
-* 新建项目
-* 删除项目
-* 进入项目
+- 新建项目
+- 删除项目
+- 进入项目
 
 Project 删除是永久、异步操作。用户必须输入完整 Project 名称确认；API 原子地将
 Project 标记为 `deleting` 并创建唯一的 `delete_project` job。Projects 列表在 job
@@ -168,11 +168,11 @@ Personal 与 System 分组导航。
 
 个人设置支持：
 
-* 修改姓名
-* 上传、替换或移除头像；只接受 PNG、JPEG、WebP，最大 512 KB
-* 查看登录邮箱；邮箱当前只读
-* 配置 Display timezone；未保存偏好时默认使用浏览器当前 IANA 时区，保存后作为个人偏好跨页面和登录 Session 生效
-* 使用当前密码修改密码；新密码至少 12 个字符，成功后撤销当前 Session 之外的所有登录 Session
+- 修改姓名
+- 上传、替换或移除头像；只接受 PNG、JPEG、WebP，最大 512 KB
+- 查看登录邮箱；邮箱当前只读
+- 配置 Display timezone；未保存偏好时默认使用浏览器当前 IANA 时区，保存后作为个人偏好跨页面和登录 Session 生效
+- 使用当前密码修改密码；新密码至少 12 个字符，成功后撤销当前 Session 之外的所有登录 Session
 
 Web 中所有绝对日期与时间——包括列表、详情、Logs、Session Timeline、ScheduleRun、
 Usage 与 Instance Health 图表坐标和 Tooltip——统一按当前用户的 Display timezone 展示，
@@ -197,16 +197,16 @@ Members 位于 Settings 的 System 分组，不再出现在 Workspace 全局导�
 
 角色：
 
-* `admin`：拥有全部项目权限，并可邀请、移除成员和修改角色
-* `member`：可管理项目、Secrets 和部署，但不能管理成员
+- `admin`：拥有全部项目权限，并可邀请、移除成员和修改角色
+- `member`：可管理项目、Secrets 和部署，但不能管理成员
 
 页面展示活动成员与待接受邀请。Admin 可以：
 
-* 按邮箱创建七天有效、单次使用的邀请链接
-* 刷新邀请以轮换 token 并延长有效期
-* 复制邀请链接或撤销邀请
-* 将成员设为 Admin / Member
-* 移除成员；移除后立即撤销其所有登录 Session，团队项目不删除
+- 按邮箱创建七天有效、单次使用的邀请链接
+- 刷新邀请以轮换 token 并延长有效期
+- 复制邀请链接或撤销邀请
+- 将成员设为 Admin / Member
+- 移除成员；移除后立即撤销其所有登录 Session，团队项目不删除
 
 最后一个 Admin 不能被移除或降级。邀请链接使用 256-bit 不透明随机标识，接受后立即失效。
 
@@ -314,26 +314,26 @@ Deployment/RuntimeInstance provenance。判据是 Eve 自带的 per-session `dat
 
 Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
 
-* Agent capture 开关、trace sampling、input/output content 与 reasoning policy 只作用于
+- Agent capture 开关、trace sampling、input/output content 与 reasoning policy 只作用于
   Eveland 注入的私有 provider，并由运行中的 Agent 动态加载，不重启 Deployment；
   input、output 与 reasoning content 默认开启，Admin 可以分别关闭
-* Session 完成与私有 Provider revision 切换最多等待两秒完成 flush/shutdown；超时或失败只
+- Session 完成与私有 Provider revision 切换最多等待两秒完成 flush/shutdown；超时或失败只
   产生限频降级告警，不能使 Eve event hook 或 Agent turn 失败
-* Elastic 固定接收 Eveland 的全部 traces、logs、metrics 和 agent/platform/runtime/capacity domain
-* Langfuse 固定只接收 Eveland 注入的 Agent traces；Collector 按直连 OTLP v4 contract
+- Elastic 固定接收 Eveland 的全部 traces、logs、metrics 和 agent/platform/runtime/capacity domain
+- Langfuse 固定只接收 Eveland 注入的 Agent traces；Collector 按直连 OTLP v4 contract
   将 model call 映射为 generation，将 Agent/Tool/Subagent 保持为带 operation metadata 的
   span，并映射 input/output、model、标准 usage 与 provider-reported cost。管理员只配置
   Langfuse Base URL，例如 `https://us.cloud.langfuse.com`；Eveland 生成
   `/api/public/otel/v1/traces` signal endpoint
-* Custom OTLP/HTTP 可以选择 signals、domains 与加密 Header
-* 已配置的 Destination 必须可以修改：页面展示 Admin 配置的那个远端 URL，不展示 Eveland
+- Custom OTLP/HTTP 可以选择 signals、domains 与加密 Header
+- 已配置的 Destination 必须可以修改：页面展示 Admin 配置的那个远端 URL，不展示 Eveland
   派生的 signal endpoint。Admin 可以改 URL、Custom OTLP 的 signals/domains 与 Header，也
   可以更换凭据。凭据不回浏览器，因此提交时留空表示保留已存储的值，只有首次配置必须提供；
   Destination 的产品类型创建后不可更改。无法用当前 `APP_SECRET_KEY` 解开配置的 Destination
   仍要列出并可编辑替换，不能静默隐藏
-* 每个外部 exporter 使用独立 retry 与持久化 sending queue；一个目标失败不能阻塞 Built-in
+- 每个外部 exporter 使用独立 retry 与持久化 sending queue；一个目标失败不能阻塞 Built-in
   或其他目标
-* Collector 的外部 exporter 只连接 service-authenticated API egress proxy，生成的 Collector
+- Collector 的外部 exporter 只连接 service-authenticated API egress proxy，生成的 Collector
   配置不包含远端 URL 或凭据。API 按 Destination id 读取加密配置后转发；保存配置、Worker
   空批探测和每次实际转发都必须执行相同的 SSRF 策略。默认只允许 HTTPS 且 DNS 全部解析到
   public IP，禁止自动跟随 redirect，并把本次连接固定到已经校验的地址以抵抗 DNS rebinding；
@@ -341,13 +341,13 @@ Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destinatio
   通过运维配置的精确 hostname/IP allowlist 放行 HTTP 或私网解析，不能使用通配符。API
   每次转发还必须按 Store 中当前 Destination 的 signal 与 domain policy 过滤 OTLP resource；
   Collector 尚未加载新配置时不能继续发送已经移除的 domain
-* 平台自身遥测的观测完全由外部 Destination 承担。未启用 Elastic 或 Custom OTLP 时，
+- 平台自身遥测的观测完全由外部 Destination 承担。未启用 Elastic 或 Custom OTLP 时，
   platform/runtime domain 的 trace 与 log 不在任何地方留存；Built-in 只保留 capacity 读模型
   （Instance Health）与 Session/Usage 读模型。Langfuse 只承接 Agent traces，不能作为平台
   自身遥测的目标
-* Worker 每五分钟使用不含业务数据的标准 OTLP 请求独立探测外部 Destination；Settings 展示
+- Worker 每五分钟使用不含业务数据的标准 OTLP 请求独立探测外部 Destination；Settings 展示
   pending、healthy、degraded 或 paused，不把某个外部目标故障解释为 Built-in 故障
-* Collector 自身的 internal metrics 只发往接收 metrics 与 platform domain 的外部
+- Collector 自身的 internal metrics 只发往接收 metrics 与 platform domain 的外部
   Destination，不进入 Built-in。Collector 的投递量、发送失败与 queue 压力属于第三方监控
   产品的职责；Eveland 不为它建立本地视图
 
@@ -378,13 +378,13 @@ Built-in retention 不是可配置项。capacity sample 默认保留 30 天；Se
 Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“当前是否可用”与
 “是否正在接近容量风险”分开呈现，并至少展示：
 
-* API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间；Collector
+- API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间；Collector
   状态来自最近一次 OTLP 批次的到达时间（它是 Built-in 的唯一发送方），过期的批次不能继续
   证明 Collector 在线
-* Worker 持续 heartbeat；启动时配置 snapshot 不能替代在线状态
-* Worker 宿主机的 CPU、load、可用内存、`EVELAND_DATA_DIR` 所在文件系统容量与 inode
-* queued/running Job 数量、最老 queued Job，以及 RuntimeInstance 状态分布
-* 24 小时与 7 天趋势；有足够增长历史时给出磁盘预计耗尽天数
+- Worker 持续 heartbeat；启动时配置 snapshot 不能替代在线状态
+- Worker 宿主机的 CPU、load、可用内存、`EVELAND_DATA_DIR` 所在文件系统容量与 inode
+- queued/running Job 数量、最老 queued Job，以及 RuntimeInstance 状态分布
+- 24 小时与 7 天趋势；有足够增长历史时给出磁盘预计耗尽天数
 
 Worker 是唯一采集宿主机指标的特权组件；它把 heartbeat 与 metric sample 作为 capacity
 domain 的标准 OTLP metrics 发送，Built-in 投影到 Postgres，API 只读取并聚合，Web 只读展示。
@@ -452,12 +452,12 @@ Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使�
 
 导入后平台执行：
 
-* 拉取或解压源码
-* 检查是否为合法 Eve 项目
-* 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.27.x、0.28.x 或 0.29.x
-* 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
+- 拉取或解压源码
+- 检查是否为合法 Eve 项目
+- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.27.x、0.28.x 或 0.29.x
+- 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
   `capabilities.eveChat`
-* 创建 Source Revision
+- 创建 Source Revision
 
 `agent/skills/` 由 Eve 原生发现、编译和按需加载。Eveland 不把 runtime 的
 `$HOME/.agents/skills` 映射回可变 Source tree，也不自行解释 `defineSkill`；Release 中的
@@ -525,12 +525,12 @@ live-source-only：必须在停止现有进程前确认源码目录仍存在；�
 
 Overview 默认展示最近七天的执行概况，而不是承担完整的部署管理：
 
-* Session 数、running 数、terminal Session 完成率与失败数
-* Input / Output token 总量、Usage coverage 与 Provider/Gateway 实际报告的成本
-* 按天的 Session 趋势
-* 最近 Sessions
-* 当前 Production 状态、Eve 版本与 Stable Agent endpoint
-* 下一次已启用 Schedule
+- Session 数、running 数、terminal Session 完成率与失败数
+- Input / Output token 总量、Usage coverage 与 Provider/Gateway 实际报告的成本
+- 按天的 Session 趋势
+- 最近 Sessions
+- 当前 Production 状态、Eve 版本与 Stable Agent endpoint
+- 下一次已启用 Schedule
 
 Overview 的主要操作是 Open Playground，并提供前往 Sessions 与 Usage 的下钻。完整的构建、
 预览、流量与回滚操作位于 Project Deployments。
@@ -558,19 +558,19 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 
 展示和管理：
 
-* 当前 Production Deployment、Release、Source Revision 与 Stable/Preview endpoint
-* Deployment 历史、部署时间、runtime kind 与 retention protection
-* Stable endpoint 当前指向的 target 与流量权重
+- 当前 Production Deployment、Release、Source Revision 与 Stable/Preview endpoint
+- Deployment 历史、部署时间、runtime kind 与 retention protection
+- Stable endpoint 当前指向的 target 与流量权重
 
 主要操作：
 
-* 页面只提供一个 `Create deployment` 主入口，不按动作组合堆叠多个顶层按钮
-* Dialog 的 Source 维度默认选择当前不可变 Source Revision；Git 项目可显式选择先同步并验证远端最新代码，Zip 项目只使用当前 Source Revision
-* Dialog 的结果维度默认在新 Deployment 通过健康检查后将其原子 promote 为 stable target；用户可显式选择保留为可并发测试的 preview、不改变 stable target
-* 提交文案随组合明确显示 `Build & deploy`、`Build, deploy & promote`、`Sync & create preview` 或 `Sync, deploy & promote`，不能用含糊的 `latest` 同时指代当前 Revision 与远端 Git
-* Restart deployment
-* Open Playground
-* 查看日志
+- 页面只提供一个 `Create deployment` 主入口，不按动作组合堆叠多个顶层按钮
+- Dialog 的 Source 维度默认选择当前不可变 Source Revision；Git 项目可显式选择先同步并验证远端最新代码，Zip 项目只使用当前 Source Revision
+- Dialog 的结果维度默认在新 Deployment 通过健康检查后将其原子 promote 为 stable target；用户可显式选择保留为可并发测试的 preview、不改变 stable target
+- 提交文案随组合明确显示 `Build & deploy`、`Build, deploy & promote`、`Sync & create preview` 或 `Sync, deploy & promote`，不能用含糊的 `latest` 同时指代当前 Revision 与远端 Git
+- Restart deployment
+- Open Playground
+- 查看日志
 
 ---
 
@@ -584,21 +584,21 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 不是 Project、Deployment、Eve Connection 或控制面登录 Session。Connection 专指 Eve
 `agent/connections/*` 中 Agent 访问外部 MCP/OpenAPI server 的能力。Playground authentication 当前通用方法包括：
 
-* `local-dev`：不发送 credential，并且只允许 Gateway 用 loopback Host 调用 Eve `localDev()`；
-* `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
-* `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
-* `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
-* `vercel-oidc`：镜像 Eve 0.29.4 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
-* `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
-* `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
+- `local-dev`：不发送 credential，并且只允许 Gateway 用 loopback Host 调用 Eve `localDev()`；
+- `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
+- `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
+- `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
+- `vercel-oidc`：镜像 Eve 0.29.4 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
+- `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
+- `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 
 Eveland 不增加独立的 Connections 配置页，也不接管 Eve 的 Connection 定义。项目源码中的官方
 Eve Connection 随 Source Revision 构建并随 Release 部署；当前受管集成明确验证：
 
-* `defineMcpClientConnection` 与 `defineOpenAPIConnection`；
-* 根 Agent 与目录型 Subagent 的 Connection；
-* `auth.getToken()` 在运行时读取 Project Secret，并以 app-scoped Bearer credential 调用外部服务；
-* deploy、restart 和新 Release 后继续可用，且 credential 不进入 Build Log 或 Release summary。
+- `defineMcpClientConnection` 与 `defineOpenAPIConnection`；
+- 根 Agent 与目录型 Subagent 的 Connection；
+- `auth.getToken()` 在运行时读取 Project Secret，并以 app-scoped Bearer credential 调用外部服务；
+- deploy、restart 和新 Release 后继续可用，且 credential 不进入 Build Log 或 Release summary。
 
 Connection URL、inline OpenAPI spec 与模块结构仍是源码/构建输入；Project Secret 只在运行时注入，不能在
 build 时读取。Vercel Connect 是项目可以自行采用的外部 credential helper，不是 Eveland 托管
@@ -655,13 +655,13 @@ trigger = playground
 
 Playground 中可查看当前 Session 的：
 
-* 对话内容
-* 实时 reasoning / thinking；原始 reasoning 不由 Playground 持久化
-* tool 调用
-* tool 返回结果
-* 错误
-* HITL：确认/拒绝、选项、自由文本和外部授权提示
-* 当前 turn 的图片、PDF、文本和代码附件
+- 对话内容
+- 实时 reasoning / thinking；原始 reasoning 不由 Playground 持久化
+- tool 调用
+- tool 返回结果
+- 错误
+- HITL：确认/拒绝、选项、自由文本和外部授权提示
+- 当前 turn 的图片、PDF、文本和代码附件
 
 Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.27.x、0.28.x 与 0.29.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
 Eve 0.27.7+ Client 可以通过 `follow: false` 做有界 Catch-up Read：请求使用
@@ -680,14 +680,14 @@ envelope 作为同级行混入；cron/manual 创建的 Session 仍与其他来�
 
 每个 Session 展示：
 
-* Session ID
-* 触发来源：Playground / Cron / Webhook / Channel / API
-* 关联 Schedule（如由 cron 触发）
-* 开始时间
-* 状态：Running / Completed / Failed / Waiting Approval
-* 当前 Deployment
-* Input / Output / Total token 消耗
-* Usage 完整性（完整 / 部分缺失 / Provider 未报告）
+- Session ID
+- 触发来源：Playground / Cron / Webhook / Channel / API
+- 关联 Schedule（如由 cron 触发）
+- 开始时间
+- 状态：Running / Completed / Failed / Waiting Approval
+- 当前 Deployment
+- Input / Output / Total token 消耗
+- Usage 完整性（完整 / 部分缺失 / Provider 未报告）
 
 由 ScheduleRun 创建的 Session 在详情页标题区下方以单行紧凑 provenance 展示 Schedule
 key、cron/manual trigger、ScheduleRun 状态与开始时间。cron run 同时展示 24 小时制、
@@ -711,18 +711,18 @@ span 级别的下钻在启用接收 Agent traces 的外部 Destination 后由该
 
 同时按实际执行的 Eve agent / subagent 展示：
 
-* 模型调用步数
-* Input tokens
-* Output tokens
-* Cache read / write tokens
-* Provider 或 Gateway 返回的成本（如有）
+- 模型调用步数
+- Input tokens
+- Output tokens
+- Cache read / write tokens
+- Provider 或 Gateway 返回的成本（如有）
 
 支持按以下条件筛选：
 
-* Trigger
-* Schedule
-* Status
-* 时间范围
+- Trigger
+- Schedule
+- Status
+- 时间范围
 
 ---
 
@@ -737,13 +737,13 @@ Project Usage 固定为单一 Project；两者复用相同的时间范围、指�
 页面支持最近 24 小时、7 天和 30 天，并展示当前周期与上一等长周期。统计必须在服务端对
 完整时间范围聚合，不能把分页 Session 列表的第一页呈现为 Total。至少展示：
 
-* Session 数、running Session、terminal Session 完成率与失败数
-* Model step 数，以及 Input / Output / Cache read / Cache write tokens
-* Provider 或 Gateway 实际报告的成本；不得按公开价目表估算缺失成本
-* Usage coverage 与 Cost coverage；两者必须分别计算和呈现
-* Sessions、Model steps、Tokens 与 Cost 的时间曲线
-* Workspace 的 Project 归因、Model 归因，以及 Eve Agent × LLM Model 归因
-* Project Usage 中可下钻的最近 Session
+- Session 数、running Session、terminal Session 完成率与失败数
+- Model step 数，以及 Input / Output / Cache read / Cache write tokens
+- Provider 或 Gateway 实际报告的成本；不得按公开价目表估算缺失成本
+- Usage coverage 与 Cost coverage；两者必须分别计算和呈现
+- Sessions、Model steps、Tokens 与 Cost 的时间曲线
+- Workspace 的 Project 归因、Model 归因，以及 Eve Agent × LLM Model 归因
+- Project Usage 中可下钻的最近 Session
 
 Model 筛选把主趋势图切换为单 Model 视角。此时 Session 数表示在所选时间桶内实际使用该
 Model 的 distinct root Sessions，Token、Cost 和 step 数按 model usage event 的时间归入桶。
@@ -806,12 +806,12 @@ promote、rollback 或 stable route 权重变化不得重选其 target。
 
 每个 Schedule 展示：
 
-* 名称
-* 人类可读的 UTC 执行周期，以及作为精确依据的原始 Cron 表达式
-* 时区
-* 是否启用
-* 下一次触发时间
-* 来源文件位置
+- 名称
+- 人类可读的 UTC 执行周期，以及作为精确依据的原始 Cron 表达式
+- 时区
+- 是否启用
+- 下一次触发时间
+- 来源文件位置
 
 每次 cron 或 manual 执行都持久化独立 ScheduleRun；成功且没有创建 Session 也是
 合法结果。ScheduleRun 保留 Release/Deployment provenance、状态、attempt、missed
@@ -841,10 +841,10 @@ ScheduleRun 详情查看完整执行结果与关联 Sessions。
 
 支持：
 
-* 文件树
-* 文件内容查看
-* 当前 Source Revision 信息
-* Eve 项目结构摘要
+- 文件树
+- 文件内容查看
+- 当前 Source Revision 信息
+- Eve 项目结构摘要
 
 摘要至少包括：
 
@@ -871,9 +871,9 @@ Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘�
 
 Project Settings 使用页面内二级导航，不在主 Sidebar 展开第三层：
 
-* General：修改 Display name 与 Description；只读查看不可变 Project slug、Project ID 与 Source
+- General：修改 Display name 与 Description；只读查看不可变 Project slug、Project ID 与 Source
   repository；Project 删除位于 General 的 Danger zone
-* Environment：管理 Project Variables 与 Secrets
+- Environment：管理 Project Variables 与 Secrets
 
 旧 `/projects/proj_xxxxxxxxxx/secrets` 路径重定向到
 `/projects/proj_xxxxxxxxxx/settings/environment`。
@@ -886,11 +886,11 @@ Type、Name、Value 表格和弹框交互；Type 区分 `variable` 与 `secret`�
 
 支持：
 
-* 新增 Variable 或 Secret
-* 粘贴 `.env` 内容或上传 `.env` 文件，预览并批量新增或覆盖最多 50 个条目
-* 修改条目的 Type、Name，并可选择轮换 Value
-* 删除条目（明确确认）
-* 查看 Type、Name 和 Value 已配置状态
+- 新增 Variable 或 Secret
+- 粘贴 `.env` 内容或上传 `.env` 文件，预览并批量新增或覆盖最多 50 个条目
+- 修改条目的 Type、Name，并可选择轮换 Value
+- 删除条目（明确确认）
+- 查看 Type、Name 和 Value 已配置状态
 
 批量导入与新建项目使用同一个浏览器端解析和预览流程。空行和整行 `#` 注释被忽略，
 允许行首 `export `，成对的单引号或双引号从 Value 外围移除；不符合
@@ -913,11 +913,11 @@ Environment 页面必须明确提示是否已排入重启；没有 live Deployme
 
 Project Variable/Secret 仅在运行时注入容器，不进入：
 
-* Git Repo
-* Zip
-* Build Log
-* Source 页面
-* Session Log
+- Git Repo
+- Zip
+- Build Log
+- Source 页面
+- Session Log
 
 ---
 
@@ -952,9 +952,9 @@ reference 或对应的兼容 API。Shared Agent Environment 使用独立 singlet
 
 Logs 提供三类日志：
 
-* Build Log
-* Deploy Log
-* Runtime stdout/stderr 与 ScheduleRun lifecycle diagnostics
+- Build Log
+- Deploy Log
+- Runtime stdout/stderr 与 ScheduleRun lifecycle diagnostics
 
 Agent 的具体执行过程不放在 Logs 中，而放在 Session Timeline 中。
 Logs 页面默认按时间倒序展示最新记录，在固定高度的滚动区域内提供文本搜索、类型筛选和
@@ -1044,15 +1044,15 @@ Deployment 处于 running/draining 时被收养为 ready RuntimeInstance，从�
 
 容器运行 Eve 项目，平台负责：
 
-* Build 与启动
-* 健康检查
-* Secret 注入
-* durable workflow world 配置、依赖与数据库 schema
-* 日志收集
-* cron 触发
-* Session 来源归因
-* Eveland 私有 OpenTelemetry 信号
-* 容器重启
+- Build 与启动
+- 健康检查
+- Secret 注入
+- durable workflow world 配置、依赖与数据库 schema
+- 日志收集
+- cron 触发
+- Session 来源归因
+- Eveland 私有 OpenTelemetry 信号
+- 容器重启
 
 新启动或重启的进程在 HTTP 健康检查失败时，worker 必须先采集 runtime diagnostics 再清理
 进程。Docker 记录容器 state、exit code、OOM/restart count 与最近 200 行 `docker logs`；
@@ -1117,18 +1117,18 @@ apps -X-> apps
 
 Eveland 当前不做：
 
-* 在线代码编辑器
-* GitHub OAuth / 自动同步
-* Git push 自动部署
-* 多环境管理
-* 自定义域名
-* 多区域部署
-* Kubernetes
-* 团队权限系统
-* Connection marketplace
-* 复杂计费与用量统计
-* workerd / isolate runtime
-* 完整的多租户 sandbox
+- 在线代码编辑器
+- GitHub OAuth / 自动同步
+- Git push 自动部署
+- 多环境管理
+- 自定义域名
+- 多区域部署
+- Kubernetes
+- 团队权限系统
+- Connection marketplace
+- 复杂计费与用量统计
+- workerd / isolate runtime
+- 完整的多租户 sandbox
 
 ---
 

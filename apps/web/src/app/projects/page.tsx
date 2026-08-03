@@ -1,18 +1,13 @@
-import Link from 'next/link';
-import { SiGit, SiGithub, SiGitlab } from '@icons-pack/react-simple-icons';
-import {
-  ArrowUpRightIcon,
-  FolderArchiveIcon,
-  FolderPlusIcon,
-  PlusIcon,
-} from 'lucide-react';
-import { ProjectDeletionPoller } from '@/components/project-deletion-poller';
-import { CompactDateTime } from '@/components/compact-date-time';
-import { DateTime } from '@/components/date-time';
-import { EveVersionCardStatus } from '@/components/eve-version-status';
-import { StatusBadge } from '@/components/status-badge';
-import { Badge } from '@/components/ui/badge';
-import { buttonVariants } from '@/components/ui/button';
+import Link from "next/link";
+import { SiGit, SiGithub, SiGitlab } from "@icons-pack/react-simple-icons";
+import { ArrowUpRightIcon, FolderArchiveIcon, FolderPlusIcon, PlusIcon } from "lucide-react";
+import { ProjectDeletionPoller } from "@/components/project-deletion-poller";
+import { CompactDateTime } from "@/components/compact-date-time";
+import { DateTime } from "@/components/date-time";
+import { EveVersionCardStatus } from "@/components/eve-version-status";
+import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -21,7 +16,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
+} from "@/components/ui/card";
 import {
   Empty,
   EmptyContent,
@@ -29,13 +24,13 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from '@/components/ui/empty';
-import { getProjects } from '@/lib/server-api';
-import { describeProjectSource } from '@/lib/project-source';
-import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
+} from "@/components/ui/empty";
+import { getProjects } from "@/lib/server-api";
+import { describeProjectSource } from "@/lib/project-source";
+import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Projects",
 };
@@ -52,7 +47,9 @@ export default async function ProjectsPage() {
 
   return (
     <div className="min-h-[calc(100svh-3rem)] bg-background">
-      <ProjectDeletionPoller active={projects.some((project) => project.deletionStatus === 'deleting')} />
+      <ProjectDeletionPoller
+        active={projects.some((project) => project.deletionStatus === "deleting")}
+      />
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -65,7 +62,7 @@ export default async function ProjectsPage() {
             <span className="text-xs text-muted-foreground">{projects.length} total</span>
             <Link
               href="/new"
-              className={cn(buttonVariants({ variant: 'link' }), 'text-foreground')}
+              className={cn(buttonVariants({ variant: "link" }), "text-foreground")}
             >
               <PlusIcon data-icon="inline-start" />
               New project
@@ -96,92 +93,93 @@ export default async function ProjectsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {projects.map((project) => {
-              const deleting = project.deletionStatus === 'deleting';
-              const projectStatus = project.deletionStatus === 'failed'
-                ? 'delete_failed'
-                : project.deploymentStatus;
+              const deleting = project.deletionStatus === "deleting";
+              const projectStatus =
+                project.deletionStatus === "failed" ? "delete_failed" : project.deploymentStatus;
               const source = describeProjectSource(project.importKind, project.gitUrl);
               const ProjectSourceIcon = projectSourceIconByKind[source.kind];
               return (
-              <Card key={project.id} size="sm" className="h-full" aria-busy={deleting}>
-                <CardHeader>
-                  <CardTitle>
-                    {deleting ? (
-                      project.name
-                    ) : (
-                      <Link href={`/projects/${project.id}`} className="hover:underline">
-                        {project.name}
-                      </Link>
-                    )}
-                  </CardTitle>
-                  <CardDescription className="flex min-w-0 items-center gap-1.5">
-                    <ProjectSourceIcon aria-hidden="true" className="size-3.5 shrink-0" />
-                    <span className="truncate" title={project.gitUrl ?? source.label}>
-                      {source.label}
-                    </span>
-                  </CardDescription>
-                  <CardAction>
-                    {deleting ? (
-                      <Badge variant="secondary">
-                        <Spinner />
-                        Deleting…
-                      </Badge>
-                    ) : (
-                      <StatusBadge
-                        status={projectStatus}
-                        variant={projectStatus === 'running' ? 'secondary' : undefined}
-                      />
-                    )}
-                  </CardAction>
-                </CardHeader>
-                <CardContent>
-                  {project.description ? (
-                    <p className="mb-4 line-clamp-2 text-sm text-muted-foreground">
-                      {project.description}
-                    </p>
-                  ) : null}
-                  <dl className="grid grid-cols-3 gap-3">
-                    <div className="min-w-0">
-                      <dt className="text-xs text-muted-foreground">Eve version</dt>
-                      <dd className="mt-2">
-                        <EveVersionCardStatus eveVersion={project.eveVersion} />
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-muted-foreground">Latest session</dt>
-                      <dd className="mt-2">
-                        <StatusBadge status={project.latestSessionStatus} />
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-muted-foreground">Next schedule</dt>
-                      <dd className="mt-2 whitespace-nowrap text-xs font-medium">
-                        {project.nextScheduleAt ? (
-                          <CompactDateTime value={project.nextScheduleAt} />
-                        ) : 'None'}
-                      </dd>
-                    </div>
-                  </dl>
-                </CardContent>
-                <CardFooter className="justify-between border-t">
-                  <span className="text-xs text-muted-foreground">
-                    Updated <DateTime value={project.updatedAt} />
-                  </span>
-
-                  {!deleting ? (
-                    <Link
-                      href={`/projects/${project.id}`}
-                      aria-label={`Open ${project.name}`}
-                      className={cn(
-                        buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
-                        'text-foreground',
+                <Card key={project.id} size="sm" className="h-full" aria-busy={deleting}>
+                  <CardHeader>
+                    <CardTitle>
+                      {deleting ? (
+                        project.name
+                      ) : (
+                        <Link href={`/projects/${project.id}`} className="hover:underline">
+                          {project.name}
+                        </Link>
                       )}
-                    >
-                      <ArrowUpRightIcon />
-                    </Link>
-                  ) : null}
-                </CardFooter>
-              </Card>
+                    </CardTitle>
+                    <CardDescription className="flex min-w-0 items-center gap-1.5">
+                      <ProjectSourceIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                      <span className="truncate" title={project.gitUrl ?? source.label}>
+                        {source.label}
+                      </span>
+                    </CardDescription>
+                    <CardAction>
+                      {deleting ? (
+                        <Badge variant="secondary">
+                          <Spinner />
+                          Deleting…
+                        </Badge>
+                      ) : (
+                        <StatusBadge
+                          status={projectStatus}
+                          variant={projectStatus === "running" ? "secondary" : undefined}
+                        />
+                      )}
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent>
+                    {project.description ? (
+                      <p className="mb-4 line-clamp-2 text-sm text-muted-foreground">
+                        {project.description}
+                      </p>
+                    ) : null}
+                    <dl className="grid grid-cols-3 gap-3">
+                      <div className="min-w-0">
+                        <dt className="text-xs text-muted-foreground">Eve version</dt>
+                        <dd className="mt-2">
+                          <EveVersionCardStatus eveVersion={project.eveVersion} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted-foreground">Latest session</dt>
+                        <dd className="mt-2">
+                          <StatusBadge status={project.latestSessionStatus} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted-foreground">Next schedule</dt>
+                        <dd className="mt-2 whitespace-nowrap text-xs font-medium">
+                          {project.nextScheduleAt ? (
+                            <CompactDateTime value={project.nextScheduleAt} />
+                          ) : (
+                            "None"
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </CardContent>
+                  <CardFooter className="justify-between border-t">
+                    <span className="text-xs text-muted-foreground">
+                      Updated <DateTime value={project.updatedAt} />
+                    </span>
+
+                    {!deleting ? (
+                      <Link
+                        href={`/projects/${project.id}`}
+                        aria-label={`Open ${project.name}`}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                          "text-foreground",
+                        )}
+                      >
+                        <ArrowUpRightIcon />
+                      </Link>
+                    ) : null}
+                  </CardFooter>
+                </Card>
               );
             })}
           </div>

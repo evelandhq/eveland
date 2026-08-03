@@ -25,41 +25,22 @@ import {
   FieldTitle,
 } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { enqueueBuildDeploy, syncSource } from "@/lib/client-api";
-import {
-  getProjectImportNotice,
-  type Job,
-} from "@/lib/api";
+import { getProjectImportNotice, type Job } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type DeploymentSource = "current" | "sync";
 type DeploymentDestination = "preview" | "production";
 
-function submitLabel(
-  source: DeploymentSource,
-  destination: DeploymentDestination,
-): string {
+function submitLabel(source: DeploymentSource, destination: DeploymentDestination): string {
   if (source === "sync") {
-    return destination === "production"
-      ? "Sync, deploy & promote"
-      : "Sync & create preview";
+    return destination === "production" ? "Sync, deploy & promote" : "Sync & create preview";
   }
-  return destination === "production"
-    ? "Build, deploy & promote"
-    : "Build & deploy";
+  return destination === "production" ? "Build, deploy & promote" : "Build & deploy";
 }
 
-function ChoiceContent({
-  title,
-  description,
-}: {
-  title: string;
-  description: React.ReactNode;
-}) {
+function ChoiceContent({ title, description }: { title: string; description: React.ReactNode }) {
   return (
     <span className="flex min-w-0 flex-col items-start gap-1">
       <span>{title}</span>
@@ -89,11 +70,8 @@ export function DeploymentActions({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [source, setSource] = useState<DeploymentSource>(
-    canDeploy ? "current" : "sync",
-  );
-  const [destination, setDestination] =
-    useState<DeploymentDestination>("production");
+  const [source, setSource] = useState<DeploymentSource>(canDeploy ? "current" : "sync");
+  const [destination, setDestination] = useState<DeploymentDestination>("production");
   const [pending, setPending] = useState<"deploy" | "retry" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const importNotice = getProjectImportNotice(importJob);
@@ -171,12 +149,7 @@ export function DeploymentActions({
       ) : (
         <Dialog open={open} onOpenChange={changeOpen}>
           <DialogTrigger
-            render={
-              <Button
-                type="button"
-                disabled={busy || (!canDeploy && !canSync)}
-              />
-            }
+            render={<Button type="button" disabled={busy || (!canDeploy && !canSync)} />}
           >
             {importActive ? (
               <Spinner data-icon="inline-start" />
@@ -190,8 +163,8 @@ export function DeploymentActions({
               <DialogHeader>
                 <DialogTitle>Configure deployment</DialogTitle>
                 <DialogDescription>
-                  Choose the source to build and what happens after the new
-                  deployment passes its health check.
+                  Choose the source to build and what happens after the new deployment passes its
+                  health check.
                 </DialogDescription>
               </DialogHeader>
 
@@ -202,9 +175,7 @@ export function DeploymentActions({
                     <ToggleGroup
                       value={[source]}
                       onValueChange={(values) => {
-                        const value = values[0] as
-                          | DeploymentSource
-                          | undefined;
+                        const value = values[0] as DeploymentSource | undefined;
                         if (value) setSource(value);
                       }}
                       variant="outline"
@@ -224,10 +195,7 @@ export function DeploymentActions({
                               {sourceRecordedAt ? (
                                 <>
                                   {" · recorded "}
-                                  <time
-                                    dateTime={sourceRecordedAt}
-                                    suppressHydrationWarning
-                                  >
+                                  <time dateTime={sourceRecordedAt} suppressHydrationWarning>
                                     {new Date(sourceRecordedAt).toLocaleString()}
                                   </time>
                                 </>
@@ -250,9 +218,7 @@ export function DeploymentActions({
                     <Field>
                       <FieldContent>
                         <FieldTitle>
-                          {canDeploy
-                            ? "Current revision"
-                            : "Sync latest from Git first"}
+                          {canDeploy ? "Current revision" : "Sync latest from Git first"}
                         </FieldTitle>
                         <FieldDescription>
                           {canDeploy
@@ -269,9 +235,7 @@ export function DeploymentActions({
                   <ToggleGroup
                     value={[destination]}
                     onValueChange={(values) => {
-                      const value = values[0] as
-                        | DeploymentDestination
-                        | undefined;
+                      const value = values[0] as DeploymentDestination | undefined;
                       if (value) setDestination(value);
                     }}
                     variant="outline"
@@ -305,13 +269,7 @@ export function DeploymentActions({
 
               <DialogFooter>
                 <DialogClose
-                  render={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={pending !== null}
-                    />
-                  }
+                  render={<Button type="button" variant="outline" disabled={pending !== null} />}
                 >
                   Cancel
                 </DialogClose>
@@ -321,9 +279,7 @@ export function DeploymentActions({
                   ) : (
                     <RocketIcon data-icon="inline-start" />
                   )}
-                  {pending === "deploy"
-                    ? "Queuing deployment…"
-                    : submitLabel(source, destination)}
+                  {pending === "deploy" ? "Queuing deployment…" : submitLabel(source, destination)}
                 </Button>
               </DialogFooter>
             </form>

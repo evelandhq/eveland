@@ -37,15 +37,11 @@ export const observabilityPolicySchema = z
     schemaVersion: z.literal(1),
     revision: z.number().int().positive(),
     agentCapture: agentCapturePolicySchema,
-    externalDestinations: z.array(
-      externalObservabilityDestinationSchema,
-    ),
+    externalDestinations: z.array(externalObservabilityDestinationSchema),
   })
   .strict()
   .superRefine((policy, context) => {
-    const ids = policy.externalDestinations.map(
-      (destination) => destination.id,
-    );
+    const ids = policy.externalDestinations.map((destination) => destination.id);
     if (new Set(ids).size !== ids.length) {
       context.addIssue({
         code: "custom",
@@ -58,15 +54,14 @@ export const observabilityPolicySchema = z
 export type AgentCapturePolicy = z.infer<typeof agentCapturePolicySchema>;
 export type ObservabilityPolicy = z.infer<typeof observabilityPolicySchema>;
 
-export type PublicExternalObservabilityDestination<
-  Destination = ExternalObservabilityDestination,
-> = Destination extends ExternalObservabilityDestination
-  ? Omit<Destination, "encryptedConfig"> & {
-      /** Null when the stored configuration cannot be decrypted or no longer validates. */
-      config: PublicExternalDestinationConfig | null;
-      health: ExternalDestinationHealth;
-    }
-  : never;
+export type PublicExternalObservabilityDestination<Destination = ExternalObservabilityDestination> =
+  Destination extends ExternalObservabilityDestination
+    ? Omit<Destination, "encryptedConfig"> & {
+        /** Null when the stored configuration cannot be decrypted or no longer validates. */
+        config: PublicExternalDestinationConfig | null;
+        health: ExternalDestinationHealth;
+      }
+    : never;
 
 export type PublicObservabilityPolicy = {
   revision: number;
@@ -74,9 +69,7 @@ export type PublicObservabilityPolicy = {
   externalDestinations: PublicExternalObservabilityDestination[];
 };
 
-export function createDefaultObservabilityPolicy(
-  revision: number,
-): ObservabilityPolicy {
+export function createDefaultObservabilityPolicy(revision: number): ObservabilityPolicy {
   return observabilityPolicySchema.parse({
     schemaVersion: 1,
     revision,
@@ -96,41 +89,30 @@ export function toPublicObservabilityPolicy(
   input: {
     destinationHealth?: ExternalDestinationHealth[];
     /** Decrypted, credential-stripped configuration by destination id. */
-    destinationConfigs?: ReadonlyMap<
-      string,
-      PublicExternalDestinationConfig
-    >;
+    destinationConfigs?: ReadonlyMap<string, PublicExternalDestinationConfig>;
   } = {},
 ): PublicObservabilityPolicy {
   const healthByDestination = new Map(
-    (input.destinationHealth ?? []).map((health) => [
-      health.destinationId,
-      health,
-    ]),
+    (input.destinationHealth ?? []).map((health) => [health.destinationId, health]),
   );
   return {
     revision: policy.revision,
     agentCapture: policy.agentCapture,
-    externalDestinations: policy.externalDestinations.map(
-      (destination) => {
-        const {
-          encryptedConfig: _encryptedConfig,
-          ...publicDestination
-        } = destination;
-        return {
-          ...publicDestination,
-          config: input.destinationConfigs?.get(destination.id) ?? null,
-          health:
-            healthByDestination.get(destination.id) ??
-            ({
-              destinationId: destination.id,
-              status: destination.enabled ? "pending" : "paused",
-              checkedAt: null,
-              lastSuccessAt: null,
-              lastError: null,
-            } satisfies ExternalDestinationHealth),
-        } as PublicExternalObservabilityDestination;
-      },
-    ),
+    externalDestinations: policy.externalDestinations.map((destination) => {
+      const { encryptedConfig: _encryptedConfig, ...publicDestination } = destination;
+      return {
+        ...publicDestination,
+        config: input.destinationConfigs?.get(destination.id) ?? null,
+        health:
+          healthByDestination.get(destination.id) ??
+          ({
+            destinationId: destination.id,
+            status: destination.enabled ? "pending" : "paused",
+            checkedAt: null,
+            lastSuccessAt: null,
+            lastError: null,
+          } satisfies ExternalDestinationHealth),
+      } as PublicExternalObservabilityDestination;
+    }),
   };
 }

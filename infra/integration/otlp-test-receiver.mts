@@ -21,10 +21,7 @@ export async function startOtlpTestReceiver(port = 4328) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       }
       received[signal].push(
-        JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<
-          string,
-          unknown
-        >,
+        JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
       );
       response.writeHead(200, { "content-type": "application/json" });
       response.end("{}");

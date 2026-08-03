@@ -60,20 +60,24 @@ describe("ScheduleRun execution migration", () => {
       from schedule_run_sessions
     `);
 
-    expect(result.rows).toEqual([{
-      schedule_run_id: "srun_existing",
-      session_id: "sess_existing",
-      status: "running",
-      last_observed_at: new Date("2026-07-28T02:26:00.000Z"),
-    }]);
-    await expect(database.query<{
-      status: string;
-      completed_at: Date | null;
-    }>(`
+    expect(result.rows).toEqual([
+      {
+        schedule_run_id: "srun_existing",
+        session_id: "sess_existing",
+        status: "running",
+        last_observed_at: new Date("2026-07-28T02:26:00.000Z"),
+      },
+    ]);
+    await expect(
+      database.query<{
+        status: string;
+        completed_at: Date | null;
+      }>(`
       select status, completed_at
       from schedule_runs
       where id = 'srun_existing'
-    `)).resolves.toMatchObject({
+    `),
+    ).resolves.toMatchObject({
       rows: [{ status: "running", completed_at: null }],
     });
     await database.close();

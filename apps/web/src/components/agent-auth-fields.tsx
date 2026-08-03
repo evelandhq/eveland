@@ -1,9 +1,6 @@
 "use client";
 
-import type {
-  AgentAuthMethodDescriptor,
-  AgentAuthSecretReference,
-} from "@eveland/core/agent-auth";
+import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
 import type { AgentAuthSecretReferenceOption } from "@/lib/client-api";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -53,7 +50,9 @@ export function AgentAuthFields({
           <SelectContent alignItemWithTrigger={false}>
             <SelectGroup>
               {methods.map((candidate) => (
-                <SelectItem key={candidate.method} value={candidate.method}>{candidate.label}</SelectItem>
+                <SelectItem key={candidate.method} value={candidate.method}>
+                  {candidate.label}
+                </SelectItem>
               ))}
             </SelectGroup>
           </SelectContent>
@@ -64,13 +63,16 @@ export function AgentAuthFields({
         const id = `agent-auth-${method}-${field.key}`;
         const required = field.required && !field.secret;
         const value = values[field.key] ?? "";
-        const onChange = (nextValue: string) => onValuesChange({ ...values, [field.key]: nextValue });
+        const onChange = (nextValue: string) =>
+          onValuesChange({ ...values, [field.key]: nextValue });
         if (field.secretReferenceKey) {
           const referenceKey = field.secretReferenceKey;
           const items = [
             { label: "Keep the configured reference", value: null },
             ...secretReferences.map((reference) => ({
-              label: reference.revision ? `${reference.label} · r${reference.revision}` : reference.label,
+              label: reference.revision
+                ? `${reference.label} · r${reference.revision}`
+                : reference.label,
               value: `${reference.kind}:${reference.key}`,
             })),
           ];
@@ -83,8 +85,8 @@ export function AgentAuthFields({
                 items={items}
                 value={selectedValue}
                 onValueChange={(nextValue) => {
-                  const reference = secretReferences.find((candidate) =>
-                    `${candidate.kind}:${candidate.key}` === nextValue,
+                  const reference = secretReferences.find(
+                    (candidate) => `${candidate.kind}:${candidate.key}` === nextValue,
                   );
                   onReferenceValuesChange({
                     ...referenceValues,
@@ -92,19 +94,23 @@ export function AgentAuthFields({
                   });
                 }}
               >
-                <SelectTrigger id={id} className="w-full"><SelectValue /></SelectTrigger>
+                <SelectTrigger id={id} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
                   <SelectGroup>
                     {items.map((item) => (
-                      <SelectItem key={item.value ?? "configured"} value={item.value}>{item.label}</SelectItem>
+                      <SelectItem key={item.value ?? "configured"} value={item.value}>
+                        {item.label}
+                      </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
               <FieldDescription>
-                 {secretReferences.length > 0
-                   ? "Select a current Project Secret or available connection credential reference. Leave unchanged to preserve the existing reference."
-                   : "Add a Project Secret before configuring this method."}
+                {secretReferences.length > 0
+                  ? "Select a current Project Secret or available connection credential reference. Leave unchanged to preserve the existing reference."
+                  : "Add a Project Secret before configuring this method."}
               </FieldDescription>
             </Field>
           );
@@ -128,7 +134,9 @@ export function AgentAuthFields({
                 <SelectContent alignItemWithTrigger={false}>
                   <SelectGroup>
                     {field.options?.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
@@ -143,7 +151,9 @@ export function AgentAuthFields({
                 onChange={(event) => onChange(event.target.value)}
               />
             )}
-            {field.secret ? <FieldDescription>Leave blank to keep the configured value.</FieldDescription> : null}
+            {field.secret ? (
+              <FieldDescription>Leave blank to keep the configured value.</FieldDescription>
+            ) : null}
           </Field>
         );
       })}

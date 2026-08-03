@@ -5,7 +5,12 @@ import { createTestStore } from "./vitest-store.js";
 describe("Agent observability ingestion repository", () => {
   test("discovers a direct private-port session and projects provider usage once", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "started", event: { type: "session.started", data: {} } }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "started",
+        event: { type: "session.started", data: {} },
+      }),
+    );
     const completedStep = envelope(deploymentId, {
       telemetryEventId: "step",
       sourceSequence: 2,
@@ -20,7 +25,11 @@ describe("Agent observability ingestion repository", () => {
 
     expect(replay.duplicate).toBe(true);
     const [session] = await store.listSessions(projectId);
-    expect(session).toMatchObject({ trigger: "direct_http", status: "running", usage: { inputTokens: 12, outputTokens: 3, reportedSteps: 1 } });
+    expect(session).toMatchObject({
+      trigger: "direct_http",
+      status: "running",
+      usage: { inputTokens: 12, outputTokens: 3, reportedSteps: 1 },
+    });
     expect(await store.listSessionNodes(session!.id)).toHaveLength(1);
     expect(await store.listSessionEvents(session!.id)).toHaveLength(2);
   });
@@ -71,12 +80,18 @@ describe("Agent observability ingestion repository", () => {
 
   test("turn.completed is not terminal and session.waiting is the durable turn boundary", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    await store.ingestAgentEvent(envelope(deploymentId, { event: { type: "turn.completed", data: {} } }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, { event: { type: "turn.completed", data: {} } }),
+    );
     let [session] = await store.listSessions(projectId);
     expect(session?.status).toBe("running");
 
     await store.ingestAgentEvent(
-      envelope(deploymentId, { telemetryEventId: "waiting", sourceSequence: 2, event: { type: "session.waiting", data: {} } }),
+      envelope(deploymentId, {
+        telemetryEventId: "waiting",
+        sourceSequence: 2,
+        event: { type: "session.waiting", data: {} },
+      }),
     );
     [session] = await store.listSessions(projectId);
     expect(session?.status).toBe("waiting");
@@ -90,13 +105,15 @@ describe("Agent observability ingestion repository", () => {
     const [recorded] = await store.recordScheduleVersions({
       projectId,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "daily-topics",
-        kind: "markdown",
-        cron: "0 2 * * *",
-        sourcePath: "agent/schedules/daily-topics.md",
-        definitionHash: "observer-boundary-v1",
-      }],
+      definitions: [
+        {
+          key: "daily-topics",
+          kind: "markdown",
+          cron: "0 2 * * *",
+          sourcePath: "agent/schedules/daily-topics.md",
+          definitionHash: "observer-boundary-v1",
+        },
+      ],
     });
     if (!recorded) throw new Error("Expected schedule fixture.");
     await store.setProjectSchedulerTarget(projectId, deploymentId);
@@ -129,21 +146,20 @@ describe("Agent observability ingestion repository", () => {
     });
 
     await store.ingestAgentEvent(envelope(deploymentId));
-    await store.ingestAgentEvent(envelope(deploymentId, {
-      telemetryEventId: "waiting",
-      sourceSequence: 2,
-      event: { type: "session.waiting", data: {} },
-    }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "waiting",
+        sourceSequence: 2,
+        event: { type: "session.waiting", data: {} },
+      }),
+    );
 
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
       status: "succeeded",
       completedAt: expect.any(String),
     });
     await expect(
-      store.hasActiveActivationLeases(
-        deploymentId,
-        new Date("2026-07-28T02:22:00.000Z"),
-      ),
+      store.hasActiveActivationLeases(deploymentId, new Date("2026-07-28T02:22:00.000Z")),
     ).resolves.toBe(false);
   });
 
@@ -154,13 +170,15 @@ describe("Agent observability ingestion repository", () => {
     const [recorded] = await store.recordScheduleVersions({
       projectId,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "parallel-topics",
-        kind: "handler",
-        cron: "0 2 * * *",
-        sourcePath: "agent/schedules/parallel-topics.ts",
-        definitionHash: "parallel-boundary-v1",
-      }],
+      definitions: [
+        {
+          key: "parallel-topics",
+          kind: "handler",
+          cron: "0 2 * * *",
+          sourcePath: "agent/schedules/parallel-topics.ts",
+          definitionHash: "parallel-boundary-v1",
+        },
+      ],
     });
     if (!recorded) throw new Error("Expected schedule fixture.");
     await store.setProjectSchedulerTarget(projectId, deploymentId);
@@ -192,21 +210,25 @@ describe("Agent observability ingestion repository", () => {
       eveSessionIds: ["eve_topic_product", "eve_topic_customer"],
     });
 
-    await store.ingestAgentEvent(envelope(deploymentId, {
-      eveSessionId: "eve_topic_product",
-      telemetryEventId: "product-completed",
-      event: { type: "turn.completed", data: { turnId: "turn_product" } },
-    }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        eveSessionId: "eve_topic_product",
+        telemetryEventId: "product-completed",
+        event: { type: "turn.completed", data: { turnId: "turn_product" } },
+      }),
+    );
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
       status: "running",
       completedAt: null,
     });
 
-    await store.ingestAgentEvent(envelope(deploymentId, {
-      eveSessionId: "eve_topic_customer",
-      telemetryEventId: "customer-completed",
-      event: { type: "turn.completed", data: { turnId: "turn_customer" } },
-    }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        eveSessionId: "eve_topic_customer",
+        telemetryEventId: "customer-completed",
+        event: { type: "turn.completed", data: { turnId: "turn_customer" } },
+      }),
+    );
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
       status: "succeeded",
       completedAt: expect.any(String),
@@ -232,13 +254,15 @@ describe("Agent observability ingestion repository", () => {
     const [recorded] = await store.recordScheduleVersions({
       projectId,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "fast-topic",
-        kind: "handler",
-        cron: "0 2 * * *",
-        sourcePath: "agent/schedules/fast-topic.ts",
-        definitionHash: "observer-race-v1",
-      }],
+      definitions: [
+        {
+          key: "fast-topic",
+          kind: "handler",
+          cron: "0 2 * * *",
+          sourcePath: "agent/schedules/fast-topic.ts",
+          definitionHash: "observer-race-v1",
+        },
+      ],
     });
     if (!recorded) throw new Error("Expected schedule fixture.");
     await store.setProjectSchedulerTarget(projectId, deploymentId);
@@ -250,16 +274,20 @@ describe("Agent observability ingestion repository", () => {
     await store.claimScheduleRunActivation(run.id);
     await store.redeemScheduleRunDispatch(run.id, deploymentId);
 
-    await store.ingestAgentEvent(envelope(deploymentId, {
-      eveSessionId: "eve_fast_topic",
-      telemetryEventId: "fast-completed",
-      event: { type: "turn.completed", data: { turnId: "turn_fast" } },
-    }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        eveSessionId: "eve_fast_topic",
+        telemetryEventId: "fast-completed",
+        event: { type: "turn.completed", data: { turnId: "turn_fast" } },
+      }),
+    );
 
-    await expect(store.completeScheduleRun(run.id, {
-      status: "succeeded",
-      eveSessionIds: ["eve_fast_topic"],
-    })).resolves.toMatchObject({
+    await expect(
+      store.completeScheduleRun(run.id, {
+        status: "succeeded",
+        eveSessionIds: ["eve_fast_topic"],
+      }),
+    ).resolves.toMatchObject({
       status: "succeeded",
       completedAt: expect.any(String),
     });
@@ -269,10 +297,19 @@ describe("Agent observability ingestion repository", () => {
     const { store, projectId, deploymentId } = await createStore();
 
     await store.ingestAgentEvent(
-      envelope(deploymentId, { event: { type: "input.requested", data: { requestId: "approval_1", prompt: "Allow deploy?" } } }),
+      envelope(deploymentId, {
+        event: {
+          type: "input.requested",
+          data: { requestId: "approval_1", prompt: "Allow deploy?" },
+        },
+      }),
     );
     await store.ingestAgentEvent(
-      envelope(deploymentId, { telemetryEventId: "waiting", sourceSequence: 2, event: { type: "session.waiting", data: {} } }),
+      envelope(deploymentId, {
+        telemetryEventId: "waiting",
+        sourceSequence: 2,
+        event: { type: "session.waiting", data: {} },
+      }),
     );
 
     const [session] = await store.listSessions(projectId);
@@ -298,7 +335,9 @@ describe("Agent observability ingestion repository", () => {
     );
 
     let [session] = await store.listSessions(projectId);
-    let remote = (await store.listSessionNodes(session!.id)).find((node) => node.eveSessionId === "eve_remote");
+    let remote = (await store.listSessionNodes(session!.id)).find(
+      (node) => node.eveSessionId === "eve_remote",
+    );
     expect(remote).toMatchObject({
       remoteUrl: "https://agents.example.test/eve/v1/session",
       resolutionStatus: "unresolved",
@@ -314,7 +353,9 @@ describe("Agent observability ingestion repository", () => {
     );
 
     [session] = await store.listSessions(projectId);
-    remote = (await store.listSessionNodes(session!.id)).find((node) => node.eveSessionId === "eve_remote");
+    remote = (await store.listSessionNodes(session!.id)).find(
+      (node) => node.eveSessionId === "eve_remote",
+    );
     expect(remote).toMatchObject({
       remoteUrl: "https://agents.example.test/eve/v1/session",
       resolutionStatus: "observed",
@@ -352,7 +393,9 @@ describe("Agent observability ingestion repository", () => {
 
   test("rejects telemetry whose deployment cannot be mapped to a project", async () => {
     const { store, deploymentId } = await createStore();
-    await expect(store.ingestAgentEvent(envelope(deploymentId, { deploymentId: "attacker-project" }))).rejects.toMatchObject({
+    await expect(
+      store.ingestAgentEvent(envelope(deploymentId, { deploymentId: "attacker-project" })),
+    ).rejects.toMatchObject({
       code: "UNMANAGED_TELEMETRY_RESOURCE",
       message: expect.stringMatching(/not managed/),
     });
@@ -371,20 +414,35 @@ describe("Agent observability ingestion repository", () => {
 
     expect(ingested.session.id).toBe(gatewaySession.id);
     await expect(store.listSessions(projectId)).resolves.toEqual([
-      expect.objectContaining({ id: gatewaySession.id, trigger: "playground", rootNodeId: ingested.node.id }),
+      expect.objectContaining({
+        id: gatewaySession.id,
+        trigger: "playground",
+        rootNodeId: ingested.node.id,
+      }),
     ]);
   });
 
   test("merges a telemetry-first session when the Playground learns the Eve session id", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    const gatewaySession = await store.createSession({ projectId, deploymentId, trigger: "playground" });
+    const gatewaySession = await store.createSession({
+      projectId,
+      deploymentId,
+      trigger: "playground",
+    });
     await store.appendSessionEvent(gatewaySession.id, "message", { role: "user" });
     const observed = await store.ingestAgentEvent(envelope(deploymentId));
     expect(observed.session.id).not.toBe(gatewaySession.id);
 
-    const completed = await store.completeSession(gatewaySession.id, { status: "completed", eveSessionId: "eve_root" });
+    const completed = await store.completeSession(gatewaySession.id, {
+      status: "completed",
+      eveSessionId: "eve_root",
+    });
 
-    expect(completed).toMatchObject({ id: gatewaySession.id, trigger: "playground", rootNodeId: observed.node.id });
+    expect(completed).toMatchObject({
+      id: gatewaySession.id,
+      trigger: "playground",
+      rootNodeId: observed.node.id,
+    });
     await expect(store.listSessions(projectId)).resolves.toHaveLength(1);
     await expect(store.listSessionNodes(gatewaySession.id)).resolves.toHaveLength(1);
     // A merge re-parents the observed Session's events onto the surviving one.
@@ -423,9 +481,7 @@ describe("Agent observability ingestion repository", () => {
         endpointHost: "127.0.0.1",
         endpointPort: 41_050,
       });
-      const ingested = await store.ingestAgentEvent(
-        envelope(deploymentId, { runtimeInstanceId }),
-      );
+      const ingested = await store.ingestAgentEvent(envelope(deploymentId, { runtimeInstanceId }));
       expect(await store.getSession(ingested.session.id)).toMatchObject({
         status: "running",
       });
@@ -451,7 +507,11 @@ describe("Agent observability ingestion repository", () => {
 
   test("a placeholder merge folds every usage counter onto the surviving session", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    const gatewaySession = await store.createSession({ projectId, deploymentId, trigger: "playground" });
+    const gatewaySession = await store.createSession({
+      projectId,
+      deploymentId,
+      trigger: "playground",
+    });
     await store.recordModelUsage(gatewaySession.id, {
       turnId: "turn_gateway",
       stepIndex: 0,
@@ -500,7 +560,9 @@ describe("Agent observability ingestion repository", () => {
 describe("out-of-order delivery", () => {
   test("a late lower-sequence event does not reopen a terminal Session", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }),
+    );
     await store.ingestAgentEvent(
       envelope(deploymentId, {
         telemetryEventId: "completed",
@@ -532,7 +594,9 @@ describe("out-of-order delivery", () => {
 
   test("a genuine continuation after completion still reopens the Session", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }),
+    );
     await store.ingestAgentEvent(
       envelope(deploymentId, {
         telemetryEventId: "completed",
@@ -567,7 +631,9 @@ describe("out-of-order delivery", () => {
       hostPort: 41001,
       runtimeKind: "docker",
     });
-    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, { telemetryEventId: "started", sourceSequence: 1 }),
+    );
     await store.ingestAgentEvent(
       envelope(redeployed.id, {
         telemetryEventId: "newer",
@@ -615,7 +681,10 @@ async function createStore() {
   return { store, projectId: project.id, deploymentId: deployment.id, revisionId: revision.id };
 }
 
-function envelope(deploymentId: string, overrides: Partial<AgentEventObservation> = {}): AgentEventObservation {
+function envelope(
+  deploymentId: string,
+  overrides: Partial<AgentEventObservation> = {},
+): AgentEventObservation {
   return {
     telemetryEventId: "evt_1",
     eventFingerprint: `fingerprint_${overrides.telemetryEventId ?? "evt_1"}`,

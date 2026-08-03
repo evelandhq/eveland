@@ -1,5 +1,18 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  check,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -29,8 +42,12 @@ export const teamMemberships = pgTable(
   "team_memberships",
   {
     id: text("id").primaryKey(),
-    organizationId: text("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
-    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organizationId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     role: text("role").notNull().default("member"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -46,17 +63,24 @@ export const invitations = pgTable(
   "invitations",
   {
     id: text("id").primaryKey(),
-    organizationId: text("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+    organizationId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     role: text("role").notNull(),
     status: text("status").notNull().default("pending"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    inviterId: text("invited_by_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    inviterId: text("invited_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     check("invitations_role_check", sql`${table.role} in ('admin', 'member')`),
-    check("invitations_status_check", sql`${table.status} in ('pending', 'accepted', 'rejected', 'canceled')`),
+    check(
+      "invitations_status_check",
+      sql`${table.status} in ('pending', 'accepted', 'rejected', 'canceled')`,
+    ),
     index("invitations_team_status_idx").on(table.organizationId, table.status),
     index("invitations_email_idx").on(table.email),
   ],
@@ -66,7 +90,9 @@ export const authSessions = pgTable(
   "auth_sessions",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     token: text("token").notNull().unique(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     ipAddress: text("ip_address"),
@@ -76,7 +102,10 @@ export const authSessions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("auth_sessions_user_idx").on(table.userId), index("auth_sessions_expires_idx").on(table.expiresAt)],
+  (table) => [
+    index("auth_sessions_user_idx").on(table.userId),
+    index("auth_sessions_expires_idx").on(table.expiresAt),
+  ],
 );
 
 export const authAccounts = pgTable(
@@ -85,7 +114,9 @@ export const authAccounts = pgTable(
     id: text("id").primaryKey(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
-    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),
@@ -120,8 +151,13 @@ export const projects = pgTable(
   {
     id: text("id").primaryKey(),
     slug: text("slug").notNull().unique(),
-    teamId: text("team_id").notNull().default("team_local").references(() => teams.id),
-    ownerId: text("owner_id").notNull().references(() => users.id),
+    teamId: text("team_id")
+      .notNull()
+      .default("team_local")
+      .references(() => teams.id),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id),
     name: text("name").notNull(),
     description: text("description"),
     importKind: text("import_kind").notNull(),
@@ -142,7 +178,10 @@ export const projects = pgTable(
       "projects_slug_check",
       sql`char_length(${table.slug}) <= 53 and ${table.slug} ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'`,
     ),
-    check("projects_deletion_status_check", sql`${table.deletionStatus} is null or ${table.deletionStatus} in ('deleting', 'failed')`),
+    check(
+      "projects_deletion_status_check",
+      sql`${table.deletionStatus} is null or ${table.deletionStatus} in ('deleting', 'failed')`,
+    ),
   ],
 );
 
@@ -150,7 +189,9 @@ export const gitCredentials = pgTable(
   "git_credentials",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     host: text("host").notNull(),
     encryptedToken: text("encrypted_token").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -166,7 +207,9 @@ export const sourcePreflights = pgTable(
   "source_preflights",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     gitUrl: text("git_url"),
     sourcePath: text("source_path"),
@@ -185,7 +228,10 @@ export const sourcePreflights = pgTable(
   },
   (table) => [
     check("source_preflights_kind_check", sql`${table.kind} in ('git', 'zip')`),
-    check("source_preflights_status_check", sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'consumed')`),
+    check(
+      "source_preflights_status_check",
+      sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'consumed')`,
+    ),
     index("source_preflights_user_idx").on(table.userId),
     index("source_preflights_queue_idx").on(table.status, table.createdAt),
     index("source_preflights_expiry_idx").on(table.expiresAt),
@@ -196,7 +242,9 @@ export const agentConnections = pgTable(
   "agent_connections",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
     targetKind: text("target_kind").notNull(),
     method: text("method").notNull(),
     configEncrypted: text("config_encrypted").notNull(),
@@ -214,7 +262,9 @@ export const agentConnections = pgTable(
 export const agentAuthCredentials = pgTable(
   "agent_auth_credentials",
   {
-    agentConnectionId: text("agent_connection_id").notNull().references(() => agentConnections.id, { onDelete: "cascade" }),
+    agentConnectionId: text("agent_connection_id")
+      .notNull()
+      .references(() => agentConnections.id, { onDelete: "cascade" }),
     securityRevision: integer("security_revision").notNull(),
     authMethod: text("auth_method").notNull(),
     credentialScope: text("credential_scope").notNull(),
@@ -250,7 +300,9 @@ export const agentAuthCredentials = pgTable(
 export const agentAuthTransactions = pgTable(
   "agent_auth_transactions",
   {
-    agentConnectionId: text("agent_connection_id").notNull().references(() => agentConnections.id, { onDelete: "cascade" }),
+    agentConnectionId: text("agent_connection_id")
+      .notNull()
+      .references(() => agentConnections.id, { onDelete: "cascade" }),
     stateHash: text("state_hash").primaryKey(),
     payloadEncrypted: text("payload_encrypted").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -307,10 +359,9 @@ export const identityRealms = pgTable(
   "identity_realms",
   {
     id: text("id").primaryKey(),
-    providerConnectionId: text("provider_connection_id").notNull().references(
-      () => identityProviderConnections.id,
-      { onDelete: "cascade" },
-    ),
+    providerConnectionId: text("provider_connection_id")
+      .notNull()
+      .references(() => identityProviderConnections.id, { onDelete: "cascade" }),
     externalRealmId: text("external_realm_id").notNull(),
     externalRealmKind: text("external_realm_kind").notNull(),
     displayName: text("display_name").notNull(),
@@ -335,10 +386,9 @@ export const identityPrincipals = pgTable(
   "identity_principals",
   {
     id: text("id").primaryKey(),
-    identityRealmId: text("identity_realm_id").notNull().references(
-      () => identityRealms.id,
-      { onDelete: "cascade" },
-    ),
+    identityRealmId: text("identity_realm_id")
+      .notNull()
+      .references(() => identityRealms.id, { onDelete: "cascade" }),
     externalSubject: text("external_subject").notNull(),
     displayName: text("display_name"),
     email: text("email"),
@@ -360,14 +410,12 @@ export const identitySessions = pgTable(
   {
     id: text("id").primaryKey(),
     tokenHash: text("token_hash").notNull().unique(),
-    identityPrincipalId: text("identity_principal_id").notNull().references(
-      () => identityPrincipals.id,
-      { onDelete: "cascade" },
-    ),
-    activeIdentityRealmId: text("active_identity_realm_id").notNull().references(
-      () => identityRealms.id,
-      { onDelete: "cascade" },
-    ),
+    identityPrincipalId: text("identity_principal_id")
+      .notNull()
+      .references(() => identityPrincipals.id, { onDelete: "cascade" }),
+    activeIdentityRealmId: text("active_identity_realm_id")
+      .notNull()
+      .references(() => identityRealms.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
@@ -380,31 +428,26 @@ export const identitySessions = pgTable(
   ],
 );
 
-export const identityReturnTargets = pgTable(
-  "identity_return_targets",
-  {
-    id: text("id").primaryKey(),
-    key: text("key").notNull().unique(),
-    origin: text("origin").notNull().unique(),
-    enabled: boolean("enabled").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-);
+export const identityReturnTargets = pgTable("identity_return_targets", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  origin: text("origin").notNull().unique(),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const identityLoginTransactions = pgTable(
   "identity_login_transactions",
   {
     stateHash: text("state_hash").primaryKey(),
-    providerConnectionId: text("provider_connection_id").notNull().references(
-      () => identityProviderConnections.id,
-      { onDelete: "cascade" },
-    ),
+    providerConnectionId: text("provider_connection_id")
+      .notNull()
+      .references(() => identityProviderConnections.id, { onDelete: "cascade" }),
     providerSecurityRevision: integer("provider_security_revision").notNull(),
-    returnTargetId: text("return_target_id").notNull().references(
-      () => identityReturnTargets.id,
-      { onDelete: "cascade" },
-    ),
+    returnTargetId: text("return_target_id")
+      .notNull()
+      .references(() => identityReturnTargets.id, { onDelete: "cascade" }),
     returnPath: text("return_path").notNull(),
     nonceHash: text("nonce_hash"),
     pkceVerifierEncrypted: text("pkce_verifier_encrypted"),
@@ -421,14 +464,12 @@ export const identityLoginTransactions = pgTable(
 export const identityOidcCredentials = pgTable(
   "identity_oidc_credentials",
   {
-    identityPrincipalId: text("identity_principal_id").notNull().references(
-      () => identityPrincipals.id,
-      { onDelete: "cascade" },
-    ),
-    providerConnectionId: text("provider_connection_id").notNull().references(
-      () => identityProviderConnections.id,
-      { onDelete: "cascade" },
-    ),
+    identityPrincipalId: text("identity_principal_id")
+      .notNull()
+      .references(() => identityPrincipals.id, { onDelete: "cascade" }),
+    providerConnectionId: text("provider_connection_id")
+      .notNull()
+      .references(() => identityProviderConnections.id, { onDelete: "cascade" }),
     accessTokenEncrypted: text("access_token_encrypted").notNull(),
     refreshTokenEncrypted: text("refresh_token_encrypted"),
     scope: text("scope").notNull(),
@@ -456,7 +497,10 @@ export const identitySigningKeys = pgTable(
   },
   (table) => [
     check("identity_signing_keys_algorithm_check", sql`${table.algorithm} = 'ES256'`),
-    check("identity_signing_keys_status_check", sql`${table.status} in ('active', 'retiring', 'retired')`),
+    check(
+      "identity_signing_keys_status_check",
+      sql`${table.status} in ('active', 'retiring', 'retired')`,
+    ),
     uniqueIndex("identity_signing_keys_one_active_idx")
       .on(table.status)
       .where(sql`${table.status} = 'active'`),
@@ -467,7 +511,9 @@ export const secrets = pgTable(
   "secrets",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
     key: text("key").notNull(),
     kind: text("kind").notNull().default("secret"),
     encryptedValue: text("encrypted_value").notNull(),
@@ -503,19 +549,10 @@ export const observabilityPolicies = pgTable(
       .references(() => teams.id, { onDelete: "cascade" }),
     revision: integer("revision").notNull(),
     document: jsonb("document").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    check(
-      "observability_policies_revision_check",
-      sql`${table.revision} > 0`,
-    ),
-  ],
+  (table) => [check("observability_policies_revision_check", sql`${table.revision} > 0`)],
 );
 
 export const observabilityDestinationHealth = pgTable(
@@ -526,9 +563,7 @@ export const observabilityDestinationHealth = pgTable(
     checkedAt: timestamp("checked_at", { withTimezone: true }),
     lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
     lastError: text("last_error"),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     check(
@@ -549,23 +584,12 @@ export const otlpBatches = pgTable(
     id: text("id").primaryKey(),
     signal: text("signal").notNull(),
     payloadHash: text("payload_hash").notNull(),
-    receivedAt: timestamp("received_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    check(
-      "otlp_batches_signal_check",
-      sql`${table.signal} in ('traces', 'logs', 'metrics')`,
-    ),
-    uniqueIndex("otlp_batches_signal_hash_idx").on(
-      table.signal,
-      table.payloadHash,
-    ),
-    index("otlp_batches_signal_received_idx").on(
-      table.signal,
-      table.receivedAt,
-    ),
+    check("otlp_batches_signal_check", sql`${table.signal} in ('traces', 'logs', 'metrics')`),
+    uniqueIndex("otlp_batches_signal_hash_idx").on(table.signal, table.payloadHash),
+    index("otlp_batches_signal_received_idx").on(table.signal, table.receivedAt),
   ],
 );
 
@@ -573,7 +597,9 @@ export const jobs = pgTable(
   "jobs",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
     type: text("type").notNull(),
     status: text("status").notNull(),
     payload: jsonb("payload").notNull().default({}),
@@ -606,7 +632,9 @@ export const jobs = pgTable(
 
 export const schedules = pgTable("schedules", {
   id: text("id").primaryKey(),
-  projectId: text("project_id").notNull().references(() => projects.id),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id),
   name: text("name").notNull(),
   kind: text("kind").notNull(),
   cron: text("cron"),
@@ -619,7 +647,9 @@ export const schedules = pgTable("schedules", {
 
 export const sourceRevisions = pgTable("source_revisions", {
   id: text("id").primaryKey(),
-  projectId: text("project_id").notNull().references(() => projects.id),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id),
   kind: text("kind").notNull(),
   commitSha: text("commit_sha"),
   sourcePath: text("source_path").notNull(),
@@ -632,8 +662,12 @@ export const releases = pgTable(
   "releases",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
-    sourceRevisionId: text("source_revision_id").notNull().references(() => sourceRevisions.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.id),
     imageTag: text("image_tag").notNull(),
     // Null marks releases built before the observer delivery contract existed.
     observerContract: integer("observer_contract"),
@@ -654,8 +688,12 @@ export const deployments = pgTable(
   {
     id: text("id").primaryKey(),
     deploymentKey: text("deployment_key").notNull(),
-    projectId: text("project_id").notNull().references(() => projects.id),
-    releaseId: text("release_id").notNull().references(() => releases.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    releaseId: text("release_id")
+      .notNull()
+      .references(() => releases.id),
     containerName: text("container_name").notNull(),
     internalPort: integer("internal_port").notNull(),
     hostPort: integer("host_port").notNull(),
@@ -676,7 +714,9 @@ export const projectSchedules = pgTable(
   "project_schedules",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     enabled: boolean("enabled").notNull().default(true),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }),
@@ -690,8 +730,12 @@ export const scheduleVersions = pgTable(
   "schedule_versions",
   {
     id: text("id").primaryKey(),
-    scheduleId: text("schedule_id").notNull().references(() => projectSchedules.id, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id").notNull().references(() => sourceRevisions.id, { onDelete: "cascade" }),
+    scheduleId: text("schedule_id")
+      .notNull()
+      .references(() => projectSchedules.id, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     cron: text("cron").notNull(),
     sourcePath: text("source_path").notNull(),
@@ -699,14 +743,21 @@ export const scheduleVersions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("schedule_versions_schedule_revision_idx").on(table.scheduleId, table.sourceRevisionId),
+    uniqueIndex("schedule_versions_schedule_revision_idx").on(
+      table.scheduleId,
+      table.sourceRevisionId,
+    ),
     check("schedule_versions_kind_check", sql`${table.kind} in ('markdown', 'handler')`),
   ],
 );
 
 export const projectSchedulerTargets = pgTable("project_scheduler_targets", {
-  projectId: text("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
-  deploymentId: text("deployment_id").notNull().references(() => deployments.id),
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  deploymentId: text("deployment_id")
+    .notNull()
+    .references(() => deployments.id),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -714,10 +765,18 @@ export const scheduleRuns = pgTable(
   "schedule_runs",
   {
     id: text("id").primaryKey(),
-    scheduleId: text("schedule_id").notNull().references(() => projectSchedules.id, { onDelete: "cascade" }),
-    scheduleVersionId: text("schedule_version_id").notNull().references(() => scheduleVersions.id),
-    releaseId: text("release_id").notNull().references(() => releases.id),
-    deploymentId: text("deployment_id").notNull().references(() => deployments.id),
+    scheduleId: text("schedule_id")
+      .notNull()
+      .references(() => projectSchedules.id, { onDelete: "cascade" }),
+    scheduleVersionId: text("schedule_version_id")
+      .notNull()
+      .references(() => scheduleVersions.id),
+    releaseId: text("release_id")
+      .notNull()
+      .references(() => releases.id),
+    deploymentId: text("deployment_id")
+      .notNull()
+      .references(() => deployments.id),
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
     trigger: text("trigger").notNull(),
     status: text("status").notNull(),
@@ -746,7 +805,9 @@ export const runtimeInstances = pgTable(
   "runtime_instances",
   {
     id: text("id").primaryKey(),
-    deploymentId: text("deployment_id").notNull().references(() => deployments.id, { onDelete: "cascade" }),
+    deploymentId: text("deployment_id")
+      .notNull()
+      .references(() => deployments.id, { onDelete: "cascade" }),
     generation: integer("generation").notNull(),
     status: text("status").notNull(),
     endpointHost: text("endpoint_host"),
@@ -757,15 +818,23 @@ export const runtimeInstances = pgTable(
     lastError: text("last_error"),
   },
   (table) => [
-    uniqueIndex("runtime_instances_deployment_generation_idx").on(table.deploymentId, table.generation),
+    uniqueIndex("runtime_instances_deployment_generation_idx").on(
+      table.deploymentId,
+      table.generation,
+    ),
     index("runtime_instances_deployment_status_idx").on(table.deploymentId, table.status),
     // At most one live process per loopback port, across every Deployment.
     // Reservation happens before bind (reserveRuntimeInstancePort); leaving
     // the live statuses releases the port automatically.
     uniqueIndex("runtime_instances_live_port_idx")
       .on(table.endpointPort)
-      .where(sql`${table.status} in ('starting', 'ready', 'draining') and ${table.endpointPort} is not null`),
-    check("runtime_instances_status_check", sql`${table.status} in ('starting', 'ready', 'draining', 'stopped', 'failed')`),
+      .where(
+        sql`${table.status} in ('starting', 'ready', 'draining') and ${table.endpointPort} is not null`,
+      ),
+    check(
+      "runtime_instances_status_check",
+      sql`${table.status} in ('starting', 'ready', 'draining', 'stopped', 'failed')`,
+    ),
   ],
 );
 
@@ -803,17 +872,28 @@ export const activationLeases = pgTable(
   "activation_leases",
   {
     id: text("id").primaryKey(),
-    deploymentId: text("deployment_id").notNull().references(() => deployments.id, { onDelete: "cascade" }),
-    runtimeInstanceId: text("runtime_instance_id").references(() => runtimeInstances.id, { onDelete: "set null" }),
+    deploymentId: text("deployment_id")
+      .notNull()
+      .references(() => deployments.id, { onDelete: "cascade" }),
+    runtimeInstanceId: text("runtime_instance_id").references(() => runtimeInstances.id, {
+      onDelete: "set null",
+    }),
     kind: text("kind").notNull(),
     ownerId: text("owner_id").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     releasedAt: timestamp("released_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("activation_leases_deployment_kind_owner_idx").on(table.deploymentId, table.kind, table.ownerId),
+    uniqueIndex("activation_leases_deployment_kind_owner_idx").on(
+      table.deploymentId,
+      table.kind,
+      table.ownerId,
+    ),
     index("activation_leases_active_idx").on(table.deploymentId, table.expiresAt, table.releasedAt),
-    check("activation_leases_kind_check", sql`${table.kind} in ('public_request', 'stream', 'turn', 'schedule_run')`),
+    check(
+      "activation_leases_kind_check",
+      sql`${table.kind} in ('public_request', 'stream', 'turn', 'schedule_run')`,
+    ),
   ],
 );
 
@@ -821,7 +901,9 @@ export const agentRoutes = pgTable(
   "agent_routes",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
     hostname: text("hostname").notNull(),
     kind: text("kind").notNull(),
     enabled: boolean("enabled").notNull().default(true),
@@ -838,8 +920,12 @@ export const agentRoutes = pgTable(
 export const routeTargets = pgTable(
   "route_targets",
   {
-    routeId: text("route_id").notNull().references(() => agentRoutes.id),
-    deploymentId: text("deployment_id").notNull().references(() => deployments.id),
+    routeId: text("route_id")
+      .notNull()
+      .references(() => agentRoutes.id),
+    deploymentId: text("deployment_id")
+      .notNull()
+      .references(() => deployments.id),
     weight: integer("weight").notNull(),
     variantName: text("variant_name"),
   },
@@ -853,11 +939,17 @@ export const sessionBindings = pgTable(
   "session_bindings",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
     eveSessionId: text("eve_session_id").notNull(),
     continuationToken: text("continuation_token"),
-    routeId: text("route_id").notNull().references(() => agentRoutes.id),
-    deploymentId: text("deployment_id").notNull().references(() => deployments.id),
+    routeId: text("route_id")
+      .notNull()
+      .references(() => agentRoutes.id),
+    deploymentId: text("deployment_id")
+      .notNull()
+      .references(() => deployments.id),
     trigger: text("trigger").notNull(),
     variantName: text("variant_name"),
     experimentId: text("experiment_id"),
@@ -880,7 +972,9 @@ export const sourceFiles = pgTable(
   "source_files",
   {
     id: text("id").primaryKey(),
-    revisionId: text("revision_id").notNull().references(() => sourceRevisions.id),
+    revisionId: text("revision_id")
+      .notNull()
+      .references(() => sourceRevisions.id),
     path: text("path").notNull(),
     content: text("content").notNull(),
     size: integer("size").notNull(),
@@ -892,7 +986,9 @@ export const sessions = pgTable(
   "sessions",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
     deploymentId: text("deployment_id"),
     eveSessionId: text("eve_session_id"),
     continuationToken: text("continuation_token"),
@@ -926,14 +1022,12 @@ export const sessions = pgTable(
 export const scheduleRunSessions = pgTable(
   "schedule_run_sessions",
   {
-    scheduleRunId: text("schedule_run_id").notNull().references(
-      () => scheduleRuns.id,
-      { onDelete: "cascade" },
-    ),
-    sessionId: text("session_id").notNull().references(
-      () => sessions.id,
-      { onDelete: "cascade" },
-    ),
+    scheduleRunId: text("schedule_run_id")
+      .notNull()
+      .references(() => scheduleRuns.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
     status: text("status").notNull().default("running"),
     lastObservedAt: timestamp("last_observed_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -942,10 +1036,7 @@ export const scheduleRunSessions = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.scheduleRunId, table.sessionId] }),
-    index("schedule_run_sessions_status_idx").on(
-      table.scheduleRunId,
-      table.status,
-    ),
+    index("schedule_run_sessions_status_idx").on(table.scheduleRunId, table.status),
     check(
       "schedule_run_sessions_status_check",
       sql`${table.status} in ('running', 'succeeded', 'failed', 'parked')`,
@@ -957,13 +1048,21 @@ export const sessionNodes = pgTable(
   "session_nodes",
   {
     id: text("id").primaryKey(),
-    rootSessionId: text("root_session_id").notNull().references(() => sessions.id),
-    projectId: text("project_id").notNull().references(() => projects.id),
+    rootSessionId: text("root_session_id")
+      .notNull()
+      .references(() => sessions.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
     eveSessionId: text("eve_session_id").notNull(),
     parentNodeId: text("parent_node_id"),
     parentEveSessionId: text("parent_eve_session_id"),
-    startedDeploymentId: text("started_deployment_id").notNull().references(() => deployments.id),
-    lastObservedDeploymentId: text("last_observed_deployment_id").notNull().references(() => deployments.id),
+    startedDeploymentId: text("started_deployment_id")
+      .notNull()
+      .references(() => deployments.id),
+    lastObservedDeploymentId: text("last_observed_deployment_id")
+      .notNull()
+      .references(() => deployments.id),
     startedRuntimeInstanceId: text("started_runtime_instance_id").references(
       () => runtimeInstances.id,
       { onDelete: "set null" },
@@ -989,10 +1088,7 @@ export const sessionNodes = pgTable(
     index("session_nodes_project_model_idx").on(table.projectId, table.modelId),
     // Every node listing, prune, and subagent re-parent walks a root Session.
     index("session_nodes_root_session_idx").on(table.rootSessionId, table.createdAt),
-    index("session_nodes_last_runtime_idx").on(
-      table.lastObservedRuntimeInstanceId,
-      table.status,
-    ),
+    index("session_nodes_last_runtime_idx").on(table.lastObservedRuntimeInstanceId, table.status),
   ],
 );
 
@@ -1000,7 +1096,9 @@ export const modelUsageEvents = pgTable(
   "model_usage_events",
   {
     id: text("id").primaryKey(),
-    sessionId: text("session_id").notNull().references(() => sessions.id),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id),
     sessionNodeId: text("session_node_id").references(() => sessionNodes.id),
     eveSessionId: text("eve_session_id").notNull(),
     agentId: text("agent_id"),
@@ -1017,8 +1115,17 @@ export const modelUsageEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("model_usage_session_eve_turn_step_idx").on(table.sessionId, table.eveSessionId, table.turnId, table.stepIndex),
-    uniqueIndex("model_usage_node_turn_step_idx").on(table.sessionNodeId, table.turnId, table.stepIndex),
+    uniqueIndex("model_usage_session_eve_turn_step_idx").on(
+      table.sessionId,
+      table.eveSessionId,
+      table.turnId,
+      table.stepIndex,
+    ),
+    uniqueIndex("model_usage_node_turn_step_idx").on(
+      table.sessionNodeId,
+      table.turnId,
+      table.stepIndex,
+    ),
     index("model_usage_created_idx").on(table.createdAt),
   ],
 );
@@ -1027,7 +1134,9 @@ export const sessionEvents = pgTable(
   "session_events",
   {
     id: text("id").primaryKey(),
-    sessionId: text("session_id").notNull().references(() => sessions.id),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id),
     sessionNodeId: text("session_node_id").references(() => sessionNodes.id),
     telemetryEventId: text("telemetry_event_id"),
     eventFingerprint: text("event_fingerprint"),
@@ -1044,8 +1153,14 @@ export const sessionEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("session_events_node_telemetry_idx").on(table.sessionNodeId, table.telemetryEventId),
-    uniqueIndex("session_events_node_fingerprint_idx").on(table.sessionNodeId, table.eventFingerprint),
+    uniqueIndex("session_events_node_telemetry_idx").on(
+      table.sessionNodeId,
+      table.telemetryEventId,
+    ),
+    uniqueIndex("session_events_node_fingerprint_idx").on(
+      table.sessionNodeId,
+      table.eventFingerprint,
+    ),
     // `index` is the replay/transcript ordering key, so a duplicate silently
     // corrupts event order. Appends serialize on the parent Session row; this
     // constraint is the backstop that makes any path which forgets to do so
@@ -1058,7 +1173,9 @@ export const logs = pgTable(
   "logs",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
     deploymentId: text("deployment_id"),
     type: text("type").notNull(),
     line: text("line").notNull(),

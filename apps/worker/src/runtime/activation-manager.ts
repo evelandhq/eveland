@@ -1,4 +1,10 @@
-import type { ActivationLeaseClaim, ActivationLeaseKind, DeploymentRecord, RuntimeInstance, RuntimeKind } from "@eveland/core/contracts";
+import type {
+  ActivationLeaseClaim,
+  ActivationLeaseKind,
+  DeploymentRecord,
+  RuntimeInstance,
+  RuntimeKind,
+} from "@eveland/core/contracts";
 import { RuntimeInstanceDrainingError, type Store } from "@eveland/db";
 
 // The narrow persistence port every activation-manager entry point shares.
@@ -69,7 +75,9 @@ export async function ensureDeploymentActive(
       if (!isRuntimeInstanceDrainingError(error)) throw error;
       const remainingMs = drainDeadline - Date.now();
       if (remainingMs <= 0) {
-        throw new Error(`Runtime activation timed out after ${readyTimeoutMs}ms waiting for draining to finish.`);
+        throw new Error(
+          `Runtime activation timed out after ${readyTimeoutMs}ms waiting for draining to finish.`,
+        );
       }
       await delay(Math.min(drainRetryMs, remainingMs));
       drainRetryMs = Math.min(maxDrainRetryMs, drainRetryMs * 2);
@@ -89,10 +97,14 @@ export async function ensureDeploymentActive(
       ? `Deployment ${input.deployment.id} is ${liveDeployment.status} and cannot be activated.`
       : `Deployment ${input.deployment.id} no longer exists.`;
     if (claimed.starter) {
-      await store.updateRuntimeInstance(claimed.runtimeInstance.id, {
-        status: "failed",
-        error: refusal,
-      }, now());
+      await store.updateRuntimeInstance(
+        claimed.runtimeInstance.id,
+        {
+          status: "failed",
+          error: refusal,
+        },
+        now(),
+      );
     }
     await store.releaseActivationLease(claimed.lease.id, now());
     throw new Error(refusal);
@@ -104,10 +116,14 @@ export async function ensureDeploymentActive(
       const ready = await startRuntimeInstance(store, input, claimed.runtimeInstance.id, options);
       return { ...claimed, runtimeInstance: ready };
     } catch (error) {
-      await store.updateRuntimeInstance(claimed.runtimeInstance.id, {
-        status: "failed",
-        error: error instanceof Error ? error.message : String(error),
-      }, now());
+      await store.updateRuntimeInstance(
+        claimed.runtimeInstance.id,
+        {
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        now(),
+      );
       await store.releaseActivationLease(claimed.lease.id, now());
       throw error;
     }
@@ -194,10 +210,13 @@ export async function startRuntimeInstance(
     throw new Error("RuntimeInstance does not belong to the requested Deployment.");
   }
   if (current.status === "ready") return current;
-  if (current.status !== "starting") throw new Error(`RuntimeInstance cannot start from ${current.status}.`);
+  if (current.status !== "starting")
+    throw new Error(`RuntimeInstance cannot start from ${current.status}.`);
   try {
     const port = await resolveInstancePort(store, input, current);
-    const start = input.runtime.ensureProcess?.bind(input.runtime) ?? input.runtime.startProcess.bind(input.runtime);
+    const start =
+      input.runtime.ensureProcess?.bind(input.runtime) ??
+      input.runtime.startProcess.bind(input.runtime);
     await start({
       ...input.startInput,
       port,
@@ -214,19 +233,27 @@ export async function startRuntimeInstance(
       runtime: input.runtime,
       ...(options.waitForHealth ? { waitForHealth: options.waitForHealth } : {}),
     });
-    const ready = await store.updateRuntimeInstance(runtimeInstanceId, {
-      status: "ready",
-      endpointHost: "127.0.0.1",
-      endpointPort: port,
-      error: null,
-    }, now());
+    const ready = await store.updateRuntimeInstance(
+      runtimeInstanceId,
+      {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: port,
+        error: null,
+      },
+      now(),
+    );
     if (!ready) throw new Error("RuntimeInstance disappeared during activation.");
     return ready;
   } catch (error) {
-    await store.updateRuntimeInstance(runtimeInstanceId, {
-      status: "failed",
-      error: error instanceof Error ? error.message : String(error),
-    }, now());
+    await store.updateRuntimeInstance(
+      runtimeInstanceId,
+      {
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      now(),
+    );
     throw error;
   }
 }
@@ -236,8 +263,11 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 function isRuntimeInstanceDrainingError(error: unknown): boolean {
-  return error instanceof RuntimeInstanceDrainingError ||
-    (error instanceof Error && error.message === "RuntimeInstance is draining; retry activation after it stops.");
+  return (
+    error instanceof RuntimeInstanceDrainingError ||
+    (error instanceof Error &&
+      error.message === "RuntimeInstance is draining; retry activation after it stops.")
+  );
 }
 
 export async function recoverStartingRuntimeInstances(
@@ -250,7 +280,11 @@ export async function recoverStartingRuntimeInstances(
   for (const instance of instances) {
     const deployment = await store.getDeployment(instance.deploymentId);
     if (!deployment) {
-      await store.updateRuntimeInstance(instance.id, { status: "failed", error: "Deployment no longer exists." }, now);
+      await store.updateRuntimeInstance(
+        instance.id,
+        { status: "failed", error: "Deployment no longer exists." },
+        now,
+      );
       continue;
     }
     await store.enqueueDeploymentActivation(
@@ -291,19 +325,15 @@ export async function reconcileRuntimeInstances(
 ): Promise<number> {
   const now = input.now ?? new Date();
   const limit = input.limit ?? 100;
-  const interruptedInstances = await store.listRuntimeInstances(
-    ["stopped", "failed"],
-    limit,
-  );
+  const interruptedInstances = await store.listRuntimeInstances(["stopped", "failed"], limit);
   let reconciled = await store.failExpiredScheduleExecutions(now, limit);
   for (const instance of interruptedInstances) {
     const reason = `RuntimeInstance ${instance.id} ${instance.status} before its active Sessions reached a terminal boundary.`;
-    const failedExecutions =
-      await store.failScheduleExecutionsForRuntimeInstance(
-        instance.id,
-        reason,
-        now,
-      );
+    const failedExecutions = await store.failScheduleExecutionsForRuntimeInstance(
+      instance.id,
+      reason,
+      now,
+    );
     const failedSessions = await store.failRunningSessionsForRuntimeInstance(
       instance.id,
       reason,
@@ -315,7 +345,11 @@ export async function reconcileRuntimeInstances(
   for (const instance of instances) {
     const deployment = await store.getDeployment(instance.deploymentId);
     if (!deployment) {
-      await store.updateRuntimeInstance(instance.id, { status: "failed", error: "Deployment no longer exists." }, now);
+      await store.updateRuntimeInstance(
+        instance.id,
+        { status: "failed", error: "Deployment no longer exists." },
+        now,
+      );
       reconciled += 1;
       continue;
     }
@@ -336,10 +370,14 @@ export async function reconcileRuntimeInstances(
       const foreignReason =
         `RuntimeInstance ${instance.id} port ${instance.endpointPort ?? deployment.hostPort} is held by ` +
         `${ownership.holder}; its traffic was being served by a foreign process.`;
-      await store.updateRuntimeInstance(instance.id, {
-        status: "failed",
-        error: foreignReason,
-      }, now);
+      await store.updateRuntimeInstance(
+        instance.id,
+        {
+          status: "failed",
+          error: foreignReason,
+        },
+        now,
+      );
       // Only a live row is a sweeper's to write. archive_deployment leaves its
       // RuntimeInstance rows in place, so an unguarded write here un-archives a
       // retired Deployment; `draining` stays writable because a drained process
@@ -356,26 +394,22 @@ export async function reconcileRuntimeInstances(
     }
     if (!(await stillReadyRuntimeInstance(store, instance.id))) continue;
     const failed = status === "failed";
-    await store.updateRuntimeInstance(instance.id, {
-      status: failed ? "failed" : "stopped",
-      error: failed ? "Runtime process inspection reported failure." : null,
-    }, now);
+    await store.updateRuntimeInstance(
+      instance.id,
+      {
+        status: failed ? "failed" : "stopped",
+        error: failed ? "Runtime process inspection reported failure." : null,
+      },
+      now,
+    );
     await store.transitionDeploymentStatus({
       deploymentId: deployment.id,
       to: failed ? "failed" : "stopped",
       from: ["running", "draining"],
     });
     const reason = `RuntimeInstance ${instance.id} ${failed ? "failed" : "stopped"} before its active Sessions reached a terminal boundary.`;
-    await store.failScheduleExecutionsForRuntimeInstance(
-      instance.id,
-      reason,
-      now,
-    );
-    await store.failRunningSessionsForRuntimeInstance(
-      instance.id,
-      reason,
-      now,
-    );
+    await store.failScheduleExecutionsForRuntimeInstance(instance.id, reason, now);
+    await store.failRunningSessionsForRuntimeInstance(instance.id, reason, now);
     reconciled += 1;
   }
   return reconciled;

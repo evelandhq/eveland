@@ -21,7 +21,8 @@ const environmentVariablePattern = ENVIRONMENT_ENTRY_KEY_PATTERN;
 export function getNewProjectProgress(project: Project | null, jobs: Job[]): NewProjectProgress {
   const importJob = jobs.find((job) => job.type === "import_source") ?? null;
   const deployJob = jobs.find((job) => job.type === "build_deploy") ?? null;
-  const failedJob = deployJob?.status === "failed" ? deployJob : importJob?.status === "failed" ? importJob : null;
+  const failedJob =
+    deployJob?.status === "failed" ? deployJob : importJob?.status === "failed" ? importJob : null;
 
   if (failedJob) {
     return {
@@ -35,19 +36,29 @@ export function getNewProjectProgress(project: Project | null, jobs: Job[]): New
   if (deployJob || project?.sourceRevisionId || project?.deploymentStatus === "building") {
     return {
       phase: "deploying",
-      detail: deployJob?.status === "running" ? "Building and starting your agent…" : "Preparing the first deployment…",
+      detail:
+        deployJob?.status === "running"
+          ? "Building and starting your agent…"
+          : "Preparing the first deployment…",
     };
   }
   return {
     phase: "importing",
-    detail: importJob?.status === "running" ? "Fetching and validating the source…" : "Waiting for a worker to import the source…",
+    detail:
+      importJob?.status === "running"
+        ? "Fetching and validating the source…"
+        : "Waiting for a worker to import the source…",
   };
 }
 
-export function validateNewProjectEnvironmentVariables<T extends { id: number; key: string; value: string }>(
+export function validateNewProjectEnvironmentVariables<
+  T extends { id: number; key: string; value: string },
+>(
   drafts: T[],
 ): { variables: T[]; errors: Map<number, NewProjectEnvironmentVariableErrors>; invalid: boolean } {
-  const variables = drafts.filter((variable) => variable.key.trim().length > 0 || variable.value.length > 0);
+  const variables = drafts.filter(
+    (variable) => variable.key.trim().length > 0 || variable.value.length > 0,
+  );
   const keyCounts = new Map<string, number>();
   for (const variable of variables) {
     const key = variable.key.trim();
@@ -61,7 +72,8 @@ export function validateNewProjectEnvironmentVariables<T extends { id: number; k
     if (!key) {
       variableErrors.key = "Enter a variable name.";
     } else if (!environmentVariablePattern.test(key)) {
-      variableErrors.key = "Use uppercase letters, numbers, and underscores, starting with a letter.";
+      variableErrors.key =
+        "Use uppercase letters, numbers, and underscores, starting with a letter.";
     } else if ((keyCounts.get(key) ?? 0) > 1) {
       variableErrors.key = "Environment variable keys must be unique.";
     }

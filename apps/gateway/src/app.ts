@@ -14,7 +14,11 @@ import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { Hono } from "hono";
 
 export type { ResolvedAgentRoute } from "@eveland/core/contracts";
-export type { GatewayActivationClient, GatewayAppOptions, GatewayRepository } from "./gateway-types.js";
+export type {
+  GatewayActivationClient,
+  GatewayAppOptions,
+  GatewayRepository,
+} from "./gateway-types.js";
 import type { GatewayAppOptions, GatewayRepository } from "./gateway-types.js";
 import { resolveGatewaySessionBinding } from "./gateway-session-lifecycle.js";
 import {
@@ -46,7 +50,8 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   }
   const app = new Hono();
   const buildInfo = options.buildInfo ?? createBuildInfoFromEnv("gateway", process.env);
-  const configurationSnapshot = options.configurationSnapshot ?? createConfigurationSnapshot("gateway", process.env);
+  const configurationSnapshot =
+    options.configurationSnapshot ?? createConfigurationSnapshot("gateway", process.env);
   const routeCache = createGatewayRouteCache({
     ttlMs: options.routeCacheTtlMs ?? 5_000,
     maxEntries: options.routeCacheMaxEntries ?? 1_000,
@@ -62,10 +67,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       ),
     apiIdleTtlMs:
       options.apiSessionIdleTtlMs ??
-      Number(
-        process.env.EVELAND_API_SESSION_IDLE_TTL_MS ??
-          DEFAULT_API_SESSION_IDLE_TTL_MS,
-      ),
+      Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? DEFAULT_API_SESSION_IDLE_TTL_MS),
   };
 
   app.get("/health", (context) => context.json({ ok: true, ...buildInfo }));
@@ -149,7 +151,8 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   });
   app.post("/internal/cache/invalidate", async (context) => {
     const input = (await context.req.json().catch(() => ({}))) as { hostname?: unknown };
-    if (typeof input.hostname === "string") routeCache.delete(hostnameFromAuthority(canonicalAuthority(input.hostname)));
+    if (typeof input.hostname === "string")
+      routeCache.delete(hostnameFromAuthority(canonicalAuthority(input.hostname)));
     else routeCache.clear();
     return context.json({ invalidated: true });
   });
@@ -159,9 +162,12 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   app.all("/internal/*", (context) => context.json({ error: "Not found" }, 404));
 
   app.all("*", async (context) => {
-    const authority = canonicalAuthority(context.req.header("host") ?? new URL(context.req.url).host);
+    const authority = canonicalAuthority(
+      context.req.header("host") ?? new URL(context.req.url).host,
+    );
     const hostname = hostnameFromAuthority(authority);
-    if (!isAllowedHostname(hostname, options.allowedBaseDomains)) return context.json({ error: "Route not found" }, 404);
+    if (!isAllowedHostname(hostname, options.allowedBaseDomains))
+      return context.json({ error: "Route not found" }, 404);
 
     const cached = routeCache.read(hostname);
     const route = cached !== undefined ? cached : await repository.findRouteByHostname(hostname);
@@ -219,9 +225,17 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
         // resetting it, so a long turn is unaffected while a wedged deployment
         // that accepts the connection and never answers stops holding the
         // client, the socket, and its renewing activation lease forever.
-        timeoutMs: options.upstreamTimeoutMs ?? Number(process.env.EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS ?? 120_000),
+        timeoutMs:
+          options.upstreamTimeoutMs ??
+          Number(process.env.EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS ?? 120_000),
         buildHeaders: () =>
-          buildUpstreamHeaders(context.req.raw.headers, authority, requestUrl.protocol, requestId, remoteIp),
+          buildUpstreamHeaders(
+            context.req.raw.headers,
+            authority,
+            requestUrl.protocol,
+            requestId,
+            remoteIp,
+          ),
         decorateResponseHeaders: (headers) => {
           if (affinity.cookieValue) {
             headers.append(

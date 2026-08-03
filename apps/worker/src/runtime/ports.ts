@@ -1,10 +1,7 @@
 import net from "node:net";
 import type { Store } from "@eveland/db";
 
-export async function isTcpPortAvailable(
-  host: string,
-  port: number,
-): Promise<boolean> {
+export async function isTcpPortAvailable(host: string, port: number): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     const cleanup = () => {
@@ -61,9 +58,7 @@ export async function allocateAvailableHostPort(
     }
   }
 
-  throw new Error(
-    `No available deployment host port in range ${startPort}-${endPort}.`,
-  );
+  throw new Error(`No available deployment host port in range ${startPort}-${endPort}.`);
 }
 
 /**
@@ -101,7 +96,5 @@ export async function allocateReservedInstancePort(
       return port;
     }
   }
-  throw new Error(
-    `No reservable deployment host port in range ${startPort}-${endPort}.`,
-  );
+  throw new Error(`No reservable deployment host port in range ${startPort}-${endPort}.`);
 }

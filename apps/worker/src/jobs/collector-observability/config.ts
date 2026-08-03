@@ -50,10 +50,7 @@ export function renderCollectorConfig(input: {
     // the Admin repairs it, while the persistent queue keeps the telemetry.
     let destinationConfig: ExternalDestinationConfig | undefined;
     try {
-      destinationConfig = decryptDestinationConfig(
-        destination.encryptedConfig,
-        input.appSecretKey,
-      );
+      destinationConfig = decryptDestinationConfig(destination.encryptedConfig, input.appSecretKey);
     } catch {
       destinationConfig = undefined;
     }
@@ -67,28 +64,19 @@ export function renderCollectorConfig(input: {
 
     const exporterId = collectorExporterComponentId(destination.id);
     const componentId = exporterId.slice(exporterId.indexOf("/") + 1);
-    config.exporters[exporterId] = externalExporter(
-      destination.id,
-      destination.kind,
-    );
+    config.exporters[exporterId] = externalExporter(destination.id, destination.kind);
 
     const domains = externalDestinationDomains(destination);
     const filterId = `filter/${componentId}`;
-    config.processors[filterId] = domainFilter(
-      domains,
-      destination.supportedSignals,
-    );
+    config.processors[filterId] = domainFilter(domains, destination.supportedSignals);
     const transformId =
-      destination.kind === "langfuse"
-        ? `transform/langfuse_${componentId}`
-        : null;
+      destination.kind === "langfuse" ? `transform/langfuse_${componentId}` : null;
     if (transformId) {
       config.processors[transformId] = langfuseTransform();
     }
 
     for (const signal of destination.supportedSignals) {
-      const pipelineName =
-        `${signal}/${destination.kind.replace("_otlp", "")}_${componentId}`;
+      const pipelineName = `${signal}/${destination.kind.replace("_otlp", "")}_${componentId}`;
       const agentProcessors = [
         "memory_limiter",
         "resource/trusted_agent",
@@ -130,11 +118,7 @@ export function renderCollectorConfig(input: {
           `metrics/collector_self_${destination.kind.replace("_otlp", "")}_${componentId}`
         ] = {
           receivers: ["prometheus/collector_self"],
-          processors: [
-            "memory_limiter",
-            "resource/collector_self",
-            "batch",
-          ],
+          processors: ["memory_limiter", "resource/collector_self", "batch"],
           exporters: [exporterId],
         };
       }
@@ -186,9 +170,7 @@ function baseCollectorConfig(): CollectorConfig {
             {
               job_name: "eveland-otel-collector",
               scrape_interval: "15s",
-              static_configs: [
-                { targets: ["127.0.0.1:8888"] },
-              ],
+              static_configs: [{ targets: ["127.0.0.1:8888"] }],
             },
           ],
         },
@@ -220,23 +202,15 @@ function baseCollectorConfig(): CollectorConfig {
       },
       "filter/trusted_agent": {
         error_mode: "ignore",
-        trace_conditions: [
-          'scope.name != "@eveland/eve-runtime"',
-        ],
-        log_conditions: [
-          'scope.name != "@eveland/eve-runtime"',
-        ],
-        metric_conditions: [
-          'scope.name != "@eveland/eve-runtime"',
-        ],
+        trace_conditions: ['scope.name != "@eveland/eve-runtime"'],
+        log_conditions: ['scope.name != "@eveland/eve-runtime"'],
+        metric_conditions: ['scope.name != "@eveland/eve-runtime"'],
       },
       "filter/builtin_capacity": {
         error_mode: "ignore",
         metric_conditions: [
           'resource.attributes["service.name"] != "eveland-worker" or resource.attributes["eveland.telemetry.domain"] != "capacity"',
-          builtInCapacityMetricNames
-            .map((name) => `metric.name != "${name}"`)
-            .join(" and "),
+          builtInCapacityMetricNames.map((name) => `metric.name != "${name}"`).join(" and "),
           'metric.name == "system.cpu.utilization" and datapoint.attributes["cpu.mode"] == "idle"',
           'metric.name == "system.memory.usage" and datapoint.attributes["system.memory.state"] != "used" and datapoint.attributes["system.memory.state"] != "free"',
           'metric.name == "system.filesystem.usage" and datapoint.attributes["system.filesystem.state"] != "free"',
@@ -279,32 +253,19 @@ function baseCollectorConfig(): CollectorConfig {
       },
     },
     service: {
-      extensions: [
-        "bearertokenauth/platform",
-        "file_storage",
-        "health_check",
-      ],
+      extensions: ["bearertokenauth/platform", "file_storage", "health_check"],
       pipelines: {
         // Traces are deliberately absent: Built-in keeps no span read model, so
         // forwarding them would cost a full parse per batch for nothing. Spans reach
         // external destinations through their own pipelines below.
         logs: {
           receivers: ["otlp/agent"],
-          processors: [
-            "memory_limiter",
-            "resource/trusted_agent",
-            "filter/trusted_agent",
-            "batch",
-          ],
+          processors: ["memory_limiter", "resource/trusted_agent", "filter/trusted_agent", "batch"],
           exporters: ["otlp_http/builtin"],
         },
         metrics: {
           receivers: ["otlp/platform"],
-          processors: [
-            "memory_limiter",
-            "filter/builtin_capacity",
-            "batch",
-          ],
+          processors: ["memory_limiter", "filter/builtin_capacity", "batch"],
           exporters: ["otlp_http/builtin"],
         },
       },
@@ -340,16 +301,10 @@ function baseCollectorConfig(): CollectorConfig {
   };
 }
 
-function externalExporter(
-  destinationId: string,
-  kind: "elastic" | "langfuse" | "custom_otlp",
-) {
-  const endpoint =
-    "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/" + destinationId;
+function externalExporter(destinationId: string, kind: "elastic" | "langfuse" | "custom_otlp") {
+  const endpoint = "${env:EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT}/" + destinationId;
   return {
-    ...(kind === "langfuse"
-      ? { traces_endpoint: `${endpoint}/v1/traces` }
-      : { endpoint }),
+    ...(kind === "langfuse" ? { traces_endpoint: `${endpoint}/v1/traces` } : { endpoint }),
     encoding: "json",
     compression: "none",
     headers: {
@@ -375,15 +330,9 @@ function reliableExporterDelivery() {
   };
 }
 
-function domainFilter(
-  domains: readonly TelemetryDomain[],
-  signals: ObservabilitySignal[],
-) {
+function domainFilter(domains: readonly TelemetryDomain[], signals: ObservabilitySignal[]) {
   const dropCondition = domains
-    .map(
-      (domain) =>
-        `resource.attributes["eveland.telemetry.domain"] != "${domain}"`,
-    )
+    .map((domain) => `resource.attributes["eveland.telemetry.domain"] != "${domain}"`)
     .join(" and ");
   const conditionKeys: Record<
     ObservabilitySignal,
@@ -395,9 +344,7 @@ function domainFilter(
   };
   return {
     error_mode: "ignore",
-    ...Object.fromEntries(
-      signals.map((signal) => [conditionKeys[signal], [dropCondition]]),
-    ),
+    ...Object.fromEntries(signals.map((signal) => [conditionKeys[signal], [dropCondition]])),
   };
 }
 

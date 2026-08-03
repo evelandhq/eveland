@@ -41,24 +41,25 @@ Plan 1 groundwork this builds on: bubblewrap is already provisioned in the Lima 
 
 File structure (all under `packages/sandbox-bwrap/`):
 
-| File | Responsibility |
-| --- | --- |
-| `package.json`, `tsconfig.json`, `tsconfig.build.json` | Publishable ESM package; typecheck vs dist-emitting build |
-| `src/options.ts` | Public factory options, defaults, options hash |
-| `src/paths.ts` | Cache/template/session path derivation, `/workspace` anchoring, host-path translation, workspace containment check |
-| `src/process.ts` | `ProcessRunner` abstraction, real Node child-process runner (pgroup kill, web streams, abort), `isBwrapAvailable` |
-| `src/args.ts` | Pure bwrap argv builder (the security-critical surface, snapshot-pinned) |
-| `src/session.ts` | Full public `SandboxSession` over one workspace dir |
-| `src/backend.ts` | `SandboxBackend`: prewarm/create/handle |
-| `src/index.ts` | Public exports incl. `bwrap()` factory |
-| `src/integration/bwrap-backend-smoke.ts` | Real-bwrap contract test (Lima VM only) |
-| `README.md` | Package docs for project authors |
+| File                                                   | Responsibility                                                                                                     |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `package.json`, `tsconfig.json`, `tsconfig.build.json` | Publishable ESM package; typecheck vs dist-emitting build                                                          |
+| `src/options.ts`                                       | Public factory options, defaults, options hash                                                                     |
+| `src/paths.ts`                                         | Cache/template/session path derivation, `/workspace` anchoring, host-path translation, workspace containment check |
+| `src/process.ts`                                       | `ProcessRunner` abstraction, real Node child-process runner (pgroup kill, web streams, abort), `isBwrapAvailable`  |
+| `src/args.ts`                                          | Pure bwrap argv builder (the security-critical surface, snapshot-pinned)                                           |
+| `src/session.ts`                                       | Full public `SandboxSession` over one workspace dir                                                                |
+| `src/backend.ts`                                       | `SandboxBackend`: prewarm/create/handle                                                                            |
+| `src/index.ts`                                         | Public exports incl. `bwrap()` factory                                                                             |
+| `src/integration/bwrap-backend-smoke.ts`               | Real-bwrap contract test (Lima VM only)                                                                            |
+| `README.md`                                            | Package docs for project authors                                                                                   |
 
 ---
 
 ### Task 1: Package scaffold, options, and path derivation
 
 **Files:**
+
 - Create: `packages/sandbox-bwrap/package.json`
 - Create: `packages/sandbox-bwrap/tsconfig.json`
 - Create: `packages/sandbox-bwrap/tsconfig.build.json`
@@ -69,6 +70,7 @@ File structure (all under `packages/sandbox-bwrap/`):
 - Modify: `pnpm-lock.yaml` (via `pnpm install`)
 
 **Interfaces:**
+
 - Consumes: nothing (first task).
 - Produces (later tasks import these exact names from `./options.js` / `./paths.js`):
   - `type BwrapNetworkPolicy = "allow-all" | "deny-all"`
@@ -236,7 +238,9 @@ export interface ResolvedBwrapSandboxOptions {
   readonly bwrapPath: string;
 }
 
-export function resolveBwrapSandboxOptions(options: BwrapSandboxCreateOptions = {}): ResolvedBwrapSandboxOptions {
+export function resolveBwrapSandboxOptions(
+  options: BwrapSandboxCreateOptions = {},
+): ResolvedBwrapSandboxOptions {
   return {
     env: options.env ?? {},
     networkPolicy: options.networkPolicy ?? "allow-all",
@@ -317,7 +321,9 @@ describe("workspace paths", () => {
     expect(isWithinWorkspace("/data/sess1", "/data/sess1")).toBe(true);
     expect(isWithinWorkspace("/data/other", "/data/sess1")).toBe(false);
     // traversal normalizes out of the workspace
-    expect(isWithinWorkspace(toHostPath("a/../../escape", "/data/sess1"), "/data/sess1")).toBe(false);
+    expect(isWithinWorkspace(toHostPath("a/../../escape", "/data/sess1"), "/data/sess1")).toBe(
+      false,
+    );
   });
 });
 ```
@@ -347,8 +353,16 @@ function keyDigest(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
-export function resolveTemplatePath(appRoot: string, templateKey: string, optionsHash: string): string {
-  return join(resolveBwrapCacheRoot(appRoot), "templates", `${keyDigest(templateKey)}-${optionsHash}`);
+export function resolveTemplatePath(
+  appRoot: string,
+  templateKey: string,
+  optionsHash: string,
+): string {
+  return join(
+    resolveBwrapCacheRoot(appRoot),
+    "templates",
+    `${keyDigest(templateKey)}-${optionsHash}`,
+  );
 }
 
 export function resolveSessionPath(appRoot: string, sessionKey: string): string {
@@ -397,12 +411,14 @@ git commit -m "feat(sandbox-bwrap): scaffold package with options and cache path
 ### Task 2: Process runner and bwrap argv builder
 
 **Files:**
+
 - Create: `packages/sandbox-bwrap/src/process.ts`
 - Create: `packages/sandbox-bwrap/src/args.ts`
 - Test: `packages/sandbox-bwrap/src/process.test.ts`
 - Test: `packages/sandbox-bwrap/src/args.test.ts`
 
 **Interfaces:**
+
 - Consumes: `WORKSPACE_ROOT` from `./paths.js` (Task 1).
 - Produces:
   - `interface SpawnedProcess { pid?: number; stdout: ReadableStream<Uint8Array>; stderr: ReadableStream<Uint8Array>; wait(): Promise<{exitCode: number}>; kill(): Promise<void> }`
@@ -435,18 +451,36 @@ describe("buildBwrapExecArgs", () => {
 
     expect(args).toEqual([
       "bwrap",
-      "--ro-bind", "/", "/",
-      "--dev", "/dev",
-      "--proc", "/proc",
-      "--tmpfs", "/tmp",
-      "--tmpfs", "/app/.eve/sandbox-cache/bwrap",
-      "--bind", "/app/.eve/sandbox-cache/bwrap/sessions/abc", "/workspace",
-      "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent",
+      "--ro-bind",
+      "/",
+      "/",
+      "--dev",
+      "/dev",
+      "--proc",
+      "/proc",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/app/.eve/sandbox-cache/bwrap",
+      "--bind",
+      "/app/.eve/sandbox-cache/bwrap/sessions/abc",
+      "/workspace",
+      "--unshare-pid",
+      "--unshare-ipc",
+      "--unshare-uts",
+      "--die-with-parent",
       "--clearenv",
-      "--setenv", "PATH", DEFAULT_SANDBOX_PATH,
-      "--setenv", "HOME", "/workspace",
-      "--chdir", "/workspace",
-      "bash", "-lc", "echo hi",
+      "--setenv",
+      "PATH",
+      DEFAULT_SANDBOX_PATH,
+      "--setenv",
+      "HOME",
+      "/workspace",
+      "--chdir",
+      "/workspace",
+      "bash",
+      "-lc",
+      "echo hi",
     ]);
   });
 
@@ -514,10 +548,15 @@ export interface BwrapExecInput {
 export function buildBwrapExecArgs(input: BwrapExecInput): string[] {
   const args = [
     input.bwrapPath,
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    "--proc", "/proc",
-    "--tmpfs", "/tmp",
+    "--ro-bind",
+    "/",
+    "/",
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
+    "--tmpfs",
+    "/tmp",
   ];
   // Hide paths BEFORE re-binding the workspace: bind sources resolve against
   // the host filesystem, so a later bind punches through an earlier tmpfs.
@@ -568,7 +607,11 @@ describe("createNodeProcessRunner", () => {
 
   test("captures stdout, stderr, and the exit code", async () => {
     const proc = runner.spawn(["sh", "-c", "echo out; echo err >&2; exit 7"]);
-    const [stdout, stderr, result] = await Promise.all([readAll(proc.stdout), readAll(proc.stderr), proc.wait()]);
+    const [stdout, stderr, result] = await Promise.all([
+      readAll(proc.stdout),
+      readAll(proc.stderr),
+      proc.wait(),
+    ]);
     expect(stdout).toBe("out\n");
     expect(stderr).toBe("err\n");
     expect(result.exitCode).toBe(7);
@@ -713,16 +756,19 @@ git commit -m "feat(sandbox-bwrap): process runner and sandbox argv builder"
 ### Task 3: The sandbox session
 
 **Files:**
+
 - Create: `packages/sandbox-bwrap/src/session.ts`
 - Test: `packages/sandbox-bwrap/src/session.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 1 (`ResolvedBwrapSandboxOptions`, path helpers) and Task 2 (`ProcessRunner`, `buildBwrapExecArgs`, `DEFAULT_SANDBOX_PATH`).
 - Produces:
   - `interface CreateBwrapSessionInput { id: string; workspaceDir: string; appRoot: string; runner: ProcessRunner; options: ResolvedBwrapSandboxOptions }`
   - `createBwrapSession(input: CreateBwrapSessionInput): SandboxSession` — the full public eve session (`run`, `spawn`, `readFile`, `readBinaryFile`, `readTextFile`, `writeFile`, `writeBinaryFile`, `writeTextFile`, `removePath`, `resolvePath`, `setNetworkPolicy`, `id`).
 
 Behavioral contract (from eve's docs and Docker-backend parity):
+
 - File I/O runs host-side against `workspaceDir` — no subprocess. Reads of missing files resolve `null`. Writes create parent directories recursively.
 - Writes and removes are refused (throw `Error`) when the translated host path escapes `workspaceDir`. Reads of non-workspace absolute paths pass through to the host filesystem (the sandbox sees the same bytes read-only).
 - `run` wraps `spawn`: collect both streams, await `wait()`, return `{exitCode, stdout, stderr}`; never throws on non-zero exit.
@@ -816,7 +862,10 @@ describe("run and spawn", () => {
     const { session, calls } = await makeSession();
     await session.spawn({ command: "true", workingDirectory: "sub/dir" });
     const argv = calls[0]!;
-    expect(argv.slice(argv.indexOf("--chdir"), argv.indexOf("--chdir") + 2)).toEqual(["--chdir", "/workspace/sub/dir"]);
+    expect(argv.slice(argv.indexOf("--chdir"), argv.indexOf("--chdir") + 2)).toEqual([
+      "--chdir",
+      "/workspace/sub/dir",
+    ]);
   });
 });
 
@@ -835,7 +884,9 @@ describe("network policy", () => {
 
   test("granular policies are rejected", async () => {
     const { session } = await makeSession();
-    await expect(session.setNetworkPolicy({ allow: ["github.com"] })).rejects.toThrow(/allow-all.*deny-all/);
+    await expect(session.setNetworkPolicy({ allow: ["github.com"] })).rejects.toThrow(
+      /allow-all.*deny-all/,
+    );
   });
 });
 
@@ -844,8 +895,12 @@ describe("file I/O", () => {
     const { session } = await makeSession();
     await session.writeTextFile({ path: "notes/deep/a.txt", content: "l1\nl2\nl3" });
     expect(await session.readTextFile({ path: "notes/deep/a.txt" })).toBe("l1\nl2\nl3");
-    expect(await session.readTextFile({ path: "notes/deep/a.txt", startLine: 2, endLine: 2 })).toBe("l2");
-    expect(await session.readTextFile({ path: "notes/deep/a.txt", startLine: 2, endLine: 99 })).toBe("l2\nl3");
+    expect(await session.readTextFile({ path: "notes/deep/a.txt", startLine: 2, endLine: 2 })).toBe(
+      "l2",
+    );
+    expect(
+      await session.readTextFile({ path: "notes/deep/a.txt", startLine: 2, endLine: 99 }),
+    ).toBe("l2\nl3");
   });
 
   test("missing files resolve null across all readers", async () => {
@@ -865,8 +920,12 @@ describe("file I/O", () => {
 
   test("writes and removes outside the workspace are refused", async () => {
     const { session } = await makeSession();
-    await expect(session.writeTextFile({ path: "/etc/evil", content: "x" })).rejects.toThrow(/workspace/);
-    await expect(session.writeTextFile({ path: "a/../../escape.txt", content: "x" })).rejects.toThrow(/workspace/);
+    await expect(session.writeTextFile({ path: "/etc/evil", content: "x" })).rejects.toThrow(
+      /workspace/,
+    );
+    await expect(
+      session.writeTextFile({ path: "a/../../escape.txt", content: "x" }),
+    ).rejects.toThrow(/workspace/);
     await expect(session.removePath({ path: "/etc/hosts" })).rejects.toThrow(/workspace/);
   });
 
@@ -882,7 +941,9 @@ describe("file I/O", () => {
   test("reads of host paths outside the workspace pass through", async () => {
     const { session, appRoot } = await makeSession();
     await writeFile(path.join(appRoot, "host.txt"), "host-visible");
-    expect(await session.readTextFile({ path: path.join(appRoot, "host.txt") })).toBe("host-visible");
+    expect(await session.readTextFile({ path: path.join(appRoot, "host.txt") })).toBe(
+      "host-visible",
+    );
   });
 
   test("resolvePath anchors to /workspace and id is stable", async () => {
@@ -913,7 +974,13 @@ import { createWriteStream } from "node:fs";
 import type { SandboxNetworkPolicy, SandboxSession } from "eve/sandbox";
 import { buildBwrapExecArgs, DEFAULT_SANDBOX_PATH } from "./args.js";
 import type { ResolvedBwrapSandboxOptions } from "./options.js";
-import { isWithinWorkspace, resolveBwrapCacheRoot, resolveWorkspacePath, toHostPath, WORKSPACE_ROOT } from "./paths.js";
+import {
+  isWithinWorkspace,
+  resolveBwrapCacheRoot,
+  resolveWorkspacePath,
+  toHostPath,
+  WORKSPACE_ROOT,
+} from "./paths.js";
 import type { ProcessRunner } from "./process.js";
 
 export interface CreateBwrapSessionInput {
@@ -925,7 +992,11 @@ export interface CreateBwrapSessionInput {
 }
 
 function isMissingFileError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as NodeJS.ErrnoException).code === "ENOENT";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
 }
 
 async function collectStream(stream: ReadableStream<Uint8Array>): Promise<string> {
@@ -966,7 +1037,12 @@ export function createBwrapSession(input: CreateBwrapSessionInput): SandboxSessi
     return hostPath;
   }
 
-  async function spawnProcess(spawnOptions: { command: string; workingDirectory?: string; env?: Record<string, string>; abortSignal?: AbortSignal }) {
+  async function spawnProcess(spawnOptions: {
+    command: string;
+    workingDirectory?: string;
+    env?: Record<string, string>;
+    abortSignal?: AbortSignal;
+  }) {
     const env = {
       PATH: DEFAULT_SANDBOX_PATH,
       HOME: WORKSPACE_ROOT,
@@ -974,7 +1050,9 @@ export function createBwrapSession(input: CreateBwrapSessionInput): SandboxSessi
       ...options.env,
       ...spawnOptions.env,
     };
-    const hidePaths = [resolveBwrapCacheRoot(appRoot), ...options.hidePaths].filter((path) => existsSync(path));
+    const hidePaths = [resolveBwrapCacheRoot(appRoot), ...options.hidePaths].filter((path) =>
+      existsSync(path),
+    );
     const argv = buildBwrapExecArgs({
       bwrapPath: options.bwrapPath,
       workspaceDir,
@@ -997,14 +1075,19 @@ export function createBwrapSession(input: CreateBwrapSessionInput): SandboxSessi
 
     async run(runOptions) {
       const proc = await spawnProcess(runOptions);
-      const [stdout, stderr] = await Promise.all([collectStream(proc.stdout), collectStream(proc.stderr)]);
+      const [stdout, stderr] = await Promise.all([
+        collectStream(proc.stdout),
+        collectStream(proc.stderr),
+      ]);
       const { exitCode } = await proc.wait();
       return { exitCode, stdout, stderr };
     },
 
     async setNetworkPolicy(policy: SandboxNetworkPolicy) {
       if (policy !== "allow-all" && policy !== "deny-all") {
-        throw new Error('bwrap backend supports only the "allow-all" and "deny-all" network policies');
+        throw new Error(
+          'bwrap backend supports only the "allow-all" and "deny-all" network policies',
+        );
       }
       networkPolicy = policy;
     },
@@ -1066,6 +1149,7 @@ export function createBwrapSession(input: CreateBwrapSessionInput): SandboxSessi
 ```
 
 Implementation notes for this step:
+
 - The `SandboxSession` interface types come from `eve/sandbox`; if TypeScript complains that our object literal's method signatures don't match the AI SDK's `PromiseLike` shapes, prefer adjusting our signatures over casting. A final `satisfies SandboxSession` or the annotated return type must hold without `as SandboxSession`.
 - `Readable.fromWeb(content as never)`: Node's web-stream types and the DOM lib disagree; this cast is confined to the boundary.
 
@@ -1086,11 +1170,13 @@ git commit -m "feat(sandbox-bwrap): full SandboxSession over a bwrap-backed work
 ### Task 4: The backend (prewarm/create) and public API
 
 **Files:**
+
 - Create: `packages/sandbox-bwrap/src/backend.ts`
 - Create: `packages/sandbox-bwrap/src/index.ts`
 - Test: `packages/sandbox-bwrap/src/backend.test.ts`
 
 **Interfaces:**
+
 - Consumes: Tasks 1–3 (`resolveBwrapSandboxOptions`, `createBwrapOptionsHash`, path helpers, `ProcessRunner`, `createNodeProcessRunner`, `isBwrapAvailable`, `createBwrapSession`).
 - Produces (the public package surface):
   - `const BWRAP_BACKEND_NAME = "bwrap"`
@@ -1117,7 +1203,12 @@ import type { ProcessRunner } from "./process.js";
 const fakeRunner: ProcessRunner = {
   spawn() {
     const empty = () => new ReadableStream<Uint8Array>({ start: (c) => c.close() });
-    return { stdout: empty(), stderr: empty(), wait: async () => ({ exitCode: 0 }), kill: async () => {} };
+    return {
+      stdout: empty(),
+      stderr: empty(),
+      wait: async () => ({ exitCode: 0 }),
+      kill: async () => {},
+    };
   },
 };
 
@@ -1163,18 +1254,34 @@ describe("create", () => {
       seedFiles: [{ path: "seed.txt", content: "seeded" }],
     });
 
-    const handle = await backend.create({ templateKey: "tpl-1", sessionKey: "sess-1", runtimeContext });
+    const handle = await backend.create({
+      templateKey: "tpl-1",
+      sessionKey: "sess-1",
+      runtimeContext,
+    });
     expect(await handle.session.readTextFile({ path: "seed.txt" })).toBe("seeded");
     expect(await handle.useSessionFn()).toBe(handle.session);
-    expect(await handle.captureState()).toEqual({ backendName: "bwrap", metadata: {}, sessionKey: "sess-1" });
+    expect(await handle.captureState()).toEqual({
+      backendName: "bwrap",
+      metadata: {},
+      sessionKey: "sess-1",
+    });
 
     await handle.session.writeTextFile({ path: "state.txt", content: "persisted" });
     await handle.dispose();
 
-    const again = await backend.create({ templateKey: "tpl-1", sessionKey: "sess-1", runtimeContext });
+    const again = await backend.create({
+      templateKey: "tpl-1",
+      sessionKey: "sess-1",
+      runtimeContext,
+    });
     expect(await again.session.readTextFile({ path: "state.txt" })).toBe("persisted");
 
-    const other = await backend.create({ templateKey: "tpl-1", sessionKey: "sess-2", runtimeContext });
+    const other = await backend.create({
+      templateKey: "tpl-1",
+      sessionKey: "sess-2",
+      runtimeContext,
+    });
     expect(await other.session.readTextFile({ path: "state.txt" })).toBeNull();
   });
 
@@ -1187,9 +1294,9 @@ describe("create", () => {
 
   test("missing template throws the typed eve error", async () => {
     const { backend, runtimeContext } = await makeBackend();
-    await expect(backend.create({ templateKey: "never-prewarmed", sessionKey: "s", runtimeContext })).rejects.toSatisfy(
-      (error: unknown) => SandboxTemplateNotProvisionedError.is(error),
-    );
+    await expect(
+      backend.create({ templateKey: "never-prewarmed", sessionKey: "s", runtimeContext }),
+    ).rejects.toSatisfy((error: unknown) => SandboxTemplateNotProvisionedError.is(error));
   });
 
   test("options changes re-key templates but not sessions", async () => {
@@ -1199,9 +1306,9 @@ describe("create", () => {
     const b = createBwrapSandboxBackend({ runner: fakeRunner, createOptions: { env: { A: "2" } } });
     await a.prewarm({ templateKey: "tpl", runtimeContext, seedFiles: [] });
     // same templateKey under different options is a distinct template
-    await expect(b.create({ templateKey: "tpl", sessionKey: "s", runtimeContext })).rejects.toSatisfy(
-      (error: unknown) => SandboxTemplateNotProvisionedError.is(error),
-    );
+    await expect(
+      b.create({ templateKey: "tpl", sessionKey: "s", runtimeContext }),
+    ).rejects.toSatisfy((error: unknown) => SandboxTemplateNotProvisionedError.is(error));
   });
 });
 
@@ -1265,7 +1372,9 @@ async function copyDirectoryAtomically(sourcePath: string, targetPath: string): 
   }
 }
 
-export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput = {}): SandboxBackend {
+export function createBwrapSandboxBackend(
+  input: CreateBwrapSandboxBackendInput = {},
+): SandboxBackend {
   const options = resolveBwrapSandboxOptions(input.createOptions);
   const optionsHash = createBwrapOptionsHash(options);
   const runner = input.runner ?? createNodeProcessRunner();
@@ -1290,7 +1399,10 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
     return createBwrapSession({ id, workspaceDir, appRoot, runner, options });
   }
 
-  async function writeSeedFiles(session: SandboxSession, seedFiles: ReadonlyArray<SandboxSeedFile>): Promise<void> {
+  async function writeSeedFiles(
+    session: SandboxSession,
+    seedFiles: ReadonlyArray<SandboxSeedFile>,
+  ): Promise<void> {
     for (const seed of seedFiles) {
       if (typeof seed.content === "string") {
         await session.writeTextFile({ path: seed.path, content: seed.content });
@@ -1332,9 +1444,16 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
         if (templateKey === null) {
           await mkdir(sessionPath, { recursive: true });
         } else {
-          const templatePath = resolveTemplatePath(runtimeContext.appRoot, templateKey, optionsHash);
+          const templatePath = resolveTemplatePath(
+            runtimeContext.appRoot,
+            templateKey,
+            optionsHash,
+          );
           if (!existsSync(templatePath)) {
-            throw new SandboxTemplateNotProvisionedError({ backendName: BWRAP_BACKEND_NAME, templateKey });
+            throw new SandboxTemplateNotProvisionedError({
+              backendName: BWRAP_BACKEND_NAME,
+              templateKey,
+            });
           }
           await copyDirectoryAtomically(templatePath, sessionPath);
         }
@@ -1357,12 +1476,16 @@ export function createBwrapSandboxBackend(input: CreateBwrapSandboxBackendInput 
 
 `packages/sandbox-bwrap/src/index.ts`:
 
-```ts
+````ts
 import type { SandboxBackend } from "eve/sandbox";
 import { createBwrapSandboxBackend } from "./backend.js";
 import type { BwrapSandboxCreateOptions } from "./options.js";
 
-export { BWRAP_BACKEND_NAME, createBwrapSandboxBackend, type CreateBwrapSandboxBackendInput } from "./backend.js";
+export {
+  BWRAP_BACKEND_NAME,
+  createBwrapSandboxBackend,
+  type CreateBwrapSandboxBackendInput,
+} from "./backend.js";
 export type { BwrapNetworkPolicy, BwrapSandboxCreateOptions } from "./options.js";
 export { isBwrapAvailable } from "./process.js";
 export type { ProcessRunner, SpawnedProcess } from "./process.js";
@@ -1383,7 +1506,7 @@ export type { ProcessRunner, SpawnedProcess } from "./process.js";
 export function bwrap(options?: BwrapSandboxCreateOptions): SandboxBackend {
   return createBwrapSandboxBackend({ createOptions: options });
 }
-```
+````
 
 - [ ] **Step 4: Run tests, typecheck, and build**
 
@@ -1407,18 +1530,21 @@ git commit -m "feat(sandbox-bwrap): SandboxBackend with directory templates and 
 ### Task 5: Real-bwrap contract test in the Lima VM
 
 **Files:**
+
 - Create: `packages/sandbox-bwrap/src/integration/bwrap-backend-smoke.ts`
 - Modify: `infra/integration/run.sh`
 
 **Interfaces:**
+
 - Consumes: the full public backend from Task 4 (imported via relative paths, run with tsx — no build needed).
 - Produces: `bash infra/integration/run.sh` runs BOTH smokes; the new one prints `BWRAP SMOKE OK`.
 
 This task is the plan's risk gate: it is the first time bwrap runs as the unprivileged `eveland-app` user under `NoNewPrivileges=yes` + `ProtectSystem=strict` (Plan 1 only ran bwrap as root during builds). If bwrap fails there with `Creating new namespace failed: Operation not permitted`, debug — do not weaken the unit properties to pass:
+
 - `limactl shell eveland-test -- sysctl kernel.apparmor_restrict_unprivileged_userns` (expect `1` on Ubuntu 24.04 — that's fine WITH the apt bwrap profile)
 - `limactl shell eveland-test -- ls /etc/apparmor.d/bwrap` (must exist; installed by the bubblewrap deb)
 - `limactl shell eveland-test -- aa-status | grep bwrap`
-Report findings in the task summary if the constraint combination fails; that changes the deployment story and must surface, not be papered over.
+  Report findings in the task summary if the constraint combination fails; that changes the deployment story and must surface, not be papered over.
 
 - [ ] **Step 1: Write the smoke script**
 
@@ -1461,7 +1587,11 @@ async function main(): Promise<void> {
       },
     });
     assert.equal(first.reused, false, "first prewarm must capture fresh state");
-    const second = await backend.prewarm({ templateKey: "smoke-template", runtimeContext, seedFiles: [] });
+    const second = await backend.prewarm({
+      templateKey: "smoke-template",
+      runtimeContext,
+      seedFiles: [],
+    });
     assert.equal(second.reused, true, "second prewarm must reuse the template");
 
     // unknown template → typed error
@@ -1471,7 +1601,11 @@ async function main(): Promise<void> {
     );
 
     // create: template state visible in the session workspace
-    const handle = await backend.create({ templateKey: "smoke-template", sessionKey: "sess-1", runtimeContext });
+    const handle = await backend.create({
+      templateKey: "smoke-template",
+      sessionKey: "sess-1",
+      runtimeContext,
+    });
     const session = handle.session;
     assert.equal(await session.readTextFile({ path: "seeded.txt" }), "from-seed");
     assert.equal(await session.readTextFile({ path: "boot.txt" }), "bootstrapped");
@@ -1500,13 +1634,19 @@ async function main(): Promise<void> {
     const allowNet = await session.run({ command: ifaceCommand });
     assert.equal(allowNet.exitCode, 0, `iface probe failed: ${allowNet.stderr}`);
     assert.ok(
-      allowNet.stdout.trim().split(/\s+/).some((name) => name !== "" && name !== "lo"),
+      allowNet.stdout
+        .trim()
+        .split(/\s+/)
+        .some((name) => name !== "" && name !== "lo"),
       "allow-all must see a host network interface",
     );
     await session.setNetworkPolicy("deny-all");
     const denyNet = await session.run({ command: ifaceCommand });
     assert.equal(
-      denyNet.stdout.trim().split(/\s+/).filter((name) => name !== "" && name !== "lo").length,
+      denyNet.stdout
+        .trim()
+        .split(/\s+/)
+        .filter((name) => name !== "" && name !== "lo").length,
       0,
       "deny-all must leave at most loopback",
     );
@@ -1528,9 +1668,17 @@ async function main(): Promise<void> {
     // persistence across reconnect; isolation between sessions
     await session.writeTextFile({ path: "notes/hello.txt", content: "persisted" });
     await handle.dispose();
-    const again = await backend.create({ templateKey: "smoke-template", sessionKey: "sess-1", runtimeContext });
+    const again = await backend.create({
+      templateKey: "smoke-template",
+      sessionKey: "sess-1",
+      runtimeContext,
+    });
     assert.equal(await again.session.readTextFile({ path: "notes/hello.txt" }), "persisted");
-    const other = await backend.create({ templateKey: "smoke-template", sessionKey: "sess-2", runtimeContext });
+    const other = await backend.create({
+      templateKey: "smoke-template",
+      sessionKey: "sess-2",
+      runtimeContext,
+    });
     assert.equal(await other.session.readTextFile({ path: "notes/hello.txt" }), null);
 
     console.log("BWRAP SMOKE OK");
@@ -1598,6 +1746,7 @@ git commit -m "feat(sandbox-bwrap): Lima VM contract test under deployed-agent s
 The user explicitly required: after Plan 2 completes, update documentation so other developers/agents understand how this works. That means three audiences: eve project authors (how to use the backend), eveland operators (what changed on the deploy host), and future contributors/agents in this repo (where things live and why).
 
 **Files:**
+
 - Create: `packages/sandbox-bwrap/README.md`
 - Modify: `docs/deploy/linux.md` (three edits below)
 - Modify: `README.md` (one bullet)
@@ -1638,12 +1787,12 @@ export default defineSandbox({
 
 ### Options
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `env` | `{}` | Environment variables set for every sandboxed command. |
+| Option          | Default       | Meaning                                                                                                                                                                                                                                       |
+| --------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`           | `{}`          | Environment variables set for every sandboxed command.                                                                                                                                                                                        |
 | `networkPolicy` | `"allow-all"` | `"allow-all"` shares the host network; `"deny-all"` runs each command with no network (`--unshare-net`). `setNetworkPolicy` can switch between the two at run time; granular domain policies are rejected (use the Vercel backend for those). |
-| `hidePaths` | `[]` | Extra host paths hidden from the sandbox (each covered by an empty tmpfs). |
-| `bwrapPath` | `"bwrap"` | bwrap executable to invoke. |
+| `hidePaths`     | `[]`          | Extra host paths hidden from the sandbox (each covered by an empty tmpfs).                                                                                                                                                                    |
+| `bwrapPath`     | `"bwrap"`     | bwrap executable to invoke.                                                                                                                                                                                                                   |
 
 ## How it works
 
@@ -1668,7 +1817,7 @@ export default defineSandbox({
   out of sandboxed code.
 - The sandbox cache root (all other sessions and templates of the app) is hidden
   behind a tmpfs, so sandboxed code cannot read sibling session state.
-- The rest of the host filesystem is *visible read-only* to sandboxed code, and the
+- The rest of the host filesystem is _visible read-only_ to sandboxed code, and the
   sandbox shares the host kernel. This is protection against mistakes and prompt
   injection — not multi-tenant isolation. If untrusted tenants or code that routinely
   handles customer credentials must run here, move to VM-level isolation

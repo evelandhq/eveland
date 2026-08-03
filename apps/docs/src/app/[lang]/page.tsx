@@ -39,14 +39,20 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
               <span>{t.hero.eyebrow}</span>
               <span className="preview-badge">{t.preview}</span>
             </div>
-            <h1>{t.hero.title.split("\n").map((line) => <span key={line}>{line}</span>)}</h1>
+            <h1>
+              {t.hero.title.split("\n").map((line) => (
+                <span key={line}>{line}</span>
+              ))}
+            </h1>
             <p>{t.hero.body}</p>
             <div className="hero-actions">
               <Link className="button button-primary" href={productionHref}>
-                {t.hero.primary}<ArrowRight aria-hidden="true" />
+                {t.hero.primary}
+                <ArrowRight aria-hidden="true" />
               </Link>
               <Link className="button button-secondary" href={architectureHref}>
-                {t.hero.secondary}<ArrowRight aria-hidden="true" />
+                {t.hero.secondary}
+                <ArrowRight aria-hidden="true" />
               </Link>
             </div>
           </div>
@@ -79,7 +85,11 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
           </header>
           <div className="event-list">
             {t.control.events.map(([time, event, detail], index) => (
-              <div className="event-row" key={event} style={{ "--delay": `${index * 100}ms` } as React.CSSProperties}>
+              <div
+                className="event-row"
+                key={event}
+                style={{ "--delay": `${index * 100}ms` } as React.CSSProperties}
+              >
                 <time>{time}</time>
                 <code>{event}</code>
                 <span>{detail}</span>
@@ -95,10 +105,12 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
         <p>{t.cta.body}</p>
         <div className="hero-actions">
           <Link className="button button-primary" href={productionHref}>
-            {t.cta.primary}<ArrowRight aria-hidden="true" />
+            {t.cta.primary}
+            <ArrowRight aria-hidden="true" />
           </Link>
           <a className="text-link" href={repositoryHref} target="_blank" rel="noreferrer">
-            {t.cta.secondary}<ArrowUpRight aria-hidden="true" />
+            {t.cta.secondary}
+            <ArrowUpRight aria-hidden="true" />
           </a>
         </div>
       </section>

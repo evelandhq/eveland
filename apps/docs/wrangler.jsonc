@@ -6,15 +6,15 @@
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": ".open-next/assets",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
   },
   "routes": [
     {
       "pattern": "eveland.ai",
-      "custom_domain": true
-    }
+      "custom_domain": true,
+    },
   ],
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }

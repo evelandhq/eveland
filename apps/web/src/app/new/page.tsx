@@ -12,7 +12,7 @@ export default function NewProjectPage() {
   return (
     <div className="min-h-svh bg-background">
       <header className="grid h-16 grid-cols-[1fr_auto_1fr] items-center border-b px-4 sm:px-6">
-        <Link href="/projects" className={cn(buttonVariants({ variant: 'ghost' }), "w-fit") }>
+        <Link href="/projects" className={cn(buttonVariants({ variant: "ghost" }), "w-fit")}>
           <ArrowLeftIcon data-icon="inline-start" />
           Back
         </Link>

@@ -1,7 +1,4 @@
-import type {
-  ObservabilitySignal,
-  TelemetryDomain,
-} from "@eveland/core/observability";
+import type { ObservabilitySignal, TelemetryDomain } from "@eveland/core/observability";
 import { verifyAgentTelemetryCredential } from "@eveland/core/server/agent-telemetry-credential";
 import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
 
@@ -58,10 +55,7 @@ async function bindAgentTelemetry(input: {
   environment: string;
 }): Promise<void> {
   const field = signalFields[input.signal];
-  const deploymentCache = new Map<
-    string,
-    Awaited<ReturnType<Store["getDeployment"]>>
-  >();
+  const deploymentCache = new Map<string, Awaited<ReturnType<Store["getDeployment"]>>>();
   const trustedGroups: unknown[] = [];
 
   for (const candidate of input.payload[field] as unknown[]) {
@@ -69,20 +63,14 @@ async function bindAgentTelemetry(input: {
     if (!group) continue;
     const resource = asRecord(group.resource);
     const attributes = attributeRecords(resource?.attributes);
-    const domain = readStringAttribute(
-      attributes,
-      "eveland.telemetry.domain",
-    );
+    const domain = readStringAttribute(attributes, "eveland.telemetry.domain");
     if (domain !== "agent") {
       scrubAttributeLists(group);
       trustedGroups.push(group);
       continue;
     }
 
-    const credential = readStringAttribute(
-      attributes,
-      "eveland.deployment.credential",
-    );
+    const credential = readStringAttribute(attributes, "eveland.deployment.credential");
     const verified = credential
       ? verifyAgentTelemetryCredential(credential, input.telemetrySecret)
       : null;
@@ -110,22 +98,15 @@ async function bindAgentTelemetry(input: {
       ...trustedResourceAttributes,
       "langfuse.release": deployment.releaseId,
       "langfuse.environment": input.environment,
-      "langfuse.observation.metadata.eveland.project_id":
-        deployment.projectId,
-      "langfuse.observation.metadata.eveland.release_id":
-        deployment.releaseId,
-      "langfuse.observation.metadata.eveland.deployment_id":
-        deployment.id,
+      "langfuse.observation.metadata.eveland.project_id": deployment.projectId,
+      "langfuse.observation.metadata.eveland.release_id": deployment.releaseId,
+      "langfuse.observation.metadata.eveland.deployment_id": deployment.id,
     });
     const trustedResource = resource ?? {};
     if (!resource) group.resource = trustedResource;
-    const resourceAttributes = attributeRecords(
-      trustedResource.attributes,
-    );
+    const resourceAttributes = attributeRecords(trustedResource.attributes);
     trustedResource.attributes = resourceAttributes;
-    for (
-      const [key, value] of Object.entries(trustedResourceAttributes)
-    ) {
+    for (const [key, value] of Object.entries(trustedResourceAttributes)) {
       upsertStringAttribute(resourceAttributes, key, value);
     }
     trustedGroups.push(group);
@@ -146,11 +127,7 @@ function parseOtlpJson(
     if (expected in payload && !Array.isArray(payload[expected])) {
       return null;
     }
-    if (
-      Object.values(signalFields).some(
-        (field) => field !== expected && field in payload,
-      )
-    ) {
+    if (Object.values(signalFields).some((field) => field !== expected && field in payload)) {
       return null;
     }
     if (!(expected in payload)) payload[expected] = [];
@@ -160,10 +137,7 @@ function parseOtlpJson(
   }
 }
 
-function scrubAttributeLists(
-  value: unknown,
-  trusted?: Record<string, string>,
-): void {
+function scrubAttributeLists(value: unknown, trusted?: Record<string, string>): void {
   if (Array.isArray(value)) {
     for (const child of value) scrubAttributeLists(child, trusted);
     return;
@@ -173,8 +147,7 @@ function scrubAttributeLists(
   if (Array.isArray(record.attributes)) {
     const attributes = attributeRecords(record.attributes);
     record.attributes = attributes.filter(
-      (attribute) =>
-        attribute.key !== "eveland.deployment.credential",
+      (attribute) => attribute.key !== "eveland.deployment.credential",
     );
     if (trusted) {
       for (const attribute of attributeRecords(record.attributes)) {
@@ -204,9 +177,7 @@ function readStringAttribute(
 ): string | undefined {
   const attribute = attributes.find((candidate) => candidate.key === key);
   const value = asRecord(attribute?.value);
-  return typeof value?.stringValue === "string"
-    ? value.stringValue
-    : undefined;
+  return typeof value?.stringValue === "string" ? value.stringValue : undefined;
 }
 
 function upsertStringAttribute(
@@ -223,9 +194,7 @@ function upsertStringAttribute(
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
+  return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }

@@ -120,10 +120,7 @@ describe("processNextJob", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(calls).toEqual([
-      `dropWorld:${project.id}`,
-      `deleteProject:${project.id}`,
-    ]);
+    expect(calls).toEqual([`dropWorld:${project.id}`, `deleteProject:${project.id}`]);
     await expect(store.getProject(project.id)).resolves.toBeNull();
   });
 
@@ -146,19 +143,13 @@ describe("processNextJob", () => {
     ).resolves.toBe(true);
 
     await expect(store.getProject(project.id)).resolves.toMatchObject({
-      deletionError: expect.stringContaining(
-        "workflow database is unreachable",
-      ),
+      deletionError: expect.stringContaining("workflow database is unreachable"),
     });
   });
 
   test("delete_project removes runtime releases and only platform-managed project files", async () => {
-    const dataDir = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-delete-data-"),
-    );
-    const externalSource = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-external-source-"),
-    );
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-delete-data-"));
+    const externalSource = await mkdtemp(path.join(os.tmpdir(), "eveland-external-source-"));
     const managedUpload = path.join(dataDir, "uploads", "zip-managed");
     const managedSource = path.join(managedUpload, "source", "wrapped-project");
     const calls: string[] = [];
@@ -259,9 +250,7 @@ describe("processNextJob", () => {
       await expect(access(deploymentEnvFile)).rejects.toMatchObject({
         code: "ENOENT",
       });
-      await expect(
-        access(path.join(externalSource, "keep.txt")),
-      ).resolves.toBeUndefined();
+      await expect(access(path.join(externalSource, "keep.txt"))).resolves.toBeUndefined();
     } finally {
       await rm(dataDir, { recursive: true, force: true });
       await rm(externalSource, { recursive: true, force: true });
@@ -269,9 +258,7 @@ describe("processNextJob", () => {
   });
 
   test("delete_project removes a pending Zip upload before source import has run", async () => {
-    const dataDir = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-delete-pending-"),
-    );
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-delete-pending-"));
     const uploadDir = path.join(dataDir, "uploads", "zip-pending");
     const sourcePath = path.join(uploadDir, "source", "wrapped-project");
 
@@ -287,9 +274,7 @@ describe("processNextJob", () => {
       });
       await store.requestProjectDeletion(project.id);
 
-      await expect(
-        processNextJob(store, "worker-a", { dataDir }),
-      ).resolves.toBe(true);
+      await expect(processNextJob(store, "worker-a", { dataDir })).resolves.toBe(true);
 
       await expect(store.getProject(project.id)).resolves.toBeNull();
       await expect(access(uploadDir)).rejects.toMatchObject({ code: "ENOENT" });
@@ -385,9 +370,7 @@ describe("processNextJob", () => {
       },
     };
 
-    await expect(
-      processNextJob(storeWithProjectGone, "worker-a"),
-    ).resolves.toBe(true);
+    await expect(processNextJob(storeWithProjectGone, "worker-a")).resolves.toBe(true);
 
     // The handler must return immediately after the missing getProject check --
     // it must never call getCurrentDeployment or deleteProject again.

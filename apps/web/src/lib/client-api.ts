@@ -41,8 +41,9 @@ export type AgentAuthSecretReferenceOption = AgentAuthSecretReference & {
 };
 
 export async function getAgentAuthMethods(): Promise<AgentAuthMethodDescriptor[]> {
-  return clientRequest<{ methods: AgentAuthMethodDescriptor[] }>("/agent-auth/methods", { method: "GET" })
-    .then((data) => data.methods);
+  return clientRequest<{ methods: AgentAuthMethodDescriptor[] }>("/agent-auth/methods", {
+    method: "GET",
+  }).then((data) => data.methods);
 }
 
 export async function getProjectAgentConnection(projectId: string): Promise<{
@@ -52,7 +53,9 @@ export async function getProjectAgentConnection(projectId: string): Promise<{
   return clientRequest(`/projects/${projectId}/playground/connection`, { method: "GET" });
 }
 
-export async function getAgentAuthSecretReferences(projectId: string): Promise<AgentAuthSecretReferenceOption[]> {
+export async function getAgentAuthSecretReferences(
+  projectId: string,
+): Promise<AgentAuthSecretReferenceOption[]> {
   return clientRequest<{ references: AgentAuthSecretReferenceOption[] }>(
     `/projects/${projectId}/agent-auth/secret-references`,
     { method: "GET" },
@@ -86,7 +89,9 @@ export async function signIn(email: string, password: string): Promise<CurrentMe
     // A rejected credential is this endpoint's answer, not an expired session.
     unauthorized: "surface",
   });
-  return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then((data) => data.member);
+  return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then(
+    (data) => data.member,
+  );
 }
 
 export async function signOut(): Promise<void> {
@@ -98,7 +103,9 @@ export async function signOut(): Promise<void> {
 }
 
 export async function getCurrentMember(): Promise<CurrentMember> {
-  return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then((data) => data.member);
+  return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then(
+    (data) => data.member,
+  );
 }
 
 export async function updateProfile(input: {
@@ -134,8 +141,9 @@ export async function changePassword(currentPassword: string, newPassword: strin
 }
 
 export async function getGitCredentials(): Promise<PublicGitCredential[]> {
-  return clientRequest<{ credentials: PublicGitCredential[] }>("/git-credentials", { method: "GET" })
-    .then((data) => data.credentials);
+  return clientRequest<{ credentials: PublicGitCredential[] }>("/git-credentials", {
+    method: "GET",
+  }).then((data) => data.credentials);
 }
 
 export async function deleteGitCredential(credentialId: string): Promise<void> {
@@ -179,17 +187,14 @@ export async function updateObservabilityDestination(input: {
   expectedRevision: number;
   config: ExternalDestinationConfigPatch;
 }): Promise<PublicObservabilityPolicy> {
-  return clientRequest(
-    `/system/observability/destinations/${input.destinationId}`,
-    {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        expectedRevision: input.expectedRevision,
-        config: input.config,
-      }),
-    },
-  );
+  return clientRequest(`/system/observability/destinations/${input.destinationId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expectedRevision: input.expectedRevision,
+      config: input.config,
+    }),
+  });
 }
 
 export async function toggleObservabilityDestination(input: {
@@ -197,33 +202,27 @@ export async function toggleObservabilityDestination(input: {
   expectedRevision: number;
   enabled: boolean;
 }): Promise<PublicObservabilityPolicy> {
-  return clientRequest(
-    `/system/observability/destinations/${input.destinationId}`,
-    {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        expectedRevision: input.expectedRevision,
-        enabled: input.enabled,
-      }),
-    },
-  );
+  return clientRequest(`/system/observability/destinations/${input.destinationId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expectedRevision: input.expectedRevision,
+      enabled: input.enabled,
+    }),
+  });
 }
 
 export async function deleteObservabilityDestination(input: {
   destinationId: string;
   expectedRevision: number;
 }): Promise<PublicObservabilityPolicy> {
-  return clientRequest(
-    `/system/observability/destinations/${input.destinationId}`,
-    {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        expectedRevision: input.expectedRevision,
-      }),
-    },
-  );
+  return clientRequest(`/system/observability/destinations/${input.destinationId}`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expectedRevision: input.expectedRevision,
+    }),
+  });
 }
 
 export async function createProjectEnvironmentEntry(
@@ -267,7 +266,9 @@ export async function deleteProjectEnvironmentEntry(
   return clientRequest(`/projects/${projectId}/secrets/${secretId}`, { method: "DELETE" });
 }
 
-export async function inviteMember(email: string): Promise<{ invitation: Invitation; inviteUrl: string }> {
+export async function inviteMember(
+  email: string,
+): Promise<{ invitation: Invitation; inviteUrl: string }> {
   return clientRequest("/invitations", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -275,7 +276,11 @@ export async function inviteMember(email: string): Promise<{ invitation: Invitat
   });
 }
 
-export async function acceptInvitation(input: { token: string; name: string; password: string }): Promise<CurrentMember> {
+export async function acceptInvitation(input: {
+  token: string;
+  name: string;
+  password: string;
+}): Promise<CurrentMember> {
   const data = await clientRequest<{ member: CurrentMember }>("/invitations/accept", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -287,7 +292,9 @@ export async function acceptInvitation(input: { token: string; name: string; pas
   return data.member;
 }
 
-export async function resendInvitation(invitationId: string): Promise<{ invitation: Invitation; inviteUrl: string }> {
+export async function resendInvitation(
+  invitationId: string,
+): Promise<{ invitation: Invitation; inviteUrl: string }> {
   return clientRequest(`/invitations/${invitationId}/resend`, { method: "POST" });
 }
 
@@ -313,14 +320,11 @@ export async function createInternalIdentityProvider(input: {
   internalRealmKey: string;
   enabled: boolean;
 }): Promise<PublicIdentityProvider> {
-  return clientRequest<{ provider: PublicIdentityProvider }>(
-    "/system/identity/providers",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "internal", ...input }),
-    },
-  ).then((data) => data.provider);
+  return clientRequest<{ provider: PublicIdentityProvider }>("/system/identity/providers", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "internal", ...input }),
+  }).then((data) => data.provider);
 }
 
 export async function updateInternalIdentityProvider(input: {
@@ -344,10 +348,9 @@ export async function preflightIdentityProvider(providerId: string): Promise<{
   ok: boolean;
   checks: Record<string, boolean>;
 }> {
-  return clientRequest(
-    `/system/identity/providers/${encodeURIComponent(providerId)}/preflight`,
-    { method: "POST" },
-  );
+  return clientRequest(`/system/identity/providers/${encodeURIComponent(providerId)}/preflight`, {
+    method: "POST",
+  });
 }
 
 export async function createInternalIdentityRealm(input: {
@@ -393,7 +396,6 @@ export async function upsertIdentityReturnTarget(input: {
   ).then((data) => data.target);
 }
 
-
 export function resetPlaygroundOnPageLeave(input: {
   projectId: string;
   sessionState: {
@@ -435,15 +437,21 @@ export async function deleteProject(projectId: string): Promise<Job> {
 }
 
 export async function promoteDeployment(projectId: string, deploymentId: string): Promise<void> {
-  await clientRequest(`/projects/${projectId}/deployments/${deploymentId}/promote`, { method: "POST" });
+  await clientRequest(`/projects/${projectId}/deployments/${deploymentId}/promote`, {
+    method: "POST",
+  });
 }
 
 export async function drainDeployment(projectId: string, deploymentId: string): Promise<void> {
-  await clientRequest(`/projects/${projectId}/deployments/${deploymentId}/drain`, { method: "POST" });
+  await clientRequest(`/projects/${projectId}/deployments/${deploymentId}/drain`, {
+    method: "POST",
+  });
 }
 
 export async function archiveDeployment(projectId: string, deploymentId: string): Promise<void> {
-  await clientRequest(`/projects/${projectId}/deployments/${deploymentId}/archive`, { method: "POST" });
+  await clientRequest(`/projects/${projectId}/deployments/${deploymentId}/archive`, {
+    method: "POST",
+  });
 }
 
 export async function updateRouteTargets(
@@ -474,18 +482,18 @@ export async function syncSource(
 }
 
 export async function runSchedule(projectId: string, scheduleId: string): Promise<ScheduleRun> {
-  const data = await clientRequest<{ run: ScheduleRun }>(`/projects/${projectId}/schedules/${scheduleId}/runs`, {
-    method: "POST",
-  });
+  const data = await clientRequest<{ run: ScheduleRun }>(
+    `/projects/${projectId}/schedules/${scheduleId}/runs`,
+    {
+      method: "POST",
+    },
+  );
   return data.run;
 }
 
 // One browser transport for the whole control panel: shared error decoding
 // (including field-level validation issues) and the 401 -> login policy live
 // in lib/api-transport.
-async function clientRequest<T = unknown>(
-  path: string,
-  init: ApiRequestOptions,
-): Promise<T> {
+async function clientRequest<T = unknown>(path: string, init: ApiRequestOptions): Promise<T> {
   return apiRequest<T>(path, init);
 }

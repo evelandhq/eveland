@@ -8,20 +8,9 @@ import {
   type Span,
 } from "@opentelemetry/api";
 import type { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
-import type {
-  AgentTelemetryHookContext,
-  RuntimeAgentPolicy,
-} from "./contracts.js";
-import {
-  recordUsage,
-  type AgentTelemetryMetrics,
-} from "./metrics.js";
-import {
-  asNonNegativeInteger,
-  asRecord,
-  asString,
-  serializeAttribute,
-} from "./values.js";
+import type { AgentTelemetryHookContext, RuntimeAgentPolicy } from "./contracts.js";
+import { recordUsage, type AgentTelemetryMetrics } from "./metrics.js";
+import { asNonNegativeInteger, asRecord, asString, serializeAttribute } from "./values.js";
 
 export type AgentTelemetryRuntimeState = {
   sessionModels: Map<string, string>;
@@ -56,24 +45,12 @@ export function mapAgentTelemetryLifecycle(input: {
   now: () => number;
   capture: RuntimeAgentPolicy["capture"];
 }): Span | undefined {
-  const {
-    eventType,
-    data,
-    sessionId,
-    context,
-    state,
-    tracer,
-    metrics,
-    now,
-    capture,
-  } = input;
+  const { eventType, data, sessionId, context, state, tracer, metrics, now, capture } = input;
   const turnId = asString(data.turnId);
   const stepIndex = asNonNegativeInteger(data.stepIndex);
   const turnKey = turnId ? key(sessionId, turnId) : undefined;
   const stepKey =
-    turnId && stepIndex !== undefined
-      ? key(sessionId, turnId, String(stepIndex))
-      : undefined;
+    turnId && stepIndex !== undefined ? key(sessionId, turnId, String(stepIndex)) : undefined;
 
   switch (eventType) {
     case "session.started": {
@@ -85,9 +62,7 @@ export function mapAgentTelemetryLifecycle(input: {
     case "turn.started": {
       if (!turnId || !turnKey || state.turns.has(turnKey)) return undefined;
       const agentName =
-        asString(asRecord(data.runtime)?.agentName) ??
-        asString(context.agent?.name) ??
-        "agent";
+        asString(asRecord(data.runtime)?.agentName) ?? asString(context.agent?.name) ?? "agent";
       const span = tracer.startSpan(
         `invoke_agent ${agentName}`,
         {
@@ -118,12 +93,7 @@ export function mapAgentTelemetryLifecycle(input: {
       return span;
     }
     case "step.started": {
-      if (
-        !turnId ||
-        stepIndex === undefined ||
-        !stepKey ||
-        state.steps.has(stepKey)
-      ) {
+      if (!turnId || stepIndex === undefined || !stepKey || state.steps.has(stepKey)) {
         return turnKey ? state.turns.get(turnKey) : undefined;
       }
       const modelId = state.sessionModels.get(sessionId);
@@ -171,18 +141,14 @@ export function mapAgentTelemetryLifecycle(input: {
             spanContext(turnKey ? state.turns.get(turnKey) : undefined),
           );
           if (capture.recordInputs && action.input !== undefined) {
-            span.setAttribute(
-              "gen_ai.agent.input",
-              serializeAttribute(action.input),
-            );
+            span.setAttribute("gen_ai.agent.input", serializeAttribute(action.input));
           }
           state.subagents.set(actionKey, span);
           continue;
         }
         if (state.actions.has(actionKey)) continue;
         const toolName =
-          asString(action.toolName) ??
-          (kind === "load-skill" ? "load_skill" : "tool");
+          asString(action.toolName) ?? (kind === "load-skill" ? "load_skill" : "tool");
         const span = tracer.startSpan(
           `execute_tool ${toolName}`,
           {
@@ -196,10 +162,7 @@ export function mapAgentTelemetryLifecycle(input: {
           spanContext(turnKey ? state.turns.get(turnKey) : undefined),
         );
         if (capture.recordInputs && action.input !== undefined) {
-          span.setAttribute(
-            "gen_ai.tool.call.arguments",
-            serializeAttribute(action.input),
-          );
+          span.setAttribute("gen_ai.tool.call.arguments", serializeAttribute(action.input));
         }
         state.actions.set(actionKey, span);
         metrics.toolCalls.add(1, {
@@ -207,8 +170,7 @@ export function mapAgentTelemetryLifecycle(input: {
         });
       }
       return stepKey
-        ? state.steps.get(stepKey) ??
-            (turnKey ? state.turns.get(turnKey) : undefined)
+        ? (state.steps.get(stepKey) ?? (turnKey ? state.turns.get(turnKey) : undefined))
         : turnKey
           ? state.turns.get(turnKey)
           : undefined;
@@ -218,14 +180,11 @@ export function mapAgentTelemetryLifecycle(input: {
       const callId = asString(result?.callId);
       if (!callId) return turnKey ? state.turns.get(turnKey) : undefined;
       const actionKey = key(sessionId, callId);
-      const span =
-        state.actions.get(actionKey) ?? state.subagents.get(actionKey);
+      const span = state.actions.get(actionKey) ?? state.subagents.get(actionKey);
       if (span) {
         if (capture.recordOutputs && result?.output !== undefined) {
           span.setAttribute(
-            state.actions.has(actionKey)
-              ? "gen_ai.tool.call.result"
-              : "gen_ai.agent.output",
+            state.actions.has(actionKey) ? "gen_ai.tool.call.result" : "gen_ai.agent.output",
             serializeAttribute(result.output),
           );
         }
@@ -242,14 +201,10 @@ export function mapAgentTelemetryLifecycle(input: {
       const message = asString(data.message);
       const span = stepKey ? state.steps.get(stepKey) : undefined;
       if (message && capture.recordOutputs) {
-        const output = serializeAttribute([
-          { role: "assistant", content: message },
-        ]);
+        const output = serializeAttribute([{ role: "assistant", content: message }]);
         span?.setAttribute("gen_ai.output.messages", output);
         if (turnKey) {
-          state.turns
-            .get(turnKey)
-            ?.setAttribute("gen_ai.output.messages", output);
+          state.turns.get(turnKey)?.setAttribute("gen_ai.output.messages", output);
         }
       }
       return span ?? (turnKey ? state.turns.get(turnKey) : undefined);
@@ -258,10 +213,7 @@ export function mapAgentTelemetryLifecycle(input: {
       const span = stepKey ? state.steps.get(stepKey) : undefined;
       const reasoning = asString(data.reasoning);
       if (span && reasoning && capture.includeReasoning) {
-        span.setAttribute(
-          "eveland.gen_ai.reasoning",
-          serializeAttribute(reasoning),
-        );
+        span.setAttribute("eveland.gen_ai.reasoning", serializeAttribute(reasoning));
       }
       return span;
     }
@@ -272,8 +224,7 @@ export function mapAgentTelemetryLifecycle(input: {
       const actionKey = key(sessionId, callId);
       const existing = state.subagents.get(actionKey);
       if (existing) return existing;
-      const agentName =
-        asString(data.name) ?? asString(data.subagentName) ?? "subagent";
+      const agentName = asString(data.name) ?? asString(data.subagentName) ?? "subagent";
       const span = tracer.startSpan(
         `invoke_agent ${agentName}`,
         {
@@ -295,10 +246,7 @@ export function mapAgentTelemetryLifecycle(input: {
       const span = actionKey ? state.subagents.get(actionKey) : undefined;
       if (span) {
         if (capture.recordOutputs && data.output !== undefined) {
-          span.setAttribute(
-            "gen_ai.agent.output",
-            serializeAttribute(data.output),
-          );
+          span.setAttribute("gen_ai.agent.output", serializeAttribute(data.output));
         }
         span.end();
         state.subagents.delete(actionKey!);
@@ -320,22 +268,15 @@ export function mapAgentTelemetryLifecycle(input: {
         }
         const startedAt = state.stepStartedAt.get(stepKey!);
         if (startedAt !== undefined) {
-          metrics.operationDuration.record(
-            Math.max(0, now() - startedAt) / 1_000,
-            {
-              ...(state.sessionModels.get(sessionId)
-                ? {
-                    "gen_ai.request.model":
-                      state.sessionModels.get(sessionId)!,
-                  }
-                : {}),
-              "gen_ai.operation.name": "chat",
-              "error.type":
-                eventType === "step.failed"
-                  ? asString(data.code) ?? "unknown"
-                  : "",
-            },
-          );
+          metrics.operationDuration.record(Math.max(0, now() - startedAt) / 1_000, {
+            ...(state.sessionModels.get(sessionId)
+              ? {
+                  "gen_ai.request.model": state.sessionModels.get(sessionId)!,
+                }
+              : {}),
+            "gen_ai.operation.name": "chat",
+            "error.type": eventType === "step.failed" ? (asString(data.code) ?? "unknown") : "",
+          });
         }
         span.end();
         state.steps.delete(stepKey!);
@@ -374,8 +315,7 @@ export function mapAgentTelemetryLifecycle(input: {
     }
     default:
       return stepKey
-        ? state.steps.get(stepKey) ??
-            (turnKey ? state.turns.get(turnKey) : undefined)
+        ? (state.steps.get(stepKey) ?? (turnKey ? state.turns.get(turnKey) : undefined))
         : turnKey
           ? state.turns.get(turnKey)
           : undefined;
@@ -403,24 +343,13 @@ export function commonAttributes(
           "eveland.eve.agent.name": agentName,
         }
       : {}),
-    ...(agentNodeId
-      ? { "eveland.eve.agent.node.id": agentNodeId }
-      : {}),
-    ...(channelKind
-      ? { "eveland.eve.channel.kind": channelKind }
-      : {}),
+    ...(agentNodeId ? { "eveland.eve.agent.node.id": agentNodeId } : {}),
+    ...(channelKind ? { "eveland.eve.channel.kind": channelKind } : {}),
   };
 }
 
-export function endAllAgentTelemetrySpans(
-  state: AgentTelemetryRuntimeState,
-): void {
-  for (const spans of [
-    state.steps,
-    state.actions,
-    state.subagents,
-    state.turns,
-  ]) {
+export function endAllAgentTelemetrySpans(state: AgentTelemetryRuntimeState): void {
+  for (const spans of [state.steps, state.actions, state.subagents, state.turns]) {
     for (const span of spans.values()) span.end();
     spans.clear();
   }
@@ -435,9 +364,7 @@ function parentContext(
   const parentSessionId = asString(context.session?.parent?.sessionId);
   const callId = asString(context.session?.parent?.callId);
   return spanContext(
-    parentSessionId && callId
-      ? state.subagents.get(key(parentSessionId, callId))
-      : undefined,
+    parentSessionId && callId ? state.subagents.get(key(parentSessionId, callId)) : undefined,
   );
 }
 
@@ -486,12 +413,7 @@ function endSessionSpans(
   data: Record<string, unknown>,
 ): void {
   const prefix = `${sessionId}\0`;
-  for (const spans of [
-    state.steps,
-    state.actions,
-    state.subagents,
-    state.turns,
-  ]) {
+  for (const spans of [state.steps, state.actions, state.subagents, state.turns]) {
     for (const [spanKey, span] of spans) {
       if (!spanKey.startsWith(prefix)) continue;
       if (failed) setErrorStatus(span, data);

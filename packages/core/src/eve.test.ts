@@ -120,12 +120,8 @@ describe("Eve session request classification", () => {
     expect(classify("POST", "/eve/v1/session/%E0%A4%A")).toBeNull();
     expect(classify("POST", "/other")).toBeNull();
 
-    expect(Eve.isEveSessionNamespace("/eve/v1/session/eve_1/unknown")).toBe(
-      true,
-    );
-    expect(Eve.isEveSessionNamespace("/eve/v1/session-like/eve_1")).toBe(
-      false,
-    );
+    expect(Eve.isEveSessionNamespace("/eve/v1/session/eve_1/unknown")).toBe(true);
+    expect(Eve.isEveSessionNamespace("/eve/v1/session-like/eve_1")).toBe(false);
   });
 });
 
@@ -153,7 +149,9 @@ describe("Playground turn validation", () => {
       ],
     };
 
-    expect(validate(payload, { maxFiles: 4, maxFileBytes: 8, maxTotalFileBytes: 16 })).toEqual(payload);
+    expect(validate(payload, { maxFiles: 4, maxFileBytes: 8, maxTotalFileBytes: 16 })).toEqual(
+      payload,
+    );
   });
 
   test("rejects unsafe file types and attachment count or byte overflows", () => {
@@ -168,12 +166,23 @@ describe("Playground turn validation", () => {
       mediaType: "text/plain",
     };
 
-    expect(() => validate({ message: [file, file] }, { maxFiles: 1, maxFileBytes: 8, maxTotalFileBytes: 16 })).toThrow(/at most 1 file/i);
-    expect(() => validate({ message: [file] }, { maxFiles: 4, maxFileBytes: 4, maxTotalFileBytes: 16 })).toThrow(/5 bytes.*4 bytes/i);
+    expect(() =>
+      validate({ message: [file, file] }, { maxFiles: 1, maxFileBytes: 8, maxTotalFileBytes: 16 }),
+    ).toThrow(/at most 1 file/i);
+    expect(() =>
+      validate({ message: [file] }, { maxFiles: 4, maxFileBytes: 4, maxTotalFileBytes: 16 }),
+    ).toThrow(/5 bytes.*4 bytes/i);
     expect(() =>
       validate(
         {
-          message: [{ ...file, data: "data:application/zip;base64,UEsDBA==", filename: "source.zip", mediaType: "application/zip" }],
+          message: [
+            {
+              ...file,
+              data: "data:application/zip;base64,UEsDBA==",
+              filename: "source.zip",
+              mediaType: "application/zip",
+            },
+          ],
         },
         { maxFiles: 4, maxFileBytes: 8, maxTotalFileBytes: 16 },
       ),
@@ -186,11 +195,20 @@ describe("Playground turn validation", () => {
     if (typeof validate !== "function") return;
 
     expect(
-      validate({ continuationToken: "continue_1", inputResponses: [{ requestId: "request_1", optionId: "approve" }] }),
+      validate({
+        continuationToken: "continue_1",
+        inputResponses: [{ requestId: "request_1", optionId: "approve" }],
+      }),
     ).toMatchObject({ inputResponses: [{ requestId: "request_1", optionId: "approve" }] });
-    expect(() => validate({ continuationToken: "continue_1" })).toThrow(/message or input response/i);
-    expect(() => validate({ inputResponses: [{ requestId: "request_1", text: "" }] })).toThrow(/option or text value/i);
-    expect(() => validate({ inputResponses: [{ requestId: "request_1", optionId: "" }] })).toThrow(/option or text value/i);
+    expect(() => validate({ continuationToken: "continue_1" })).toThrow(
+      /message or input response/i,
+    );
+    expect(() => validate({ inputResponses: [{ requestId: "request_1", text: "" }] })).toThrow(
+      /option or text value/i,
+    );
+    expect(() => validate({ inputResponses: [{ requestId: "request_1", optionId: "" }] })).toThrow(
+      /option or text value/i,
+    );
   });
 });
 
@@ -202,7 +220,9 @@ describe("eve event projections", () => {
     expect(scheduleExecutionStatusFromEveEvent("turn.failed", "failed")).toBe("failed");
     expect(scheduleExecutionStatusFromEveEvent("turn.cancelled", "running")).toBe("failed");
     expect(scheduleExecutionStatusFromEveEvent("session.failed", "failed")).toBe("failed");
-    expect(scheduleExecutionStatusFromEveEvent("session.waiting", "waiting_approval")).toBe("parked");
+    expect(scheduleExecutionStatusFromEveEvent("session.waiting", "waiting_approval")).toBe(
+      "parked",
+    );
     expect(scheduleExecutionStatusFromEveEvent("session.waiting", "waiting")).toBe("succeeded");
     // Total mapping: anything outside the boundary vocabulary keeps running.
     expect(scheduleExecutionStatusFromEveEvent("step.completed", "running")).toBe("running");
@@ -218,7 +238,9 @@ describe("eve event projections", () => {
     expect(sessionStatusFromEveEvent("session.started", "running")).toBe("running");
     expect(sessionStatusFromEveEvent("turn.started", "waiting")).toBe("running");
     expect(sessionStatusFromEveEvent("input.requested", "running")).toBe("waiting_approval");
-    expect(sessionStatusFromEveEvent("session.waiting", "waiting_approval")).toBe("waiting_approval");
+    expect(sessionStatusFromEveEvent("session.waiting", "waiting_approval")).toBe(
+      "waiting_approval",
+    );
     expect(sessionStatusFromEveEvent("session.waiting", "running")).toBe("waiting");
     expect(sessionStatusFromEveEvent("session.completed", "running")).toBe("completed");
     expect(sessionStatusFromEveEvent("session.failed", "running")).toBe("failed");
@@ -227,13 +249,17 @@ describe("eve event projections", () => {
 
   test("renders the scheduled-execution failure line from the boundary payload", () => {
     const { scheduleExecutionErrorFromEveEvent } = Eve;
-    expect(scheduleExecutionErrorFromEveEvent("turn.failed", { message: "boom" }))
-      .toBe("Scheduled Session turn.failed: boom");
-    expect(scheduleExecutionErrorFromEveEvent("turn.failed", {}))
-      .toBe("Scheduled Session ended with turn.failed.");
-    expect(scheduleExecutionErrorFromEveEvent(undefined, { message: "boom" }))
-      .toBe("Scheduled Session failed: boom");
-    expect(scheduleExecutionErrorFromEveEvent(undefined, "not a record"))
-      .toBe("Scheduled Session ended with failure.");
+    expect(scheduleExecutionErrorFromEveEvent("turn.failed", { message: "boom" })).toBe(
+      "Scheduled Session turn.failed: boom",
+    );
+    expect(scheduleExecutionErrorFromEveEvent("turn.failed", {})).toBe(
+      "Scheduled Session ended with turn.failed.",
+    );
+    expect(scheduleExecutionErrorFromEveEvent(undefined, { message: "boom" })).toBe(
+      "Scheduled Session failed: boom",
+    );
+    expect(scheduleExecutionErrorFromEveEvent(undefined, "not a record")).toBe(
+      "Scheduled Session ended with failure.",
+    );
   });
 });

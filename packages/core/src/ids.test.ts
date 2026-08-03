@@ -15,21 +15,25 @@ describe("createId", () => {
     const id = createId("proj");
 
     expect(id).toMatch(/^proj_[A-Za-z0-9]{10}$/);
-    expect([...id.slice("proj_".length)].every((char) => idAlphabet.includes(char))).toBe(true);
+    expect(Array.from(id.slice("proj_".length)).every((char) => idAlphabet.includes(char))).toBe(
+      true,
+    );
   });
 });
 
 describe("project slugs", () => {
   test("normalizes a repository-style name into a DNS-safe slug", () => {
-    expect(slugifyProjectName("  Sample_Office Assistant.git  ")).toBe("sample-office-assistant-git");
+    expect(slugifyProjectName("  Sample_Office Assistant.git  ")).toBe(
+      "sample-office-assistant-git",
+    );
     expect(slugifyProjectName("Crème brûlée agent")).toBe("creme-brulee-agent");
     expect(() => slugifyProjectName("---")).toThrow(/project name/i);
   });
 
   test("infers the slug from HTTPS and SCP-style Git repository URLs", () => {
-    expect(inferProjectSlugFromGitUrl("https://github.com/evelandhq/sample-office-assistant.git")).toBe(
-      "sample-office-assistant",
-    );
+    expect(
+      inferProjectSlugFromGitUrl("https://github.com/evelandhq/sample-office-assistant.git"),
+    ).toBe("sample-office-assistant");
     expect(inferProjectSlugFromGitUrl("git@github.com:evelandhq/sample-office-assistant.git")).toBe(
       "sample-office-assistant",
     );
@@ -38,13 +42,10 @@ describe("project slugs", () => {
   test("claims the requested slug and then deterministic numeric suffixes", async () => {
     const attempted: string[] = [];
 
-    const claimed = await claimProjectSlug(
-      "sample-office-assistant",
-      async (candidate) => {
-        attempted.push(candidate);
-        return candidate === "sample-office-assistant-2" ? { slug: candidate } : null;
-      },
-    );
+    const claimed = await claimProjectSlug("sample-office-assistant", async (candidate) => {
+      attempted.push(candidate);
+      return candidate === "sample-office-assistant-2" ? { slug: candidate } : null;
+    });
 
     expect(attempted).toEqual([
       "sample-office-assistant",
@@ -60,7 +61,9 @@ describe("Git HTTP hosts", () => {
     expect(normalizeGitHttpHost(" https://GitLab.Example.COM:8443/group/agent.git ")).toBe(
       "gitlab.example.com:8443",
     );
-    expect(normalizeGitHttpHost("https://oauth2:token@gitlab.example.com/group/agent.git")).toBeNull();
+    expect(
+      normalizeGitHttpHost("https://oauth2:token@gitlab.example.com/group/agent.git"),
+    ).toBeNull();
     expect(normalizeGitHttpHost("http://gitlab.example.com/group/agent.git")).toBeNull();
     expect(normalizeGitHttpHost("git@gitlab.example.com:group/agent.git")).toBeNull();
   });

@@ -36,21 +36,20 @@ describe("sweepReleaseRetention", () => {
       deployments.push(deployment);
     }
 
-    await expect(
-      sweepReleaseRetention(store, { keepRecent: 3, limit: 25 }),
-    ).resolves.toBe(2);
-    await expect(
-      sweepReleaseRetention(store, { keepRecent: 3, limit: 25 }),
-    ).resolves.toBe(0);
+    await expect(sweepReleaseRetention(store, { keepRecent: 3, limit: 25 })).resolves.toBe(2);
+    await expect(sweepReleaseRetention(store, { keepRecent: 3, limit: 25 })).resolves.toBe(0);
 
     const archiveJobs = await store.listProjectJobs(project.id, {
       type: "archive_deployment",
       limit: 10,
     });
     expect(archiveJobs).toHaveLength(2);
-    expect(
-      archiveJobs.map((job) => job.payload.deploymentId).sort(),
-    ).toEqual(deployments.slice(0, 2).map((deployment) => deployment.id).sort());
+    expect(archiveJobs.map((job) => job.payload.deploymentId).sort()).toEqual(
+      deployments
+        .slice(0, 2)
+        .map((deployment) => deployment.id)
+        .sort(),
+    );
   });
 
   test("falls back to the minimum retention when configuration is invalid", async () => {
@@ -83,9 +82,9 @@ describe("sweepReleaseRetention", () => {
       await store.updateDeploymentStatus(deployment.id, "stopped");
     }
 
-    await expect(
-      sweepReleaseRetention(store, { keepRecent: Number.NaN, limit: 25 }),
-    ).resolves.toBe(2);
+    await expect(sweepReleaseRetention(store, { keepRecent: Number.NaN, limit: 25 })).resolves.toBe(
+      2,
+    );
   });
 
   test("does not enqueue archive work while a project is deleting", async () => {

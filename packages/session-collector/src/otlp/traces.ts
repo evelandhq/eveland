@@ -8,9 +8,7 @@ import {
   unixNanoToIso,
 } from "./values.js";
 
-export function countValidOtlpSpans(
-  payload: Record<string, unknown>,
-): number {
+export function countValidOtlpSpans(payload: Record<string, unknown>): number {
   let count = 0;
   for (const resourceSpans of arrayOfRecords(payload.resourceSpans)) {
     if (!isManagedResource(resourceSpans.resource)) continue;
@@ -28,9 +26,7 @@ function isManagedResource(value: unknown): boolean {
   const attributes = attributesFrom(resource?.attributes);
   return (
     stringValue(attributes["service.name"]) !== undefined &&
-    TELEMETRY_DOMAINS.some(
-      (domain) => domain === attributes["eveland.telemetry.domain"],
-    )
+    TELEMETRY_DOMAINS.some((domain) => domain === attributes["eveland.telemetry.domain"])
   );
 }
 

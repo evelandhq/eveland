@@ -97,12 +97,11 @@ type PlaygroundPanelProps = {
 };
 
 export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps) {
-  const [session] = useState(
-    () =>
-      new Client({
-        host: `/api/eveland/projects/${projectId}/playground`,
-        preserveCompletedSessions: true,
-      }).session(),
+  const [session] = useState(() =>
+    new Client({
+      host: `/api/eveland/projects/${projectId}/playground`,
+      preserveCompletedSessions: true,
+    }).session(),
   );
   const pendingRouteAuthTurn = useRef<PendingPlaygroundMessage | null>(null);
   const leaveResetSent = useRef(false);
@@ -125,11 +124,14 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   const versionError = eveVersion.supported
     ? null
     : `Detected Eve ${eveVersion.version ?? "Unknown"}; Eveland requires ${eveVersion.expected}. Upgrade the project's eve dependency before deploying.`;
-  const versionUpgradeWarning = getEveVersionStatus(eveVersion) === "upgrade"
-    ? `A newer supported Eve version is available. Upgrade to Eve ${eveVersion.supportedRanges.at(-1)} as soon as possible.`
-    : null;
+  const versionUpgradeWarning =
+    getEveVersionStatus(eveVersion) === "upgrade"
+      ? `A newer supported Eve version is available. Upgrade to Eve ${eveVersion.supportedRanges.at(-1)} as soon as possible.`
+      : null;
   const routeAuthRedirect = versionError ? null : interactionFromClientError(agent.error);
-  const error = routeAuthRedirect ? null : versionError ?? composerError ?? agent.error?.message ?? null;
+  const error = routeAuthRedirect
+    ? null
+    : (versionError ?? composerError ?? agent.error?.message ?? null);
 
   async function sendMessageWithRouteAuth(message: PendingPlaygroundMessage) {
     pendingRouteAuthTurn.current = message;
@@ -175,11 +177,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
         <EveVersionStatus eveVersion={eveVersion} showMessage={false} />
         <div className="ml-auto flex items-center gap-2">
           <Button
-            disabled={
-              isBusy ||
-              isResetting ||
-              agent.data.messages.length === 0
-            }
+            disabled={isBusy || isResetting || agent.data.messages.length === 0}
             onClick={async () => {
               setComposerError(null);
               setIsResetting(true);
@@ -236,11 +234,15 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
         {routeAuthRedirect ? (
           <Alert className="mb-2">
             <AlertTitle>Redirecting for authorization</AlertTitle>
-            <AlertDescription>Taking you to your identity provider to authorize this connection…</AlertDescription>
+            <AlertDescription>
+              Taking you to your identity provider to authorize this connection…
+            </AlertDescription>
           </Alert>
         ) : error ? (
           <Alert className="mb-2" variant="destructive">
-            <AlertTitle>{versionError ? "Eve upgrade required" : "Playground request failed"}</AlertTitle>
+            <AlertTitle>
+              {versionError ? "Eve upgrade required" : "Playground request failed"}
+            </AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : versionUpgradeWarning ? (
@@ -263,7 +265,11 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           multiple
           onError={(inputError) => setComposerError(inputError.message)}
           onSubmit={async ({ files, text }) => {
-            if (!eveVersion.supported || isBusy || (text.trim().length === 0 && files.length === 0)) {
+            if (
+              !eveVersion.supported ||
+              isBusy ||
+              (text.trim().length === 0 && files.length === 0)
+            ) {
               return;
             }
 
@@ -278,15 +284,24 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           }}
         >
           <ComposerAttachments />
-          <PromptInputTextarea disabled={isBusy || !eveVersion.supported} placeholder="Ask the deployed agent..." />
+          <PromptInputTextarea
+            disabled={isBusy || !eveVersion.supported}
+            placeholder="Ask the deployed agent..."
+          />
           <PromptInputFooter>
             <PromptInputTools>
               <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger disabled={isBusy || !eveVersion.supported} tooltip="Attach files">
+                <PromptInputActionMenuTrigger
+                  disabled={isBusy || !eveVersion.supported}
+                  tooltip="Attach files"
+                >
                   <PaperclipIcon />
                 </PromptInputActionMenuTrigger>
                 <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments disabled={isBusy || !eveVersion.supported} label="Upload files" />
+                  <PromptInputActionAddAttachments
+                    disabled={isBusy || !eveVersion.supported}
+                    label="Upload files"
+                  />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
               <span className="text-xs text-muted-foreground">Up to 4 files · 10 MiB total</span>
@@ -318,7 +333,11 @@ function PlaygroundMessage({
 }: {
   message: EveMessage;
   isBusy: boolean;
-  onInputResponse: (response: { requestId: string; optionId?: string; text?: string }) => Promise<void>;
+  onInputResponse: (response: {
+    requestId: string;
+    optionId?: string;
+    text?: string;
+  }) => Promise<void>;
 }) {
   const displayItems = groupPlaygroundParts(message.parts, message.metadata?.status);
 
@@ -345,7 +364,11 @@ function PlaygroundDisplayItemView({
 }: {
   item: PlaygroundDisplayItem;
   isBusy: boolean;
-  onInputResponse: (response: { requestId: string; optionId?: string; text?: string }) => Promise<void>;
+  onInputResponse: (response: {
+    requestId: string;
+    optionId?: string;
+    text?: string;
+  }) => Promise<void>;
 }) {
   if (item.kind === "activity") {
     return (
@@ -390,7 +413,11 @@ function PlaygroundActivityPartView({
 }: {
   part: PlaygroundActivityPart;
   isBusy: boolean;
-  onInputResponse: (response: { requestId: string; optionId?: string; text?: string }) => Promise<void>;
+  onInputResponse: (response: {
+    requestId: string;
+    optionId?: string;
+    text?: string;
+  }) => Promise<void>;
 }) {
   if (part.type === "reasoning") {
     return <AgentActivityReasoning isStreaming={part.state === "streaming"} text={part.text} />;
@@ -408,7 +435,11 @@ function PlaygroundTool({
 }: {
   part: EveDynamicToolPart;
   isBusy: boolean;
-  onInputResponse: (response: { requestId: string; optionId?: string; text?: string }) => Promise<void>;
+  onInputResponse: (response: {
+    requestId: string;
+    optionId?: string;
+    text?: string;
+  }) => Promise<void>;
 }) {
   const request = part.toolMetadata?.eve?.inputRequest;
   const response = part.toolMetadata?.eve?.inputResponse;
@@ -500,7 +531,13 @@ function HitlResponseForm({
               disabled={disabled || isResponding}
               key={option.id}
               onClick={() => void respond({ requestId: request.requestId, optionId: option.id })}
-              variant={option.style === "danger" ? "destructive" : option.style === "primary" ? "default" : "outline"}
+              variant={
+                option.style === "danger"
+                  ? "destructive"
+                  : option.style === "primary"
+                    ? "default"
+                    : "outline"
+              }
             >
               {option.label}
             </ConfirmationAction>
@@ -525,7 +562,11 @@ function HitlResponseForm({
               placeholder="Type your response..."
               value={text}
             />
-            <InputGroupButton disabled={disabled || isResponding || text.trim().length === 0} type="submit" variant="secondary">
+            <InputGroupButton
+              disabled={disabled || isResponding || text.trim().length === 0}
+              type="submit"
+              variant="secondary"
+            >
               Respond
             </InputGroupButton>
           </InputGroup>
@@ -546,13 +587,18 @@ function AuthorizationPrompt({ part }: { part: EveAuthorizationPart }) {
           {isCompleted
             ? part.outcome === "authorized"
               ? "Connection authorized."
-              : part.reason ?? `Authorization ${part.outcome}.`
+              : (part.reason ?? `Authorization ${part.outcome}.`)
             : part.description}
         </p>
-        {!isCompleted && part.authorization?.instructions ? <p>{part.authorization.instructions}</p> : null}
+        {!isCompleted && part.authorization?.instructions ? (
+          <p>{part.authorization.instructions}</p>
+        ) : null}
         {!isCompleted && part.authorization?.userCode ? (
           <p>
-            Code: <span className="font-mono font-medium text-foreground">{part.authorization.userCode}</span>
+            Code:{" "}
+            <span className="font-mono font-medium text-foreground">
+              {part.authorization.userCode}
+            </span>
           </p>
         ) : null}
         {!isCompleted && part.authorization?.url ? (
@@ -570,7 +616,11 @@ function AuthorizationPrompt({ part }: { part: EveAuthorizationPart }) {
   );
 }
 
-function playgroundDisplayItemKey(messageId: string, item: PlaygroundDisplayItem, index: number): string {
+function playgroundDisplayItemKey(
+  messageId: string,
+  item: PlaygroundDisplayItem,
+  index: number,
+): string {
   if (item.kind === "part") {
     return `${messageId}:${item.part.type}:${index}`;
   }
@@ -580,7 +630,8 @@ function playgroundDisplayItemKey(messageId: string, item: PlaygroundDisplayItem
 
 function playgroundActivityPartKey(part: PlaygroundActivityPart, index: number): string {
   if (part.type === "dynamic-tool") return part.toolCallId;
-  if (part.type === "authorization") return `authorization:${part.turnId}:${part.stepIndex}:${part.name}`;
+  if (part.type === "authorization")
+    return `authorization:${part.turnId}:${part.stepIndex}:${part.name}`;
   return `reasoning:${part.stepIndex ?? index}`;
 }
 
@@ -623,7 +674,11 @@ function dataUrlSize(url: string): number {
   }
   const payload = url.slice(comma + 1);
   return url.slice(0, comma).endsWith(";base64")
-    ? Math.max(0, Math.floor((payload.length * 3) / 4) - (payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0))
+    ? Math.max(
+        0,
+        Math.floor((payload.length * 3) / 4) -
+          (payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0),
+      )
     : new TextEncoder().encode(decodeURIComponent(payload)).length;
 }
 

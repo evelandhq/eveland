@@ -1,8 +1,4 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { serve } from "@hono/node-server";
 import { afterEach, vi } from "vitest";
 import type { GatewayRepository, ResolvedAgentRoute } from "./app.js";
@@ -16,16 +12,10 @@ export function registerGatewayTestCleanup(): void {
     await Promise.all([
       ...servers
         .splice(0)
-        .map(
-          (server) =>
-            new Promise<void>((resolve) => server.close(() => resolve())),
-        ),
+        .map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
       ...gatewayServers
         .splice(0)
-        .map(
-          (server) =>
-            new Promise<void>((resolve) => server.close(() => resolve())),
-        ),
+        .map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
     ]);
   });
 }
@@ -36,11 +26,7 @@ export function route(
     deploymentStatus?: ResolvedAgentRoute["targets"][number]["status"];
   } = {},
 ): ResolvedAgentRoute {
-  const {
-    hostPort = 41999,
-    deploymentStatus = "running",
-    ...routeOverrides
-  } = overrides;
+  const { hostPort = 41999, deploymentStatus = "running", ...routeOverrides } = overrides;
   return {
     id: "route_project",
     projectId: "proj_1",
@@ -97,15 +83,12 @@ export function repository(
   return {
     bindings,
     async findRouteByHostname(hostname) {
-      return (
-        routes.find((candidate) => candidate.hostname === hostname) ?? null
-      );
+      return routes.find((candidate) => candidate.hostname === hostname) ?? null;
     },
     async findProjectRoute(projectId) {
       return (
         routes.find(
-          (candidate) =>
-            candidate.projectId === projectId && candidate.kind === "project",
+          (candidate) => candidate.projectId === projectId && candidate.kind === "project",
         ) ?? null
       );
     },
@@ -126,9 +109,7 @@ export function repository(
     async findSessionBinding(projectId, eveSessionId) {
       return (
         (bindings.find(
-          (binding) =>
-            binding.projectId === projectId &&
-            binding.eveSessionId === eveSessionId,
+          (binding) => binding.projectId === projectId && binding.eveSessionId === eveSessionId,
         ) as never) ?? null
       );
     },
@@ -136,8 +117,7 @@ export function repository(
       return (
         (bindings.find(
           (binding) =>
-            binding.projectId === projectId &&
-            binding.continuationToken === continuationToken,
+            binding.projectId === projectId && binding.continuationToken === continuationToken,
         ) as never) ?? null
       );
     },
@@ -157,9 +137,7 @@ export function repository(
       now = new Date(),
     ) {
       const binding = bindings.find(
-        (candidate) =>
-          candidate.projectId === projectId &&
-          candidate.eveSessionId === eveSessionId,
+        (candidate) => candidate.projectId === projectId && candidate.eveSessionId === eveSessionId,
       );
       if (!binding) return null;
       binding.continuationToken = continuationToken;
@@ -168,9 +146,7 @@ export function repository(
     },
     async touchSessionBinding(projectId, eveSessionId, now = new Date()) {
       const binding = bindings.find(
-        (candidate) =>
-          candidate.projectId === projectId &&
-          candidate.eveSessionId === eveSessionId,
+        (candidate) => candidate.projectId === projectId && candidate.eveSessionId === eveSessionId,
       );
       if (!binding) return null;
       binding.updatedAt = now.toISOString();
@@ -186,8 +162,7 @@ export async function startUpstream(
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
-  if (!address || typeof address === "string")
-    throw new Error("Upstream fixture did not bind.");
+  if (!address || typeof address === "string") throw new Error("Upstream fixture did not bind.");
   return { port: address.port };
 }
 
@@ -202,9 +177,7 @@ export async function activatedSessionPersistenceFailureFixture(input: {
     response.writeHead(202, { "content-type": "application/json" });
     response.end(JSON.stringify(input.responseBody));
   });
-  const repo = repository([
-    route({ hostPort: upstream.port, deploymentStatus: "stopped" }),
-  ]);
+  const repo = repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]);
   repo.bindings.push({
     id: `bind_persist_${input.trigger}`,
     projectId: "proj_1",

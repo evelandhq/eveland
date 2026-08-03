@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 import { createTestStore } from "@eveland/db/vitest";
 
-
 describe("api app", () => {
   test("leaves token usage projection to the observer collector", async () => {
     const store = createTestStore();
@@ -91,9 +90,7 @@ describe("api app", () => {
       usageReported: true,
     });
 
-    const response = await createApp(store).request(
-      `/sessions/${session.id}/usage`,
-    );
+    const response = await createApp(store).request(`/sessions/${session.id}/usage`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -107,5 +104,4 @@ describe("api app", () => {
       ],
     });
   });
-
 });

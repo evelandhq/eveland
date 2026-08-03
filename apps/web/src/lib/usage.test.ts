@@ -2,12 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { UsageTotals } from "@eveland/core/contracts";
 import * as usageHelpers from "./usage";
 
-const {
-  formatTokenCount,
-  formatUsd,
-  groupModelUsageByAgent,
-  summarizeTokenUsage,
-} = usageHelpers;
+const { formatTokenCount, formatUsd, groupModelUsageByAgent, summarizeTokenUsage } = usageHelpers;
 
 const usageTotals = (overrides: Partial<UsageTotals> = {}): UsageTotals => ({
   sessions: 0,
@@ -156,12 +151,8 @@ describe("usage analytics presentation", () => {
         }),
       ),
     ).toBe(80);
-    expect(
-      usageCoverage!(usageTotals({ reportedSteps: 3, missingSteps: 1 })),
-    ).toBe(75);
-    expect(
-      costCoverage!(usageTotals({ modelSteps: 4, costReportedSteps: 1 })),
-    ).toBe(25);
+    expect(usageCoverage!(usageTotals({ reportedSteps: 3, missingSteps: 1 }))).toBe(75);
+    expect(costCoverage!(usageTotals({ modelSteps: 4, costReportedSteps: 1 }))).toBe(25);
     expect(completionRate!(usageTotals())).toBeNull();
     expect(usageCoverage!(usageTotals())).toBeNull();
     expect(costCoverage!(usageTotals())).toBeNull();

@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
-import { useDisplayTimezone } from "@/components/time-zone-provider"
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { useDisplayTimezone } from "@/components/time-zone-provider";
 import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/chart"
+} from "@/components/ui/chart";
 import {
   capacityTimelineScale,
   formatCapacityTimelineTick,
   formatCapacityTooltipTimestamp,
-} from "@/lib/instance-health"
+} from "@/lib/instance-health";
 
 export function CapacityTrend({
   label,
@@ -21,30 +21,30 @@ export function CapacityTrend({
   hours,
   detail,
 }: {
-  label: string
-  value: string
+  label: string;
+  value: string;
   points: Array<{
-    observedAt: string
-    value: number
-  }>
-  hours: number
-  detail?: string
+    observedAt: string;
+    value: number;
+  }>;
+  hours: number;
+  detail?: string;
 }) {
-  const timeZone = useDisplayTimezone()
+  const timeZone = useDisplayTimezone();
   const chartData = points.map((point) => ({
     ...point,
     timestamp: Date.parse(point.observedAt),
-  }))
+  }));
   const timelineScale = capacityTimelineScale(
     points.map((point) => point.observedAt),
     hours,
-  )
+  );
   const chartConfig = {
     value: {
       label,
       color: "var(--chart-1)",
     },
-  } satisfies ChartConfig
+  } satisfies ChartConfig;
 
   return (
     <figure className="flex min-w-0 flex-col gap-3 py-4">
@@ -103,8 +103,8 @@ export function CapacityTrend({
                 <ChartTooltipContent
                   indicator="line"
                   labelFormatter={(_label, payload) => {
-                    const observedAt = payload[0]?.payload?.observedAt
-                    return observedAt ? formatCapacityTooltipTimestamp(observedAt, timeZone) : ""
+                    const observedAt = payload[0]?.payload?.observedAt;
+                    return observedAt ? formatCapacityTooltipTimestamp(observedAt, timeZone) : "";
                   }}
                   formatter={(metricValue) => (
                     <>
@@ -132,9 +132,9 @@ export function CapacityTrend({
         </div>
       )}
     </figure>
-  )
+  );
 }
 
 function formatPercentTick(value: number): string {
-  return `${value}%`
+  return `${value}%`;
 }

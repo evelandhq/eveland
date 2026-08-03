@@ -1,11 +1,6 @@
 import { builtinModules } from "node:module";
 import { describe, expect, test } from "vitest";
-import {
-  importSpecifiers,
-  listWorkspaces,
-  readSource,
-  resolveImport,
-} from "./scan-support.js";
+import { importSpecifiers, listWorkspaces, readSource, resolveImport } from "./scan-support.js";
 
 // The real builtin list, not a hand-written subset that silently misses
 // async_hooks, vm, v8, tty, and friends.

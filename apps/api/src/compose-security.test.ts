@@ -16,7 +16,10 @@ function serviceBlock(compose: string, service: string) {
 
   const contentStart = start + marker.length;
   const nextServiceOffset = compose.slice(contentStart).search(/\n  [a-z][a-z0-9-]*:\n/);
-  return compose.slice(start, nextServiceOffset === -1 ? undefined : contentStart + nextServiceOffset);
+  return compose.slice(
+    start,
+    nextServiceOffset === -1 ? undefined : contentStart + nextServiceOffset,
+  );
 }
 
 describe("Compose controller security boundaries", () => {
@@ -42,7 +45,9 @@ describe("Compose controller security boundaries", () => {
     const api = serviceBlock(developmentCompose, "api");
 
     expect(api).toContain("EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}");
-    expect(api).toContain('EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"');
+    expect(api).toContain(
+      'EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"',
+    );
     expect(api).toContain('BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}"');
     expect(api).toContain("BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}");
   });

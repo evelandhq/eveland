@@ -18,7 +18,9 @@ const config = {
 describe("generic OIDC Authorization Code provider", () => {
   test("uses PKCE, state, and nonce and activates only the verified caller credential", async () => {
     const { store, connection, snapshot } = await fixture("oidc-verified");
-    let authorizationTransaction: { state: string; codeVerifier: string; nonce: string } | undefined;
+    let authorizationTransaction:
+      | { state: string; codeVerifier: string; nonce: string }
+      | undefined;
     const provider = createOidcAuthorizationCodeProvider({
       store,
       appSecretKey,
@@ -50,11 +52,15 @@ describe("generic OIDC Authorization Code provider", () => {
       getConnection: async () => snapshot,
     });
 
-    await expect(provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" })).resolves.toMatchObject({
+    await expect(
+      provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" }),
+    ).resolves.toMatchObject({
       envelope: { headers: [["authorization", "Bearer access-token"]] },
       version: { securityRevision: 1, rotationSeq: 0 },
     });
-    await expect(provider.getCredential({ connection: snapshot, callerPrincipalId: "member-b" })).resolves.toMatchObject({
+    await expect(
+      provider.getCredential({ connection: snapshot, callerPrincipalId: "member-b" }),
+    ).resolves.toMatchObject({
       failure: { code: "interaction_required" },
     });
     const stored = await store.getAgentAuthCredential(credentialKey(connection.id, "member-a"));
@@ -72,33 +78,40 @@ describe("generic OIDC Authorization Code provider", () => {
       protocol: protocol(),
       verifyAccessToken: async () => ({ issuer: config.issuer, subject: "subject" }),
     });
-    const start = () => provider.start({
-      connection: snapshot,
-      callerPrincipalId: "member-a",
-      returnPath: `/projects/${connection.target.projectId}/playground`,
-    });
+    const start = () =>
+      provider.start({
+        connection: snapshot,
+        callerPrincipalId: "member-a",
+        returnPath: `/projects/${connection.target.projectId}/playground`,
+      });
 
     const callerMismatch = await start();
-    await expect(provider.callback({
-      state: callerMismatch.state,
-      currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${callerMismatch.state}`),
-      callerPrincipalId: "member-b",
-      getConnection: async () => snapshot,
-    })).rejects.toThrow(/different caller/i);
-    await expect(provider.callback({
-      state: callerMismatch.state,
-      currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${callerMismatch.state}`),
-      callerPrincipalId: "member-a",
-      getConnection: async () => snapshot,
-    })).rejects.toThrow(/invalid, expired, or already used/i);
+    await expect(
+      provider.callback({
+        state: callerMismatch.state,
+        currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${callerMismatch.state}`),
+        callerPrincipalId: "member-b",
+        getConnection: async () => snapshot,
+      }),
+    ).rejects.toThrow(/different caller/i);
+    await expect(
+      provider.callback({
+        state: callerMismatch.state,
+        currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${callerMismatch.state}`),
+        callerPrincipalId: "member-a",
+        getConnection: async () => snapshot,
+      }),
+    ).rejects.toThrow(/invalid, expired, or already used/i);
 
     const revisionMismatch = await start();
-    await expect(provider.callback({
-      state: revisionMismatch.state,
-      currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${revisionMismatch.state}`),
-      callerPrincipalId: "member-a",
-      getConnection: async () => ({ ...snapshot, securityRevision: 2 }),
-    })).rejects.toThrow(/Playground authentication changed/i);
+    await expect(
+      provider.callback({
+        state: revisionMismatch.state,
+        currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${revisionMismatch.state}`),
+        callerPrincipalId: "member-a",
+        getConnection: async () => ({ ...snapshot, securityRevision: 2 }),
+      }),
+    ).rejects.toThrow(/Playground authentication changed/i);
 
     let current = new Date("2029-01-01T00:00:00.000Z");
     const expiringProvider = createOidcAuthorizationCodeProvider({
@@ -116,12 +129,14 @@ describe("generic OIDC Authorization Code provider", () => {
       returnPath: `/projects/${connection.target.projectId}/playground`,
     });
     current = new Date("2029-01-01T00:11:00.000Z");
-    await expect(expiringProvider.callback({
-      state: expired.state,
-      currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${expired.state}`),
-      callerPrincipalId: "member-a",
-      getConnection: async () => snapshot,
-    })).rejects.toThrow(/invalid, expired, or already used/i);
+    await expect(
+      expiringProvider.callback({
+        state: expired.state,
+        currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${expired.state}`),
+        callerPrincipalId: "member-a",
+        getConnection: async () => snapshot,
+      }),
+    ).rejects.toThrow(/invalid, expired, or already used/i);
 
     let currentSnapshot = snapshot;
     const racingProvider = createOidcAuthorizationCodeProvider({
@@ -147,13 +162,17 @@ describe("generic OIDC Authorization Code provider", () => {
       callerPrincipalId: "member-race",
       returnPath: `/projects/${connection.target.projectId}/playground`,
     });
-    await expect(racingProvider.callback({
-      state: racing.state,
-      currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${racing.state}`),
-      callerPrincipalId: "member-race",
-      getConnection: async () => currentSnapshot,
-    })).rejects.toThrow(/Playground authentication changed/i);
-    await expect(store.getAgentAuthCredential(credentialKey(connection.id, "member-race"))).resolves.toBeNull();
+    await expect(
+      racingProvider.callback({
+        state: racing.state,
+        currentUrl: new URL(`${provider.callbackUrl}?code=code&state=${racing.state}`),
+        callerPrincipalId: "member-race",
+        getConnection: async () => currentSnapshot,
+      }),
+    ).rejects.toThrow(/Playground authentication changed/i);
+    await expect(
+      store.getAgentAuthCredential(credentialKey(connection.id, "member-race")),
+    ).resolves.toBeNull();
   });
 
   test("coalesces refresh, rotates the refresh token, and returns the fenced winner", async () => {
@@ -206,10 +225,14 @@ describe("generic OIDC Authorization Code provider", () => {
       provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" }),
       provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" }),
     ]);
-    expect(first).toMatchObject({ envelope: { headers: [["authorization", "Bearer refreshed-token"]] } });
+    expect(first).toMatchObject({
+      envelope: { headers: [["authorization", "Bearer refreshed-token"]] },
+    });
     expect(second).toEqual(first);
     expect(refreshCalls).toBe(1);
-    await expect(store.getAgentAuthCredential(credentialKey(connection.id, "member-a"))).resolves.toMatchObject({
+    await expect(
+      store.getAgentAuthCredential(credentialKey(connection.id, "member-a")),
+    ).resolves.toMatchObject({
       rotationSeq: 1,
       refreshLeaseId: null,
     });
@@ -304,11 +327,15 @@ describe("generic OIDC Authorization Code provider", () => {
       callerPrincipalId: "member-a",
       getConnection: async () => snapshot,
     });
-    await expect(provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" })).resolves.toMatchObject({
+    await expect(
+      provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" }),
+    ).resolves.toMatchObject({
       failure: { code: "provider_unavailable" },
     });
     userInfoAvailable = true;
-    await expect(provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" })).resolves.toMatchObject({
+    await expect(
+      provider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" }),
+    ).resolves.toMatchObject({
       envelope: { headers: [["authorization", "Bearer access-token"]] },
     });
 
@@ -317,20 +344,28 @@ describe("generic OIDC Authorization Code provider", () => {
       appSecretKey,
       callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
       resolveClientSecret: async () => undefined,
-      protocol: protocol({ async fetchUserInfo() { throw { code: "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED" }; } }),
+      protocol: protocol({
+        async fetchUserInfo() {
+          throw { code: "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED" };
+        },
+      }),
     });
     const second = await rejected.start({
       connection: snapshot,
       callerPrincipalId: "member-b",
       returnPath: `/projects/${connection.target.projectId}/playground`,
     });
-    await expect(rejected.callback({
-      state: second.state,
-      currentUrl: new URL(`${rejected.callbackUrl}?code=code&state=${second.state}`),
-      callerPrincipalId: "member-b",
-      getConnection: async () => snapshot,
-    })).rejects.toThrow(/subject/i);
-    await expect(store.getAgentAuthCredential(credentialKey(connection.id, "member-b"))).resolves.toBeNull();
+    await expect(
+      rejected.callback({
+        state: second.state,
+        currentUrl: new URL(`${rejected.callbackUrl}?code=code&state=${second.state}`),
+        callerPrincipalId: "member-b",
+        getConnection: async () => snapshot,
+      }),
+    ).rejects.toThrow(/subject/i);
+    await expect(
+      store.getAgentAuthCredential(credentialKey(connection.id, "member-b")),
+    ).resolves.toBeNull();
   });
 
   test("lets one provider instance refresh while another waits for the rotated credential", async () => {
@@ -386,7 +421,9 @@ describe("generic OIDC Authorization Code provider", () => {
       firstProvider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" }),
       secondProvider.getCredential({ connection: snapshot, callerPrincipalId: "member-a" }),
     ]);
-    expect(first).toMatchObject({ envelope: { headers: [["authorization", "Bearer cross-instance-token"]] } });
+    expect(first).toMatchObject({
+      envelope: { headers: [["authorization", "Bearer cross-instance-token"]] },
+    });
     expect(second).toEqual(first);
     expect(refreshCalls).toBe(1);
   });

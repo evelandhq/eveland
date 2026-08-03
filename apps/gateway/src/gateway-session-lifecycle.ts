@@ -12,16 +12,10 @@ import {
 // cannot buffer the shared data plane into the ground. (Requests are capped
 // symmetrically in gateway-transport.)
 const MAX_SESSION_METADATA_BYTES = PLAYGROUND_MAX_TRANSPORT_BYTES;
-import {
-  isSessionBindingActive,
-  type SessionBindingIdlePolicy,
-} from "@eveland/core/routing";
+import { isSessionBindingActive, type SessionBindingIdlePolicy } from "@eveland/core/routing";
 
 export type GatewaySessionBindingRepository = {
-  findSessionBinding(
-    projectId: string,
-    eveSessionId: string,
-  ): Promise<SessionBinding | null>;
+  findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
   findSessionBindingByContinuationToken(
     projectId: string,
     continuationToken: string,
@@ -32,10 +26,7 @@ export type GatewaySessionBindingRepository = {
     now?: Date,
   ): Promise<SessionBinding | null>;
   bindSession(
-    input: Omit<
-      SessionBinding,
-      "id" | "createdAt" | "updatedAt" | "continuationToken"
-    > & {
+    input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt" | "continuationToken"> & {
       continuationToken?: string | null;
     },
   ): Promise<unknown>;
@@ -47,10 +38,7 @@ export type GatewaySessionBindingRepository = {
   ): Promise<SessionBinding | null>;
 };
 
-type GatewaySessionLookup =
-  | "none"
-  | "session_id"
-  | "continuation_token";
+type GatewaySessionLookup = "none" | "session_id" | "continuation_token";
 
 export type GatewaySessionResolution =
   | {
@@ -80,10 +68,7 @@ export async function resolveGatewaySessionBinding(input: {
 
   if (request?.sessionId) {
     lookup = "session_id";
-    binding = await repository.findSessionBinding(
-      projectId,
-      request.sessionId,
-    );
+    binding = await repository.findSessionBinding(projectId, request.sessionId);
   } else if (request?.kind === "initial" || request?.kind === "reset") {
     const continuationToken = continuationTokenFromBody(input.bufferedBody);
     if (continuationToken) {
@@ -143,12 +128,7 @@ export async function applyGatewaySessionResponse(input: {
   provenance: GatewaySessionProvenance;
 }): Promise<void> {
   const { request, upstream } = input;
-  if (
-    !request ||
-    !upstream.ok ||
-    request.kind === "cancel" ||
-    request.kind === "stream"
-  ) {
+  if (!request || !upstream.ok || request.kind === "cancel" || request.kind === "stream") {
     return;
   }
 
@@ -158,8 +138,7 @@ export async function applyGatewaySessionResponse(input: {
       : null;
 
   if (request.kind === "initial") {
-    const eveSessionId =
-      upstream.headers.get("x-eve-session-id") ?? metadata?.sessionId ?? null;
+    const eveSessionId = upstream.headers.get("x-eve-session-id") ?? metadata?.sessionId ?? null;
     if (!eveSessionId) return;
 
     const provenance = bindingProvenance(input.provenance);
@@ -173,11 +152,7 @@ export async function applyGatewaySessionResponse(input: {
     return;
   }
 
-  if (
-    request.kind === "continuation" &&
-    request.sessionId &&
-    metadata?.continuationToken
-  ) {
+  if (request.kind === "continuation" && request.sessionId && metadata?.continuationToken) {
     await input.repository.setSessionBindingContinuationToken(
       input.projectId,
       request.sessionId,
@@ -204,11 +179,7 @@ function bindingProvenance(
   provenance: GatewaySessionProvenance,
 ): Pick<
   SessionBinding,
-  | "trigger"
-  | "requestId"
-  | "remoteIp"
-  | "affinityFingerprint"
-  | "affinitySource"
+  "trigger" | "requestId" | "remoteIp" | "affinityFingerprint" | "affinitySource"
 > {
   return provenance.kind === "api"
     ? {
@@ -227,21 +198,13 @@ function bindingProvenance(
       };
 }
 
-function continuationTokenFromBody(
-  body: Uint8Array | null | undefined,
-): string | null {
+function continuationTokenFromBody(body: Uint8Array | null | undefined): string | null {
   if (!body || body.byteLength === 0) return null;
-  return getEveString(
-    parseEveJsonObject(new TextDecoder().decode(body)),
-    "continuationToken",
-  );
+  return getEveString(parseEveJsonObject(new TextDecoder().decode(body)), "continuationToken");
 }
 
 function isJsonResponse(response: Response): boolean {
-  return (
-    response.headers.get("content-type")?.includes("application/json") ??
-    false
-  );
+  return response.headers.get("content-type")?.includes("application/json") ?? false;
 }
 
 function declaredLengthExceedsMetadataCap(response: Response): boolean {

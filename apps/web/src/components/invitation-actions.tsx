@@ -42,7 +42,11 @@ export function InvitationActions({ invitationId }: { invitationId: string }) {
     <div className="flex flex-col items-end gap-1">
       <div className="flex gap-2">
         <Button type="button" size="sm" variant="outline" onClick={resend} disabled={pending}>
-          {pending ? <RefreshCwIcon data-icon="inline-start" className="animate-spin" /> : <CopyIcon data-icon="inline-start" />}
+          {pending ? (
+            <RefreshCwIcon data-icon="inline-start" className="animate-spin" />
+          ) : (
+            <CopyIcon data-icon="inline-start" />
+          )}
           Refresh &amp; copy
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={revoke} disabled={pending}>

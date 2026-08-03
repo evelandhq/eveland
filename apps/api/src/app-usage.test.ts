@@ -50,9 +50,7 @@ describe("usage analytics API", () => {
       },
     });
 
-    const projectResponse = await app.request(
-      `/projects/${project.id}/usage?range=7d`,
-    );
+    const projectResponse = await app.request(`/projects/${project.id}/usage?range=7d`);
     expect(projectResponse.status).toBe(200);
     await expect(projectResponse.json()).resolves.toMatchObject({
       usage: {

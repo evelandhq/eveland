@@ -63,9 +63,7 @@ export async function handleRestartDeploymentJob(
     );
   }
   if (deployment.projectId !== job.projectId) {
-    throw new Error(
-      `Deployment ${deployment.id} does not belong to project ${job.projectId}.`,
-    );
+    throw new Error(`Deployment ${deployment.id} does not belong to project ${job.projectId}.`);
   }
   // A queued restart that lost the race to an archive must not resurrect it.
   if (deployment.status === "archived" || deployment.status === "archiving") {
@@ -83,9 +81,7 @@ export async function handleRestartDeploymentJob(
   }
   const release = await store.getRelease(deployment.releaseId);
   if (!release) {
-    throw new Error(
-      `Release ${deployment.releaseId} not found for deployment ${deployment.id}.`,
-    );
+    throw new Error(`Release ${deployment.releaseId} not found for deployment ${deployment.id}.`);
   }
   const revision = await store.getSourceRevision(release.sourceRevisionId);
   if (!revision) {
@@ -105,28 +101,23 @@ export async function handleRestartDeploymentJob(
 
   const adapter =
     options.runtime ??
-    (options.runtimeForKind ?? createRuntimeAdapterForKind)(
-      deployment.runtimeKind,
-    );
-  const launchPrerequisites =
-    await resolveDeploymentLaunchPrerequisites({
-      store,
-      workerEnv: process.env,
-      projectId: project.id,
-      deploymentId: deployment.id,
-      runtimeKind: adapter.name,
-      sourcePath: revision.sourcePath,
-      options,
-    });
+    (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+  const launchPrerequisites = await resolveDeploymentLaunchPrerequisites({
+    store,
+    workerEnv: process.env,
+    projectId: project.id,
+    deploymentId: deployment.id,
+    runtimeKind: adapter.name,
+    sourcePath: revision.sourcePath,
+    options,
+  });
 
   await adapter.stopProcess(deployment.containerName);
   let restarted = false;
   try {
     // The restarted process binds deployment.hostPort directly; retire any
     // instance endpoint claims before replacing the process.
-    for (const instance of await store.listDeploymentRuntimeInstances(
-      deployment.id,
-    )) {
+    for (const instance of await store.listDeploymentRuntimeInstances(deployment.id)) {
       if (
         instance.status === "starting" ||
         instance.status === "ready" ||
@@ -161,9 +152,7 @@ export async function handleRestartDeploymentJob(
       timeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
       processName: deployment.containerName,
       runtime: adapter,
-      ...(options.waitForDeployment
-        ? { waitForHealth: options.waitForDeployment }
-        : {}),
+      ...(options.waitForDeployment ? { waitForHealth: options.waitForDeployment } : {}),
     });
   } catch (error) {
     if (restarted) {
@@ -176,9 +165,7 @@ export async function handleRestartDeploymentJob(
         launchPrerequisites.secretValues,
       );
     }
-    await settleDeploymentStatus(store, deployment.id, "stopped").catch(
-      () => undefined,
-    );
+    await settleDeploymentStatus(store, deployment.id, "stopped").catch(() => undefined);
     throw error;
   }
 

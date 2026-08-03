@@ -10,9 +10,7 @@ import { RuntimeInstanceDrainingError } from "./store-shared.js";
 import type { RuntimeStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 
-export function createPostgresRuntimeStore({
-  db,
-}: PostgresStoreContext): RuntimeStore {
+export function createPostgresRuntimeStore({ db }: PostgresStoreContext): RuntimeStore {
   return {
     async acquireActivationLease(input) {
       return db.transaction(async (tx) => {
@@ -22,8 +20,7 @@ export function createPostgresRuntimeStore({
           .where(eq(deployments.id, input.deploymentId))
           .limit(1)
           .for("update");
-        if (!deployment)
-          throw new Error("Cannot activate an unknown Deployment.");
+        if (!deployment) throw new Error("Cannot activate an unknown Deployment.");
         const now = input.now ?? new Date();
         const [latestRuntimeInstance] = await tx
           .select()
@@ -37,8 +34,7 @@ export function createPostgresRuntimeStore({
         }
         let runtimeInstance =
           latestRuntimeInstance &&
-          (latestRuntimeInstance.status === "starting" ||
-            latestRuntimeInstance.status === "ready")
+          (latestRuntimeInstance.status === "starting" || latestRuntimeInstance.status === "ready")
             ? latestRuntimeInstance
             : undefined;
         const starter = !runtimeInstance;
@@ -60,8 +56,7 @@ export function createPostgresRuntimeStore({
             })
             .returning();
         }
-        if (!runtimeInstance)
-          throw new Error("Failed to create RuntimeInstance.");
+        if (!runtimeInstance) throw new Error("Failed to create RuntimeInstance.");
         const [lease] = await tx
           .insert(activationLeases)
           .values({
@@ -114,47 +109,47 @@ export function createPostgresRuntimeStore({
 
     async adoptRuntimeInstance(deploymentId, endpoint, now = new Date()) {
       try {
-      return await db.transaction(async (tx) => {
-        // Same deployment-level lock acquireActivationLease takes, so adoption
-        // and activation serialize on the runtime_instances generation chain
-        // instead of racing to insert the same generation.
-        const [deployment] = await tx
-          .select({ id: deployments.id })
-          .from(deployments)
-          .where(eq(deployments.id, deploymentId))
-          .limit(1)
-          .for("update");
-        if (!deployment) return null;
-        const [latest] = await tx
-          .select()
-          .from(runtimeInstances)
-          .where(eq(runtimeInstances.deploymentId, deploymentId))
-          .orderBy(desc(runtimeInstances.generation))
-          .limit(1)
-          .for("update");
-        if (
-          latest &&
-          (latest.status === "starting" ||
-            latest.status === "ready" ||
-            latest.status === "draining")
-        ) {
-          return null;
-        }
-        const [row] = await tx
-          .insert(runtimeInstances)
-          .values({
-            id: createId("rti"),
-            deploymentId,
-            generation: (latest?.generation ?? 0) + 1,
-            status: "ready",
-            endpointHost: endpoint.endpointHost,
-            endpointPort: endpoint.endpointPort,
-            startedAt: now,
-            readyAt: now,
-          })
-          .returning();
-        return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
-      });
+        return await db.transaction(async (tx) => {
+          // Same deployment-level lock acquireActivationLease takes, so adoption
+          // and activation serialize on the runtime_instances generation chain
+          // instead of racing to insert the same generation.
+          const [deployment] = await tx
+            .select({ id: deployments.id })
+            .from(deployments)
+            .where(eq(deployments.id, deploymentId))
+            .limit(1)
+            .for("update");
+          if (!deployment) return null;
+          const [latest] = await tx
+            .select()
+            .from(runtimeInstances)
+            .where(eq(runtimeInstances.deploymentId, deploymentId))
+            .orderBy(desc(runtimeInstances.generation))
+            .limit(1)
+            .for("update");
+          if (
+            latest &&
+            (latest.status === "starting" ||
+              latest.status === "ready" ||
+              latest.status === "draining")
+          ) {
+            return null;
+          }
+          const [row] = await tx
+            .insert(runtimeInstances)
+            .values({
+              id: createId("rti"),
+              deploymentId,
+              generation: (latest?.generation ?? 0) + 1,
+              status: "ready",
+              endpointHost: endpoint.endpointHost,
+              endpointPort: endpoint.endpointPort,
+              startedAt: now,
+              readyAt: now,
+            })
+            .returning();
+          return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
+        });
       } catch (error) {
         // Another live instance already reserved this port: the orphan is a
         // duplicate claimant, not adoptable. Callers treat null as "leave it
@@ -171,13 +166,8 @@ export function createPostgresRuntimeStore({
       const rows = await db
         .select()
         .from(runtimeInstances)
-        .where(
-          or(...statuses.map((status) => eq(runtimeInstances.status, status))),
-        )
-        .orderBy(
-          asc(runtimeInstances.deploymentId),
-          asc(runtimeInstances.generation),
-        )
+        .where(or(...statuses.map((status) => eq(runtimeInstances.status, status))))
+        .orderBy(asc(runtimeInstances.deploymentId), asc(runtimeInstances.generation))
         .limit(limit);
       return rows.map(runtimeInstanceRowToRuntimeInstance);
     },
@@ -187,17 +177,11 @@ export function createPostgresRuntimeStore({
         .update(runtimeInstances)
         .set({
           status: input.status,
-          ...(input.endpointHost !== undefined
-            ? { endpointHost: input.endpointHost }
-            : {}),
-          ...(input.endpointPort !== undefined
-            ? { endpointPort: input.endpointPort }
-            : {}),
+          ...(input.endpointHost !== undefined ? { endpointHost: input.endpointHost } : {}),
+          ...(input.endpointPort !== undefined ? { endpointPort: input.endpointPort } : {}),
           ...(input.error !== undefined ? { lastError: input.error } : {}),
           ...(input.status === "ready" ? { readyAt: now } : {}),
-          ...(input.status === "stopped" || input.status === "failed"
-            ? { stoppedAt: now }
-            : {}),
+          ...(input.status === "stopped" || input.status === "failed" ? { stoppedAt: now } : {}),
         })
         .where(eq(runtimeInstances.id, runtimeInstanceId))
         .returning();
@@ -246,12 +230,7 @@ export function createPostgresRuntimeStore({
       const [row] = await db
         .update(activationLeases)
         .set({ releasedAt: now })
-        .where(
-          and(
-            eq(activationLeases.id, leaseId),
-            isNull(activationLeases.releasedAt),
-          ),
-        )
+        .where(and(eq(activationLeases.id, leaseId), isNull(activationLeases.releasedAt)))
         .returning();
       if (row) return activationLeaseRowToActivationLease(row);
       const [existing] = await db
@@ -288,9 +267,7 @@ export function createPostgresRuntimeStore({
       }
       return db.transaction(async (tx) => {
         const cutoffAt = new Date(input.now.getTime() - input.idleTtlMs);
-        const scheduleHorizon = new Date(
-          input.now.getTime() + schedulePrewarmMs,
-        );
+        const scheduleHorizon = new Date(input.now.getTime() + schedulePrewarmMs);
         const candidates = await tx
           .select()
           .from(runtimeInstances)
@@ -335,10 +312,7 @@ export function createPostgresRuntimeStore({
               ),
             ),
           )
-          .orderBy(
-            asc(runtimeInstances.deploymentId),
-            asc(runtimeInstances.generation),
-          )
+          .orderBy(asc(runtimeInstances.deploymentId), asc(runtimeInstances.generation))
           .limit(input.limit)
           .for("update", { skipLocked: true });
         const claimed = [];
@@ -367,24 +341,16 @@ export function createPostgresRuntimeStore({
             .from(activationLeases)
             .where(eq(activationLeases.runtimeInstanceId, candidate.id));
           const activityTimes = [candidate.readyAt, candidate.startedAt]
-            .concat(
-              leaseRows.map((lease) => lease.releasedAt ?? lease.expiresAt),
-            )
+            .concat(leaseRows.map((lease) => lease.releasedAt ?? lease.expiresAt))
             .filter((value): value is Date => value !== null)
             .map((value) => value.getTime());
           if (Math.max(...activityTimes) > cutoffAt.getTime()) continue;
           const [updated] = await tx
             .update(runtimeInstances)
             .set({ status: "draining" })
-            .where(
-              and(
-                eq(runtimeInstances.id, candidate.id),
-                eq(runtimeInstances.status, "ready"),
-              ),
-            )
+            .where(and(eq(runtimeInstances.id, candidate.id), eq(runtimeInstances.status, "ready")))
             .returning();
-          if (updated)
-            claimed.push(runtimeInstanceRowToRuntimeInstance(updated));
+          if (updated) claimed.push(runtimeInstanceRowToRuntimeInstance(updated));
         }
         return claimed;
       });

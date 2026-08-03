@@ -89,8 +89,7 @@ describe("external observability destination health", () => {
         },
       ],
     };
-    const upsert =
-      vi.fn().mockImplementation(async (health) => health);
+    const upsert = vi.fn().mockImplementation(async (health) => health);
     const probe = vi.fn(async (config: ExternalDestinationConfig) => {
       if (config.kind === "langfuse") {
         throw new Error("HTTP 401");
@@ -138,7 +137,5 @@ describe("external observability destination health", () => {
 });
 
 function encrypted(config: ExternalDestinationConfig): string {
-  return JSON.stringify(
-    encryptSecretValue(JSON.stringify(config), appSecretKey),
-  );
+  return JSON.stringify(encryptSecretValue(JSON.stringify(config), appSecretKey));
 }

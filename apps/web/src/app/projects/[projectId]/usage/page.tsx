@@ -1,25 +1,25 @@
-import { UsageExplorer } from "@/components/usage/usage-explorer"
-import { getProjects, getProjectUsageAnalytics } from "@/lib/server-api"
-import { parseUsageFilters } from "@/lib/usage"
+import { UsageExplorer } from "@/components/usage/usage-explorer";
+import { getProjects, getProjectUsageAnalytics } from "@/lib/server-api";
+import { parseUsageFilters } from "@/lib/usage";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Usage",
-}
+};
 
 export default async function ProjectUsagePage({
   params,
   searchParams,
 }: {
-  params: Promise<{ projectId: string }>
-  searchParams: Promise<Record<string, string | string[] | undefined>>
+  params: Promise<{ projectId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { projectId } = await params
-  const filters = parseUsageFilters(await searchParams)
+  const { projectId } = await params;
+  const filters = parseUsageFilters(await searchParams);
   const [analytics, projects] = await Promise.all([
     getProjectUsageAnalytics(projectId, filters),
     getProjects(),
-  ])
+  ]);
 
   return (
     <UsageExplorer
@@ -27,5 +27,5 @@ export default async function ProjectUsagePage({
       projects={projects}
       scope={{ type: "project", projectId }}
     />
-  )
+  );
 }

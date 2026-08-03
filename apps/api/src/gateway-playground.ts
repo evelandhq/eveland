@@ -21,11 +21,20 @@ export async function proxyGatewayPlayground(
     fetchImplementation?: typeof fetch;
   } = {},
 ): Promise<Response> {
-  const gatewayUrl = (options.gatewayUrl ?? process.env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(/\/$/, "");
+  const gatewayUrl = (
+    options.gatewayUrl ??
+    process.env.EVELAND_GATEWAY_INTERNAL_URL ??
+    "http://127.0.0.1:4080"
+  ).replace(/\/$/, "");
   const serviceToken =
     options.serviceToken ??
-    resolveSecretWithDevFallback(process.env, process.env.EVELAND_GATEWAY_SERVICE_TOKEN, "eveland-dev-gateway-token");
-  if (!serviceToken) throw new Error("EVELAND_GATEWAY_SERVICE_TOKEN is required for Playground requests.");
+    resolveSecretWithDevFallback(
+      process.env,
+      process.env.EVELAND_GATEWAY_SERVICE_TOKEN,
+      "eveland-dev-gateway-token",
+    );
+  if (!serviceToken)
+    throw new Error("EVELAND_GATEWAY_SERVICE_TOKEN is required for Playground requests.");
 
   const headers: Record<string, string> = { authorization: `Bearer ${serviceToken}` };
   const accept = input.headers.get("accept");

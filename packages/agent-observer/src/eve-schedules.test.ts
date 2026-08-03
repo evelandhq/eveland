@@ -22,27 +22,39 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
 // when the whole repository suite runs in parallel, so each test states its
 // own.
 describe("Eve schedule compatibility matrix", () => {
-  test.each(compatibilityMatrix)("keeps Eve $version runtime state out of the checked-in fixture", async (entry) => {
-    const { fixtureDir, sourceFixtureDir } = await prepareFixture(entry);
-    try {
-      await execFileAsync(process.execPath, [eveBin(entry.packageName), "info", "--json"], { cwd: fixtureDir });
+  test.each(compatibilityMatrix)(
+    "keeps Eve $version runtime state out of the checked-in fixture",
+    async (entry) => {
+      const { fixtureDir, sourceFixtureDir } = await prepareFixture(entry);
+      try {
+        await execFileAsync(process.execPath, [eveBin(entry.packageName), "info", "--json"], {
+          cwd: fixtureDir,
+        });
 
-      for (const runtimeDir of [".eve", ".workflow-data", "node_modules"]) {
-        await expect(access(path.join(sourceFixtureDir, runtimeDir))).rejects.toMatchObject({ code: "ENOENT" });
+        for (const runtimeDir of [".eve", ".workflow-data", "node_modules"]) {
+          await expect(access(path.join(sourceFixtureDir, runtimeDir))).rejects.toMatchObject({
+            code: "ENOENT",
+          });
+        }
+      } finally {
+        await rm(fixtureDir, { recursive: true, force: true });
       }
-    } finally {
-      await rm(fixtureDir, { recursive: true, force: true });
-    }
-  }, 120_000);
+    },
+    120_000,
+  );
 
   test.each(compatibilityMatrix)(
     "Eve $version discovers nested markdown, markdown definitions, and zero/multi-session handlers",
     async (entry) => {
       const { fixtureDir } = await prepareFixture(entry);
       try {
-        const { stdout } = await execFileAsync(process.execPath, [eveBin(entry.packageName), "info", "--json"], {
-          cwd: fixtureDir,
-        });
+        const { stdout } = await execFileAsync(
+          process.execPath,
+          [eveBin(entry.packageName), "info", "--json"],
+          {
+            cwd: fixtureDir,
+          },
+        );
         const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
           artifacts: { compiledManifest: string };
         };
@@ -63,39 +75,55 @@ describe("Eve schedule compatibility matrix", () => {
     120_000,
   );
 
-  test.each(compatibilityMatrix)("Eve $version dev dispatch returns zero or multiple sessions", async (entry) => {
-    const { fixtureDir } = await prepareFixture(entry);
-    const port = await getFreePort();
-    const child = spawn(process.execPath, [eveBin(entry.packageName), "dev", "--no-ui", "--host", "127.0.0.1", "--port", String(port)], {
-      cwd: fixtureDir,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    // Captured so a readiness timeout reports what the dev server actually
-    // said instead of leaving a bare failure to reproduce by hand.
-    let output = "";
-    const capture = (chunk: unknown) => {
-      output = `${output}${String(chunk)}`.slice(-4_000);
-    };
-    child.stdout?.on("data", capture);
-    child.stderr?.on("data", capture);
+  test.each(compatibilityMatrix)(
+    "Eve $version dev dispatch returns zero or multiple sessions",
+    async (entry) => {
+      const { fixtureDir } = await prepareFixture(entry);
+      const port = await getFreePort();
+      const child = spawn(
+        process.execPath,
+        [
+          eveBin(entry.packageName),
+          "dev",
+          "--no-ui",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(port),
+        ],
+        {
+          cwd: fixtureDir,
+          env: process.env,
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      // Captured so a readiness timeout reports what the dev server actually
+      // said instead of leaving a bare failure to reproduce by hand.
+      let output = "";
+      const capture = (chunk: unknown) => {
+        output = `${output}${String(chunk)}`.slice(-4_000);
+      };
+      child.stdout?.on("data", capture);
+      child.stderr?.on("data", capture);
 
-    try {
-      await waitForReady(port, () => output);
+      try {
+        await waitForReady(port, () => output);
 
-      const zero = await dispatch(port, "zero-session", () => output);
-      expect(zero).toEqual({ scheduleId: "zero-session", sessionIds: [] });
+        const zero = await dispatch(port, "zero-session", () => output);
+        expect(zero).toEqual({ scheduleId: "zero-session", sessionIds: [] });
 
-      const multiple = await dispatch(port, "multi-session", () => output);
-      expect(multiple.scheduleId).toBe("multi-session");
-      expect(multiple.sessionIds).toHaveLength(2);
-      expect(new Set(multiple.sessionIds).size).toBe(2);
-    } finally {
-      child.kill("SIGTERM");
-      await new Promise<void>((resolve) => child.once("close", () => resolve()));
-      await rm(fixtureDir, { recursive: true, force: true });
-    }
-  }, 120_000);
+        const multiple = await dispatch(port, "multi-session", () => output);
+        expect(multiple.scheduleId).toBe("multi-session");
+        expect(multiple.sessionIds).toHaveLength(2);
+        expect(new Set(multiple.sessionIds).size).toBe(2);
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise<void>((resolve) => child.once("close", () => resolve()));
+        await rm(fixtureDir, { recursive: true, force: true });
+      }
+    },
+    120_000,
+  );
 });
 
 function evePackage(packageName: string): string {
@@ -146,7 +174,9 @@ async function dispatch(
   let lastStatus = 0;
   let lastBody = "";
   for (;;) {
-    const response = await fetch(`http://127.0.0.1:${port}/eve/v1/dev/schedules/${scheduleId}`, { method: "POST" });
+    const response = await fetch(`http://127.0.0.1:${port}/eve/v1/dev/schedules/${scheduleId}`, {
+      method: "POST",
+    });
     if (response.ok) {
       return response.json() as Promise<{ scheduleId: string; sessionIds: string[] }>;
     }
@@ -168,8 +198,11 @@ async function getFreePort(): Promise<number> {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  if (address === null || typeof address === "string") throw new Error("Failed to allocate a fixture port.");
-  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  if (address === null || typeof address === "string")
+    throw new Error("Failed to allocate a fixture port.");
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
   return address.port;
 }
 

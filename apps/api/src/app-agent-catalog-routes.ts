@@ -18,12 +18,10 @@ export function registerAgentCatalogRoutes({
     c.header("cache-control", "no-store");
     try {
       const response: AgentCatalogResponse = {
-        agents: (await store.listAgentCatalog()).map(
-          ({ hostname, ...agent }) => ({
-            ...agent,
-            url: publicGatewayUrl(hostname, options),
-          }),
-        ),
+        agents: (await store.listAgentCatalog()).map(({ hostname, ...agent }) => ({
+          ...agent,
+          url: publicGatewayUrl(hostname, options),
+        })),
       };
       return c.json(response);
     } catch {

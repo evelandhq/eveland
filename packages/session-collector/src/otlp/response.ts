@@ -1,8 +1,5 @@
 import type { ObservabilitySignal } from "@eveland/core/observability";
-import {
-  arrayOfRecords,
-  metricDataPoints,
-} from "./values.js";
+import { arrayOfRecords, metricDataPoints } from "./values.js";
 
 export function countOtlpSignalItems(
   signal: ObservabilitySignal,
@@ -13,8 +10,7 @@ export function countOtlpSignalItems(
       (resourceTotal, resourceSpans) =>
         resourceTotal +
         arrayOfRecords(resourceSpans.scopeSpans).reduce(
-          (scopeTotal, scopeSpans) =>
-            scopeTotal + arrayOfRecords(scopeSpans.spans).length,
+          (scopeTotal, scopeSpans) => scopeTotal + arrayOfRecords(scopeSpans.spans).length,
           0,
         ),
       0,
@@ -25,9 +21,7 @@ export function countOtlpSignalItems(
       (resourceTotal, resourceLogs) =>
         resourceTotal +
         arrayOfRecords(resourceLogs.scopeLogs).reduce(
-          (scopeTotal, scopeLogs) =>
-            scopeTotal +
-            arrayOfRecords(scopeLogs.logRecords).length,
+          (scopeTotal, scopeLogs) => scopeTotal + arrayOfRecords(scopeLogs.logRecords).length,
           0,
         ),
       0,
@@ -40,8 +34,7 @@ export function countOtlpSignalItems(
         (scopeTotal, scopeMetrics) =>
           scopeTotal +
           arrayOfRecords(scopeMetrics.metrics).reduce(
-            (metricTotal, metric) =>
-              metricTotal + metricDataPoints(metric).length,
+            (metricTotal, metric) => metricTotal + metricDataPoints(metric).length,
             0,
           ),
         0,

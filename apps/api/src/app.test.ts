@@ -44,15 +44,30 @@ describe("api app", () => {
       },
     });
 
-    expect((await app.request("/internal/runtime/activations", { method: "POST" })).status).toBe(404);
+    expect((await app.request("/internal/runtime/activations", { method: "POST" })).status).toBe(
+      404,
+    );
     const activation = await app.request("/internal/runtime/activations", {
       method: "POST",
-      headers: { authorization: "Bearer gateway-service-token", "content-type": "application/json" },
-      body: JSON.stringify({ deploymentId: deployment.id, kind: "public_request", ownerId: "req_api_wake" }),
+      headers: {
+        authorization: "Bearer gateway-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deploymentId: deployment.id,
+        kind: "public_request",
+        ownerId: "req_api_wake",
+      }),
     });
     expect(activation.status).toBe(200);
-    const body = await activation.json() as { lease: { id: string }; runtimeInstance: { status: string; endpointPort: number } };
-    expect(body.runtimeInstance).toMatchObject({ status: "ready", endpointPort: deployment.hostPort });
+    const body = (await activation.json()) as {
+      lease: { id: string };
+      runtimeInstance: { status: string; endpointPort: number };
+    };
+    expect(body.runtimeInstance).toMatchObject({
+      status: "ready",
+      endpointPort: deployment.hostPort,
+    });
     await expect(store.claimNextJob("wake-worker")).resolves.toMatchObject({
       type: "ensure_deployment_running",
       payload: { deploymentId: deployment.id, runtimeInstanceId: expect.any(String) },
@@ -68,12 +83,17 @@ describe("api app", () => {
       headers: { authorization: "Bearer gateway-service-token" },
     });
     expect(release.status).toBe(204);
-    await expect(store.getActivationLease(body.lease.id)).resolves.toMatchObject({ releasedAt: expect.any(String) });
+    await expect(store.getActivationLease(body.lease.id)).resolves.toMatchObject({
+      releasedAt: expect.any(String),
+    });
   });
 
   test("releases only the request lease when a cold activation is aborted", async () => {
     const store = createTestStore();
-    const project = await store.createProject({ name: "Aborted Wake API Agent", importKind: "zip" });
+    const project = await store.createProject({
+      name: "Aborted Wake API Agent",
+      importKind: "zip",
+    });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
     const revision = await store.recordSourceRevision({
@@ -96,7 +116,9 @@ describe("api app", () => {
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
     let waiterStarted!: () => void;
-    const started = new Promise<void>((resolve) => { waiterStarted = resolve; });
+    const started = new Promise<void>((resolve) => {
+      waiterStarted = resolve;
+    });
     let abortedLeaseId: string | null = null;
     const app = createApp(store, {
       gatewayServiceToken: "gateway-service-token",
@@ -104,15 +126,26 @@ describe("api app", () => {
         abortedLeaseId = claim.lease.id;
         waiterStarted();
         return new Promise<never>((_resolve, reject) => {
-          input.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+          input.signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true },
+          );
         });
       },
     });
     const controller = new AbortController();
     const pending = app.request("/internal/runtime/activations", {
       method: "POST",
-      headers: { authorization: "Bearer gateway-service-token", "content-type": "application/json" },
-      body: JSON.stringify({ deploymentId: deployment.id, kind: "public_request", ownerId: "req_api_aborted" }),
+      headers: {
+        authorization: "Bearer gateway-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deploymentId: deployment.id,
+        kind: "public_request",
+        ownerId: "req_api_aborted",
+      }),
       signal: controller.signal,
     });
     await started;
@@ -120,7 +153,9 @@ describe("api app", () => {
 
     expect((await pending).status).toBe(499);
     expect(abortedLeaseId).not.toBeNull();
-    await expect(store.getActivationLease(abortedLeaseId!)).resolves.toMatchObject({ releasedAt: expect.any(String) });
+    await expect(store.getActivationLease(abortedLeaseId!)).resolves.toMatchObject({
+      releasedAt: expect.any(String),
+    });
   });
 
   test("redeems a schedule dispatch credential once and attaches running Sessions", async () => {
@@ -129,19 +164,31 @@ describe("api app", () => {
     await store.claimScheduleRunActivation(run.id);
     const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
     const runtimeSecret = "runtime-secret-at-least-32-bytes-long";
-    const credential = createScheduleDispatchCredential({
-      scheduleRunId: run.id,
-      deploymentId: deployment.id,
-      scheduleKey: schedule.key,
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    }, dispatchSecret);
-    const app = createApp(store, { schedulerDispatchSecret: dispatchSecret, schedulerRuntimeSecret: runtimeSecret });
-
-    const claim = () => app.request("/internal/scheduler/dispatch", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
-      body: JSON.stringify({ phase: "claim", credential, scheduleRunId: run.id, scheduleKey: schedule.key }),
+    const credential = createScheduleDispatchCredential(
+      {
+        scheduleRunId: run.id,
+        deploymentId: deployment.id,
+        scheduleKey: schedule.key,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+      dispatchSecret,
+    );
+    const app = createApp(store, {
+      schedulerDispatchSecret: dispatchSecret,
+      schedulerRuntimeSecret: runtimeSecret,
     });
+
+    const claim = () =>
+      app.request("/internal/scheduler/dispatch", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
+        body: JSON.stringify({
+          phase: "claim",
+          credential,
+          scheduleRunId: run.id,
+          scheduleKey: schedule.key,
+        }),
+      });
     expect((await claim()).status).toBe(200);
     expect((await claim()).status).toBe(409);
 
@@ -159,10 +206,12 @@ describe("api app", () => {
     });
     expect(complete.status).toBe(200);
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "running" });
-    await expect(store.listSessions(project.id)).resolves.toContainEqual(expect.objectContaining({
-      eveSessionId: "eve_schedule_api",
-      scheduleRunId: run.id,
-    }));
+    await expect(store.listSessions(project.id)).resolves.toContainEqual(
+      expect.objectContaining({
+        eveSessionId: "eve_schedule_api",
+        scheduleRunId: run.id,
+      }),
+    );
   });
 
   test("stores the handler-reported error when a dispatch completes failed", async () => {
@@ -172,13 +221,19 @@ describe("api app", () => {
     await store.redeemScheduleRunDispatch(run.id, deployment.id);
     const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
     const runtimeSecret = "runtime-secret-at-least-32-bytes-long";
-    const credential = createScheduleDispatchCredential({
-      scheduleRunId: run.id,
-      deploymentId: deployment.id,
-      scheduleKey: schedule.key,
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    }, dispatchSecret);
-    const app = createApp(store, { schedulerDispatchSecret: dispatchSecret, schedulerRuntimeSecret: runtimeSecret });
+    const credential = createScheduleDispatchCredential(
+      {
+        scheduleRunId: run.id,
+        deploymentId: deployment.id,
+        scheduleKey: schedule.key,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+      dispatchSecret,
+    );
+    const app = createApp(store, {
+      schedulerDispatchSecret: dispatchSecret,
+      schedulerRuntimeSecret: runtimeSecret,
+    });
 
     const complete = await app.request("/internal/scheduler/dispatch", {
       method: "POST",
@@ -208,13 +263,19 @@ describe("api app", () => {
     await store.redeemScheduleRunDispatch(run.id, deployment.id);
     const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
     const runtimeSecret = "runtime-secret-at-least-32-bytes-long";
-    const credential = createScheduleDispatchCredential({
-      scheduleRunId: run.id,
-      deploymentId: deployment.id,
-      scheduleKey: schedule.key,
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    }, dispatchSecret);
-    const app = createApp(store, { schedulerDispatchSecret: dispatchSecret, schedulerRuntimeSecret: runtimeSecret });
+    const credential = createScheduleDispatchCredential(
+      {
+        scheduleRunId: run.id,
+        deploymentId: deployment.id,
+        scheduleKey: schedule.key,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+      dispatchSecret,
+    );
+    const app = createApp(store, {
+      schedulerDispatchSecret: dispatchSecret,
+      schedulerRuntimeSecret: runtimeSecret,
+    });
 
     const complete = await app.request("/internal/scheduler/dispatch", {
       method: "POST",
@@ -239,43 +300,68 @@ describe("api app", () => {
   test("creates a manual ScheduleRun through the control-plane path", async () => {
     const store = createTestStore();
     const { project, schedule, deployment } = await createScheduleRunFixture(store, false);
-    const response = await createApp(store).request(`/projects/${project.id}/schedules/${schedule.id}/runs`, { method: "POST" });
+    const response = await createApp(store).request(
+      `/projects/${project.id}/schedules/${schedule.id}/runs`,
+      { method: "POST" },
+    );
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({ run: {
-      scheduleId: schedule.id,
-      deploymentId: deployment.id,
-      trigger: "manual",
-      status: "queued",
-    } });
+    await expect(response.json()).resolves.toMatchObject({
+      run: {
+        scheduleId: schedule.id,
+        deploymentId: deployment.id,
+        trigger: "manual",
+        status: "queued",
+      },
+    });
   });
 
   test("serves filtered paginated schedule runs, details, and linked Sessions", async () => {
     const store = createTestStore();
     const { project, schedule, deployment, run } = await createScheduleRunFixture(store);
-    await store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: ["eve_api_history"] });
+    await store.completeScheduleRun(run.id, {
+      status: "succeeded",
+      eveSessionIds: ["eve_api_history"],
+    });
     const app = createApp(store);
 
     const schedules = await app.request(`/projects/${project.id}/schedules`);
-    await expect(schedules.json()).resolves.toMatchObject({ schedules: [{
-      schedule: { id: schedule.id, key: "billing/sweep" },
-      version: { kind: "handler", cron: "0 3 * * *" },
-      targetDeploymentId: deployment.id,
-    }] });
+    await expect(schedules.json()).resolves.toMatchObject({
+      schedules: [
+        {
+          schedule: { id: schedule.id, key: "billing/sweep" },
+          version: { kind: "handler", cron: "0 3 * * *" },
+          targetDeploymentId: deployment.id,
+        },
+      ],
+    });
     const runs = await app.request(
       `/projects/${project.id}/schedule-runs?scheduleId=${schedule.id}&trigger=manual&status=running&limit=1`,
     );
     expect(runs.status).toBe(200);
-    await expect(runs.json()).resolves.toMatchObject({ runs: [{ id: run.id, sessionCount: 1 }], nextCursor: null });
+    await expect(runs.json()).resolves.toMatchObject({
+      runs: [{ id: run.id, sessionCount: 1 }],
+      nextCursor: null,
+    });
     const detail = await app.request(`/schedule-runs/${run.id}`);
     await expect(detail.json()).resolves.toMatchObject({
-      run: { id: run.id, scheduleKey: "billing/sweep", deployment: { id: deployment.id }, sessions: [{ scheduleRunId: run.id }] },
+      run: {
+        id: run.id,
+        scheduleKey: "billing/sweep",
+        deployment: { id: deployment.id },
+        sessions: [{ scheduleRunId: run.id }],
+      },
     });
     const sessions = await app.request(
       `/projects/${project.id}/sessions?trigger=manual&scheduleId=${schedule.id}&scheduleRunId=${run.id}&limit=10`,
     );
-    await expect(sessions.json()).resolves.toMatchObject({ sessions: [{ scheduleRunId: run.id }], nextCursor: null });
-    expect((await app.request(`/projects/${project.id}/schedule-runs?status=unknown`)).status).toBe(400);
+    await expect(sessions.json()).resolves.toMatchObject({
+      sessions: [{ scheduleRunId: run.id }],
+      nextCursor: null,
+    });
+    expect((await app.request(`/projects/${project.id}/schedule-runs?status=unknown`)).status).toBe(
+      400,
+    );
   });
 
   test("returns health status", async () => {
@@ -289,5 +375,4 @@ describe("api app", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true, ...buildInfo });
   });
-
 });

@@ -1,37 +1,29 @@
-"use client"
+"use client";
 
-import type { UsageSeriesPoint } from "@eveland/core/contracts"
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
-import { useDisplayTimezone } from "@/components/time-zone-provider"
+import type { UsageSeriesPoint } from "@eveland/core/contracts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { useDisplayTimezone } from "@/components/time-zone-provider";
 import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/chart"
-import { formatDate } from "@/lib/date-time"
+} from "@/components/ui/chart";
+import { formatDate } from "@/lib/date-time";
 
 const chartConfig = {
   sessions: {
     label: "Sessions",
     color: "var(--chart-2)",
   },
-} satisfies ChartConfig
+} satisfies ChartConfig;
 
-export function ProjectOverviewTrend({
-  series,
-}: {
-  series: UsageSeriesPoint[]
-}) {
-  const timeZone = useDisplayTimezone()
+export function ProjectOverviewTrend({ series }: { series: UsageSeriesPoint[] }) {
+  const timeZone = useDisplayTimezone();
 
   return (
     <ChartContainer config={chartConfig} className="h-56 w-full">
-      <AreaChart
-        accessibilityLayer
-        data={series}
-        margin={{ left: 4, right: 12 }}
-      >
+      <AreaChart accessibilityLayer data={series} margin={{ left: 4, right: 12 }}>
         <CartesianGrid vertical={false} />
         <XAxis
           dataKey="bucketStart"
@@ -47,21 +39,13 @@ export function ProjectOverviewTrend({
             })
           }
         />
-        <YAxis
-          axisLine={false}
-          tickLine={false}
-          tickMargin={8}
-          width={40}
-          allowDecimals={false}
-        />
+        <YAxis axisLine={false} tickLine={false} tickMargin={8} width={40} allowDecimals={false} />
         <ChartTooltip
           content={
             <ChartTooltipContent
               labelFormatter={(_label, payload) => {
-                const bucketStart = payload[0]?.payload?.bucketStart
-                return bucketStart
-                  ? formatDate(bucketStart, timeZone)
-                  : ""
+                const bucketStart = payload[0]?.payload?.bucketStart;
+                return bucketStart ? formatDate(bucketStart, timeZone) : "";
               }}
             />
           }
@@ -76,5 +60,5 @@ export function ProjectOverviewTrend({
         />
       </AreaChart>
     </ChartContainer>
-  )
+  );
 }

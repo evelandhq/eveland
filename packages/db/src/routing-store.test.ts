@@ -8,24 +8,51 @@ describe("routing repository", () => {
     const store = createTestStore();
 
     const first = await store.createProject({ name: "Sample Office Assistant", importKind: "git" });
-    const second = await store.createProject({ name: "sample-office-assistant", importKind: "git" });
+    const second = await store.createProject({
+      name: "sample-office-assistant",
+      importKind: "git",
+    });
 
-    expect(first).toMatchObject({ name: "sample-office-assistant", slug: "sample-office-assistant" });
-    expect(second).toMatchObject({ name: "sample-office-assistant-1", slug: "sample-office-assistant-1" });
+    expect(first).toMatchObject({
+      name: "sample-office-assistant",
+      slug: "sample-office-assistant",
+    });
+    expect(second).toMatchObject({
+      name: "sample-office-assistant-1",
+      slug: "sample-office-assistant-1",
+    });
   });
 
   test("keeps concurrent deployments, atomically promotes and splits stable traffic, and preserves previews", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Concurrent Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
-      projectId: project.id, kind: "zip", sourcePath: "/tmp/concurrent", summary: {}, envVars: [], files: [], schedules: [],
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/concurrent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
     const first = await store.recordDeployment({
-      projectId: project.id, sourceRevisionId: revision.id, imageTag: "first", containerName: "first", internalPort: 3000, hostPort: 41001, runtimeKind: "docker",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "first",
+      containerName: "first",
+      internalPort: 3000,
+      hostPort: 41001,
+      runtimeKind: "docker",
     });
     await store.ensureDeploymentRoutes(project.id, first.id, "agent.localhost");
     const second = await store.recordDeployment({
-      projectId: project.id, sourceRevisionId: revision.id, imageTag: "second", containerName: "second", internalPort: 3000, hostPort: 41002, runtimeKind: "docker",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "second",
+      containerName: "second",
+      internalPort: 3000,
+      hostPort: 41002,
+      runtimeKind: "docker",
     });
     await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
 
@@ -33,14 +60,18 @@ describe("routing repository", () => {
     const preview = (await store.listProjectRoutes(project.id)).find(
       (route) => route.kind === "deployment" && route.targets[0]?.deploymentId === first.id,
     );
-    await expect(store.updateRouteTargets(preview!.id, [
-      { deploymentId: second.id, weight: 10_000, variantName: "mutated-preview" },
-    ])).rejects.toThrow(/preview.*immutable/i);
+    await expect(
+      store.updateRouteTargets(preview!.id, [
+        { deploymentId: second.id, weight: 10_000, variantName: "mutated-preview" },
+      ]),
+    ).rejects.toThrow(/preview.*immutable/i);
     await expect(store.findRouteByHostname(preview!.hostname)).resolves.toMatchObject({
       targets: [expect.objectContaining({ deploymentId: first.id, weight: 10_000 })],
     });
     const stable = await store.findProjectRoute(project.id);
-    expect(stable?.targets).toEqual([expect.objectContaining({ deploymentId: first.id, weight: 10_000 })]);
+    expect(stable?.targets).toEqual([
+      expect.objectContaining({ deploymentId: first.id, weight: 10_000 }),
+    ]);
     await store.updateRouteTargets(stable!.id, [
       { deploymentId: first.id, weight: 9_000, variantName: "control" },
       { deploymentId: second.id, weight: 1_000, variantName: "candidate" },
@@ -57,24 +88,45 @@ describe("routing repository", () => {
       policyRevision: 3,
       targets: [expect.objectContaining({ deploymentId: second.id, weight: 10_000 })],
     });
-    await expect(store.findRouteByHostname(`${first.deploymentKey}--${project.slug}.agent.localhost`)).resolves.toMatchObject({
+    await expect(
+      store.findRouteByHostname(`${first.deploymentKey}--${project.slug}.agent.localhost`),
+    ).resolves.toMatchObject({
       targets: [expect.objectContaining({ deploymentId: first.id })],
     });
   });
 
   test("reserves host ports until their Deployment is archived", async () => {
     const store = createTestStore();
-    const project = await store.createProject({ name: "Port Reservation Agent", importKind: "zip" });
+    const project = await store.createProject({
+      name: "Port Reservation Agent",
+      importKind: "zip",
+    });
     const revision = await store.recordSourceRevision({
-      projectId: project.id, kind: "zip", sourcePath: "/tmp/port-reservation", summary: {}, envVars: [], files: [], schedules: [],
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/port-reservation",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
     const retained = await store.recordDeployment({
-      projectId: project.id, sourceRevisionId: revision.id, imageTag: "retained", containerName: "retained", internalPort: 3000,
-      hostPort: 41090, runtimeKind: "docker",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "retained",
+      containerName: "retained",
+      internalPort: 3000,
+      hostPort: 41090,
+      runtimeKind: "docker",
     });
     const archived = await store.recordDeployment({
-      projectId: project.id, sourceRevisionId: revision.id, imageTag: "archived", containerName: "archived", internalPort: 3000,
-      hostPort: 41091, runtimeKind: "docker",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "archived",
+      containerName: "archived",
+      internalPort: 3000,
+      hostPort: 41091,
+      runtimeKind: "docker",
     });
     await store.updateDeploymentStatus(retained.id, "stopped");
     await store.updateDeploymentStatus(archived.id, "archived");
@@ -87,48 +139,88 @@ describe("routing repository", () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Transition Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
-      projectId: project.id, kind: "zip", sourcePath: "/tmp/transition", summary: {}, envVars: [], files: [], schedules: [],
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/transition",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
     const deployment = await store.recordDeployment({
-      projectId: project.id, sourceRevisionId: revision.id, imageTag: "transition", containerName: "transition", internalPort: 3000,
-      hostPort: 41092, runtimeKind: "docker",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "transition",
+      containerName: "transition",
+      internalPort: 3000,
+      hostPort: 41092,
+      runtimeKind: "docker",
     });
     const owned: DeploymentRecord["status"][] = ["running", "stopped", "failed"];
 
     await store.updateDeploymentStatus(deployment.id, "failed");
-    await expect(store.transitionDeploymentStatus({
-      deploymentId: deployment.id, to: "running", from: owned,
-    })).resolves.toMatchObject({ status: "running" });
+    await expect(
+      store.transitionDeploymentStatus({
+        deploymentId: deployment.id,
+        to: "running",
+        from: owned,
+      }),
+    ).resolves.toMatchObject({ status: "running" });
 
     await store.updateDeploymentStatus(deployment.id, "draining");
-    await expect(store.transitionDeploymentStatus({
-      deploymentId: deployment.id, to: "running", from: owned,
-    })).resolves.toBeNull();
+    await expect(
+      store.transitionDeploymentStatus({
+        deploymentId: deployment.id,
+        to: "running",
+        from: owned,
+      }),
+    ).resolves.toBeNull();
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "draining" });
 
     await store.updateDeploymentStatus(deployment.id, "archived");
-    await expect(store.transitionDeploymentStatus({
-      deploymentId: deployment.id, to: "failed", from: owned,
-    })).resolves.toBeNull();
+    await expect(
+      store.transitionDeploymentStatus({
+        deploymentId: deployment.id,
+        to: "failed",
+        from: owned,
+      }),
+    ).resolves.toBeNull();
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "archived" });
 
-    await expect(store.transitionDeploymentStatus({
-      deploymentId: "dep_missing", to: "running", from: owned,
-    })).resolves.toBeNull();
+    await expect(
+      store.transitionDeploymentStatus({
+        deploymentId: "dep_missing",
+        to: "running",
+        from: owned,
+      }),
+    ).resolves.toBeNull();
   });
 
   test("creates named aliases and reports retention protection from routes and active sessions", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Retention Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
-      projectId: project.id, kind: "zip", sourcePath: "/tmp/retention", summary: {}, envVars: [], files: [], schedules: [],
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/retention",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
-      deployments.push(await store.recordDeployment({
-        projectId: project.id, sourceRevisionId: revision.id, imageTag: `v${index}`, containerName: `v${index}`, internalPort: 3000,
-        hostPort: 41100 + index, runtimeKind: "docker",
-      }));
+      deployments.push(
+        await store.recordDeployment({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          imageTag: `v${index}`,
+          containerName: `v${index}`,
+          internalPort: 3000,
+          hostPort: 41100 + index,
+          runtimeKind: "docker",
+        }),
+      );
     }
     await store.ensureDeploymentRoutes(project.id, deployments[3]!.id, "agent.localhost");
     const alias = await store.ensureAliasRoute(project.id, "canary", "agent.localhost", [
@@ -136,22 +228,40 @@ describe("routing repository", () => {
     ]);
     expect(alias.hostname).toBe(`canary--${project.slug}.agent.localhost`);
     const policy = await store.getDeploymentRetention(project.id, 3);
-    expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({ protected: false });
-    expect(policy.find((entry) => entry.deployment.id === deployments[2]!.id)).toMatchObject({ protected: true, reasons: expect.arrayContaining(["route_target", "recent_artifact"]) });
+    expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({
+      protected: false,
+    });
+    expect(policy.find((entry) => entry.deployment.id === deployments[2]!.id)).toMatchObject({
+      protected: true,
+      reasons: expect.arrayContaining(["route_target", "recent_artifact"]),
+    });
   });
 
   test("expires idle Playground bindings instead of protecting their deployments forever", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Idle Playground Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
-      projectId: project.id, kind: "zip", sourcePath: "/tmp/idle-playground", summary: {}, envVars: [], files: [], schedules: [],
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/idle-playground",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
-      deployments.push(await store.recordDeployment({
-        projectId: project.id, sourceRevisionId: revision.id, imageTag: `idle-v${index}`, containerName: `idle-v${index}`,
-        internalPort: 3000, hostPort: 41120 + index, runtimeKind: "docker",
-      }));
+      deployments.push(
+        await store.recordDeployment({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          imageTag: `idle-v${index}`,
+          containerName: `idle-v${index}`,
+          internalPort: 3000,
+          hostPort: 41120 + index,
+          runtimeKind: "docker",
+        }),
+      );
     }
     const session = await store.createSession({
       projectId: project.id,
@@ -200,13 +310,24 @@ describe("routing repository", () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Active Request Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
-      projectId: project.id, kind: "zip", sourcePath: "/tmp/active-request", summary: {}, envVars: [], files: [], schedules: [],
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/active-request",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
       const deployment = await store.recordDeployment({
-        projectId: project.id, sourceRevisionId: revision.id, imageTag: `active-v${index}`, containerName: `active-v${index}`,
-        internalPort: 3000, hostPort: 41130 + index, runtimeKind: "docker",
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `active-v${index}`,
+        containerName: `active-v${index}`,
+        internalPort: 3000,
+        hostPort: 41130 + index,
+        runtimeKind: "docker",
       });
       await store.updateDeploymentStatus(deployment.id, "stopped");
       deployments.push(deployment);
@@ -232,13 +353,28 @@ describe("routing repository", () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Binding Touch Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
-      projectId: project.id, kind: "zip", sourcePath: "/tmp/binding-touch", summary: {}, envVars: [], files: [], schedules: [],
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/binding-touch",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
     const deployment = await store.recordDeployment({
-      projectId: project.id, sourceRevisionId: revision.id, imageTag: "binding-touch", containerName: "binding-touch",
-      internalPort: 3000, hostPort: 41140, runtimeKind: "docker",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "binding-touch",
+      containerName: "binding-touch",
+      internalPort: 3000,
+      hostPort: 41140,
+      runtimeKind: "docker",
     });
-    const [projectRoute] = await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
+    const [projectRoute] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployment.id,
+      "agent.localhost",
+    );
     await store.bindSession({
       projectId: project.id,
       eveSessionId: "eve_binding_touch",
@@ -255,15 +391,9 @@ describe("routing repository", () => {
     });
     const touchedAt = new Date("2026-07-28T12:00:00.000Z");
 
-    await store.touchSessionBinding(
-      project.id,
-      "eve_binding_touch",
-      touchedAt,
-    );
+    await store.touchSessionBinding(project.id, "eve_binding_touch", touchedAt);
 
-    await expect(
-      store.findSessionBinding(project.id, "eve_binding_touch"),
-    ).resolves.toMatchObject({
+    await expect(store.findSessionBinding(project.id, "eve_binding_touch")).resolves.toMatchObject({
       continuationToken: "continue_binding_touch",
       updatedAt: touchedAt.toISOString(),
     });
@@ -295,9 +425,13 @@ describe("routing repository", () => {
 
     expect(project).toMatchObject({ name: "gateway-agent", slug: "gateway-agent" });
     expect(deployment.deploymentKey).toMatch(/^[a-z0-9]{8}$/);
-    await expect(store.findRouteByHostname(`${project.slug}.agent.localhost`)).resolves.toMatchObject({
+    await expect(
+      store.findRouteByHostname(`${project.slug}.agent.localhost`),
+    ).resolves.toMatchObject({
       kind: "project",
-      targets: [expect.objectContaining({ deploymentId: deployment.id, weight: 10_000, status: "running" })],
+      targets: [
+        expect.objectContaining({ deploymentId: deployment.id, weight: 10_000, status: "running" }),
+      ],
     });
     await expect(
       store.findRouteByHostname(`${deployment.deploymentKey}--${project.slug}.agent.localhost`),
@@ -311,7 +445,9 @@ describe("routing repository", () => {
     ).resolves.toMatchObject({ targets: [expect.objectContaining({ status: "stopped" })] });
     await store.reconcileAgentRoutes("agents.example.com");
     await expect(store.findRouteByHostname(`${project.slug}.agent.localhost`)).resolves.toBeNull();
-    await expect(store.findRouteByHostname(`${project.slug}.agents.example.com`)).resolves.toMatchObject({ kind: "project" });
+    await expect(
+      store.findRouteByHostname(`${project.slug}.agents.example.com`),
+    ).resolves.toMatchObject({ kind: "project" });
   });
 
   test("binding a Gateway session upgrades telemetry provenance without creating a duplicate root", async () => {
@@ -335,7 +471,11 @@ describe("routing repository", () => {
       hostPort: 41000,
       runtimeKind: "docker",
     });
-    const [route] = await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
+    const [route] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployment.id,
+      "agent.localhost",
+    );
     await store.ingestAgentEvent(envelope(deployment.id));
 
     await store.bindSession({
@@ -356,7 +496,9 @@ describe("routing repository", () => {
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({ trigger: "api", routeId: route!.id, deploymentId: deployment.id }),
     ]);
-    await expect(store.findSessionBinding(project.id, "eve_gateway")).resolves.toMatchObject({ requestId: "req_1" });
+    await expect(store.findSessionBinding(project.id, "eve_gateway")).resolves.toMatchObject({
+      requestId: "req_1",
+    });
     await expect(
       store.findSessionBindingByContinuationToken(project.id, "continue_gateway"),
     ).resolves.toMatchObject({
@@ -365,11 +507,7 @@ describe("routing repository", () => {
     });
 
     await expect(
-      store.setSessionBindingContinuationToken(
-        project.id,
-        "eve_gateway",
-        null,
-      ),
+      store.setSessionBindingContinuationToken(project.id, "eve_gateway", null),
     ).resolves.toMatchObject({ continuationToken: null });
     await expect(
       store.findSessionBindingByContinuationToken(project.id, "continue_gateway"),
@@ -397,8 +535,16 @@ describe("routing repository", () => {
       hostPort: 41000,
       runtimeKind: "docker",
     });
-    const [route] = await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
-    const session = await store.createSession({ projectId: project.id, deploymentId: deployment.id, trigger: "playground" });
+    const [route] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployment.id,
+      "agent.localhost",
+    );
+    const session = await store.createSession({
+      projectId: project.id,
+      deploymentId: deployment.id,
+      trigger: "playground",
+    });
     await store.bindSession({
       projectId: project.id,
       eveSessionId: "eve_playground",
@@ -413,7 +559,10 @@ describe("routing repository", () => {
       affinitySource: null,
     });
 
-    const completed = await store.completeSession(session.id, { status: "completed", eveSessionId: "eve_playground" });
+    const completed = await store.completeSession(session.id, {
+      status: "completed",
+      eveSessionId: "eve_playground",
+    });
 
     expect(completed).toMatchObject({
       trigger: "playground",
@@ -444,18 +593,38 @@ describe("deployment recording atomicity", () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Atomic Deploy Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
-      projectId: project.id, kind: "zip", sourcePath: "/tmp/atomic-deploy", summary: {}, envVars: [], files: [], schedules: [],
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/atomic-deploy",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
     });
     const first = await store.recordDeployment({
-      projectId: project.id, sourceRevisionId: revision.id, imageTag: "atomic:one", containerName: "atomic-one", internalPort: 3000, hostPort: 41881, runtimeKind: "docker",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "atomic:one",
+      containerName: "atomic-one",
+      internalPort: 3000,
+      hostPort: 41881,
+      runtimeKind: "docker",
     });
 
     // Reusing an existing deployment id trips the primary key -- a failure
     // claimDeploymentKey does not swallow -- after the release insert.
-    await expect(store.recordDeployment({
-      deploymentId: first.id,
-      projectId: project.id, sourceRevisionId: revision.id, imageTag: "atomic:two", containerName: "atomic-two", internalPort: 3000, hostPort: 41882, runtimeKind: "docker",
-    })).rejects.toThrow();
+    await expect(
+      store.recordDeployment({
+        deploymentId: first.id,
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: "atomic:two",
+        containerName: "atomic-two",
+        internalPort: 3000,
+        hostPort: 41882,
+        runtimeKind: "docker",
+      }),
+    ).rejects.toThrow();
 
     // The spec forbids releases the database cannot address: the failed call's
     // release row must roll back with it.

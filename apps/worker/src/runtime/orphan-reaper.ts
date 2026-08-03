@@ -27,12 +27,8 @@ export type OrphanProcessReaperOptions = {
   graceMs?: number;
   kinds?: RuntimeKind[];
   runtimeForKind?: (kind: RuntimeKind) => RuntimeAdapter & ProcessDirectoryCapability;
-  listOrphanDockerNetworks?: () => Promise<
-    ManagedAgentTelemetryNetwork[]
-  >;
-  removeOrphanDockerNetwork?: (
-    network: ManagedAgentTelemetryNetwork,
-  ) => Promise<boolean>;
+  listOrphanDockerNetworks?: () => Promise<ManagedAgentTelemetryNetwork[]>;
+  removeOrphanDockerNetwork?: (network: ManagedAgentTelemetryNetwork) => Promise<boolean>;
 };
 
 /**
@@ -51,14 +47,18 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
   const kinds: RuntimeKind[] = options.kinds ?? ["systemd", "docker"];
   const runtimeForKind = options.runtimeForKind ?? createRuntimeAdapterForKind;
   const listOrphanDockerNetworks =
-    options.listOrphanDockerNetworks ??
-    listOrphanAgentTelemetryNetworks;
+    options.listOrphanDockerNetworks ?? listOrphanAgentTelemetryNetworks;
   const removeOrphanDockerNetwork =
-    options.removeOrphanDockerNetwork ??
-    removeOrphanAgentTelemetryNetwork;
+    options.removeOrphanDockerNetwork ?? removeOrphanAgentTelemetryNetwork;
   const firstSeenAt = new Map<string, number>();
 
-  async function sweepProcess(adapter: RuntimeAdapter, kind: RuntimeKind, name: string, key: string, now: Date): Promise<number> {
+  async function sweepProcess(
+    adapter: RuntimeAdapter,
+    kind: RuntimeKind,
+    name: string,
+    key: string,
+    now: Date,
+  ): Promise<number> {
     const deployment = await store.getDeploymentByContainerName(name);
     if (deployment && deployment.runtimeKind === kind) {
       if (await store.hasActiveActivationLeases(deployment.id, now)) {
@@ -66,7 +66,14 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
         return 0;
       }
       const instances = await store.listDeploymentRuntimeInstances(deployment.id);
-      if (instances.some((instance) => instance.status === "starting" || instance.status === "ready" || instance.status === "draining")) {
+      if (
+        instances.some(
+          (instance) =>
+            instance.status === "starting" ||
+            instance.status === "ready" ||
+            instance.status === "draining",
+        )
+      ) {
         firstSeenAt.delete(key);
         return 0;
       }
@@ -78,10 +85,14 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
         // racing activation. A stopped/failed/archived Deployment is the
         // opposite case: the control plane decided this process must not run,
         // so a surviving unit is reaped below, never resurrected.
-        const adopted = await store.adoptRuntimeInstance(deployment.id, {
-          endpointHost: "127.0.0.1",
-          endpointPort: deployment.hostPort,
-        }, now);
+        const adopted = await store.adoptRuntimeInstance(
+          deployment.id,
+          {
+            endpointHost: "127.0.0.1",
+            endpointPort: deployment.hostPort,
+          },
+          now,
+        );
         if (adopted) {
           await store.appendLog({
             projectId: deployment.projectId,
@@ -107,9 +118,10 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
         projectId: deployment.projectId,
         deploymentId: deployment.id,
         type: "runtime",
-        line: deployment.runtimeKind === kind
-          ? `Stopped orphan process ${name} left behind by ${deployment.status} Deployment ${deployment.id}.`
-          : `Stopped orphan ${kind} process ${name}; Deployment ${deployment.id} is owned by the ${deployment.runtimeKind} runtime.`,
+        line:
+          deployment.runtimeKind === kind
+            ? `Stopped orphan process ${name} left behind by ${deployment.status} Deployment ${deployment.id}.`
+            : `Stopped orphan ${kind} process ${name}; Deployment ${deployment.id} is owned by the ${deployment.runtimeKind} runtime.`,
       });
     } else {
       console.warn(`Stopped orphan ${kind} process ${name}: no Deployment record owns it.`);
@@ -148,8 +160,7 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
         for (const network of networks) {
           const key = `docker-network:${network.name}`;
           seenKeys.add(key);
-          const firstSeen =
-            firstSeenAt.get(key) ?? now.getTime();
+          const firstSeen = firstSeenAt.get(key) ?? now.getTime();
           firstSeenAt.set(key, firstSeen);
           if (now.getTime() - firstSeen < graceMs) continue;
           try {
@@ -175,7 +186,7 @@ export function createOrphanProcessReaper(store: Store, options: OrphanProcessRe
     // A process that vanished between sweeps must not keep an aging grace
     // entry around to instantly condemn an unrelated future process reusing
     // its name.
-    for (const key of [...firstSeenAt.keys()]) {
+    for (const key of firstSeenAt.keys()) {
       if (!seenKeys.has(key)) firstSeenAt.delete(key);
     }
     return stopped;

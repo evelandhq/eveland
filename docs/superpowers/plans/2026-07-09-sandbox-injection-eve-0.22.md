@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Follow eve's latest version. No back-compat branches for eve < 0.20.** (`>=0.20.0 <0.23.0`.) eve 0.x caret ranges pin the *minor* — `^0.17.1` excludes 0.22, so peer/dev ranges must be written explicitly.
+- **Follow eve's latest version. No back-compat branches for eve < 0.20.** (`>=0.20.0 <0.23.0`.) eve 0.x caret ranges pin the _minor_ — `^0.17.1` excludes 0.22, so peer/dev ranges must be written explicitly.
 - Agent projects must never need to know a sandbox backend exists. The generated module is written into the **release directory**, never into the user's source tree.
 - An authored sandbox (`agent/sandbox.ts` or `agent/sandbox/`) is **ignored and replaced**. This is a deliberate decision (2026-07-09) and it drops that module's `bootstrap()`, `onSession()`, and `agent/sandbox/workspace/` seed tree. Every override MUST emit a loud line into the build log.
 - `@eveland/sandbox-bwrap` keeps **zero runtime dependencies** (Node builtins only). ESM, `.js` extensions on relative imports, strict NodeNext.
@@ -24,7 +24,7 @@
 Established by direct experiment on 2026-07-09 against eve 0.22.1. Anything here that a task disproves is a finding — report it, do not silently work around it.
 
 1. **eve 0.20.0 breaking change** (from eve's own CHANGELOG): "`SandboxBackendHandle` gains a required `shutdown()` and the unused `dispose()` is removed." Compiling today's `packages/sandbox-bwrap/src` against eve@0.22.1 produces exactly one error: `src/backend.ts(98,11): error TS2322: … Property 'shutdown' is missing`. Everything else — `SandboxSession`, `SandboxDefinition`, `public/definitions/sandbox-backend.d.ts` — is byte-identical between 0.17.1 and 0.22.1.
-2. `shutdown()`'s contract: *"Stops the underlying compute because the eve server is shutting down; nothing may be left running afterwards. The session must remain reattachable from persisted state on the next server start."*
+2. `shutdown()`'s contract: _"Stops the underlying compute because the eve server is shutting down; nothing may be left running afterwards. The session must remain reattachable from persisted state on the next server start."_
 3. **eve 0.22.1 keys session sandboxes per durable session, not per deployment** — "redeploying no longer discards a session's `/workspace` state." Our cache currently lives at `<appRoot>/.eve/sandbox-cache/bwrap/`, and in eveland `appRoot` is the per-release directory, so a redeploy silently discards every session workspace. That is the bug Task 2 fixes.
 4. **Injection works.** A generated `agent/sandbox.js` that imports a vendored backend by relative path (`../.eveland/…/index.js`) is discovered, compiled and bundled into `.output`. eve accepts `.cts .mts .cjs .mjs .ts .js` for authored modules, and `.ts` sorts before `.js`, so an authored `sandbox.ts` still wins unless it is removed. `eve build` does **not** typecheck the generated `.js`.
 5. **Prewarm is lazy.** `npx eve build` does not call `prewarm` on a self-hosted build (that path is Vercel-only), `npx eve start` does not call it either, and `/eve/v1/health` returns **200** while the backend is entirely broken. The first `prewarm`/`create` happens on the first session that needs a sandbox. Therefore eveland's HTTP health check cannot detect a broken sandbox — hence Task 5.
@@ -33,34 +33,36 @@ Established by direct experiment on 2026-07-09 against eve 0.22.1. Anything here
 
 ## File structure
 
-| File | Change | Responsibility |
-| --- | --- | --- |
-| `packages/sandbox-bwrap/src/backend.ts` | modify | `shutdown()` replaces `dispose()`; `cacheDir` threading |
-| `packages/sandbox-bwrap/src/session.ts` | modify | track live spawned processes; expose `killAll()` |
-| `packages/sandbox-bwrap/src/paths.ts` | modify | `resolveBwrapCacheRoot(appRoot, cacheDir?)` |
-| `packages/sandbox-bwrap/src/options.ts` | modify | `cacheDir` option |
-| `packages/sandbox-bwrap/package.json` | modify | eve peer/dev range `>=0.20.0 <0.23.0` |
-| `apps/worker/src/runtime/sandbox-inject.ts` | create | generate sandbox modules + vendor the backend |
-| `apps/worker/src/runtime/sandbox-verify.ts` | create | post-build sandbox self-check under systemd hardening |
-| `apps/worker/src/runtime/systemd.ts` | modify | call inject + verify; `ReadWritePaths` for the cache dir |
-| `apps/worker/src/runtime/select.ts` | modify | `EVELAND_SANDBOX_CACHE_DIR` config |
-| `apps/worker/src/integration/systemd-smoke.ts` | modify | assert injection happened |
-| `packages/sandbox-bwrap/src/integration/bwrap-backend-smoke.ts` | modify | `shutdown()` kills spawned trees |
-| `infra/integration/run.sh` | modify | build the package; run the new e2e |
-| `apps/worker/src/integration/agent-sandbox-e2e.ts` | create | import → deploy → real turn → redeploy → workspace survives |
-| `packages/sandbox-bwrap/README.md`, `docs/deploy/linux.md`, `README.md` | modify | document injection, cache location, self-check |
+| File                                                                    | Change | Responsibility                                              |
+| ----------------------------------------------------------------------- | ------ | ----------------------------------------------------------- |
+| `packages/sandbox-bwrap/src/backend.ts`                                 | modify | `shutdown()` replaces `dispose()`; `cacheDir` threading     |
+| `packages/sandbox-bwrap/src/session.ts`                                 | modify | track live spawned processes; expose `killAll()`            |
+| `packages/sandbox-bwrap/src/paths.ts`                                   | modify | `resolveBwrapCacheRoot(appRoot, cacheDir?)`                 |
+| `packages/sandbox-bwrap/src/options.ts`                                 | modify | `cacheDir` option                                           |
+| `packages/sandbox-bwrap/package.json`                                   | modify | eve peer/dev range `>=0.20.0 <0.23.0`                       |
+| `apps/worker/src/runtime/sandbox-inject.ts`                             | create | generate sandbox modules + vendor the backend               |
+| `apps/worker/src/runtime/sandbox-verify.ts`                             | create | post-build sandbox self-check under systemd hardening       |
+| `apps/worker/src/runtime/systemd.ts`                                    | modify | call inject + verify; `ReadWritePaths` for the cache dir    |
+| `apps/worker/src/runtime/select.ts`                                     | modify | `EVELAND_SANDBOX_CACHE_DIR` config                          |
+| `apps/worker/src/integration/systemd-smoke.ts`                          | modify | assert injection happened                                   |
+| `packages/sandbox-bwrap/src/integration/bwrap-backend-smoke.ts`         | modify | `shutdown()` kills spawned trees                            |
+| `infra/integration/run.sh`                                              | modify | build the package; run the new e2e                          |
+| `apps/worker/src/integration/agent-sandbox-e2e.ts`                      | create | import → deploy → real turn → redeploy → workspace survives |
+| `packages/sandbox-bwrap/README.md`, `docs/deploy/linux.md`, `README.md` | modify | document injection, cache location, self-check              |
 
 ---
 
 ### Task 1: Upgrade `@eveland/sandbox-bwrap` to eve 0.22 (`shutdown()`)
 
 **Files:**
+
 - Modify: `packages/sandbox-bwrap/package.json`
 - Modify: `packages/sandbox-bwrap/src/session.ts`
 - Modify: `packages/sandbox-bwrap/src/backend.ts`
 - Test: `packages/sandbox-bwrap/src/session.test.ts`, `packages/sandbox-bwrap/src/backend.test.ts`
 
 **Interfaces:**
+
 - Consumes: existing `ProcessRunner`, `SpawnedProcess`, `createBwrapSession`.
 - Produces: `createBwrapSession` returns `SandboxSession & { readonly killAll: () => Promise<void> }` via a new exported type `BwrapSession`; the backend handle exposes `shutdown(): Promise<void>` and no longer exposes `dispose`.
 
@@ -147,7 +149,13 @@ describe("killAll", () => {
     const appRoot = await mkdtemp(path.join(os.tmpdir(), "bwrap-killall-"));
     const workspaceDir = path.join(appRoot, "ws");
     await mkdir(workspaceDir, { recursive: true });
-    const session = createBwrapSession({ id: "s1", workspaceDir, appRoot, runner, options: resolveBwrapSandboxOptions() });
+    const session = createBwrapSession({
+      id: "s1",
+      workspaceDir,
+      appRoot,
+      runner,
+      options: resolveBwrapSandboxOptions(),
+    });
 
     await session.run({ command: "echo out" });
     await session.killAll();
@@ -162,23 +170,35 @@ Add the missing imports at the top of that file: `import type { ProcessRunner, S
 Append to `packages/sandbox-bwrap/src/backend.test.ts`, inside `describe("create", …)`:
 
 ```ts
-  test("shutdown kills the session's live processes and leaves the workspace on disk", async () => {
-    const { backend, runtimeContext } = await makeBackend();
-    const handle = await backend.create({ templateKey: null, sessionKey: "sess-shutdown", runtimeContext });
-    await handle.session.writeTextFile({ path: "keep.txt", content: "durable" });
-
-    await handle.shutdown();
-
-    const again = await backend.create({ templateKey: null, sessionKey: "sess-shutdown", runtimeContext });
-    expect(await again.session.readTextFile({ path: "keep.txt" })).toBe("durable");
+test("shutdown kills the session's live processes and leaves the workspace on disk", async () => {
+  const { backend, runtimeContext } = await makeBackend();
+  const handle = await backend.create({
+    templateKey: null,
+    sessionKey: "sess-shutdown",
+    runtimeContext,
   });
+  await handle.session.writeTextFile({ path: "keep.txt", content: "durable" });
 
-  test("the handle exposes shutdown and no longer exposes dispose", async () => {
-    const { backend, runtimeContext } = await makeBackend();
-    const handle = await backend.create({ templateKey: null, sessionKey: "sess-api", runtimeContext });
-    expect(typeof handle.shutdown).toBe("function");
-    expect((handle as unknown as Record<string, unknown>).dispose).toBeUndefined();
+  await handle.shutdown();
+
+  const again = await backend.create({
+    templateKey: null,
+    sessionKey: "sess-shutdown",
+    runtimeContext,
   });
+  expect(await again.session.readTextFile({ path: "keep.txt" })).toBe("durable");
+});
+
+test("the handle exposes shutdown and no longer exposes dispose", async () => {
+  const { backend, runtimeContext } = await makeBackend();
+  const handle = await backend.create({
+    templateKey: null,
+    sessionKey: "sess-api",
+    runtimeContext,
+  });
+  expect(typeof handle.shutdown).toBe("function");
+  expect((handle as unknown as Record<string, unknown>).dispose).toBeUndefined();
+});
 ```
 
 - [ ] **Step 4: Run tests to verify they fail**
@@ -209,15 +229,17 @@ Change the signature to `export function createBwrapSession(input: CreateBwrapSe
 Inside the factory, above `spawnProcess`:
 
 ```ts
-  const live = new Set<SpawnedProcess>();
+const live = new Set<SpawnedProcess>();
 
-  function track(proc: SpawnedProcess): SpawnedProcess {
-    live.add(proc);
-    // Drop the reference as soon as the process exits so a long-lived session
-    // does not accumulate dead handles.
-    void Promise.resolve(proc.wait()).catch(() => undefined).finally(() => live.delete(proc));
-    return proc;
-  }
+function track(proc: SpawnedProcess): SpawnedProcess {
+  live.add(proc);
+  // Drop the reference as soon as the process exits so a long-lived session
+  // does not accumulate dead handles.
+  void Promise.resolve(proc.wait())
+    .catch(() => undefined)
+    .finally(() => live.delete(proc));
+  return proc;
+}
 ```
 
 Import the type: change the process import to `import type { ProcessRunner, SpawnedProcess } from "./process.js";`.
@@ -225,7 +247,7 @@ Import the type: change the process import to `import type { ProcessRunner, Spaw
 Make `spawnProcess` return a tracked process — its last line becomes:
 
 ```ts
-    return track(runner.spawn(argv, { abortSignal: spawnOptions.abortSignal }));
+return track(runner.spawn(argv, { abortSignal: spawnOptions.abortSignal }));
 ```
 
 In `run`, untrack once collected (its `wait()` already settles, so the `finally` above removes it; no extra code). Add `killAll` to the returned object, next to `resolvePath`:
@@ -270,10 +292,12 @@ git commit -m "feat(sandbox-bwrap): target eve 0.22 and implement shutdown() wit
 ### Task 2: Move the sandbox cache out of the release directory
 
 **Files:**
+
 - Modify: `packages/sandbox-bwrap/src/options.ts`, `paths.ts`, `session.ts`, `backend.ts`, `index.ts`
 - Test: `packages/sandbox-bwrap/src/paths.test.ts`, `options.test.ts`, `session.test.ts`, `backend.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 1's `BwrapSession`.
 - Produces:
   - `BwrapSandboxCreateOptions.cacheDir?: string` (absolute; defaults to `<appRoot>/.eve/sandbox-cache/bwrap`), carried on `ResolvedBwrapSandboxOptions.cacheDir: string | null`.
@@ -289,16 +313,24 @@ Why: fact 3. eve 0.22 promises a redeploy preserves a durable session's `/worksp
 ```ts
 describe("cacheDir override", () => {
   test("an explicit cacheDir replaces the appRoot-derived cache root", () => {
-    expect(resolveBwrapCacheRoot("/app", "/var/lib/eveland-data/sandbox/proj_1")).toBe("/var/lib/eveland-data/sandbox/proj_1");
+    expect(resolveBwrapCacheRoot("/app", "/var/lib/eveland-data/sandbox/proj_1")).toBe(
+      "/var/lib/eveland-data/sandbox/proj_1",
+    );
     expect(resolveBwrapCacheRoot("/app", null)).toBe("/app/.eve/sandbox-cache/bwrap");
     expect(resolveBwrapCacheRoot("/app")).toBe("/app/.eve/sandbox-cache/bwrap");
   });
 
   test("session and template paths follow the override, so a new appRoot reuses the same state", () => {
     const cacheDir = "/var/lib/eveland-data/sandbox/proj_1";
-    expect(resolveSessionPath("/releases/r1", "sess", cacheDir)).toBe(resolveSessionPath("/releases/r2", "sess", cacheDir));
-    expect(resolveTemplatePath("/releases/r1", "tpl", "hash", cacheDir)).toBe(resolveTemplatePath("/releases/r2", "tpl", "hash", cacheDir));
-    expect(resolveSessionPath("/releases/r1", "sess")).not.toBe(resolveSessionPath("/releases/r2", "sess"));
+    expect(resolveSessionPath("/releases/r1", "sess", cacheDir)).toBe(
+      resolveSessionPath("/releases/r2", "sess", cacheDir),
+    );
+    expect(resolveTemplatePath("/releases/r1", "tpl", "hash", cacheDir)).toBe(
+      resolveTemplatePath("/releases/r2", "tpl", "hash", cacheDir),
+    );
+    expect(resolveSessionPath("/releases/r1", "sess")).not.toBe(
+      resolveSessionPath("/releases/r2", "sess"),
+    );
   });
 });
 ```
@@ -320,43 +352,51 @@ describe("cacheDir option", () => {
 `packages/sandbox-bwrap/src/session.test.ts` — add to the spawn describe:
 
 ```ts
-  test("the overridden cache root is the path hidden by tmpfs", async () => {
-    const appRoot = await mkdtemp(path.join(os.tmpdir(), "bwrap-cachedir-"));
-    const cacheDir = path.join(appRoot, "stable-cache");
-    const workspaceDir = path.join(cacheDir, "sessions", "s1");
-    await mkdir(workspaceDir, { recursive: true });
-    const { runner, calls } = createFakeRunner();
-    const session = createBwrapSession({
-      id: "s1",
-      workspaceDir,
-      appRoot,
-      runner,
-      options: resolveBwrapSandboxOptions({ cacheDir }),
-    });
-    await session.spawn({ command: "true" });
-    const argv = calls[0]!;
-    const secondTmpfs = argv.indexOf("--tmpfs", argv.indexOf("--tmpfs") + 1);
-    expect(argv.slice(secondTmpfs, secondTmpfs + 2)).toEqual(["--tmpfs", cacheDir]);
-    expect(argv).not.toContain(path.join(appRoot, ".eve", "sandbox-cache", "bwrap"));
+test("the overridden cache root is the path hidden by tmpfs", async () => {
+  const appRoot = await mkdtemp(path.join(os.tmpdir(), "bwrap-cachedir-"));
+  const cacheDir = path.join(appRoot, "stable-cache");
+  const workspaceDir = path.join(cacheDir, "sessions", "s1");
+  await mkdir(workspaceDir, { recursive: true });
+  const { runner, calls } = createFakeRunner();
+  const session = createBwrapSession({
+    id: "s1",
+    workspaceDir,
+    appRoot,
+    runner,
+    options: resolveBwrapSandboxOptions({ cacheDir }),
   });
+  await session.spawn({ command: "true" });
+  const argv = calls[0]!;
+  const secondTmpfs = argv.indexOf("--tmpfs", argv.indexOf("--tmpfs") + 1);
+  expect(argv.slice(secondTmpfs, secondTmpfs + 2)).toEqual(["--tmpfs", cacheDir]);
+  expect(argv).not.toContain(path.join(appRoot, ".eve", "sandbox-cache", "bwrap"));
+});
 ```
 
 `packages/sandbox-bwrap/src/backend.test.ts` — add:
 
 ```ts
-  test("session state survives a change of appRoot when cacheDir is pinned", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "bwrap-redeploy-"));
-    const cacheDir = path.join(root, "stable");
-    const backend = createBwrapSandboxBackend({ runner: fakeRunner, createOptions: { cacheDir } });
+test("session state survives a change of appRoot when cacheDir is pinned", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bwrap-redeploy-"));
+  const cacheDir = path.join(root, "stable");
+  const backend = createBwrapSandboxBackend({ runner: fakeRunner, createOptions: { cacheDir } });
 
-    const first = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-1") } });
-    await first.session.writeTextFile({ path: "state.txt", content: "kept" });
-    await first.shutdown();
-
-    // Redeploy: brand-new appRoot, same project cache.
-    const second = await backend.create({ templateKey: null, sessionKey: "s", runtimeContext: { appRoot: path.join(root, "release-2") } });
-    expect(await second.session.readTextFile({ path: "state.txt" })).toBe("kept");
+  const first = await backend.create({
+    templateKey: null,
+    sessionKey: "s",
+    runtimeContext: { appRoot: path.join(root, "release-1") },
   });
+  await first.session.writeTextFile({ path: "state.txt", content: "kept" });
+  await first.shutdown();
+
+  // Redeploy: brand-new appRoot, same project cache.
+  const second = await backend.create({
+    templateKey: null,
+    sessionKey: "s",
+    runtimeContext: { appRoot: path.join(root, "release-2") },
+  });
+  expect(await second.session.readTextFile({ path: "state.txt" })).toBe("kept");
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -392,11 +432,24 @@ export function resolveBwrapCacheRoot(appRoot: string, cacheDir?: string | null)
   return cacheDir ?? join(appRoot, ".eve", "sandbox-cache", "bwrap");
 }
 
-export function resolveTemplatePath(appRoot: string, templateKey: string, optionsHash: string, cacheDir?: string | null): string {
-  return join(resolveBwrapCacheRoot(appRoot, cacheDir), "templates", `${keyDigest(templateKey)}-${optionsHash}`);
+export function resolveTemplatePath(
+  appRoot: string,
+  templateKey: string,
+  optionsHash: string,
+  cacheDir?: string | null,
+): string {
+  return join(
+    resolveBwrapCacheRoot(appRoot, cacheDir),
+    "templates",
+    `${keyDigest(templateKey)}-${optionsHash}`,
+  );
 }
 
-export function resolveSessionPath(appRoot: string, sessionKey: string, cacheDir?: string | null): string {
+export function resolveSessionPath(
+  appRoot: string,
+  sessionKey: string,
+  cacheDir?: string | null,
+): string {
   return join(resolveBwrapCacheRoot(appRoot, cacheDir), "sessions", keyDigest(sessionKey));
 }
 ```
@@ -404,7 +457,9 @@ export function resolveSessionPath(appRoot: string, sessionKey: string, cacheDir
 `session.ts` — in `spawnProcess`, the hide list becomes:
 
 ```ts
-    const hidePaths = [resolveBwrapCacheRoot(appRoot, options.cacheDir), ...options.hidePaths].filter((path) => existsSync(path));
+const hidePaths = [resolveBwrapCacheRoot(appRoot, options.cacheDir), ...options.hidePaths].filter(
+  (path) => existsSync(path),
+);
 ```
 
 `backend.ts` — thread `options.cacheDir` into both `resolveTemplatePath(...)` calls and the `resolveSessionPath(...)` call (as the trailing argument).
@@ -428,11 +483,13 @@ git commit -m "feat(sandbox-bwrap): pin the sandbox cache outside the release di
 ### Task 3: Build-time sandbox injection
 
 **Files:**
+
 - Create: `apps/worker/src/runtime/sandbox-inject.ts`
 - Test: `apps/worker/src/runtime/sandbox-inject.test.ts`
 - Modify: `apps/worker/package.json` (add `"@eveland/sandbox-bwrap": "workspace:*"`)
 
 **Interfaces:**
+
 - Consumes: nothing from Tasks 1–2 at the type level; it resolves the built package by path at runtime.
 - Produces:
 
@@ -455,6 +512,7 @@ export function injectSandboxModules(input: SandboxInjectionInput): Promise<Sand
 ```
 
 Behavior:
+
 - `resolveSandboxRoots` returns every directory that owns a sandbox: `agent/`, plus `agent/subagents/<name>/` for each subdirectory that exists. (Verify the subagent location against the demo project layout before implementing; if `subagents/` sits elsewhere, fix the code and report it.)
 - For each root: delete an authored `sandbox.{cts,mts,cjs,mjs,ts,js}` and an authored `sandbox/` directory (recording them in `replaced`), then write `sandbox.js`.
 - The generated module imports the vendored backend by a path relative to the root it sits in, so it works at any depth.
@@ -485,7 +543,11 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { buildGeneratedSandboxModule, injectSandboxModules, resolveSandboxRoots } from "./sandbox-inject.js";
+import {
+  buildGeneratedSandboxModule,
+  injectSandboxModules,
+  resolveSandboxRoots,
+} from "./sandbox-inject.js";
 
 async function makeRelease(): Promise<{ releaseDir: string; backendDistDir: string }> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-inject-"));
@@ -502,7 +564,9 @@ describe("buildGeneratedSandboxModule", () => {
     const source = buildGeneratedSandboxModule("../.eveland/sandbox-bwrap/index.js");
     expect(source).toContain('from "eve/sandbox"');
     expect(source).toContain('from "../.eveland/sandbox-bwrap/index.js"');
-    expect(source).toContain("isBwrapAvailable() ? bwrap(cacheDir ? { cacheDir } : {}) : defaultBackend()");
+    expect(source).toContain(
+      "isBwrapAvailable() ? bwrap(cacheDir ? { cacheDir } : {}) : defaultBackend()",
+    );
     expect(source).toContain("process.env.EVELAND_SANDBOX_CACHE_DIR");
   });
 });
@@ -549,7 +613,10 @@ describe("injectSandboxModules", () => {
   test("replaces an authored sandbox directory, including its workspace seeds", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
-    await writeFile(path.join(releaseDir, "agent", "sandbox", "sandbox.ts"), "export default {};\n");
+    await writeFile(
+      path.join(releaseDir, "agent", "sandbox", "sandbox.ts"),
+      "export default {};\n",
+    );
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
@@ -564,8 +631,14 @@ describe("injectSandboxModules", () => {
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
-    expect(result.generated.sort()).toEqual(["agent/sandbox.js", "agent/subagents/researcher/sandbox.js"]);
-    const sub = await readFile(path.join(releaseDir, "agent", "subagents", "researcher", "sandbox.js"), "utf8");
+    expect(result.generated.sort()).toEqual([
+      "agent/sandbox.js",
+      "agent/subagents/researcher/sandbox.js",
+    ]);
+    const sub = await readFile(
+      path.join(releaseDir, "agent", "subagents", "researcher", "sandbox.js"),
+      "utf8",
+    );
     expect(sub).toContain('from "../../../.eveland/sandbox-bwrap/index.js"');
   });
 });
@@ -635,7 +708,9 @@ export async function resolveSandboxRoots(releaseDir: string): Promise<string[]>
   return roots;
 }
 
-export async function injectSandboxModules(input: SandboxInjectionInput): Promise<SandboxInjectionResult> {
+export async function injectSandboxModules(
+  input: SandboxInjectionInput,
+): Promise<SandboxInjectionResult> {
   const roots = await resolveSandboxRoots(input.releaseDir);
   const generated: string[] = [];
   const replaced: string[] = [];
@@ -669,7 +744,11 @@ export async function injectSandboxModules(input: SandboxInjectionInput): Promis
       VENDORED_BACKEND_DIR,
       "index.js",
     );
-    await writeFile(path.join(rootDir, "sandbox.js"), buildGeneratedSandboxModule(importPath), "utf8");
+    await writeFile(
+      path.join(rootDir, "sandbox.js"),
+      buildGeneratedSandboxModule(importPath),
+      "utf8",
+    );
     generated.push(path.posix.join(root, "sandbox.js"));
   }
 
@@ -701,15 +780,18 @@ git commit -m "feat(worker): generate the eve sandbox module at build time"
 ### Task 4: Wire injection into the systemd build, and grant the cache dir
 
 **Files:**
+
 - Modify: `apps/worker/src/runtime/systemd.ts`
 - Modify: `apps/worker/src/runtime/select.ts`
 - Test: `apps/worker/src/runtime/systemd.test.ts` (extend), `apps/worker/src/runtime/select.test.ts` (extend)
 
 **Interfaces:**
+
 - Consumes: `injectSandboxModules`, `VENDORED_BACKEND_DIR` (Task 3).
 - Produces: `SystemdAdapterConfig` gains `sandboxCacheDir: string` and `backendDistDir: string`. `buildSystemdRunArgs` input gains `sandboxCacheDir: string`.
 
 Rules:
+
 - `resolveBackendDistDir()` resolves the built package: `path.dirname(createRequire(import.meta.url).resolve("@eveland/sandbox-bwrap"))`. If it throws or the directory is missing, `buildRelease` must fail with an actionable message telling the operator to run `pnpm --filter @eveland/sandbox-bwrap build`.
 - Injection runs **after** `cp -a` and **before** the build command, so `npx eve build` compiles the generated module. `npm ci` only clears `node_modules`, so `.eveland/` survives.
 - Each project gets `sandboxCacheDir/<projectId>`; the directory is created and `chown`ed to the service user at build time (the app runs unprivileged and cannot create it under `ProtectSystem=strict`).
@@ -736,9 +818,13 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
 
     expect(args).toContain("--property=ReadWritePaths=/rel");
     expect(args).toContain("--property=ReadWritePaths=/var/lib/eveland-data/sandbox/p");
-    expect(args).toContain("--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/p");
+    expect(args).toContain(
+      "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/p",
+    );
     // The env file must still be read before PORT is forced.
-    expect(args.indexOf("--property=EnvironmentFile=/env/p.env")).toBeLessThan(args.indexOf("--property=Environment=PORT=41000"));
+    expect(args.indexOf("--property=EnvironmentFile=/env/p.env")).toBeLessThan(
+      args.indexOf("--property=Environment=PORT=41000"),
+    );
   });
 });
 ```
@@ -747,7 +833,10 @@ Extend `apps/worker/src/runtime/select.test.ts`:
 
 ```ts
 test("systemd runtime derives the sandbox cache dir from the data dir by default", () => {
-  const adapter = createRuntimeAdapterFromEnv({ EVELAND_RUNTIME: "systemd", EVELAND_DATA_DIR: "/var/lib/eveland-data" } as NodeJS.ProcessEnv);
+  const adapter = createRuntimeAdapterFromEnv({
+    EVELAND_RUNTIME: "systemd",
+    EVELAND_DATA_DIR: "/var/lib/eveland-data",
+  } as NodeJS.ProcessEnv);
   expect(adapter.name).toBe("systemd");
 });
 
@@ -771,6 +860,7 @@ Expected: FAIL — `sandboxCacheDir` is not accepted.
 - [ ] **Step 3: Implement**
 
 `systemd.ts`:
+
 - Add `sandboxCacheDir: string;` to `SystemdStartInput` and, in `buildSystemdRunArgs`, immediately after the existing `--property=ReadWritePaths=${input.releaseDir}` entry, push:
 
 ```ts
@@ -788,25 +878,25 @@ and after the existing `Environment=PORT=` entry, push:
 - In `buildRelease`, between the `cp -a` and the build command:
 
 ```ts
-      const injection = await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir });
-      const cacheDir = projectCacheDir(input.projectId);
-      await mkdir(cacheDir, { recursive: true });
+const injection = await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir });
+const cacheDir = projectCacheDir(input.projectId);
+await mkdir(cacheDir, { recursive: true });
 ```
 
 - In `buildRelease`, after `chown -R` of the release dir, also `await execa("chown", ["-R", `${config.user}:`, cacheDir]);`
 - Prefix the returned build log with the injection report so it lands in the project's build log:
 
 ```ts
-      const injectionLog = [
-        `Injected eve sandbox modules: ${injection.generated.join(", ") || "none"}`,
-        ...(injection.replaced.length
-          ? [
-              `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +
-                "eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.",
-            ]
-          : []),
-      ].join("\n");
-      return { releaseRef: releaseDir, log: `${injectionLog}\n${execution.all ?? ""}` };
+const injectionLog = [
+  `Injected eve sandbox modules: ${injection.generated.join(", ") || "none"}`,
+  ...(injection.replaced.length
+    ? [
+        `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +
+          "eveland selects the sandbox backend; the module's bootstrap(), onSession() and workspace seeds are NOT used.",
+      ]
+    : []),
+].join("\n");
+return { releaseRef: releaseDir, log: `${injectionLog}\n${execution.all ?? ""}` };
 ```
 
 - In `startProcess`, pass `sandboxCacheDir` into `buildSystemdRunArgs`. `startProcess` receives no `projectId`, so derive the cache dir from the unit name is NOT acceptable — instead add `sandboxCacheDir: string` to `ProcessStartInput` in `apps/worker/src/runtime/types.ts`, set it in `apps/worker/src/jobs/process.ts` from the same helper, and ignore it in the docker adapter. Update `docker.ts`'s `startProcess` signature accordingly (it already destructures only what it needs).
@@ -837,7 +927,9 @@ function resolveBackendDistDir(): string {
   }
   const distDir = path.dirname(entry);
   if (!existsSync(distDir)) {
-    throw new Error(`@eveland/sandbox-bwrap dist directory is missing at ${distDir}. Run \`pnpm --filter @eveland/sandbox-bwrap build\`.`);
+    throw new Error(
+      `@eveland/sandbox-bwrap dist directory is missing at ${distDir}. Run \`pnpm --filter @eveland/sandbox-bwrap build\`.`,
+    );
   }
   return distDir;
 }
@@ -864,11 +956,13 @@ git commit -m "feat(worker): inject the sandbox at build time and grant its cach
 ### Task 5: Fail the deploy when the sandbox does not work
 
 **Files:**
+
 - Create: `apps/worker/src/runtime/sandbox-verify.ts`
 - Test: `apps/worker/src/runtime/sandbox-verify.test.ts`
 - Modify: `apps/worker/src/runtime/systemd.ts`
 
 **Interfaces:**
+
 - Consumes: `VENDORED_BACKEND_DIR` (Task 3).
 - Produces:
 
@@ -880,10 +974,14 @@ export function buildSandboxVerifyArgs(input: {
   user: string;
   cacheDir: string;
 }): string[];
-export function verifySandbox(input: { releaseDir: string; user: string; cacheDir: string }): Promise<void>;
+export function verifySandbox(input: {
+  releaseDir: string;
+  user: string;
+  cacheDir: string;
+}): Promise<void>;
 ```
 
-Why: fact 5. `eve build` succeeds and `/eve/v1/health` returns 200 with a completely broken sandbox, so nothing in the current pipeline can catch a host that cannot run bwrap. This check runs the real vendored backend under the *same* systemd hardening the deployment gets, so a failure surfaces as a failed build instead of a failed user turn.
+Why: fact 5. `eve build` succeeds and `/eve/v1/health` returns 200 with a completely broken sandbox, so nothing in the current pipeline can catch a host that cannot run bwrap. This check runs the real vendored backend under the _same_ systemd hardening the deployment gets, so a failure surfaces as a failed build instead of a failed user turn.
 
 The script exercises the real backend against a throwaway app root inside the project's cache dir:
 
@@ -906,11 +1004,17 @@ try {
   const backend = createBwrapSandboxBackend();
   const runtimeContext = { appRoot };
   await backend.prewarm({ templateKey: "eveland-verify", runtimeContext, seedFiles: [] });
-  const handle = await backend.create({ templateKey: "eveland-verify", sessionKey: "eveland-verify", runtimeContext });
+  const handle = await backend.create({
+    templateKey: "eveland-verify",
+    sessionKey: "eveland-verify",
+    runtimeContext,
+  });
   const result = await handle.session.run({ command: "echo eveland-sandbox-ok" });
   await handle.shutdown();
   if (result.exitCode !== 0 || !result.stdout.includes("eveland-sandbox-ok")) {
-    console.error(`sandbox self-check failed: exit=${result.exitCode} stdout=${result.stdout} stderr=${result.stderr}`);
+    console.error(
+      `sandbox self-check failed: exit=${result.exitCode} stdout=${result.stdout} stderr=${result.stderr}`,
+    );
     process.exit(1);
   }
   console.log("SANDBOX VERIFY OK");
@@ -923,7 +1027,10 @@ try {
 
 ```ts
 [
-  "--wait", "--pipe", "--collect", "--service-type=exec",
+  "--wait",
+  "--pipe",
+  "--collect",
+  "--service-type=exec",
   `--property=User=${input.user}`,
   "--property=NoNewPrivileges=yes",
   "--property=ProtectSystem=strict",
@@ -932,8 +1039,9 @@ try {
   `--property=WorkingDirectory=${input.releaseDir}`,
   `--setenv=EVELAND_SANDBOX_CACHE_DIR=${input.cacheDir}`,
   `--setenv=TMPDIR=${input.cacheDir}`,
-  "node", path.join(input.releaseDir, SANDBOX_VERIFY_SCRIPT_PATH),
-]
+  "node",
+  path.join(input.releaseDir, SANDBOX_VERIFY_SCRIPT_PATH),
+];
 ```
 
 `verifySandbox` writes the script, runs `execa("systemd-run", args, { all: true, reject: false })`, and throws an `Error` containing the captured output when the exit code is non-zero or `SANDBOX VERIFY OK` is absent. The message must name the two host prerequisites (`/etc/apparmor.d/bwrap` granting `userns`, and an existing `/workspace`) because those are the two ways this fails on a fresh host.
@@ -948,7 +1056,12 @@ import { execa } from "execa";
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { buildSandboxVerifyArgs, buildSandboxVerifyScript, SANDBOX_VERIFY_SCRIPT_PATH, verifySandbox } from "./sandbox-verify.js";
+import {
+  buildSandboxVerifyArgs,
+  buildSandboxVerifyScript,
+  SANDBOX_VERIFY_SCRIPT_PATH,
+  verifySandbox,
+} from "./sandbox-verify.js";
 
 vi.mock("execa", () => ({ execa: vi.fn(async () => ({ exitCode: 0, all: "SANDBOX VERIFY OK" })) }));
 
@@ -965,7 +1078,11 @@ describe("buildSandboxVerifyScript", () => {
 
 describe("buildSandboxVerifyArgs", () => {
   test("runs under the deployment's hardening as the deployment user", () => {
-    const args = buildSandboxVerifyArgs({ releaseDir: "/rel", user: "eveland-app", cacheDir: "/cache/p" });
+    const args = buildSandboxVerifyArgs({
+      releaseDir: "/rel",
+      user: "eveland-app",
+      cacheDir: "/cache/p",
+    });
     expect(args).toContain("--property=User=eveland-app");
     expect(args).toContain("--property=NoNewPrivileges=yes");
     expect(args).toContain("--property=ProtectSystem=strict");
@@ -986,15 +1103,22 @@ describe("verifySandbox", () => {
   });
 
   test("throws an actionable error naming both host prerequisites when the check fails", async () => {
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, all: "bwrap: setting up uid map: Permission denied" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      exitCode: 1,
+      all: "bwrap: setting up uid map: Permission denied",
+    } as never);
     const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-verify-"));
-    await expect(verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" })).rejects.toThrow(/apparmor.*|\/workspace/is);
+    await expect(
+      verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" }),
+    ).rejects.toThrow(/apparmor.*|\/workspace/is);
   });
 
   test("throws when the marker is missing even on exit 0", async () => {
     vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, all: "" } as never);
     const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-verify-"));
-    await expect(verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" })).rejects.toThrow();
+    await expect(
+      verifySandbox({ releaseDir, user: "eveland-app", cacheDir: "/cache/p" }),
+    ).rejects.toThrow();
   });
 });
 ```
@@ -1011,7 +1135,7 @@ Expected: FAIL — module not found.
 In `systemd.ts`'s `buildRelease`, after `chown -R` of both directories (the check runs as the service user, so ownership must already be right):
 
 ```ts
-      await verifySandbox({ releaseDir, user: config.user, cacheDir });
+await verifySandbox({ releaseDir, user: config.user, cacheDir });
 ```
 
 The thrown error propagates out of `buildRelease`; `jobs/process.ts` already records a failed build. Add one line to the returned log noting the check passed.
@@ -1033,6 +1157,7 @@ git commit -m "feat(worker): fail the deploy when the sandbox does not work on t
 ### Task 6: End-to-end verification in the Lima VM
 
 **Files:**
+
 - Create: `apps/worker/src/integration/agent-sandbox-e2e.ts`
 - Modify: `infra/integration/run.sh`
 - Modify: `packages/sandbox-bwrap/src/integration/bwrap-backend-smoke.ts` (replace `dispose()` with `shutdown()`; add a spawn-then-shutdown assertion)
@@ -1068,13 +1193,13 @@ and after the existing two smokes, run the new e2e as root (it drives systemd it
 In `bwrap-backend-smoke.ts`, replace every `handle.dispose()` with `handle.shutdown()`, and add before the persistence check:
 
 ```ts
-    // shutdown() must leave nothing running: spawn a sleeper, shut down, and
-    // confirm the process is gone from the host.
-    const sleeper = await session.spawn({ command: "sleep 300" });
-    const sleeperPid = sleeper.pid;
-    await handle.shutdown();
-    assert.ok(sleeperPid !== undefined, "spawn must expose a pid");
-    assert.equal(processIsAlive(sleeperPid), false, "shutdown() must kill spawned processes");
+// shutdown() must leave nothing running: spawn a sleeper, shut down, and
+// confirm the process is gone from the host.
+const sleeper = await session.spawn({ command: "sleep 300" });
+const sleeperPid = sleeper.pid;
+await handle.shutdown();
+assert.ok(sleeperPid !== undefined, "spawn must expose a pid");
+assert.equal(processIsAlive(sleeperPid), false, "shutdown() must kill spawned processes");
 ```
 
 with a local helper:
@@ -1118,6 +1243,7 @@ git commit -m "test: end-to-end agent sandbox verification across import, deploy
 ### Task 7: Documentation
 
 **Files:**
+
 - Modify: `packages/sandbox-bwrap/README.md`
 - Modify: `docs/deploy/linux.md`
 - Modify: `README.md`

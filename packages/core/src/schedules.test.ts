@@ -27,7 +27,9 @@ Sweep the billing ledger.
   test.each(["ts", "mts", "cts", "js", "mjs", "cjs"])(
     "recognizes Eve's .%s authored module extension as executable",
     (extension) => {
-      expect(parseScheduleSource(`agent/schedules/nightly.${extension}`, "export default {};")).toEqual({
+      expect(
+        parseScheduleSource(`agent/schedules/nightly.${extension}`, "export default {};"),
+      ).toEqual({
         key: "nightly",
         kind: "module",
         sourcePath: `agent/schedules/nightly.${extension}`,
@@ -36,11 +38,14 @@ Sweep the billing ledger.
     },
   );
 
-  test.each(["mdx", "tsx", "jsx", "json"])("rejects Eve-unsupported .%s schedule files", (extension) => {
-    expect(() => parseScheduleSource(`agent/schedules/nightly.${extension}`, "content")).toThrow(
-      /unsupported schedule extension for Eveland's supported Eve releases/,
-    );
-  });
+  test.each(["mdx", "tsx", "jsx", "json"])(
+    "rejects Eve-unsupported .%s schedule files",
+    (extension) => {
+      expect(() => parseScheduleSource(`agent/schedules/nightly.${extension}`, "content")).toThrow(
+        /unsupported schedule extension for Eveland's supported Eve releases/,
+      );
+    },
+  );
 
   test.each(["timezone: Asia/Shanghai", "enabled: false", "description: nightly"])(
     "rejects unsupported Markdown frontmatter: %s",

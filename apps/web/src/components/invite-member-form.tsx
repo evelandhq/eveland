@@ -46,7 +46,14 @@ export function InviteMemberForm() {
         <Field data-invalid={Boolean(error)}>
           <FieldLabel htmlFor="invite-email">Email</FieldLabel>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Input id="invite-email" name="email" type="email" placeholder="member@example.com" aria-invalid={Boolean(error)} required />
+            <Input
+              id="invite-email"
+              name="email"
+              type="email"
+              placeholder="member@example.com"
+              aria-invalid={Boolean(error)}
+              required
+            />
             <Button type="submit" disabled={pending}>
               <SendIcon data-icon="inline-start" />
               {pending ? "Creating…" : "Create invite"}
@@ -61,7 +68,11 @@ export function InviteMemberForm() {
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input id="invite-url" value={inviteUrl} readOnly />
               <Button type="button" variant="outline" onClick={copy}>
-                {copied ? <CheckIcon data-icon="inline-start" /> : <CopyIcon data-icon="inline-start" />}
+                {copied ? (
+                  <CheckIcon data-icon="inline-start" />
+                ) : (
+                  <CopyIcon data-icon="inline-start" />
+                )}
                 {copied ? "Copied" : "Copy"}
               </Button>
             </div>

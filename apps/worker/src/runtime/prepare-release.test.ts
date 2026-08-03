@@ -16,9 +16,15 @@ test("copies source into a prepared release and injects observers without modify
   const sourcePath = path.join(root, "source");
   const buildDir = path.join(root, "build");
   await mkdir(path.join(sourcePath, "agent", "subagents", "child"), { recursive: true });
-  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
+  await writeFile(
+    path.join(sourcePath, "package.json"),
+    JSON.stringify({ dependencies: { eve: "0.29.4" } }),
+  );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
-  await writeFile(path.join(sourcePath, "agent", "subagents", "child", "agent.ts"), "export default {}");
+  await writeFile(
+    path.join(sourcePath, "agent", "subagents", "child", "agent.ts"),
+    "export default {}",
+  );
 
   const result = await prepareReleaseTree({ sourcePath, buildDir });
 
@@ -27,15 +33,15 @@ test("copies source into a prepared release and injects observers without modify
     "agent/subagents/child/hooks/eveland-observer.js",
   ]);
   expect(result.runtimeFile).toBe(".eveland/observability/runtime.mjs");
-  await expect(
-    readFile(path.join(buildDir, result.injectedFiles[0]!), "utf8"),
-  ).resolves.toContain("../../.eveland/observability/runtime.mjs");
-  await expect(
-    readFile(path.join(buildDir, result.runtimeFile!), "utf8"),
-  ).resolves.toContain("OTLPTraceExporter");
-  await expect(
-    readFile(path.join(sourcePath, "agent", "instructions.md"), "utf8"),
-  ).resolves.toBe("root");
+  await expect(readFile(path.join(buildDir, result.injectedFiles[0]!), "utf8")).resolves.toContain(
+    "../../.eveland/observability/runtime.mjs",
+  );
+  await expect(readFile(path.join(buildDir, result.runtimeFile!), "utf8")).resolves.toContain(
+    "OTLPTraceExporter",
+  );
+  await expect(readFile(path.join(sourcePath, "agent", "instructions.md"), "utf8")).resolves.toBe(
+    "root",
+  );
 });
 
 test("injects the scheduler adapter only into the disposable release", async () => {
@@ -44,7 +50,10 @@ test("injects the scheduler adapter only into the disposable release", async () 
   const sourcePath = path.join(root, "source");
   const buildDir = path.join(root, "build");
   await mkdir(path.join(sourcePath, "agent", "schedules"), { recursive: true });
-  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
+  await writeFile(
+    path.join(sourcePath, "package.json"),
+    JSON.stringify({ dependencies: { eve: "0.29.4" } }),
+  );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
     path.join(sourcePath, "agent", "schedules", "cleanup.ts"),
@@ -56,10 +65,12 @@ test("injects the scheduler adapter only into the disposable release", async () 
   expect(result.scheduler.definitions).toEqual([
     expect.objectContaining({ key: "cleanup", kind: "handler", cron: "0 3 * * *" }),
   ]);
-  await expect(readFile(path.join(buildDir, "agent/channels/eveland-scheduler.ts"), "utf8")).resolves.toContain(
-    'kindHint: "schedule"',
-  );
-  await expect(readFile(path.join(sourcePath, "agent/channels/eveland-scheduler.ts"), "utf8")).rejects.toMatchObject({
+  await expect(
+    readFile(path.join(buildDir, "agent/channels/eveland-scheduler.ts"), "utf8"),
+  ).resolves.toContain('kindHint: "schedule"');
+  await expect(
+    readFile(path.join(sourcePath, "agent/channels/eveland-scheduler.ts"), "utf8"),
+  ).rejects.toMatchObject({
     code: "ENOENT",
   });
 });
@@ -77,7 +88,10 @@ export default {
 };
 `;
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
-  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
+  await writeFile(
+    path.join(sourcePath, "package.json"),
+    JSON.stringify({ dependencies: { eve: "0.29.4" } }),
+  );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(path.join(sourcePath, "agent", "agent.ts"), authoredConfig);
 
@@ -94,17 +108,21 @@ export default {
     agentConfigPath: "agent/agent.ts",
     authoredConfigPath: "agent/eveland-authored-agent.ts",
   });
-  await expect(readFile(path.join(buildDir, "agent", "eveland-authored-agent.ts"), "utf8")).resolves.toBe(
-    authoredConfig,
-  );
+  await expect(
+    readFile(path.join(buildDir, "agent", "eveland-authored-agent.ts"), "utf8"),
+  ).resolves.toBe(authoredConfig);
   await expect(readFile(path.join(buildDir, "agent", "agent.ts"), "utf8")).resolves.toMatch(
     /world:\s*"@workflow\/world-postgres"/,
   );
   await expect(readFile(path.join(buildDir, "agent", "agent.ts"), "utf8")).resolves.toContain(
     'from "./eveland-authored-agent.ts"',
   );
-  await expect(readFile(path.join(sourcePath, "agent", "agent.ts"), "utf8")).resolves.toBe(authoredConfig);
-  await expect(readFile(path.join(sourcePath, "agent", "eveland-authored-agent.ts"), "utf8")).rejects.toMatchObject({
+  await expect(readFile(path.join(sourcePath, "agent", "agent.ts"), "utf8")).resolves.toBe(
+    authoredConfig,
+  );
+  await expect(
+    readFile(path.join(sourcePath, "agent", "eveland-authored-agent.ts"), "utf8"),
+  ).rejects.toMatchObject({
     code: "ENOENT",
   });
 });
@@ -115,7 +133,10 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
   const sourcePath = path.join(root, "source");
   const buildDir = path.join(root, "build");
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
-  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
+  await writeFile(
+    path.join(sourcePath, "package.json"),
+    JSON.stringify({ dependencies: { eve: "0.29.4" } }),
+  );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
 
   const result = await prepareReleaseTree({
@@ -131,7 +152,9 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
   const generated = await readFile(path.join(buildDir, "agent", "agent.ts"), "utf8");
   expect(generated).toContain('model: "anthropic/claude-sonnet-5"');
   expect(generated).toContain('world: "@workflow/world-postgres"');
-  await expect(readFile(path.join(sourcePath, "agent", "agent.ts"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(readFile(path.join(sourcePath, "agent", "agent.ts"), "utf8")).rejects.toMatchObject({
+    code: "ENOENT",
+  });
 });
 
 test("wraps every Eve-supported authored agent module extension", async () => {
@@ -141,9 +164,15 @@ test("wraps every Eve-supported authored agent module extension", async () => {
     const sourcePath = path.join(root, "source");
     const buildDir = path.join(root, "build");
     await mkdir(sourcePath, { recursive: true });
-    await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.29.4" } }));
+    await writeFile(
+      path.join(sourcePath, "package.json"),
+      JSON.stringify({ dependencies: { eve: "0.29.4" } }),
+    );
     await writeFile(path.join(sourcePath, "instructions.md"), "root");
-    await writeFile(path.join(sourcePath, `agent.${extension}`), "export default { model: 'openai/gpt-5.4' };\n");
+    await writeFile(
+      path.join(sourcePath, `agent.${extension}`),
+      "export default { model: 'openai/gpt-5.4' };\n",
+    );
 
     const result = await prepareReleaseTree({
       sourcePath,

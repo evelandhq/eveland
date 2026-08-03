@@ -22,9 +22,7 @@ describe("Identity local development configuration", () => {
       webOrigin: "http://localhost:3000",
     });
 
-    expect(services.allowedOrigins).toEqual(
-      new Set(["http://localhost:3010"]),
-    );
+    expect(services.allowedOrigins).toEqual(new Set(["http://localhost:3010"]));
   });
 
   test("restarts the API dev process when the shared .env changes", () => {

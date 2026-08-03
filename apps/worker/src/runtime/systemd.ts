@@ -7,9 +7,21 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { verifySandbox } from "./sandbox-verify.js";
-import { processSafeName, type PortOwnership, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type CompleteRuntimeAdapter,
-  type PortOwnershipCapability, type RuntimeCommandContext } from "./types.js";
-import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
+import {
+  processSafeName,
+  type PortOwnership,
+  type ProcessStartInput,
+  type ProcessStartResult,
+  type ReleaseBuildInput,
+  type ReleaseBuildResult,
+  type CompleteRuntimeAdapter,
+  type PortOwnershipCapability,
+  type RuntimeCommandContext,
+} from "./types.js";
+import {
+  buildWorkflowWorldInstallCommand,
+  type WorkflowWorldBuildConfig,
+} from "./workflow-world.js";
 import {
   AGENT_OBSERVABILITY_MOUNT_DIR,
   AGENT_OBSERVABILITY_POLICY_FILE_NAME,
@@ -31,13 +43,11 @@ export type SystemdStartInput = {
   command: string;
 };
 
-const dynamicUserAccessRepairScriptMount =
-  "/run/eveland/prepare-dynamic-user-access";
-const dynamicUserUidMarkerMount =
-  "/run/eveland/dynamic-user-uid";
+const dynamicUserAccessRepairScriptMount = "/run/eveland/prepare-dynamic-user-access";
+const dynamicUserUidMarkerMount = "/run/eveland/dynamic-user-uid";
 
 function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\"'\"'`)}'`;
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 export function buildDynamicUserAccessRepairScript(input: {
@@ -58,9 +68,9 @@ export function buildDynamicUserAccessRepairScript(input: {
   // unable to write files the previous one created outside the group umask.
   return `#!/bin/sh
 set -eu
-current_uid="$(readlink ${
-    shellQuote(`/run/systemd/dynamic-uid/direct:${input.deploymentUser}`)
-  } 2>/dev/null || true)"
+current_uid="$(readlink ${shellQuote(
+    `/run/systemd/dynamic-uid/direct:${input.deploymentUser}`,
+  )} 2>/dev/null || true)"
 previous_uid="$(cat ${dynamicUserUidMarkerMount} 2>/dev/null || true)"
 if [ -z "$current_uid" ] || [ "$current_uid" != "$previous_uid" ]; then
   chmod -R g+rwX,g-s -- ${shellQuote(input.releaseDir)} ${shellQuote(input.sandboxCacheDir)}
@@ -90,7 +100,9 @@ export function resolveProjectSandboxCacheDir(root: string, projectId: string): 
  * function's own tests would catch.
  */
 export function resolveSandboxCacheRoot(env: NodeJS.ProcessEnv): string {
-  return path.resolve(env.EVELAND_SANDBOX_CACHE_DIR ?? path.join(env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox"));
+  return path.resolve(
+    env.EVELAND_SANDBOX_CACHE_DIR ?? path.join(env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox"),
+  );
 }
 
 export function resolveSystemdDeploymentUser(unitName: string): string {
@@ -164,9 +176,12 @@ export function buildReleaseBuildCommand(
   context: RuntimeCommandContext,
   workflowWorld?: WorkflowWorldBuildConfig,
 ): string {
-  const install = context.packageManager === "pnpm"
-    ? PNPM_FROZEN_INSTALL_COMMAND
-    : context.hasLockfile ? "npm ci" : "npm install";
+  const install =
+    context.packageManager === "pnpm"
+      ? PNPM_FROZEN_INSTALL_COMMAND
+      : context.hasLockfile
+        ? "npm ci"
+        : "npm install";
   const worldInstall = workflowWorld
     ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld, context.packageManager ?? "npm")}`
     : "";
@@ -186,10 +201,15 @@ export type BwrapBuildInput = {
 
 export function buildBwrapArgs(input: BwrapBuildInput): string[] {
   return [
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    "--proc", "/proc",
-    "--tmpfs", "/tmp",
+    "--ro-bind",
+    "/",
+    "/",
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
+    "--tmpfs",
+    "/tmp",
     // Shadow the whole data dir (deployment-env secrets, sources, every other
     // project's build) before re-exposing only this build's own release dir
     // and the shared npm cache. The build runs as the unprivileged build user,
@@ -200,19 +220,29 @@ export function buildBwrapArgs(input: BwrapBuildInput): string[] {
     // sources and build output. bwrap applies mounts in argument order and
     // creates bind destinations inside its own tmpfs, so the two --bind
     // entries below only re-open the subtrees they name.
-    "--tmpfs", input.dataDir,
-    "--bind", input.releaseDir, input.releaseDir,
-    "--bind", input.npmCacheDir, input.npmCacheDir,
+    "--tmpfs",
+    input.dataDir,
+    "--bind",
+    input.releaseDir,
+    input.releaseDir,
+    "--bind",
+    input.npmCacheDir,
+    input.npmCacheDir,
     "--unshare-pid",
     "--die-with-parent",
-    "--chdir", input.releaseDir,
+    "--chdir",
+    input.releaseDir,
     // util-linux `runuser` (without -m/--preserve-environment) resets HOME to
     // the build user's passwd entry once it switches users, so an execa-env
     // HOME never survives into this sandbox -- it must be (re)injected here,
     // after the switch. See the comment beside `buildEnv` in buildRelease for
     // why HOME must point at releaseDir at all.
-    "--setenv", "HOME", input.releaseDir,
-    "sh", "-lc", input.command,
+    "--setenv",
+    "HOME",
+    input.releaseDir,
+    "sh",
+    "-lc",
+    input.command,
   ];
 }
 
@@ -231,7 +261,9 @@ export function buildEnvFileContent(env: Record<string, string>): string {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => {
       if (value.includes("\n")) {
-        throw new Error(`Secret ${key} contains a newline; systemd EnvironmentFile cannot represent it.`);
+        throw new Error(
+          `Secret ${key} contains a newline; systemd EnvironmentFile cannot represent it.`,
+        );
       }
       return `${key}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
     });
@@ -276,7 +308,11 @@ export function parseSsListenerPids(output: string): number[] {
 
 async function runSystemctl(subcommand: string, unit: string): Promise<void> {
   const result = await execa("systemctl", [subcommand, unit], { reject: false });
-  const outcome: SystemctlCommandOutcome = { failed: result.failed, exitCode: result.exitCode, stderr: result.stderr };
+  const outcome: SystemctlCommandOutcome = {
+    failed: result.failed,
+    exitCode: result.exitCode,
+    stderr: result.stderr,
+  };
   if (isBenignSystemctlStopFailure(outcome)) {
     return;
   }
@@ -307,11 +343,14 @@ export type SystemdAdapterConfig = {
   backendDistDir: () => string;
 };
 
-export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRuntimeAdapter & PortOwnershipCapability {
+export function createSystemdAdapter(
+  config: SystemdAdapterConfig,
+): CompleteRuntimeAdapter & PortOwnershipCapability {
   const dataDir = path.resolve(config.dataDir);
   const npmCacheDir = path.resolve(dataDir, "npm-cache");
   const envDir = path.resolve(dataDir, "deployment-env");
-  const projectCacheDir = (projectId: string) => resolveProjectSandboxCacheDir(config.sandboxCacheDir, projectId);
+  const projectCacheDir = (projectId: string) =>
+    resolveProjectSandboxCacheDir(config.sandboxCacheDir, projectId);
 
   const adapter: CompleteRuntimeAdapter & PortOwnershipCapability = {
     name: "systemd",
@@ -327,7 +366,10 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
       // Runs after cp -a (so it has a release to write into) and before the build
       // command (so `npx eve build` compiles the generated module). `npm ci` only
       // clears node_modules, so .eveland/ survives into the compiled output.
-      const injection = await injectSandboxModules({ releaseDir, backendDistDir: config.backendDistDir() });
+      const injection = await injectSandboxModules({
+        releaseDir,
+        backendDistDir: config.backendDistDir(),
+      });
       const cacheDir = projectCacheDir(input.projectId);
       // The dynamic runtime user runs under ProtectSystem=strict and cannot
       // create this directory itself, so the worker creates it before start.
@@ -384,12 +426,21 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
             // the host provisioning that grants it; not re-documented here.
             await execa(
               "runuser",
-              buildRunAsUserArgs(config.buildUser, ["bwrap", ...buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command })]),
+              buildRunAsUserArgs(config.buildUser, [
+                "bwrap",
+                ...buildBwrapArgs({ releaseDir, npmCacheDir, dataDir, command }),
+              ]),
               { all: true, env: buildEnv, extendEnv: false, ...cancelOptions },
             )
           : await execa(
               "runuser",
-              buildRunAsUserArgs(config.buildUser, ["env", `HOME=${releaseDir}`, "sh", "-lc", command]),
+              buildRunAsUserArgs(config.buildUser, [
+                "env",
+                `HOME=${releaseDir}`,
+                "sh",
+                "-lc",
+                command,
+              ]),
               {
                 all: true,
                 cwd: releaseDir,
@@ -454,30 +505,17 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
       await mkdir(envDir, { recursive: true });
       const envFilePath = path.join(envDir, `${input.processName}.env`);
-      const accessRepairScriptPath = path.join(
-        envDir,
-        `${input.processName}.prepare-access.sh`,
-      );
-      const dynamicUserUidMarkerPath = path.join(
-        input.observabilityPolicyDir,
-        ".dynamic-user-uid",
-      );
+      const accessRepairScriptPath = path.join(envDir, `${input.processName}.prepare-access.sh`);
+      const dynamicUserUidMarkerPath = path.join(input.observabilityPolicyDir, ".dynamic-user-uid");
       const deploymentEnv = { ...input.env };
       delete deploymentEnv.EVELAND_SANDBOX_TEMPLATE_REVISION;
       await writeFile(envFilePath, buildEnvFileContent(deploymentEnv), { mode: 0o600 });
 
-      await execa("chown", [
-        "-R",
-        `root:${config.user}`,
-        input.observabilityPolicyDir,
-      ]);
+      await execa("chown", ["-R", `root:${config.user}`, input.observabilityPolicyDir]);
       await execa("chmod", ["2750", input.observabilityPolicyDir]);
       await execa("chmod", [
         "0640",
-        path.join(
-          input.observabilityPolicyDir,
-          AGENT_OBSERVABILITY_POLICY_FILE_NAME,
-        ),
+        path.join(input.observabilityPolicyDir, AGENT_OBSERVABILITY_POLICY_FILE_NAME),
       ]);
       await writeFile(dynamicUserUidMarkerPath, "", {
         flag: "a",
@@ -486,9 +524,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
       await writeFile(
         accessRepairScriptPath,
         buildDynamicUserAccessRepairScript({
-          deploymentUser: resolveSystemdDeploymentUser(
-            input.processName,
-          ),
+          deploymentUser: resolveSystemdDeploymentUser(input.processName),
           releaseDir: input.releaseRef,
           sandboxCacheDir: input.sandboxCacheDir,
         }),
@@ -533,7 +569,8 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
         reject: false,
       });
       if (result.failed) {
-        if (/not-found|not be found|could not be found|does not exist/i.test(result.all ?? "")) return "missing";
+        if (/not-found|not be found|could not be found|does not exist/i.test(result.all ?? ""))
+          return "missing";
         throw new Error(`systemctl show ${unit} failed: ${result.all || "no output captured"}`);
       }
       const status = (result.stdout ?? "").trim();
@@ -545,16 +582,24 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
     async getProcessDiagnostics(processName) {
       const unit = `${processName}.service`;
       const [state, logs] = await Promise.all([
-        execa("systemctl", [
-          "show",
-          unit,
-          "--property=ActiveState,SubState,NRestarts,ExecMainCode,ExecMainStatus,Result",
-          "--no-pager",
-        ], { all: true, reject: false }),
-        execa("journalctl", ["--unit", unit, "--lines", "200", "--no-pager", "--output=short-iso"], {
-          all: true,
-          reject: false,
-        }),
+        execa(
+          "systemctl",
+          [
+            "show",
+            unit,
+            "--property=ActiveState,SubState,NRestarts,ExecMainCode,ExecMainStatus,Result",
+            "--no-pager",
+          ],
+          { all: true, reject: false },
+        ),
+        execa(
+          "journalctl",
+          ["--unit", unit, "--lines", "200", "--no-pager", "--output=short-iso"],
+          {
+            all: true,
+            reject: false,
+          },
+        ),
       ]);
       return {
         state: diagnosticCommandOutput(state, "systemctl show"),
@@ -571,13 +616,18 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
       if (listeners.failed) {
         // Silently passing here would reintroduce blind trust in whatever
         // answers on the port, so an unusable ss fails the activation loudly.
-        throw new Error(`ss listener lookup for port ${port} failed: ${listeners.all || "no output captured"}`);
+        throw new Error(
+          `ss listener lookup for port ${port} failed: ${listeners.all || "no output captured"}`,
+        );
       }
       const pids = parseSsListenerPids(listeners.stdout ?? "");
       if (pids.length === 0) return { status: "unbound" };
       const holders: string[] = [];
       for (const pid of pids) {
-        const owner = await execa("ps", ["-o", "unit=", "-p", String(pid)], { all: true, reject: false });
+        const owner = await execa("ps", ["-o", "unit=", "-p", String(pid)], {
+          all: true,
+          reject: false,
+        });
         const owningUnit = owner.failed ? "" : (owner.stdout ?? "").trim();
         if (owningUnit === unit) return { status: "owned" };
         holders.push(`pid ${pid}${owningUnit ? ` (unit ${owningUnit})` : ""}`);
@@ -591,10 +641,16 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
           processName: input.processName,
           port: input.port,
         });
-        if (ownership.status === "owned" || (ownership.status === "unbound" && status === "starting")) {
+        if (
+          ownership.status === "owned" ||
+          (ownership.status === "unbound" && status === "starting")
+        ) {
           // An activating unit that has not bound yet is a legitimate reuse;
           // the readiness gate keeps polling ownership afterwards.
-          return { internalPort: input.port, log: `Reused ${status} systemd process ${input.processName}.` };
+          return {
+            internalPort: input.port,
+            log: `Reused ${status} systemd process ${input.processName}.`,
+          };
         }
         if (ownership.status === "foreign") {
           // The unit is alive but can never become the listener while another
@@ -622,7 +678,15 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
         // "activating" included deliberately: a unit flapping in
         // auto-restart (e.g. a lost port bind) never reaches "active", and
         // excluding it hid exactly those zombies from the orphan sweep.
-        ["list-units", "--type=service", "--state=active,activating", "--plain", "--no-legend", "--no-pager", `${namePrefix}*.service`],
+        [
+          "list-units",
+          "--type=service",
+          "--state=active,activating",
+          "--plain",
+          "--no-legend",
+          "--no-pager",
+          `${namePrefix}*.service`,
+        ],
         { all: true, reject: false },
       );
       if (result.failed) {
@@ -643,13 +707,7 @@ export function createSystemdAdapter(config: SystemdAdapterConfig): CompleteRunt
       // Release directories are removed separately when retention archives the
       // stopped Deployment.
       await rm(path.join(envDir, `${processName}.env`), { force: true });
-      await rm(
-        path.join(
-          envDir,
-          `${processName}.prepare-access.sh`,
-        ),
-        { force: true },
-      );
+      await rm(path.join(envDir, `${processName}.prepare-access.sh`), { force: true });
     },
     async removeRelease(releaseRef: string): Promise<void> {
       await rm(path.resolve(releaseRef), { recursive: true, force: true });

@@ -1,10 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  formatCompactDateTime,
-  formatDate,
-  formatDateTime,
-  formatTime,
-} from "./date-time.js";
+import { formatCompactDateTime, formatDate, formatDateTime, formatTime } from "./date-time.js";
 
 describe("compact date time", () => {
   test("shows only hours and minutes on the same local calendar day", () => {
@@ -18,21 +13,15 @@ describe("compact date time", () => {
     const now = new Date(2026, 6, 20, 21, 0);
     const scheduledAt = new Date(2026, 6, 21, 10, 31);
 
-    expect(formatCompactDateTime(scheduledAt.toISOString(), now)).toBe(
-      "07-21 10:31",
-    );
+    expect(formatCompactDateTime(scheduledAt.toISOString(), now)).toBe("07-21 10:31");
   });
 
   test("uses the configured timezone for both the calendar day and clock time", () => {
     const now = new Date("2026-07-21T15:00:00.000Z");
     const scheduledAt = "2026-07-21T16:10:00.000Z";
 
-    expect(formatCompactDateTime(scheduledAt, now, "Asia/Shanghai")).toBe(
-      "07-22 00:10",
-    );
-    expect(formatCompactDateTime(scheduledAt, now, "America/Los_Angeles")).toBe(
-      "09:10",
-    );
+    expect(formatCompactDateTime(scheduledAt, now, "Asia/Shanghai")).toBe("07-22 00:10");
+    expect(formatCompactDateTime(scheduledAt, now, "America/Los_Angeles")).toBe("09:10");
   });
 });
 
