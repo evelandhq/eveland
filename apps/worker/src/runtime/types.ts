@@ -11,6 +11,11 @@ export type ReleaseBuildInput = {
   sourcePath: string;
   buildDir: string;
   commandContext: RuntimeCommandContext;
+  /**
+   * Agent environment entries of `kind: "variable"` only -- a `secret` never
+   * reaches this input. See ./build-environment.ts.
+   */
+  buildVariables?: Readonly<Record<string, string>>;
   /** Platform-owned durable world injected only into the prepared Release. */
   workflowWorld?: WorkflowWorldBuildConfig;
   /** Aborts the build (the job's lease was fenced away); adapters cancel the build command. */

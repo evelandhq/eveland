@@ -433,6 +433,44 @@ host that requires a proxy to reach the npm registry needs a mirror reachable
 without env-borne proxy config today; passing those through under an explicit
 opt-in is possible future work.
 
+The project's own Agent environment joins that allowlist, but only its
+`variable` entries — never a `secret`, from either the Project's environment or
+the Shared Agent Environment. `npx eve build` imports the project's agent
+config to compile the Release manifest, so a config that resolves its model id
+(or any other compile-time value) from `process.env` would otherwise compile
+its authored fallback and freeze that stale value into every turn the Release
+reports. A `variable` is operator-declared non-secret configuration, so it can
+cross into a boundary where untrusted lifecycle scripts can read it; a `secret`
+cannot, and reaches the deployed process only.
+
+Two groups of names stay platform-owned, and an entry claiming either is
+dropped from the build with a `WARNING` in the build log — never silently:
+
+- **`PATH`, `HOME`, `NPM_CONFIG_CACHE`** — the build's own toolchain.
+  `NPM_CONFIG_CACHE` because npm reads it case-insensitively alongside
+  `npm_config_cache`, so an entry using it could redirect the shared cache out
+  of the platform's directory. These still reach the deployed process normally.
+- **Every name the platform reserves at runtime** — `NODE_ENV`,
+  `EVELAND_PROJECT_ID`, `EVELAND_IDENTITY_ISSUER`, `EVELAND_IDENTITY_JWKS_URL`,
+  `EVELAND_SCHEDULER_REDEEM_URL`, `EVELAND_SCHEDULER_RUNTIME_SECRET`,
+  `WORKFLOW_POSTGRES_URL`, `WORKFLOW_POSTGRES_MAX_POOL_SIZE`. The runtime
+  applies these last, so a build that adopted the project's value would compile
+  against something the deployed process then overrides — the same
+  build/runtime divergence build-visible variables exist to close. `NODE_ENV`
+  is dropped from every build regardless of the host's own `NODE_ENV`: `npm ci`
+  and `pnpm install --frozen-lockfile` both omit devDependencies when
+  `NODE_ENV=production` is set, which would strip the project's own build
+  toolchain out of the tree `npx eve build` then compiles against.
+
+Because a Release is immutable, changing a variable refreshes the compiled
+manifest only on the next deploy — an environment change alone just restarts
+live Deployments onto their existing Release. On the Docker runtime the same
+variables are declared as `ARG` in the generated Dockerfile and passed with
+`--build-arg`, so their values appear in that image's build metadata. Those
+`ARG`s are declared after the dependency-install layer, so on Docker only
+`npx eve build` sees them, while the systemd runtime runs install and build in
+one shell and exposes them to both.
+
 > **WARNING: never switch `EVELAND_RUNTIME` on a host with live deployments.**
 >
 > Every deployment record stores the `runtimeKind` (`docker` or `systemd`) of

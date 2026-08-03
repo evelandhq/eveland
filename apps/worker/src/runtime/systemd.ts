@@ -2,6 +2,7 @@ import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
 import { readReleaseDiscovery } from "./discovery-artifacts.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
@@ -190,6 +191,39 @@ export function buildReleaseBuildCommand(
   // `eve info`. Run both inside the same secret-free build sandbox so the
   // Release summary is derived from the exact dependency tree we deploy.
   return `${install}${worldInstall} && npx eve build && npx eve info --json >/dev/null`;
+}
+
+/**
+ * The complete environment `runuser` hands the build, and nothing else.
+ *
+ * execa extends `process.env` by default, so the caller pairs this with
+ * `extendEnv: false`: that pairing is what keeps `APP_SECRET_KEY`,
+ * `DATABASE_URL`, `WORKFLOW_POSTGRES_URL` and every other worker secret out of
+ * a build whose lifecycle scripts can read `/proc/self/environ`. `PATH` and
+ * `npm_config_cache` both survive runuser's user switch unmodified, so they
+ * can ride here; see ./build-environment.ts for the variables.
+ *
+ * HOME cannot: util-linux `runuser` (without `-m`/`--preserve-environment`)
+ * resets HOME, SHELL, USER and LOGNAME to the target user's passwd entry as
+ * part of the switch, so a HOME set here is silently discarded. It has to be
+ * injected after the switch -- `buildBwrapArgs`' `--setenv HOME` in bwrap
+ * mode, an `env HOME=...` wrapper in none mode -- and must point at releaseDir,
+ * the only writable path in bwrap mode that npm and lifecycle scripts can use.
+ */
+export function buildReleaseBuildEnvironment(input: {
+  npmCacheDir: string;
+  pathValue: string;
+  variables: Readonly<Record<string, string>> | undefined;
+}): { environment: Record<string, string>; rejectedKeys: string[] } {
+  const selected = selectBuildVariables(input.variables);
+  return {
+    environment: {
+      ...selected.variables,
+      PATH: input.pathValue,
+      npm_config_cache: input.npmCacheDir,
+    },
+    rejectedKeys: selected.rejectedKeys,
+  };
 }
 
 export type BwrapBuildInput = {
@@ -386,34 +420,12 @@ export function createSystemdAdapter(
       await execa("chown", ["-R", `${config.buildUser}:`, npmCacheDir]);
 
       const command = buildReleaseBuildCommand(input.commandContext, input.workflowWorld);
-      // The build env execa passes must contain nothing secret: npm/eve
-      // lifecycle scripts run untrusted, from the imported project's own
-      // dependency tree, and can read this process's env via
-      // /proc/self/environ regardless of the unprivileged build user --
-      // execa extends process.env by default, so extendEnv: false plus this
-      // explicit allowlist is what actually keeps APP_SECRET_KEY,
-      // DATABASE_URL, WORKFLOW_POSTGRES_URL etc. out of the build. PATH and
-      // npm_config_cache both survive runuser's user switch unmodified, so
-      // they can ride here.
-      //
-      // HOME is deliberately NOT included here. It still must end up set to
-      // releaseDir rather than the build user's real passwd-entry home: the
-      // build user cannot use root's HOME (no read access to it), npm
-      // consults $HOME/.npmrc during install, and lifecycle scripts commonly
-      // write caches under $HOME -- and even the build user's own real home
-      // is useless in bwrap mode, since only releaseDir and the npm cache are
-      // bound read-write there, so a lifecycle script writing e.g. ~/.cache
-      // under any other HOME would hit the read-only rootfs. But util-linux
-      // `runuser` (without -m/--preserve-environment) always resets HOME (and
-      // SHELL/USER/LOGNAME) to the target user's passwd entry once it
-      // switches users, so an execa-env HOME here would be silently discarded
-      // -- it must instead be injected AFTER the switch: bwrap's own
-      // `--setenv HOME` (see buildBwrapArgs) in bwrap mode, or an
-      // `env HOME=...` wrapper in none mode, below.
-      const buildEnv = {
-        PATH: process.env.PATH ?? "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        npm_config_cache: npmCacheDir,
-      };
+      const { environment: buildEnv, rejectedKeys } = buildReleaseBuildEnvironment({
+        npmCacheDir,
+        pathValue:
+          process.env.PATH ?? "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        variables: input.buildVariables,
+      });
       // cancelSignal kills the untrusted build if this job's lease is fenced
       // away mid-build -- a second execution of the same job is already
       // building, and letting both finish races their host side effects.
@@ -495,6 +507,7 @@ export function createSystemdAdapter(
           observerInjection.workflowWorld
             ? `Injected platform workflow world: ${input.workflowWorld?.packageName} (${observerInjection.workflowWorld.agentConfigPath})`
             : undefined,
+          rejectedBuildVariablesLog(rejectedKeys),
           injectionLog,
           execution.all ?? "",
         ]

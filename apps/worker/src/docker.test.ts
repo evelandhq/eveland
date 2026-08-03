@@ -108,6 +108,28 @@ describe("buildDockerBuildArgs", () => {
       "/workspace/source",
     ]);
   });
+
+  test("passes the Agent's non-secret variables to the build as build args", () => {
+    const args = buildDockerBuildArgs({
+      contextDir: "/workspace/source",
+      dockerfilePath: "/workspace/builds/Dockerfile",
+      imageTag: "eveland/proj_123:rel_456",
+      variables: { OPENAI_BASE_URL: "https://x/v1", MODEL_NAME: "configured-model" },
+    });
+
+    expect(args).toEqual([
+      "build",
+      "--file",
+      "/workspace/builds/Dockerfile",
+      "--build-arg",
+      "MODEL_NAME=configured-model",
+      "--build-arg",
+      "OPENAI_BASE_URL=https://x/v1",
+      "--tag",
+      "eveland/proj_123:rel_456",
+      "/workspace/source",
+    ]);
+  });
 });
 
 describe("Docker sandbox self-check", () => {
@@ -266,6 +288,27 @@ describe("writeGeneratedDockerfile", () => {
     expect(contents.indexOf("npm install --no-save")).toBeLessThan(
       contents.indexOf("npx eve build"),
     );
+  });
+
+  test("declares the Agent's non-secret variables so eve build can read them", async () => {
+    const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
+    const dockerfilePath = await writeGeneratedDockerfile(buildDir, undefined, [
+      "MODEL_NAME",
+      "OPENAI_BASE_URL",
+    ]);
+    const contents = await readFile(dockerfilePath, "utf8");
+
+    expect(contents).toContain("ARG MODEL_NAME\nARG OPENAI_BASE_URL\n");
+    expect(contents.indexOf("ARG MODEL_NAME")).toBeGreaterThan(contents.indexOf("COPY . ."));
+    expect(contents.indexOf("ARG MODEL_NAME")).toBeLessThan(contents.indexOf("npx eve build"));
+    expect(contents).not.toContain("ENV MODEL_NAME");
+  });
+
+  test("declares no build args when the Agent has no non-secret variables", async () => {
+    const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
+    const dockerfilePath = await writeGeneratedDockerfile(buildDir, undefined, []);
+
+    expect(await readFile(dockerfilePath, "utf8")).not.toContain("ARG ");
   });
 });
 

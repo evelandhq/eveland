@@ -667,6 +667,91 @@ describe("processNextJob", () => {
     ).not.toContain("shared-only-value");
   });
 
+  test("gives the build the Agent's variables while keeping every secret out of it", async () => {
+    const secretKey = "eveland-test-secret-key-00000000";
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Build Variable Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.saveSharedAgentEnvironment({
+      entries: [
+        {
+          key: "MODEL_NAME",
+          kind: "variable",
+          encryptedValue: JSON.stringify(encryptSecretValue("configured-model", secretKey)),
+        },
+        {
+          key: "OPENAI_API_KEY",
+          kind: "secret",
+          encryptedValue: JSON.stringify(encryptSecretValue("shared-api-key", secretKey)),
+        },
+      ],
+    });
+    await store.upsertSecret(
+      project.id,
+      "REPORTING_BASE_URL",
+      JSON.stringify(encryptSecretValue("https://reporting.example.com", secretKey)),
+      "variable",
+    );
+    await store.enqueueJob(project.id, "build_deploy");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        appSecretKey: secretKey,
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            runtimeCalls.push({ name: "buildRelease", input });
+            return {
+              releaseRef: `eveland/${input.projectId.toLowerCase()}:rel`,
+              log: "build ok",
+            };
+          },
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {},
+        } satisfies RuntimeAdapter,
+        allocateHostPort: () => 41005,
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    const build = runtimeCalls.find((call) => call.name === "buildRelease")!.input as {
+      buildVariables: Record<string, string>;
+    };
+    expect(build.buildVariables).toEqual({
+      MODEL_NAME: "configured-model",
+      REPORTING_BASE_URL: "https://reporting.example.com",
+    });
+    expect(
+      (
+        runtimeCalls.find((call) => call.name === "startProcess")!.input as {
+          env: Record<string, string>;
+        }
+      ).env,
+    ).toMatchObject({
+      MODEL_NAME: "configured-model",
+      OPENAI_API_KEY: "shared-api-key",
+    });
+  });
+
   test("blocks a production deploy when the platform durable world has no database URL", async () => {
     let buildCalled = false;
     const store = createTestStore();
