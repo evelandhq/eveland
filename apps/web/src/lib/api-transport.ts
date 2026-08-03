@@ -62,6 +62,14 @@ function redirectToLogin(): void {
 export type ApiRequestOptions = RequestInit & {
   /** Treat 404 as an absent resource instead of an error. */
   optional?: boolean;
+  /**
+   * What a 401 means for this call. "redirect" (the default) reads it as an
+   * expired session and sends the user back to sign in. "surface" reads it as
+   * the endpoint's answer -- authentication routes reject a credential with
+   * 401, and the caller needs that message, not a session-expiry line, with
+   * nowhere to redirect to since the user is already signing in.
+   */
+  unauthorized?: "redirect" | "surface";
 };
 
 export async function apiFetch(
@@ -83,9 +91,9 @@ export async function apiRequest<T = unknown>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T | null> {
-  const { optional, ...init } = options;
+  const { optional, unauthorized = "redirect", ...init } = options;
   const response = await apiFetch(path, init);
-  if (response.status === 401) {
+  if (response.status === 401 && unauthorized === "redirect") {
     redirectToLogin();
     throw new ApiUnauthorizedError();
   }
