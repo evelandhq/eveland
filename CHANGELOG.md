@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.24.0](https://github.com/evelandhq/eveland/compare/v0.23.1...v0.24.0) (2026-08-03)
+
+
+### Features
+
+* track eve 0.29.5 ([#257](https://github.com/evelandhq/eveland/issues/257)) ([7db3281](https://github.com/evelandhq/eveland/commit/7db32817b15343a2993dbbb357cf06f54a7f4cfd))
+
+
+### Bug Fixes
+
+* **api:** order deployment previews by recency instead of hostname ([226005f](https://github.com/evelandhq/eveland/commit/226005f82b465771b68d2cffe99c0c6ddcec1552))
+* **web:** let a rejected credential speak for itself ([#255](https://github.com/evelandhq/eveland/issues/255)) ([d3d7799](https://github.com/evelandhq/eveland/commit/d3d7799bee903a0f67e5b02fdfd0224364685333))
+
 ## [0.23.1](https://github.com/evelandhq/eveland/compare/v0.23.0...v0.23.1) (2026-08-02)
 
 
