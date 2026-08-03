@@ -15,6 +15,10 @@ const PACKAGE_DEPENDENCY_MATRIX: Record<string, string[]> = {
   "@eveland/session-collector": ["@eveland/core", "@eveland/db"],
   "@eveland/agent-auth": ["@eveland/core", "@eveland/db"],
   "@eveland/identity-broker": ["@eveland/core", "@eveland/db"],
+  // Published to npm and installed *into agent deployments* at build time, so
+  // it must not reach back into the platform: no @eveland/core, no @eveland/db.
+  // Its only contract is @workflow/*.
+  "@eveland/workflow-world": [],
   eveland: [],
 };
 

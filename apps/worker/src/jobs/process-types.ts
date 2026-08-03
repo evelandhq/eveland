@@ -13,6 +13,22 @@ export type ProcessJobOptions = {
     projectId: string,
   ) => Promise<string | undefined>;
   dropProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<void>;
+  /** Shared database backing `@eveland/workflow-world`; overrides EVELAND_WORKFLOW_WORLD_URL. */
+  evelandWorkflowWorldUrl?: string;
+  /** Creates the project's partitions in the shared workflow database. */
+  ensureEvelandWorkflowTenant?: (worldUrl: string, projectId: string) => Promise<void>;
+  /** Drops them again when the project is deleted. */
+  dropEvelandWorkflowTenant?: (worldUrl: string, projectId: string) => Promise<void>;
+  /** Deployments of a project that still own a non-terminal workflow run. */
+  listDeploymentsWithActiveWorkflowRuns?: (
+    worldUrl: string | undefined,
+    projectId: string,
+  ) => Promise<Set<string>>;
+  /**
+   * Recorded on the run so an in-flight run stays pinned to a deployment that
+   * can still replay it. Injected as EVELAND_DEPLOYMENT_ID.
+   */
+  deploymentId?: string;
   nodeEnv?: string;
   dataDir?: string;
   schedulerDispatchSecret?: string;

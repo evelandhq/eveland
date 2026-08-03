@@ -16,7 +16,13 @@ import {
   type RuntimeAdapter,
   type RuntimeCommandContext,
 } from "../runtime/types.js";
+import { ensureEvelandWorkflowTenant } from "../runtime/eveland-workflow-world-bootstrap.js";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
+import {
+  EVELAND_WORKFLOW_WORLD,
+  resolveWorkflowRunnerMode,
+  resolveWorkflowWorldChoice,
+} from "../runtime/workflow-world.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
 
 import type { ProcessJobOptions, ScheduleDispatchInput } from "./process-types.js";
@@ -207,15 +213,33 @@ export async function composeDeploymentEnv(
   const nodeEnv = options.nodeEnv ?? workerEnv.NODE_ENV;
   const isProduction = nodeEnv === "production";
   const workflowPostgresUrl = options.workflowPostgresUrl ?? workerEnv.WORKFLOW_POSTGRES_URL;
-  // Each project gets its own physical workflow database derived from the
-  // platform base URL. A single shared database let any runtime claim any
-  // project's queued turns and re-enqueue every project's active runs on
+  const evelandWorld = resolveWorkflowWorldChoice(workerEnv, projectId);
+  const usesEvelandWorld = evelandWorld.packageName === EVELAND_WORKFLOW_WORLD.packageName;
+  // Legacy world: each project gets its own physical workflow database derived
+  // from the platform base URL. A single shared database let any runtime claim
+  // any project's queued turns and re-enqueue every project's active runs on
   // startup, so the database is created and bootstrapped here, before any
   // process starts with its URL.
+  //
+  // The platform world closes both doors with a tenant column instead, so a
+  // project on it gets no per-project database — provisioning one would leave an
+  // empty database behind for every project on the new world.
   const ensureWorld = options.ensureProjectWorkflowWorld ?? ensureProjectWorkflowWorld;
-  const projectWorkflowUrl = workflowPostgresUrl
-    ? await ensureWorld({ ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl }, projectId)
+  const projectWorkflowUrl =
+    workflowPostgresUrl && !usesEvelandWorld
+      ? await ensureWorld({ ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl }, projectId)
+      : undefined;
+  // The platform world's equivalent: migrations plus this tenant's partitions.
+  // Partitions must exist before the first write — there is deliberately no
+  // DEFAULT partition, so an unprovisioned tenant fails loudly rather than
+  // having its rows land somewhere unreclaimable.
+  const evelandWorldUrl = usesEvelandWorld
+    ? (options.evelandWorkflowWorldUrl ?? workerEnv.EVELAND_WORKFLOW_WORLD_URL)
     : undefined;
+  if (usesEvelandWorld && evelandWorldUrl) {
+    const ensureTenant = options.ensureEvelandWorkflowTenant ?? ensureEvelandWorkflowTenant;
+    await ensureTenant(evelandWorldUrl, projectId);
+  }
   const schedulerRuntimeSecret =
     options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(workerEnv);
   const schedulerRedeemUrl = options.schedulerRedeemUrl ?? workerEnv.EVELAND_SCHEDULER_REDEEM_URL;
@@ -239,6 +263,16 @@ export async function composeDeploymentEnv(
   // an uninitialized or tenant-controlled database.
   const reserved = {
     EVELAND_PROJECT_ID: projectId,
+    ...(options.deploymentId ? { EVELAND_DEPLOYMENT_ID: options.deploymentId } : {}),
+    // Only injected for deployments actually built against the platform world.
+    // A deployment on world-postgres has no use for them, and leaving them out
+    // keeps the two topologies visibly distinct in `printenv`.
+    ...(usesEvelandWorld && evelandWorldUrl
+      ? {
+          EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
+          EVELAND_WORKFLOW_RUNNER: resolveWorkflowRunnerMode(workerEnv),
+        }
+      : {}),
     ...(identityIssuer ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") } : {}),
     ...(identityJwksUrl ? { EVELAND_IDENTITY_JWKS_URL: identityJwksUrl } : {}),
     // The pool size is reserved alongside the URL: connection capacity on the

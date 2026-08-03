@@ -1,4 +1,8 @@
-export type EvelandComponent = "web" | "api" | "gateway" | "worker";
+// Re-exported rather than redeclared: this file used to carry its own copy of
+// the union, which then silently drifted from the canonical list in
+// build-info.ts when a new component was added.
+export type { EvelandComponent } from "./build-info.js";
+import type { EvelandComponent } from "./build-info.js";
 
 export type ConfigurationEntry = {
   name: string;
@@ -584,6 +588,58 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ["worker"],
     "Idle time after the final lease before a ready RuntimeInstance is stopped.",
     "300000",
+  ),
+  urlEntry(
+    "EVELAND_WORKFLOW_WORLD_URL",
+    ["worker", "workflow-dispatcher"],
+    "Shared Postgres database backing @eveland/workflow-world; unset keeps projects on the per-project world-postgres databases.",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_WORLD_ROLLOUT",
+    ["worker"],
+    'Which projects build against @eveland/workflow-world: "off", "all", or a comma-separated list of project ids.',
+    "off",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_RUNNER",
+    ["worker"],
+    'Whether deployments on the platform world run their own queue runner ("embedded") or leave claiming to the dispatcher ("external").',
+    "embedded",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_MAX_INFLIGHT_PER_PROJECT",
+    ["workflow-dispatcher"],
+    "Per-project cap on concurrently dispatched workflow steps; defaults to a machine-derived value.",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_DISPATCH_TIMEOUT_MS",
+    ["workflow-dispatcher"],
+    "Backstop timeout for one held vqs POST. Liveness comes from lease renewal, not this.",
+    "900000",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_LEASE_RENEW_INTERVAL_MS",
+    ["workflow-dispatcher"],
+    "How often the dispatcher renews a step's activation lease. Must stay well below EVELAND_ACTIVATION_LEASE_TTL_MS.",
+    "60000",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_DISPATCHER_CONCURRENCY",
+    ["workflow-dispatcher"],
+    "Maximum workflow jobs the dispatcher claims at once across all projects.",
+    "50",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_DISPATCHER_POLL_INTERVAL_MS",
+    ["workflow-dispatcher"],
+    "Queue poll interval; graphile also uses LISTEN/NOTIFY, so this is the fallback cadence.",
+    "500",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_DISPATCHER_POOL_SIZE",
+    ["workflow-dispatcher"],
+    "Postgres pool size for the dispatcher's connection to the shared workflow database.",
+    "10",
   ),
   entry(
     "EVELAND_ACTIVATION_REAPER_BATCH_SIZE",

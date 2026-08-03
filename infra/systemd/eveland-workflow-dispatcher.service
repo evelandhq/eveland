@@ -1,0 +1,32 @@
+# Platform workflow dispatcher. Install:
+#   cp infra/systemd/eveland-workflow-dispatcher.service /etc/systemd/system/
+#   install -d -m 0750 /etc/eveland
+#   cp infra/systemd/eveland-workflow-dispatcher.env.example /etc/eveland/eveland-workflow-dispatcher.env  # then edit
+#   systemctl daemon-reload && systemctl enable --now eveland-workflow-dispatcher
+#
+# Claims durable workflow jobs out of the shared workflow database and POSTs
+# each step back into the owning Agent deployment, activating it first if it has
+# been idle-reaped. Without this unit a project on the platform world in
+# `external` runner mode has nothing driving its timers.
+#
+# Restarting is cheap and safe: every claim lives in Postgres, so a restart is a
+# brief pause plus boot recovery, never lost work.
+[Unit]
+Description=eveland workflow dispatcher
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+# Unprivileged on purpose: unlike the worker this never drives systemd or
+# touches deployment files. It talks to Postgres and to loopback HTTP only, and
+# it must never load tenant code.
+DynamicUser=yes
+WorkingDirectory=/opt/eveland
+EnvironmentFile=/etc/eveland/eveland-workflow-dispatcher.env
+ExecStart=/usr/bin/env corepack pnpm --filter @eveland/workflow-dispatcher exec tsx src/server.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

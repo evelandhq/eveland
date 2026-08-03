@@ -95,7 +95,10 @@ export async function resolveDeploymentLaunchPrerequisites(input: {
   const { env, secretValues } = await composeDeploymentEnv(
     input.store,
     input.projectId,
-    { ...input.options, appSecretKey },
+    // The deployment id reaches the runtime as EVELAND_DEPLOYMENT_ID, which is
+    // what the platform world records on every run it creates. Without it a run
+    // could not be pinned to a deployment able to replay it.
+    { ...input.options, appSecretKey, deploymentId: input.deploymentId },
     input.workerEnv,
   );
   const commandContext = await resolveRuntimeCommandContext(

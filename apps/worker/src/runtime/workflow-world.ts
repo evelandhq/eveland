@@ -2,12 +2,67 @@ import { access, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PNPM_RELEASE_AGE_CONFIG } from "./package-manager.js";
 
+/**
+ * The world every deployment has been built with until now: one physical
+ * database per project, orchestration running inside the agent process.
+ */
 export const PLATFORM_WORKFLOW_WORLD = {
   packageName: "@workflow/world-postgres",
   packageVersion: "5.0.0-beta.25",
 } as const;
 
-export type WorkflowWorldBuildConfig = typeof PLATFORM_WORKFLOW_WORLD;
+/**
+ * The platform's own world: one shared database, tenancy as a column, and an
+ * optional external runner so durable timers survive the idle reaper.
+ */
+export const EVELAND_WORKFLOW_WORLD = {
+  packageName: "@eveland/workflow-world",
+  packageVersion: "0.1.0",
+} as const;
+
+export type WorkflowWorldBuildConfig = {
+  packageName: string;
+  packageVersion: string;
+};
+
+/**
+ * Which world a project's *next* build bakes in.
+ *
+ * The choice is a build-time property of the deployment, which is what makes
+ * the migration a run-out rather than a data migration: deployments on either
+ * world coexist by construction, and rolling back is rebuilding with the flag
+ * off.
+ *
+ * `EVELAND_WORKFLOW_WORLD_ROLLOUT` accepts `off` (default), `all`, or a
+ * comma-separated list of project ids. This is deliberately a single seam — if
+ * the rollout later wants a per-project column on the projects table, only this
+ * function changes.
+ */
+export function resolveWorkflowWorldChoice(
+  env: NodeJS.ProcessEnv,
+  projectId: string,
+): WorkflowWorldBuildConfig {
+  const rollout = (env.EVELAND_WORKFLOW_WORLD_ROLLOUT ?? "off").trim();
+  if (rollout === "" || rollout === "off") return PLATFORM_WORKFLOW_WORLD;
+  if (rollout === "all") return EVELAND_WORKFLOW_WORLD;
+  const allowed = rollout
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return allowed.includes(projectId) ? EVELAND_WORKFLOW_WORLD : PLATFORM_WORKFLOW_WORLD;
+}
+
+/**
+ * Whether deployments on the platform world run their own graphile runner
+ * (`embedded`) or leave claiming to the dispatcher (`external`).
+ *
+ * Defaults to `embedded`, so turning the world on does not simultaneously
+ * change the execution topology — the two are separate, separately reversible
+ * steps.
+ */
+export function resolveWorkflowRunnerMode(env: NodeJS.ProcessEnv): "embedded" | "external" {
+  return env.EVELAND_WORKFLOW_RUNNER === "external" ? "external" : "embedded";
+}
 
 export type WorkflowWorldInjectionResult = {
   agentConfigPath: string;

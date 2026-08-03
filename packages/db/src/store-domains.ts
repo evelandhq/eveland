@@ -86,11 +86,27 @@ import type {
 export type DeploymentRetention = {
   deployment: DeploymentRecord;
   protected: boolean;
-  reasons: Array<"route_target" | "active_session" | "active_request" | "recent_artifact">;
+  reasons: Array<
+    "route_target" | "active_session" | "active_request" | "recent_artifact" | "active_workflow_run"
+  >;
 };
 
 export type DeploymentRetentionOptions = SessionBindingIdlePolicy & {
   now?: Date;
+  /**
+   * Deployments that still own a non-terminal workflow run.
+   *
+   * Injected rather than queried here because workflow state lives in a
+   * different database than the control plane. Without it, a run that is merely
+   * *sleeping* — holding no session, no request lease and no route — falls
+   * outside every other protection, and archiving deletes the only build that
+   * could ever resume it.
+   *
+   * Note this is not redundant with `active_request`: a step that is *running*
+   * holds an activation lease and is already protected by that reason. This
+   * covers the run that is waiting on a timer and holds nothing at all.
+   */
+  deploymentsWithActiveWorkflowRuns?: ReadonlySet<string>;
 };
 
 export type CreateProjectInput = {

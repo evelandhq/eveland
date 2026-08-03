@@ -1,7 +1,7 @@
 # `@eveland/workflow-world` — platform workflow orchestration
 
-- **Status**: direction approved, ready to implement incrementally
-- **Date**: 2026-08-03
+- **Status**: Phases 1–3 implemented; awaiting local verification before rollout (Phase 4)
+- **Date**: 2026-08-03 (design), 2026-08-04 (implementation)
 - **Source**: design discussion (Michael + Claude); supersedes the per-project `eveland_wf_*` database architecture from PR #67 via a run-out migration
 - **One-liner**: move workflow _orchestration_ (queue, claim, timers, retries, state) into a shared platform service; workflow _execution_ stays inside each agent deployment. "A Sidekiq that doesn't run your code" — the Cloud Tasks / Inngest shape, and the same shape as Vercel's own hosted world (`resolveWorkflowWorldImport` special-cases `local` and `vercel`).
 
@@ -310,6 +310,69 @@ _Resolved since the first draft:_ eve's enforcement of `specVersion` and world v
 ## 14. Explicitly out of scope (future)
 
 Async-ack dispatch; HTTP storage (agents reach zero PG connections — the true tenant boundary and the full "single pool" payoff); declarative platform workflows layered on the dispatch primitive; multi-machine dispatcher replicas (`SKIP LOCKED` claim design is already replica-safe — keep it that way, no in-memory claim state); at-rest payload encryption via `getEncryptionKeyForRun`.
+
+## 16. Implementation notes (2026-08-04)
+
+Phases 1–3 are built. Where the code diverges from the design above, it is
+because implementing it surfaced something the design had wrong or had not
+considered. Those are recorded here rather than silently applied.
+
+**Embedded mode needed its own isolation.** The design treated `embedded` as
+"today's topology, unchanged". On a _shared_ database that is not safe: an
+in-process runner claiming a shared graphile job name would claim other
+projects' jobs — the exact cross-project turn stealing per-project databases
+were introduced to stop (PR #67). graphile's `forbiddenFlags` is a deny-list and
+cannot express "only mine". So embedded-mode job names carry a per-tenant
+suffix, and only `external` mode uses the shared name the dispatcher claims. A
+tenant switching modes drains its old suffixed jobs through the old deployment's
+runner — the same run-out shape as the world migration itself.
+
+**`hooks.getByToken` is scoped by tenant, not by the row it finds.** §5 expected
+it to read the tenant out of the row, since a token is its only argument. But a
+world instance always runs inside one deployment and therefore has an ambient
+tenant, so it is scoped by tenant _and_ token. Guessing another tenant's token
+then resolves to nothing rather than to their hook — strictly safer than the
+design's version.
+
+**The dispatch contract is enforced, not merely sent.** §7 assumed the receiving
+side was eve's and could not check anything. It can: this package supplies
+`createQueueHandler`, so it wraps eve's and rejects a dispatch version it does
+not understand, and requires the shared runtime secret from any request claiming
+to be platform dispatch. This does **not** close the public-endpoint hole in §4
+— that fix is still a prerequisite for Phase 2 — but it does mean the version
+header is a real contract rather than decoration.
+
+**The tenancy column is `tenant_id`, and it leads every primary key.** Not just
+the partitioned tables (where Postgres requires it) but the unpartitioned ones
+too: run and step ids come from the runtime, so a bare `id` primary key would let
+one tenant's insert collide with another tenant's row.
+
+**Two upstream bugs were fixed in the port.** `hooks.get` dereferences its row
+without a not-found guard, so a missing hook surfaces as a `TypeError` instead of
+`HookNotFoundError` (its sibling `getByToken` does guard). And both run-insert
+paths cast a keyed execution context to an array type — a no-op at runtime, wrong
+at the type level. Neither is tenancy-related; both were only visible because
+this repo compiles with stricter settings than upstream.
+
+**pgboss migration removed.** world-postgres runs `DROP SCHEMA pgboss CASCADE`
+on startup to migrate legacy jobs. On a shared database that is a cross-tenant
+destructive statement issued by whichever agent boots first, and there is nothing
+to migrate from on a greenfield schema.
+
+**The rollout flag is an env allowlist, not a database column.** Q2's lean was a
+project column. `EVELAND_WORKFLOW_WORLD_ROLLOUT` (`off` | `all` | project ids)
+does the same job for a single-operator platform without a schema change, and is
+confined to one function (`resolveWorkflowWorldChoice`) so swapping in a column
+later touches nothing else.
+
+**Q6 resolved**: exhausted retries land in `workflow.dispatch_dead_letters` with
+the message preserved verbatim, rather than becoming a `run_failed` event. A run
+that could have succeeded is an operator problem, not a workflow outcome.
+
+**Still open before Phase 4.** The §4 public vqs endpoint fix (prerequisite).
+The Phase 2 gate itself — `sleep 10min` surviving the idle reaper — needs a real
+deployment and has not been run. `docs/deploy/linux.md` connection sizing (4c)
+is unchanged, since no fleet is on the new world yet.
 
 ## 15. Known risks / watch items
 

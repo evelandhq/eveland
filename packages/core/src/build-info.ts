@@ -1,6 +1,12 @@
 export const EVELAND_VERSION = "0.25.0"; // x-release-please-version
 
-export const evelandComponents = ["api", "gateway", "web", "worker"] as const;
+export const evelandComponents = [
+  "api",
+  "gateway",
+  "web",
+  "worker",
+  "workflow-dispatcher",
+] as const;
 export const evelandReleaseChannels = ["dev", "edge", "prerelease", "stable"] as const;
 
 export type EvelandComponent = (typeof evelandComponents)[number];

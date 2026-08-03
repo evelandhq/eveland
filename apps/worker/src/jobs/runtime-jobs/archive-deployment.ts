@@ -1,3 +1,4 @@
+import { listDeploymentsWithActiveWorkflowRuns } from "../../runtime/eveland-workflow-world-bootstrap.js";
 import type { DeploymentStatus } from "@eveland/core/contracts";
 import type { Store } from "@eveland/db";
 import { rm } from "node:fs/promises";
@@ -71,6 +72,12 @@ export async function handleArchiveDeploymentJob(
           process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000,
         ),
         apiIdleTtlMs: Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000),
+        // A run sleeping on a timer holds no session and no lease, so without
+        // this the archive would delete the build directory and image that are
+        // the only things able to resume it.
+        deploymentsWithActiveWorkflowRuns: await (
+          options.listDeploymentsWithActiveWorkflowRuns ?? listDeploymentsWithActiveWorkflowRuns
+        )(process.env.EVELAND_WORKFLOW_WORLD_URL, job.projectId),
       },
     );
     const policy = retention.find((entry) => entry.deployment.id === deployment.id);

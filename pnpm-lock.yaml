@@ -320,6 +320,9 @@ importers:
       '@eveland/sandbox-bwrap':
         specifier: workspace:*
         version: link:../../packages/sandbox-bwrap
+      '@eveland/workflow-world':
+        specifier: workspace:*
+        version: link:../../packages/workflow-world
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -329,6 +332,9 @@ importers:
       execa:
         specifier: ^9.6.1
         version: 9.6.1
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -345,9 +351,43 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: ^2.10.0
         version: 2.10.0(@opentelemetry/api@1.9.1)
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
+
+  apps/workflow-dispatcher:
+    dependencies:
+      '@eveland/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@eveland/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@eveland/platform-observability':
+        specifier: workspace:*
+        version: link:../../packages/platform-observability
+      '@eveland/workflow-world':
+        specifier: workspace:*
+        version: link:../../packages/workflow-world
+      '@workflow/world':
+        specifier: 5.0.0-beta.19
+        version: 5.0.0-beta.19
+      graphile-worker:
+        specifier: 0.16.6
+        version: 0.16.6(typescript@6.0.3)
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/agent-auth:
     dependencies:
@@ -608,6 +648,46 @@ importers:
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/workflow-world:
+    dependencies:
+      '@workflow/errors':
+        specifier: 5.0.0-beta.10
+        version: 5.0.0-beta.10
+      '@workflow/utils':
+        specifier: 5.0.0-beta.6
+        version: 5.0.0-beta.6
+      '@workflow/world':
+        specifier: 5.0.0-beta.19
+        version: 5.0.0-beta.19
+      '@workflow/world-local':
+        specifier: 5.0.0-beta.27
+        version: 5.0.0-beta.27(@opentelemetry/api@1.9.1)
+      cbor-x:
+        specifier: 1.6.0
+        version: 1.6.0
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9)
+      graphile-worker:
+        specifier: 0.16.6
+        version: 0.16.6(typescript@6.0.3)
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
+      ulid:
+        specifier: ~3.0.1
+        version: 3.0.2
+      zod:
+        specifier: ~4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
 
 packages:
 

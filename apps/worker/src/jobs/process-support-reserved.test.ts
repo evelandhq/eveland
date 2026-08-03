@@ -5,27 +5,52 @@ import { RESERVED_RUNTIME_ENVIRONMENT_KEYS } from "../runtime/reserved-environme
 import { composeDeploymentEnv } from "./process-support.js";
 
 const workflowPostgresUrl = "postgres://platform@host:5432/eveland";
+const evelandWorldUrl = "postgres://platform@host:5432/eveland_workflow";
+
+const baseOptions = {
+  appSecretKey: "eveland-test-secret-key-00000000",
+  nodeEnv: "production",
+  deploymentId: "dep_reserved",
+  schedulerRuntimeSecret: "scheduler-runtime-secret",
+  schedulerRedeemUrl: "https://eveland.example.com/scheduler/redeem",
+  identityIssuer: "https://identity.example.com",
+  identityJwksUrl: "https://identity.example.com/.well-known/jwks.json",
+} as const;
 
 /**
- * Every platform-owned runtime name, with each conditional branch of
- * composeDeploymentEnv's `reserved` object turned on.
+ * Every platform-owned runtime name for a project on the legacy per-project
+ * world.
  */
-async function composeWithEveryReservedName() {
-  const store = createTestStore();
+async function composeOnWorldPostgres() {
   return composeDeploymentEnv(
-    store,
+    createTestStore(),
     "proj_reserved",
     {
-      appSecretKey: "eveland-test-secret-key-00000000",
-      nodeEnv: "production",
+      ...baseOptions,
       workflowPostgresUrl,
       ensureProjectWorkflowWorld: async () => `${workflowPostgresUrl}_wf_proj_reserved`,
-      schedulerRuntimeSecret: "scheduler-runtime-secret",
-      schedulerRedeemUrl: "https://eveland.example.com/scheduler/redeem",
-      identityIssuer: "https://identity.example.com",
-      identityJwksUrl: "https://identity.example.com/.well-known/jwks.json",
     },
     {},
+  );
+}
+
+/**
+ * The same, for a project built against the platform world. The two sets are
+ * mutually exclusive by design — a project on the platform world gets no
+ * per-project database, and so no `WORKFLOW_POSTGRES_URL` — which is why the
+ * exported list is the union of both rather than what either one produces.
+ */
+async function composeOnEvelandWorld() {
+  return composeDeploymentEnv(
+    createTestStore(),
+    "proj_reserved",
+    {
+      ...baseOptions,
+      workflowPostgresUrl,
+      evelandWorkflowWorldUrl: evelandWorldUrl,
+      ensureEvelandWorkflowTenant: async () => {},
+    },
+    { EVELAND_WORKFLOW_WORLD_ROLLOUT: "all", EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl },
   );
 }
 
@@ -36,18 +61,35 @@ describe("reserved runtime environment names", () => {
   // so a name added to one side and not the other fails here rather than
   // silently letting a project's value into the next build.
   test("the exported list is exactly what composeDeploymentEnv reserves", async () => {
-    const { env } = await composeWithEveryReservedName();
+    const [legacy, platform] = await Promise.all([
+      composeOnWorldPostgres(),
+      composeOnEvelandWorld(),
+    ]);
 
     // The project has no environment entries, so every remaining name in the
-    // composed environment came from the reserved layer.
-    expect(Object.keys(env).sort()).toEqual([...RESERVED_RUNTIME_ENVIRONMENT_KEYS].sort());
+    // composed environments came from the reserved layer.
+    const reserved = new Set([...Object.keys(legacy.env), ...Object.keys(platform.env)]);
+    expect([...reserved].sort()).toEqual([...RESERVED_RUNTIME_ENVIRONMENT_KEYS].sort());
   });
 
   test("a project entry never wins against a reserved name at runtime", async () => {
-    const { env } = await composeWithEveryReservedName();
+    const { env } = await composeOnWorldPostgres();
 
     expect(env.NODE_ENV).toBe("production");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
+    expect(env.EVELAND_DEPLOYMENT_ID).toBe("dep_reserved");
     expect(env.WORKFLOW_POSTGRES_URL).toBe(`${workflowPostgresUrl}_wf_proj_reserved`);
+  });
+
+  test("the platform world gets its own tenancy names and no per-project database", async () => {
+    const { env } = await composeOnEvelandWorld();
+
+    expect(env.EVELAND_WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
+    expect(env.EVELAND_WORKFLOW_RUNNER).toBe("embedded");
+    expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
+    expect(env.EVELAND_DEPLOYMENT_ID).toBe("dep_reserved");
+    // Provisioning a per-project database here would leave an empty one behind
+    // for every project on the new world.
+    expect(env.WORKFLOW_POSTGRES_URL).toBeUndefined();
   });
 });
