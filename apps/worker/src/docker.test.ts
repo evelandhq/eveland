@@ -33,7 +33,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@eveland/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.29.4",
+    eveVersion: "0.29.5",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
@@ -336,7 +336,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
-          resolvedEveVersion: "0.29.4",
+          resolvedEveVersion: "0.29.5",
         }),
       } as never);
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
@@ -367,7 +367,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Docker sandbox self-check passed");
     expect(result.discovery).toEqual({
       manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
-      resolvedEveVersion: "0.29.4",
+      resolvedEveVersion: "0.29.5",
     });
     expect(vi.mocked(execa).mock.calls).toEqual([
       ["cp", ["-a", "/workspace/source/.", buildDir]],
