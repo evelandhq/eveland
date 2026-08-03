@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.25.0](https://github.com/evelandhq/eveland/compare/v0.24.0...v0.25.0) (2026-08-03)
+
+
+### Features
+
+* **health:** surface machine spec and Postgres connection budget in instance health ([#259](https://github.com/evelandhq/eveland/issues/259)) ([e8a5e90](https://github.com/evelandhq/eveland/commit/e8a5e90b09054d53e7cdea38ed8056bb2d7b5a57))
+* **worker:** cap concurrent builds with a machine-derived global limit ([#261](https://github.com/evelandhq/eveland/issues/261)) ([72d79ed](https://github.com/evelandhq/eveland/commit/72d79ed4e7353b83bd41381412c8f9c3e5b78551))
+* **worker:** inject bounded workflow Postgres pool size into deployments ([#258](https://github.com/evelandhq/eveland/issues/258)) ([94a9f26](https://github.com/evelandhq/eveland/commit/94a9f264ff37b05a944ef80499fc2b40025cab36))
+
+
+### Bug Fixes
+
+* **worker:** stop a Release manifest from freezing a stale model id ([#262](https://github.com/evelandhq/eveland/issues/262)) ([40c1919](https://github.com/evelandhq/eveland/commit/40c1919ff6d1512cb4d7038ff03ada5ce112fed4))
+
 ## [0.24.0](https://github.com/evelandhq/eveland/compare/v0.23.1...v0.24.0) (2026-08-03)
 
 
