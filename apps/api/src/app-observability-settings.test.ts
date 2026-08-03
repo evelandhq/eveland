@@ -20,7 +20,6 @@ describe("observability settings", () => {
         sampling: { ratio: 1 },
         recordInputs: true,
         recordOutputs: true,
-        includeReasoning: true,
       },
       externalDestinations: [],
     });
@@ -35,7 +34,6 @@ describe("observability settings", () => {
           sampling: { ratio: 0.25 },
           recordInputs: true,
           recordOutputs: false,
-          includeReasoning: false,
         },
       }),
     });
@@ -60,7 +58,6 @@ describe("observability settings", () => {
           sampling: { ratio: 1 },
           recordInputs: false,
           recordOutputs: false,
-          includeReasoning: false,
         },
       }),
     });

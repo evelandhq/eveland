@@ -50,7 +50,7 @@ export function createPrivateAgentTelemetryRuntime(input: {
       const eventType = asString(event.type);
       if (
         !eventType ||
-        !shouldCollectAgentTelemetryEvent(eventType, policy.capture.includeReasoning)
+        !shouldCollectAgentTelemetryEvent(eventType, policy.capture.recordOutputs)
       ) {
         return;
       }

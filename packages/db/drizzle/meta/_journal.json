@@ -323,6 +323,13 @@
       "when": 1785743678132,
       "tag": "0045_serious_jasper_sitwell",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1785749465622,
+      "tag": "0046_drop_agent_capture_include_reasoning",
+      "breakpoints": true
     }
   ]
 }

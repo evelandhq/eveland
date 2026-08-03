@@ -32,7 +32,6 @@ export const agentRuntimePolicySchema = z
         sampleRatio: z.number().min(0).max(1),
         recordInputs: z.boolean(),
         recordOutputs: z.boolean(),
-        includeReasoning: z.boolean(),
       })
       .strict(),
     otlp: z
@@ -103,7 +102,6 @@ export function createAgentRuntimePolicy(input: {
       sampleRatio: policy.agentCapture.sampling.ratio,
       recordInputs: policy.agentCapture.recordInputs,
       recordOutputs: policy.agentCapture.recordOutputs,
-      includeReasoning: policy.agentCapture.includeReasoning,
     },
     otlp: {
       endpoint: input.otlpEndpoint,

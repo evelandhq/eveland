@@ -128,13 +128,13 @@ Policy 包含：
 
 - capture enabled；
 - root span sampling ratio；
-- input、output、reasoning content 开关；
+- input、output content 开关（reasoning 属于 output）；
 - 私有 Agent OTLP endpoint；
 - Worker 签发的 Deployment credential；
 - Store 已知的 Team、Project、Release、Deployment、runtime 和 environment identity。
 
-默认启用 Agent capture，sampling ratio 为 `1`，input、output 和 reasoning
-采集均为开启。运行中的 hook 按 revision 有界刷新设置，普通策略变更不重启
+默认启用 Agent capture，sampling ratio 为 `1`，input 和 output 采集均为开启。
+运行中的 hook 按 revision 有界刷新设置，普通策略变更不重启
 Deployment。Policy 缺失、无效、flush 超时或 exporter 失败时，Eveland 遥测降级，
 Agent turn 继续执行。
 
@@ -264,7 +264,17 @@ hostname/IP allowlist 放行，不支持通配符。
   flush/shutdown。
 - Collector 接收后的 delivery 是 at-least-once；Built-in projection 和 usage
   aggregation 必须幂等。
-- input、output 和 reasoning 在 Agent producer 处按 policy 裁剪。
+- input 和 output（含 reasoning）在 Agent producer 处按 policy 裁剪。
+- Model call 的 input 是 Eveland 从 Eve event stream 重建的会话，不是模型收到的
+  prompt：不含 system prompt、resolved instructions 和 tool schema，只覆盖当前
+  turn。`eveland.gen_ai.input.reconstructed` 和 `eveland.gen_ai.input.elided`
+  标注重建与裁剪；compaction 之后被折叠掉的历史用 GenAI semantic conventions 的
+  `compaction` message part 就地表示，不使用私有属性。
+- Message 内容遵循 GenAI semantic conventions 的 `gen_ai.input.messages` /
+  `gen_ai.output.messages` JSON schema（`role` + `parts`，output 带
+  `finish_reason`），part 类型只用 `text`、`reasoning`、`tool_call`、
+  `tool_call_response` 和 `compaction`。Eveland 不为某个 destination 的渲染器改写
+  这个 payload；目的地专属形状属于该目的地的 exporter 配置。
 - Secret、Authorization、Cookie、affinity material 和 destination credential
   不进入遥测。
 - Runtime log 在导出前使用既有 diagnostic masking。

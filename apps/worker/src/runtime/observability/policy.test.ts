@@ -68,7 +68,6 @@ function policy(revision: number, enabled: boolean) {
       sampleRatio: 1,
       recordInputs: false,
       recordOutputs: false,
-      includeReasoning: false,
     },
     otlp: {
       endpoint: "http://127.0.0.1:4318",

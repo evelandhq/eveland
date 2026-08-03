@@ -23,7 +23,6 @@ describe("observability policy store", () => {
         sampling: { ratio: 0.25 },
         recordInputs: true,
         recordOutputs: false,
-        includeReasoning: false,
       },
       externalDestinations: [],
     });
@@ -36,7 +35,6 @@ describe("observability policy store", () => {
         sampling: { ratio: 0.25 },
         recordInputs: true,
         recordOutputs: false,
-        includeReasoning: false,
       },
       externalDestinations: [],
     });

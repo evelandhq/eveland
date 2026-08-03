@@ -213,7 +213,6 @@ function policy(revision: number, enabled = true): RuntimeAgentPolicy {
       sampleRatio: 1,
       recordInputs: false,
       recordOutputs: false,
-      includeReasoning: false,
     },
     otlp: { endpoint: "http://127.0.0.1:4318" },
     deploymentCredential: "credential.signature",

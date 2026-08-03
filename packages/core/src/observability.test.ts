@@ -35,7 +35,6 @@ describe("observability policy", () => {
         sampling: { ratio: 1 },
         recordInputs: true,
         recordOutputs: true,
-        includeReasoning: true,
       },
       externalDestinations: [],
     });
@@ -430,7 +429,6 @@ describe("Agent runtime policy", () => {
         sampleRatio: 1,
         recordInputs: true,
         recordOutputs: true,
-        includeReasoning: true,
       },
       otlp: { endpoint: "http://127.0.0.1:4318" },
       deploymentCredential: "credential.signature",

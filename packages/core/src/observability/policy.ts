@@ -27,8 +27,8 @@ export const agentCapturePolicySchema = z
       })
       .strict(),
     recordInputs: z.boolean(),
+    /** Covers assistant text, reasoning, and tool results alike. */
     recordOutputs: z.boolean(),
-    includeReasoning: z.boolean(),
   })
   .strict();
 
@@ -78,7 +78,6 @@ export function createDefaultObservabilityPolicy(revision: number): Observabilit
       sampling: { ratio: 1 },
       recordInputs: true,
       recordOutputs: true,
-      includeReasoning: true,
     },
     externalDestinations: [],
   });

@@ -101,17 +101,10 @@ export function ObservabilityCaptureForm({
             />
             <CaptureSwitch
               title="Record outputs"
-              description="Attach Agent output content to Eveland telemetry."
+              description="Attach Agent output content — assistant text, reasoning, and tool results — to Eveland telemetry."
               checked={capture.recordOutputs}
               disabled={!capture.enabled}
               onCheckedChange={(recordOutputs) => onChange({ recordOutputs })}
-            />
-            <CaptureSwitch
-              title="Include reasoning"
-              description="Allow reasoning content in Eveland telemetry when Eve exposes it."
-              checked={capture.includeReasoning}
-              disabled={!capture.enabled}
-              onCheckedChange={(includeReasoning) => onChange({ includeReasoning })}
             />
           </FieldGroup>
 

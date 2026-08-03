@@ -119,7 +119,6 @@ try {
           sampleRatio: 1,
           recordInputs: false,
           recordOutputs: false,
-          includeReasoning: false,
         },
         otlp: { endpoint: "http://eveland-otel-collector:4328" },
         deploymentCredential: "credential.signature",
