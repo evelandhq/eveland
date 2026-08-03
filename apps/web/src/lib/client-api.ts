@@ -16,7 +16,7 @@ import type {
   PublicObservabilityPolicy,
 } from "@eveland/core/observability";
 
-import { apiRequest } from "./api-transport";
+import { apiRequest, type ApiRequestOptions } from "./api-transport";
 
 // Aliases of the shared contracts, not copies: the api-contract typecheck
 // pins them, so a divergence fails to compile instead of drifting silently.
@@ -83,6 +83,8 @@ export async function signIn(email: string, password: string): Promise<CurrentMe
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email, password }),
+    // A rejected credential is this endpoint's answer, not an expired session.
+    unauthorized: "surface",
   });
   return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then((data) => data.member);
 }
@@ -278,6 +280,9 @@ export async function acceptInvitation(input: { token: string; name: string; pas
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
+    // Same class as sign-in: the invitation flow answers 401 for a rejected
+    // credential while the user is still creating their account.
+    unauthorized: "surface",
   });
   return data.member;
 }
@@ -478,6 +483,9 @@ export async function runSchedule(projectId: string, scheduleId: string): Promis
 // One browser transport for the whole control panel: shared error decoding
 // (including field-level validation issues) and the 401 -> login policy live
 // in lib/api-transport.
-async function clientRequest<T = unknown>(path: string, init: RequestInit): Promise<T> {
+async function clientRequest<T = unknown>(
+  path: string,
+  init: ApiRequestOptions,
+): Promise<T> {
   return apiRequest<T>(path, init);
 }

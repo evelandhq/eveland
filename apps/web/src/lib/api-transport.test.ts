@@ -79,6 +79,27 @@ describe("browser API transport", () => {
     );
   });
 
+  test("surfaces the endpoint's own message when a 401 is the answer, not an expiry", async () => {
+    // Signing in with a wrong password and accepting an invitation with a bad
+    // one both answer 401. Treating those as "your session expired" tells the
+    // user something false and hides the only message they can act on.
+    mockFetch(
+      Response.json({ error: "Invalid email or password" }, { status: 401 }),
+    );
+    const assign = vi.fn();
+    vi.stubGlobal("window", {
+      location: { pathname: "/login", search: "", assign },
+    });
+
+    await expect(
+      apiRequest("/api/auth/sign-in/email", {
+        method: "POST",
+        unauthorized: "surface",
+      }),
+    ).rejects.toThrow("Invalid email or password");
+    expect(assign).not.toHaveBeenCalled();
+  });
+
   test("does not loop when the login page itself is unauthorized", async () => {
     mockFetch(Response.json({ error: "Authentication required" }, { status: 401 }));
     const assign = vi.fn();
