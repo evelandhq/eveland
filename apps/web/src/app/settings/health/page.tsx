@@ -297,9 +297,17 @@ export default async function InstanceHealthPage({
             Current queue pressure and RuntimeInstance lifecycle distribution.
           </p>
         </div>
-        <dl className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4">
+        <dl className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-5">
           <WorkloadValue label="Queued jobs" value={report.workload.queuedJobs} />
           <WorkloadValue label="Running jobs" value={report.workload.runningJobs} />
+          <WorkloadValue
+            label="Running builds"
+            value={
+              report.workload.maxConcurrentHeavyJobs === null
+                ? report.workload.runningHeavyJobs
+                : `${report.workload.runningHeavyJobs}/${report.workload.maxConcurrentHeavyJobs}`
+            }
+          />
           <WorkloadValue label="Ready runtimes" value={report.workload.runtimeInstances.ready} />
           <WorkloadValue
             label="Starting runtimes"
@@ -343,7 +351,7 @@ function HealthBadge({ status }: { status: InstanceHealthStatus }) {
   );
 }
 
-function WorkloadValue({ label, value }: { label: string; value: number }) {
+function WorkloadValue({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="bg-background p-4">
       <dt className="text-xs text-muted-foreground">{label}</dt>

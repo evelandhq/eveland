@@ -762,11 +762,14 @@ Concurrency is governed as follows:
 - **Running Agents**: no hard cap. The idle reaper stops any Agent with no
   activation lease for five minutes (`EVELAND_ACTIVATION_IDLE_TTL_MS`), so the
   steady-state count follows real traffic, not the number of projects.
-- **Builds**: at most one running job **per project**, but there is no global
-  cap — N projects deploying simultaneously means N concurrent builds, admitted
-  at one new job per worker tick (`WORKER_POLL_INTERVAL_MS`, default 5 s).
-  Builds are the heaviest transient load; treat "how many teams deploy at once"
-  as a first-class sizing input.
+- **Builds**: at most one running job **per project**, plus a global cap on
+  concurrently running builds. The worker derives the cap from the machine at
+  startup — `max(1, min(⌊RAM / 4 GiB⌋, cores − 2))`, matching the reference
+  table below — and logs it at boot; `EVELAND_MAX_CONCURRENT_JOBS` overrides
+  it. Builds beyond the cap stay queued while cheap jobs (restart, archive,
+  delete, import) keep flowing, and admission remains one new job per worker
+  tick (`WORKER_POLL_INTERVAL_MS`, default 5 s). The health page's Workload
+  section shows current usage as "Running builds N/cap".
 
 Postgres deserves a clarification, because `max_connections` is the limit
 operators reach first (`FATAL 53300: sorry, too many clients already` at Agent
@@ -783,7 +786,9 @@ this order:
 (control plane) + headroom`. Lower the pool size to fit more Agents per
    instance when workflows are light.
 
-Reference points:
+Reference points (the "Concurrent builds" column is what the worker's derived
+cap enforces on a typical host of that size — memory-bound at one build per
+4 GB, limited to cores − 2 on CPU-lean machines):
 
 | Host  | Concurrent builds | Running Agents | `max_connections` |
 | ----- | ----------------- | -------------- | ----------------- |
@@ -794,9 +799,6 @@ Reference points:
 
 ## Known limits (v1)
 
-- There is no global cap on concurrent build jobs — only one per project (see
-  "Capacity planning" above). Simultaneous deploys from many projects can
-  exhaust host RAM/CPU; pace fleet-wide redeploys until a global cap exists.
 - The sandbox cache under `EVELAND_SANDBOX_CACHE_DIR` is never pruned; disk usage grows
   with the number of durable sessions and unique templates (see "Agent exec sandbox"
   above).

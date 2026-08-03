@@ -285,6 +285,11 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "300000",
   ),
   entry(
+    "EVELAND_MAX_CONCURRENT_JOBS",
+    ["worker"],
+    "Global cap on concurrently running heavy jobs (builds). Overrides the default derived from machine memory and cores.",
+  ),
+  entry(
     "EVELAND_SANDBOX_TEMPLATE_REVISION",
     ["worker"],
     "Overrides the sandbox command template revision injected into prepared Releases.",

@@ -846,6 +846,7 @@ export const workerHeartbeats = pgTable("worker_heartbeats", {
   intervalMs: integer("interval_ms").notNull(),
   lastTickDurationMs: integer("last_tick_duration_ms").notNull(),
   lastError: text("last_error"),
+  maxConcurrentHeavyJobs: integer("max_concurrent_heavy_jobs"),
 });
 
 export const hostMetricSamples = pgTable(

@@ -36,6 +36,7 @@ describe("instance health analysis", () => {
         intervalMs: 5_000,
         lastTickDurationMs: 81,
         lastError: null,
+        maxConcurrentHeavyJobs: 2,
       },
       new Date("2026-07-18T10:00:00.000Z"),
     );
@@ -56,6 +57,7 @@ describe("instance health analysis", () => {
         intervalMs: 5_000,
         lastTickDurationMs: 81,
         lastError: null,
+        maxConcurrentHeavyJobs: 2,
       },
       new Date("2026-07-18T10:00:00.000Z"),
     );

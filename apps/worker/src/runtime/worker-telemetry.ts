@@ -9,6 +9,8 @@ export function createWorkerTelemetry(
     workerId: string;
     dataDir: string;
     intervalMs: number;
+    /** Heavy-job (build) concurrency cap this worker enforces; published with each heartbeat. */
+    maxConcurrentHeavyJobs: number;
     metricIntervalMs: number;
     startedAt?: Date;
     now?: () => Date;
@@ -97,6 +99,7 @@ export function createWorkerTelemetry(
         ...commonAttributes,
         "eveland.worker.tick.status": input.error ? "error" : "ok",
         "eveland.worker.poll_interval_ms": options.intervalMs,
+        "eveland.worker.max_concurrent_heavy_jobs": options.maxConcurrentHeavyJobs,
       };
       heartbeat.add(1, tickAttributes);
       uptime.record(

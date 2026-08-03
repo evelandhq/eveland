@@ -476,7 +476,18 @@ export interface JobStore {
     now?: Date,
     staleAfterMs?: number,
   ): Promise<Job>;
-  claimNextJob(workerId: string, now?: Date): Promise<Job | null>;
+  /**
+   * Claims the oldest claimable queued job. At most one job runs per project;
+   * when `maxConcurrentHeavyJobs` is set, a HEAVY_JOB_TYPES candidate is
+   * additionally claimable only while fewer heavy jobs than the cap are
+   * running — light jobs skip past capped-out builds. Omitting the option
+   * leaves heavy jobs uncapped.
+   */
+  claimNextJob(
+    workerId: string,
+    now?: Date,
+    options?: { maxConcurrentHeavyJobs?: number },
+  ): Promise<Job | null>;
   heartbeatJob(jobId: string, attempt: number, now?: Date): Promise<boolean>;
   replaceJobPayload<Type extends JobType>(
     jobId: string,
@@ -812,7 +823,11 @@ export interface InstanceHealthStore {
     limit: number;
   }): Promise<HostMetricSample[]>;
   pruneHostMetrics(before: Date): Promise<number>;
-  getInstanceWorkload(): Promise<InstanceWorkload>;
+  /**
+   * The worker's heavy-job cap is not persisted with jobs — the health report
+   * overlays it from the freshest WorkerHeartbeat.
+   */
+  getInstanceWorkload(): Promise<Omit<InstanceWorkload, "maxConcurrentHeavyJobs">>;
 }
 
 export interface ObservabilityStore {

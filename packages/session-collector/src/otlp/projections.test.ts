@@ -241,6 +241,7 @@ describe("OTLP Instance Health projection", () => {
                   point(1, {
                     "eveland.worker.poll_interval_ms": 5000,
                     "eveland.worker.tick.status": "ok",
+                    "eveland.worker.max_concurrent_heavy_jobs": 4,
                   }),
                 ]),
                 histogram("eveland.worker.tick.duration", 3, 75),
@@ -305,6 +306,7 @@ describe("OTLP Instance Health projection", () => {
           intervalMs: 5000,
           lastTickDurationMs: 25,
           lastError: null,
+          maxConcurrentHeavyJobs: 4,
         },
       ],
       hostMetrics: [
@@ -415,6 +417,8 @@ describe("OTLP Instance Health projection", () => {
         workerId: "worker_1",
         intervalMs: 5000,
         lastTickDurationMs: 25,
+        // Workers that predate the heavy-job cap publish no cap attribute.
+        maxConcurrentHeavyJobs: null,
       }),
     ]);
     expect(projection.hostMetrics).toEqual([]);

@@ -1,5 +1,5 @@
 import { createId } from "@eveland/core/ids";
-import { decodeJobPayload } from "@eveland/core/jobs";
+import { HEAVY_JOB_TYPES, decodeJobPayload } from "@eveland/core/jobs";
 import type { Job, JobType } from "@eveland/core/contracts";
 import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import {
@@ -215,7 +215,30 @@ export function createPostgresJobSourceStore({
       });
     },
 
-    async claimNextJob(_workerId, now = new Date()) {
+    async claimNextJob(_workerId, now = new Date(), options = {}) {
+      const heavyCap = options.maxConcurrentHeavyJobs;
+      if (heavyCap !== undefined && (!Number.isInteger(heavyCap) || heavyCap < 1)) {
+        throw new Error("Heavy-job concurrency cap must be a positive integer.");
+      }
+      const heavyTypes = sql.join(
+        HEAVY_JOB_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      );
+      // Concurrent claims each count committed running heavy jobs, so two
+      // simultaneous claims can momentarily overshoot the cap by one; with a
+      // single worker admitting one job per tick that window is negligible.
+      const heavyCapClause =
+        heavyCap === undefined
+          ? sql``
+          : sql`
+                  and (
+                    candidate.type not in (${heavyTypes})
+                    or (
+                      select count(*) from ${jobs} running_heavy
+                      where running_heavy.status = 'running'
+                        and running_heavy.type in (${heavyTypes})
+                    ) < ${heavyCap}
+                  )`;
       while (true) {
         const [row] = await db
           .update(jobs)
@@ -247,7 +270,7 @@ export function createPostgresJobSourceStore({
                   and (
                     project.deletion_status is distinct from 'deleting'
                     or candidate.type = 'delete_project'
-                  )
+                  )${heavyCapClause}
                 order by candidate.created_at asc, candidate.sequence asc
                 limit 1
                 for update skip locked

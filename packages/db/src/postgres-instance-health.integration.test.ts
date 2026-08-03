@@ -21,6 +21,7 @@ describe.skipIf(!database)("Postgres instance health", () => {
         intervalMs: 5_000,
         lastTickDurationMs: 80,
         lastError: null,
+        maxConcurrentHeavyJobs: 2,
       });
       await store.upsertWorkerHeartbeat({
         workerId,
@@ -29,6 +30,7 @@ describe.skipIf(!database)("Postgres instance health", () => {
         intervalMs: 5_000,
         lastTickDurationMs: 90,
         lastError: null,
+        maxConcurrentHeavyJobs: 2,
       });
       for (const observedAt of ["2026-07-18T09:59:00.000Z", "2026-07-18T10:00:00.000Z"]) {
         await store.recordHostMetric({

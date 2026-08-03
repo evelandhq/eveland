@@ -340,6 +340,75 @@ describe("SQL Store jobs", () => {
     expect(none).toBeNull();
   });
 
+  test("stops claiming builds at the heavy-job cap while light jobs stay claimable", async () => {
+    const store = createTestStore();
+    const buildProjects = [];
+    for (const name of ["Heavy Agent One", "Heavy Agent Two"]) {
+      const project = await store.createProject({ name, importKind: "zip" });
+      const importJob = await store.claimNextJob("worker-a");
+      await store.completeJob(importJob!.id);
+      buildProjects.push(project);
+    }
+    const lightProject = await store.createProject({ name: "Light Agent", importKind: "zip" });
+    const lightImport = await store.claimNextJob("worker-a");
+    await store.completeJob(lightImport!.id);
+    await store.enqueueJob(buildProjects[0]!.id, "build_deploy");
+    await store.enqueueJob(buildProjects[1]!.id, "build_deploy");
+    await store.enqueueJob(lightProject.id, "restart_deployment");
+
+    const capped = { maxConcurrentHeavyJobs: 1 };
+    const firstBuild = await store.claimNextJob("worker-a", undefined, capped);
+    expect(firstBuild).toMatchObject({ projectId: buildProjects[0]!.id, type: "build_deploy" });
+
+    // The cap is reached: the older queued build is skipped, the light job is not.
+    await expect(store.claimNextJob("worker-b", undefined, capped)).resolves.toMatchObject({
+      projectId: lightProject.id,
+      type: "restart_deployment",
+    });
+    await expect(store.claimNextJob("worker-c", undefined, capped)).resolves.toBeNull();
+
+    // Completing the running build releases the budget for the next one.
+    await store.completeJob(firstBuild!.id);
+    await expect(store.claimNextJob("worker-c", undefined, capped)).resolves.toMatchObject({
+      projectId: buildProjects[1]!.id,
+      type: "build_deploy",
+    });
+  });
+
+  test("an unset heavy-job cap leaves builds unlimited", async () => {
+    const store = createTestStore();
+    const projects = [];
+    for (const name of ["Uncapped Agent One", "Uncapped Agent Two"]) {
+      const project = await store.createProject({ name, importKind: "zip" });
+      const importJob = await store.claimNextJob("worker-a");
+      await store.completeJob(importJob!.id);
+      projects.push(project);
+    }
+    for (const project of projects) {
+      await store.enqueueJob(project.id, "build_deploy");
+    }
+
+    await expect(store.claimNextJob("worker-a")).resolves.toMatchObject({
+      projectId: projects[0]!.id,
+      type: "build_deploy",
+    });
+    await expect(store.claimNextJob("worker-b")).resolves.toMatchObject({
+      projectId: projects[1]!.id,
+      type: "build_deploy",
+    });
+  });
+
+  test("rejects a non-positive heavy-job cap instead of silently uncapping", async () => {
+    const store = createTestStore();
+
+    await expect(
+      store.claimNextJob("worker-a", undefined, { maxConcurrentHeavyJobs: 0 }),
+    ).rejects.toThrow("Heavy-job concurrency cap must be a positive integer.");
+    await expect(
+      store.claimNextJob("worker-a", undefined, { maxConcurrentHeavyJobs: Number.NaN }),
+    ).rejects.toThrow("Heavy-job concurrency cap must be a positive integer.");
+  });
+
   test("recovers a running job after its lease becomes stale", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Recover Job Agent", importKind: "zip" });

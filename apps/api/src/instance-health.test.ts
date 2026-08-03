@@ -32,6 +32,7 @@ describe("instance health diagnostics", () => {
       intervalMs: 5_000,
       lastTickDurationMs: 70,
       lastError: null,
+      maxConcurrentHeavyJobs: 2,
     });
     await store.recordHostMetric({
       workerId: "worker-1",
@@ -78,6 +79,10 @@ describe("instance health diagnostics", () => {
     expect(report.capacity.overall).toBe("healthy");
     expect(report.metrics).toHaveLength(1);
     expect(report.workload.queuedJobs).toBe(0);
+    // The cap lives on the worker's machine, so the report reads it from the
+    // freshest heartbeat rather than the workload query.
+    expect(report.workload.runningHeavyJobs).toBe(0);
+    expect(report.workload.maxConcurrentHeavyJobs).toBe(2);
   });
 
   test("reports stale workers and unreachable Gateway without guessing healthy", async () => {
@@ -89,6 +94,7 @@ describe("instance health diagnostics", () => {
       intervalMs: 5_000,
       lastTickDurationMs: 70,
       lastError: null,
+      maxConcurrentHeavyJobs: null,
     });
 
     const report = await collectInstanceHealth(store, {

@@ -84,7 +84,12 @@ export async function collectInstanceHealth(
     components,
     capacity,
     metrics,
-    workload,
+    workload: {
+      ...workload,
+      // The cap lives with the worker's machine, not the jobs table; the
+      // freshest heartbeat is the only place it is published.
+      maxConcurrentHeavyJobs: heartbeats[0]?.maxConcurrentHeavyJobs ?? null,
+    },
   };
 }
 
