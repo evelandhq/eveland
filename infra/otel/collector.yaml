@@ -61,7 +61,7 @@ processors:
     error_mode: ignore
     metric_conditions:
       - 'resource.attributes["service.name"] != "eveland-worker" or resource.attributes["eveland.telemetry.domain"] != "capacity"'
-      - 'metric.name != "eveland.worker.heartbeat" and metric.name != "eveland.worker.tick.duration" and metric.name != "system.cpu.utilization" and metric.name != "system.memory.usage" and metric.name != "system.filesystem.usage" and metric.name != "system.filesystem.limit" and metric.name != "eveland.system.filesystem.inodes.usage" and metric.name != "eveland.system.filesystem.inodes.limit" and metric.name != "eveland.host.load.1m"'
+      - 'metric.name != "eveland.worker.heartbeat" and metric.name != "eveland.worker.tick.duration" and metric.name != "system.cpu.utilization" and metric.name != "system.memory.usage" and metric.name != "system.filesystem.usage" and metric.name != "system.filesystem.limit" and metric.name != "eveland.system.filesystem.inodes.usage" and metric.name != "eveland.system.filesystem.inodes.limit" and metric.name != "eveland.host.load.1m" and metric.name != "eveland.host.cpu.logical.count" and metric.name != "eveland.postgres.connections.usage" and metric.name != "eveland.postgres.connections.limit" and metric.name != "eveland.postgres.agent_pool_size"'
       - 'metric.name == "system.cpu.utilization" and datapoint.attributes["cpu.mode"] == "idle"'
       - 'metric.name == "system.memory.usage" and datapoint.attributes["system.memory.state"] != "used" and datapoint.attributes["system.memory.state"] != "free"'
       - 'metric.name == "system.filesystem.usage" and datapoint.attributes["system.filesystem.state"] != "free"'

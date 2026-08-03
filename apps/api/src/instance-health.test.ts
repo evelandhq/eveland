@@ -44,6 +44,10 @@ describe("instance health diagnostics", () => {
       diskAvailableBytes: 60_000,
       diskInodesTotal: 10_000,
       diskInodesAvailable: 8_000,
+      cpuCores: 4,
+      pgConnections: [
+        { role: "shared", usedConnections: 42, maxConnections: 100, agentPoolSize: 10 },
+      ],
     });
     // The Collector is Built-in's only sender, so a recent batch is its liveness proof.
     await store.ingestOtlpBatch({

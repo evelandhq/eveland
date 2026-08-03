@@ -42,6 +42,10 @@ describe.skipIf(!database)("Postgres instance health", () => {
           diskAvailableBytes: 60_000,
           diskInodesTotal: 10_000,
           diskInodesAvailable: 9_000,
+          cpuCores: 4,
+          pgConnections: [
+            { role: "shared", usedConnections: 42, maxConnections: 100, agentPoolSize: 10 },
+          ],
         });
       }
 

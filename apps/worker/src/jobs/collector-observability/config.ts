@@ -21,6 +21,10 @@ const builtInCapacityMetricNames = [
   "eveland.system.filesystem.inodes.usage",
   "eveland.system.filesystem.inodes.limit",
   "eveland.host.load.1m",
+  "eveland.host.cpu.logical.count",
+  "eveland.postgres.connections.usage",
+  "eveland.postgres.connections.limit",
+  "eveland.postgres.agent_pool_size",
 ] as const;
 
 type CollectorConfig = {

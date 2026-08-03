@@ -1,3 +1,4 @@
+import type { PgInstanceConnectionSample } from "@eveland/core/instance-health";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -861,6 +862,8 @@ export const hostMetricSamples = pgTable(
     diskAvailableBytes: bigint("disk_available_bytes", { mode: "number" }).notNull(),
     diskInodesTotal: bigint("disk_inodes_total", { mode: "number" }),
     diskInodesAvailable: bigint("disk_inodes_available", { mode: "number" }),
+    cpuCores: integer("cpu_cores"),
+    pgConnections: jsonb("pg_connections").$type<PgInstanceConnectionSample[]>(),
   },
   (table) => [
     uniqueIndex("host_metric_samples_worker_observed_idx").on(table.workerId, table.observedAt),

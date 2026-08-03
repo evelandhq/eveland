@@ -60,6 +60,15 @@ describe("worker telemetry", () => {
             diskAvailableBytes: 60_000,
             diskInodesTotal: 10_000,
             diskInodesAvailable: 9_000,
+            cpuCores: 4,
+            pgConnections: [
+              {
+                role: "shared" as const,
+                usedConnections: 42,
+                maxConnections: 100,
+                agentPoolSize: 10,
+              },
+            ],
           },
         };
       },
@@ -90,6 +99,10 @@ describe("worker telemetry", () => {
         "eveland.system.filesystem.inodes.usage",
         "eveland.system.filesystem.inodes.limit",
         "eveland.host.load.1m",
+        "eveland.host.cpu.logical.count",
+        "eveland.postgres.connections.usage",
+        "eveland.postgres.connections.limit",
+        "eveland.postgres.agent_pool_size",
       ]),
     );
     await metrics.provider.shutdown();

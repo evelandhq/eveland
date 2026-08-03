@@ -71,6 +71,22 @@ export function createWorkerTelemetry(
     description: "Filesystem inode capacity.",
     unit: "{inode}",
   });
+  const cpuLogicalCount = meter.createGauge("eveland.host.cpu.logical.count", {
+    description: "Logical CPU core count of the host.",
+    unit: "{cpu}",
+  });
+  const pgConnectionsUsed = meter.createGauge("eveland.postgres.connections.usage", {
+    description: "Client backends connected to a platform Postgres instance.",
+    unit: "{connection}",
+  });
+  const pgConnectionsLimit = meter.createGauge("eveland.postgres.connections.limit", {
+    description: "max_connections of a platform Postgres instance.",
+    unit: "{connection}",
+  });
+  const pgAgentPoolSize = meter.createGauge("eveland.postgres.agent_pool_size", {
+    description: "Connection pool size granted to each deployment runtime.",
+    unit: "{connection}",
+  });
   let previousCpuTimes: CpuTimes | null = null;
   let lastMetricAt = Number.NEGATIVE_INFINITY;
 
@@ -134,5 +150,19 @@ export function createWorkerTelemetry(
       inodeLimit.record(sample.diskInodesTotal, filesystemAttributes);
     }
     loadOneMinute.record(sample.load1, commonAttributes);
+    if (sample.cpuCores !== null) {
+      cpuLogicalCount.record(sample.cpuCores, commonAttributes);
+    }
+    for (const instance of sample.pgConnections ?? []) {
+      const instanceAttributes = {
+        ...commonAttributes,
+        "eveland.postgres.role": instance.role,
+      };
+      pgConnectionsUsed.record(instance.usedConnections, instanceAttributes);
+      pgConnectionsLimit.record(instance.maxConnections, instanceAttributes);
+      if (instance.agentPoolSize !== null) {
+        pgAgentPoolSize.record(instance.agentPoolSize, instanceAttributes);
+      }
+    }
   }
 }
