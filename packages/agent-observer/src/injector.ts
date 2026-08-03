@@ -57,9 +57,7 @@ let bundledRuntime: Promise<string> | undefined;
  */
 export function bundleObserverRuntime(): Promise<string> {
   bundledRuntime ??= build({
-    entryPoints: [
-      fileURLToPath(new URL("./hook-runtime.ts", import.meta.url)),
-    ],
+    entryPoints: [fileURLToPath(new URL("./hook-runtime.ts", import.meta.url))],
     bundle: true,
     write: false,
     platform: "node",
@@ -90,12 +88,9 @@ export async function injectObserverHooks(input: {
 }): Promise<ObserverInjectionResult> {
   const releaseDir = path.resolve(input.releaseDir);
   const nestedAgentRoot = path.join(releaseDir, "agent");
-  const rootAgentRoot = (await isDirectory(nestedAgentRoot))
-    ? nestedAgentRoot
-    : releaseDir;
+  const rootAgentRoot = (await isDirectory(nestedAgentRoot)) ? nestedAgentRoot : releaseDir;
   const hasAgentRoot =
-    rootAgentRoot === nestedAgentRoot ||
-    (await hasRootInstructions(rootAgentRoot));
+    rootAgentRoot === nestedAgentRoot || (await hasRootInstructions(rootAgentRoot));
 
   if (!hasAgentRoot) {
     return {
@@ -127,11 +122,7 @@ export async function injectObserverHooks(input: {
   const injectedFiles: string[] = [];
   for (const observerPath of observerPaths) {
     await mkdir(path.dirname(observerPath), { recursive: true });
-    await writeFile(
-      observerPath,
-      createObserverShim(observerPath, runtimePath),
-      "utf8",
-    );
+    await writeFile(observerPath, createObserverShim(observerPath, runtimePath), "utf8");
     injectedFiles.push(path.relative(releaseDir, observerPath));
   }
 
@@ -206,13 +197,10 @@ async function hasAgentConfig(directory: string): Promise<boolean> {
 }
 
 async function hasRootInstructions(directory: string): Promise<boolean> {
-  const entries = await readdir(directory, { withFileTypes: true }).catch(
-    () => [],
-  );
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
   return entries.some(
     (entry) =>
-      (entry.isFile() &&
-        /^instructions\.(?:md|[cm]?[jt]s)$/.test(entry.name)) ||
+      (entry.isFile() && /^instructions\.(?:md|[cm]?[jt]s)$/.test(entry.name)) ||
       (entry.isDirectory() && entry.name === "instructions"),
   );
 }

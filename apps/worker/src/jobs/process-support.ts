@@ -6,17 +6,11 @@ import {
   mergeRuntimeEnvironment,
   type EncryptedSecret,
 } from "@eveland/core/server/secrets";
-import {
-  isSupportedEveDependency,
-  unsupportedEveVersionMessage,
-} from "@eveland/core/source";
+import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@eveland/core/source";
 import type { Store } from "@eveland/db";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
-import {
-  resolveProjectSandboxCacheDir,
-  resolveSandboxCacheRoot,
-} from "../runtime/systemd.js";
+import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
 import {
   processSafeName,
   type RuntimeAdapter,
@@ -25,10 +19,7 @@ import {
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
 
-import type {
-  ProcessJobOptions,
-  ScheduleDispatchInput,
-} from "./process-types.js";
+import type { ProcessJobOptions, ScheduleDispatchInput } from "./process-types.js";
 
 export const devSecretKey = "eveland-dev-secret-key-000000000";
 const runtimeDiagnosticMaxCharacters = 32_000;
@@ -36,9 +27,7 @@ const runtimeDiagnosticMaxCharacters = 32_000;
 export async function dispatchScheduleToRuntime(
   input: ScheduleDispatchInput,
 ): Promise<{ sessionIds: string[] }> {
-  const timeoutMs = Number(
-    process.env.EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS ?? 120_000,
-  );
+  const timeoutMs = Number(process.env.EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS ?? 120_000);
   let response: Response;
   try {
     response = await fetch(
@@ -55,10 +44,7 @@ export async function dispatchScheduleToRuntime(
       },
     );
   } catch (error) {
-    if (
-      error instanceof Error &&
-      (error.name === "TimeoutError" || error.name === "AbortError")
-    ) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
       throw new Error(
         `Scheduler Channel timed out after ${timeoutMs}ms for ScheduleRun ${input.scheduleRunId} on Deployment ${input.deploymentId}.`,
         { cause: error },
@@ -67,9 +53,7 @@ export async function dispatchScheduleToRuntime(
     throw error;
   }
   if (!response.ok)
-    throw new Error(
-      `Scheduler Channel rejected dispatch with HTTP ${response.status}.`,
-    );
+    throw new Error(`Scheduler Channel rejected dispatch with HTTP ${response.status}.`);
   const body = (await response.json().catch(() => null)) as {
     sessionIds?: unknown;
   } | null;
@@ -97,48 +81,32 @@ export async function removeManagedProjectFiles(
     path.join(root, "observability", safeProjectId),
     path.join(root, "sandbox", safeProjectId),
   ]);
-  const allowedSourceRoots = [
-    path.join(root, "sources"),
-    path.join(root, "uploads"),
-  ];
+  const allowedSourceRoots = [path.join(root, "sources"), path.join(root, "uploads")];
 
   for (const processName of processNames) {
-    ownedPaths.add(
-      path.join(root, "deployment-env", `${processSafeName(processName)}.env`),
-    );
+    ownedPaths.add(path.join(root, "deployment-env", `${processSafeName(processName)}.env`));
   }
 
   for (const sourcePath of sourcePaths) {
     const candidate = path.resolve(sourcePath);
-    const allowedRoot = allowedSourceRoots.find((entry) =>
-      isStrictlyWithin(candidate, entry),
-    );
+    const allowedRoot = allowedSourceRoots.find((entry) => isStrictlyWithin(candidate, entry));
     if (!allowedRoot) continue;
-    const relativeSegments = path
-      .relative(allowedRoot, candidate)
-      .split(path.sep);
+    const relativeSegments = path.relative(allowedRoot, candidate).split(path.sep);
     const ownedCandidate =
-      allowedRoot === allowedSourceRoots[1] &&
-      relativeSegments[0]?.startsWith("zip-")
+      allowedRoot === allowedSourceRoots[1] && relativeSegments[0]?.startsWith("zip-")
         ? path.join(allowedRoot, relativeSegments[0])
         : candidate;
     const [realCandidate, realAllowedRoot] = await Promise.all([
       realpath(ownedCandidate).catch(() => null),
       realpath(allowedRoot).catch(() => null),
     ]);
-    if (
-      realCandidate &&
-      realAllowedRoot &&
-      isStrictlyWithin(realCandidate, realAllowedRoot)
-    ) {
+    if (realCandidate && realAllowedRoot && isStrictlyWithin(realCandidate, realAllowedRoot)) {
       ownedPaths.add(ownedCandidate);
     }
   }
 
   await Promise.all(
-    [...ownedPaths].map((ownedPath) =>
-      rm(ownedPath, { recursive: true, force: true }),
-    ),
+    [...ownedPaths].map((ownedPath) => rm(ownedPath, { recursive: true, force: true })),
   );
 }
 
@@ -203,8 +171,7 @@ function limitRuntimeDiagnostic(input: string): string {
   if (input.length <= runtimeDiagnosticMaxCharacters) return input;
   const marker = "\n… runtime diagnostics truncated …\n";
   const prefixLength = 2_000;
-  const suffixLength =
-    runtimeDiagnosticMaxCharacters - prefixLength - marker.length;
+  const suffixLength = runtimeDiagnosticMaxCharacters - prefixLength - marker.length;
   return `${input.slice(0, prefixLength)}${marker}${input.slice(-suffixLength)}`;
 }
 
@@ -216,44 +183,32 @@ export function errorMessage(error: unknown): string {
 // NOT part of this: build_deploy only calls this after deciding the deploy may
 // proceed, and restart never re-gates an already-deployed release.
 export async function composeDeploymentEnv(
-  store: Pick<
-    Store,
-    "listSecretRecords" | "getSharedAgentEnvironmentRecord"
-  >,
+  store: Pick<Store, "listSecretRecords" | "getSharedAgentEnvironmentRecord">,
   projectId: string,
   options: ProcessJobOptions,
   workerEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<{ env: Record<string, string>; secretValues: string[] }> {
   const nodeEnv = options.nodeEnv ?? workerEnv.NODE_ENV;
   const isProduction = nodeEnv === "production";
-  const workflowPostgresUrl =
-    options.workflowPostgresUrl ?? workerEnv.WORKFLOW_POSTGRES_URL;
+  const workflowPostgresUrl = options.workflowPostgresUrl ?? workerEnv.WORKFLOW_POSTGRES_URL;
   // Each project gets its own physical workflow database derived from the
   // platform base URL. A single shared database let any runtime claim any
   // project's queued turns and re-enqueue every project's active runs on
   // startup, so the database is created and bootstrapped here, before any
   // process starts with its URL.
-  const ensureWorld =
-    options.ensureProjectWorkflowWorld ?? ensureProjectWorkflowWorld;
+  const ensureWorld = options.ensureProjectWorkflowWorld ?? ensureProjectWorkflowWorld;
   const projectWorkflowUrl = workflowPostgresUrl
-    ? await ensureWorld(
-        { ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl },
-        projectId,
-      )
+    ? await ensureWorld({ ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl }, projectId)
     : undefined;
   const schedulerRuntimeSecret =
-    options.schedulerRuntimeSecret ??
-    resolveSchedulerRuntimeSecret(workerEnv);
-  const schedulerRedeemUrl =
-    options.schedulerRedeemUrl ?? workerEnv.EVELAND_SCHEDULER_REDEEM_URL;
-  const appSecretKey =
-    options.appSecretKey ?? workerEnv.APP_SECRET_KEY ?? devSecretKey;
+    options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(workerEnv);
+  const schedulerRedeemUrl = options.schedulerRedeemUrl ?? workerEnv.EVELAND_SCHEDULER_REDEEM_URL;
+  const appSecretKey = options.appSecretKey ?? workerEnv.APP_SECRET_KEY ?? devSecretKey;
   const identityConfiguration = resolveIdentityDeploymentConfiguration({
     dataDir: options.dataDir ?? workerEnv.EVELAND_DATA_DIR ?? ".eveland-data",
     nodeEnv,
     issuer: options.identityIssuer || workerEnv.EVELAND_IDENTITY_ISSUER,
-    jwksUrl:
-      options.identityJwksUrl || workerEnv.EVELAND_IDENTITY_JWKS_URL,
+    jwksUrl: options.identityJwksUrl || workerEnv.EVELAND_IDENTITY_JWKS_URL,
   });
   const identityIssuer = identityConfiguration?.issuer;
   const identityJwksUrl = identityConfiguration?.jwksUrl;
@@ -268,21 +223,11 @@ export async function composeDeploymentEnv(
   // an uninitialized or tenant-controlled database.
   const reserved = {
     EVELAND_PROJECT_ID: projectId,
-    ...(identityIssuer
-      ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") }
-      : {}),
-    ...(identityJwksUrl
-      ? { EVELAND_IDENTITY_JWKS_URL: identityJwksUrl }
-      : {}),
-    ...(projectWorkflowUrl
-      ? { WORKFLOW_POSTGRES_URL: projectWorkflowUrl }
-      : {}),
-    ...(schedulerRuntimeSecret
-      ? { EVELAND_SCHEDULER_RUNTIME_SECRET: schedulerRuntimeSecret }
-      : {}),
-    ...(schedulerRedeemUrl
-      ? { EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl }
-      : {}),
+    ...(identityIssuer ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") } : {}),
+    ...(identityJwksUrl ? { EVELAND_IDENTITY_JWKS_URL: identityJwksUrl } : {}),
+    ...(projectWorkflowUrl ? { WORKFLOW_POSTGRES_URL: projectWorkflowUrl } : {}),
+    ...(schedulerRuntimeSecret ? { EVELAND_SCHEDULER_RUNTIME_SECRET: schedulerRuntimeSecret } : {}),
+    ...(schedulerRedeemUrl ? { EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl } : {}),
     ...(isProduction ? { NODE_ENV: "production" } : {}),
   };
   const env = mergeRuntimeEnvironment({
@@ -307,10 +252,7 @@ function readSharedAgentEnvironmentValues(
   return Object.fromEntries(
     (environment?.entries ?? []).map((entry) => [
       entry.key,
-      decryptSecretValue(
-        parseEncryptedSecret(entry.encryptedValue),
-        appSecretKey,
-      ),
+      decryptSecretValue(parseEncryptedSecret(entry.encryptedValue), appSecretKey),
     ]),
   );
 }
@@ -335,12 +277,7 @@ async function readRuntimeSecrets(
 
 export function parseEncryptedSecret(value: string): EncryptedSecret {
   const parsed = JSON.parse(value) as Partial<EncryptedSecret>;
-  if (
-    parsed.algorithm !== "aes-256-gcm" ||
-    !parsed.iv ||
-    !parsed.authTag ||
-    !parsed.ciphertext
-  ) {
+  if (parsed.algorithm !== "aes-256-gcm" || !parsed.iv || !parsed.authTag || !parsed.ciphertext) {
     throw new Error("Invalid encrypted secret payload.");
   }
   return parsed as EncryptedSecret;
@@ -353,9 +290,7 @@ export async function resolveRuntimeCommandContext(
 ): Promise<RuntimeCommandContext> {
   const packageJson =
     (await readPackageJson(sourcePath)) ??
-    parsePackageJson(
-      persistedFiles.find((file) => file.path === "package.json")?.content,
-    );
+    parsePackageJson(persistedFiles.find((file) => file.path === "package.json")?.content);
   const eveVersion = declaredEveVersion(packageJson);
   if (!isSupportedEveDependency(eveVersion)) {
     throw new Error(unsupportedEveVersionMessage(eveVersion));
@@ -382,14 +317,9 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-function declaredEveVersion(
-  packageJson: PackageJson | null,
-): string | null {
-  const version =
-    packageJson?.dependencies?.eve ?? packageJson?.devDependencies?.eve;
-  return typeof version === "string" && version.trim().length > 0
-    ? version.trim()
-    : null;
+function declaredEveVersion(packageJson: PackageJson | null): string | null {
+  const version = packageJson?.dependencies?.eve ?? packageJson?.devDependencies?.eve;
+  return typeof version === "string" && version.trim().length > 0 ? version.trim() : null;
 }
 
 type PackageJson = {
@@ -398,9 +328,7 @@ type PackageJson = {
   devDependencies?: Record<string, string>;
 };
 
-async function readPackageJson(
-  sourcePath: string,
-): Promise<PackageJson | null> {
+async function readPackageJson(sourcePath: string): Promise<PackageJson | null> {
   try {
     const raw = await readFile(path.join(sourcePath, "package.json"), "utf8");
     return parsePackageJson(raw);
@@ -419,7 +347,12 @@ function parsePackageJson(raw: string | undefined): PackageJson | null {
   }
 }
 
-export { allocateAvailableHostPort, claimInFlightPort, isTcpPortAvailable, releaseInFlightPort } from "../runtime/ports.js";
+export {
+  allocateAvailableHostPort,
+  claimInFlightPort,
+  isTcpPortAvailable,
+  releaseInFlightPort,
+} from "../runtime/ports.js";
 
 /**
  * Maps the worker-visible durable sandbox cache to the path the host Docker
@@ -439,9 +372,7 @@ export function resolveSandboxCacheDirs(
     relativeRoot === ".." ||
     relativeRoot.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relativeRoot);
-  const hostRoot = outsideDataDir
-    ? workerRoot
-    : path.resolve(hostDataDir, relativeRoot);
+  const hostRoot = outsideDataDir ? workerRoot : path.resolve(hostDataDir, relativeRoot);
   return {
     workerDir: resolveProjectSandboxCacheDir(workerRoot, projectId),
     hostDir: resolveProjectSandboxCacheDir(hostRoot, projectId),
@@ -457,20 +388,15 @@ export async function invalidateGatewayRouteCache(
   const serviceToken = env.EVELAND_GATEWAY_SERVICE_TOKEN;
   if (!gatewayUrl || !serviceToken) return;
   for (const route of routes) {
-    const response = await fetchImplementation(
-      `${gatewayUrl}/internal/cache/invalidate`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${serviceToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ hostname: route.hostname }),
+    const response = await fetchImplementation(`${gatewayUrl}/internal/cache/invalidate`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${serviceToken}`,
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({ hostname: route.hostname }),
+    });
     if (!response.ok)
-      throw new Error(
-        `Gateway returned ${response.status} while invalidating ${route.hostname}.`,
-      );
+      throw new Error(`Gateway returned ${response.status} while invalidating ${route.hostname}.`);
   }
 }

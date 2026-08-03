@@ -46,7 +46,9 @@ export async function bootstrapWorkflowWorld(
   const workflowPostgresUrl = env.WORKFLOW_POSTGRES_URL;
   if (!workflowPostgresUrl) {
     if (env.NODE_ENV === "production") {
-      throw new Error("WORKFLOW_POSTGRES_URL is required for the platform-owned durable workflow world in production.");
+      throw new Error(
+        "WORKFLOW_POSTGRES_URL is required for the platform-owned durable workflow world in production.",
+      );
     }
     return undefined;
   }
@@ -54,7 +56,10 @@ export async function bootstrapWorkflowWorld(
   return runWorkflowWorldSetup(bootstrapPostgresUrl, { ...defaultDeps, ...overrides });
 }
 
-async function runWorkflowWorldSetup(bootstrapPostgresUrl: string, deps: WorkflowWorldBootstrapDeps): Promise<string> {
+async function runWorkflowWorldSetup(
+  bootstrapPostgresUrl: string,
+  deps: WorkflowWorldBootstrapDeps,
+): Promise<string> {
   const bootstrapBin = deps.resolveBin();
   let lastOutput = "bootstrap exited without output";
 
@@ -182,16 +187,21 @@ async function createDatabaseIfMissing(adminUrl: string, databaseName: string): 
     if (existing.length > 0) return;
     await sql.unsafe(`create database "${databaseName}"`);
   } catch (error) {
-    const code = error instanceof Error && "code" in error ? (error as { code?: string }).code : undefined;
+    const code =
+      error instanceof Error && "code" in error ? (error as { code?: string }).code : undefined;
     if (code !== "42P04") throw error;
   } finally {
     await sql.end();
   }
 }
 
-export function resolveBootstrapPostgresUrl(env: NodeJS.ProcessEnv, workflowPostgresUrl: string): string {
+export function resolveBootstrapPostgresUrl(
+  env: NodeJS.ProcessEnv,
+  workflowPostgresUrl: string,
+): string {
   if (env.WORKFLOW_POSTGRES_BOOTSTRAP_URL) return env.WORKFLOW_POSTGRES_BOOTSTRAP_URL;
-  if (env.DATABASE_URL && isHostDatabaseAlias(workflowPostgresUrl, env.DATABASE_URL)) return env.DATABASE_URL;
+  if (env.DATABASE_URL && isHostDatabaseAlias(workflowPostgresUrl, env.DATABASE_URL))
+    return env.DATABASE_URL;
   return workflowPostgresUrl;
 }
 

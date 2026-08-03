@@ -40,10 +40,7 @@ export function publicGatewayUrl(
     (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME === "https" ? "https" : "http");
   const configuredPort =
     options.gatewayPublicPort ??
-    Number(
-      process.env.EVELAND_GATEWAY_PUBLIC_PORT ??
-        (scheme === "http" ? 4080 : 0),
-    );
+    Number(process.env.EVELAND_GATEWAY_PUBLIC_PORT ?? (scheme === "http" ? 4080 : 0));
   return `${scheme}://${hostname}${configuredPort ? `:${configuredPort}` : ""}`;
 }
 
@@ -65,8 +62,7 @@ export function authErrorResponse(c: Context, error: unknown): Response {
   if (error instanceof AuthFlowError) {
     return c.json({ error: error.message }, error.status);
   }
-  const message =
-    error instanceof Error ? error.message : "Authentication request failed";
+  const message = error instanceof Error ? error.message : "Authentication request failed";
   return c.json({ error: message }, upstreamAuthStatus(error) ?? 400);
 }
 
@@ -107,27 +103,20 @@ export async function invalidateGateway(
   options: Pick<AppOptions, "invalidateGatewayRoutes">,
   hostnames: string[],
 ): Promise<void> {
-  if (options.invalidateGatewayRoutes)
-    return options.invalidateGatewayRoutes(hostnames);
+  if (options.invalidateGatewayRoutes) return options.invalidateGatewayRoutes(hostnames);
   const gatewayUrl = process.env.EVELAND_GATEWAY_INTERNAL_URL;
   const token = process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
   if (!gatewayUrl || !token) return;
   for (const hostname of hostnames) {
-    const response = await fetch(
-      `${gatewayUrl.replace(/\/$/, "")}/internal/cache/invalidate`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ hostname }),
+    const response = await fetch(`${gatewayUrl.replace(/\/$/, "")}/internal/cache/invalidate`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
       },
-    );
-    if (!response.ok)
-      throw new Error(
-        `Gateway cache invalidation failed with ${response.status}.`,
-      );
+      body: JSON.stringify({ hostname }),
+    });
+    if (!response.ok) throw new Error(`Gateway cache invalidation failed with ${response.status}.`);
   }
 }
 
@@ -149,9 +138,7 @@ export async function readLimitedPlaygroundBody(
       if (chunk.done) break;
       total += chunk.value.byteLength;
       if (total > maxBytes) {
-        await reader
-          .cancel("Playground request body is too large.")
-          .catch(() => undefined);
+        await reader.cancel("Playground request body is too large.").catch(() => undefined);
         throw new Error("Playground request body is too large.");
       }
       chunks.push(chunk.value);
@@ -180,8 +167,7 @@ export function parsePlaygroundBody(body: Uint8Array): unknown {
 export async function parsePlaygroundResponse(
   response: Response,
 ): Promise<Record<string, unknown> | null> {
-  if (!response.headers.get("content-type")?.includes("application/json"))
-    return null;
+  if (!response.headers.get("content-type")?.includes("application/json")) return null;
   return parseEveJsonObject(await response.text());
 }
 
@@ -202,10 +188,7 @@ export async function resolveProjectEveVersion(
     ? await store.getDeployment(deploymentId)
     : await store.getCurrentDeployment(projectId);
   if (deployment) {
-    return (
-      (await store.getDeploymentEveVersion(deployment.id)) ??
-      createEveVersionInfo(null, null)
-    );
+    return (await store.getDeploymentEveVersion(deployment.id)) ?? createEveVersionInfo(null, null);
   }
 
   const revision = await store.getCurrentSourceRevision(projectId);
@@ -214,9 +197,7 @@ export async function resolveProjectEveVersion(
   if (!version && revision) {
     const packageJson = await store.getSourceFile(projectId, "package.json");
     if (packageJson)
-      version = readDeclaredEveVersion([
-        { path: packageJson.path, content: packageJson.content },
-      ]);
+      version = readDeclaredEveVersion([{ path: packageJson.path, content: packageJson.content }]);
   }
 
   return createEveVersionInfo(version, revision?.id ?? null);
@@ -285,12 +266,10 @@ export async function projectPlaygroundStreamLine(
   const event = parseEveJsonObject(line);
   const type = getEveString(event, "type");
   let nextStatus: SessionStatus | null = null;
-  if (type === "session.started" || type === "turn.started")
-    nextStatus = "running";
+  if (type === "session.started" || type === "turn.started") nextStatus = "running";
   else if (type === "input.requested") nextStatus = "waiting_approval";
   else if (type === "session.waiting")
-    nextStatus =
-      currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
+    nextStatus = currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
   else if (type === "session.completed") nextStatus = "completed";
   else if (type === "session.failed") nextStatus = "failed";
   if (!nextStatus) return currentStatus;
@@ -301,25 +280,15 @@ export async function projectPlaygroundStreamLine(
 }
 
 export function isMultipartRequest(c: Context): boolean {
-  return (c.req.header("content-type") ?? "")
-    .toLowerCase()
-    .includes("multipart/form-data");
+  return (c.req.header("content-type") ?? "").toLowerCase().includes("multipart/form-data");
 }
 
-export function currentUserId(
-  c: Context<{ Variables: { principal: AuthPrincipal } }>,
-): string {
+export function currentUserId(c: Context<{ Variables: { principal: AuthPrincipal } }>): string {
   return c.get("principal")?.userId ?? "user_local_admin";
 }
 
-export function agentAuthFailureStatus(
-  failure: AgentAuthFailure,
-): 401 | 409 | 422 | 503 {
-  if (
-    failure.code === "interaction_required" ||
-    failure.code === "credential_rejected"
-  )
-    return 401;
+export function agentAuthFailureStatus(failure: AgentAuthFailure): 401 | 409 | 422 | 503 {
+  if (failure.code === "interaction_required" || failure.code === "credential_rejected") return 401;
   if (failure.code === "retry_required") return 409;
   if (failure.code === "configuration_invalid") return 422;
   return 503;
@@ -478,9 +447,7 @@ export function assertSafeZipEntry(entry: string): void {
   assertSafeArchivePath(normalizedEntry);
 }
 
-export async function resolveExtractedSourceRoot(
-  extractDir: string,
-): Promise<string> {
+export async function resolveExtractedSourceRoot(extractDir: string): Promise<string> {
   const entries = await readdir(extractDir, { withFileTypes: true });
   const projectEntries = entries.filter(
     (entry) => entry.name !== "__MACOSX" && entry.name !== ".DS_Store",
@@ -503,9 +470,7 @@ export function isServiceRequest(
   authorization: string | undefined,
   token: string | undefined,
 ): boolean {
-  return Boolean(
-    token && authorization && safeSecretEqual(`Bearer ${token}`, authorization),
-  );
+  return Boolean(token && authorization && safeSecretEqual(`Bearer ${token}`, authorization));
 }
 
 export function positiveDuration(value: number, label: string): number {
@@ -523,13 +488,10 @@ export async function waitForRuntimeActivation(
   while (Date.now() < deadline) {
     if (input.signal.aborted) throw new Error("Runtime activation aborted.");
     const current = await store.getRuntimeInstance(claim.runtimeInstance.id);
-    if (!current)
-      throw new Error("RuntimeInstance disappeared during activation.");
+    if (!current) throw new Error("RuntimeInstance disappeared during activation.");
     if (current.status === "ready") return current;
     if (current.status === "failed" || current.status === "stopped") {
-      throw new Error(
-        current.lastError ?? `Runtime activation ended in ${current.status}.`,
-      );
+      throw new Error(current.lastError ?? `Runtime activation ended in ${current.status}.`);
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }

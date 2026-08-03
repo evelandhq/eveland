@@ -157,7 +157,9 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
         query: { organizationId: DEFAULT_ORGANIZATION_ID },
       });
       if (membership.role !== "admin" && membership.role !== "member") return null;
-      const membershipRecord = await (await auth.$context).adapter.findOne<{ createdAt: Date }>({
+      const membershipRecord = await (
+        await auth.$context
+      ).adapter.findOne<{ createdAt: Date }>({
         model: "member",
         where: [
           { field: "organizationId", value: DEFAULT_ORGANIZATION_ID },
@@ -203,9 +205,13 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       headers: request.headers,
       query: { organizationId: DEFAULT_ORGANIZATION_ID, limit: 100 },
     });
-    return result.members.map(toTeamMember).sort(
-      (left, right) => Number(right.role === "admin") - Number(left.role === "admin") || left.joinedAt.localeCompare(right.joinedAt),
-    );
+    return result.members
+      .map(toTeamMember)
+      .sort(
+        (left, right) =>
+          Number(right.role === "admin") - Number(left.role === "admin") ||
+          left.joinedAt.localeCompare(right.joinedAt),
+      );
   }
 
   async function listInvitations(request: Request): Promise<TeamInvitation[]> {
@@ -216,23 +222,35 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     });
     const now = Date.now();
     return invitations
-      .filter((invitation) => invitation.status === "pending" && invitation.expiresAt.getTime() > now)
+      .filter(
+        (invitation) => invitation.status === "pending" && invitation.expiresAt.getTime() > now,
+      )
       .map(toTeamInvitation);
   }
 
   async function reissueInvitation(request: Request, invitationHandleValue: string) {
     await requireAdmin(request);
     const invitation = await findInvitationByHandle(invitationHandleValue);
-    if (!invitation || invitation.status !== "pending") throw new AuthFlowError("Invitation not found", 404);
-    await auth.api.cancelInvitation({ headers: request.headers, body: { invitationId: invitation.id } });
+    if (!invitation || invitation.status !== "pending")
+      throw new AuthFlowError("Invitation not found", 404);
+    await auth.api.cancelInvitation({
+      headers: request.headers,
+      body: { invitationId: invitation.id },
+    });
     return invite(request, invitation.email, invitation.role === "admin" ? "admin" : "member");
   }
 
-  async function revokeInvitation(request: Request, invitationHandleValue: string): Promise<boolean> {
+  async function revokeInvitation(
+    request: Request,
+    invitationHandleValue: string,
+  ): Promise<boolean> {
     await requireAdmin(request);
     const invitation = await findInvitationByHandle(invitationHandleValue);
     if (!invitation || invitation.status !== "pending") return false;
-    await auth.api.cancelInvitation({ headers: request.headers, body: { invitationId: invitation.id } });
+    await auth.api.cancelInvitation({
+      headers: request.headers,
+      body: { invitationId: invitation.id },
+    });
     return true;
   }
 
@@ -252,7 +270,11 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     return members.filter((member) => member.role === "admin").length;
   }
 
-  async function updateMemberRole(request: Request, userId: string, role: TeamRole): Promise<TeamMember> {
+  async function updateMemberRole(
+    request: Request,
+    userId: string,
+    role: TeamRole,
+  ): Promise<TeamMember> {
     await requireAdmin(request);
     const members = await listMembers(request);
     const member = members.find((candidate) => candidate.userId === userId);
@@ -269,7 +291,9 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       body: { memberId: rawMember.id, role, organizationId: DEFAULT_ORGANIZATION_ID },
     });
     if (demotion && (await countAdminMemberships()) === 0) {
-      await (await auth.$context).adapter.update({
+      await (
+        await auth.$context
+      ).adapter.update({
         model: "member",
         where: [{ field: "id", value: rawMember.id }],
         update: { role: "admin" },
@@ -286,7 +310,10 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     const members = await listMembers(request);
     const member = members.find((candidate) => candidate.userId === userId);
     if (!member) return false;
-    if (member.role === "admin" && members.filter((candidate) => candidate.role === "admin").length === 1) {
+    if (
+      member.role === "admin" &&
+      members.filter((candidate) => candidate.role === "admin").length === 1
+    ) {
       throw new AuthFlowError("Cannot remove the last admin", 409);
     }
     const raw = await listRawMembers(request);
@@ -297,7 +324,9 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       body: { memberIdOrEmail: rawMember.id, organizationId: DEFAULT_ORGANIZATION_ID },
     });
     if (member.role === "admin" && (await countAdminMemberships()) === 0) {
-      await (await auth.$context).adapter.create({
+      await (
+        await auth.$context
+      ).adapter.create({
         model: "member",
         data: {
           organizationId: DEFAULT_ORGANIZATION_ID,
@@ -327,7 +356,10 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     return { principal, headers: response.headers };
   }
 
-  async function changePassword(request: Request, input: { currentPassword: string; newPassword: string }) {
+  async function changePassword(
+    request: Request,
+    input: { currentPassword: string; newPassword: string },
+  ) {
     const response = await auth.api.changePassword({
       headers: request.headers,
       body: { ...input, revokeOtherSessions: true },
@@ -349,7 +381,9 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     if (invitation.status !== "pending" || invitation.expiresAt.getTime() <= Date.now()) {
       throw new AuthFlowError("Invitation is no longer pending", 409);
     }
-    const existing = await context.internalAdapter.findUserByEmail(invitation.email, { includeAccounts: true });
+    const existing = await context.internalAdapter.findUserByEmail(invitation.email, {
+      includeAccounts: true,
+    });
     if (!existing) {
       await auth.api.createUser({
         body: { email: invitation.email, name: input.name, password: input.password, role: "user" },
@@ -362,7 +396,9 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       asResponse: true,
     });
     if (!signInResponse.ok) throw new AuthFlowError("Invalid email or password", 401);
-    const cookie = responseCookies(signInResponse.headers).map((value) => value.split(";", 1)[0]).join("; ");
+    const cookie = responseCookies(signInResponse.headers)
+      .map((value) => value.split(";", 1)[0])
+      .join("; ");
     const headers = new Headers({ cookie, origin: options.webOrigin });
     await auth.api.acceptInvitation({ headers, body: { invitationId: invitation.id } });
     const principal = await authenticate(new Request(options.baseURL, { headers }));
@@ -377,17 +413,21 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
   }
 
   async function listRawMembers(request: Request) {
-    return (await auth.api.listMembers({
-      headers: request.headers,
-      query: { organizationId: DEFAULT_ORGANIZATION_ID, limit: 100 },
-    })).members;
+    return (
+      await auth.api.listMembers({
+        headers: request.headers,
+        query: { organizationId: DEFAULT_ORGANIZATION_ID, limit: 100 },
+      })
+    ).members;
   }
 
   // Management callers reference invitations by the derived handle, never by
   // the row id: the Better Auth invitation id doubles as the single-use
   // acceptance token, so it must not circulate as a resource reference.
   async function findInvitationByHandle(handle: string) {
-    const invitations = await (await auth.$context).adapter.findMany<{
+    const invitations = await (
+      await auth.$context
+    ).adapter.findMany<{
       id: string;
       email: string;
       role: string;
@@ -395,7 +435,10 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       expiresAt: Date;
       inviterId: string;
       createdAt: Date;
-    }>({ model: "invitation", where: [{ field: "organizationId", value: DEFAULT_ORGANIZATION_ID }] });
+    }>({
+      model: "invitation",
+      where: [{ field: "organizationId", value: DEFAULT_ORGANIZATION_ID }],
+    });
     return invitations.find((invitation) => invitationHandle(invitation.id) === handle) ?? null;
   }
 
@@ -445,29 +488,39 @@ export class AuthFlowError extends Error {
 
 async function assertSuccessfulAuthResponse(response: Response): Promise<void> {
   if (response.ok) return;
-  const body = await response.json().catch(() => ({})) as { message?: string; error?: string };
-  const message = body.message ?? body.error ?? `Authentication request failed with ${response.status}`;
+  const body = (await response.json().catch(() => ({}))) as { message?: string; error?: string };
+  const message =
+    body.message ?? body.error ?? `Authentication request failed with ${response.status}`;
   // Trust the upstream status, never upstream prose.
-  const status = response.status === 401 || response.status === 403 || response.status === 404 || response.status === 409
-    ? response.status
-    : 400;
+  const status =
+    response.status === 401 ||
+    response.status === 403 ||
+    response.status === 404 ||
+    response.status === 409
+      ? response.status
+      : 400;
   throw new AuthFlowError(message, status);
 }
 
 function responseCookies(headers: Headers): string[] {
   const withGetSetCookie = headers as Headers & { getSetCookie?: () => string[] };
-  return withGetSetCookie.getSetCookie?.() ?? (headers.get("set-cookie") ? [headers.get("set-cookie")!] : []);
+  return (
+    withGetSetCookie.getSetCookie?.() ??
+    (headers.get("set-cookie") ? [headers.get("set-cookie")!] : [])
+  );
 }
 
 function authIdPrefix(model: string): string {
-  return {
-    user: "user",
-    session: "session",
-    account: "account",
-    verification: "verification",
-    member: "membership",
-    invitation: "invitation",
-  }[model] ?? "auth";
+  return (
+    {
+      user: "user",
+      session: "session",
+      account: "account",
+      verification: "verification",
+      member: "membership",
+      invitation: "invitation",
+    }[model] ?? "auth"
+  );
 }
 
 function toTeamInvitation(invitation: {

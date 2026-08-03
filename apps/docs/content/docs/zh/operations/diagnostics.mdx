@@ -17,14 +17,14 @@ Instance Health 默认每分钟保留一份宿主机样本，并提供 24 小时
 
 ## 选择正确证据
 
-| 故障 | 首先检查 |
-| --- | --- |
-| Import 或 Source Validation | Import Job 与 Source Preflight Log |
-| 依赖安装或 `eve build` | Build Log |
-| Unit 启动或 Health Timeout | Deploy Diagnostic 与 systemd Journal |
-| Agent 进程输出 | Runtime stdout/stderr |
-| Model、Tool、Subagent 或 Usage | Session Timeline |
-| Stable/Preview Host | Gateway Health、Route Policy 与 Target RuntimeInstance |
+| 故障                           | 首先检查                                               |
+| ------------------------------ | ------------------------------------------------------ |
+| Import 或 Source Validation    | Import Job 与 Source Preflight Log                     |
+| 依赖安装或 `eve build`         | Build Log                                              |
+| Unit 启动或 Health Timeout     | Deploy Diagnostic 与 systemd Journal                   |
+| Agent 进程输出                 | Runtime stdout/stderr                                  |
+| Model、Tool、Subagent 或 Usage | Session Timeline                                       |
+| Stable/Preview Host            | Gateway Health、Route Policy 与 Target RuntimeInstance |
 
 初始 Health Failure 会在清理前捕获有限长度的近期 Unit State 与 Journal。Project Secret 会被 Mask；Diagnostic 或 Cleanup Failure 不会覆盖原始 Deployment Error。
 

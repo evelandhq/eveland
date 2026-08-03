@@ -1,10 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type {
-  AgentCapturePolicy,
-  PublicObservabilityPolicy,
-} from "@eveland/core/observability";
+import type { AgentCapturePolicy, PublicObservabilityPolicy } from "@eveland/core/observability";
 import {
   createObservabilityDestination,
   deleteObservabilityDestination,
@@ -56,9 +53,7 @@ export function ObservabilitySettings({
       setSaved(true);
     } catch (caught) {
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not update the observability policy.",
+        caught instanceof Error ? caught.message : "Could not update the observability policy.",
       );
     } finally {
       setPending(false);
@@ -82,9 +77,7 @@ export function ObservabilitySettings({
       storedCredentials: destination.config
         ? {
             headerNames:
-              destination.config.kind === "custom_otlp"
-                ? destination.config.headerNames
-                : [],
+              destination.config.kind === "custom_otlp" ? destination.config.headerNames : [],
           }
         : null,
     });
@@ -112,9 +105,7 @@ export function ObservabilitySettings({
       setEditor(null);
     } catch (caught) {
       setDestinationError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not configure the destination.",
+        caught instanceof Error ? caught.message : "Could not configure the destination.",
       );
     } finally {
       setPending(false);
@@ -133,11 +124,7 @@ export function ObservabilitySettings({
         }),
       );
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not update the destination.",
-      );
+      setError(caught instanceof Error ? caught.message : "Could not update the destination.");
     } finally {
       setPending(false);
     }
@@ -154,11 +141,7 @@ export function ObservabilitySettings({
         }),
       );
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not remove the destination.",
-      );
+      setError(caught instanceof Error ? caught.message : "Could not remove the destination.");
     } finally {
       setPending(false);
     }
@@ -172,9 +155,7 @@ export function ObservabilitySettings({
         error={error}
         onCreate={openCreateDialog}
         onEdit={openEditDialog}
-        onToggle={(destinationId, enabled) =>
-          void toggleDestination(destinationId, enabled)
-        }
+        onToggle={(destinationId, enabled) => void toggleDestination(destinationId, enabled)}
         onDelete={(destinationId) => void deleteDestination(destinationId)}
       />
       <ObservabilityCaptureForm
@@ -194,9 +175,7 @@ export function ObservabilitySettings({
           }}
           onDraftChange={(patch) =>
             setEditor((current) =>
-              current
-                ? { ...current, draft: { ...current.draft, ...patch } }
-                : current,
+              current ? { ...current, draft: { ...current.draft, ...patch } } : current,
             )
           }
           onSubmit={submitDestination}

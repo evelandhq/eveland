@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useMemo, useState, useTransition } from "react"
-import Link from "next/link"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type {
   AgentModelUsageBreakdown,
   ModelUsageBreakdown,
@@ -10,32 +10,26 @@ import type {
   UsageAnalytics,
   UsageRange,
   UsageTotals,
-} from "@eveland/core/contracts"
+} from "@eveland/core/contracts";
 import {
   AlertTriangleIcon,
   ChartNoAxesColumnIcon,
   CircleCheckIcon,
   FolderIcon,
   PlayIcon,
-} from "lucide-react"
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-} from "recharts"
-import { DateTime } from "@/components/date-time"
-import { StatusBadge } from "@/components/status-badge"
-import { useDisplayTimezone } from "@/components/time-zone-provider"
-import { Badge } from "@/components/ui/badge"
-import { Button, buttonVariants } from "@/components/ui/button"
+} from "lucide-react";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { DateTime } from "@/components/date-time";
+import { StatusBadge } from "@/components/status-badge";
+import { useDisplayTimezone } from "@/components/time-zone-provider";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/chart"
+} from "@/components/ui/chart";
 import {
   Empty,
   EmptyContent,
@@ -43,7 +37,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty"
+} from "@/components/ui/empty";
 import {
   Select,
   SelectContent,
@@ -51,7 +45,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -59,13 +53,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group"
-import type { Project } from "@/lib/api"
-import { formatDate, formatDateTime, formatTime } from "@/lib/date-time"
+} from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { Project } from "@/lib/api";
+import { formatDate, formatDateTime, formatTime } from "@/lib/date-time";
 import {
   completionRate,
   costCoverage,
@@ -73,54 +64,52 @@ import {
   formatUsd,
   percentageDelta,
   usageCoverage,
-} from "@/lib/usage"
+} from "@/lib/usage";
 
-type UsageScope =
-  | { type: "workspace" }
-  | { type: "project"; projectId: string }
+type UsageScope = { type: "workspace" } | { type: "project"; projectId: string };
 
-type TrendMetric = "sessions" | "modelSteps" | "tokens" | "cost"
+type TrendMetric = "sessions" | "modelSteps" | "tokens" | "cost";
 
 type UsageExplorerProps = {
-  analytics: UsageAnalytics
-  projects: Project[]
-  scope: UsageScope
-}
+  analytics: UsageAnalytics;
+  projects: Project[];
+  scope: UsageScope;
+};
 
 const rangeLabels: Record<UsageRange, string> = {
   "24h": "Last 24 hours",
   "7d": "Last 7 days",
   "30d": "Last 30 days",
-}
+};
 
 const metricLabels: Record<TrendMetric, string> = {
   sessions: "Sessions",
   modelSteps: "Model steps",
   tokens: "Tokens",
   cost: "Cost",
-}
+};
 
 function totalTokens(totals: UsageTotals): number {
-  return totals.inputTokens + totals.outputTokens
+  return totals.inputTokens + totals.outputTokens;
 }
 
 function formatPercent(value: number | null): string {
-  return value === null ? "—" : `${value.toFixed(1)}%`
+  return value === null ? "—" : `${value.toFixed(1)}%`;
 }
 
 function formatDelta(value: number | null): string {
-  if (value === null) return "No prior baseline"
-  const sign = value > 0 ? "+" : ""
-  return `${sign}${value.toFixed(1)}% vs previous`
+  if (value === null) return "No prior baseline";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(1)}% vs previous`;
 }
 
 function coverageLabel(totals: UsageTotals): string {
-  const coverage = usageCoverage(totals)
-  return coverage === null ? "No usage" : `${coverage.toFixed(1)}% reported`
+  const coverage = usageCoverage(totals);
+  return coverage === null ? "No usage" : `${coverage.toFixed(1)}% reported`;
 }
 
 function modelLabel(modelId: string | null): string {
-  return modelId ?? "Unknown model"
+  return modelId ?? "Unknown model";
 }
 
 function dimensionValues(row: UsageTotals) {
@@ -128,44 +117,34 @@ function dimensionValues(row: UsageTotals) {
     tokens: totalTokens(row),
     completion: completionRate(row),
     coverage: usageCoverage(row),
-  }
+  };
 }
 
-export function UsageExplorer({
-  analytics,
-  projects,
-  scope,
-}: UsageExplorerProps) {
-  const timeZone = useDisplayTimezone()
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const [isPending, startTransition] = useTransition()
-  const [metric, setMetric] = useState<TrendMetric>(
-    analytics.modelId ? "tokens" : "sessions",
-  )
+export function UsageExplorer({ analytics, projects, scope }: UsageExplorerProps) {
+  const timeZone = useDisplayTimezone();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+  const [metric, setMetric] = useState<TrendMetric>(analytics.modelId ? "tokens" : "sessions");
 
   const currentProject =
-    scope.type === "project"
-      ? projects.find((project) => project.id === scope.projectId)
-      : null
+    scope.type === "project" ? projects.find((project) => project.id === scope.projectId) : null;
   const modelOptions = analytics.models.filter(
-    (model): model is ModelUsageBreakdown & { modelId: string } =>
-      model.modelId !== null,
-  )
-  const hasUsage =
-    analytics.summary.sessions > 0 || analytics.summary.modelSteps > 0
+    (model): model is ModelUsageBreakdown & { modelId: string } => model.modelId !== null,
+  );
+  const hasUsage = analytics.summary.sessions > 0 || analytics.summary.modelSteps > 0;
 
   const navigate = (nextPath: string, update?: Record<string, string | null>) => {
-    const query = new URLSearchParams(searchParams.toString())
+    const query = new URLSearchParams(searchParams.toString());
     for (const [key, value] of Object.entries(update ?? {})) {
-      if (value) query.set(key, value)
-      else query.delete(key)
+      if (value) query.set(key, value);
+      else query.delete(key);
     }
     startTransition(() => {
-      router.push(`${nextPath}${query.size ? `?${query.toString()}` : ""}`)
-    })
-  }
+      router.push(`${nextPath}${query.size ? `?${query.toString()}` : ""}`);
+    });
+  };
 
   const chartData = useMemo(
     () =>
@@ -177,17 +156,17 @@ export function UsageExplorer({
         cost: point.costUsd ?? 0,
       })),
     [analytics.series],
-  )
+  );
   const chartConfig = {
     value: {
       label: metricLabels[metric],
       color: "var(--chart-2)",
     },
-  } satisfies ChartConfig
+  } satisfies ChartConfig;
   const selectedSeries = chartData.map((point) => ({
     bucketStart: point.bucketStart,
     value: point[metric],
-  }))
+  }));
   const selectedTotal =
     metric === "sessions"
       ? analytics.summary.sessions
@@ -195,8 +174,8 @@ export function UsageExplorer({
         ? analytics.summary.modelSteps
         : metric === "tokens"
           ? totalTokens(analytics.summary)
-          : analytics.summary.costUsd
-  const Heading = scope.type === "workspace" ? "h1" : "h2"
+          : analytics.summary.costUsd;
+  const Heading = scope.type === "workspace" ? "h1" : "h2";
 
   return (
     <div className="flex min-w-0 flex-col gap-8">
@@ -216,10 +195,8 @@ export function UsageExplorer({
             <Select
               value={scope.type === "workspace" ? "workspace" : scope.projectId}
               onValueChange={(value) => {
-                if (!value) return
-                navigate(
-                  value === "workspace" ? "/usage" : `/projects/${value}/usage`,
-                )
+                if (!value) return;
+                navigate(value === "workspace" ? "/usage" : `/projects/${value}/usage`);
               }}
               disabled={isPending}
             >
@@ -227,7 +204,7 @@ export function UsageExplorer({
                 <SelectValue>
                   {scope.type === "workspace"
                     ? "All projects"
-                    : currentProject?.name ?? scope.projectId}
+                    : (currentProject?.name ?? scope.projectId)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent align="end">
@@ -270,9 +247,7 @@ export function UsageExplorer({
             Range
             <Select
               value={analytics.range}
-              onValueChange={(value) =>
-                value && navigate(pathname, { range: value })
-              }
+              onValueChange={(value) => value && navigate(pathname, { range: value })}
               disabled={isPending}
             >
               <SelectTrigger size="sm" className="min-w-36">
@@ -310,18 +285,12 @@ export function UsageExplorer({
             </EmptyHeader>
             <EmptyContent>
               {scope.type === "project" ? (
-                <Link
-                  href={`/projects/${scope.projectId}/playground`}
-                  className={buttonVariants()}
-                >
+                <Link href={`/projects/${scope.projectId}/playground`} className={buttonVariants()}>
                   <PlayIcon data-icon="inline-start" />
                   Open Playground
                 </Link>
               ) : (
-                <Link
-                  href="/projects"
-                  className={buttonVariants({ variant: "outline" })}
-                >
+                <Link href="/projects" className={buttonVariants({ variant: "outline" })}>
                   <FolderIcon data-icon="inline-start" />
                   View projects
                 </Link>
@@ -368,14 +337,15 @@ export function UsageExplorer({
                     ? formatUsd(selectedTotal as number | null)
                     : metric === "tokens"
                       ? formatTokenCount(selectedTotal as number)
-                      : (selectedTotal as number).toLocaleString()} {metric === "cost" ? "reported USD" : metricLabels[metric].toLowerCase()}
+                      : (selectedTotal as number).toLocaleString()}{" "}
+                  {metric === "cost" ? "reported USD" : metricLabels[metric].toLowerCase()}
                 </p>
               </div>
               <ToggleGroup
                 value={[metric]}
                 onValueChange={(values) => {
-                  const value = values[0] as TrendMetric | undefined
-                  if (value) setMetric(value)
+                  const value = values[0] as TrendMetric | undefined;
+                  if (value) setMetric(value);
                 }}
                 variant="outline"
                 size="sm"
@@ -428,10 +398,8 @@ export function UsageExplorer({
                   content={
                     <ChartTooltipContent
                       labelFormatter={(_label, payload) => {
-                        const bucketStart = payload[0]?.payload?.bucketStart
-                        return bucketStart
-                          ? formatDateTime(bucketStart, timeZone)
-                          : ""
+                        const bucketStart = payload[0]?.payload?.bucketStart;
+                        return bucketStart ? formatDateTime(bucketStart, timeZone) : "";
                       }}
                     />
                   }
@@ -448,53 +416,58 @@ export function UsageExplorer({
             </ChartContainer>
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>
-                Usage coverage {formatPercent(usageCoverage(analytics.summary))} · {analytics.summary.reportedSteps.toLocaleString()} reported, {analytics.summary.missingSteps.toLocaleString()} missing
+                Usage coverage {formatPercent(usageCoverage(analytics.summary))} ·{" "}
+                {analytics.summary.reportedSteps.toLocaleString()} reported,{" "}
+                {analytics.summary.missingSteps.toLocaleString()} missing
               </span>
               <span>
-                Cost coverage {formatPercent(costCoverage(analytics.summary))} · no estimates included
+                Cost coverage {formatPercent(costCoverage(analytics.summary))} · no estimates
+                included
               </span>
             </div>
           </section>
 
           <div className="grid gap-8 xl:grid-cols-[minmax(0,1.5fr)_minmax(17rem,0.7fr)]">
             {scope.type === "workspace" ? (
-              <ProjectBreakdownTable rows={analytics.projects} range={analytics.range} modelId={analytics.modelId} />
+              <ProjectBreakdownTable
+                rows={analytics.projects}
+                range={analytics.range}
+                modelId={analytics.modelId}
+              />
             ) : (
-              <ModelBreakdownTable rows={analytics.models} selectedModelId={analytics.modelId} onSelectModel={(modelId) => navigate(pathname, { model: modelId })} />
+              <ModelBreakdownTable
+                rows={analytics.models}
+                selectedModelId={analytics.modelId}
+                onSelectModel={(modelId) => navigate(pathname, { model: modelId })}
+              />
             )}
             <UsageSignals totals={analytics.summary} projectName={currentProject?.name ?? null} />
           </div>
 
           {scope.type === "workspace" ? (
-            <ModelBreakdownTable rows={analytics.models} selectedModelId={analytics.modelId} onSelectModel={(modelId) => navigate(pathname, { model: modelId })} />
+            <ModelBreakdownTable
+              rows={analytics.models}
+              selectedModelId={analytics.modelId}
+              onSelectModel={(modelId) => navigate(pathname, { model: modelId })}
+            />
           ) : null}
 
           <AgentModelTable rows={analytics.agentModels} showProject={scope.type === "workspace"} />
-          {scope.type === "project" ? (
-            <RecentSessionsTable analytics={analytics} />
-          ) : null}
+          {scope.type === "project" ? <RecentSessionsTable analytics={analytics} /> : null}
         </>
       )}
     </div>
-  )
+  );
 }
 
-function SummaryStat({
-  label,
-  value,
-  context,
-}: {
-  label: string
-  value: string
-  context: string
-}) {
+function SummaryStat({ label, value, context }: { label: string; value: string; context: string }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-2 font-mono text-xl font-semibold">{value}</dd>
       <dd className="mt-1 text-xs text-muted-foreground">{context}</dd>
     </div>
-  )
+  );
 }
 
 function ProjectBreakdownTable({
@@ -502,9 +475,9 @@ function ProjectBreakdownTable({
   range,
   modelId,
 }: {
-  rows: ProjectUsageBreakdown[]
-  range: UsageRange
-  modelId: string | null
+  rows: ProjectUsageBreakdown[];
+  range: UsageRange;
+  modelId: string | null;
 }) {
   return (
     <section className="min-w-0" aria-labelledby="project-breakdown-heading">
@@ -526,9 +499,9 @@ function ProjectBreakdownTable({
           </TableHeader>
           <TableBody>
             {rows.map((row) => {
-              const values = dimensionValues(row)
-              const query = new URLSearchParams({ range })
-              if (modelId) query.set("model", modelId)
+              const values = dimensionValues(row);
+              const query = new URLSearchParams({ range });
+              if (modelId) query.set("model", modelId);
               return (
                 <TableRow key={row.projectId}>
                   <TableCell>
@@ -539,19 +512,27 @@ function ProjectBreakdownTable({
                       {row.projectName}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-right font-mono">{row.sessions.toLocaleString()}</TableCell>
-                  <TableCell className="text-right font-mono">{formatPercent(values.completion)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatTokenCount(values.tokens)}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {row.sessions.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatPercent(values.completion)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatTokenCount(values.tokens)}
+                  </TableCell>
                   <TableCell className="text-right font-mono">{formatUsd(row.costUsd)}</TableCell>
-                  <TableCell><Badge variant="outline">{coverageLabel(row)}</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{coverageLabel(row)}</Badge>
+                  </TableCell>
                 </TableRow>
-              )
+              );
             })}
           </TableBody>
         </Table>
       </div>
     </section>
-  )
+  );
 }
 
 function ModelBreakdownTable({
@@ -559,16 +540,18 @@ function ModelBreakdownTable({
   selectedModelId,
   onSelectModel,
 }: {
-  rows: ModelUsageBreakdown[]
-  selectedModelId: string | null
-  onSelectModel: (modelId: string | null) => void
+  rows: ModelUsageBreakdown[];
+  selectedModelId: string | null;
+  onSelectModel: (modelId: string | null) => void;
 }) {
   return (
     <section className="min-w-0" aria-labelledby="model-breakdown-heading">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="text-xs text-muted-foreground">Model attribution</p>
-          <h2 id="model-breakdown-heading" className="mt-1 text-base font-semibold">Models</h2>
+          <h2 id="model-breakdown-heading" className="mt-1 text-base font-semibold">
+            Models
+          </h2>
         </div>
         {selectedModelId ? (
           <Button variant="ghost" size="sm" onClick={() => onSelectModel(null)}>
@@ -605,32 +588,44 @@ function ModelBreakdownTable({
                     <span className="font-mono text-muted-foreground">Unknown model</span>
                   )}
                 </TableCell>
-                <TableCell className="text-right font-mono">{row.sessions.toLocaleString()}</TableCell>
-                <TableCell className="text-right font-mono">{row.modelSteps.toLocaleString()}</TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">{formatTokenCount(row.inputTokens)} / {formatTokenCount(row.outputTokens)}</TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">{formatTokenCount(row.cacheReadTokens)}</TableCell>
+                <TableCell className="text-right font-mono">
+                  {row.sessions.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right font-mono">
+                  {row.modelSteps.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {formatTokenCount(row.inputTokens)} / {formatTokenCount(row.outputTokens)}
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {formatTokenCount(row.cacheReadTokens)}
+                </TableCell>
                 <TableCell className="text-right font-mono">{formatUsd(row.costUsd)}</TableCell>
-                <TableCell><Badge variant="outline">{coverageLabel(row)}</Badge></TableCell>
+                <TableCell>
+                  <Badge variant="outline">{coverageLabel(row)}</Badge>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
     </section>
-  )
+  );
 }
 
 function AgentModelTable({
   rows,
   showProject,
 }: {
-  rows: AgentModelUsageBreakdown[]
-  showProject: boolean
+  rows: AgentModelUsageBreakdown[];
+  showProject: boolean;
 }) {
   return (
     <section className="min-w-0" aria-labelledby="agent-model-heading">
       <p className="text-xs text-muted-foreground">Model attribution</p>
-      <h2 id="agent-model-heading" className="mt-1 text-base font-semibold">Usage by Eve agent and model</h2>
+      <h2 id="agent-model-heading" className="mt-1 text-base font-semibold">
+        Usage by Eve agent and model
+      </h2>
       <p className="mt-1 text-sm text-muted-foreground">One row per agent and model pair.</p>
       <div className="mt-3 overflow-x-auto">
         <Table>
@@ -648,76 +643,100 @@ function AgentModelTable({
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={`${row.projectId}:${row.agentId ?? row.agentName ?? "unknown"}:${row.modelId ?? "unknown"}`}>
+              <TableRow
+                key={`${row.projectId}:${row.agentId ?? row.agentName ?? "unknown"}:${row.modelId ?? "unknown"}`}
+              >
                 {showProject ? <TableCell>{row.projectName}</TableCell> : null}
                 <TableCell>
-                  <div className="font-medium">{row.agentName ?? row.agentId ?? "Unknown agent"}</div>
-                  {row.agentName && row.agentId ? <div className="font-mono text-xs text-muted-foreground">{row.agentId}</div> : null}
+                  <div className="font-medium">
+                    {row.agentName ?? row.agentId ?? "Unknown agent"}
+                  </div>
+                  {row.agentName && row.agentId ? (
+                    <div className="font-mono text-xs text-muted-foreground">{row.agentId}</div>
+                  ) : null}
                 </TableCell>
                 <TableCell className="font-mono">{modelLabel(row.modelId)}</TableCell>
-                <TableCell className="text-right font-mono">{row.modelSteps.toLocaleString()}</TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">{formatTokenCount(row.inputTokens)} / {formatTokenCount(row.outputTokens)}</TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">{formatTokenCount(row.cacheReadTokens)} / {formatTokenCount(row.cacheWriteTokens)}</TableCell>
+                <TableCell className="text-right font-mono">
+                  {row.modelSteps.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {formatTokenCount(row.inputTokens)} / {formatTokenCount(row.outputTokens)}
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {formatTokenCount(row.cacheReadTokens)} / {formatTokenCount(row.cacheWriteTokens)}
+                </TableCell>
                 <TableCell className="text-right font-mono">{formatUsd(row.costUsd)}</TableCell>
-                <TableCell><Badge variant="outline">{coverageLabel(row)}</Badge></TableCell>
+                <TableCell>
+                  <Badge variant="outline">{coverageLabel(row)}</Badge>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
     </section>
-  )
+  );
 }
 
 function UsageSignals({
   totals,
   projectName,
 }: {
-  totals: UsageTotals
-  projectName: string | null
+  totals: UsageTotals;
+  projectName: string | null;
 }) {
-  const signals: Array<{ title: string; detail: string; warning: boolean }> = []
+  const signals: Array<{ title: string; detail: string; warning: boolean }> = [];
   if (totals.failedSessions > 0) {
     signals.push({
       title: `${totals.failedSessions.toLocaleString()} failed sessions`,
-      detail: projectName ? `Within ${projectName} during this period.` : "Across the selected workspace scope.",
+      detail: projectName
+        ? `Within ${projectName} during this period.`
+        : "Across the selected workspace scope.",
       warning: true,
-    })
+    });
   }
   if (totals.missingSteps > 0) {
     signals.push({
       title: `${totals.missingSteps.toLocaleString()} model steps have missing usage`,
       detail: "Token totals exclude fields the provider did not report.",
       warning: true,
-    })
+    });
   }
-  const reportedCostCoverage = costCoverage(totals)
+  const reportedCostCoverage = costCoverage(totals);
   if (reportedCostCoverage !== null && reportedCostCoverage < 100) {
     signals.push({
       title: `Cost coverage is ${reportedCostCoverage.toFixed(1)}%`,
       detail: "Provider cost is partial and Eveland does not estimate the remainder.",
       warning: true,
-    })
+    });
   }
   if (signals.length === 0) {
     signals.push({
       title: "No usage signals need attention",
       detail: "All observed steps reported usage and cost for this period.",
       warning: false,
-    })
+    });
   }
 
   return (
     <section aria-labelledby="usage-signals-heading">
       <p className="text-xs text-muted-foreground">Selected period</p>
-      <h2 id="usage-signals-heading" className="mt-1 text-base font-semibold">Needs attention</h2>
+      <h2 id="usage-signals-heading" className="mt-1 text-base font-semibold">
+        Needs attention
+      </h2>
       <ul className="mt-4 flex flex-col gap-4">
         {signals.slice(0, 3).map((signal) => (
           <li key={signal.title} className="flex gap-3">
             {signal.warning ? (
-              <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <AlertTriangleIcon
+                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
             ) : (
-              <CircleCheckIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <CircleCheckIcon
+                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
             )}
             <div>
               <p className="text-sm font-medium">{signal.title}</p>
@@ -727,18 +746,16 @@ function UsageSignals({
         ))}
       </ul>
     </section>
-  )
+  );
 }
 
-function RecentSessionsTable({
-  analytics,
-}: {
-  analytics: UsageAnalytics
-}) {
+function RecentSessionsTable({ analytics }: { analytics: UsageAnalytics }) {
   return (
     <section className="min-w-0" aria-labelledby="recent-sessions-heading">
       <p className="text-xs text-muted-foreground">Investigation</p>
-      <h2 id="recent-sessions-heading" className="mt-1 text-base font-semibold">Recent sessions</h2>
+      <h2 id="recent-sessions-heading" className="mt-1 text-base font-semibold">
+        Recent sessions
+      </h2>
       <div className="mt-3 overflow-x-auto">
         <Table>
           <TableHeader>
@@ -755,18 +772,33 @@ function RecentSessionsTable({
             {analytics.recentSessions.map((session) => (
               <TableRow key={session.id}>
                 <TableCell>
-                  <Link href={`/projects/${session.projectId}/sessions/${session.id}`} className="font-mono font-medium hover:underline">{session.id}</Link>
+                  <Link
+                    href={`/projects/${session.projectId}/sessions/${session.id}`}
+                    className="font-mono font-medium hover:underline"
+                  >
+                    {session.id}
+                  </Link>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{session.trigger}</TableCell>
-                <TableCell><StatusBadge status={session.status} /></TableCell>
-                <TableCell className="text-right font-mono">{session.usage.status === "none" || session.usage.status === "missing" ? "—" : formatTokenCount(session.usage.inputTokens + session.usage.outputTokens)}</TableCell>
-                <TableCell className="text-right font-mono text-muted-foreground">{formatUsd(session.usage.costUsd)}</TableCell>
-                <TableCell className="text-muted-foreground"><DateTime value={session.startedAt} /></TableCell>
+                <TableCell>
+                  <StatusBadge status={session.status} />
+                </TableCell>
+                <TableCell className="text-right font-mono">
+                  {session.usage.status === "none" || session.usage.status === "missing"
+                    ? "—"
+                    : formatTokenCount(session.usage.inputTokens + session.usage.outputTokens)}
+                </TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {formatUsd(session.usage.costUsd)}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <DateTime value={session.startedAt} />
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
     </section>
-  )
+  );
 }

@@ -1,16 +1,17 @@
 {
   "name": "eveland-monorepo",
   "version": "0.23.1",
-  "license": "AGPL-3.0-only",
   "private": true,
-  "packageManager": "pnpm@11.7.0",
-  "engines": {
-    "node": ">=24.0.0"
-  },
+  "license": "AGPL-3.0-only",
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "prepare": "simple-git-hooks",
     "dev": "pnpm --filter @eveland/sandbox-bwrap build && pnpm -r --parallel dev",
     "dev:docs": "pnpm --filter @eveland/docs dev",
     "dev:web": "pnpm --filter @eveland/web dev",
@@ -20,8 +21,18 @@
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
+    "oxfmt": "0.58.0",
+    "oxlint": "1.73.0",
+    "simple-git-hooks": "2.13.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
-  }
+  },
+  "simple-git-hooks": {
+    "pre-commit": "node ./scripts/pre-commit-fmt.mjs"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@11.7.0"
 }

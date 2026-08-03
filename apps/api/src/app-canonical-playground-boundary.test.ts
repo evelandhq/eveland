@@ -67,8 +67,7 @@ async function createRecoverableAgentAuth(
   return createAgentAuthService({
     store,
     appSecretKey,
-    oidcCallbackUrl:
-      "http://localhost:3000/agent-auth/oidc/callback",
+    oidcCallbackUrl: "http://localhost:3000/agent-auth/oidc/callback",
     agentAuthProviders: [provider],
   });
 }
@@ -84,23 +83,23 @@ describe("canonical Playground API boundary", () => {
     const agentAuth = createAgentAuthService({
       store,
       appSecretKey,
-      oidcCallbackUrl:
-        "http://localhost:3000/agent-auth/oidc/callback",
+      oidcCallbackUrl: "http://localhost:3000/agent-auth/oidc/callback",
     });
-    const playgroundProxy = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          sessionId: "eve_focused_boundary",
-          continuationToken: "continue_focused_boundary",
-        }),
-        {
-          status: 202,
-          headers: {
-            "content-type": "application/json",
-            "x-eve-session-id": "eve_focused_boundary",
+    const playgroundProxy = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            sessionId: "eve_focused_boundary",
+            continuationToken: "continue_focused_boundary",
+          }),
+          {
+            status: 202,
+            headers: {
+              "content-type": "application/json",
+              "x-eve-session-id": "eve_focused_boundary",
+            },
           },
-        },
-      ),
+        ),
     );
     registerCanonicalPlaygroundRoute({
       app,
@@ -109,14 +108,11 @@ describe("canonical Playground API boundary", () => {
       playgroundProxy,
     });
 
-    const response = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: "Exercise the focused boundary" }),
-      },
-    );
+    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Exercise the focused boundary" }),
+    });
 
     expect(response.status).toBe(202);
     expect(playgroundProxy).toHaveBeenCalledWith(
@@ -143,14 +139,8 @@ describe("canonical Playground API boundary", () => {
       name: "terminal-credential-rejection",
       importKind: "zip",
     });
-    const agentAuth = await createRecoverableAgentAuth(
-      store,
-      project.id,
-      "give_up",
-    );
-    const playgroundProxy = vi.fn(
-      async () => new Response(null, { status: 401 }),
-    );
+    const agentAuth = await createRecoverableAgentAuth(store, project.id, "give_up");
+    const playgroundProxy = vi.fn(async () => new Response(null, { status: 401 }));
     const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
     registerCanonicalPlaygroundRoute({
       app,
@@ -159,14 +149,11 @@ describe("canonical Playground API boundary", () => {
       playgroundProxy,
     });
 
-    const response = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: "Reject this credential twice" }),
-      },
-    );
+    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Reject this credential twice" }),
+    });
 
     expect(response.status).toBe(401);
     expect(playgroundProxy).toHaveBeenCalledTimes(2);
@@ -187,14 +174,8 @@ describe("canonical Playground API boundary", () => {
       eveSessionId: "eve_existing_continuation",
       continuationToken: "continue_existing",
     });
-    const agentAuth = await createRecoverableAgentAuth(
-      store,
-      project.id,
-      "retry",
-    );
-    const playgroundProxy = vi.fn(
-      async () => new Response(null, { status: 401 }),
-    );
+    const agentAuth = await createRecoverableAgentAuth(store, project.id, "retry");
+    const playgroundProxy = vi.fn(async () => new Response(null, { status: 401 }));
     const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
     registerCanonicalPlaygroundRoute({
       app,

@@ -37,7 +37,9 @@ export function parseScheduleSource(sourcePath: string, content: string): Discov
     return { key, kind: "module", sourcePath: normalizedPath, executable: true };
   }
   if (extension !== ".md") {
-    throw new Error(`Schedule ${sourcePath} uses an unsupported schedule extension for Eveland's supported Eve releases.`);
+    throw new Error(
+      `Schedule ${sourcePath} uses an unsupported schedule extension for Eveland's supported Eve releases.`,
+    );
   }
 
   const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n)?([\s\S]*)$/);
@@ -82,12 +84,16 @@ export function describeScheduleCron(cron: string): string {
 
 export function validateFiveFieldCron(cron: string): void {
   if (cron.trim().split(/\s+/).length !== 5) {
-    throw new Error(`Eve schedules require a standard cron expression with exactly five fields: ${cron}`);
+    throw new Error(
+      `Eve schedules require a standard cron expression with exactly five fields: ${cron}`,
+    );
   }
   try {
     CronExpressionParser.parse(cron, { currentDate: new Date(0), tz: "UTC" });
   } catch (error) {
-    throw new Error(`Invalid Eve schedule cron expression "${cron}": ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Invalid Eve schedule cron expression "${cron}": ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -97,7 +103,10 @@ function scheduleKeyFromPath(sourcePath: string): string {
     throw new Error(`Schedule ${sourcePath} must be located under agent/schedules/.`);
   }
   const relativePath = sourcePath.slice(prefix.length);
-  if (!relativePath || relativePath.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+  if (
+    !relativePath ||
+    relativePath.split("/").some((segment) => !segment || segment === "." || segment === "..")
+  ) {
     throw new Error(`Schedule ${sourcePath} has an invalid path under agent/schedules/.`);
   }
   const extension = posixExtname(relativePath);
@@ -127,7 +136,8 @@ function unquote(value: string): string {
   if (value.length >= 2) {
     const first = value[0];
     const last = value.at(-1);
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) return value.slice(1, -1);
+    if ((first === '"' && last === '"') || (first === "'" && last === "'"))
+      return value.slice(1, -1);
   }
   return value;
 }

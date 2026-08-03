@@ -1,8 +1,8 @@
 {
   "name": "@eveland/agent-scheduler",
   "version": "0.0.0",
-  "license": "AGPL-3.0-only",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": {
     ".": "./src/adapter.ts"
@@ -18,8 +18,8 @@
   },
   "devDependencies": {
     "eve": "catalog:",
-    "eve-oldest": "catalog:eve-matrix",
     "eve-middle": "catalog:eve-matrix",
+    "eve-oldest": "catalog:eve-matrix",
     "vitest": "^4.1.9"
   }
 }

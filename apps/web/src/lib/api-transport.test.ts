@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import {
-  ApiUnauthorizedError,
-  apiFetch,
-  apiRequest,
-  decodeApiError,
-} from "./api-transport.js";
+import { ApiUnauthorizedError, apiFetch, apiRequest, decodeApiError } from "./api-transport.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -29,9 +24,7 @@ describe("browser API transport", () => {
 
     // Control-plane routes are cookie-authenticated: a call that omits
     // credentials is an anonymous 401, not a working request.
-    for (const [, init] of fetchMock.mock.calls as unknown as Array<
-      [string, RequestInit]
-    >) {
+    for (const [, init] of fetchMock.mock.calls as unknown as Array<[string, RequestInit]>) {
       expect(init.credentials).toBe("include");
     }
   });
@@ -56,12 +49,12 @@ describe("browser API transport", () => {
     await expect(
       decodeApiError(Response.json({ detail: "detailed" }, { status: 400 })),
     ).resolves.toBe("detailed");
-    await expect(
-      decodeApiError(Response.json({ error: "plain" }, { status: 400 })),
-    ).resolves.toBe("plain");
-    await expect(
-      decodeApiError(new Response("not json", { status: 503 })),
-    ).resolves.toBe("Request failed with 503");
+    await expect(decodeApiError(Response.json({ error: "plain" }, { status: 400 }))).resolves.toBe(
+      "plain",
+    );
+    await expect(decodeApiError(new Response("not json", { status: 503 }))).resolves.toBe(
+      "Request failed with 503",
+    );
   });
 
   test("treats an expired session as a redirect to login, not a raw error", async () => {
@@ -71,21 +64,15 @@ describe("browser API transport", () => {
       location: { pathname: "/projects/proj_1", search: "?tab=logs", assign },
     });
 
-    await expect(apiRequest("/projects/proj_1")).rejects.toBeInstanceOf(
-      ApiUnauthorizedError,
-    );
-    expect(assign).toHaveBeenCalledWith(
-      "/login?next=%2Fprojects%2Fproj_1%3Ftab%3Dlogs",
-    );
+    await expect(apiRequest("/projects/proj_1")).rejects.toBeInstanceOf(ApiUnauthorizedError);
+    expect(assign).toHaveBeenCalledWith("/login?next=%2Fprojects%2Fproj_1%3Ftab%3Dlogs");
   });
 
   test("surfaces the endpoint's own message when a 401 is the answer, not an expiry", async () => {
     // Signing in with a wrong password and accepting an invitation with a bad
     // one both answer 401. Treating those as "your session expired" tells the
     // user something false and hides the only message they can act on.
-    mockFetch(
-      Response.json({ error: "Invalid email or password" }, { status: 401 }),
-    );
+    mockFetch(Response.json({ error: "Invalid email or password" }, { status: 401 }));
     const assign = vi.fn();
     vi.stubGlobal("window", {
       location: { pathname: "/login", search: "", assign },
@@ -107,21 +94,15 @@ describe("browser API transport", () => {
       location: { pathname: "/login", search: "", assign },
     });
 
-    await expect(apiRequest("/auth/session")).rejects.toBeInstanceOf(
-      ApiUnauthorizedError,
-    );
+    await expect(apiRequest("/auth/session")).rejects.toBeInstanceOf(ApiUnauthorizedError);
     expect(assign).not.toHaveBeenCalled();
   });
 
   test("reports an absent optional resource as null and a 204 as no content", async () => {
     mockFetch(new Response(null, { status: 404 }));
-    await expect(
-      apiRequest("/projects/proj_missing", { optional: true }),
-    ).resolves.toBeNull();
+    await expect(apiRequest("/projects/proj_missing", { optional: true })).resolves.toBeNull();
 
     mockFetch(new Response(null, { status: 204 }));
-    await expect(
-      apiRequest("/invitations/invh_1", { method: "DELETE" }),
-    ).resolves.toBeUndefined();
+    await expect(apiRequest("/invitations/invh_1", { method: "DELETE" })).resolves.toBeUndefined();
   });
 });

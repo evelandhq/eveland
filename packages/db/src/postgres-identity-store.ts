@@ -1,13 +1,4 @@
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gt,
-  inArray,
-  isNull,
-  lt,
-} from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt } from "drizzle-orm";
 import { createId } from "@eveland/core/ids";
 import type {
   ExternalRealmKind,
@@ -43,9 +34,7 @@ type ReturnTargetRow = typeof identityReturnTargets.$inferSelect;
 type OidcCredentialRow = typeof identityOidcCredentials.$inferSelect;
 type SigningKeyRow = typeof identitySigningKeys.$inferSelect;
 
-export function createPostgresIdentityStore(
-  context: PostgresStoreContext,
-): IdentityStore {
+export function createPostgresIdentityStore(context: PostgresStoreContext): IdentityStore {
   const { db } = context;
 
   return {
@@ -59,11 +48,12 @@ export function createPostgresIdentityStore(
     },
 
     async listIdentityProviderConnections() {
-      return (await db
-        .select()
-        .from(identityProviderConnections)
-        .orderBy(asc(identityProviderConnections.createdAt)))
-        .map(providerRow);
+      return (
+        await db
+          .select()
+          .from(identityProviderConnections)
+          .orderBy(asc(identityProviderConnections.createdAt))
+      ).map(providerRow);
     },
 
     async getIdentityProviderConnection(id) {
@@ -83,10 +73,7 @@ export function createPostgresIdentityStore(
           .where(
             and(
               eq(identityProviderConnections.id, input.id),
-              eq(
-                identityProviderConnections.securityRevision,
-                input.expectedSecurityRevision,
-              ),
+              eq(identityProviderConnections.securityRevision, input.expectedSecurityRevision),
             ),
           )
           .limit(1);
@@ -134,10 +121,7 @@ export function createPostgresIdentityStore(
           .where(
             and(
               eq(identityProviderConnections.id, input.id),
-              eq(
-                identityProviderConnections.securityRevision,
-                input.expectedSecurityRevision,
-              ),
+              eq(identityProviderConnections.securityRevision, input.expectedSecurityRevision),
             ),
           )
           .returning();
@@ -190,10 +174,7 @@ export function createPostgresIdentityStore(
           enabled: input.enabled,
         })
         .onConflictDoNothing({
-          target: [
-            identityRealms.providerConnectionId,
-            identityRealms.externalRealmId,
-          ],
+          target: [identityRealms.providerConnectionId, identityRealms.externalRealmId],
         })
         .returning();
       const row =
@@ -204,10 +185,7 @@ export function createPostgresIdentityStore(
             .from(identityRealms)
             .where(
               and(
-                eq(
-                  identityRealms.providerConnectionId,
-                  input.providerConnectionId,
-                ),
+                eq(identityRealms.providerConnectionId, input.providerConnectionId),
                 eq(identityRealms.externalRealmId, input.externalRealmId),
               ),
             )
@@ -224,10 +202,7 @@ export function createPostgresIdentityStore(
             .from(identityRealms)
             .where(eq(identityRealms.providerConnectionId, providerConnectionId))
             .orderBy(asc(identityRealms.createdAt))
-        : await db
-            .select()
-            .from(identityRealms)
-            .orderBy(asc(identityRealms.createdAt));
+        : await db.select().from(identityRealms).orderBy(asc(identityRealms.createdAt));
       return rows.map(realmRow);
     },
 
@@ -279,10 +254,7 @@ export function createPostgresIdentityStore(
           claims: input.claims,
         })
         .onConflictDoUpdate({
-          target: [
-            identityPrincipals.identityRealmId,
-            identityPrincipals.externalSubject,
-          ],
+          target: [identityPrincipals.identityRealmId, identityPrincipals.externalSubject],
           set: {
             displayName: input.displayName,
             email: input.email,
@@ -347,21 +319,13 @@ export function createPostgresIdentityStore(
       const rows = await db
         .update(identitySessions)
         .set({ revokedAt: now })
-        .where(
-          and(
-            eq(identitySessions.tokenHash, tokenHash),
-            isNull(identitySessions.revokedAt),
-          ),
-        )
+        .where(and(eq(identitySessions.tokenHash, tokenHash), isNull(identitySessions.revokedAt)))
         .returning({ id: identitySessions.id });
       return rows.length > 0;
     },
 
     async createIdentityLoginTransaction(input) {
-      const [row] = await db
-        .insert(identityLoginTransactions)
-        .values(input)
-        .returning();
+      const [row] = await db.insert(identityLoginTransactions).values(input).returning();
       if (!row) throw new Error("Failed to create Identity login transaction.");
       return transactionRow(row);
     },
@@ -424,11 +388,9 @@ export function createPostgresIdentityStore(
     },
 
     async listIdentityReturnTargets() {
-      return (await db
-        .select()
-        .from(identityReturnTargets)
-        .orderBy(asc(identityReturnTargets.createdAt)))
-        .map(returnTargetRow);
+      return (
+        await db.select().from(identityReturnTargets).orderBy(asc(identityReturnTargets.createdAt))
+      ).map(returnTargetRow);
     },
 
     async getIdentityReturnTargetByKey(key) {
@@ -469,14 +431,8 @@ export function createPostgresIdentityStore(
         .from(identityOidcCredentials)
         .where(
           and(
-            eq(
-              identityOidcCredentials.identityPrincipalId,
-              identityPrincipalId,
-            ),
-            eq(
-              identityOidcCredentials.providerConnectionId,
-              providerConnectionId,
-            ),
+            eq(identityOidcCredentials.identityPrincipalId, identityPrincipalId),
+            eq(identityOidcCredentials.providerConnectionId, providerConnectionId),
           ),
         )
         .limit(1);
@@ -496,18 +452,9 @@ export function createPostgresIdentityStore(
         })
         .where(
           and(
-            eq(
-              identityOidcCredentials.identityPrincipalId,
-              input.identityPrincipalId,
-            ),
-            eq(
-              identityOidcCredentials.providerConnectionId,
-              input.providerConnectionId,
-            ),
-            eq(
-              identityOidcCredentials.rotationSeq,
-              input.expectedRotationSeq,
-            ),
+            eq(identityOidcCredentials.identityPrincipalId, input.identityPrincipalId),
+            eq(identityOidcCredentials.providerConnectionId, input.providerConnectionId),
+            eq(identityOidcCredentials.rotationSeq, input.expectedRotationSeq),
           ),
         )
         .returning();
@@ -536,11 +483,9 @@ export function createPostgresIdentityStore(
     },
 
     async listIdentitySigningKeys() {
-      return (await db
-        .select()
-        .from(identitySigningKeys)
-        .orderBy(desc(identitySigningKeys.createdAt)))
-        .map(signingKeyRow);
+      return (
+        await db.select().from(identitySigningKeys).orderBy(desc(identitySigningKeys.createdAt))
+      ).map(signingKeyRow);
     },
 
     async getActiveIdentitySigningKey(now = new Date()) {
@@ -560,9 +505,7 @@ export function createPostgresIdentityStore(
   };
 }
 
-function providerValues(
-  input: Parameters<IdentityStore["createIdentityProviderConnection"]>[0],
-) {
+function providerValues(input: Parameters<IdentityStore["createIdentityProviderConnection"]>[0]) {
   if (input.type === "internal") {
     if (!input.internalRealmKey) throw new Error("Internal Realm key is required.");
     return {

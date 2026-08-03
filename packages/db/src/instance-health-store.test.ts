@@ -34,10 +34,12 @@ describe("instance health store", () => {
     const store = createTestStore();
 
     await store.upsertWorkerHeartbeat(heartbeat());
-    await store.upsertWorkerHeartbeat(heartbeat({
-      observedAt: "2026-07-18T10:00:05.000Z",
-      lastTickDurationMs: 91,
-    }));
+    await store.upsertWorkerHeartbeat(
+      heartbeat({
+        observedAt: "2026-07-18T10:00:05.000Z",
+        lastTickDurationMs: 91,
+      }),
+    );
 
     await expect(store.listWorkerHeartbeats()).resolves.toEqual([
       expect.objectContaining({
@@ -60,9 +62,7 @@ describe("instance health store", () => {
       limit: 100,
     });
 
-    expect(samples.map((sample) => sample.observedAt)).toEqual([
-      "2026-07-18T10:00:00.000Z",
-    ]);
+    expect(samples.map((sample) => sample.observedAt)).toEqual(["2026-07-18T10:00:00.000Z"]);
   });
 
   test("prunes expired metric samples without deleting current history", async () => {
@@ -113,11 +113,15 @@ describe("instance health store", () => {
       expiresAt: new Date("2026-07-18T10:05:00.000Z"),
       now: new Date("2026-07-18T10:00:00.000Z"),
     });
-    await store.updateRuntimeInstance(readyClaim.runtimeInstance.id, {
-      status: "ready",
-      endpointHost: "127.0.0.1",
-      endpointPort: readyDeployment.hostPort,
-    }, new Date("2026-07-18T10:00:01.000Z"));
+    await store.updateRuntimeInstance(
+      readyClaim.runtimeInstance.id,
+      {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: readyDeployment.hostPort,
+      },
+      new Date("2026-07-18T10:00:01.000Z"),
+    );
     const failedClaim = await store.acquireActivationLease({
       deploymentId: failedDeployment.id,
       kind: "public_request",
@@ -125,10 +129,14 @@ describe("instance health store", () => {
       expiresAt: new Date("2026-07-18T10:05:00.000Z"),
       now: new Date("2026-07-18T10:00:00.000Z"),
     });
-    await store.updateRuntimeInstance(failedClaim.runtimeInstance.id, {
-      status: "failed",
-      error: "start failed",
-    }, new Date("2026-07-18T10:00:02.000Z"));
+    await store.updateRuntimeInstance(
+      failedClaim.runtimeInstance.id,
+      {
+        status: "failed",
+        error: "start failed",
+      },
+      new Date("2026-07-18T10:00:02.000Z"),
+    );
 
     await expect(store.getInstanceWorkload()).resolves.toEqual({
       queuedJobs: 1,

@@ -3,12 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { createConfigurationSnapshot } from "../config-diagnostics.js";
-import { readConfigurationSnapshotFile, writeConfigurationSnapshotFile } from "./config-diagnostics.js";
+import {
+  readConfigurationSnapshotFile,
+  writeConfigurationSnapshotFile,
+} from "./config-diagnostics.js";
 
 const tempDirectories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(tempDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
+  await Promise.all(
+    tempDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+  );
 });
 
 describe("configuration snapshot files", () => {

@@ -95,16 +95,16 @@ project-bound ES256 Caller Token。Gateway 对公开请求继续透明转发 Aut
 
 ## 4. Eve verifier 与 Eveland 客户端能力矩阵
 
-| Eve Agent 入站 helper | Eveland 调用端能力 | 说明 |
-| --- | --- | --- |
-| `localDev()` | loopback authority，无 credential | 仅 privileged internal Playground path 可用 |
-| `none()` | canonical authority，无 credential | 不代表 Gateway 放松公共认证边界 |
-| `httpBasic()` | Basic credential provider | username/password 加密保存，按请求物化 Header |
-| `jwtHmac()` | Bearer 或显式 managed JWT signer | 默认发送外部签发 token；不要隐式让 Eveland 成为 issuer |
-| `jwtEcdsa()` | Bearer 或显式 managed JWT signer | 同上；私钥签发能力若需要，应独立设计和授权 |
-| `oidc()` | 通用 OIDC provider family | Authorization Code 只是其中一种 acquisition strategy |
-| `vercelOidc()` | 独立 Vercel provider | 参考 Eve 的客户端镜像；不要硬编码进 generic OIDC |
-| custom `AuthFn` | custom headers 或未来外部 provider | 不做自动推断，不允许危险 Header |
+| Eve Agent 入站 helper | Eveland 调用端能力                 | 说明                                                   |
+| --------------------- | ---------------------------------- | ------------------------------------------------------ |
+| `localDev()`          | loopback authority，无 credential  | 仅 privileged internal Playground path 可用            |
+| `none()`              | canonical authority，无 credential | 不代表 Gateway 放松公共认证边界                        |
+| `httpBasic()`         | Basic credential provider          | username/password 加密保存，按请求物化 Header          |
+| `jwtHmac()`           | Bearer 或显式 managed JWT signer   | 默认发送外部签发 token；不要隐式让 Eveland 成为 issuer |
+| `jwtEcdsa()`          | Bearer 或显式 managed JWT signer   | 同上；私钥签发能力若需要，应独立设计和授权             |
+| `oidc()`              | 通用 OIDC provider family          | Authorization Code 只是其中一种 acquisition strategy   |
+| `vercelOidc()`        | 独立 Vercel provider               | 参考 Eve 的客户端镜像；不要硬编码进 generic OIDC       |
+| custom `AuthFn`       | custom headers 或未来外部 provider | 不做自动推断，不允许危险 Header                        |
 
 “完整支持 Eve helper”指完整覆盖调用端兼容矩阵和协议测试，不是复制 Eve verifier 实现。
 
@@ -273,7 +273,7 @@ Secrets 不得进入：
 - Docker build layer；
 - generated Dockerfile；
 - observer event；
--日志和错误响应；
+  -日志和错误响应；
 - Web payload。
 
 不要假设“注入到 Agent 的环境变量”会自动配置 Eveland API 的 OIDC client。Agent verifier 配置和
@@ -354,7 +354,7 @@ security-key 配置完成，不保存长期 write token。
 - source scanner 和 Worker auto-selection；
 - provider-specific config diagnostics；
 - PR #72 的 migration `0018_slow_talisman.sql`；
--旧 migration snapshot；
+  -旧 migration snapshot；
 - 已被后续决策覆盖的实施计划和文档段落。
 
 新实现应从最新 schema 重新运行 `pnpm --filter @eveland/db db:generate`，不得复制未合并 branch 的
@@ -414,7 +414,7 @@ caller，不包含 Jinshuju provider knowledge。
 - refresh、singleflight、Postgres fencing；
 - 401 recovery；
 - transaction/old-revision cleanup；
--真实 Postgres concurrency tests；
+  -真实 Postgres concurrency tests；
 - generic OIDC docs。
 
 ### PR C：平台级变量与 Secret Profile
@@ -454,12 +454,12 @@ Jinshuju package 在独立仓库完成并发布，不是 PR C 的一部分。
 - `local-dev` 仅使用 loopback authority；
 - 其他方法使用 canonical Host；
 - Basic/Bearer/headers 正确物化；
--危险 Header 拒绝；
+  -危险 Header 拒绝；
 - browser/API payload 不泄漏 Secret；
 - unchanged normalized config 不递增 revision；
 - changed config 使旧 credential 失效；
 - public Gateway 不能伪造 envelope；
--现有 public Authorization/Cookie/Origin/streaming 不回归；
+  -现有 public Authorization/Cookie/Origin/streaming 不回归；
 - Project 删除级联清理 Connection/credentials。
 
 ### 12.2 PR B 必测
@@ -467,14 +467,14 @@ Jinshuju package 在独立仓库完成并发布，不是 PR C 的一部分。
 - PKCE/state/nonce；
 - transaction 过期、重放、caller mismatch、revision mismatch；
 - abandoned/expired transaction cleanup；
--两个 Caller Principal 完全隔离；
+  -两个 Caller Principal 完全隔离；
 - Caller Principal 与 IdP subject 不同仍成功；
 - callback/refresh token 只有验证后才 active；
 - refresh token rotation；
 - pending verification；
 - permanent rejection 与 temporary provider failure；
--跨实例只有一个 refresh caller；
--等待者不会在正常 token endpoint latency 内过早返回 503；
+  -跨实例只有一个 refresh caller；
+  -等待者不会在正常 token endpoint latency 内过早返回 503；
 - lease expiry late writer 不能完成、释放或删除新版 credential；
 - callback vs refresh；
 - config update vs callback/refresh；

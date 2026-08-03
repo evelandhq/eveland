@@ -26,6 +26,7 @@ switch.
 ## Task 1: Worker startup preflight for the systemd runtime
 
 **Files:**
+
 - Create `apps/worker/src/runtime/preflight.ts`
 - Create `apps/worker/src/runtime/preflight.test.ts`
 - Create `apps/worker/src/integration/preflight-check.ts`
@@ -39,23 +40,27 @@ switch.
 ```ts
 export type PreflightDeps = {
   env: NodeJS.ProcessEnv;
-  platform: NodeJS.Platform;                        // default process.platform
-  getuid: () => number;                             // default process.getuid?.() ?? -1
-  pathExists: (p: string) => Promise<boolean>;      // default fs access
-  isDirectory: (p: string) => Promise<boolean>;     // default fs stat
-  mkdir: (p: string) => Promise<void>;              // default fs mkdir recursive
-  commandExists: (name: string) => Promise<boolean>;// default: `command -v <name>` exit 0
-  userExists: (name: string) => Promise<boolean>;   // default: `id -u <name>` exit 0
+  platform: NodeJS.Platform; // default process.platform
+  getuid: () => number; // default process.getuid?.() ?? -1
+  pathExists: (p: string) => Promise<boolean>; // default fs access
+  isDirectory: (p: string) => Promise<boolean>; // default fs stat
+  mkdir: (p: string) => Promise<void>; // default fs mkdir recursive
+  commandExists: (name: string) => Promise<boolean>; // default: `command -v <name>` exit 0
+  userExists: (name: string) => Promise<boolean>; // default: `id -u <name>` exit 0
   canTraverseAs: (user: string, dir: string) => Promise<boolean>;
-                                                    // default: `runuser -u <user> -- test -x <dir>` exit 0
-  backendDistDir: () => string;                     // default: resolveBackendDistDir from select.ts
+  // default: `runuser -u <user> -- test -x <dir>` exit 0
+  backendDistDir: () => string; // default: resolveBackendDistDir from select.ts
 };
 
 export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promise<string[]>;
-export async function assertWorkerPreflight(env: NodeJS.ProcessEnv, overrides?: Partial<PreflightDeps>): Promise<void>;
+export async function assertWorkerPreflight(
+  env: NodeJS.ProcessEnv,
+  overrides?: Partial<PreflightDeps>,
+): Promise<void>;
 ```
 
 `assertWorkerPreflight`:
+
 - Returns immediately (no checks) unless `env.EVELAND_RUNTIME === "systemd"`.
 - Otherwise runs `collectSystemdPreflightIssues` with default deps merged with
   `overrides`, and throws a single `Error` whose message starts with
@@ -102,6 +107,7 @@ prints the error message to stderr and exits 1. No vitest — it is run by
 `infra/integration/run.sh` inside the Lima VM.
 
 **Tests (`preflight.test.ts`), all with injected fake deps (no real exec/fs):**
+
 - Docker runtime (or unset `EVELAND_RUNTIME`): `assertWorkerPreflight` resolves without
   invoking any dep (assert via spy).
 - All checks passing: resolves, `collectSystemdPreflightIssues` returns `[]`.
@@ -115,13 +121,14 @@ prints the error message to stderr and exits 1. No vitest — it is run by
 ## Task 2: Compose topology — explicit runtime, prod overlay
 
 **Files:**
+
 - Edit `docker-compose.yml`
 - Edit `docker-compose.prod.yml`
 
 **Changes to `docker-compose.yml`:** add one line to the `worker` service `environment`:
 
 ```yaml
-      EVELAND_RUNTIME: docker
+EVELAND_RUNTIME: docker
 ```
 
 so local development is pinned to the Docker runtime regardless of future default
@@ -132,7 +139,7 @@ changes (PR 4 flips the production default).
 1. `worker` service: add
 
 ```yaml
-    profiles: ["docker-worker"]
+profiles: ["docker-worker"]
 ```
 
 so the containerized worker no longer starts by default in production. Legacy
@@ -144,9 +151,9 @@ with the API's data dir below.
 2. `api` service: add to `environment`: `EVELAND_DATA_DIR: /var/lib/eveland`, and add:
 
 ```yaml
-    volumes:
-      - .:/workspace
-      - /var/lib/eveland:/var/lib/eveland
+volumes:
+  - .:/workspace
+  - /var/lib/eveland:/var/lib/eveland
 ```
 
 (The base file's `volumes` list for `api` also carries the docker.sock mount; in the
@@ -157,11 +164,11 @@ and add the new bind. Verify the merged result with
 otherwise reason it out and note it in the report.)
 
 3. Update the header comment block: the production shape is now API/Web/Postgres in
-Compose with the worker running on the host as a systemd service
-(`infra/systemd/eveland-worker.service`, see `docs/deploy/linux.md`); the
-`docker-worker` profile exists for legacy Docker-runtime installs; deployed agent data
-lives under `/var/lib/eveland` on the host, bind-mounted into the API at the same path
-so database `sourcePath` values are valid in both places.
+   Compose with the worker running on the host as a systemd service
+   (`infra/systemd/eveland-worker.service`, see `docs/deploy/linux.md`); the
+   `docker-worker` profile exists for legacy Docker-runtime installs; deployed agent data
+   lives under `/var/lib/eveland` on the host, bind-mounted into the API at the same path
+   so database `sourcePath` values are valid in both places.
 
 **Verification:** `docker compose -f docker-compose.yml config` and
 `docker compose -f docker-compose.yml -f docker-compose.prod.yml config` both parse
@@ -172,6 +179,7 @@ does NOT list `worker`, and does list it with `--profile docker-worker`.
 ## Task 3: Host worker unit files, docs, and Lima preflight verification
 
 **Files:**
+
 - Create `infra/systemd/eveland-worker.service`
 - Create `infra/systemd/eveland-worker.env.example`
 - Edit `docs/deploy/linux.md`

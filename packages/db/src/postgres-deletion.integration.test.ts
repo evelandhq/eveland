@@ -40,8 +40,13 @@ describe.skipIf(!databaseUrl)("Postgres project deletion", () => {
           payload: { sourcePaths: [pendingSourcePath] },
         },
       });
-      await expect(store.getProject(project.id)).resolves.toMatchObject({ deletionStatus: "deleting", deletionError: null });
-      await expect(requestProjectDeletion.call(store, project.id)).resolves.toEqual({ outcome: "already_deleting" });
+      await expect(store.getProject(project.id)).resolves.toMatchObject({
+        deletionStatus: "deleting",
+        deletionError: null,
+      });
+      await expect(requestProjectDeletion.call(store, project.id)).resolves.toEqual({
+        outcome: "already_deleting",
+      });
     } finally {
       await store.deleteProject(project.id);
     }
@@ -49,10 +54,16 @@ describe.skipIf(!databaseUrl)("Postgres project deletion", () => {
 
   test("does not claim a deletion job while another worker is running project work", async () => {
     const store = createPostgresStore(harness.database);
-    const project = await store.createProject({ name: `Busy delete integration ${Date.now()}`, importKind: "zip" });
+    const project = await store.createProject({
+      name: `Busy delete integration ${Date.now()}`,
+      importKind: "zip",
+    });
     const running = await store.claimNextJob("worker-a");
     await store.requestProjectDeletion(project.id);
-    const otherProject = await store.createProject({ name: `Other integration ${Date.now()}`, importKind: "zip" });
+    const otherProject = await store.createProject({
+      name: `Other integration ${Date.now()}`,
+      importKind: "zip",
+    });
 
     try {
       const whileBusy = await store.claimNextJob("worker-b");
@@ -60,7 +71,10 @@ describe.skipIf(!databaseUrl)("Postgres project deletion", () => {
       expect(running).toMatchObject({ projectId: project.id, type: "import_source" });
       expect(whileBusy).toMatchObject({ projectId: otherProject.id, type: "import_source" });
       await store.completeJob(running!.id);
-      await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({ projectId: project.id, type: "delete_project" });
+      await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({
+        projectId: project.id,
+        type: "delete_project",
+      });
     } finally {
       await store.deleteProject(project.id);
       await store.deleteProject(otherProject.id);

@@ -112,9 +112,7 @@ export function registerPublicIdentityRoutes(
       }
     }
     if (existingSession && switchRealm) {
-      await store.revokeIdentitySessionByTokenHash(
-        hashIdentityToken(existingSession),
-      );
+      await store.revokeIdentitySessionByTokenHash(hashIdentityToken(existingSession));
     }
 
     const providers = (await store.listIdentityProviderConnections()).filter(
@@ -171,13 +169,7 @@ export function registerPublicIdentityRoutes(
 
     const internalIdentity = await options.auth?.resolveInternalIdentity(c.req.raw);
     if (internalIdentity) {
-      return completeInternalLogin(
-        c,
-        state,
-        internalIdentity,
-        context,
-        services,
-      );
+      return completeInternalLogin(c, state, internalIdentity, context, services);
     }
 
     const next = `/identity/internal/continue?state=${encodeURIComponent(state)}`;
@@ -196,13 +188,7 @@ export function registerPublicIdentityRoutes(
       login.searchParams.set("next", next);
       return c.redirect(login.toString(), 302);
     }
-    return completeInternalLogin(
-      c,
-      state,
-      internalIdentity,
-      context,
-      services,
-    );
+    return completeInternalLogin(c, state, internalIdentity, context, services);
   });
 
   app.post("/identity/caller-tokens", async (c) => {
@@ -216,18 +202,12 @@ export function registerPublicIdentityRoutes(
         403,
       );
     }
-    const parsed = callerTokenRequestSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = callerTokenRequestSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json(
-        { code: "identity_request_invalid", error: "Project ID is required." },
-        400,
-      );
+      return c.json({ code: "identity_request_invalid", error: "Project ID is required." }, 400);
     }
     try {
-      const sessionToken =
-        getCookie(c, IDENTITY_SESSION_COOKIE_NAME) ?? "";
+      const sessionToken = getCookie(c, IDENTITY_SESSION_COOKIE_NAME) ?? "";
       await broker.resolveSession(sessionToken);
       const catalogAgent = (await store.listAgentCatalog()).find(
         (agent) => agent.projectId === parsed.data.projectId,
@@ -238,10 +218,7 @@ export function registerPublicIdentityRoutes(
           projectId: parsed.data.projectId,
           ...(catalogAgent
             ? {
-                agentUrl: publicGatewayUrl(
-                  catalogAgent.hostname,
-                  options,
-                ),
+                agentUrl: publicGatewayUrl(catalogAgent.hostname, options),
               }
             : {}),
         }),
@@ -263,9 +240,7 @@ export function registerPublicIdentityRoutes(
         403,
       );
     }
-    const parsed = identityAppTokenRequestSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = identityAppTokenRequestSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         {
@@ -313,9 +288,7 @@ export function registerPublicIdentityRoutes(
   });
 }
 
-export function registerSystemIdentityRoutes(
-  context: IdentityRoutesContext,
-) {
+export function registerSystemIdentityRoutes(context: IdentityRoutesContext) {
   const { app, store, appSecretKey } = context;
   app.get("/system/identity/providers", async (c) => {
     return c.json({
@@ -324,21 +297,15 @@ export function registerSystemIdentityRoutes(
   });
 
   app.post("/system/identity/providers", async (c) => {
-    const parsed = createIdentityProviderSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = createIdentityProviderSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid Identity Provider", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid Identity Provider", issues: parsed.error.issues }, 400);
     }
     let normalized;
     try {
       normalized = normalizeIdentityProviderConnection({
         ...parsed.data,
-        clientSecretConfigured:
-          parsed.data.type === "oidc" && Boolean(parsed.data.clientSecret),
+        clientSecretConfigured: parsed.data.type === "oidc" && Boolean(parsed.data.clientSecret),
       });
     } catch (error) {
       return c.json(
@@ -370,9 +337,7 @@ export function registerSystemIdentityRoutes(
   });
 
   app.post("/system/identity/providers/:providerId/preflight", async (c) => {
-    const provider = await store.getIdentityProviderConnection(
-      c.req.param("providerId"),
-    );
+    const provider = await store.getIdentityProviderConnection(c.req.param("providerId"));
     if (!provider) return c.json({ error: "Identity Provider not found" }, 404);
     if (provider.type === "internal") {
       return c.json({
@@ -389,15 +354,11 @@ export function registerSystemIdentityRoutes(
   });
 
   app.patch("/system/identity/providers/:providerId", async (c) => {
-    const parsed = updateIdentityProviderSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = updateIdentityProviderSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid Identity Provider update" }, 400);
     }
-    const current = await store.getIdentityProviderConnection(
-      c.req.param("providerId"),
-    );
+    const current = await store.getIdentityProviderConnection(c.req.param("providerId"));
     if (!current) return c.json({ error: "Identity Provider not found" }, 404);
     if (
       current.type === "internal" &&
@@ -411,15 +372,10 @@ export function registerSystemIdentityRoutes(
       (parsed.data.enabled ?? current.enabled) &&
       (await store.listIdentityProviderConnections()).some(
         (provider) =>
-          provider.id !== current.id &&
-          provider.type === "internal" &&
-          provider.enabled,
+          provider.id !== current.id && provider.type === "internal" && provider.enabled,
       )
     ) {
-      return c.json(
-        { error: "Only one Internal Identity Provider can be enabled." },
-        409,
-      );
+      return c.json({ error: "Only one Internal Identity Provider can be enabled." }, 409);
     }
     const nextSecret =
       parsed.data.clientSecret === undefined
@@ -430,20 +386,20 @@ export function registerSystemIdentityRoutes(
     const securityChanged =
       current.type === "internal"
         ? false
-        : parsed.data.issuer !== undefined && parsed.data.issuer !== current.issuer ||
-          parsed.data.clientId !== undefined && parsed.data.clientId !== current.clientId ||
+        : (parsed.data.issuer !== undefined && parsed.data.issuer !== current.issuer) ||
+          (parsed.data.clientId !== undefined && parsed.data.clientId !== current.clientId) ||
           parsed.data.clientSecret !== undefined ||
-          parsed.data.tokenEndpointAuthMethod !== undefined &&
-            parsed.data.tokenEndpointAuthMethod !== current.tokenEndpointAuthMethod ||
-          parsed.data.externalRealmResolution !== undefined &&
-            parsed.data.externalRealmResolution !== current.externalRealmResolution ||
-          parsed.data.externalRealmClaim !== undefined &&
-            parsed.data.externalRealmClaim !== current.externalRealmClaim ||
-          parsed.data.scopes !== undefined &&
-            JSON.stringify(parsed.data.scopes) !== JSON.stringify(current.scopes) ||
-          parsed.data.authorizationParameters !== undefined &&
+          (parsed.data.tokenEndpointAuthMethod !== undefined &&
+            parsed.data.tokenEndpointAuthMethod !== current.tokenEndpointAuthMethod) ||
+          (parsed.data.externalRealmResolution !== undefined &&
+            parsed.data.externalRealmResolution !== current.externalRealmResolution) ||
+          (parsed.data.externalRealmClaim !== undefined &&
+            parsed.data.externalRealmClaim !== current.externalRealmClaim) ||
+          (parsed.data.scopes !== undefined &&
+            JSON.stringify(parsed.data.scopes) !== JSON.stringify(current.scopes)) ||
+          (parsed.data.authorizationParameters !== undefined &&
             JSON.stringify(parsed.data.authorizationParameters) !==
-              JSON.stringify(current.authorizationParameters);
+              JSON.stringify(current.authorizationParameters));
     try {
       const updated = await store.updateIdentityProviderConnection({
         id: current.id,
@@ -479,47 +435,30 @@ export function registerSystemIdentityRoutes(
   });
 
   app.post("/system/identity/realms", async (c) => {
-    const parsed = createIdentityRealmSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = createIdentityRealmSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Invalid Identity Realm" }, 400);
-    const provider = await store.getIdentityProviderConnection(
-      parsed.data.providerConnectionId,
-    );
+    const provider = await store.getIdentityProviderConnection(parsed.data.providerConnectionId);
     if (!provider) return c.json({ error: "Identity Provider not found" }, 404);
     if (
       provider.type === "internal" &&
       (parsed.data.externalRealmKind !== "internal" ||
         parsed.data.externalRealmId !== provider.internalRealmKey)
     ) {
-      return c.json(
-        { error: "Internal Realm must exactly match the Provider Realm key." },
-        422,
-      );
+      return c.json({ error: "Internal Realm must exactly match the Provider Realm key." }, 422);
     }
     const existing = await store.getIdentityRealmByExternalId(
       provider.id,
       parsed.data.externalRealmId,
     );
     if (existing) return c.json({ error: "Identity Realm already exists." }, 409);
-    return c.json(
-      { realm: await store.createIdentityRealm(parsed.data) },
-      201,
-    );
+    return c.json({ realm: await store.createIdentityRealm(parsed.data) }, 201);
   });
 
   app.patch("/system/identity/realms/:realmId", async (c) => {
-    const parsed = updateIdentityRealmSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = updateIdentityRealmSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Invalid Identity Realm update" }, 400);
-    const realm = await store.updateIdentityRealm(
-      c.req.param("realmId"),
-      parsed.data,
-    );
-    return realm
-      ? c.json({ realm })
-      : c.json({ error: "Identity Realm not found" }, 404);
+    const realm = await store.updateIdentityRealm(c.req.param("realmId"), parsed.data);
+    return realm ? c.json({ realm }) : c.json({ error: "Identity Realm not found" }, 404);
   });
 
   app.get("/system/identity/return-targets", async (c) => {
@@ -531,9 +470,7 @@ export function registerSystemIdentityRoutes(
     if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(key)) {
       return c.json({ error: "Invalid Identity return target key." }, 400);
     }
-    const parsed = upsertIdentityReturnTargetSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = upsertIdentityReturnTargetSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid Identity return target." }, 400);
     }
@@ -559,9 +496,7 @@ async function completeInternalLogin(
   context: IdentityRoutesContext,
   services: ReturnType<typeof createIdentityRouteServices>,
 ) {
-  const transaction = await context.store.consumeIdentityLoginTransaction(
-    hashIdentityToken(state),
-  );
+  const transaction = await context.store.consumeIdentityLoginTransaction(hashIdentityToken(state));
   if (!transaction) {
     return c.json(
       {
@@ -589,8 +524,7 @@ async function completeInternalLogin(
     );
   }
   const target = (await context.store.listIdentityReturnTargets()).find(
-    (candidate) =>
-      candidate.id === transaction.returnTargetId && candidate.enabled,
+    (candidate) => candidate.id === transaction.returnTargetId && candidate.enabled,
   );
   if (!target) {
     return c.json(
@@ -609,23 +543,13 @@ async function completeInternalLogin(
         externalRealmId: provider.internalRealmKey,
         externalRealmKind: "internal",
         externalSubject: internalIdentity.externalSubject,
-        ...(internalIdentity.displayName
-          ? { displayName: internalIdentity.displayName }
-          : {}),
+        ...(internalIdentity.displayName ? { displayName: internalIdentity.displayName } : {}),
         email: internalIdentity.email,
       },
     });
-    setIdentityCookie(
-      c,
-      finalized.sessionToken,
-      services.issuer,
-      finalized.session.expiresAt,
-    );
+    setIdentityCookie(c, finalized.sessionToken, services.issuer, finalized.session.expiresAt);
     return c.redirect(
-      await services.broker.resolveReturnTarget(
-        target.key,
-        transaction.returnPath,
-      ),
+      await services.broker.resolveReturnTarget(target.key, transaction.returnPath),
       302,
     );
   } catch (error) {
@@ -633,12 +557,7 @@ async function completeInternalLogin(
   }
 }
 
-function setIdentityCookie(
-  c: any,
-  token: string,
-  issuer: string,
-  expiresAt: string,
-) {
+function setIdentityCookie(c: any, token: string, issuer: string, expiresAt: string) {
   setCookie(c, IDENTITY_SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: new URL(issuer).protocol === "https:",

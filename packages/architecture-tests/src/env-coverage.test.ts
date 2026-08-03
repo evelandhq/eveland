@@ -62,7 +62,10 @@ describe("configuration registry coverage", () => {
         }
       }
     }
-    expect(destructured, "destructuring process.env hides reads from this scan; use process.env.NAME").toEqual([]);
+    expect(
+      destructured,
+      "destructuring process.env hides reads from this scan; use process.env.NAME",
+    ).toEqual([]);
     expect([...unregistered].sort()).toEqual([]);
   });
 });

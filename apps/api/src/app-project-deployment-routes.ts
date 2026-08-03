@@ -3,7 +3,12 @@ import {
   DEFAULT_API_SESSION_IDLE_TTL_MS,
   DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
 } from "@eveland/core/routing";
-import { DeploymentNotFoundError, DeploymentNotPromotableError, ProjectRouteNotFoundError, type Store } from "@eveland/db";
+import {
+  DeploymentNotFoundError,
+  DeploymentNotPromotableError,
+  ProjectRouteNotFoundError,
+  type Store,
+} from "@eveland/db";
 import { publicDeployment } from "./app-public-projections.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { aliasSchema, routeTargetsSchema } from "./app-schemas.js";
@@ -51,22 +56,15 @@ export function registerProjectDeploymentRoutes(input: {
       ),
     apiIdleTtlMs:
       options.apiSessionIdleTtlMs ??
-      Number(
-        process.env.EVELAND_API_SESSION_IDLE_TTL_MS ??
-          DEFAULT_API_SESSION_IDLE_TTL_MS,
-      ),
+      Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? DEFAULT_API_SESSION_IDLE_TTL_MS),
   });
 
   app.get("/projects/:projectId/endpoints", async (c) => {
     const routes = await store.listProjectRoutes(c.req.param("projectId"));
-    if (routes.length === 0)
-      return c.json({ error: "Agent endpoints not found" }, 404);
+    if (routes.length === 0) return c.json({ error: "Agent endpoints not found" }, 404);
     return c.json({
       stable: routes.find((route) => route.kind === "project")
-        ? publicGatewayUrl(
-            routes.find((route) => route.kind === "project")!.hostname,
-            options,
-          )
+        ? publicGatewayUrl(routes.find((route) => route.kind === "project")!.hostname, options)
         : null,
       previews: routes
         .filter(
@@ -75,9 +73,7 @@ export function registerProjectDeploymentRoutes(input: {
             route.enabled &&
             route.targets.some((target) => target.status !== "archived"),
         )
-        .sort((a, b) =>
-          a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0,
-        )
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0))
         .map((route) => publicGatewayUrl(route.hostname, options)),
     });
   });
@@ -90,11 +86,7 @@ export function registerProjectDeploymentRoutes(input: {
     // per (unbounded, archived-included) deployment.
     const [deployments, retention, routes, releaseSummaries] = await Promise.all([
       store.listDeployments(projectId),
-      store.getDeploymentRetention(
-        projectId,
-        undefined,
-        deploymentRetentionOptions(),
-      ),
+      store.getDeploymentRetention(projectId, undefined, deploymentRetentionOptions()),
       store.listProjectRoutes(projectId),
       store.listReleaseSummaries(projectId),
     ]);
@@ -115,115 +107,77 @@ export function registerProjectDeploymentRoutes(input: {
     return c.json({ variants: await store.getVariantMetrics(c.req.param("projectId")) });
   });
 
-  app.post(
-    "/projects/:projectId/deployments/:deploymentId/promote",
-    async (c) => {
-      let route;
-      try {
-        route = await store.promoteDeployment(
-          c.req.param("projectId"),
-          c.req.param("deploymentId"),
-        );
-      } catch (error) {
-        if (
-          error instanceof ProjectRouteNotFoundError ||
-          error instanceof DeploymentNotFoundError
-        )
-          return c.json({ error: error.message }, 404);
-        if (error instanceof DeploymentNotPromotableError)
-          return c.json({ error: error.message }, 409);
-        throw error;
-      }
-      await invalidateGatewayAfterCommit(options, [route.hostname]);
-      return c.json({ route });
-    },
-  );
+  app.post("/projects/:projectId/deployments/:deploymentId/promote", async (c) => {
+    let route;
+    try {
+      route = await store.promoteDeployment(c.req.param("projectId"), c.req.param("deploymentId"));
+    } catch (error) {
+      if (error instanceof ProjectRouteNotFoundError || error instanceof DeploymentNotFoundError)
+        return c.json({ error: error.message }, 404);
+      if (error instanceof DeploymentNotPromotableError)
+        return c.json({ error: error.message }, 409);
+      throw error;
+    }
+    await invalidateGatewayAfterCommit(options, [route.hostname]);
+    return c.json({ route });
+  });
 
-  app.post(
-    "/projects/:projectId/deployments/:deploymentId/drain",
-    async (c) => {
-      const deployment = await store.getDeployment(c.req.param("deploymentId"));
-      if (!deployment || deployment.projectId !== c.req.param("projectId"))
-        return c.json({ error: "Deployment not found" }, 404);
-      const routes = await store.listProjectRoutes(deployment.projectId);
-      if (
-        routes.some(
-          (route) =>
-            route.kind !== "deployment" &&
-            route.targets.some(
-              (target) =>
-                target.deploymentId === deployment.id && target.weight > 0,
-            ),
-        )
-      ) {
-        return c.json(
-          {
-            error: "Set this deployment route weight to zero before draining.",
-          },
-          409,
-        );
-      }
-      const updated = await store.updateDeploymentStatus(
-        deployment.id,
-        "draining",
+  app.post("/projects/:projectId/deployments/:deploymentId/drain", async (c) => {
+    const deployment = await store.getDeployment(c.req.param("deploymentId"));
+    if (!deployment || deployment.projectId !== c.req.param("projectId"))
+      return c.json({ error: "Deployment not found" }, 404);
+    const routes = await store.listProjectRoutes(deployment.projectId);
+    if (
+      routes.some(
+        (route) =>
+          route.kind !== "deployment" &&
+          route.targets.some(
+            (target) => target.deploymentId === deployment.id && target.weight > 0,
+          ),
+      )
+    ) {
+      return c.json(
+        {
+          error: "Set this deployment route weight to zero before draining.",
+        },
+        409,
       );
-      return c.json({
-        deployment: updated ? publicDeployment(updated) : null,
-      });
-    },
-  );
+    }
+    const updated = await store.updateDeploymentStatus(deployment.id, "draining");
+    return c.json({
+      deployment: updated ? publicDeployment(updated) : null,
+    });
+  });
 
-  app.post(
-    "/projects/:projectId/deployments/:deploymentId/archive",
-    async (c) => {
-      const projectId = c.req.param("projectId");
-      const deploymentId = c.req.param("deploymentId");
-      const policy = (
-        await store.getDeploymentRetention(
-          projectId,
-          undefined,
-          deploymentRetentionOptions(),
-        )
-      ).find(
-        (entry) => entry.deployment.id === deploymentId,
+  app.post("/projects/:projectId/deployments/:deploymentId/archive", async (c) => {
+    const projectId = c.req.param("projectId");
+    const deploymentId = c.req.param("deploymentId");
+    const policy = (
+      await store.getDeploymentRetention(projectId, undefined, deploymentRetentionOptions())
+    ).find((entry) => entry.deployment.id === deploymentId);
+    if (!policy) return c.json({ error: "Deployment not found" }, 404);
+    if (policy.protected)
+      return c.json(
+        {
+          error: "Deployment is protected from archive",
+          reasons: policy.reasons,
+        },
+        409,
       );
-      if (!policy) return c.json({ error: "Deployment not found" }, 404);
-      if (policy.protected)
-        return c.json(
-          {
-            error: "Deployment is protected from archive",
-            reasons: policy.reasons,
-          },
-          409,
-        );
-      const { job } = await store.enqueueDeploymentArchive(
-        projectId,
-        deploymentId,
-      );
-      return c.json({ job: toPublicJob(job) }, 202);
-    },
-  );
+    const { job } = await store.enqueueDeploymentArchive(projectId, deploymentId);
+    return c.json({ job: toPublicJob(job) }, 202);
+  });
 
   app.put("/projects/:projectId/routes/:routeId/targets", async (c) => {
-    const input = routeTargetsSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const input = routeTargetsSchema.safeParse(await c.req.json().catch(() => null));
     if (!input.success)
-      return c.json(
-        { error: "Invalid route targets", detail: input.error.flatten() },
-        400,
-      );
+      return c.json({ error: "Invalid route targets", detail: input.error.flatten() }, 400);
     const routes = await store.listProjectRoutes(c.req.param("projectId"));
-    const existing = routes.find(
-      (route) => route.id === c.req.param("routeId"),
-    );
+    const existing = routes.find((route) => route.id === c.req.param("routeId"));
     if (!existing) return c.json({ error: "Route not found" }, 404);
     if (existing.kind === "deployment")
       return c.json({ error: "Deployment preview routes are immutable" }, 409);
-    const route = await store.updateRouteTargets(
-      c.req.param("routeId"),
-      input.data.targets,
-    );
+    const route = await store.updateRouteTargets(c.req.param("routeId"), input.data.targets);
     await invalidateGatewayAfterCommit(options, [route.hostname]);
     return c.json({ route });
   });
@@ -231,13 +185,8 @@ export function registerProjectDeploymentRoutes(input: {
   app.post("/projects/:projectId/aliases", async (c) => {
     const input = aliasSchema.safeParse(await c.req.json().catch(() => null));
     if (!input.success)
-      return c.json(
-        { error: "Invalid alias route", detail: input.error.flatten() },
-        400,
-      );
-    const baseDomain = (
-      process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost"
-    )
+      return c.json({ error: "Invalid alias route", detail: input.error.flatten() }, 400);
+    const baseDomain = (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost")
       .split(",")[0]!
       .trim();
     const route = await store.ensureAliasRoute(
@@ -249,5 +198,4 @@ export function registerProjectDeploymentRoutes(input: {
     await invalidateGatewayAfterCommit(options, [route.hostname]);
     return c.json({ route }, 201);
   });
-
 }

@@ -2,10 +2,7 @@ import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import {
-  AGENT_OBSERVABILITY_MOUNT_DIR,
-  writeAgentRuntimePolicy,
-} from "./policy.js";
+import { AGENT_OBSERVABILITY_MOUNT_DIR, writeAgentRuntimePolicy } from "./policy.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -19,9 +16,7 @@ afterEach(async () => {
 
 describe("Agent runtime observability policy delivery", () => {
   test("atomically writes a validated revision without deployment environment variables", async () => {
-    const directory = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-observability-policy-"),
-    );
+    const directory = await mkdtemp(path.join(os.tmpdir(), "eveland-observability-policy-"));
     temporaryDirectories.push(directory);
 
     const firstPath = await writeAgentRuntimePolicy({
@@ -42,15 +37,11 @@ describe("Agent runtime observability policy delivery", () => {
     expect(await readdir(directory)).toEqual(["agent-policy.json"]);
     expect((await stat(directory)).mode & 0o7777).toBe(0o2750);
     expect((await stat(secondPath)).mode & 0o777).toBe(0o640);
-    expect(AGENT_OBSERVABILITY_MOUNT_DIR).toBe(
-      "/run/eveland/observability",
-    );
+    expect(AGENT_OBSERVABILITY_MOUNT_DIR).toBe("/run/eveland/observability");
   });
 
   test("rejects an Agent-visible endpoint containing credentials", async () => {
-    const directory = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-observability-policy-"),
-    );
+    const directory = await mkdtemp(path.join(os.tmpdir(), "eveland-observability-policy-"));
     temporaryDirectories.push(directory);
 
     await expect(

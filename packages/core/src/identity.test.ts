@@ -9,13 +9,15 @@ import {
 
 describe("identity contracts", () => {
   test("normalizes an Internal provider without accepting OIDC fields", () => {
-    expect(normalizeIdentityProviderConnection({
-      type: "internal",
-      displayName: " Eveland Internal ",
-      internalRealmKey: " eveland-members ",
-      enabled: true,
-      issuer: "https://ignored.example",
-    })).toEqual({
+    expect(
+      normalizeIdentityProviderConnection({
+        type: "internal",
+        displayName: " Eveland Internal ",
+        internalRealmKey: " eveland-members ",
+        enabled: true,
+        issuer: "https://ignored.example",
+      }),
+    ).toEqual({
       type: "internal",
       displayName: "Eveland Internal",
       internalRealmKey: "eveland-members",
@@ -24,28 +26,32 @@ describe("identity contracts", () => {
   });
 
   test("rejects an Internal provider without a stable Realm key", () => {
-    expect(() => normalizeIdentityProviderConnection({
-      type: "internal",
-      displayName: "Eveland Internal",
-      internalRealmKey: " ",
-      enabled: false,
-    })).toThrow(/realm key/i);
+    expect(() =>
+      normalizeIdentityProviderConnection({
+        type: "internal",
+        displayName: "Eveland Internal",
+        internalRealmKey: " ",
+        enabled: false,
+      }),
+    ).toThrow(/realm key/i);
   });
 
   test("normalizes protocol-level OIDC configuration", () => {
-    expect(normalizeIdentityProviderConnection({
-      type: "oidc",
-      displayName: "Company OIDC",
-      issuer: "https://id.example/",
-      clientId: " chat ",
-      clientSecretConfigured: true,
-      scopes: ["openid", " profile ", "openid"],
-      authorizationParameters: { prompt: " select_account " },
-      tokenEndpointAuthMethod: "client_secret_post",
-      externalRealmResolution: "id_token_claim",
-      externalRealmClaim: "account_id",
-      enabled: false,
-    })).toEqual({
+    expect(
+      normalizeIdentityProviderConnection({
+        type: "oidc",
+        displayName: "Company OIDC",
+        issuer: "https://id.example/",
+        clientId: " chat ",
+        clientSecretConfigured: true,
+        scopes: ["openid", " profile ", "openid"],
+        authorizationParameters: { prompt: " select_account " },
+        tokenEndpointAuthMethod: "client_secret_post",
+        externalRealmResolution: "id_token_claim",
+        externalRealmClaim: "account_id",
+        enabled: false,
+      }),
+    ).toEqual({
       type: "oidc",
       displayName: "Company OIDC",
       issuer: "https://id.example",
@@ -61,16 +67,18 @@ describe("identity contracts", () => {
   });
 
   test("requires HTTPS OIDC issuer and a Realm claim for claim resolution", () => {
-    expect(() => normalizeIdentityProviderConnection({
-      type: "oidc",
-      displayName: "OIDC",
-      issuer: "http://id.example",
-      clientId: "chat",
-      scopes: ["openid"],
-      tokenEndpointAuthMethod: "none",
-      externalRealmResolution: "id_token_claim",
-      enabled: false,
-    })).toThrow(/https/i);
+    expect(() =>
+      normalizeIdentityProviderConnection({
+        type: "oidc",
+        displayName: "OIDC",
+        issuer: "http://id.example",
+        clientId: "chat",
+        scopes: ["openid"],
+        tokenEndpointAuthMethod: "none",
+        externalRealmResolution: "id_token_claim",
+        enabled: false,
+      }),
+    ).toThrow(/https/i);
   });
 
   test("builds and parses only project-bound caller-token audiences", () => {
@@ -89,9 +97,11 @@ describe("identity contracts", () => {
       email: "user@example.com",
     };
 
-    expect(identity).toEqual(expect.objectContaining({
-      externalRealmId: "account-123",
-      externalSubject: "user-456",
-    }));
+    expect(identity).toEqual(
+      expect.objectContaining({
+        externalRealmId: "account-123",
+        externalSubject: "user-456",
+      }),
+    );
   });
 });

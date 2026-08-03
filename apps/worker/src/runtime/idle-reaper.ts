@@ -24,7 +24,11 @@ export async function reapIdleDeployments(
   for (const instance of instances) {
     const deployment = await store.getDeployment(instance.deploymentId);
     if (!deployment) {
-      await store.updateRuntimeInstance(instance.id, { status: "failed", error: "Deployment no longer exists." }, now);
+      await store.updateRuntimeInstance(
+        instance.id,
+        { status: "failed", error: "Deployment no longer exists." },
+        now,
+      );
       continue;
     }
     if (await store.hasActiveActivationLeases(deployment.id, now)) {

@@ -23,33 +23,33 @@ import { proxyToDeployment, readLimitedBody } from "./gateway-transport.js";
 // session-lookup policy, header/provenance construction, and limits.
 
 export function sessionExpiredResponse(): Response {
-  return Response.json(
-    { error: "Session expired", code: "session_expired" },
-    { status: 410 },
-  );
+  return Response.json({ error: "Session expired", code: "session_expired" }, { status: 410 });
 }
 
 export function clientClosedResponse(): Response {
-  return Response.json(
-    { error: "Client closed request" },
-    { status: 499 },
-  );
+  return Response.json({ error: "Client closed request" }, { status: 499 });
 }
 
 export async function unsupportedDeploymentResponse(
   repository: GatewayRepository,
   deploymentId: string,
 ): Promise<Response | null> {
-  const eveVersion = await repository.getDeploymentEveVersion(deploymentId) ?? createEveVersionInfo(null, null);
+  const eveVersion =
+    (await repository.getDeploymentEveVersion(deploymentId)) ?? createEveVersionInfo(null, null);
   if (eveVersion.supported) return null;
-  return Response.json({
-    error: "Unsupported Eve version",
-    detail: unsupportedEveVersionMessage(eveVersion.version),
-    eveVersion,
-  }, { status: 409 });
+  return Response.json(
+    {
+      error: "Unsupported Eve version",
+      detail: unsupportedEveVersionMessage(eveVersion.version),
+      eveVersion,
+    },
+    { status: 409 },
+  );
 }
 
-export function activationKind(request: EveSessionRequest | null): "public_request" | "stream" | "turn" {
+export function activationKind(
+  request: EveSessionRequest | null,
+): "public_request" | "stream" | "turn" {
   if (request?.kind === "stream") return "stream";
   if (request) return "turn";
   return "public_request";
@@ -69,34 +69,30 @@ export async function readRoutingBody(input: {
   request: Request;
   eveRequest: EveSessionRequest | null;
   limitBytes: number;
-}): Promise<
-  | { ok: true; body: Uint8Array | null | undefined }
-  | { ok: false; response: Response }
-> {
+}): Promise<{ ok: true; body: Uint8Array | null | undefined } | { ok: false; response: Response }> {
   const declaredContentLength = Number(input.request.headers.get("content-length"));
   if (Number.isFinite(declaredContentLength) && declaredContentLength > input.limitBytes) {
-    return { ok: false, response: Response.json({ error: "Request body too large" }, { status: 413 }) };
+    return {
+      ok: false,
+      response: Response.json({ error: "Request body too large" }, { status: 413 }),
+    };
   }
   if (input.eveRequest?.kind !== "initial" && input.eveRequest?.kind !== "reset") {
     return { ok: true, body: undefined };
   }
   try {
     const body = requestHasBody(input.request.method)
-      ? await readLimitedBody(
-          input.request.body,
-          input.limitBytes,
-          input.request.signal,
-        )
+      ? await readLimitedBody(input.request.body, input.limitBytes, input.request.signal)
       : null;
     return { ok: true, body };
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) {
-      return { ok: false, response: Response.json({ error: "Request body too large" }, { status: 413 }) };
+      return {
+        ok: false,
+        response: Response.json({ error: "Request body too large" }, { status: 413 }),
+      };
     }
-    if (
-      error instanceof DownstreamAbortedError ||
-      input.request.signal.aborted
-    ) {
+    if (error instanceof DownstreamAbortedError || input.request.signal.aborted) {
       return { ok: false, response: clientClosedResponse() };
     }
     throw error;
@@ -130,7 +126,13 @@ export async function executeGatewaySessionProxy(input: {
   const { repository, activationClient, route, eveRequest, binding } = input;
   const signal = input.request.signal;
 
-  const target = await resolveTarget(repository, route, binding, input.targetKey, Boolean(activationClient));
+  const target = await resolveTarget(
+    repository,
+    route,
+    binding,
+    input.targetKey,
+    Boolean(activationClient),
+  );
   if (!target) return Response.json({ error: "No running deployment target" }, { status: 503 });
   if (eveRequest) {
     const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
@@ -140,11 +142,14 @@ export async function executeGatewaySessionProxy(input: {
   let activation: { leaseId: string; endpointPort: number } | null = null;
   if (activationClient) {
     try {
-      activation = await activationClient.activate({
-        deploymentId: target.deploymentId,
-        kind: activationKind(eveRequest),
-        ownerId: input.activationOwnerId,
-      }, signal);
+      activation = await activationClient.activate(
+        {
+          deploymentId: target.deploymentId,
+          kind: activationKind(eveRequest),
+          ownerId: input.activationOwnerId,
+        },
+        signal,
+      );
     } catch (error) {
       if (signal.aborted || isAbortError(error)) return clientClosedResponse();
       return Response.json({ error: "Deployment activation failed" }, { status: 503 });
@@ -154,11 +159,12 @@ export async function executeGatewaySessionProxy(input: {
   const endpointPort = activation?.endpointPort ?? target.hostPort;
   let upstream: Response;
   try {
-    const body = input.routingBody !== undefined
-      ? input.routingBody
-      : requestHasBody(input.request.method)
-        ? await readLimitedBody(input.request.body, input.policy.bodyLimitBytes, signal)
-        : null;
+    const body =
+      input.routingBody !== undefined
+        ? input.routingBody
+        : requestHasBody(input.request.method)
+          ? await readLimitedBody(input.request.body, input.policy.bodyLimitBytes, signal)
+          : null;
     upstream = await proxyToDeployment({
       port: endpointPort,
       path: input.upstreamPath,
@@ -169,8 +175,10 @@ export async function executeGatewaySessionProxy(input: {
       timeoutMs: input.policy.timeoutMs,
     });
   } catch (error) {
-    if (activation && activationClient) await activationClient.release(activation.leaseId).catch(() => undefined);
-    if (error instanceof RequestBodyTooLargeError) return Response.json({ error: "Request body too large" }, { status: 413 });
+    if (activation && activationClient)
+      await activationClient.release(activation.leaseId).catch(() => undefined);
+    if (error instanceof RequestBodyTooLargeError)
+      return Response.json({ error: "Request body too large" }, { status: 413 });
     if (error instanceof DownstreamAbortedError) return clientClosedResponse();
     throw error;
   }
@@ -191,12 +199,7 @@ export async function executeGatewaySessionProxy(input: {
       provenance: input.provenance,
     });
   } catch (error) {
-    await cancelUpstreamAndReleaseActivation(
-      upstream,
-      error,
-      activation,
-      activationClient,
-    );
+    await cancelUpstreamAndReleaseActivation(upstream, error, activation, activationClient);
     throw error;
   }
 
@@ -208,7 +211,12 @@ export async function executeGatewaySessionProxy(input: {
     headers: responseHeaders,
   });
   return activation && activationClient
-    ? manageActivationResponse(response, activationClient, activation.leaseId, input.activationRenewIntervalMs)
+    ? manageActivationResponse(
+        response,
+        activationClient,
+        activation.leaseId,
+        input.activationRenewIntervalMs,
+      )
     : response;
 }
 

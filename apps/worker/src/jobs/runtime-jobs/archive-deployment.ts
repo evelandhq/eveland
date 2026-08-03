@@ -42,9 +42,7 @@ export async function handleArchiveDeploymentJob(
   const claimable = automatic ? AUTOMATIC_CLAIMABLE : MANUAL_CLAIMABLE;
   if (!claimable.includes(deployment.status)) {
     if (automatic) return;
-    throw new Error(
-      `Deployment cannot be archived while ${deployment.status}.`,
-    );
+    throw new Error(`Deployment cannot be archived while ${deployment.status}.`);
   }
 
   // Claim before touching anything: holding "archiving" keeps activation,
@@ -64,26 +62,18 @@ export async function handleArchiveDeploymentJob(
   }
 
   try {
-    const configuredRetention = Number(
-      process.env.EVELAND_RELEASE_RETENTION ?? 3,
-    );
+    const configuredRetention = Number(process.env.EVELAND_RELEASE_RETENTION ?? 3);
     const retention = await store.getDeploymentRetention(
       job.projectId,
-      Number.isFinite(configuredRetention)
-        ? Math.max(3, Math.floor(configuredRetention))
-        : 3,
+      Number.isFinite(configuredRetention) ? Math.max(3, Math.floor(configuredRetention)) : 3,
       {
         playgroundIdleTtlMs: Number(
           process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000,
         ),
-        apiIdleTtlMs: Number(
-          process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000,
-        ),
+        apiIdleTtlMs: Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000),
       },
     );
-    const policy = retention.find(
-      (entry) => entry.deployment.id === deployment.id,
-    );
+    const policy = retention.find((entry) => entry.deployment.id === deployment.id);
     if (!policy || policy.protected) {
       throw new Error(
         `Deployment is protected from archive${policy?.reasons.length ? `: ${policy.reasons.join(", ")}` : "."}`,
@@ -92,14 +82,11 @@ export async function handleArchiveDeploymentJob(
     const adapter =
       options.runtime?.name === deployment.runtimeKind
         ? options.runtime
-        : (options.runtimeForKind ?? createRuntimeAdapterForKind)(
-            deployment.runtimeKind,
-          );
+        : (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
     if (priorStatus === "running" || priorStatus === "draining")
       await adapter.stopProcess(deployment.containerName);
     const release = await store.getRelease(deployment.releaseId);
-    if (release && adapter.removeRelease)
-      await adapter.removeRelease(release.imageTag);
+    if (release && adapter.removeRelease) await adapter.removeRelease(release.imageTag);
     await rm(
       path.join(
         options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data",
@@ -114,8 +101,7 @@ export async function handleArchiveDeploymentJob(
       to: "archived",
       from: ["archiving"],
     });
-    if (!archived)
-      throw new Error("Deployment lost the archiving claim before completion.");
+    if (!archived) throw new Error("Deployment lost the archiving claim before completion.");
   } catch (error) {
     // Best effort: hand the claim back so the deployment is not stranded in
     // "archiving"; a retried attempt can still re-claim that state.

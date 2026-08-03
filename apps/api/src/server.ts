@@ -62,9 +62,8 @@ platformObservability.emitLog({
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
-    void Promise.all([
-      storeFactory.close(),
-      platformObservability.shutdown(),
-    ]).finally(() => process.exit(0));
+    void Promise.all([storeFactory.close(), platformObservability.shutdown()]).finally(() =>
+      process.exit(0),
+    );
   });
 }

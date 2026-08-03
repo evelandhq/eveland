@@ -1,17 +1,6 @@
-import {
-  context,
-  metrics,
-  trace,
-  type Meter,
-  type Tracer,
-} from "@opentelemetry/api";
+import { context, metrics, trace, type Meter, type Tracer } from "@opentelemetry/api";
 import { suppressTracing } from "@opentelemetry/core";
-import {
-  logs,
-  SeverityNumber,
-  type AnyValue,
-  type Logger,
-} from "@opentelemetry/api-logs";
+import { logs, SeverityNumber, type AnyValue, type Logger } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -21,11 +10,7 @@ import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { PgInstrumentation } from "@opentelemetry/instrumentation-pg";
 import { RuntimeNodeInstrumentation } from "@opentelemetry/instrumentation-runtime-node";
 import { UndiciInstrumentation } from "@opentelemetry/instrumentation-undici";
-import {
-  defaultResource,
-  resourceFromAttributes,
-  type Resource,
-} from "@opentelemetry/resources";
+import { defaultResource, resourceFromAttributes, type Resource } from "@opentelemetry/resources";
 import {
   BatchLogRecordProcessor,
   LoggerProvider,
@@ -37,14 +22,10 @@ import {
   type PushMetricExporter,
 } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
-import {
-  BatchSpanProcessor,
-  type SpanExporter,
-} from "@opentelemetry/sdk-trace-base";
+import { BatchSpanProcessor, type SpanExporter } from "@opentelemetry/sdk-trace-base";
 
 const instrumentationName = "@eveland/platform-observability";
-const developmentOtlpServiceToken =
-  "eveland-dev-otlp-service-token";
+const developmentOtlpServiceToken = "eveland-dev-otlp-service-token";
 
 type EmitLogInput = {
   severity: "debug" | "info" | "warn" | "error";
@@ -83,11 +64,7 @@ export type PlatformObservabilityInput = {
 
 type EvelandResourceInput = Pick<
   PlatformObservabilityInput,
-  | "serviceName"
-  | "serviceVersion"
-  | "serviceInstanceId"
-  | "environment"
-  | "teamId"
+  "serviceName" | "serviceVersion" | "serviceInstanceId" | "environment" | "teamId"
 >;
 
 export type PrivateMetrics = {
@@ -139,37 +116,27 @@ export function resolveOtlpHttpSignalUrls(endpoint: string): {
   };
 }
 
-export function resolvePlatformOtlpServiceToken(
-  env: Record<string, string | undefined>,
-): string {
+export function resolvePlatformOtlpServiceToken(env: Record<string, string | undefined>): string {
   const token = env.EVELAND_OTLP_SERVICE_TOKEN;
   if (token) return token;
   if (env.NODE_ENV === "production") {
-    throw new Error(
-      "EVELAND_OTLP_SERVICE_TOKEN is required in production.",
-    );
+    throw new Error("EVELAND_OTLP_SERVICE_TOKEN is required in production.");
   }
   return developmentOtlpServiceToken;
 }
 
-function otlpAuthorizationHeaders(
-  serviceToken: string,
-): Record<string, string> {
+function otlpAuthorizationHeaders(serviceToken: string): Record<string, string> {
   if (!serviceToken) {
     throw new Error("EVELAND_OTLP_SERVICE_TOKEN must not be empty.");
   }
   return { authorization: `Bearer ${serviceToken}` };
 }
 
-export function runWithPlatformTracingSuppressed<T>(
-  callback: () => T,
-): T {
+export function runWithPlatformTracingSuppressed<T>(callback: () => T): T {
   return context.with(suppressTracing(context.active()), callback);
 }
 
-export function createPlatformResource(
-  input: EvelandResourceInput,
-): Resource {
+export function createPlatformResource(input: EvelandResourceInput): Resource {
   return createEvelandResource(input, "platform");
 }
 
@@ -180,9 +147,7 @@ function createEvelandResource(
   return defaultResource().merge(
     resourceFromAttributes({
       "service.name": input.serviceName,
-      ...(input.serviceVersion
-        ? { "service.version": input.serviceVersion }
-        : {}),
+      ...(input.serviceVersion ? { "service.version": input.serviceVersion } : {}),
       "service.instance.id": input.serviceInstanceId,
       "deployment.environment.name": input.environment,
       "eveland.team.id": input.teamId,
@@ -197,14 +162,10 @@ export function startPlatformObservability(
   const urls = resolveOtlpHttpSignalUrls(input.otlpEndpoint);
   const headers = otlpAuthorizationHeaders(input.otlpServiceToken);
   const traceExporter =
-    input.exporters?.traces ??
-    new OTLPTraceExporter({ url: urls.traces, headers });
-  const logExporter =
-    input.exporters?.logs ??
-    new OTLPLogExporter({ url: urls.logs, headers });
+    input.exporters?.traces ?? new OTLPTraceExporter({ url: urls.traces, headers });
+  const logExporter = input.exporters?.logs ?? new OTLPLogExporter({ url: urls.logs, headers });
   const metricExporter =
-    input.exporters?.metrics ??
-    new OTLPMetricExporter({ url: urls.metrics, headers });
+    input.exporters?.metrics ?? new OTLPMetricExporter({ url: urls.metrics, headers });
   const spanProcessor = new BatchSpanProcessor(traceExporter);
   const logProcessor = new BatchLogRecordProcessor({
     exporter: logExporter,
@@ -218,8 +179,7 @@ export function startPlatformObservability(
     spanProcessors: [spanProcessor],
     logRecordProcessors: [logProcessor],
     metricReaders: [metricReader],
-    instrumentations:
-      input.instrumentations ?? createDefaultInstrumentations(input),
+    instrumentations: input.instrumentations ?? createDefaultInstrumentations(input),
   });
   sdk.start();
   const tracer = trace.getTracer(instrumentationName);
@@ -265,9 +225,7 @@ export function startPrivateLogs(input: PrivateLogsInput): PrivateLogs {
   };
 }
 
-export function startPrivateMetrics(
-  input: PrivateMetricsInput,
-): PrivateMetrics {
+export function startPrivateMetrics(input: PrivateMetricsInput): PrivateMetrics {
   const urls = resolveOtlpHttpSignalUrls(input.otlpEndpoint);
   const exporter =
     input.exporter ??
@@ -283,9 +241,7 @@ export function startPrivateMetrics(
     resource: createEvelandResource(input, input.telemetryDomain),
     readers: [reader],
   });
-  const instrumentations = input.hostMetrics
-    ? [new HostMetricsInstrumentation()]
-    : [];
+  const instrumentations = input.hostMetrics ? [new HostMetricsInstrumentation()] : [];
   for (const instrumentation of instrumentations) {
     instrumentation.setMeterProvider(provider);
     instrumentation.enable();
@@ -319,15 +275,12 @@ function emitLog(logger: Logger, log: EmitLogInput): void {
   });
 }
 
-function createDefaultInstrumentations(
-  input: PlatformObservabilityInput,
-): Instrumentation[] {
+function createDefaultInstrumentations(input: PlatformObservabilityInput): Instrumentation[] {
   return [
     new HttpInstrumentation({
       ignoreIncomingRequestHook: (request) =>
-        input.ignoredIncomingPaths?.some((prefix) =>
-          (request.url ?? "").startsWith(prefix),
-        ) ?? false,
+        input.ignoredIncomingPaths?.some((prefix) => (request.url ?? "").startsWith(prefix)) ??
+        false,
     }),
     new UndiciInstrumentation(),
     new PgInstrumentation(),

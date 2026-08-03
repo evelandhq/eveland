@@ -50,31 +50,23 @@ export async function handleEnsureDeploymentRunningJob(
     return;
   }
   const release = await store.getRelease(deployment.releaseId);
-  if (!release)
-    throw new Error("Deployment activation Release is missing.");
+  if (!release) throw new Error("Deployment activation Release is missing.");
   const revision = await store.getSourceRevision(release.sourceRevisionId);
-  if (!revision)
-    throw new Error("Deployment activation SourceRevision is missing.");
-  const recoverableSource = await resolveRecoverableRuntimeSource(
-    store,
-    revision,
-  );
+  if (!revision) throw new Error("Deployment activation SourceRevision is missing.");
+  const recoverableSource = await resolveRecoverableRuntimeSource(store, revision);
   const runtime =
     options.runtime ??
-    (options.runtimeForKind ?? createRuntimeAdapterForKind)(
-      deployment.runtimeKind,
-    );
-  const launchPrerequisites =
-    await resolveDeploymentLaunchPrerequisites({
-      store,
-      workerEnv: process.env,
-      projectId: job.projectId,
-      deploymentId: deployment.id,
-      runtimeKind: runtime.name,
-      sourcePath: revision.sourcePath,
-      ...recoverableSource,
-      options,
-    });
+    (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+  const launchPrerequisites = await resolveDeploymentLaunchPrerequisites({
+    store,
+    workerEnv: process.env,
+    projectId: job.projectId,
+    deploymentId: deployment.id,
+    runtimeKind: runtime.name,
+    sourcePath: revision.sourcePath,
+    ...recoverableSource,
+    options,
+  });
   await ensureDeploymentLaunchSandbox(launchPrerequisites);
   const launchContext = await materializeDeploymentLaunchContext({
     store,
@@ -97,9 +89,7 @@ export async function handleEnsureDeploymentRunningJob(
     runtimeInstance.id,
     {
       waitForHealth: options.waitForDeployment,
-      readyTimeoutMs: Number(
-        process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000,
-      ),
+      readyTimeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
     },
   );
   // Preserve a concurrent drain/archive decision made during activation.

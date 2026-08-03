@@ -53,22 +53,32 @@ describe("workspace paths", () => {
     expect(isWithinWorkspace("/data/sess1", "/data/sess1")).toBe(true);
     expect(isWithinWorkspace("/data/other", "/data/sess1")).toBe(false);
     // traversal normalizes out of the workspace
-    expect(isWithinWorkspace(toHostPath("a/../../escape", "/data/sess1"), "/data/sess1")).toBe(false);
+    expect(isWithinWorkspace(toHostPath("a/../../escape", "/data/sess1"), "/data/sess1")).toBe(
+      false,
+    );
   });
 });
 
 describe("cacheDir override", () => {
   test("an explicit cacheDir replaces the appRoot-derived cache root", () => {
-    expect(resolveBwrapCacheRoot("/app", "/var/lib/eveland-data/sandbox/proj_1")).toBe("/var/lib/eveland-data/sandbox/proj_1");
+    expect(resolveBwrapCacheRoot("/app", "/var/lib/eveland-data/sandbox/proj_1")).toBe(
+      "/var/lib/eveland-data/sandbox/proj_1",
+    );
     expect(resolveBwrapCacheRoot("/app", null)).toBe("/app/.eve/sandbox-cache/bwrap");
     expect(resolveBwrapCacheRoot("/app")).toBe("/app/.eve/sandbox-cache/bwrap");
   });
 
   test("session and template paths follow the override, so a new appRoot reuses the same state", () => {
     const cacheDir = "/var/lib/eveland-data/sandbox/proj_1";
-    expect(resolveSessionPath("/releases/r1", "sess", cacheDir)).toBe(resolveSessionPath("/releases/r2", "sess", cacheDir));
-    expect(resolveTemplatePath("/releases/r1", "tpl", "hash", cacheDir)).toBe(resolveTemplatePath("/releases/r2", "tpl", "hash", cacheDir));
-    expect(resolveSessionPath("/releases/r1", "sess")).not.toBe(resolveSessionPath("/releases/r2", "sess"));
+    expect(resolveSessionPath("/releases/r1", "sess", cacheDir)).toBe(
+      resolveSessionPath("/releases/r2", "sess", cacheDir),
+    );
+    expect(resolveTemplatePath("/releases/r1", "tpl", "hash", cacheDir)).toBe(
+      resolveTemplatePath("/releases/r2", "tpl", "hash", cacheDir),
+    );
+    expect(resolveSessionPath("/releases/r1", "sess")).not.toBe(
+      resolveSessionPath("/releases/r2", "sess"),
+    );
   });
 });
 
@@ -83,9 +93,15 @@ describe("isWithinWorkspaceReal", () => {
     symlinkSync(path.join(workspace, "inner-target"), path.join(workspace, "inner-link"));
     mkdirSync(path.join(workspace, "inner-target"), { recursive: true });
 
-    expect(isWithinWorkspaceReal(path.join(workspace, "escape", "victim.txt"), workspace)).toBe(false);
-    expect(isWithinWorkspaceReal(path.join(workspace, "inner-link", "ok.txt"), workspace)).toBe(true);
-    expect(isWithinWorkspaceReal(path.join(workspace, "new-dir", "new-file.txt"), workspace)).toBe(true);
+    expect(isWithinWorkspaceReal(path.join(workspace, "escape", "victim.txt"), workspace)).toBe(
+      false,
+    );
+    expect(isWithinWorkspaceReal(path.join(workspace, "inner-link", "ok.txt"), workspace)).toBe(
+      true,
+    );
+    expect(isWithinWorkspaceReal(path.join(workspace, "new-dir", "new-file.txt"), workspace)).toBe(
+      true,
+    );
   });
 
   test("dangling symlink is rejected", () => {

@@ -7,7 +7,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatBytes } from "@/lib/instance-health";
 import { getCurrentMember, getInstanceHealth } from "@/lib/server-api";
 import { cn } from "@/lib/utils";
@@ -28,7 +35,9 @@ export default async function InstanceHealthPage({
       <Alert>
         <ShieldCheckIcon />
         <AlertTitle>Administrator access required</AlertTitle>
-        <AlertDescription>Instance health and host capacity are available only to Team administrators.</AlertDescription>
+        <AlertDescription>
+          Instance health and host capacity are available only to Team administrators.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -46,10 +55,16 @@ export default async function InstanceHealthPage({
     observedAt: metric.observedAt,
     value: percentUsed(metric.memoryTotalBytes, metric.memoryAvailableBytes),
   }));
-  const cpuPoints = report.metrics.flatMap((metric) => metric.cpuPercent === null ? [] : [{
-    observedAt: metric.observedAt,
-    value: metric.cpuPercent,
-  }]);
+  const cpuPoints = report.metrics.flatMap((metric) =>
+    metric.cpuPercent === null
+      ? []
+      : [
+          {
+            observedAt: metric.observedAt,
+            value: metric.cpuPercent,
+          },
+        ],
+  );
 
   return (
     <div className="flex max-w-5xl flex-col gap-6">
@@ -59,14 +74,21 @@ export default async function InstanceHealthPage({
             <h2 className="text-xl font-semibold tracking-tight">Instance health</h2>
             <HealthBadge status={report.status} />
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">Service availability, host headroom, and workload pressure.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Service availability, host headroom, and workload pressure.
+          </p>
         </div>
         <div className="flex items-center gap-1" aria-label="History range">
           {[24, 168].map((hours) => (
             <Link
               key={hours}
               href={`/settings/health?hours=${hours}`}
-              className={cn(buttonVariants({ variant: historyHours === hours ? "secondary" : "ghost", size: "sm" }))}
+              className={cn(
+                buttonVariants({
+                  variant: historyHours === hours ? "secondary" : "ghost",
+                  size: "sm",
+                }),
+              )}
             >
               {hours === 24 ? "24 hours" : "7 days"}
             </Link>
@@ -76,28 +98,44 @@ export default async function InstanceHealthPage({
 
       <section aria-labelledby="risks-heading" className="flex flex-col gap-3">
         <div>
-          <h3 id="risks-heading" className="text-sm font-semibold">Current risks</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Issues that can interrupt deploys, traffic, or observation.</p>
+          <h3 id="risks-heading" className="text-sm font-semibold">
+            Current risks
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Issues that can interrupt deploys, traffic, or observation.
+          </p>
         </div>
         {report.capacity.risks.length === 0 && componentRisks.length === 0 ? (
           <Alert>
             <CheckCircle2Icon />
             <AlertTitle>No current risks</AlertTitle>
-            <AlertDescription>Components are reachable and sampled host capacity has sufficient headroom.</AlertDescription>
+            <AlertDescription>
+              Components are reachable and sampled host capacity has sufficient headroom.
+            </AlertDescription>
           </Alert>
         ) : (
           <div className="flex flex-col gap-2">
             {report.capacity.risks.map((risk) => (
-              <Alert key={risk.code} variant={risk.severity === "critical" ? "destructive" : "default"}>
+              <Alert
+                key={risk.code}
+                variant={risk.severity === "critical" ? "destructive" : "default"}
+              >
                 <AlertTriangleIcon />
-                <AlertTitle>{risk.severity === "critical" ? "Critical capacity risk" : "Capacity warning"}</AlertTitle>
+                <AlertTitle>
+                  {risk.severity === "critical" ? "Critical capacity risk" : "Capacity warning"}
+                </AlertTitle>
                 <AlertDescription>{risk.message}</AlertDescription>
               </Alert>
             ))}
             {componentRisks.map((component) => (
-              <Alert key={component.key} variant={component.status === "unavailable" ? "destructive" : "default"}>
+              <Alert
+                key={component.key}
+                variant={component.status === "unavailable" ? "destructive" : "default"}
+              >
                 <AlertTriangleIcon />
-                <AlertTitle>{component.label} {component.status}</AlertTitle>
+                <AlertTitle>
+                  {component.label} {component.status}
+                </AlertTitle>
                 <AlertDescription>{component.message}</AlertDescription>
               </Alert>
             ))}
@@ -109,19 +147,40 @@ export default async function InstanceHealthPage({
 
       <section aria-labelledby="components-heading" className="flex flex-col gap-3">
         <div>
-          <h3 id="components-heading" className="text-sm font-semibold">Components</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Current evidence from the control plane and runtime path.</p>
+          <h3 id="components-heading" className="text-sm font-semibold">
+            Components
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Current evidence from the control plane and runtime path.
+          </p>
         </div>
         <div className="overflow-hidden rounded-md border">
           <Table>
-            <TableHeader><TableRow><TableHead>Component</TableHead><TableHead>Status</TableHead><TableHead>Evidence</TableHead><TableHead>Observed</TableHead></TableRow></TableHeader>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Component</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Evidence</TableHead>
+                <TableHead>Observed</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
               {report.components.map((component) => (
                 <TableRow key={component.key}>
                   <TableCell className="font-medium">{component.label}</TableCell>
-                  <TableCell><HealthBadge status={component.status} /></TableCell>
-                  <TableCell className="max-w-md text-muted-foreground">{component.message}</TableCell>
-                  <TableCell className="text-muted-foreground">{component.observedAt ? <DateTime value={component.observedAt} /> : "No observation"}</TableCell>
+                  <TableCell>
+                    <HealthBadge status={component.status} />
+                  </TableCell>
+                  <TableCell className="max-w-md text-muted-foreground">
+                    {component.message}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {component.observedAt ? (
+                      <DateTime value={component.observedAt} />
+                    ) : (
+                      "No observation"
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -133,18 +192,40 @@ export default async function InstanceHealthPage({
 
       <section aria-labelledby="capacity-heading" className="flex flex-col gap-4">
         <div>
-          <h3 id="capacity-heading" className="text-sm font-semibold">Capacity</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Filesystem, memory, and CPU measurements published by the Worker host.</p>
+          <h3 id="capacity-heading" className="text-sm font-semibold">
+            Capacity
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Filesystem, memory, and CPU measurements published by the Worker host.
+          </p>
         </div>
         <div className="grid divide-y border-y lg:grid-cols-3 lg:divide-x lg:divide-y-0">
           <div className="lg:pr-5">
-            <CapacityTrend label="Disk used" value={percentLabel(report.capacity.disk.usedPercent)} points={diskPoints} hours={historyHours} detail={`${formatBytes(report.capacity.disk.availableBytes)} available`} />
+            <CapacityTrend
+              label="Disk used"
+              value={percentLabel(report.capacity.disk.usedPercent)}
+              points={diskPoints}
+              hours={historyHours}
+              detail={`${formatBytes(report.capacity.disk.availableBytes)} available`}
+            />
           </div>
           <div className="lg:px-5">
-            <CapacityTrend label="Memory used" value={percentLabel(report.capacity.memory.usedPercent)} points={memoryPoints} hours={historyHours} detail={`${formatBytes(report.capacity.memory.availableBytes)} available`} />
+            <CapacityTrend
+              label="Memory used"
+              value={percentLabel(report.capacity.memory.usedPercent)}
+              points={memoryPoints}
+              hours={historyHours}
+              detail={`${formatBytes(report.capacity.memory.availableBytes)} available`}
+            />
           </div>
           <div className="lg:pl-5">
-            <CapacityTrend label="CPU" value={percentLabel(report.capacity.cpu.percent)} points={cpuPoints} hours={historyHours} detail={`Load ${report.capacity.cpu.load1?.toFixed(2) ?? "—"}`} />
+            <CapacityTrend
+              label="CPU"
+              value={percentLabel(report.capacity.cpu.percent)}
+              points={cpuPoints}
+              hours={historyHours}
+              detail={`Load ${report.capacity.cpu.load1?.toFixed(2) ?? "—"}`}
+            />
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -158,18 +239,37 @@ export default async function InstanceHealthPage({
 
       <section aria-labelledby="workload-heading" className="flex flex-col gap-3">
         <div>
-          <h3 id="workload-heading" className="text-sm font-semibold">Workload</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Current queue pressure and RuntimeInstance lifecycle distribution.</p>
+          <h3 id="workload-heading" className="text-sm font-semibold">
+            Workload
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Current queue pressure and RuntimeInstance lifecycle distribution.
+          </p>
         </div>
         <dl className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4">
           <WorkloadValue label="Queued jobs" value={report.workload.queuedJobs} />
           <WorkloadValue label="Running jobs" value={report.workload.runningJobs} />
           <WorkloadValue label="Ready runtimes" value={report.workload.runtimeInstances.ready} />
-          <WorkloadValue label="Starting runtimes" value={report.workload.runtimeInstances.starting} />
+          <WorkloadValue
+            label="Starting runtimes"
+            value={report.workload.runtimeInstances.starting}
+          />
         </dl>
         <p className="text-xs text-muted-foreground">
-          Oldest queued job: {report.workload.oldestQueuedAt ? <DateTime value={report.workload.oldestQueuedAt} /> : "None"}
-          {latest ? <> · Latest host sample <DateTime value={latest.observedAt} /></> : " · No host samples yet"}
+          Oldest queued job:{" "}
+          {report.workload.oldestQueuedAt ? (
+            <DateTime value={report.workload.oldestQueuedAt} />
+          ) : (
+            "None"
+          )}
+          {latest ? (
+            <>
+              {" "}
+              · Latest host sample <DateTime value={latest.observedAt} />
+            </>
+          ) : (
+            " · No host samples yet"
+          )}
         </p>
       </section>
     </div>
@@ -177,11 +277,28 @@ export default async function InstanceHealthPage({
 }
 
 function HealthBadge({ status }: { status: InstanceHealthStatus }) {
-  return <Badge variant={status === "critical" || status === "unavailable" ? "destructive" : status === "warning" ? "secondary" : "outline"}>{status}</Badge>;
+  return (
+    <Badge
+      variant={
+        status === "critical" || status === "unavailable"
+          ? "destructive"
+          : status === "warning"
+            ? "secondary"
+            : "outline"
+      }
+    >
+      {status}
+    </Badge>
+  );
 }
 
 function WorkloadValue({ label, value }: { label: string; value: number }) {
-  return <div className="bg-background p-4"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-2 text-2xl font-semibold tabular-nums">{value}</dd></div>;
+  return (
+    <div className="bg-background p-4">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-2 text-2xl font-semibold tabular-nums">{value}</dd>
+    </div>
+  );
 }
 
 function percentUsed(total: number, available: number): number {

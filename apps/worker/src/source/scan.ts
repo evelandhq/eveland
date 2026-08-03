@@ -4,7 +4,16 @@ import type { ProjectImportKind, ScheduleRecord } from "@eveland/core/contracts"
 import { getNextRunAt } from "@eveland/core/schedules";
 import { inspectEveProject, type SourceFile } from "@eveland/core/source";
 
-const ignoredDirectories = new Set([".git", "node_modules", ".next", "dist", "build", "coverage", ".turbo", ".eve"]);
+const ignoredDirectories = new Set([
+  ".git",
+  "node_modules",
+  ".next",
+  "dist",
+  "build",
+  "coverage",
+  ".turbo",
+  ".eve",
+]);
 const maxTextFileBytes = 256 * 1024;
 
 export type SourceScanResult = {
@@ -24,9 +33,7 @@ export async function scanEveSource(input: {
 }): Promise<SourceScanResult> {
   const files = await collectSourceFiles(input.sourcePath);
   const inspection = inspectEveProject(files);
-  const runtimeCommandContext = await inspectRuntimeCommandContext(
-    input.sourcePath,
-  );
+  const runtimeCommandContext = await inspectRuntimeCommandContext(input.sourcePath);
 
   if (!inspection.valid) {
     throw new Error(`Invalid eve project: ${inspection.errors.join(" ")}`);
@@ -87,7 +94,10 @@ async function collectSourceFiles(rootDir: string, relativeDir = ""): Promise<So
       continue;
     }
 
-    const relativePath = path.posix.join(relativeDir.split(path.sep).join(path.posix.sep), entry.name);
+    const relativePath = path.posix.join(
+      relativeDir.split(path.sep).join(path.posix.sep),
+      entry.name,
+    );
     const absolutePath = path.join(rootDir, relativePath);
 
     if (entry.isDirectory()) {
@@ -130,10 +140,7 @@ async function inspectRuntimeCommandContext(rootDir: string): Promise<{
     : { packageManager: "npm", hasLockfile: hasNpmLockfile };
 }
 
-async function rootFileExists(
-  rootDir: string,
-  fileName: string,
-): Promise<boolean> {
+async function rootFileExists(rootDir: string, fileName: string): Promise<boolean> {
   try {
     return (await stat(path.join(rootDir, fileName))).isFile();
   } catch {

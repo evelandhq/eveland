@@ -10,7 +10,11 @@ const packageRoot = path.resolve(import.meta.dirname, "..");
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
 });
 
 describe("injectObserverHooks", () => {
@@ -26,33 +30,31 @@ describe("injectObserverHooks", () => {
       "agent/hooks/eveland-observer.js",
       "agent/subagents/directory-child/hooks/eveland-observer.js",
     ]);
-    expect(result.runtimeFile).toBe(
-      ".eveland/observability/runtime.mjs",
-    );
-    expect(result.coverageGaps.map((gap) => path.basename(gap.path))).toEqual(["file-child.ts", "remote-child.ts"]);
+    expect(result.runtimeFile).toBe(".eveland/observability/runtime.mjs");
+    expect(result.coverageGaps.map((gap) => path.basename(gap.path))).toEqual([
+      "file-child.ts",
+      "remote-child.ts",
+    ]);
     expect(result.observerContract).toBe(2);
-    const rootShim = await readFile(
-      path.join(releaseDir, result.injectedFiles[0]!),
-      "utf8",
-    );
-    expect(rootShim).toContain(
-      "file:///run/eveland/observability/runtime.mjs",
-    );
+    const rootShim = await readFile(path.join(releaseDir, result.injectedFiles[0]!), "utf8");
+    expect(rootShim).toContain("file:///run/eveland/observability/runtime.mjs");
     expect(rootShim).toContain("../../.eveland/observability/runtime.mjs");
     expect(rootShim).toContain('import { defineHook } from "eve/hooks"');
     await expect(
       readFile(path.join(releaseDir, result.injectedFiles[1]!), "utf8"),
-    ).resolves.toContain(
-      "../../../../.eveland/observability/runtime.mjs",
-    );
+    ).resolves.toContain("../../../../.eveland/observability/runtime.mjs");
   });
 
   test("fails instead of overwriting an authored reserved observer hook", async () => {
     const releaseDir = await createRelease();
     await write("agent/hooks/eveland-observer.js", "authored", releaseDir);
 
-    await expect(injectObserverHooks({ releaseDir })).rejects.toThrow(/Reserved observer hook already exists/);
-    await expect(readFile(path.join(releaseDir, "agent/hooks/eveland-observer.js"), "utf8")).resolves.toBe("authored");
+    await expect(injectObserverHooks({ releaseDir })).rejects.toThrow(
+      /Reserved observer hook already exists/,
+    );
+    await expect(
+      readFile(path.join(releaseDir, "agent/hooks/eveland-observer.js"), "utf8"),
+    ).resolves.toBe("authored");
   });
 
   test("does not modify user instrumentation or authored hooks", async () => {
@@ -69,22 +71,21 @@ describe("injectObserverHooks", () => {
 
     await injectObserverHooks({ releaseDir });
 
-    await expect(readFile(path.join(releaseDir, "instrumentation.ts"), "utf8")).resolves.toBe(instrumentation);
-    await expect(readFile(path.join(releaseDir, "agent/hooks/user-observer.ts"), "utf8")).resolves.toBe(authoredHook);
+    await expect(readFile(path.join(releaseDir, "instrumentation.ts"), "utf8")).resolves.toBe(
+      instrumentation,
+    );
+    await expect(
+      readFile(path.join(releaseDir, "agent/hooks/user-observer.ts"), "utf8"),
+    ).resolves.toBe(authoredHook);
   });
 
   test("bundles a self-contained private OTel runtime controlled only by its runtime policy", async () => {
     const releaseDir = await createRelease();
     const result = await injectObserverHooks({ releaseDir });
-    const runtime = await readFile(
-      path.join(releaseDir, result.runtimeFile!),
-      "utf8",
-    );
+    const runtime = await readFile(path.join(releaseDir, result.runtimeFile!), "utf8");
 
     expect(runtime).toContain("OTLPTraceExporter");
-    expect(runtime).toContain(
-      "/run/eveland/observability/agent-policy.json",
-    );
+    expect(runtime).toContain("/run/eveland/observability/agent-policy.json");
     // The bundle must load from the observability mount, where the Agent's
     // node_modules is not resolvable: nothing but node builtins may survive.
     expect(runtime).not.toContain('from "eve/hooks"');
@@ -114,10 +115,7 @@ describe("injectObserverHooks", () => {
   test("bakes the identical bundle the Worker delivers into deployments", async () => {
     const releaseDir = await createRelease();
     const result = await injectObserverHooks({ releaseDir });
-    const baked = await readFile(
-      path.join(releaseDir, result.runtimeFile!),
-      "utf8",
-    );
+    const baked = await readFile(path.join(releaseDir, result.runtimeFile!), "utf8");
 
     await expect(bundleObserverRuntime()).resolves.toBe(baked);
   });

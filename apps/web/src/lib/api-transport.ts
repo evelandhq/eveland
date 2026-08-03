@@ -5,8 +5,7 @@
  * component inventing its own.
  */
 
-export const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+export const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 /**
  * The complete control-plane error contract. Validation failures carry
@@ -72,10 +71,7 @@ export type ApiRequestOptions = RequestInit & {
   unauthorized?: "redirect" | "surface";
 };
 
-export async function apiFetch(
-  path: string,
-  init: RequestInit = {},
-): Promise<Response> {
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${apiBaseUrl}${path}`, { credentials: "include", ...init });
 }
 

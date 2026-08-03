@@ -64,22 +64,20 @@ describe("createOrphanProcessReaper", () => {
       removeOrphanDockerNetwork,
     });
 
-    await expect(
-      reap(new Date("2026-07-16T10:00:00.000Z")),
-    ).resolves.toBe(0);
+    await expect(reap(new Date("2026-07-16T10:00:00.000Z"))).resolves.toBe(0);
     expect(removeOrphanDockerNetwork).not.toHaveBeenCalled();
 
-    await expect(
-      reap(new Date("2026-07-16T10:01:00.000Z")),
-    ).resolves.toBe(1);
-    expect(removeOrphanDockerNetwork).toHaveBeenCalledExactlyOnceWith(
-      network,
-    );
+    await expect(reap(new Date("2026-07-16T10:01:00.000Z"))).resolves.toBe(1);
+    expect(removeOrphanDockerNetwork).toHaveBeenCalledExactlyOnceWith(network);
   });
 
   test("never touches platform processes that do not match the deployment name shape", async () => {
     const store = createTestStore();
-    const { adapter, stopProcess } = fakeAdapter("docker", ["eveland-postgres-1", "eveland-api-1", "eveland-gateway-1"]);
+    const { adapter, stopProcess } = fakeAdapter("docker", [
+      "eveland-postgres-1",
+      "eveland-api-1",
+      "eveland-gateway-1",
+    ]);
     const reap = createOrphanProcessReaper(store, {
       kinds: ["docker"],
       graceMs: 60_000,
@@ -112,7 +110,12 @@ describe("createOrphanProcessReaper", () => {
   test("adopts an unmanaged known deployment so the idle reaper stops it later", async () => {
     const store = createTestStore();
     const containerName = "eveland-proj_zombie-dep_zombie99";
-    const { deployment } = await deploymentFixture(store, "Zombie Sweep Agent", 41981, containerName);
+    const { deployment } = await deploymentFixture(
+      store,
+      "Zombie Sweep Agent",
+      41981,
+      containerName,
+    );
     const { adapter, stopProcess } = fakeAdapter("docker", [containerName]);
     const reap = createOrphanProcessReaper(store, {
       kinds: ["docker"],
@@ -124,7 +127,11 @@ describe("createOrphanProcessReaper", () => {
 
     expect(stopProcess).not.toHaveBeenCalled();
     await expect(store.listDeploymentRuntimeInstances(deployment.id)).resolves.toEqual([
-      expect.objectContaining({ status: "ready", endpointHost: "127.0.0.1", endpointPort: deployment.hostPort }),
+      expect.objectContaining({
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      }),
     ]);
 
     // Repeat sweeps never duplicate the adoption.
@@ -133,12 +140,14 @@ describe("createOrphanProcessReaper", () => {
 
     // The normal idle lifecycle now owns the process: no leases arrive, so the
     // idle reaper drains and stops it after the idle TTL.
-    await expect(reapIdleDeployments(store, {
-      now: new Date("2026-07-16T10:05:00.000Z"),
-      idleTtlMs: 300_000,
-      limit: 10,
-      runtimeForKind: () => adapter,
-    })).resolves.toBe(1);
+    await expect(
+      reapIdleDeployments(store, {
+        now: new Date("2026-07-16T10:05:00.000Z"),
+        idleTtlMs: 300_000,
+        limit: 10,
+        runtimeForKind: () => adapter,
+      }),
+    ).resolves.toBe(1);
     expect(stopProcess).toHaveBeenCalledExactlyOnceWith(containerName);
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "stopped" });
   });
@@ -146,7 +155,12 @@ describe("createOrphanProcessReaper", () => {
   test("skips deployments already under activation management", async () => {
     const store = createTestStore();
     const containerName = "eveland-proj_active-dep_active77";
-    const { deployment } = await deploymentFixture(store, "Active Sweep Agent", 41982, containerName);
+    const { deployment } = await deploymentFixture(
+      store,
+      "Active Sweep Agent",
+      41982,
+      containerName,
+    );
     await store.acquireActivationLease({
       deploymentId: deployment.id,
       kind: "public_request",
@@ -170,7 +184,12 @@ describe("createOrphanProcessReaper", () => {
   test("stops an archived deployment's leftover process after the grace period", async () => {
     const store = createTestStore();
     const containerName = "eveland-proj_arch-dep_arch55";
-    const { project, deployment } = await deploymentFixture(store, "Archived Sweep Agent", 41983, containerName);
+    const { project, deployment } = await deploymentFixture(
+      store,
+      "Archived Sweep Agent",
+      41983,
+      containerName,
+    );
     await store.updateDeploymentStatus(deployment.id, "archived");
     const { adapter, stopProcess } = fakeAdapter("docker", [containerName]);
     const reap = createOrphanProcessReaper(store, {
@@ -234,7 +253,12 @@ describe("control-plane-stopped deployments", () => {
   test("reaps -- never adopts -- a surviving process of a stopped deployment", async () => {
     const store = createTestStore();
     const containerName = "eveland-proj_stop-dep_stop77";
-    const { project, deployment } = await deploymentFixture(store, "Stopped Sweep Agent", 41984, containerName);
+    const { project, deployment } = await deploymentFixture(
+      store,
+      "Stopped Sweep Agent",
+      41984,
+      containerName,
+    );
     await store.updateDeploymentStatus(deployment.id, "stopped");
     const { adapter, stopProcess } = fakeAdapter("docker", [containerName]);
     const reap = createOrphanProcessReaper(store, {
@@ -259,7 +283,12 @@ describe("control-plane-stopped deployments", () => {
   test("still adopts a running deployment's unmanaged process", async () => {
     const store = createTestStore();
     const containerName = "eveland-proj_run-dep_run88";
-    const { deployment } = await deploymentFixture(store, "Running Sweep Agent", 41985, containerName);
+    const { deployment } = await deploymentFixture(
+      store,
+      "Running Sweep Agent",
+      41985,
+      containerName,
+    );
     await store.updateDeploymentStatus(deployment.id, "running");
     const { adapter, stopProcess } = fakeAdapter("docker", [containerName]);
     const reap = createOrphanProcessReaper(store, {

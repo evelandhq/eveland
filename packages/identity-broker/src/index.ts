@@ -33,9 +33,7 @@ export class IdentityBrokerError extends Error {
 }
 
 export type IdentityBrokerPersistence = {
-  getIdentityProviderConnection(
-    id: string,
-  ): Promise<IdentityProviderConnection | null>;
+  getIdentityProviderConnection(id: string): Promise<IdentityProviderConnection | null>;
   getIdentityRealmByExternalId(
     providerConnectionId: string,
     externalRealmId: string,
@@ -53,22 +51,12 @@ export type IdentityBrokerPersistence = {
     activeIdentityRealmId: string;
     expiresAt: Date;
   }): Promise<IdentitySession>;
-  getActiveIdentitySession(
-    tokenHash: string,
-    now?: Date,
-  ): Promise<IdentitySession | null>;
+  getActiveIdentitySession(tokenHash: string, now?: Date): Promise<IdentitySession | null>;
   getIdentityPrincipal(id: string): Promise<IdentityPrincipal | null>;
   getIdentityRealm(id: string): Promise<IdentityRealm | null>;
-  revokeIdentitySession(
-    id: string,
-    now?: Date,
-  ): Promise<IdentitySession | null>;
-  getProject(
-    projectId: string,
-  ): Promise<Pick<Project, "id" | "deletionStatus"> | null>;
-  getIdentityReturnTargetByKey(
-    key: string,
-  ): Promise<IdentityReturnTarget | null>;
+  revokeIdentitySession(id: string, now?: Date): Promise<IdentitySession | null>;
+  getProject(projectId: string): Promise<Pick<Project, "id" | "deletionStatus"> | null>;
+  getIdentityReturnTargetByKey(key: string): Promise<IdentityReturnTarget | null>;
   listIdentitySigningKeys(): Promise<IdentitySigningKey[]>;
   getActiveIdentitySigningKey(now?: Date): Promise<IdentitySigningKey | null>;
   createIdentitySigningKey(input: {
@@ -123,11 +111,7 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
       connection.id,
       input.identity.externalRealmId,
     );
-    if (
-      !realm ||
-      !realm.enabled ||
-      realm.externalRealmKind !== input.identity.externalRealmKind
-    ) {
+    if (!realm || !realm.enabled || realm.externalRealmKind !== input.identity.externalRealmKind) {
       throw new IdentityBrokerError(
         "identity_realm_not_allowed",
         403,
@@ -137,10 +121,7 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
 
     const principal = await options.store.upsertIdentityPrincipal({
       identityRealmId: realm.id,
-      externalSubject: requiredIdentityValue(
-        input.identity.externalSubject,
-        "External subject",
-      ),
+      externalSubject: requiredIdentityValue(input.identity.externalSubject, "External subject"),
       displayName: optionalIdentityValue(input.identity.displayName),
       email: optionalIdentityValue(input.identity.email),
       claims: {},
@@ -151,9 +132,7 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
       tokenHash: hashIdentityToken(sessionToken),
       identityPrincipalId: principal.id,
       activeIdentityRealmId: realm.id,
-      expiresAt: new Date(
-        current.getTime() + identitySessionTtlSeconds * 1_000,
-      ),
+      expiresAt: new Date(current.getTime() + identitySessionTtlSeconds * 1_000),
     });
     return { sessionToken, session, principal, realm };
   }
@@ -177,16 +156,10 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
         "The Eveland Identity Session is missing, expired, or revoked.",
       );
     }
-    const principal = await options.store.getIdentityPrincipal(
-      session.identityPrincipalId,
-    );
-    const realm = await options.store.getIdentityRealm(
-      session.activeIdentityRealmId,
-    );
+    const principal = await options.store.getIdentityPrincipal(session.identityPrincipalId);
+    const realm = await options.store.getIdentityRealm(session.activeIdentityRealmId);
     const connection = realm
-      ? await options.store.getIdentityProviderConnection(
-          realm.providerConnectionId,
-        )
+      ? await options.store.getIdentityProviderConnection(realm.providerConnectionId)
       : null;
     if (
       !principal ||
@@ -229,9 +202,7 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
       aud: callerTokenAudience(project.id),
       principal_type: "user",
       realm_id: resolved.realm.id,
-      ...(resolved.principal.displayName
-        ? { name: resolved.principal.displayName }
-        : {}),
+      ...(resolved.principal.displayName ? { name: resolved.principal.displayName } : {}),
       ...(resolved.principal.email ? { email: resolved.principal.email } : {}),
       ...(input.agentUrl ? { agent_url: input.agentUrl } : {}),
       iat: issuedAt,
@@ -250,15 +221,9 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
     };
   }
 
-  async function issueAppToken(input: {
-    sessionToken: string;
-    targetKey: string;
-    origin: string;
-  }) {
+  async function issueAppToken(input: { sessionToken: string; targetKey: string; origin: string }) {
     const resolved = await resolveSession(input.sessionToken);
-    const target = await options.store.getIdentityReturnTargetByKey(
-      input.targetKey,
-    );
+    const target = await options.store.getIdentityReturnTargetByKey(input.targetKey);
     if (!target?.enabled || target.origin !== input.origin) {
       throw new IdentityBrokerError(
         "identity_return_target_invalid",
@@ -349,11 +314,7 @@ async function signIdentityJwt(
   });
   const encodedPayload = encodeJson(payload);
   const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const privateKey = openPrivateKey(
-    key.privateKeyEncrypted,
-    options.appSecretKey,
-    key.id,
-  );
+  const privateKey = openPrivateKey(key.privateKeyEncrypted, options.appSecretKey, key.id);
   const signature = sign("sha256", Buffer.from(signingInput), {
     key: privateKey,
     dsaEncoding: "ieee-p1363",
@@ -380,10 +341,7 @@ function assertRelativeReturnPath(value: string): void {
   }
 }
 
-async function ensureActiveSigningKey(
-  options: IdentityBrokerOptions,
-  current: Date,
-) {
+async function ensureActiveSigningKey(options: IdentityBrokerOptions, current: Date) {
   const existing = await options.store.getActiveIdentitySigningKey(current);
   if (existing) return existing;
   const { privateKey, publicKey } = generateKeyPairSync("ec", {
@@ -396,11 +354,7 @@ async function ensureActiveSigningKey(
     id,
     algorithm: "ES256",
     publicJwk: { ...publicJwk, kid: id, alg: "ES256", use: "sig" },
-    privateKeyEncrypted: sealPrivateKey(
-      privatePem,
-      options.appSecretKey,
-      id,
-    ),
+    privateKeyEncrypted: sealPrivateKey(privatePem, options.appSecretKey, id),
     status: "active",
     notBefore: new Date(current.getTime() - 1_000),
     expiresAt: new Date(current.getTime() + 90 * 24 * 60 * 60 * 1_000),
@@ -412,10 +366,7 @@ function sealPrivateKey(value: string, appSecretKey: string, keyId: string): str
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   cipher.setAAD(Buffer.from(`eveland:identity:signing-key:v1:${keyId}`));
-  const ciphertext = Buffer.concat([
-    cipher.update(value, "utf8"),
-    cipher.final(),
-  ]);
+  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return JSON.stringify({
     version: 1,
     iv: iv.toString("base64url"),
@@ -462,9 +413,7 @@ function identitySigningEncryptionKey(appSecretKey: string): Buffer {
   // way, and changing the derivation input would orphan every persisted
   // Identity signing key. Normalize only alongside a versioned envelope
   // migration when the sealed-envelope implementations are unified.
-  return createHmac("sha256", appSecretKey)
-    .update("eveland:identity:signing-key:v1")
-    .digest();
+  return createHmac("sha256", appSecretKey).update("eveland:identity:signing-key:v1").digest();
 }
 
 function encodeJson(value: unknown): string {

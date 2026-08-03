@@ -38,7 +38,9 @@ export interface ResolvedBwrapSandboxOptions {
   readonly templateRevision: string | null;
 }
 
-export function resolveBwrapSandboxOptions(options: BwrapSandboxCreateOptions = {}): ResolvedBwrapSandboxOptions {
+export function resolveBwrapSandboxOptions(
+  options: BwrapSandboxCreateOptions = {},
+): ResolvedBwrapSandboxOptions {
   return {
     env: options.env ?? {},
     networkPolicy: options.networkPolicy ?? "allow-all",

@@ -22,24 +22,21 @@ export const EVE_COMPATIBILITY_POLICY = {
 export type SupportedEveVersionRange =
   (typeof EVE_COMPATIBILITY_POLICY.supportedLines)[number]["range"];
 
-export const SUPPORTED_EVE_VERSION_RANGES =
-  EVE_COMPATIBILITY_POLICY.supportedLines.map(
-    ({ range }) => range,
-  ) as readonly SupportedEveVersionRange[];
+export const SUPPORTED_EVE_VERSION_RANGES = EVE_COMPATIBILITY_POLICY.supportedLines.map(
+  ({ range }) => range,
+) as readonly SupportedEveVersionRange[];
 
-export const VERIFIED_EVE_VERSIONS =
-  EVE_COMPATIBILITY_POLICY.supportedLines.map(
-    ({ verifiedVersion }) => verifiedVersion,
-  );
+export const VERIFIED_EVE_VERSIONS = EVE_COMPATIBILITY_POLICY.supportedLines.map(
+  ({ verifiedVersion }) => verifiedVersion,
+);
 
 export const OLDEST_VERIFIED_EVE_VERSION = VERIFIED_EVE_VERSIONS[0]!;
 
-export const LATEST_VERIFIED_EVE_VERSION =
-  VERIFIED_EVE_VERSIONS[VERIFIED_EVE_VERSIONS.length - 1]!;
+export const LATEST_VERIFIED_EVE_VERSION = VERIFIED_EVE_VERSIONS[VERIFIED_EVE_VERSIONS.length - 1]!;
 
-export const SUPPORTED_EVE_VERSION_RANGE = `${SUPPORTED_EVE_VERSION_RANGES
-  .slice(0, -1)
-  .join(", ")}, or ${SUPPORTED_EVE_VERSION_RANGES.at(-1)}`;
+export const SUPPORTED_EVE_VERSION_RANGE = `${SUPPORTED_EVE_VERSION_RANGES.slice(0, -1).join(
+  ", ",
+)}, or ${SUPPORTED_EVE_VERSION_RANGES.at(-1)}`;
 
 export type EveVersionInfo = {
   version: string | null;
@@ -57,14 +54,10 @@ export function isSupportedEveDependency(specifier: string | null): boolean {
   if (operator && (patch === undefined || patch === "x" || patch === "*")) {
     return false;
   }
-  return SUPPORTED_EVE_VERSION_RANGES.includes(
-    `${minor}.x` as SupportedEveVersionRange,
-  );
+  return SUPPORTED_EVE_VERSION_RANGES.includes(`${minor}.x` as SupportedEveVersionRange);
 }
 
-export function unsupportedEveVersionMessage(
-  specifier: string | null,
-): string {
+export function unsupportedEveVersionMessage(specifier: string | null): string {
   if (specifier === null) {
     return `Missing Eve dependency. Eveland requires Eve ${SUPPORTED_EVE_VERSION_RANGE}. Add the "eve" dependency before importing or deploying.`;
   }

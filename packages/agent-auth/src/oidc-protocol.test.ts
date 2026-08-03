@@ -15,22 +15,26 @@ describe("openid-client OIDC protocol", () => {
     const url = new URL(request.url ?? "/", issuer || "http://127.0.0.1");
     response.setHeader("content-type", "application/json");
     if (url.pathname === "/.well-known/openid-configuration") {
-      response.end(JSON.stringify({
-        issuer,
-        authorization_endpoint: `${issuer}/authorize`,
-        token_endpoint: `${issuer}/token`,
-        userinfo_endpoint: `${issuer}/userinfo`,
-        jwks_uri: `${issuer}/jwks`,
-        response_types_supported: ["code"],
-        subject_types_supported: ["public"],
-        id_token_signing_alg_values_supported: ["RS256"],
-        token_endpoint_auth_methods_supported: ["none"],
-        code_challenge_methods_supported: ["S256"],
-      }));
+      response.end(
+        JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          userinfo_endpoint: `${issuer}/userinfo`,
+          jwks_uri: `${issuer}/jwks`,
+          response_types_supported: ["code"],
+          subject_types_supported: ["public"],
+          id_token_signing_alg_values_supported: ["RS256"],
+          token_endpoint_auth_methods_supported: ["none"],
+          code_challenge_methods_supported: ["S256"],
+        }),
+      );
       return;
     }
     if (url.pathname === "/jwks") {
-      response.end(JSON.stringify({ keys: [{ ...publicJwk, kid: "test-key", use: "sig", alg: "RS256" }] }));
+      response.end(
+        JSON.stringify({ keys: [{ ...publicJwk, kid: "test-key", use: "sig", alg: "RS256" }] }),
+      );
       return;
     }
     if (url.pathname === "/token") {
@@ -44,22 +48,27 @@ describe("openid-client OIDC protocol", () => {
           return;
         }
       }
-      response.end(JSON.stringify({
-        access_token: body.get("grant_type") === "refresh_token" ? "refreshed-token" : "opaque-access-token",
-        refresh_token: "refresh-token",
-        token_type: "Bearer",
-        expires_in: 300,
-        ...(body.get("grant_type") === "refresh_token" ? {} : {
-          id_token: jwt(privateKey, {
-            iss: issuer,
-            aud: "test-client",
-            sub: "idp-user",
-            nonce: expectedNonce,
-            iat: Math.floor(Date.now() / 1000),
-            exp: Math.floor(Date.now() / 1000) + 300,
-          }),
+      response.end(
+        JSON.stringify({
+          access_token:
+            body.get("grant_type") === "refresh_token" ? "refreshed-token" : "opaque-access-token",
+          refresh_token: "refresh-token",
+          token_type: "Bearer",
+          expires_in: 300,
+          ...(body.get("grant_type") === "refresh_token"
+            ? {}
+            : {
+                id_token: jwt(privateKey, {
+                  iss: issuer,
+                  aud: "test-client",
+                  sub: "idp-user",
+                  nonce: expectedNonce,
+                  iat: Math.floor(Date.now() / 1000),
+                  exp: Math.floor(Date.now() / 1000) + 300,
+                }),
+              }),
         }),
-      }));
+      );
       return;
     }
     if (url.pathname === "/userinfo") {
@@ -74,7 +83,8 @@ describe("openid-client OIDC protocol", () => {
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     const address = server.address();
-    if (!address || typeof address === "string") throw new Error("Mock IdP did not bind a TCP port.");
+    if (!address || typeof address === "string")
+      throw new Error("Mock IdP did not bind a TCP port.");
     issuer = `http://127.0.0.1:${address.port}`;
   });
   afterAll(() => server.close());
@@ -117,9 +127,17 @@ describe("openid-client OIDC protocol", () => {
       transaction,
       new URL(`${transaction.redirectUri}?code=test-code&state=${transaction.state}`),
     );
-    expect(token).toMatchObject({ accessToken: "opaque-access-token", refreshToken: "refresh-token", subject: "idp-user" });
-    await expect(protocol.fetchUserInfo(config, undefined, token.accessToken, token.subject)).resolves.toEqual({ subject: "idp-user" });
-    await expect(protocol.refresh(config, undefined, token.refreshToken!, token.subject)).resolves.toMatchObject({
+    expect(token).toMatchObject({
+      accessToken: "opaque-access-token",
+      refreshToken: "refresh-token",
+      subject: "idp-user",
+    });
+    await expect(
+      protocol.fetchUserInfo(config, undefined, token.accessToken, token.subject),
+    ).resolves.toEqual({ subject: "idp-user" });
+    await expect(
+      protocol.refresh(config, undefined, token.refreshToken!, token.subject),
+    ).resolves.toMatchObject({
       accessToken: "refreshed-token",
       subject: "idp-user",
     });
@@ -128,16 +146,21 @@ describe("openid-client OIDC protocol", () => {
 
 async function readBody(request: import("node:http").IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  for await (const chunk of request)
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   return Buffer.concat(chunks).toString("utf8");
 }
 
 async function pkceChallenge(verifier: string): Promise<string> {
-  return Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))).toString("base64url");
+  return Buffer.from(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+  ).toString("base64url");
 }
 
 function jwt(key: import("node:crypto").KeyObject, payload: Record<string, unknown>): string {
-  const header = Buffer.from(JSON.stringify({ alg: "RS256", kid: "test-key", typ: "JWT" })).toString("base64url");
+  const header = Buffer.from(
+    JSON.stringify({ alg: "RS256", kid: "test-key", typ: "JWT" }),
+  ).toString("base64url");
   const claims = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const input = `${header}.${claims}`;
   return `${input}.${sign("RSA-SHA256", Buffer.from(input), key).toString("base64url")}`;
@@ -156,16 +179,18 @@ describe("discovery SSRF hardening", () => {
     const innerServer = createServer((_request, response) => {
       innerHits += 1;
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({
-        issuer: innerIssuer,
-        authorization_endpoint: `${innerIssuer}/authorize`,
-        token_endpoint: `${innerIssuer}/token`,
-        jwks_uri: `${innerIssuer}/jwks`,
-        response_types_supported: ["code"],
-        subject_types_supported: ["public"],
-        id_token_signing_alg_values_supported: ["RS256"],
-        token_endpoint_auth_methods_supported: ["none"],
-      }));
+      response.end(
+        JSON.stringify({
+          issuer: innerIssuer,
+          authorization_endpoint: `${innerIssuer}/authorize`,
+          token_endpoint: `${innerIssuer}/token`,
+          jwks_uri: `${innerIssuer}/jwks`,
+          response_types_supported: ["code"],
+          subject_types_supported: ["public"],
+          id_token_signing_alg_values_supported: ["RS256"],
+          token_endpoint_auth_methods_supported: ["none"],
+        }),
+      );
     });
     innerServer.listen(0, "127.0.0.1");
     await once(innerServer, "listening");

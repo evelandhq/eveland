@@ -23,10 +23,12 @@ export function buildWorkflowWorldInstallCommand(
 ): string {
   if (packageManager === "pnpm") {
     const packageSpec = `${config.packageName}@${config.packageVersion}`;
-    return "manifest_backup=\"$(mktemp)\"" +
-      " && cp package.json \"$manifest_backup\"" +
-      " && trap 'cp \"$manifest_backup\" package.json; rm -f \"$manifest_backup\"' EXIT" +
-      ` && pnpm add --lockfile=false --ignore-scripts ${PNPM_RELEASE_AGE_CONFIG} ${packageSpec}`;
+    return (
+      'manifest_backup="$(mktemp)"' +
+      ' && cp package.json "$manifest_backup"' +
+      ' && trap \'cp "$manifest_backup" package.json; rm -f "$manifest_backup"\' EXIT' +
+      ` && pnpm add --lockfile=false --ignore-scripts ${PNPM_RELEASE_AGE_CONFIG} ${packageSpec}`
+    );
   }
   return `npm install --no-save --package-lock=false --ignore-scripts ${config.packageName}@${config.packageVersion}`;
 }
@@ -112,9 +114,15 @@ export default {
 }
 
 async function isDirectory(target: string): Promise<boolean> {
-  return readdir(target).then(() => true, () => false);
+  return readdir(target).then(
+    () => true,
+    () => false,
+  );
 }
 
 async function exists(target: string): Promise<boolean> {
-  return access(target).then(() => true, () => false);
+  return access(target).then(
+    () => true,
+    () => false,
+  );
 }

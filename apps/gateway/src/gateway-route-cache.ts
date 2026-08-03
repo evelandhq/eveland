@@ -16,10 +16,7 @@ export function createGatewayRouteCache(input: {
   ttlMs: number;
   maxEntries: number;
 }): GatewayRouteCache {
-  const entries = new Map<
-    string,
-    { route: ResolvedAgentRoute | null; expiresAt: number }
-  >();
+  const entries = new Map<string, { route: ResolvedAgentRoute | null; expiresAt: number }>();
   return {
     read(hostname) {
       const entry = entries.get(hostname);

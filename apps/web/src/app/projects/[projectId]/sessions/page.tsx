@@ -5,7 +5,14 @@ import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatTokenCount, summarizeTokenUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +45,7 @@ export default async function SessionsPage({
 }) {
   const [{ projectId }, query] = await Promise.all([params, searchParams]);
   const sessionTrigger =
-    query.trigger && sessionTriggers.has(query.trigger)
-      ? query.trigger
-      : undefined;
+    query.trigger && sessionTriggers.has(query.trigger) ? query.trigger : undefined;
   const [sessionPage, schedules] = await Promise.all([
     getSessionsPage(projectId, {
       trigger: sessionTrigger,
@@ -50,26 +55,20 @@ export default async function SessionsPage({
     }),
     getSchedules(projectId),
   ]);
-  const scheduleKeys = new Map(
-    schedules.map(({ schedule }) => [schedule.id, schedule.key]),
-  );
-  const usage = summarizeTokenUsage(
-    sessionPage.sessions.map((session) => session.usage),
-  );
+  const scheduleKeys = new Map(schedules.map(({ schedule }) => [schedule.id, schedule.key]));
+  const usage = summarizeTokenUsage(sessionPage.sessions.map((session) => session.usage));
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Sessions</CardTitle>
         <CardDescription>
-          Eve Sessions are ordered by start time. Schedule execution history is
-          available under Schedules.
+          Eve Sessions are ordered by start time. Schedule execution history is available under
+          Schedules.
         </CardDescription>
         <dl className="flex flex-wrap items-center gap-6 pt-2">
           <div>
-            <dt className="text-xs text-muted-foreground">
-              Tokens on this page
-            </dt>
+            <dt className="text-xs text-muted-foreground">Tokens on this page</dt>
             <dd className="font-mono font-medium">
               {usage.status === "none" || usage.status === "missing"
                 ? "—"
@@ -79,8 +78,7 @@ export default async function SessionsPage({
           <div>
             <dt className="text-xs text-muted-foreground">Input / output</dt>
             <dd className="font-mono font-medium">
-              {formatTokenCount(usage.inputTokens)} /{" "}
-              {formatTokenCount(usage.outputTokens)}
+              {formatTokenCount(usage.inputTokens)} / {formatTokenCount(usage.outputTokens)}
             </dd>
           </div>
         </dl>
@@ -90,9 +88,7 @@ export default async function SessionsPage({
           <Empty>
             <EmptyHeader>
               <EmptyTitle>No matching Sessions</EmptyTitle>
-              <EmptyDescription>
-                No Eve Sessions match the current filters.
-              </EmptyDescription>
+              <EmptyDescription>No Eve Sessions match the current filters.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -119,8 +115,7 @@ export default async function SessionsPage({
                   </TableCell>
                   <TableCell className="text-xs">
                     <span>{triggerLabel(session.trigger)}</span>
-                    {session.scheduleId &&
-                    scheduleKeys.has(session.scheduleId) ? (
+                    {session.scheduleId && scheduleKeys.has(session.scheduleId) ? (
                       <span className="text-muted-foreground">
                         {" "}
                         · {scheduleKeys.get(session.scheduleId)}
@@ -163,11 +158,7 @@ function triggerLabel(trigger: string): string {
     .join(" ");
 }
 
-function tokenTotal(usage: {
-  status: string;
-  inputTokens: number;
-  outputTokens: number;
-}): string {
+function tokenTotal(usage: { status: string; inputTokens: number; outputTokens: number }): string {
   return usage.status === "none" || usage.status === "missing"
     ? "—"
     : formatTokenCount(usage.inputTokens + usage.outputTokens);

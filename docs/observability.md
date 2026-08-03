@@ -22,12 +22,12 @@ Built-in 读模型，不定义私有遥测协议。
 
 Eveland 自有遥测分为四个稳定 domain：
 
-| Domain | Producer | 内容 |
-| --- | --- | --- |
-| `agent` | 注入 Eve hook 的私有 provider | Session、Turn、Model、Tool、Subagent、provider usage |
-| `platform` | API、Gateway、Worker、Collector | HTTP、DB、job、组件和进程信号 |
-| `runtime` | Worker 私有 logger | build、deploy、runtime lifecycle 日志 |
-| `capacity` | Worker 私有 meter | CPU、memory、load、filesystem、inode、workload、heartbeat |
+| Domain     | Producer                        | 内容                                                      |
+| ---------- | ------------------------------- | --------------------------------------------------------- |
+| `agent`    | 注入 Eve hook 的私有 provider   | Session、Turn、Model、Tool、Subagent、provider usage      |
+| `platform` | API、Gateway、Worker、Collector | HTTP、DB、job、组件和进程信号                             |
+| `runtime`  | Worker 私有 logger              | build、deploy、runtime lifecycle 日志                     |
+| `capacity` | Worker 私有 meter               | CPU、memory、load、filesystem、inode、workload、heartbeat |
 
 ## 最终数据流
 
@@ -142,10 +142,10 @@ Agent turn 继续执行。
 
 Collector 使用两个 receiver：
 
-| Receiver | 端口 | 调用方 | 信任方式 |
-| --- | --- | --- | --- |
-| Platform | gRPC `4317` / HTTP `4318` | API、Gateway、Worker | `EVELAND_OTLP_SERVICE_TOKEN` |
-| Agent | gRPC `4327` / HTTP `4328` | Eve Deployments | 私有网络与每 Deployment credential |
+| Receiver | 端口                      | 调用方               | 信任方式                           |
+| -------- | ------------------------- | -------------------- | ---------------------------------- |
+| Platform | gRPC `4317` / HTTP `4318` | API、Gateway、Worker | `EVELAND_OTLP_SERVICE_TOKEN`       |
+| Agent    | gRPC `4327` / HTTP `4328` | Eve Deployments      | 私有网络与每 Deployment credential |
 
 Receiver 不公开到 Internet。
 
@@ -191,11 +191,11 @@ Built-in 是固定平台能力：
 
 Managed Collector 只向 Built-in 发送：
 
-| Signal | 来源 | Built-in 结果 |
-| --- | --- | --- |
-| Logs | `agent` | Sessions、Session nodes/events、provider-reported Usage |
-| Metrics | Worker `capacity` | Worker heartbeat、host capacity、Instance Health |
-| Traces | 不发送 | 没有 Built-in trace read model |
+| Signal  | 来源              | Built-in 结果                                           |
+| ------- | ----------------- | ------------------------------------------------------- |
+| Logs    | `agent`           | Sessions、Session nodes/events、provider-reported Usage |
+| Metrics | Worker `capacity` | Worker heartbeat、host capacity、Instance Health        |
+| Traces  | 不发送            | 没有 Built-in trace read model                          |
 
 Built-in 不保存 raw spans、raw LogRecords、raw Metric Points、trace tree、平台统计或
 Collector delivery diagnostics。Session 详情展示投影后的 root/child node、事件和
@@ -209,11 +209,11 @@ signal、payload hash 和接收时间，用于重投幂等与 Collector 在线�
 
 Retention 是固定平台默认值：
 
-| 数据 | Retention |
-| --- | --- |
-| Capacity samples | 30 天 |
-| Session / Usage read models | 90 天 |
-| OTLP batch receipts | 24 小时 |
+| 数据                        | Retention |
+| --------------------------- | --------- |
+| Capacity samples            | 30 天     |
+| Session / Usage read models | 90 天     |
+| OTLP batch receipts         | 24 小时   |
 
 运行中的 Session 不参与清理。外部产品已经接收的数据不受 Built-in retention 影响。
 
@@ -222,11 +222,11 @@ Retention 是固定平台默认值：
 只有 Admin 可以在 **Settings → Observability** 管理外部目的地和 Agent capture
 策略。页面不承担监控数据展示。
 
-| Destination | Signals | Domains | 行为 |
-| --- | --- | --- | --- |
-| Elastic | traces、logs、metrics | 全部 Eveland domains | 完整平台与 Agent 遥测 |
-| Langfuse | traces | `agent` | Agent/GenAI trace |
-| Custom OTLP/HTTP | Admin 选择 | Admin 选择 | 按配置过滤 |
+| Destination      | Signals               | Domains              | 行为                  |
+| ---------------- | --------------------- | -------------------- | --------------------- |
+| Elastic          | traces、logs、metrics | 全部 Eveland domains | 完整平台与 Agent 遥测 |
+| Langfuse         | traces                | `agent`              | Agent/GenAI trace     |
+| Custom OTLP/HTTP | Admin 选择            | Admin 选择           | 按配置过滤            |
 
 Langfuse 设置只要求 installation base URL，例如
 `https://us.cloud.langfuse.com`。Eveland 派生
@@ -275,15 +275,15 @@ hostname/IP allowlist 放行，不支持通配符。
 
 ## 实现位置
 
-| 位置 | 职责 |
-| --- | --- |
-| `packages/agent-observer` | Eve hook 注入、私有 providers、event/GenAI 映射、动态 policy |
-| `packages/platform-observability` | API、Gateway、Worker OTel SDK 与 capacity/runtime providers |
-| `packages/session-collector` | 标准 OTLP JSON/protobuf 解码和 Built-in 投影 |
-| `packages/core/src/observability` | policy、destination、runtime 和 signal contracts |
-| `packages/db` | policy、destination health、batch receipt、Session/Usage/Instance Health persistence |
-| `apps/api/src/app-otel-routes.ts` | service-authenticated Built-in OTLP ingest |
-| `apps/api/src/observability` | policy service 与安全 egress |
-| `apps/worker/src/jobs/collector-observability` | Collector 配置生成、验证、应用和健康协调 |
-| `apps/web/src/app/settings/observability` | external destinations 与 Agent capture 设置 |
-| `infra/otel/collector.yaml` | 默认 managed Collector 配置 |
+| 位置                                           | 职责                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `packages/agent-observer`                      | Eve hook 注入、私有 providers、event/GenAI 映射、动态 policy                         |
+| `packages/platform-observability`              | API、Gateway、Worker OTel SDK 与 capacity/runtime providers                          |
+| `packages/session-collector`                   | 标准 OTLP JSON/protobuf 解码和 Built-in 投影                                         |
+| `packages/core/src/observability`              | policy、destination、runtime 和 signal contracts                                     |
+| `packages/db`                                  | policy、destination health、batch receipt、Session/Usage/Instance Health persistence |
+| `apps/api/src/app-otel-routes.ts`              | service-authenticated Built-in OTLP ingest                                           |
+| `apps/api/src/observability`                   | policy service 与安全 egress                                                         |
+| `apps/worker/src/jobs/collector-observability` | Collector 配置生成、验证、应用和健康协调                                             |
+| `apps/web/src/app/settings/observability`      | external destinations 与 Agent capture 设置                                          |
+| `infra/otel/collector.yaml`                    | 默认 managed Collector 配置                                                          |

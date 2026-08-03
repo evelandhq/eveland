@@ -42,8 +42,7 @@ describe("runtime deployment start spec", () => {
       },
       commandContext: common.launchContext.commandContext,
       sandboxCacheDir: common.launchContext.sandboxCacheDirs.hostDir,
-      observabilityPolicyDir:
-        common.launchContext.observabilityPolicyDirs.hostDir,
+      observabilityPolicyDir: common.launchContext.observabilityPolicyDirs.hostDir,
     });
     expect(
       createDeploymentStartInput({
@@ -60,8 +59,7 @@ describe("runtime deployment start spec", () => {
       },
       commandContext: common.launchContext.commandContext,
       sandboxCacheDir: common.launchContext.sandboxCacheDirs.workerDir,
-      observabilityPolicyDir:
-        common.launchContext.observabilityPolicyDirs.workerDir,
+      observabilityPolicyDir: common.launchContext.observabilityPolicyDirs.workerDir,
     });
   });
 });

@@ -257,14 +257,38 @@ describe("SQL Store usage analytics", () => {
         costUsd: 0.002,
       });
       expect(workspace.series).toHaveLength(24);
-      expect(workspace.series.reduce((total: number, point: { modelSteps: number }) => total + point.modelSteps, 0)).toBe(3);
+      expect(
+        workspace.series.reduce(
+          (total: number, point: { modelSteps: number }) => total + point.modelSteps,
+          0,
+        ),
+      ).toBe(3);
       expect(workspace.projects).toEqual([
-        expect.objectContaining({ projectId: support.id, projectName: "support-agent", sessions: 1, modelSteps: 2 }),
-        expect.objectContaining({ projectId: research.id, projectName: "research-agent", sessions: 1, modelSteps: 1 }),
+        expect.objectContaining({
+          projectId: support.id,
+          projectName: "support-agent",
+          sessions: 1,
+          modelSteps: 2,
+        }),
+        expect.objectContaining({
+          projectId: research.id,
+          projectName: "research-agent",
+          sessions: 1,
+          modelSteps: 1,
+        }),
       ]);
       expect(workspace.models).toEqual([
-        expect.objectContaining({ modelId: "openai/gpt-5-mini", sessions: 1, modelSteps: 2, missingSteps: 1 }),
-        expect.objectContaining({ modelId: "anthropic/claude-sonnet-4", sessions: 1, modelSteps: 1 }),
+        expect.objectContaining({
+          modelId: "openai/gpt-5-mini",
+          sessions: 1,
+          modelSteps: 2,
+          missingSteps: 1,
+        }),
+        expect.objectContaining({
+          modelId: "anthropic/claude-sonnet-4",
+          sessions: 1,
+          modelSteps: 1,
+        }),
       ]);
       expect(workspace.agentModels).toEqual([
         expect.objectContaining({
@@ -287,7 +311,12 @@ describe("SQL Store usage analytics", () => {
         projectId: support.id,
         now: new Date("2026-07-20T12:00:00.000Z"),
       });
-      expect(project.summary).toMatchObject({ sessions: 1, modelSteps: 2, inputTokens: 100, outputTokens: 20 });
+      expect(project.summary).toMatchObject({
+        sessions: 1,
+        modelSteps: 2,
+        inputTokens: 100,
+        outputTokens: 20,
+      });
       expect(project.projects).toEqual([
         expect.objectContaining({ projectId: support.id, projectName: "support-agent" }),
       ]);
@@ -298,7 +327,12 @@ describe("SQL Store usage analytics", () => {
         modelId: "openai/gpt-5-mini",
         now: new Date("2026-07-20T12:00:00.000Z"),
       });
-      expect(model.summary).toMatchObject({ sessions: 1, modelSteps: 2, inputTokens: 100, outputTokens: 20 });
+      expect(model.summary).toMatchObject({
+        sessions: 1,
+        modelSteps: 2,
+        inputTokens: 100,
+        outputTokens: 20,
+      });
       expect(model.models).toEqual([
         expect.objectContaining({ modelId: "openai/gpt-5-mini", modelSteps: 2 }),
         expect.objectContaining({
@@ -306,9 +340,7 @@ describe("SQL Store usage analytics", () => {
           modelSteps: 1,
         }),
       ]);
-      expect(model.recentSessions).toEqual([
-        expect.objectContaining({ id: supportSession.id }),
-      ]);
+      expect(model.recentSessions).toEqual([expect.objectContaining({ id: supportSession.id })]);
 
       // Pin the dimensions a future SQL push-down could silently change: which
       // bucket each event lands in, that a model filter narrows agentModels

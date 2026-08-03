@@ -1,8 +1,5 @@
 import { expect, test } from "vitest";
-import type {
-  IdentityBrokerOptions,
-  IdentityBrokerPersistence,
-} from "./index.js";
+import type { IdentityBrokerOptions, IdentityBrokerPersistence } from "./index.js";
 
 const unsupported = async (): Promise<never> => {
   throw new Error("Persistence is not exercised by this contract test.");

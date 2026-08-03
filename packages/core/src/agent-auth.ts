@@ -51,39 +51,51 @@ const reservedCredentialHeaders = new Set([
   "upgrade",
 ]);
 
-const credentialHeaderSchema = z.tuple([
-  z.string().min(1).max(256),
-  z.string().max(16_384),
-]).superRefine(([name, value], context) => {
-  const normalized = name.toLowerCase();
-  if (
-    !/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(name)
-    || reservedCredentialHeaders.has(normalized)
-    || normalized.startsWith("proxy-")
-    || normalized.startsWith("x-forwarded-")
-    || normalized.startsWith("x-eveland-")
-    || /[\u0000-\u0008\u000A-\u001F\u007F]/.test(value)
-  ) {
-    context.addIssue({ code: "custom", message: `Agent credential header ${normalized} is not allowed.` });
-  }
-});
-
-const credentialHeadersSchema = z.array(credentialHeaderSchema).max(32).superRefine((headers, context) => {
-  const seen = new Set<string>();
-  for (const [index, [name]] of headers.entries()) {
+const credentialHeaderSchema = z
+  .tuple([z.string().min(1).max(256), z.string().max(16_384)])
+  .superRefine(([name, value], context) => {
     const normalized = name.toLowerCase();
-    if (seen.has(normalized)) {
-      context.addIssue({ code: "custom", path: [index, 0], message: `Duplicate Agent credential header ${normalized}.` });
+    if (
+      !/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(name) ||
+      reservedCredentialHeaders.has(normalized) ||
+      normalized.startsWith("proxy-") ||
+      normalized.startsWith("x-forwarded-") ||
+      normalized.startsWith("x-eveland-") ||
+      // oxlint-disable-next-line no-control-regex -- rejecting control characters in header values is the point
+      /[\u0000-\u0008\u000A-\u001F\u007F]/.test(value)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: `Agent credential header ${normalized} is not allowed.`,
+      });
     }
-    seen.add(normalized);
-  }
-});
+  });
 
-const envelopeSchema = z.object({
-  version: z.literal(1),
-  authority: z.enum(["loopback", "canonical"]),
-  headers: credentialHeadersSchema,
-}).strict();
+const credentialHeadersSchema = z
+  .array(credentialHeaderSchema)
+  .max(32)
+  .superRefine((headers, context) => {
+    const seen = new Set<string>();
+    for (const [index, [name]] of headers.entries()) {
+      const normalized = name.toLowerCase();
+      if (seen.has(normalized)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, 0],
+          message: `Duplicate Agent credential header ${normalized}.`,
+        });
+      }
+      seen.add(normalized);
+    }
+  });
+
+const envelopeSchema = z
+  .object({
+    version: z.literal(1),
+    authority: z.enum(["loopback", "canonical"]),
+    headers: credentialHeadersSchema,
+  })
+  .strict();
 
 export function parseAgentCredentialHeaders(input: unknown): AgentCredentialHeader[] {
   return credentialHeadersSchema.parse(input);
@@ -108,7 +120,8 @@ function encodeBase64Url(bytes: Uint8Array): string {
 }
 
 function decodeBase64Url(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]*$/.test(value) || value.length % 4 === 1) throw new Error("Invalid base64url value.");
+  if (!/^[A-Za-z0-9_-]*$/.test(value) || value.length % 4 === 1)
+    throw new Error("Invalid base64url value.");
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
   const binary = atob(value.replaceAll("-", "+").replaceAll("_", "/") + padding);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));

@@ -4,13 +4,7 @@ import {
   projectAgentEventsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
 } from "../otlp.js";
-import {
-  anyValue,
-  attribute,
-  gauge,
-  histogram,
-  point,
-} from "./test-support.js";
+import { anyValue, attribute, gauge, histogram, point } from "./test-support.js";
 
 describe("OTLP Agent event projection", () => {
   const projection = {
@@ -43,60 +37,58 @@ describe("OTLP Agent event projection", () => {
       ],
     };
 
-    expect(projectAgentEventItemsFromOtlpLogs(payload, projection)).toEqual([
-      null,
-    ]);
+    expect(projectAgentEventItemsFromOtlpLogs(payload, projection)).toEqual([null]);
     expect(projectAgentEventsFromOtlpLogs(payload, projection)).toEqual([]);
   });
 
   test("maps standard OTLP/HTTP JSON LogRecords to Session observations", () => {
-    const observations = projectAgentEventsFromOtlpLogs({
-      resourceLogs: [
-        {
-          resource: {
-            attributes: [
-              attribute("eveland.telemetry.domain", "agent"),
-              attribute("eveland.deployment.credential", "credential_dep_1"),
-              attribute("eveland.runtime.instance.id", "rti_1"),
-            ],
-          },
-          scopeLogs: [
-            {
-              scope: { name: "@eveland/eve-runtime" },
-              logRecords: [
-                {
-                  timeUnixNano: "1784808000000000000",
-                  attributes: [
-                    attribute("eveland.event.id", "event_1"),
-                    attribute("eveland.event.fingerprint", "fingerprint_1"),
-                    attribute("eveland.eve.session.id", "eve_session_1"),
-                    attribute(
-                      "eveland.eve.parent_session.id",
-                      "eve_parent_1",
-                    ),
-                    attribute("eveland.eve.agent.name", "Researcher"),
-                    attribute("eveland.eve.agent.node.id", "root"),
-                    attribute("eveland.eve.channel.kind", "http"),
-                  ],
-                  body: anyValue({
-                    type: "step.completed",
-                    data: {
-                      sequence: 7,
-                      turnId: "turn_1",
-                      stepIndex: 0,
-                      usage: {
-                        inputTokens: 120,
-                        outputTokens: 30,
-                      },
-                    },
-                  }),
-                },
+    const observations = projectAgentEventsFromOtlpLogs(
+      {
+        resourceLogs: [
+          {
+            resource: {
+              attributes: [
+                attribute("eveland.telemetry.domain", "agent"),
+                attribute("eveland.deployment.credential", "credential_dep_1"),
+                attribute("eveland.runtime.instance.id", "rti_1"),
               ],
             },
-          ],
-        },
-      ],
-    }, projection);
+            scopeLogs: [
+              {
+                scope: { name: "@eveland/eve-runtime" },
+                logRecords: [
+                  {
+                    timeUnixNano: "1784808000000000000",
+                    attributes: [
+                      attribute("eveland.event.id", "event_1"),
+                      attribute("eveland.event.fingerprint", "fingerprint_1"),
+                      attribute("eveland.eve.session.id", "eve_session_1"),
+                      attribute("eveland.eve.parent_session.id", "eve_parent_1"),
+                      attribute("eveland.eve.agent.name", "Researcher"),
+                      attribute("eveland.eve.agent.node.id", "root"),
+                      attribute("eveland.eve.channel.kind", "http"),
+                    ],
+                    body: anyValue({
+                      type: "step.completed",
+                      data: {
+                        sequence: 7,
+                        turnId: "turn_1",
+                        stepIndex: 0,
+                        usage: {
+                          inputTokens: 120,
+                          outputTokens: 30,
+                        },
+                      },
+                    }),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      projection,
+    );
 
     expect(observations).toEqual([
       {
@@ -132,27 +124,28 @@ describe("OTLP Agent event projection", () => {
 
   test("ignores non-Agent resources and malformed LogRecords", () => {
     expect(
-      projectAgentEventsFromOtlpLogs({
-        resourceLogs: [
-          {
-            resource: {
-              attributes: [
-                attribute("eveland.telemetry.domain", "platform"),
+      projectAgentEventsFromOtlpLogs(
+        {
+          resourceLogs: [
+            {
+              resource: {
+                attributes: [attribute("eveland.telemetry.domain", "platform")],
+              },
+              scopeLogs: [
+                {
+                  logRecords: [
+                    {
+                      body: { stringValue: "API ready" },
+                      attributes: [],
+                    },
+                  ],
+                },
               ],
             },
-            scopeLogs: [
-              {
-                logRecords: [
-                  {
-                    body: { stringValue: "API ready" },
-                    attributes: [],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      }, projection),
+          ],
+        },
+        projection,
+      ),
     ).toEqual([]);
   });
 
@@ -225,9 +218,7 @@ describe("OTLP Agent event projection", () => {
       ],
     };
 
-    expect(projectAgentEventItemsFromOtlpLogs(unsigned, projection)).toEqual([
-      null,
-    ]);
+    expect(projectAgentEventItemsFromOtlpLogs(unsigned, projection)).toEqual([null]);
   });
 });
 

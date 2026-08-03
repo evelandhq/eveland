@@ -11,12 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -66,13 +61,11 @@ export function ObservabilityDestinationDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
-            {editing
-              ? `Edit ${destinationKindLabel(draft.kind)}`
-              : "Add external destination"}
+            {editing ? `Edit ${destinationKindLabel(draft.kind)}` : "Add external destination"}
           </DialogTitle>
           <DialogDescription>
-            The managed Collector applies a separate filter, retry queue, and
-            exporter for this destination.
+            The managed Collector applies a separate filter, retry queue, and exporter for this
+            destination.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit}>
@@ -111,9 +104,7 @@ export function ObservabilityDestinationDialog({
 
             <Field>
               <FieldLabel htmlFor={endpointId}>
-                {draft.kind === "langfuse"
-                  ? "Langfuse base URL"
-                  : "OTLP endpoint"}
+                {draft.kind === "langfuse" ? "Langfuse base URL" : "OTLP endpoint"}
               </FieldLabel>
               <Input
                 id={endpointId}
@@ -124,9 +115,7 @@ export function ObservabilityDestinationDialog({
                     ? "https://us.cloud.langfuse.com"
                     : "https://observability.example.com:4318"
                 }
-                onChange={(event) =>
-                  onDraftChange({ endpoint: event.currentTarget.value })
-                }
+                onChange={(event) => onDraftChange({ endpoint: event.currentTarget.value })}
                 required
               />
             </Field>
@@ -134,9 +123,7 @@ export function ObservabilityDestinationDialog({
             {draft.kind === "elastic" ? (
               <>
                 <Field>
-                  <FieldLabel htmlFor={authTypeId}>
-                    Authorization type
-                  </FieldLabel>
+                  <FieldLabel htmlFor={authTypeId}>Authorization type</FieldLabel>
                   <Select
                     items={[
                       { value: "bearer", label: "Bearer token" },
@@ -172,9 +159,7 @@ export function ObservabilityDestinationDialog({
                     }
                     required={storedCredentials === null}
                   />
-                  {storedCredentials ? (
-                    <FieldDescription>{keepStored}</FieldDescription>
-                  ) : null}
+                  {storedCredentials ? <FieldDescription>{keepStored}</FieldDescription> : null}
                 </Field>
               </>
             ) : null}
@@ -187,14 +172,10 @@ export function ObservabilityDestinationDialog({
                     id={publicKeyId}
                     value={draft.publicKey}
                     autoComplete="off"
-                    onChange={(event) =>
-                      onDraftChange({ publicKey: event.currentTarget.value })
-                    }
+                    onChange={(event) => onDraftChange({ publicKey: event.currentTarget.value })}
                     required={storedCredentials === null}
                   />
-                  {storedCredentials ? (
-                    <FieldDescription>{keepStored}</FieldDescription>
-                  ) : null}
+                  {storedCredentials ? <FieldDescription>{keepStored}</FieldDescription> : null}
                 </Field>
                 <Field>
                   <FieldLabel htmlFor={secretKeyId}>Secret key</FieldLabel>
@@ -203,14 +184,10 @@ export function ObservabilityDestinationDialog({
                     type="password"
                     autoComplete="new-password"
                     value={draft.secretKey}
-                    onChange={(event) =>
-                      onDraftChange({ secretKey: event.currentTarget.value })
-                    }
+                    onChange={(event) => onDraftChange({ secretKey: event.currentTarget.value })}
                     required={storedCredentials === null}
                   />
-                  {storedCredentials ? (
-                    <FieldDescription>{keepStored}</FieldDescription>
-                  ) : null}
+                  {storedCredentials ? <FieldDescription>{keepStored}</FieldDescription> : null}
                 </Field>
               </>
             ) : null}
@@ -237,9 +214,7 @@ export function ObservabilityDestinationDialog({
                 <Field>
                   <FieldLabel>Domains</FieldLabel>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {(
-                      ["agent", "platform", "runtime", "capacity"] as const
-                    ).map((domain) => (
+                    {(["agent", "platform", "runtime", "capacity"] as const).map((domain) => (
                       <OptionSwitch
                         key={domain}
                         label={domain}
@@ -259,14 +234,11 @@ export function ObservabilityDestinationDialog({
                     id={headersId}
                     value={draft.headers}
                     placeholder='{"authorization":"Bearer ..."}'
-                    onChange={(event) =>
-                      onDraftChange({ headers: event.currentTarget.value })
-                    }
+                    onChange={(event) => onDraftChange({ headers: event.currentTarget.value })}
                     required={storedCredentials === null}
                   />
                   <FieldDescription>
-                    Header values are encrypted with the destination
-                    configuration.
+                    Header values are encrypted with the destination configuration.
                     {storedCredentials
                       ? ` ${keepStored}${
                           storedCredentials.headerNames.length > 0
@@ -296,11 +268,7 @@ export function ObservabilityDestinationDialog({
             </Button>
             <Button type="submit" disabled={pending}>
               {pending ? <Spinner data-icon="inline-start" /> : null}
-              {pending
-                ? "Saving…"
-                : editing
-                  ? "Save changes"
-                  : "Add destination"}
+              {pending ? "Saving…" : editing ? "Save changes" : "Add destination"}
             </Button>
           </DialogFooter>
         </form>
@@ -321,11 +289,7 @@ function OptionSwitch({
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
       <span className="text-sm capitalize">{label}</span>
-      <Switch
-        aria-label={label}
-        checked={checked}
-        onCheckedChange={onCheckedChange}
-      />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   );
 }

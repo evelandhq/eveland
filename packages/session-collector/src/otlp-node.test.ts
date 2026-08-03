@@ -9,12 +9,7 @@ describe("OTLP protobuf Node.js compatibility", () => {
     const moduleUrl = new URL("./otlp/protobuf.ts", import.meta.url).href;
     const result = await execFileAsync(
       process.execPath,
-      [
-        "--import",
-        "tsx",
-        "--eval",
-        `await import(${JSON.stringify(moduleUrl)})`,
-      ],
+      ["--import", "tsx", "--eval", `await import(${JSON.stringify(moduleUrl)})`],
       {
         cwd: new URL("..", import.meta.url),
       },

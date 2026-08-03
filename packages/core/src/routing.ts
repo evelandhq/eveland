@@ -10,11 +10,16 @@ export const DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS = 86_400_000;
 export const DEFAULT_API_SESSION_IDLE_TTL_MS = 604_800_000;
 
 export function validateRouteTargets(targets: RouteTargetInput[]): void {
-  if (targets.length < 1 || targets.length > 2) throw new Error("A route must have one or two targets.");
+  if (targets.length < 1 || targets.length > 2)
+    throw new Error("A route must have one or two targets.");
   if (new Set(targets.map((target) => target.deploymentId)).size !== targets.length) {
     throw new Error("Route target deployments must be unique.");
   }
-  if (targets.some((target) => !Number.isInteger(target.weight) || target.weight < 0 || target.weight > 10_000)) {
+  if (
+    targets.some(
+      (target) => !Number.isInteger(target.weight) || target.weight < 0 || target.weight > 10_000,
+    )
+  ) {
     throw new Error("Route target weights must be integer basis points between 0 and 10,000.");
   }
   if (targets.reduce((sum, target) => sum + target.weight, 0) !== 10_000) {
@@ -31,7 +36,11 @@ export function affinityBucket(key: string): number {
   return (hash >>> 0) % 10_000;
 }
 
-export function affinityBucketForRoute(routeId: string, policyRevision: number, affinityKey: string): number {
+export function affinityBucketForRoute(
+  routeId: string,
+  policyRevision: number,
+  affinityKey: string,
+): number {
   return affinityBucket(`${routeId}:${policyRevision}:${affinityKey}`);
 }
 
@@ -41,7 +50,9 @@ export function selectWeightedTarget<T extends RouteTargetInput>(
   route?: { id: string; policyRevision: number },
 ): T | null {
   validateRouteTargets(targets);
-  const bucket = route ? affinityBucketForRoute(route.id, route.policyRevision, affinityKey) : affinityBucket(affinityKey);
+  const bucket = route
+    ? affinityBucketForRoute(route.id, route.policyRevision, affinityKey)
+    : affinityBucket(affinityKey);
   let upper = 0;
   for (const target of targets) {
     upper += target.weight;
@@ -56,7 +67,11 @@ export function isDeploymentProtected(input: {
   activeBindingIds: ReadonlySet<string>;
   retainedIds: ReadonlySet<string>;
 }): boolean {
-  return input.routeTargetIds.has(input.deploymentId) || input.activeBindingIds.has(input.deploymentId) || input.retainedIds.has(input.deploymentId);
+  return (
+    input.routeTargetIds.has(input.deploymentId) ||
+    input.activeBindingIds.has(input.deploymentId) ||
+    input.retainedIds.has(input.deploymentId)
+  );
 }
 
 export function isSessionBindingActive(
@@ -69,15 +84,12 @@ export function isSessionBindingActive(
 ): boolean {
   const ttlMs =
     binding.trigger === "playground"
-      ? policy.playgroundIdleTtlMs ??
-        DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS
-      : policy.apiIdleTtlMs ?? DEFAULT_API_SESSION_IDLE_TTL_MS;
+      ? (policy.playgroundIdleTtlMs ?? DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS)
+      : (policy.apiIdleTtlMs ?? DEFAULT_API_SESSION_IDLE_TTL_MS);
   if (!Number.isFinite(ttlMs) || ttlMs <= 0)
     throw new Error("SessionBinding idle TTL must be positive.");
   const updatedAt =
-    binding.updatedAt instanceof Date
-      ? binding.updatedAt
-      : new Date(binding.updatedAt);
+    binding.updatedAt instanceof Date ? binding.updatedAt : new Date(binding.updatedAt);
   if (!Number.isFinite(updatedAt.getTime()))
     throw new Error("SessionBinding updatedAt must be a valid timestamp.");
   return updatedAt.getTime() > now.getTime() - ttlMs;

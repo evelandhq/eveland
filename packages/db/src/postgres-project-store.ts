@@ -1,19 +1,5 @@
-import {
-  claimProjectSlug,
-  createId,
-  slugifyProjectName,
-} from "@eveland/core/ids";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  getTableColumns,
-  inArray,
-  lte,
-  or,
-  sql,
-} from "drizzle-orm";
+import { claimProjectSlug, createId, slugifyProjectName } from "@eveland/core/ids";
+import { and, asc, desc, eq, getTableColumns, inArray, lte, or, sql } from "drizzle-orm";
 import {
   gitCredentialRowToPublic,
   gitCredentialRowToRecord,
@@ -87,21 +73,17 @@ type PostgresProjectDomain = Omit<ProjectStore, "updateProjectState"> &
 
 type PostgresProjectDependencies = Pick<JobStore, "enqueueJob">;
 
-export function createPostgresProjectStore({
-  db,
-}: PostgresStoreContext, {
-  enqueueJob,
-}: PostgresProjectDependencies): PostgresProjectDomain {
+export function createPostgresProjectStore(
+  { db }: PostgresStoreContext,
+  { enqueueJob }: PostgresProjectDependencies,
+): PostgresProjectDomain {
   const ensureDefaultOwner = async () => {
     await db.transaction(async (tx) => {
       await tx
         .insert(teams)
         .values({ id: DEFAULT_TEAM_ID, name: "Eveland", slug: "eveland" })
         .onConflictDoNothing({ target: teams.id });
-      await tx
-        .insert(users)
-        .values(defaultOwner)
-        .onConflictDoNothing({ target: users.id });
+      await tx.insert(users).values(defaultOwner).onConflictDoNothing({ target: users.id });
     });
   };
 
@@ -110,25 +92,17 @@ export function createPostgresProjectStore({
       const rows = await db
         .select({
           ...getTableColumns(projects),
-          nextScheduleAt:
-            sql<Date | null>`min(${projectSchedules.nextRunAt})`.mapWith(
-              projectSchedules.nextRunAt,
-            ),
+          nextScheduleAt: sql<Date | null>`min(${projectSchedules.nextRunAt})`.mapWith(
+            projectSchedules.nextRunAt,
+          ),
         })
         .from(projects)
         .leftJoin(
           projectSchedules,
-          and(
-            eq(projectSchedules.projectId, projects.id),
-            eq(projectSchedules.enabled, true),
-          ),
+          and(eq(projectSchedules.projectId, projects.id), eq(projectSchedules.enabled, true)),
         )
         .groupBy(projects.id)
-        .orderBy(
-          desc(projects.createdAt),
-          asc(projects.name),
-          asc(projects.id),
-        );
+        .orderBy(desc(projects.createdAt), asc(projects.name), asc(projects.id));
       return rows.map(projectRowToProject);
     },
 
@@ -214,12 +188,7 @@ export function createPostgresProjectStore({
       const [row] = await db
         .select()
         .from(sourcePreflights)
-        .where(
-          and(
-            eq(sourcePreflights.id, preflightId),
-            eq(sourcePreflights.userId, userId),
-          ),
-        )
+        .where(and(eq(sourcePreflights.id, preflightId), eq(sourcePreflights.userId, userId)))
         .limit(1);
       return row ? sourcePreflightRowToPublic(row) : null;
     },
@@ -265,11 +234,7 @@ export function createPostgresProjectStore({
       return renewed.length === 1;
     },
 
-    async recoverStaleSourcePreflights(
-      now = new Date(),
-      staleAfterMs = 300_000,
-      limit = 25,
-    ) {
+    async recoverStaleSourcePreflights(now = new Date(), staleAfterMs = 300_000, limit = 25) {
       const cutoff = new Date(now.getTime() - staleAfterMs);
       const recovered = await db
         .update(sourcePreflights)
@@ -281,10 +246,7 @@ export function createPostgresProjectStore({
               .select({ id: sourcePreflights.id })
               .from(sourcePreflights)
               .where(
-                and(
-                  eq(sourcePreflights.status, "running"),
-                  lte(sourcePreflights.lockedAt, cutoff),
-                ),
+                and(eq(sourcePreflights.status, "running"), lte(sourcePreflights.lockedAt, cutoff)),
               )
               .orderBy(asc(sourcePreflights.lockedAt))
               .limit(limit),
@@ -355,8 +317,7 @@ export function createPostgresProjectStore({
           .limit(1)
           .for("update");
         if (!preflight) return { outcome: "not_found" } as const;
-        if (preflight.status === "consumed")
-          return { outcome: "consumed" } as const;
+        if (preflight.status === "consumed") return { outcome: "consumed" } as const;
         if (
           preflight.status !== "completed" ||
           !preflight.sourcePath ||
@@ -470,11 +431,7 @@ export function createPostgresProjectStore({
     },
 
     async getProject(projectId) {
-      const [row] = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
+      const [row] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
       return row ? projectRowToProject(row) : null;
     },
 
@@ -504,9 +461,7 @@ export function createPostgresProjectStore({
       const [row] = await db
         .select()
         .from(gitCredentials)
-        .where(
-          and(eq(gitCredentials.userId, userId), eq(gitCredentials.host, host)),
-        )
+        .where(and(eq(gitCredentials.userId, userId), eq(gitCredentials.host, host)))
         .limit(1);
       return row ? gitCredentialRowToRecord(row) : null;
     },
@@ -527,12 +482,7 @@ export function createPostgresProjectStore({
     async deleteGitCredential(userId, credentialId) {
       const rows = await db
         .delete(gitCredentials)
-        .where(
-          and(
-            eq(gitCredentials.userId, userId),
-            eq(gitCredentials.id, credentialId),
-          ),
-        )
+        .where(and(eq(gitCredentials.userId, userId), eq(gitCredentials.id, credentialId)))
         .returning({ id: gitCredentials.id });
       return rows.length > 0;
     },
@@ -546,8 +496,7 @@ export function createPostgresProjectStore({
           .limit(1)
           .for("update");
         if (!project) return { outcome: "not_found" } as const;
-        if (project.deletionStatus === "deleting")
-          return { outcome: "already_deleting" } as const;
+        if (project.deletionStatus === "deleting") return { outcome: "already_deleting" } as const;
 
         const deletionInputs = await tx
           .select({ payload: jobs.payload })
@@ -569,9 +518,7 @@ export function createPostgresProjectStore({
             updatedAt: new Date(),
           })
           .where(eq(projects.id, projectId));
-        await tx
-          .delete(jobs)
-          .where(and(eq(jobs.projectId, projectId), eq(jobs.status, "queued")));
+        await tx.delete(jobs).where(and(eq(jobs.projectId, projectId), eq(jobs.status, "queued")));
         const row = await insertJobRowTx(tx, {
           projectId,
           type: "delete_project",
@@ -607,65 +554,41 @@ export function createPostgresProjectStore({
           .from(sessions)
           .where(eq(sessions.projectId, projectId));
         for (const session of relatedSessions) {
-          await tx
-            .delete(modelUsageEvents)
-            .where(eq(modelUsageEvents.sessionId, session.id));
-          await tx
-            .delete(sessionEvents)
-            .where(eq(sessionEvents.sessionId, session.id));
+          await tx.delete(modelUsageEvents).where(eq(modelUsageEvents.sessionId, session.id));
+          await tx.delete(sessionEvents).where(eq(sessionEvents.sessionId, session.id));
         }
-        await tx
-          .delete(sessionNodes)
-          .where(eq(sessionNodes.projectId, projectId));
+        await tx.delete(sessionNodes).where(eq(sessionNodes.projectId, projectId));
         await tx.delete(sessions).where(eq(sessions.projectId, projectId));
         const relatedRoutes = await tx
           .select({ id: agentRoutes.id })
           .from(agentRoutes)
           .where(eq(agentRoutes.projectId, projectId));
-        await tx
-          .delete(sessionBindings)
-          .where(eq(sessionBindings.projectId, projectId));
+        await tx.delete(sessionBindings).where(eq(sessionBindings.projectId, projectId));
         for (const route of relatedRoutes)
-          await tx
-            .delete(routeTargets)
-            .where(eq(routeTargets.routeId, route.id));
-        await tx
-          .delete(agentRoutes)
-          .where(eq(agentRoutes.projectId, projectId));
+          await tx.delete(routeTargets).where(eq(routeTargets.routeId, route.id));
+        await tx.delete(agentRoutes).where(eq(agentRoutes.projectId, projectId));
         const relatedProjectSchedules = await tx
           .select({ id: projectSchedules.id })
           .from(projectSchedules)
           .where(eq(projectSchedules.projectId, projectId));
         for (const schedule of relatedProjectSchedules) {
-          await tx
-            .delete(scheduleRuns)
-            .where(eq(scheduleRuns.scheduleId, schedule.id));
-          await tx
-            .delete(scheduleVersions)
-            .where(eq(scheduleVersions.scheduleId, schedule.id));
+          await tx.delete(scheduleRuns).where(eq(scheduleRuns.scheduleId, schedule.id));
+          await tx.delete(scheduleVersions).where(eq(scheduleVersions.scheduleId, schedule.id));
         }
         await tx
           .delete(projectSchedulerTargets)
           .where(eq(projectSchedulerTargets.projectId, projectId));
-        await tx
-          .delete(projectSchedules)
-          .where(eq(projectSchedules.projectId, projectId));
-        await tx
-          .delete(deployments)
-          .where(eq(deployments.projectId, projectId));
+        await tx.delete(projectSchedules).where(eq(projectSchedules.projectId, projectId));
+        await tx.delete(deployments).where(eq(deployments.projectId, projectId));
         await tx.delete(releases).where(eq(releases.projectId, projectId));
         const relatedRevisions = await tx
           .select({ id: sourceRevisions.id })
           .from(sourceRevisions)
           .where(eq(sourceRevisions.projectId, projectId));
         for (const revision of relatedRevisions) {
-          await tx
-            .delete(sourceFiles)
-            .where(eq(sourceFiles.revisionId, revision.id));
+          await tx.delete(sourceFiles).where(eq(sourceFiles.revisionId, revision.id));
         }
-        await tx
-          .delete(sourceRevisions)
-          .where(eq(sourceRevisions.projectId, projectId));
+        await tx.delete(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
         await tx.delete(schedules).where(eq(schedules.projectId, projectId));
         await tx.delete(jobs).where(eq(jobs.projectId, projectId));
         await tx.delete(secrets).where(eq(secrets.projectId, projectId));

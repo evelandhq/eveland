@@ -7,49 +7,25 @@ import type { Type } from "protobufjs";
 
 const { Root } = protobufjs;
 
-const protoRootDirectory = fileURLToPath(
-  new URL("../../proto/", import.meta.url),
-);
+const protoRootDirectory = fileURLToPath(new URL("../../proto/", import.meta.url));
 const protoRoot = new Root();
-protoRoot.resolvePath = (_origin, target) =>
-  resolve(protoRootDirectory, target);
+protoRoot.resolvePath = (_origin, target) => resolve(protoRootDirectory, target);
 protoRoot.loadSync([
-  resolve(
-    protoRootDirectory,
-    "opentelemetry/proto/collector/trace/v1/trace_service.proto",
-  ),
-  resolve(
-    protoRootDirectory,
-    "opentelemetry/proto/collector/logs/v1/logs_service.proto",
-  ),
-  resolve(
-    protoRootDirectory,
-    "opentelemetry/proto/collector/metrics/v1/metrics_service.proto",
-  ),
+  resolve(protoRootDirectory, "opentelemetry/proto/collector/trace/v1/trace_service.proto"),
+  resolve(protoRootDirectory, "opentelemetry/proto/collector/logs/v1/logs_service.proto"),
+  resolve(protoRootDirectory, "opentelemetry/proto/collector/metrics/v1/metrics_service.proto"),
 ]);
 
 const requestTypes = {
-  traces: lookupType(
-    "opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest",
-  ),
-  logs: lookupType(
-    "opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest",
-  ),
-  metrics: lookupType(
-    "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
-  ),
+  traces: lookupType("opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest"),
+  logs: lookupType("opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest"),
+  metrics: lookupType("opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest"),
 } satisfies Record<ObservabilitySignal, Type>;
 
 const responseTypes = {
-  traces: lookupType(
-    "opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse",
-  ),
-  logs: lookupType(
-    "opentelemetry.proto.collector.logs.v1.ExportLogsServiceResponse",
-  ),
-  metrics: lookupType(
-    "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceResponse",
-  ),
+  traces: lookupType("opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse"),
+  logs: lookupType("opentelemetry.proto.collector.logs.v1.ExportLogsServiceResponse"),
+  metrics: lookupType("opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceResponse"),
 } satisfies Record<ObservabilitySignal, Type>;
 
 export function decodeOtlpProtobufRequest(
@@ -110,13 +86,7 @@ function normalizeOtlpIdentifiers(
   for (const resourceMetrics of records(payload.resourceMetrics)) {
     for (const scopeMetrics of records(resourceMetrics.scopeMetrics)) {
       for (const metric of records(scopeMetrics.metrics)) {
-        for (const dataField of [
-          "gauge",
-          "sum",
-          "histogram",
-          "exponentialHistogram",
-          "summary",
-        ]) {
+        for (const dataField of ["gauge", "sum", "histogram", "exponentialHistogram", "summary"]) {
           const data = record(metric[dataField]);
           for (const point of records(data?.dataPoints)) {
             for (const exemplar of records(point.exemplars)) {
@@ -157,9 +127,7 @@ function records(value: unknown): Record<string, unknown>[] {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
+  return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }

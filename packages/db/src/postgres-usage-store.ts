@@ -10,12 +10,7 @@ import type {
 } from "@eveland/core/contracts";
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { sessionRowToSession } from "./mappers.js";
-import {
-  modelUsageEvents,
-  projects,
-  sessionNodes,
-  sessions,
-} from "./schema.js";
+import { modelUsageEvents, projects, sessionNodes, sessions } from "./schema.js";
 import type { UsageStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 
@@ -55,8 +50,7 @@ function emptyTotals(): UsageTotals {
 function addSession(totals: UsageTotals, status: SessionStatus): void {
   totals.sessions += 1;
   if (status === "running") totals.runningSessions += 1;
-  if (status === "waiting" || status === "waiting_approval")
-    totals.waitingSessions += 1;
+  if (status === "waiting" || status === "waiting_approval") totals.waitingSessions += 1;
   if (status === "completed") totals.completedSessions += 1;
   if (status === "failed") totals.failedSessions += 1;
 }
@@ -114,17 +108,13 @@ function bucketIndex(value: Date, window: UsageWindow): number {
 function sortedBreakdown<T extends UsageTotals>(rows: T[]): T[] {
   return rows.sort(
     (left, right) =>
-      right.inputTokens +
-        right.outputTokens -
-        (left.inputTokens + left.outputTokens) ||
+      right.inputTokens + right.outputTokens - (left.inputTokens + left.outputTokens) ||
       right.modelSteps - left.modelSteps ||
       right.sessions - left.sessions,
   );
 }
 
-export function createPostgresUsageStore({
-  db,
-}: PostgresStoreContext): UsageStore {
+export function createPostgresUsageStore({ db }: PostgresStoreContext): UsageStore {
   return {
     async getVariantMetrics(projectId) {
       const rows = await db
@@ -148,7 +138,11 @@ export function createPostgresUsageStore({
         })
         .from(sessions)
         .where(eq(sessions.projectId, projectId))
-        .groupBy(sessions.deploymentId, sessions.experimentId, sql`coalesce(${sessions.variantName}, 'unassigned')`);
+        .groupBy(
+          sessions.deploymentId,
+          sessions.experimentId,
+          sql`coalesce(${sessions.variantName}, 'unassigned')`,
+        );
       return rows.map((row) => ({
         deploymentId: row.deploymentId,
         experimentId: row.experimentId,
@@ -278,15 +272,10 @@ export function createPostgresUsageStore({
       currentUsageRows.forEach((row) => addUsage(summary, row.usage));
       previousUsageRows.forEach((row) => addUsage(previousSummary, row.usage));
 
-      const series: UsageSeriesPoint[] = Array.from(
-        { length: window.bucketCount },
-        (_, index) => ({
-          bucketStart: new Date(
-            window.from.getTime() + index * window.bucketMs,
-          ).toISOString(),
-          ...emptyTotals(),
-        }),
-      );
+      const series: UsageSeriesPoint[] = Array.from({ length: window.bucketCount }, (_, index) => ({
+        bucketStart: new Date(window.from.getTime() + index * window.bucketMs).toISOString(),
+        ...emptyTotals(),
+      }));
       const firstUsageBySession = new Map<string, (typeof currentUsageRows)[number]>();
       currentUsageRows.forEach((row) => {
         const current = firstUsageBySession.get(row.session.id);
@@ -298,21 +287,16 @@ export function createPostgresUsageStore({
       if (input.modelId) {
         firstUsageBySession.forEach((row) => {
           const index = bucketIndex(row.usage.createdAt, window);
-          if (series[index])
-            addSession(series[index], row.session.status as SessionStatus);
+          if (series[index]) addSession(series[index], row.session.status as SessionStatus);
         });
       } else {
         currentSessionRows.forEach((row) => {
           const index = bucketIndex(row.session.startedAt, window);
-          if (series[index])
-            addSession(series[index], row.session.status as SessionStatus);
+          if (series[index]) addSession(series[index], row.session.status as SessionStatus);
         });
       }
 
-      const projectMap = new Map<
-        string,
-        TotalsWithSessions<ProjectUsageBreakdown>
-      >();
+      const projectMap = new Map<string, TotalsWithSessions<ProjectUsageBreakdown>>();
       const ensureProject = (projectId: string, projectName: string) => {
         const existing = projectMap.get(projectId);
         if (existing) return existing;
@@ -333,20 +317,11 @@ export function createPostgresUsageStore({
         }
       });
       currentUsageRows.forEach((row) => {
-        addUsage(
-          ensureProject(row.session.projectId, row.projectName),
-          row.usage,
-        );
+        addUsage(ensureProject(row.session.projectId, row.projectName), row.usage);
       });
 
-      const modelMap = new Map<
-        string,
-        TotalsWithSessions<ModelUsageBreakdown>
-      >();
-      const agentModelMap = new Map<
-        string,
-        TotalsWithSessions<AgentModelUsageBreakdown>
-      >();
+      const modelMap = new Map<string, TotalsWithSessions<ModelUsageBreakdown>>();
+      const agentModelMap = new Map<string, TotalsWithSessions<AgentModelUsageBreakdown>>();
       currentScopeUsageRows.forEach((row) => {
         const modelKey = row.modelId ?? "__unknown_model__";
         const model = modelMap.get(modelKey) ?? {
@@ -377,10 +352,7 @@ export function createPostgresUsageStore({
       });
 
       const currentSessionStatus = new Map(
-        currentScopeUsageRows.map((row) => [
-          row.session.id,
-          row.session.status as SessionStatus,
-        ]),
+        currentScopeUsageRows.map((row) => [row.session.id, row.session.status as SessionStatus]),
       );
       modelMap.forEach((model) => {
         model.sessionIds.forEach((sessionId) => {
@@ -396,19 +368,13 @@ export function createPostgresUsageStore({
       });
 
       const projectsResult = sortedBreakdown(
-        [...projectMap.values()].map(({ sessionIds: _sessionIds, ...row }) =>
-          row,
-        ),
+        [...projectMap.values()].map(({ sessionIds: _sessionIds, ...row }) => row),
       );
       const models = sortedBreakdown(
-        [...modelMap.values()].map(({ sessionIds: _sessionIds, ...row }) =>
-          row,
-        ),
+        [...modelMap.values()].map(({ sessionIds: _sessionIds, ...row }) => row),
       );
       const agentModels = sortedBreakdown(
-        [...agentModelMap.values()].map(
-          ({ sessionIds: _sessionIds, ...row }) => row,
-        ),
+        [...agentModelMap.values()].map(({ sessionIds: _sessionIds, ...row }) => row),
       );
 
       // Bounded in SQL rather than sorting every session in the window and

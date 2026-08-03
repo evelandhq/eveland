@@ -14,10 +14,7 @@ import { createApp } from "./app.js";
 // credentials minted here verify against the same derived telemetry secret.
 const devSecretKey = "eveland-dev-secret-key-000000000";
 
-function agentCredential(
-  deploymentId: string,
-  appSecretKey = devSecretKey,
-): string {
+function agentCredential(deploymentId: string, appSecretKey = devSecretKey): string {
   return createAgentTelemetryCredential(
     { deploymentId, issuedAt: "2026-07-23T12:00:00.000Z" },
     deriveAgentTelemetrySecret(appSecretKey),
@@ -100,9 +97,9 @@ describe("Built-in OTLP ingest", () => {
     expect(accepted.status).toBe(200);
     expect(await accepted.json()).toEqual({});
     // Only the receipt persists: traces have no Built-in read model.
-    await expect(
-      store.latestOtlpBatchReceivedAt({ signal: "traces" }),
-    ).resolves.toEqual(expect.any(String));
+    await expect(store.latestOtlpBatchReceivedAt({ signal: "traces" })).resolves.toEqual(
+      expect.any(String),
+    );
   });
 
   test("rejects a signal with the wrong OTLP request shape", async () => {
@@ -194,22 +191,17 @@ describe("Built-in OTLP ingest", () => {
       const app = createApp(store, {
         otlpServiceToken: "collector-service-token",
       });
-      const response = await app.request(
-        `/internal/otel/v1/${testCase.signal}`,
-        {
-          method: "POST",
-          headers: {
-            authorization: "Bearer collector-service-token",
-            "content-type": "application/x-protobuf",
-          },
-          body: encodeOtlpRequest(testCase.signal, testCase.payload),
+      const response = await app.request(`/internal/otel/v1/${testCase.signal}`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/x-protobuf",
         },
-      );
+        body: encodeOtlpRequest(testCase.signal, testCase.payload),
+      });
 
       expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toBe(
-        "application/x-protobuf",
-      );
+      expect(response.headers.get("content-type")).toBe("application/x-protobuf");
       const responseBytes = new Uint8Array(await response.arrayBuffer());
       if ("rejected" in testCase && testCase.rejected > 0) {
         const responseType = protobufResponseTypes[testCase.signal];
@@ -219,18 +211,18 @@ describe("Built-in OTLP ingest", () => {
           }),
         ).toEqual({
           partialSuccess: {
-            [testCase.signal === "logs"
-              ? "rejectedLogRecords"
-              : "rejectedDataPoints"]: String(testCase.rejected),
+            [testCase.signal === "logs" ? "rejectedLogRecords" : "rejectedDataPoints"]: String(
+              testCase.rejected,
+            ),
             errorMessage: expect.stringContaining("required"),
           },
         });
       } else {
         expect(responseBytes).toHaveLength(0);
       }
-      await expect(
-        store.latestOtlpBatchReceivedAt({ signal: testCase.signal }),
-      ).resolves.toEqual(expect.any(String));
+      await expect(store.latestOtlpBatchReceivedAt({ signal: testCase.signal })).resolves.toEqual(
+        expect.any(String),
+      );
       await testCase.verify(store);
     }
   });
@@ -261,10 +253,9 @@ describe("Built-in OTLP ingest", () => {
     expect(response.status).toBe(200);
     const responseType = protobufResponseTypes.traces;
     expect(
-      responseType.toObject(
-        responseType.decode(new Uint8Array(await response.arrayBuffer())),
-        { longs: String },
-      ),
+      responseType.toObject(responseType.decode(new Uint8Array(await response.arrayBuffer())), {
+        longs: String,
+      }),
     ).toEqual({
       partialSuccess: {
         rejectedSpans: "1",
@@ -343,9 +334,9 @@ describe("Built-in OTLP ingest", () => {
     expect(await store.listSessionEvents(session!.id)).toHaveLength(2);
     // Replaying the batch must not duplicate the Session read model, and the Agent
     // LogRecords themselves are not retained.
-    await expect(
-      store.latestOtlpBatchReceivedAt({ signal: "logs" }),
-    ).resolves.toEqual(expect.any(String));
+    await expect(store.latestOtlpBatchReceivedAt({ signal: "logs" })).resolves.toEqual(
+      expect.any(String),
+    );
   });
 
   test("reports Agent LogRecords rejected when the Session projector cannot consume them", async () => {
@@ -361,10 +352,7 @@ describe("Built-in OTLP ingest", () => {
               attribute("service.name", "eveland-agent"),
               attribute("eveland.telemetry.domain", "agent"),
               attribute("eveland.deployment.id", "dep_missing"),
-              attribute(
-                "eveland.deployment.credential",
-                agentCredential("dep_missing"),
-              ),
+              attribute("eveland.deployment.credential", agentCredential("dep_missing")),
             ],
           },
           scopeLogs: [
@@ -534,9 +522,7 @@ describe("Built-in OTLP ingest", () => {
           },
           scopeMetrics: [
             {
-              metrics: [
-                gauge("http.server.request.duration", [metricPoint(10)]),
-              ],
+              metrics: [gauge("http.server.request.duration", [metricPoint(10)])],
             },
           ],
         },
@@ -574,22 +560,17 @@ describe("external OTLP egress proxy", () => {
     const app = createApp(store, {
       appSecretKey: "0123456789abcdef0123456789abcdef",
       otlpServiceToken: "collector-service-token",
-      auth: { authenticate } as unknown as NonNullable<
-        Parameters<typeof createApp>[1]
-      >["auth"],
+      auth: { authenticate } as unknown as NonNullable<Parameters<typeof createApp>[1]>["auth"],
     });
 
-    const response = await app.request(
-      "/internal/observability/destinations/dst_missing/v1/logs",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer collector-service-token",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ resourceLogs: [] }),
+    const response = await app.request("/internal/observability/destinations/dst_missing/v1/logs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer collector-service-token",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({ resourceLogs: [] }),
+    });
 
     // 404 is the route's own "no such destination" answer, proving the handler
     // ran. A 401 here would mean the session middleware intercepted it.
@@ -611,27 +592,23 @@ describe("external OTLP egress proxy", () => {
       validateObservabilityDestination: async () => undefined,
       forwardExternalObservabilityRequest,
     });
-    const created = await app.request(
-      "/system/observability/destinations",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          expectedRevision: 1,
-          config: {
-            kind: "custom_otlp",
-            endpoint: "https://collector.example",
-            supportedSignals: ["logs"],
-            domains: ["agent"],
-            headers: { "x-api-key": "destination-secret" },
-          },
-        }),
-      },
-    );
+    const created = await app.request("/system/observability/destinations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        config: {
+          kind: "custom_otlp",
+          endpoint: "https://collector.example",
+          supportedSignals: ["logs"],
+          domains: ["agent"],
+          headers: { "x-api-key": "destination-secret" },
+        },
+      }),
+    });
     expect(created.status).toBe(201);
-    const destinationId = (
-      await store.getObservabilityPolicy("team_local")
-    ).externalDestinations[0]!.id;
+    const destinationId = (await store.getObservabilityPolicy("team_local"))
+      .externalDestinations[0]!.id;
     const body = JSON.stringify({ resourceLogs: [] });
 
     const hidden = await app.request(
@@ -683,43 +660,36 @@ describe("external OTLP egress proxy", () => {
       validateObservabilityDestination: async () => undefined,
       forwardExternalObservabilityRequest,
     });
-    const created = await app.request(
-      "/system/observability/destinations",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          expectedRevision: 1,
-          config: {
-            kind: "custom_otlp",
-            endpoint: "https://collector.example",
-            supportedSignals: ["logs"],
-            domains: ["platform", "capacity"],
-            headers: {},
-          },
-        }),
-      },
-    );
+    const created = await app.request("/system/observability/destinations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        config: {
+          kind: "custom_otlp",
+          endpoint: "https://collector.example",
+          supportedSignals: ["logs"],
+          domains: ["platform", "capacity"],
+          headers: {},
+        },
+      }),
+    });
     expect(created.status).toBe(201);
-    const destinationId = (
-      await store.getObservabilityPolicy("team_local")
-    ).externalDestinations[0]!.id;
-    const updated = await app.request(
-      `/system/observability/destinations/${destinationId}`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          expectedRevision: 2,
-          config: {
-            kind: "custom_otlp",
-            endpoint: "https://collector.example",
-            supportedSignals: ["logs"],
-            domains: ["capacity"],
-          },
-        }),
-      },
-    );
+    const destinationId = (await store.getObservabilityPolicy("team_local"))
+      .externalDestinations[0]!.id;
+    const updated = await app.request(`/system/observability/destinations/${destinationId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 2,
+        config: {
+          kind: "custom_otlp",
+          endpoint: "https://collector.example",
+          supportedSignals: ["logs"],
+          domains: ["capacity"],
+        },
+      }),
+    });
     expect(updated.status).toBe(200);
 
     const response = await app.request(
@@ -749,9 +719,7 @@ describe("external OTLP egress proxy", () => {
 
     expect(response.status).toBe(200);
     const forwarded = JSON.parse(
-      new TextDecoder().decode(
-        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
-      ),
+      new TextDecoder().decode(forwardExternalObservabilityRequest.mock.calls[0]![0].body),
     );
     expect(
       forwarded.resourceLogs.map(
@@ -762,10 +730,7 @@ describe("external OTLP egress proxy", () => {
               value: { stringValue?: string };
             }>;
           };
-        }) =>
-          readStringAttributes(resourceLog.resource.attributes)[
-            "eveland.telemetry.domain"
-          ],
+        }) => readStringAttributes(resourceLog.resource.attributes)["eveland.telemetry.domain"],
       ),
     ).toEqual(["capacity"]);
   });
@@ -841,9 +806,8 @@ describe("external OTLP egress proxy", () => {
         },
       }),
     });
-    const destinationId = (
-      await store.getObservabilityPolicy("team_local")
-    ).externalDestinations[0]!.id;
+    const destinationId = (await store.getObservabilityPolicy("team_local"))
+      .externalDestinations[0]!.id;
     const payload = {
       resourceLogs: [
         {
@@ -856,10 +820,7 @@ describe("external OTLP egress proxy", () => {
               attribute("eveland.release.id", victim.releaseId),
               attribute("eveland.deployment.id", victim.id),
               attribute("eveland.runtime.kind", "docker"),
-              attribute(
-                "eveland.deployment.credential",
-                agentCredential(attacker.id),
-              ),
+              attribute("eveland.deployment.credential", agentCredential(attacker.id)),
             ],
           },
           scopeLogs: [
@@ -869,14 +830,8 @@ describe("external OTLP egress proxy", () => {
                 {
                   attributes: [
                     attribute("eveland.project.id", victim.projectId),
-                    attribute(
-                      "langfuse.observation.metadata.eveland.project_id",
-                      victim.projectId,
-                    ),
-                    attribute(
-                      "eveland.deployment.credential",
-                      agentCredential(attacker.id),
-                    ),
+                    attribute("langfuse.observation.metadata.eveland.project_id", victim.projectId),
+                    attribute("eveland.deployment.credential", agentCredential(attacker.id)),
                   ],
                   body: { stringValue: "event" },
                 },
@@ -901,12 +856,9 @@ describe("external OTLP egress proxy", () => {
 
     expect(response.status).toBe(200);
     const forwarded = JSON.parse(
-      new TextDecoder().decode(
-        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
-      ),
+      new TextDecoder().decode(forwardExternalObservabilityRequest.mock.calls[0]![0].body),
     );
-    const resourceAttributes =
-      forwarded.resourceLogs[0].resource.attributes;
+    const resourceAttributes = forwarded.resourceLogs[0].resource.attributes;
     expect(readStringAttributes(resourceAttributes)).toMatchObject({
       "service.name": "eveland-agent",
       "eveland.telemetry.domain": "agent",
@@ -920,17 +872,12 @@ describe("external OTLP egress proxy", () => {
       "eveland.deployment.credential",
     );
     expect(
-      readStringAttributes(
-        forwarded.resourceLogs[0].scopeLogs[0].logRecords[0].attributes,
-      ),
+      readStringAttributes(forwarded.resourceLogs[0].scopeLogs[0].logRecords[0].attributes),
     ).toMatchObject({
       "eveland.project.id": attacker.projectId,
-      "langfuse.observation.metadata.eveland.project_id":
-        attacker.projectId,
+      "langfuse.observation.metadata.eveland.project_id": attacker.projectId,
     });
-    expect(JSON.stringify(forwarded)).not.toContain(
-      "eveland.deployment.credential",
-    );
+    expect(JSON.stringify(forwarded)).not.toContain("eveland.deployment.credential");
   });
 
   test("drops Agent resources whose deployment credential cannot be verified", async () => {
@@ -960,9 +907,8 @@ describe("external OTLP egress proxy", () => {
         },
       }),
     });
-    const destinationId = (
-      await store.getObservabilityPolicy("team_local")
-    ).externalDestinations[0]!.id;
+    const destinationId = (await store.getObservabilityPolicy("team_local"))
+      .externalDestinations[0]!.id;
 
     const response = await app.request(
       `/internal/observability/destinations/${destinationId}/v1/logs`,
@@ -978,10 +924,7 @@ describe("external OTLP egress proxy", () => {
               resource: {
                 attributes: [
                   attribute("eveland.telemetry.domain", "agent"),
-                  attribute(
-                    "eveland.deployment.credential",
-                    "forged.signature",
-                  ),
+                  attribute("eveland.deployment.credential", "forged.signature"),
                 ],
               },
               scopeLogs: [],
@@ -993,9 +936,7 @@ describe("external OTLP egress proxy", () => {
 
     expect(response.status).toBe(200);
     const forwarded = JSON.parse(
-      new TextDecoder().decode(
-        forwardExternalObservabilityRequest.mock.calls[0]![0].body,
-      ),
+      new TextDecoder().decode(forwardExternalObservabilityRequest.mock.calls[0]![0].body),
     );
     expect(forwarded).toEqual({ resourceLogs: [] });
   });
@@ -1010,10 +951,7 @@ function agentLogBatch(deploymentId: string) {
             attribute("service.name", "eveland-agent"),
             attribute("eveland.telemetry.domain", "agent"),
             attribute("eveland.deployment.id", deploymentId),
-            attribute(
-              "eveland.deployment.credential",
-              agentCredential(deploymentId),
-            ),
+            attribute("eveland.deployment.credential", agentCredential(deploymentId)),
           ],
         },
         scopeLogs: [
@@ -1130,21 +1068,15 @@ function attribute(key: string, value: string) {
   return { key, value: { stringValue: value } };
 }
 
-function readStringAttributes(
-  attributes: Array<{ key: string; value: { stringValue?: string } }>,
-) {
-  return Object.fromEntries(
-    attributes.map(({ key, value }) => [key, value.stringValue]),
-  );
+function readStringAttributes(attributes: Array<{ key: string; value: { stringValue?: string } }>) {
+  return Object.fromEntries(attributes.map(({ key, value }) => [key, value.stringValue]));
 }
 
 function anyValue(value: unknown): Record<string, unknown> {
   if (value === null) return {};
   if (typeof value === "string") return { stringValue: value };
   if (typeof value === "number") {
-    return Number.isInteger(value)
-      ? { intValue: String(value) }
-      : { doubleValue: value };
+    return Number.isInteger(value) ? { intValue: String(value) } : { doubleValue: value };
   }
   if (typeof value === "boolean") return { boolValue: value };
   if (Array.isArray(value)) {
@@ -1152,9 +1084,10 @@ function anyValue(value: unknown): Record<string, unknown> {
   }
   return {
     kvlistValue: {
-      values: Object.entries(value as Record<string, unknown>).map(
-        ([key, child]) => ({ key, value: anyValue(child) }),
-      ),
+      values: Object.entries(value as Record<string, unknown>).map(([key, child]) => ({
+        key,
+        value: anyValue(child),
+      })),
     },
   };
 }
@@ -1212,10 +1145,7 @@ function workerMetricBatch() {
   };
 }
 
-function gauge(
-  name: string,
-  dataPoints: Array<Record<string, unknown>>,
-) {
+function gauge(name: string, dataPoints: Array<Record<string, unknown>>) {
   return { name, gauge: { dataPoints } };
 }
 
@@ -1236,55 +1166,34 @@ function histogram(name: string, count: number, sum: number) {
   };
 }
 
-function metricPoint(
-  value: number,
-  attributes: Record<string, string | number> = {},
-) {
+function metricPoint(value: number, attributes: Record<string, string | number> = {}) {
   return {
     asDouble: value,
     startTimeUnixNano: "1784807940000000000",
     timeUnixNano: "1784808000000000000",
     attributes: Object.entries(attributes).map(([key, child]) => ({
       key,
-      value:
-        typeof child === "number"
-          ? { intValue: String(child) }
-          : { stringValue: child },
+      value: typeof child === "number" ? { intValue: String(child) } : { stringValue: child },
     })),
   };
 }
 
 const otlpProtoRootDirectory = fileURLToPath(
-  new URL(
-    "../../../packages/session-collector/proto/",
-    import.meta.url,
-  ),
+  new URL("../../../packages/session-collector/proto/", import.meta.url),
 );
 const otlpProtoRoot = new Root();
-otlpProtoRoot.resolvePath = (_origin, target) =>
-  resolve(otlpProtoRootDirectory, target);
+otlpProtoRoot.resolvePath = (_origin, target) => resolve(otlpProtoRootDirectory, target);
 otlpProtoRoot.loadSync([
-  resolve(
-    otlpProtoRootDirectory,
-    "opentelemetry/proto/collector/trace/v1/trace_service.proto",
-  ),
-  resolve(
-    otlpProtoRootDirectory,
-    "opentelemetry/proto/collector/logs/v1/logs_service.proto",
-  ),
-  resolve(
-    otlpProtoRootDirectory,
-    "opentelemetry/proto/collector/metrics/v1/metrics_service.proto",
-  ),
+  resolve(otlpProtoRootDirectory, "opentelemetry/proto/collector/trace/v1/trace_service.proto"),
+  resolve(otlpProtoRootDirectory, "opentelemetry/proto/collector/logs/v1/logs_service.proto"),
+  resolve(otlpProtoRootDirectory, "opentelemetry/proto/collector/metrics/v1/metrics_service.proto"),
 ]);
 
 const protobufRequestTypes = {
   traces: otlpProtoRoot.lookupType(
     "opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest",
   ),
-  logs: otlpProtoRoot.lookupType(
-    "opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest",
-  ),
+  logs: otlpProtoRoot.lookupType("opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest"),
   metrics: otlpProtoRoot.lookupType(
     "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
   ),
@@ -1294,9 +1203,7 @@ const protobufResponseTypes = {
   traces: otlpProtoRoot.lookupType(
     "opentelemetry.proto.collector.trace.v1.ExportTraceServiceResponse",
   ),
-  logs: otlpProtoRoot.lookupType(
-    "opentelemetry.proto.collector.logs.v1.ExportLogsServiceResponse",
-  ),
+  logs: otlpProtoRoot.lookupType("opentelemetry.proto.collector.logs.v1.ExportLogsServiceResponse"),
   metrics: otlpProtoRoot.lookupType(
     "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceResponse",
   ),

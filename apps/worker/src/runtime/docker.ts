@@ -6,8 +6,22 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
-import { processSafeName, type PortOwnership, type PortOwnershipCapability, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type ReleaseDiscovery, type CompleteRuntimeAdapter, type RuntimeCommandContext } from "./types.js";
-import { buildWorkflowWorldInstallCommand, type WorkflowWorldBuildConfig } from "./workflow-world.js";
+import {
+  processSafeName,
+  type PortOwnership,
+  type PortOwnershipCapability,
+  type ProcessStartInput,
+  type ProcessStartResult,
+  type ReleaseBuildInput,
+  type ReleaseBuildResult,
+  type ReleaseDiscovery,
+  type CompleteRuntimeAdapter,
+  type RuntimeCommandContext,
+} from "./types.js";
+import {
+  buildWorkflowWorldInstallCommand,
+  type WorkflowWorldBuildConfig,
+} from "./workflow-world.js";
 import { AGENT_OBSERVABILITY_MOUNT_DIR } from "./observability/policy.js";
 import {
   ensureAgentTelemetryNetwork,
@@ -106,7 +120,9 @@ export function buildDockerEnvFileContent(env: Record<string, string>): string {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => {
       if (/[\n\r]/.test(value)) {
-        throw new Error(`Secret ${key} contains a newline; a Docker --env-file cannot represent it.`);
+        throw new Error(
+          `Secret ${key} contains a newline; a Docker --env-file cannot represent it.`,
+        );
       }
       return `${key}=${value}`;
     });
@@ -152,7 +168,10 @@ export async function readImageDiscovery(imageTag: string): Promise<ReleaseDisco
   ).catch(() => undefined);
   if (!result || result.exitCode !== 0 || typeof result.stdout !== "string") return undefined;
   try {
-    const parsed = JSON.parse(result.stdout) as { manifest: unknown; resolvedEveVersion: string | null };
+    const parsed = JSON.parse(result.stdout) as {
+      manifest: unknown;
+      resolvedEveVersion: string | null;
+    };
     return parsed.manifest === null ? undefined : parsed;
   } catch {
     return undefined;
@@ -220,10 +239,14 @@ export async function dockerBuild(
   dockerfilePath: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const result = await execa("docker", buildDockerBuildArgs({ contextDir, imageTag, dockerfilePath }), {
-    all: true,
-    ...(signal ? { cancelSignal: signal } : {}),
-  });
+  const result = await execa(
+    "docker",
+    buildDockerBuildArgs({ contextDir, imageTag, dockerfilePath }),
+    {
+      all: true,
+      ...(signal ? { cancelSignal: signal } : {}),
+    },
+  );
   return result.all ?? "";
 }
 
@@ -260,7 +283,11 @@ export async function dockerStopAndRemove(containerName: string): Promise<void> 
   const result = await execa("docker", ["rm", "--force", containerName], {
     reject: false,
   });
-  const outcome: DockerCommandOutcome = { failed: result.failed, exitCode: result.exitCode, stderr: result.stderr };
+  const outcome: DockerCommandOutcome = {
+    failed: result.failed,
+    exitCode: result.exitCode,
+    stderr: result.stderr,
+  };
   if (isBenignDockerStopFailure(outcome)) {
     return;
   }
@@ -273,9 +300,13 @@ export async function dockerStopAndRemove(containerName: string): Promise<void> 
 
 // Bridges the container's loopback model port to the host so eve apps that call a
 // locally running Ollama (default http://127.0.0.1:11434) reach the host daemon.
-const ollamaBridgeCommand = "socat TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434 >/dev/null 2>&1 &";
+const ollamaBridgeCommand =
+  "socat TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434 >/dev/null 2>&1 &";
 
-export function buildDockerStartCommand(_context: RuntimeCommandContext, internalPort: number): string {
+export function buildDockerStartCommand(
+  _context: RuntimeCommandContext,
+  internalPort: number,
+): string {
   // The image already ran `eve build`; serve the compiled output bound to all
   // interfaces so the published host port can reach it.
   return `${ollamaBridgeCommand} exec npx eve start --host 0.0.0.0 --port ${internalPort}`;
@@ -297,10 +328,7 @@ export type DockerAdapterConfig = {
  * socket itself, so an ss/pid lookup would name docker-proxy for every
  * container and prove nothing.
  */
-export function parseDockerPublishOwnership(
-  stdout: string,
-  processName: string,
-): PortOwnership {
+export function parseDockerPublishOwnership(stdout: string, processName: string): PortOwnership {
   const names = stdout
     .split("\n")
     .map((line) => line.trim())
@@ -310,9 +338,10 @@ export function parseDockerPublishOwnership(
   return { status: "foreign", holder: names.join(", ") };
 }
 
-export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntimeAdapter & PortOwnershipCapability {
-  const collectorContainerName =
-    config.collectorContainerName ?? defaultCollectorContainerName;
+export function createDockerAdapter(
+  config: DockerAdapterConfig,
+): CompleteRuntimeAdapter & PortOwnershipCapability {
+  const collectorContainerName = config.collectorContainerName ?? defaultCollectorContainerName;
   const envDir = path.resolve(config.dataDir, "deployment-env");
   const envFilePathFor = (processName: string) => path.join(envDir, `${processName}.env`);
   const adapter: CompleteRuntimeAdapter & PortOwnershipCapability = {
@@ -379,10 +408,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
       }
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
-      await ensureAgentTelemetryNetwork(
-        input.processName,
-        collectorContainerName,
-      );
+      await ensureAgentTelemetryNetwork(input.processName, collectorContainerName);
       await mkdir(envDir, { recursive: true });
       const envFilePath = envFilePathFor(input.processName);
       const deploymentEnv = { ...input.env };
@@ -405,21 +431,26 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
         // create time, so nothing needs it after this call -- and a failed
         // start must not leave decrypted secrets on disk.
         await rm(envFilePath, { force: true }).catch(() => undefined);
-        await removeAgentTelemetryNetwork(
-          input.processName,
-          collectorContainerName,
-        ).catch(() => undefined);
+        await removeAgentTelemetryNetwork(input.processName, collectorContainerName).catch(
+          () => undefined,
+        );
         throw error;
       }
     },
     async inspectProcess(processName) {
-      const result = await execa("docker", ["inspect", "--format", "{{.State.Status}}", processName], {
-        all: true,
-        reject: false,
-      });
+      const result = await execa(
+        "docker",
+        ["inspect", "--format", "{{.State.Status}}", processName],
+        {
+          all: true,
+          reject: false,
+        },
+      );
       if (result.failed) {
         if (/No such (object|container)/i.test(result.all ?? "")) return "missing";
-        throw new Error(`docker inspect ${processName} failed: ${result.all || "no output captured"}`);
+        throw new Error(
+          `docker inspect ${processName} failed: ${result.all || "no output captured"}`,
+        );
       }
       const status = (result.stdout ?? "").trim();
       if (status === "running") return "ready";
@@ -433,12 +464,16 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
     },
     async getProcessDiagnostics(processName) {
       const [state, logs] = await Promise.all([
-        execa("docker", [
-          "inspect",
-          "--format",
-          "status={{.State.Status}} restarting={{.State.Restarting}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} restartCount={{.RestartCount}} error={{json .State.Error}}",
-          processName,
-        ], { all: true, reject: false }),
+        execa(
+          "docker",
+          [
+            "inspect",
+            "--format",
+            "status={{.State.Status}} restarting={{.State.Restarting}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} restartCount={{.RestartCount}} error={{json .State.Error}}",
+            processName,
+          ],
+          { all: true, reject: false },
+        ),
         execa("docker", ["logs", "--tail", "200", processName], { all: true, reject: false }),
       ]);
       return {
@@ -458,7 +493,9 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
       if (published.failed) {
         // Silently passing here would reintroduce blind trust in whatever
         // answers on the port, so an unusable lookup fails activation loudly.
-        throw new Error(`docker publish lookup for port ${port} failed: ${published.all || "no output captured"}`);
+        throw new Error(
+          `docker publish lookup for port ${port} failed: ${published.all || "no output captured"}`,
+        );
       }
       return parseDockerPublishOwnership(published.stdout ?? "", processName);
     },
@@ -469,10 +506,16 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
           processName: input.processName,
           port: input.port,
         });
-        if (ownership.status === "owned" || (ownership.status === "unbound" && status === "starting")) {
+        if (
+          ownership.status === "owned" ||
+          (ownership.status === "unbound" && status === "starting")
+        ) {
           // A starting container that has not published yet is a legitimate
           // reuse; the readiness gate keeps polling ownership afterwards.
-          return { internalPort: config.internalPort, log: `Reused ${status} Docker process ${input.processName}.` };
+          return {
+            internalPort: config.internalPort,
+            log: `Reused ${status} Docker process ${input.processName}.`,
+          };
         }
         if (ownership.status === "foreign") {
           // The container is alive but its host port is served by another
@@ -491,10 +534,14 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
       return adapter.startProcess(input);
     },
     async listProcesses(namePrefix) {
-      const result = await execa("docker", ["ps", "--format", "{{.Names}}", "--filter", `name=^${namePrefix}`], {
-        all: true,
-        reject: false,
-      });
+      const result = await execa(
+        "docker",
+        ["ps", "--format", "{{.Names}}", "--filter", `name=^${namePrefix}`],
+        {
+          all: true,
+          reject: false,
+        },
+      );
       if (result.failed) {
         throw new Error(`docker ps failed: ${result.all || "no output captured"}`);
       }
@@ -508,10 +555,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
       // Same discipline as the systemd adapter: decrypted secrets never
       // outlive the process they were written for.
       await rm(envFilePathFor(processName), { force: true }).catch(() => undefined);
-      await removeAgentTelemetryNetwork(
-        processName,
-        collectorContainerName,
-      ).catch((error) => {
+      await removeAgentTelemetryNetwork(processName, collectorContainerName).catch((error) => {
         console.warn(
           `Could not clean up Agent telemetry network for "${processName}"; the orphan sweep will retry: ${
             error instanceof Error ? error.message : String(error)
@@ -520,7 +564,10 @@ export function createDockerAdapter(config: DockerAdapterConfig): CompleteRuntim
       });
     },
     async removeRelease(releaseRef: string): Promise<void> {
-      const result = await execa("docker", ["image", "rm", releaseRef], { all: true, reject: false });
+      const result = await execa("docker", ["image", "rm", releaseRef], {
+        all: true,
+        reject: false,
+      });
       if (!result.failed || /No such image/i.test(result.stderr ?? "")) return;
       throw new Error(
         `docker image rm ${releaseRef} failed (exit ${result.exitCode ?? "none -- docker CLI may be missing or unreachable"}): ${

@@ -36,7 +36,9 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
   const [method, setMethod] = useState("local-dev");
   const [values, setValues] = useState<Record<string, string>>({});
   const [secretReferences, setSecretReferences] = useState<AgentAuthSecretReferenceOption[]>([]);
-  const [referenceValues, setReferenceValues] = useState<Record<string, AgentAuthSecretReference | null>>({});
+  const [referenceValues, setReferenceValues] = useState<
+    Record<string, AgentAuthSecretReference | null>
+  >({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,9 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
         getProjectAgentConnection(projectId),
         getAgentAuthSecretReferences(projectId),
       ]);
-      const descriptor = nextMethods.find((candidate) => candidate.method === result.connection.method);
+      const descriptor = nextMethods.find(
+        (candidate) => candidate.method === result.connection.method,
+      );
       setMethods(nextMethods);
       setConnection(result.connection);
       setStatus(result.status);
@@ -104,12 +108,14 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
         <DialogHeader>
           <DialogTitle>Playground authentication</DialogTitle>
           <DialogDescription>
-            Configure how Eveland authenticates Playground requests to this Agent&apos;s Eve route. This is separate from Eve
-            Connections and your Eveland login.
+            Configure how Eveland authenticates Playground requests to this Agent&apos;s Eve route.
+            This is separate from Eve Connections and your Eveland login.
           </DialogDescription>
         </DialogHeader>
         {loading ? (
-          <div className="flex items-center gap-2 text-muted-foreground"><Spinner /> Loading authentication…</div>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Spinner /> Loading authentication…
+          </div>
         ) : null}
         {error ? (
           <Alert variant="destructive">
@@ -120,7 +126,9 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
         {!loading && connection ? (
           <form className="flex flex-col gap-6" onSubmit={submit}>
             <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-muted-foreground">Security revision {connection.securityRevision}</span>
+              <span className="text-muted-foreground">
+                Security revision {connection.securityRevision}
+              </span>
               <Badge variant={status?.state === "misconfigured" ? "destructive" : "secondary"}>
                 {statusLabel(status)}
               </Badge>
@@ -151,7 +159,11 @@ export function AgentConnectionSettings({ projectId }: { projectId: string }) {
             />
             <DialogFooter>
               <Button type="submit" disabled={saving}>
-                {saving ? <Spinner data-icon="inline-start" /> : <Settings2Icon data-icon="inline-start" />}
+                {saving ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <Settings2Icon data-icon="inline-start" />
+                )}
                 {saving ? "Saving…" : "Save authentication"}
               </Button>
             </DialogFooter>

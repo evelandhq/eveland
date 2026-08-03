@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test } from "vitest";
 import {
   getProjectIdFromPathname,
   getProjectNavigationItems,
@@ -6,24 +6,20 @@ import {
   globalNavigationItems,
   isNavigationItemActive,
   settingsNavigationGroups,
-} from "./navigation"
+} from "./navigation";
 
-function settingsDestinations(
-  groups: ReturnType<typeof getSettingsNavigationGroups>,
-) {
-  return groups.flatMap((group) => group.items.map((item) => item.href))
+function settingsDestinations(groups: ReturnType<typeof getSettingsNavigationGroups>) {
+  return groups.flatMap((group) => group.items.map((item) => item.href));
 }
 
 describe("sidebar navigation", () => {
   test("keeps account and system settings out of the primary workspace navigation", () => {
-    expect(
-      globalNavigationItems.map(({ href, label }) => ({ href, label })),
-    ).toEqual([
+    expect(globalNavigationItems.map(({ href, label }) => ({ href, label }))).toEqual([
       { href: "/projects", label: "Projects" },
       { href: "/deployments", label: "Deployments" },
       { href: "/usage", label: "Usage" },
-    ])
-  })
+    ]);
+  });
 
   test("groups personal and system destinations for the settings sidebar", () => {
     expect(
@@ -53,8 +49,8 @@ describe("sidebar navigation", () => {
           { href: "/settings/about", label: "About" },
         ],
       },
-    ])
-  })
+    ]);
+  });
 
   test("shows administrator settings only to administrators", () => {
     const memberHrefs = [
@@ -62,34 +58,28 @@ describe("sidebar navigation", () => {
       "/settings/git-credentials",
       "/settings/members",
       "/settings/about",
-    ]
+    ];
 
-    expect(settingsDestinations(getSettingsNavigationGroups("member"))).toEqual(
-      memberHrefs,
-    )
-    expect(settingsDestinations(getSettingsNavigationGroups(null))).toEqual(
-      memberHrefs,
-    )
+    expect(settingsDestinations(getSettingsNavigationGroups("member"))).toEqual(memberHrefs);
+    expect(settingsDestinations(getSettingsNavigationGroups(null))).toEqual(memberHrefs);
     expect(settingsDestinations(getSettingsNavigationGroups("admin"))).toEqual(
-      settingsNavigationGroups.flatMap((group) =>
-        group.items.map((item) => item.href),
-      ),
-    )
-  })
+      settingsNavigationGroups.flatMap((group) => group.items.map((item) => item.href)),
+    );
+  });
 
   test("switches to project navigation for project routes but not the new-project route", () => {
-    expect(getProjectIdFromPathname("/projects/project-123/usage")).toBe(
-      "project-123",
-    )
-    expect(getProjectIdFromPathname("/projects/new")).toBeNull()
-    expect(getProjectIdFromPathname("/usage")).toBeNull()
-  })
+    expect(getProjectIdFromPathname("/projects/project-123/usage")).toBe("project-123");
+    expect(getProjectIdFromPathname("/projects/new")).toBeNull();
+    expect(getProjectIdFromPathname("/usage")).toBeNull();
+  });
 
   test("orders daily project destinations before management destinations", () => {
     expect(
-      getProjectNavigationItems("project-123").map(
-        ({ href, label, section }) => ({ href, label, section }),
-      ),
+      getProjectNavigationItems("project-123").map(({ href, label, section }) => ({
+        href,
+        label,
+        section,
+      })),
     ).toEqual([
       {
         href: "/projects/project-123",
@@ -136,8 +126,8 @@ describe("sidebar navigation", () => {
         label: "Settings",
         section: "manage",
       },
-    ])
-  })
+    ]);
+  });
 
   test("keeps nested project pages active without activating the overview item", () => {
     expect(
@@ -145,18 +135,10 @@ describe("sidebar navigation", () => {
         "/projects/project-123/sessions/session-456",
         "/projects/project-123/sessions",
       ),
-    ).toBe(true)
-    expect(
-      isNavigationItemActive(
-        "/projects/project-123/sessions",
-        "/projects/project-123",
-      ),
-    ).toBe(false)
-    expect(
-      isNavigationItemActive(
-        "/projects/project-123",
-        "/projects/project-123",
-      ),
-    ).toBe(true)
-  })
-})
+    ).toBe(true);
+    expect(isNavigationItemActive("/projects/project-123/sessions", "/projects/project-123")).toBe(
+      false,
+    );
+    expect(isNavigationItemActive("/projects/project-123", "/projects/project-123")).toBe(true);
+  });
+});

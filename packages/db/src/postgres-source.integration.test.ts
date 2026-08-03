@@ -10,7 +10,10 @@ afterAll(async () => database?.close());
 describe.skipIf(!database)("Postgres source revisions", () => {
   test("advances current source without replacing an existing deployment", async () => {
     const store = createPostgresStore(database!);
-    const project = await store.createProject({ name: `Resync integration ${Date.now()}`, importKind: "git" });
+    const project = await store.createProject({
+      name: `Resync integration ${Date.now()}`,
+      importKind: "git",
+    });
 
     try {
       const initialRevision = await store.recordSourceRevision({
@@ -57,9 +60,11 @@ describe.skipIf(!database)("Postgres source revisions", () => {
         id: nextRevision.id,
         commitSha: "new-commit",
       });
-      await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({
-        content: "New instructions",
-      });
+      await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject(
+        {
+          content: "New instructions",
+        },
+      );
       await expect(store.getDeploymentEveVersion(deployment.id)).resolves.toEqual({
         version: "0.22.6",
         expected: "0.27.x, 0.28.x, or 0.29.x",

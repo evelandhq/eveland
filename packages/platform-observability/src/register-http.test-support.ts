@@ -1,22 +1,13 @@
 import { once } from "node:events";
-import {
-  createServer,
-  request,
-  type IncomingMessage,
-} from "node:http";
+import { createServer, request, type IncomingMessage } from "node:http";
 import { SpanKind } from "@opentelemetry/api";
 import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
-import {
-  AggregationTemporality,
-  InMemoryMetricExporter,
-} from "@opentelemetry/sdk-metrics";
+import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/sdk-metrics";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import { startPlatformObservability } from "./index.js";
 
 const traceExporter = new InMemorySpanExporter();
-const metricExporter = new InMemoryMetricExporter(
-  AggregationTemporality.CUMULATIVE,
-);
+const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
 const telemetry = startPlatformObservability({
   serviceName: "eveland-api",
   serviceInstanceId: "esm-http-test",
@@ -57,10 +48,7 @@ const serverSpans = traceExporter
 const exportedMetrics = metricExporter.getMetrics();
 const serverDurationResource = exportedMetrics.find((data) =>
   data.scopeMetrics.some((scope) =>
-    scope.metrics.some(
-      (metric) =>
-        metric.descriptor.name === "http.server.request.duration",
-    ),
+    scope.metrics.some((metric) => metric.descriptor.name === "http.server.request.duration"),
   ),
 );
 const serverDuration = exportedMetrics
@@ -73,12 +61,9 @@ process.stdout.write(
     serverSpans,
     serverDuration: serverDuration
       ? {
-          serviceName:
-            serverDurationResource?.resource.attributes["service.name"],
+          serviceName: serverDurationResource?.resource.attributes["service.name"],
           unit: serverDuration.descriptor.unit,
-          attributes: serverDuration.dataPoints.map(
-            (point) => point.attributes,
-          ),
+          attributes: serverDuration.dataPoints.map((point) => point.attributes),
         }
       : null,
   }),
@@ -90,19 +75,15 @@ await telemetry.shutdown();
 
 function sendRequest(port: number, path: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const outgoing = request(
-      { host: "127.0.0.1", port, path, method: "GET" },
-      (response) => drainResponse(response, resolve),
+    const outgoing = request({ host: "127.0.0.1", port, path, method: "GET" }, (response) =>
+      drainResponse(response, resolve),
     );
     outgoing.on("error", reject);
     outgoing.end();
   });
 }
 
-function drainResponse(
-  response: IncomingMessage,
-  resolve: () => void,
-): void {
+function drainResponse(response: IncomingMessage, resolve: () => void): void {
   response.resume();
   response.on("end", resolve);
 }

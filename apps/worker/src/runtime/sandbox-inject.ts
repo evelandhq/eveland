@@ -60,7 +60,10 @@ async function pathKind(target: string): Promise<"file" | "directory" | null> {
   return match.isDirectory() ? "directory" : "file";
 }
 
-async function removeAuthoredSandboxModules(moduleDir: string, relativeDir: string): Promise<string[]> {
+async function removeAuthoredSandboxModules(
+  moduleDir: string,
+  relativeDir: string,
+): Promise<string[]> {
   const removed: string[] = [];
   for (const extension of AUTHORED_MODULE_EXTENSIONS) {
     const authored = path.join(moduleDir, `sandbox${extension}`);
@@ -92,7 +95,11 @@ async function removeAuthoredSandboxModules(moduleDir: string, relativeDir: stri
  * file-form subagent like `subagents/foo.ts` does not), so we only recurse
  * into directory children.
  */
-async function collectSandboxRoots(releaseDir: string, root: string, roots: string[]): Promise<void> {
+async function collectSandboxRoots(
+  releaseDir: string,
+  root: string,
+  roots: string[],
+): Promise<void> {
   roots.push(root);
   const subagentsDir = path.join(releaseDir, root, "subagents");
   for (const name of await listDirectories(subagentsDir)) {
@@ -108,7 +115,9 @@ export async function resolveSandboxRoots(releaseDir: string): Promise<string[]>
   return roots;
 }
 
-export async function injectSandboxModules(input: SandboxInjectionInput): Promise<SandboxInjectionResult> {
+export async function injectSandboxModules(
+  input: SandboxInjectionInput,
+): Promise<SandboxInjectionResult> {
   const roots = await resolveSandboxRoots(input.releaseDir);
   const generated: string[] = [];
   const replaced: string[] = [];

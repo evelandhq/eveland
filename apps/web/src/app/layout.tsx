@@ -1,20 +1,20 @@
-import type { Metadata } from 'next';
-import { AppShell } from '@/components/app-shell';
-import { TimeZoneProvider } from '@/components/time-zone-provider';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import './globals.css';
+import type { Metadata } from "next";
+import { AppShell } from "@/components/app-shell";
+import { TimeZoneProvider } from "@/components/time-zone-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import "./globals.css";
 import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { getCurrentMemberOrNull } from "@/lib/server-api";
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: {
     default: "Eveland",
     template: "%s | Eveland",
   },
-  description: 'Self-hosted eve runtime control plane',
+  description: "Self-hosted eve runtime control plane",
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

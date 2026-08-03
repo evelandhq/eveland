@@ -21,7 +21,14 @@ export function registerInternalRoutes(input: {
   runtimeActivationWaitTimeoutMs: number;
   appSecretKey: string;
 }): void {
-  const { app, store, options, buildInfo, runtimeActivationLeaseTtlMs, runtimeActivationWaitTimeoutMs } = input;
+  const {
+    app,
+    store,
+    options,
+    buildInfo,
+    runtimeActivationLeaseTtlMs,
+    runtimeActivationWaitTimeoutMs,
+  } = input;
   app.get("/health", (c) => c.json({ ok: true, ...buildInfo }));
 
   registerOtlpRoutes({ app, store, options, appSecretKey: input.appSecretKey });
@@ -33,9 +40,12 @@ export function registerInternalRoutes(input: {
   });
 
   app.post("/internal/scheduler/dispatch", async (c) => {
-    const runtimeSecret = options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
-    const dispatchSecret = options.schedulerDispatchSecret ?? resolveSchedulerDispatchSecret(process.env);
-    if (!runtimeSecret || !dispatchSecret) return c.json({ error: "Scheduler dispatch is unavailable" }, 503);
+    const runtimeSecret =
+      options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
+    const dispatchSecret =
+      options.schedulerDispatchSecret ?? resolveSchedulerDispatchSecret(process.env);
+    if (!runtimeSecret || !dispatchSecret)
+      return c.json({ error: "Scheduler dispatch is unavailable" }, 503);
     const suppliedRuntimeSecret = c.req.header("x-eveland-runtime-secret");
     if (!suppliedRuntimeSecret || !safeSecretEqual(runtimeSecret, suppliedRuntimeSecret)) {
       return c.json({ error: "Unauthorized" }, 401);
@@ -72,7 +82,8 @@ export function registerInternalRoutes(input: {
     if (run.status !== "dispatching") return c.json({ error: "Dispatch is not active" }, 409);
     const completed = await store.completeScheduleRun(run.id, {
       status: parsed.data.status,
-      error: parsed.data.status === "failed" ? (parsed.data.error ?? "Scheduled handler failed.") : null,
+      error:
+        parsed.data.status === "failed" ? (parsed.data.error ?? "Scheduled handler failed.") : null,
       eveSessionIds: parsed.data.sessionIds,
     });
     return completed ? c.json({ ok: true }) : c.json({ error: "Dispatch not found" }, 404);
@@ -80,7 +91,8 @@ export function registerInternalRoutes(input: {
 
   app.post("/internal/runtime/activations", async (c) => {
     const serviceToken = options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
-    if (!isServiceRequest(c.req.header("authorization"), serviceToken)) return c.json({ error: "Not found" }, 404);
+    if (!isServiceRequest(c.req.header("authorization"), serviceToken))
+      return c.json({ error: "Not found" }, 404);
     const parsed = runtimeActivationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Invalid runtime activation" }, 400);
     const deployment = await store.getDeployment(parsed.data.deploymentId);
@@ -103,10 +115,17 @@ export function registerInternalRoutes(input: {
     }
     try {
       if (claim.runtimeInstance.status === "starting") {
-        await store.enqueueDeploymentActivation(deployment.projectId, deployment.id, claim.runtimeInstance.id, now);
+        await store.enqueueDeploymentActivation(
+          deployment.projectId,
+          deployment.id,
+          claim.runtimeInstance.id,
+          now,
+        );
       }
-      const runtimeInstance = await (options.runtimeActivationWaiter ?? ((candidate, input) =>
-        waitForRuntimeActivation(store, candidate, input)))(claim, {
+      const runtimeInstance = await (
+        options.runtimeActivationWaiter ??
+        ((candidate, input) => waitForRuntimeActivation(store, candidate, input))
+      )(claim, {
         signal: c.req.raw.signal,
         timeoutMs: runtimeActivationWaitTimeoutMs,
       });
@@ -129,7 +148,8 @@ export function registerInternalRoutes(input: {
 
   app.post("/internal/runtime/activations/:leaseId/renew", async (c) => {
     const serviceToken = options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
-    if (!isServiceRequest(c.req.header("authorization"), serviceToken)) return c.json({ error: "Not found" }, 404);
+    if (!isServiceRequest(c.req.header("authorization"), serviceToken))
+      return c.json({ error: "Not found" }, 404);
     const now = new Date();
     const lease = await store.renewActivationLease(
       c.req.param("leaseId"),
@@ -141,7 +161,8 @@ export function registerInternalRoutes(input: {
 
   app.delete("/internal/runtime/activations/:leaseId", async (c) => {
     const serviceToken = options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
-    if (!isServiceRequest(c.req.header("authorization"), serviceToken)) return c.json({ error: "Not found" }, 404);
+    if (!isServiceRequest(c.req.header("authorization"), serviceToken))
+      return c.json({ error: "Not found" }, 404);
     await store.releaseActivationLease(c.req.param("leaseId"));
     return c.body(null, 204);
   });

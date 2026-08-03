@@ -53,7 +53,9 @@ const dockerAdapterConfig = {
 };
 
 test("the root dev script builds the vendored sandbox backend before starting workspace dev", async () => {
-  const manifest = JSON.parse(await readFile(new URL("../../../package.json", import.meta.url), "utf8")) as {
+  const manifest = JSON.parse(
+    await readFile(new URL("../../../package.json", import.meta.url), "utf8"),
+  ) as {
     scripts: Record<string, string>;
   };
   expect(manifest.scripts.dev).toMatch(/^pnpm --filter @eveland\/sandbox-bwrap build && /);
@@ -74,9 +76,9 @@ describe("parseDockerPublishOwnership", () => {
     expect(parseDockerPublishOwnership("", "eveland-proj-dep_a1")).toEqual({
       status: "unbound",
     });
-    expect(
-      parseDockerPublishOwnership("eveland-proj-dep_a1\n", "eveland-proj-dep_a1"),
-    ).toEqual({ status: "owned" });
+    expect(parseDockerPublishOwnership("eveland-proj-dep_a1\n", "eveland-proj-dep_a1")).toEqual({
+      status: "owned",
+    });
     expect(
       parseDockerPublishOwnership(
         "eveland-other-dep_b2\neveland-third-dep_c3\n",
@@ -97,7 +99,14 @@ describe("buildDockerBuildArgs", () => {
       imageTag: "eveland/proj_123:rel_456",
     });
 
-    expect(args).toEqual(["build", "--file", "/workspace/builds/Dockerfile", "--tag", "eveland/proj_123:rel_456", "/workspace/source"]);
+    expect(args).toEqual([
+      "build",
+      "--file",
+      "/workspace/builds/Dockerfile",
+      "--tag",
+      "eveland/proj_123:rel_456",
+      "/workspace/source",
+    ]);
   });
 });
 
@@ -132,8 +141,13 @@ describe("Docker sandbox self-check", () => {
   });
 
   test("rejects a release when the Docker sandbox probe cannot execute", async () => {
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, all: "bwrap: Operation not permitted" } as never);
-    await expect(verifyDockerSandbox("eveland/proj_123:rel_456")).rejects.toThrow(/Operation not permitted/);
+    vi.mocked(execa).mockResolvedValueOnce({
+      exitCode: 1,
+      all: "bwrap: Operation not permitted",
+    } as never);
+    await expect(verifyDockerSandbox("eveland/proj_123:rel_456")).rejects.toThrow(
+      /Operation not permitted/,
+    );
   });
 });
 
@@ -145,8 +159,7 @@ describe("buildDockerRunArgs", () => {
       internalPort: 3000,
       hostPort: 43123,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
-      observabilityPolicyDir:
-        "/host/eveland/observability/proj_123/dep_456",
+      observabilityPolicyDir: "/host/eveland/observability/proj_123/dep_456",
       envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       command: "npm run start",
     });
@@ -199,8 +212,7 @@ describe("buildDockerRunArgs", () => {
       internalPort: 3000,
       hostPort: 43125,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
-      observabilityPolicyDir:
-        "/host/eveland/observability/proj_123/dep_456",
+      observabilityPolicyDir: "/host/eveland/observability/proj_123/dep_456",
       envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       command: "npm run start",
     });
@@ -251,7 +263,9 @@ describe("writeGeneratedDockerfile", () => {
     expect(contents).toContain(
       "npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.25",
     );
-    expect(contents.indexOf("npm install --no-save")).toBeLessThan(contents.indexOf("npx eve build"));
+    expect(contents.indexOf("npm install --no-save")).toBeLessThan(
+      contents.indexOf("npx eve build"),
+    );
   });
 });
 
@@ -296,7 +310,10 @@ describe("createDockerAdapter listProcesses", () => {
 
   test("throws when the docker CLI cannot list containers", async () => {
     const adapter = createDockerAdapter(dockerAdapterConfig);
-    vi.mocked(execa).mockResolvedValueOnce({ failed: true, all: "Cannot connect to the Docker daemon" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: true,
+      all: "Cannot connect to the Docker daemon",
+    } as never);
 
     await expect(adapter.listProcesses!("eveland-")).rejects.toThrow(/docker ps/);
   });
@@ -337,9 +354,9 @@ describe("createDockerAdapter", () => {
     const contents = await readFile(dockerfilePath, "utf8");
     expect(contents).toContain("FROM node:24-alpine");
     expect(contents).toContain("RUN npx eve build && npx eve info --json > /dev/null");
-    await expect(readFile(path.join(buildDir, ".eveland", "verify-sandbox.mjs"), "utf8")).resolves.toContain(
-      "node eveland-verify.ts",
-    );
+    await expect(
+      readFile(path.join(buildDir, ".eveland", "verify-sandbox.mjs"), "utf8"),
+    ).resolves.toContain("node eveland-verify.ts");
 
     expect(result.releaseRef).toBe("eveland/proj_123:rel_456");
     expect(injectSandboxModules).toHaveBeenCalledWith({
@@ -354,11 +371,28 @@ describe("createDockerAdapter", () => {
     });
     expect(vi.mocked(execa).mock.calls).toEqual([
       ["cp", ["-a", "/workspace/source/.", buildDir]],
-      ["docker", ["build", "--file", dockerfilePath, "--tag", "eveland/proj_123:rel_456", buildDir], { all: true }],
-      ["docker", buildDockerSandboxVerifyArgs("eveland/proj_123:rel_456"), { all: true, reject: false }],
       [
         "docker",
-        ["run", "--rm", "--network", "none", "eveland/proj_123:rel_456", "node", "-e", expect.any(String)],
+        ["build", "--file", dockerfilePath, "--tag", "eveland/proj_123:rel_456", buildDir],
+        { all: true },
+      ],
+      [
+        "docker",
+        buildDockerSandboxVerifyArgs("eveland/proj_123:rel_456"),
+        { all: true, reject: false },
+      ],
+      [
+        "docker",
+        [
+          "run",
+          "--rm",
+          "--network",
+          "none",
+          "eveland/proj_123:rel_456",
+          "node",
+          "-e",
+          expect.any(String),
+        ],
         { reject: false },
       ],
     ]);
@@ -455,13 +489,11 @@ describe("createDockerAdapter", () => {
       env: { OPENAI_API_KEY: "sk-test-123456" },
       commandContext: { hasLockfile: true },
       sandboxCacheDir,
-      observabilityPolicyDir:
-        "/var/lib/eveland-data/observability/proj_123/dep_456",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.internalPort).toBe(3000);
-    const networkName =
-      resolveAgentTelemetryNetworkName("eveland-proj_123");
+    const networkName = resolveAgentTelemetryNetworkName("eveland-proj_123");
     expect(vi.mocked(execa).mock.calls[0]).toEqual([
       "docker",
       ["network", "inspect", networkName],
@@ -494,8 +526,7 @@ describe("createDockerAdapter", () => {
   test("creates and connects a deployment-isolated Agent telemetry network when it is missing", async () => {
     vi.mocked(execa).mockClear();
     const processName = "eveland-proj_123-dep_456";
-    const networkName =
-      resolveAgentTelemetryNetworkName(processName);
+    const networkName = resolveAgentTelemetryNetworkName(processName);
     vi.mocked(execa)
       .mockResolvedValueOnce({
         failed: true,
@@ -505,18 +536,11 @@ describe("createDockerAdapter", () => {
       .mockResolvedValueOnce({ failed: false, all: "" } as never);
 
     await expect(
-      ensureAgentTelemetryNetwork(
-        processName,
-        "custom-otel-collector",
-      ),
+      ensureAgentTelemetryNetwork(processName, "custom-otel-collector"),
     ).resolves.toBeUndefined();
 
     expect(vi.mocked(execa).mock.calls).toEqual([
-      [
-        "docker",
-        ["network", "inspect", networkName],
-        { all: true, reject: false },
-      ],
+      ["docker", ["network", "inspect", networkName], { all: true, reject: false }],
       [
         "docker",
         [
@@ -566,23 +590,18 @@ describe("createDockerAdapter", () => {
         commandContext: {
           hasLockfile: true,
         },
-        sandboxCacheDir:
-          "/var/lib/eveland-data/sandbox/proj_123",
-        observabilityPolicyDir:
-          "/var/lib/eveland-data/observability/proj_123/dep_456",
+        sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       }),
     ).resolves.toMatchObject({ log: "agent started" });
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("Collector"),
-    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Collector"));
     warn.mockRestore();
   });
 
   test("finds and removes a managed network only while its Agent container is absent", async () => {
     vi.mocked(execa).mockClear();
     const processName = "eveland-proj_orphan-dep_orphan";
-    const networkName =
-      resolveAgentTelemetryNetworkName(processName);
+    const networkName = resolveAgentTelemetryNetworkName(processName);
     vi.mocked(execa)
       .mockResolvedValueOnce({
         failed: false,
@@ -593,9 +612,9 @@ describe("createDockerAdapter", () => {
         all: `Error: No such container: ${processName}`,
       } as never);
 
-    await expect(
-      listOrphanAgentTelemetryNetworks(),
-    ).resolves.toEqual([{ name: networkName, processName }]);
+    await expect(listOrphanAgentTelemetryNetworks()).resolves.toEqual([
+      { name: networkName, processName },
+    ]);
 
     vi.mocked(execa)
       .mockResolvedValueOnce({
@@ -617,7 +636,11 @@ describe("createDockerAdapter", () => {
     vi.mocked(execa).mockClear();
     vi.mocked(execa)
       .mockResolvedValueOnce({ failed: false, stdout: "running\n", all: "running\n" } as never)
-      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_123\n", all: "eveland-proj_123\n" } as never);
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "eveland-proj_123\n",
+        all: "eveland-proj_123\n",
+      } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     const result = await adapter.ensureProcess!({
@@ -627,14 +650,21 @@ describe("createDockerAdapter", () => {
       env: {},
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      observabilityPolicyDir:
-        "/var/lib/eveland-data/observability/proj_123/dep_456",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
     expect(result.log).toContain("Reused ready Docker process");
     expect(vi.mocked(execa).mock.calls).toEqual([
-      ["docker", ["inspect", "--format", "{{.State.Status}}", "eveland-proj_123"], { all: true, reject: false }],
-      ["docker", ["ps", "--filter", "publish=43123", "--format", "{{.Names}}"], { all: true, reject: false }],
+      [
+        "docker",
+        ["inspect", "--format", "{{.State.Status}}", "eveland-proj_123"],
+        { all: true, reject: false },
+      ],
+      [
+        "docker",
+        ["ps", "--filter", "publish=43123", "--format", "{{.Names}}"],
+        { all: true, reject: false },
+      ],
     ]);
   });
 
@@ -642,7 +672,11 @@ describe("createDockerAdapter", () => {
     vi.mocked(execa).mockClear();
     vi.mocked(execa)
       .mockResolvedValueOnce({ failed: false, stdout: "running\n", all: "running\n" } as never)
-      .mockResolvedValueOnce({ failed: false, stdout: "eveland-proj_other\n", all: "eveland-proj_other\n" } as never)
+      .mockResolvedValueOnce({
+        failed: false,
+        stdout: "eveland-proj_other\n",
+        all: "eveland-proj_other\n",
+      } as never)
       .mockResolvedValueOnce({ failed: false, stdout: "", all: "" } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
@@ -654,15 +688,10 @@ describe("createDockerAdapter", () => {
         env: {},
         commandContext: { hasLockfile: true },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-        observabilityPolicyDir:
-          "/var/lib/eveland-data/observability/proj_123/dep_456",
+        observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       }),
     ).rejects.toThrow(/published by eveland-proj_other/);
-    expect(vi.mocked(execa).mock.calls[2]?.[1]).toEqual([
-      "rm",
-      "--force",
-      "eveland-proj_123",
-    ]);
+    expect(vi.mocked(execa).mock.calls[2]?.[1]).toEqual(["rm", "--force", "eveland-proj_123"]);
   });
 
   test("collects bounded container state and recent logs before cleanup", async () => {
@@ -674,7 +703,9 @@ describe("createDockerAdapter", () => {
         all: "status=restarting restarting=true exitCode=1 oomKilled=false restartCount=4",
       } as never)
       .mockResolvedValueOnce({ failed: false, all: "Eve startup failed\nstack trace" } as never);
-    const adapter = createDockerAdapter(dockerAdapterConfig) as ReturnType<typeof createDockerAdapter> & {
+    const adapter = createDockerAdapter(dockerAdapterConfig) as ReturnType<
+      typeof createDockerAdapter
+    > & {
       getProcessDiagnostics(processName: string): Promise<{ state: string; logs: string }>;
     };
 
@@ -703,26 +734,15 @@ describe("createDockerAdapter", () => {
 
     await adapter.stopProcess("eveland-proj_123");
 
-    const networkName =
-      resolveAgentTelemetryNetworkName("eveland-proj_123");
+    const networkName = resolveAgentTelemetryNetworkName("eveland-proj_123");
     expect(vi.mocked(execa).mock.calls).toEqual([
       ["docker", ["rm", "--force", "eveland-proj_123"], { reject: false }],
       [
         "docker",
-        [
-          "network",
-          "disconnect",
-          "--force",
-          networkName,
-          "eveland-otel-collector",
-        ],
+        ["network", "disconnect", "--force", networkName, "eveland-otel-collector"],
         { all: true, reject: false },
       ],
-      [
-        "docker",
-        ["network", "rm", networkName],
-        { all: true, reject: false },
-      ],
+      ["docker", ["network", "rm", networkName], { all: true, reject: false }],
     ]);
   });
 
@@ -751,37 +771,48 @@ describe("createDockerAdapter", () => {
       } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
-    await expect(
-      adapter.stopProcess("eveland-proj_123"),
-    ).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("orphan sweep will retry"),
-    );
+    await expect(adapter.stopProcess("eveland-proj_123")).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("orphan sweep will retry"));
     warn.mockRestore();
   });
 
   test("stopProcess throws naming the command and stderr when the docker daemon is unreachable", async () => {
     vi.mocked(execa).mockClear();
-    const stderr = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?";
+    const stderr =
+      "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?";
     vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr, all: "" } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
-    await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(/docker rm --force eveland-proj_123 failed/);
+    await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(
+      /docker rm --force eveland-proj_123 failed/,
+    );
     vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr, all: "" } as never);
     await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(stderr);
   });
 
   test("stopProcess throws when the docker CLI itself cannot be spawned (ENOENT)", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: undefined, stderr: "", all: "" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: true,
+      exitCode: undefined,
+      stderr: "",
+      all: "",
+    } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
-    await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(/docker rm --force eveland-proj_123 failed/);
+    await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(
+      /docker rm --force eveland-proj_123 failed/,
+    );
   });
 
   test("stopProcess throws on an unknown non-zero exit", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr: "permission denied", all: "" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: true,
+      exitCode: 1,
+      stderr: "permission denied",
+      all: "",
+    } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(/permission denied/);
@@ -819,11 +850,19 @@ describe("isBenignDockerStopFailure", () => {
   });
 
   test("tolerates 'No such container' -- the idempotent not-found case", () => {
-    expect(isBenignDockerStopFailure({ failed: true, exitCode: 1, stderr: "Error: No such container: eveland-proj_123" })).toBe(true);
+    expect(
+      isBenignDockerStopFailure({
+        failed: true,
+        exitCode: 1,
+        stderr: "Error: No such container: eveland-proj_123",
+      }),
+    ).toBe(true);
   });
 
   test("does not tolerate a spawn failure (docker CLI missing, no exit code or stderr)", () => {
-    expect(isBenignDockerStopFailure({ failed: true, exitCode: undefined, stderr: "" })).toBe(false);
+    expect(isBenignDockerStopFailure({ failed: true, exitCode: undefined, stderr: "" })).toBe(
+      false,
+    );
   });
 
   test("does not tolerate a daemon-unreachable error", () => {
@@ -831,20 +870,27 @@ describe("isBenignDockerStopFailure", () => {
       isBenignDockerStopFailure({
         failed: true,
         exitCode: 1,
-        stderr: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+        stderr:
+          "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
       }),
     ).toBe(false);
   });
 
   test("does not tolerate an unknown non-zero exit", () => {
-    expect(isBenignDockerStopFailure({ failed: true, exitCode: 1, stderr: "permission denied" })).toBe(false);
+    expect(
+      isBenignDockerStopFailure({ failed: true, exitCode: 1, stderr: "permission denied" }),
+    ).toBe(false);
   });
 });
 
 describe("createDockerAdapter inspectProcess", () => {
   test("reports a paused container as failed so ensureProcess replaces it", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({ failed: false, stdout: "paused\n", all: "paused\n" } as never);
+    vi.mocked(execa).mockResolvedValueOnce({
+      failed: false,
+      stdout: "paused\n",
+      all: "paused\n",
+    } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     // A paused container never becomes ready on its own; "starting" made
@@ -869,17 +915,21 @@ describe("docker deployment secrets", () => {
     });
 
     // /proc/<pid>/cmdline and `docker inspect` must never carry the values.
-    const runCall = vi.mocked(execa).mock.calls.find(([, args]) =>
-      Array.isArray(args) && args[0] === "run",
-    );
+    const runCall = vi
+      .mocked(execa)
+      .mock.calls.find(([, args]) => Array.isArray(args) && args[0] === "run");
     const runArgs = (runCall?.[1] ?? []) as string[];
     expect(runArgs.join(" ")).not.toContain("sk-secret-value");
     expect(runArgs.join(" ")).not.toContain("postgres://u:p@host/db");
     expect(runArgs).toContain("--env-file");
 
-    const envFilePath = path.join(dockerAdapterDataDir, "deployment-env", "eveland-proj_sec-dep_sec1.env");
+    const envFilePath = path.join(
+      dockerAdapterDataDir,
+      "deployment-env",
+      "eveland-proj_sec-dep_sec1.env",
+    );
     await expect(readFile(envFilePath, "utf8")).resolves.toBe(
-      'OPENAI_API_KEY=sk-secret-value\nWORKFLOW_POSTGRES_URL=postgres://u:p@host/db\n',
+      "OPENAI_API_KEY=sk-secret-value\nWORKFLOW_POSTGRES_URL=postgres://u:p@host/db\n",
     );
     const { mode } = await stat(envFilePath);
     expect(mode & 0o777).toBe(0o600);
@@ -897,7 +947,11 @@ describe("docker deployment secrets", () => {
       sandboxCacheDir: "/host/sandbox/proj_sec",
       observabilityPolicyDir: "/host/observability/proj_sec",
     });
-    const envFilePath = path.join(dockerAdapterDataDir, "deployment-env", "eveland-proj_sec-dep_sec2.env");
+    const envFilePath = path.join(
+      dockerAdapterDataDir,
+      "deployment-env",
+      "eveland-proj_sec-dep_sec2.env",
+    );
     await expect(access(envFilePath)).resolves.toBeUndefined();
 
     await adapter.stopProcess("eveland-proj_sec-dep_sec2");

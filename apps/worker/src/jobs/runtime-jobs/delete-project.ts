@@ -34,8 +34,7 @@ export async function handleDeleteProjectJob(
   // represented by a Deployment before cleanup starts.
   const deployments = await store.listDeployments(job.projectId);
   const liveDeployments = deployments.filter(
-    (deployment) =>
-      deployment.status === "running" || deployment.status === "draining",
+    (deployment) => deployment.status === "running" || deployment.status === "draining",
   );
   if (liveDeployments.length > 0) {
     await store.appendLog({
@@ -47,9 +46,7 @@ export async function handleDeleteProjectJob(
       const stopAdapter =
         options.runtime?.name === deployment.runtimeKind
           ? options.runtime
-          : (options.runtimeForKind ?? createRuntimeAdapterForKind)(
-              deployment.runtimeKind,
-            );
+          : (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
       await stopAdapter.stopProcess(deployment.containerName);
     }
   }
@@ -62,30 +59,21 @@ export async function handleDeleteProjectJob(
     const adapter =
       options.runtime?.name === deployment.runtimeKind
         ? options.runtime
-        : (options.runtimeForKind ?? createRuntimeAdapterForKind)(
-            deployment.runtimeKind,
-          );
-    if (release && adapter.removeRelease)
-      await adapter.removeRelease(release.imageTag);
+        : (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+    if (release && adapter.removeRelease) await adapter.removeRelease(release.imageTag);
     removedReleases.add(releaseKey);
   }
 
   // The project's derived workflow database goes with the project. Dropped
   // before deleteProject so a failed drop leaves a retryable project row.
-  await (options.dropProjectWorkflowWorld ?? dropProjectWorkflowWorld)(
-    process.env,
-    job.projectId,
-  );
+  await (options.dropProjectWorkflowWorld ?? dropProjectWorkflowWorld)(process.env, job.projectId);
 
   const sourceRevisions = await store.listSourceRevisions(job.projectId);
   const pendingSourcePaths = job.payload.sourcePaths ?? [];
   await removeManagedProjectFiles(
     options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data",
     job.projectId,
-    [
-      ...sourceRevisions.map((revision) => revision.sourcePath),
-      ...pendingSourcePaths,
-    ],
+    [...sourceRevisions.map((revision) => revision.sourcePath), ...pendingSourcePaths],
     deployments.map((deployment) => deployment.containerName),
   );
 

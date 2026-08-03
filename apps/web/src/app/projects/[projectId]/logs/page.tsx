@@ -7,9 +7,7 @@ export const metadata = {
   title: "Logs",
 };
 
-export default async function LogsPage({ params }: {
-  params: Promise<{ projectId: string }>;
-}) {
+export default async function LogsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
   const logs = await getLogs(projectId);
 
@@ -22,7 +20,9 @@ export default async function LogsPage({ params }: {
             Build, deploy, and runtime output. Agent events remain in Session Timeline.
           </p>
         </div>
-        <Badge variant="outline">{logs.length} {logs.length === 1 ? "line" : "lines"}</Badge>
+        <Badge variant="outline">
+          {logs.length} {logs.length === 1 ? "line" : "lines"}
+        </Badge>
       </header>
 
       <ProjectLogViewer logs={logs} />

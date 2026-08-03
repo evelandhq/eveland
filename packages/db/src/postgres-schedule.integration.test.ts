@@ -10,7 +10,10 @@ afterAll(async () => database?.close());
 describe.skipIf(!database)("Postgres schedule state", () => {
   test("preserves versions and prevents duplicate runs across concurrent planners", async () => {
     const store = createPostgresStore(database!);
-    const project = await store.createProject({ name: `Schedule integration ${Date.now()}`, importKind: "zip" });
+    const project = await store.createProject({
+      name: `Schedule integration ${Date.now()}`,
+      importKind: "zip",
+    });
 
     try {
       const revision = await store.recordSourceRevision({
@@ -75,34 +78,54 @@ describe.skipIf(!database)("Postgres schedule state", () => {
         new Date("2026-07-15T00:05:00.000Z"),
       );
       expect(renewed?.expiresAt).toBe("2026-07-15T00:20:00.000Z");
+      await store.updateRuntimeInstance(
+        activationClaims[0]!.runtimeInstance.id,
+        {
+          status: "ready",
+          endpointHost: "127.0.0.1",
+          endpointPort: deployment.hostPort,
+        },
+        new Date("2026-07-15T00:00:30.000Z"),
+      );
+      await Promise.all(
+        activationClaims.map((claim) =>
+          store.releaseActivationLease(claim.lease.id, new Date("2026-07-15T00:20:00.000Z")),
+        ),
+      );
+      await expect(
+        store.claimIdleRuntimeInstances({
+          now: new Date("2026-07-15T00:20:59.999Z"),
+          idleTtlMs: 60_000,
+          limit: 10,
+        }),
+      ).resolves.toEqual([]);
+      await expect(
+        store.claimIdleRuntimeInstances({
+          now: new Date("2026-07-15T00:21:00.000Z"),
+          idleTtlMs: 60_000,
+          limit: 10,
+        }),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          id: activationClaims[0]!.runtimeInstance.id,
+          status: "draining",
+        }),
+      );
       await store.updateRuntimeInstance(activationClaims[0]!.runtimeInstance.id, {
-        status: "ready",
-        endpointHost: "127.0.0.1",
-        endpointPort: deployment.hostPort,
-      }, new Date("2026-07-15T00:00:30.000Z"));
-      await Promise.all(activationClaims.map((claim) =>
-        store.releaseActivationLease(claim.lease.id, new Date("2026-07-15T00:20:00.000Z")),
-      ));
-      await expect(store.claimIdleRuntimeInstances({
-        now: new Date("2026-07-15T00:20:59.999Z"),
-        idleTtlMs: 60_000,
-        limit: 10,
-      })).resolves.toEqual([]);
-      await expect(store.claimIdleRuntimeInstances({
-        now: new Date("2026-07-15T00:21:00.000Z"),
-        idleTtlMs: 60_000,
-        limit: 10,
-      })).resolves.toContainEqual(expect.objectContaining({
-        id: activationClaims[0]!.runtimeInstance.id,
-        status: "draining",
-      }));
-      await store.updateRuntimeInstance(activationClaims[0]!.runtimeInstance.id, { status: "stopped" });
-      await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-15T00:00:30.000Z"));
-      await expect(store.listUpcomingScheduleTargets({
-        after: new Date("2026-07-15T00:00:30.000Z"),
-        before: new Date("2026-07-15T00:01:00.000Z"),
-        limit: 10,
-      })).resolves.toEqual([
+        status: "stopped",
+      });
+      await store.setProjectSchedulerTarget(
+        project.id,
+        deployment.id,
+        new Date("2026-07-15T00:00:30.000Z"),
+      );
+      await expect(
+        store.listUpcomingScheduleTargets({
+          after: new Date("2026-07-15T00:00:30.000Z"),
+          before: new Date("2026-07-15T00:01:00.000Z"),
+          limit: 10,
+        }),
+      ).resolves.toEqual([
         expect.objectContaining({
           scheduleId: entry!.schedule.id,
           projectId: project.id,
@@ -117,19 +140,30 @@ describe.skipIf(!database)("Postgres schedule state", () => {
         expiresAt: new Date("2026-07-15T00:00:31.000Z"),
         now: new Date("2026-07-15T00:00:30.000Z"),
       });
+      await store.updateRuntimeInstance(
+        scheduleProtectedClaim.runtimeInstance.id,
+        {
+          status: "ready",
+          endpointHost: "127.0.0.1",
+          endpointPort: deployment.hostPort,
+        },
+        new Date("2026-07-15T00:00:30.000Z"),
+      );
+      await store.releaseActivationLease(
+        scheduleProtectedClaim.lease.id,
+        new Date("2026-07-15T00:00:31.000Z"),
+      );
+      await expect(
+        store.claimIdleRuntimeInstances({
+          now: new Date("2026-07-15T00:00:40.000Z"),
+          idleTtlMs: 0,
+          schedulePrewarmMs: 20_000,
+          limit: 10,
+        }),
+      ).resolves.toEqual([]);
       await store.updateRuntimeInstance(scheduleProtectedClaim.runtimeInstance.id, {
-        status: "ready",
-        endpointHost: "127.0.0.1",
-        endpointPort: deployment.hostPort,
-      }, new Date("2026-07-15T00:00:30.000Z"));
-      await store.releaseActivationLease(scheduleProtectedClaim.lease.id, new Date("2026-07-15T00:00:31.000Z"));
-      await expect(store.claimIdleRuntimeInstances({
-        now: new Date("2026-07-15T00:00:40.000Z"),
-        idleTtlMs: 0,
-        schedulePrewarmMs: 20_000,
-        limit: 10,
-      })).resolves.toEqual([]);
-      await store.updateRuntimeInstance(scheduleProtectedClaim.runtimeInstance.id, { status: "stopped" });
+        status: "stopped",
+      });
 
       const manualDueAt = new Date("2026-07-15T00:00:45.000Z");
       const manualRuns = await Promise.all([
@@ -144,8 +178,13 @@ describe.skipIf(!database)("Postgres schedule state", () => {
       ]);
 
       expect(results.flat()).toHaveLength(1);
-      expect(results.flat()[0]).toMatchObject({ dueAt: "2026-07-15T00:01:00.000Z", missedTicks: 4 });
-      await expect(store.listProjectScheduleVersions(project.id, revision.id)).resolves.toHaveLength(1);
+      expect(results.flat()[0]).toMatchObject({
+        dueAt: "2026-07-15T00:01:00.000Z",
+        missedTicks: 4,
+      });
+      await expect(
+        store.listProjectScheduleVersions(project.id, revision.id),
+      ).resolves.toHaveLength(1);
       const run = results.flat()[0]!;
       const runActivationClaims = await Promise.all([
         store.claimScheduleRunActivation(run.id),
@@ -158,7 +197,10 @@ describe.skipIf(!database)("Postgres schedule state", () => {
       ]);
       expect(redeemed.filter(Boolean)).toHaveLength(1);
       await expect(
-        store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: ["eve_postgres_schedule"] }),
+        store.completeScheduleRun(run.id, {
+          status: "succeeded",
+          eveSessionIds: ["eve_postgres_schedule"],
+        }),
       ).resolves.toMatchObject({ status: "running", completedAt: null });
       await expect(store.listSessions(project.id)).resolves.toContainEqual(
         expect.objectContaining({
@@ -168,21 +210,29 @@ describe.skipIf(!database)("Postgres schedule state", () => {
           trigger: "cron",
         }),
       );
-      await expect(store.listProjectScheduleSummaries(project.id)).resolves.toContainEqual(expect.objectContaining({
-        schedule: expect.objectContaining({ id: run.scheduleId, key: "nested/minute" }),
-        version: expect.objectContaining({ id: run.scheduleVersionId }),
-        targetDeploymentId: deployment.id,
-      }));
-      await expect(store.listScheduleRuns(project.id, {
-        scheduleId: run.scheduleId,
-        trigger: "cron",
-        status: "running",
-        limit: 10,
-      })).resolves.toMatchObject({
-        items: [expect.objectContaining({ id: run.id, sessionCount: 1, sessions: [expect.any(Object)] })],
+      await expect(store.listProjectScheduleSummaries(project.id)).resolves.toContainEqual(
+        expect.objectContaining({
+          schedule: expect.objectContaining({ id: run.scheduleId, key: "nested/minute" }),
+          version: expect.objectContaining({ id: run.scheduleVersionId }),
+          targetDeploymentId: deployment.id,
+        }),
+      );
+      await expect(
+        store.listScheduleRuns(project.id, {
+          scheduleId: run.scheduleId,
+          trigger: "cron",
+          status: "running",
+          limit: 10,
+        }),
+      ).resolves.toMatchObject({
+        items: [
+          expect.objectContaining({ id: run.id, sessionCount: 1, sessions: [expect.any(Object)] }),
+        ],
         nextCursor: null,
       });
-      await expect(store.listSessionsPage(project.id, { scheduleRunId: run.id, trigger: "cron", limit: 10 })).resolves.toMatchObject({
+      await expect(
+        store.listSessionsPage(project.id, { scheduleRunId: run.id, trigger: "cron", limit: 10 }),
+      ).resolves.toMatchObject({
         items: [expect.objectContaining({ scheduleRunId: run.id })],
         nextCursor: null,
       });
@@ -200,7 +250,10 @@ describe.skipIf(!database)("Postgres schedule state", () => {
 
   test("adopts an unmanaged deployment exactly once under concurrency and defers to live instances", async () => {
     const store = createPostgresStore(database!);
-    const project = await store.createProject({ name: `Adoption integration ${Date.now()}`, importKind: "zip" });
+    const project = await store.createProject({
+      name: `Adoption integration ${Date.now()}`,
+      importKind: "zip",
+    });
 
     try {
       const revision = await store.recordSourceRevision({
@@ -222,16 +275,30 @@ describe.skipIf(!database)("Postgres schedule state", () => {
         hostPort: 41988,
         runtimeKind: "docker",
       });
-      await expect(store.getDeploymentByContainerName(containerName)).resolves.toMatchObject({ id: deployment.id });
+      await expect(store.getDeploymentByContainerName(containerName)).resolves.toMatchObject({
+        id: deployment.id,
+      });
 
       const now = new Date("2026-07-16T10:00:00.000Z");
       const adoptions = await Promise.all([
-        store.adoptRuntimeInstance(deployment.id, { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort }, now),
-        store.adoptRuntimeInstance(deployment.id, { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort }, now),
+        store.adoptRuntimeInstance(
+          deployment.id,
+          { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
+          now,
+        ),
+        store.adoptRuntimeInstance(
+          deployment.id,
+          { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
+          now,
+        ),
       ]);
       const adopted = adoptions.filter(Boolean);
       expect(adopted).toHaveLength(1);
-      expect(adopted[0]).toMatchObject({ status: "ready", generation: 1, endpointPort: deployment.hostPort });
+      expect(adopted[0]).toMatchObject({
+        status: "ready",
+        generation: 1,
+        endpointPort: deployment.hostPort,
+      });
       await expect(store.listDeploymentRuntimeInstances(deployment.id)).resolves.toHaveLength(1);
 
       const claim = await store.acquireActivationLease({
@@ -245,22 +312,30 @@ describe.skipIf(!database)("Postgres schedule state", () => {
       expect(claim.runtimeInstance.id).toBe(adopted[0]!.id);
       await store.releaseActivationLease(claim.lease.id, now);
 
-      await expect(store.claimIdleRuntimeInstances({
-        now: new Date("2026-07-16T10:05:00.000Z"),
-        idleTtlMs: 300_000,
-        limit: 10,
-      })).resolves.toContainEqual(expect.objectContaining({ id: adopted[0]!.id, status: "draining" }));
-      await expect(store.adoptRuntimeInstance(
-        deployment.id,
-        { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
-        new Date("2026-07-16T10:05:01.000Z"),
-      )).resolves.toBeNull();
+      await expect(
+        store.claimIdleRuntimeInstances({
+          now: new Date("2026-07-16T10:05:00.000Z"),
+          idleTtlMs: 300_000,
+          limit: 10,
+        }),
+      ).resolves.toContainEqual(
+        expect.objectContaining({ id: adopted[0]!.id, status: "draining" }),
+      );
+      await expect(
+        store.adoptRuntimeInstance(
+          deployment.id,
+          { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
+          new Date("2026-07-16T10:05:01.000Z"),
+        ),
+      ).resolves.toBeNull();
       await store.updateRuntimeInstance(adopted[0]!.id, { status: "stopped" });
-      await expect(store.adoptRuntimeInstance(
-        deployment.id,
-        { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
-        new Date("2026-07-16T10:06:00.000Z"),
-      )).resolves.toMatchObject({ generation: 2, status: "ready" });
+      await expect(
+        store.adoptRuntimeInstance(
+          deployment.id,
+          { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
+          new Date("2026-07-16T10:06:00.000Z"),
+        ),
+      ).resolves.toMatchObject({ generation: 2, status: "ready" });
     } finally {
       await store.deleteProject(project.id);
     }

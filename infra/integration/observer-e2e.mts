@@ -16,26 +16,17 @@ import { processNextJob } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
 
-const APP_SECRET_KEY =
-  process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
+const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
 const FIXTURE_TEMPLATE_PATH = fileURLToPath(
-  new URL(
-    "../../apps/worker/src/integration/fixtures/observer-e2e",
-    import.meta.url,
-  ),
+  new URL("../../apps/worker/src/integration/fixtures/observer-e2e", import.meta.url),
 );
 
 async function main(): Promise<void> {
-  const fixtureRoot = await mkdtemp(
-    path.join(os.tmpdir(), "eveland-observer-e2e-source-"),
-  );
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-observer-e2e-source-"));
   try {
     const fixtureSourcePath = path.join(fixtureRoot, "source");
-    await materializeEveFixtureDirectory(
-      FIXTURE_TEMPLATE_PATH,
-      fixtureSourcePath,
-    );
+    await materializeEveFixtureDirectory(FIXTURE_TEMPLATE_PATH, fixtureSourcePath);
     const { store, close } = await createPgliteTestStore();
     let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;
     let receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>> | null = null;
@@ -78,9 +69,7 @@ async function main(): Promise<void> {
       const eveSessionId = await runDirectTurn(deployment.hostPort);
       const observations = await waitForAgentObservations(receiver);
       assert.ok(
-        observations.some(
-          (observation) => observation.parentEveSessionId !== null,
-        ),
+        observations.some((observation) => observation.parentEveSessionId !== null),
         "directory subagent OTLP logs had no parent lineage",
       );
       for (const observation of observations) {
@@ -97,10 +86,7 @@ async function main(): Promise<void> {
       const nodes = await store.listSessionNodes(session.id);
       const usage = await store.listModelUsageEvents(session.id);
       assert.equal(session.eveSessionId, eveSessionId);
-      assert.ok(
-        nodes.length >= 2,
-        `expected root + directory subagent nodes, got ${nodes.length}`,
-      );
+      assert.ok(nodes.length >= 2, `expected root + directory subagent nodes, got ${nodes.length}`);
       assert.ok(
         usage.length >= 2,
         `expected provider usage for root + directory subagent, got ${usage.length}`,
@@ -172,29 +158,20 @@ async function waitForAgentObservations(
         ...projectAgentEventsFromOtlpLogs(payload, {
           resolveDeploymentId: (credential) =>
             credential
-              ? verifyAgentTelemetryCredential(
-                  credential,
-                  AGENT_TELEMETRY_SECRET,
-                )?.deploymentId
+              ? verifyAgentTelemetryCredential(credential, AGENT_TELEMETRY_SECRET)?.deploymentId
               : undefined,
         }),
       );
     }
     if (
-      observations.some(
-        (observation) => eventType(observation.event) === "step.completed",
-      ) &&
-      observations.some(
-        (observation) => observation.parentEveSessionId !== null,
-      )
+      observations.some((observation) => eventType(observation.event) === "step.completed") &&
+      observations.some((observation) => observation.parentEveSessionId !== null)
     ) {
       return observations;
     }
     await delay(250);
   }
-  throw new Error(
-    `Agent did not export complete OTLP logs (observations=${observations.length}).`,
-  );
+  throw new Error(`Agent did not export complete OTLP logs (observations=${observations.length}).`);
 }
 
 function eventType(event: unknown): string | undefined {
@@ -207,35 +184,28 @@ function eventType(event: unknown): string | undefined {
 }
 
 async function runDirectTurn(hostPort: number): Promise<string> {
-  const createResponse = await fetch(
-    `http://127.0.0.1:${hostPort}/eve/v1/session`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        message: "Ask the researcher to investigate OpenTelemetry.",
-      }),
-      signal: AbortSignal.timeout(20_000),
-    },
-  );
+  const createResponse = await fetch(`http://127.0.0.1:${hostPort}/eve/v1/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      message: "Ask the researcher to investigate OpenTelemetry.",
+    }),
+    signal: AbortSignal.timeout(20_000),
+  });
   const body = await createResponse.text();
   assert.ok(
     createResponse.ok,
     `direct private-port POST failed (${createResponse.status}): ${body}`,
   );
   const parsed = JSON.parse(body) as { sessionId?: string };
-  const sessionId =
-    parsed.sessionId ?? createResponse.headers.get("x-eve-session-id");
+  const sessionId = parsed.sessionId ?? createResponse.headers.get("x-eve-session-id");
   assert.ok(sessionId, `direct private-port response had no session id: ${body}`);
 
   const stream = await fetch(
     `http://127.0.0.1:${hostPort}/eve/v1/session/${encodeURIComponent(sessionId)}/stream`,
     { signal: AbortSignal.timeout(30_000) },
   );
-  assert.ok(
-    stream.ok && stream.body,
-    `session stream failed (${stream.status})`,
-  );
+  assert.ok(stream.ok && stream.body, `session stream failed (${stream.status})`);
   const reader = stream.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

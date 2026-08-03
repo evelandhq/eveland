@@ -5,23 +5,13 @@ import {
   agentAuthTransactionRowToAgentAuthTransaction,
   agentConnectionRowToAgentConnection,
 } from "./mappers.js";
-import {
-  agentAuthCredentials,
-  agentAuthTransactions,
-  agentConnections,
-} from "./schema.js";
-
+import { agentAuthCredentials, agentAuthTransactions, agentConnections } from "./schema.js";
 
 import type { AgentAuthStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
-import {
-  agentAuthCredentialWhere,
-  isUniqueConstraint,
-} from "./postgres-store-support.js";
+import { agentAuthCredentialWhere, isUniqueConstraint } from "./postgres-store-support.js";
 
-export function createPostgresAgentAuthStore({
-  db,
-}: PostgresStoreContext): AgentAuthStore {
+export function createPostgresAgentAuthStore({ db }: PostgresStoreContext): AgentAuthStore {
   return {
     async createAgentConnection(input) {
       try {
@@ -78,10 +68,7 @@ export function createPostgresAgentAuthStore({
         .where(
           and(
             eq(agentConnections.id, input.id),
-            eq(
-              agentConnections.securityRevision,
-              input.expectedSecurityRevision,
-            ),
+            eq(agentConnections.securityRevision, input.expectedSecurityRevision),
           ),
         )
         .returning();
@@ -231,10 +218,7 @@ export function createPostgresAgentAuthStore({
     },
 
     async createAgentAuthTransaction(input) {
-      const [row] = await db
-        .insert(agentAuthTransactions)
-        .values(input)
-        .returning();
+      const [row] = await db.insert(agentAuthTransactions).values(input).returning();
       if (!row) throw new Error("Failed to create Agent Auth transaction.");
       return agentAuthTransactionRowToAgentAuthTransaction(row);
     },
@@ -244,9 +228,7 @@ export function createPostgresAgentAuthStore({
         .delete(agentAuthTransactions)
         .where(eq(agentAuthTransactions.stateHash, stateHash))
         .returning();
-      return row && row.expiresAt > now
-        ? agentAuthTransactionRowToAgentAuthTransaction(row)
-        : null;
+      return row && row.expiresAt > now ? agentAuthTransactionRowToAgentAuthTransaction(row) : null;
     },
 
     async deleteExpiredAgentAuthTransactions(now = new Date(), limit = 100) {
@@ -266,10 +248,7 @@ export function createPostgresAgentAuthStore({
       return rows.length;
     },
 
-    async deleteStaleAgentAuthCredentials(
-      agentConnectionId,
-      currentSecurityRevision,
-    ) {
+    async deleteStaleAgentAuthCredentials(agentConnectionId, currentSecurityRevision) {
       const credentials = await db
         .delete(agentAuthCredentials)
         .where(

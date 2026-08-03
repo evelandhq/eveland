@@ -31,14 +31,22 @@ describe("Agent Auth provider registry", () => {
   test("rejects duplicate, invalid, and internally inconsistent registrations", () => {
     expect(() => createAgentAuthRegistry([registration("none")])).toThrow(/duplicate/i);
     expect(() => createAgentAuthRegistry([registration("Not Valid")])).toThrow(/invalid/i);
-    expect(() => createAgentAuthRegistry([{
-      ...registration("future-auth"),
-      descriptor: { ...registration("future-auth").descriptor, method: "different" },
-    }])).toThrow(/descriptor/i);
-    expect(() => createAgentAuthRegistry([{
-      ...registration("future-auth"),
-      credentialScope: "principal",
-    }])).toThrow(/credential scope/i);
+    expect(() =>
+      createAgentAuthRegistry([
+        {
+          ...registration("future-auth"),
+          descriptor: { ...registration("future-auth").descriptor, method: "different" },
+        },
+      ]),
+    ).toThrow(/descriptor/i);
+    expect(() =>
+      createAgentAuthRegistry([
+        {
+          ...registration("future-auth"),
+          credentialScope: "principal",
+        },
+      ]),
+    ).toThrow(/credential scope/i);
   });
 
   test.each([
@@ -54,33 +62,44 @@ describe("Agent Auth provider registry", () => {
     expect(provider?.authority).toBe(authority);
     const config = provider?.normalizeConfig(configFor(method));
     if (provider?.descriptor.interactive) return;
-    await expect(provider?.getCredential(context(method, config))).resolves.toMatchObject({ envelope: { authority } });
+    await expect(provider?.getCredential(context(method, config))).resolves.toMatchObject({
+      envelope: { authority },
+    });
   });
 
   test("materializes Basic, Bearer, and custom header credentials", async () => {
     const registry = registryWithOidc();
-    await expect(resolve(registry, "basic", { username: "alice", password: "sëcret" })).resolves.toMatchObject({
+    await expect(
+      resolve(registry, "basic", { username: "alice", password: "sëcret" }),
+    ).resolves.toMatchObject({
       headers: [["authorization", "Basic YWxpY2U6c8OrY3JldA=="]],
     });
     await expect(resolve(registry, "bearer", { token: "signed-token" })).resolves.toMatchObject({
       headers: [["authorization", "Bearer signed-token"]],
     });
-    await expect(resolve(registry, "headers", { headers: { "X-Tenant": "acme", "X-Api-Key": "secret" } })).resolves.toMatchObject({
-      headers: [["x-api-key", "secret"], ["x-tenant", "acme"]],
+    await expect(
+      resolve(registry, "headers", { headers: { "X-Tenant": "acme", "X-Api-Key": "secret" } }),
+    ).resolves.toMatchObject({
+      headers: [
+        ["x-api-key", "secret"],
+        ["x-tenant", "acme"],
+      ],
     });
   });
 
   test("mirrors Eve 0.29.4 Vercel OIDC client headers", async () => {
     const registry = registryWithOidc();
 
-    await expect(resolve(registry, "vercel-oidc", { token: "vercel-oidc-token" })).resolves.toEqual({
-      version: 1,
-      authority: "canonical",
-      headers: [
-        ["authorization", "Bearer vercel-oidc-token"],
-        ["x-vercel-trusted-oidc-idp-token", "vercel-oidc-token"],
-      ],
-    });
+    await expect(resolve(registry, "vercel-oidc", { token: "vercel-oidc-token" })).resolves.toEqual(
+      {
+        version: 1,
+        authority: "canonical",
+        headers: [
+          ["authorization", "Bearer vercel-oidc-token"],
+          ["x-vercel-trusted-oidc-idp-token", "vercel-oidc-token"],
+        ],
+      },
+    );
   });
 
   test("interoperates with Eve 0.27 HTTP Basic normalization and challenge metadata", async () => {
@@ -111,13 +130,19 @@ describe("Agent Auth provider registry", () => {
 
   test("rejects dangerous custom headers and redacts every configured secret", () => {
     const registry = registryWithOidc();
-    expect(() => registry.get("headers")?.normalizeConfig({ headers: { Host: "attacker.example" } })).toThrow(/credential header/i);
+    expect(() =>
+      registry.get("headers")?.normalizeConfig({ headers: { Host: "attacker.example" } }),
+    ).toThrow(/credential header/i);
     expect(registry.get("basic")?.redactConfig({ username: "alice", password: "secret" })).toEqual({
       username: "alice",
       passwordConfigured: true,
     });
-    expect(registry.get("bearer")?.redactConfig({ token: "secret" })).toEqual({ tokenConfigured: true });
-    expect(registry.get("vercel-oidc")?.redactConfig({ token: "secret" })).toEqual({ tokenConfigured: true });
+    expect(registry.get("bearer")?.redactConfig({ token: "secret" })).toEqual({
+      tokenConfigured: true,
+    });
+    expect(registry.get("vercel-oidc")?.redactConfig({ token: "secret" })).toEqual({
+      tokenConfigured: true,
+    });
     expect(registry.get("headers")?.redactConfig({ headers: { "x-api-key": "secret" } })).toEqual({
       headerNames: ["x-api-key"],
     });
@@ -141,29 +166,33 @@ describe("Agent Auth provider registry", () => {
       credentialScope: "principal",
       interactive: true,
     });
-    expect(provider?.descriptor.fields).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        key: "tokenEndpointAuthMethod",
-        input: "select",
-        options: expect.arrayContaining([expect.objectContaining({ value: "none" })]),
+    expect(provider?.descriptor.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "tokenEndpointAuthMethod",
+          input: "select",
+          options: expect.arrayContaining([expect.objectContaining({ value: "none" })]),
+        }),
+        expect.objectContaining({
+          key: "accessTokenVerification",
+          input: "select",
+          options: expect.arrayContaining([expect.objectContaining({ value: "userinfo" })]),
+        }),
+      ]),
+    );
+    expect(
+      provider?.normalizeConfig({
+        issuer: "https://idp.example/",
+        clientId: "eveland-playground",
+        clientSecretRef: { kind: "project-secret", key: "OIDC_CLIENT_SECRET" },
+        scopes: ["profile", "openid", "profile"],
+        audience: "https://agent.example",
+        audienceMode: "both",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        authorizationParams: { prompt: "consent", login_hint: "member@example.com" },
+        accessTokenVerification: "eve-jwt",
       }),
-      expect.objectContaining({
-        key: "accessTokenVerification",
-        input: "select",
-        options: expect.arrayContaining([expect.objectContaining({ value: "userinfo" })]),
-      }),
-    ]));
-    expect(provider?.normalizeConfig({
-      issuer: "https://idp.example/",
-      clientId: "eveland-playground",
-      clientSecretRef: { kind: "project-secret", key: "OIDC_CLIENT_SECRET" },
-      scopes: ["profile", "openid", "profile"],
-      audience: "https://agent.example",
-      audienceMode: "both",
-      tokenEndpointAuthMethod: "client_secret_basic",
-      authorizationParams: { prompt: "consent", login_hint: "member@example.com" },
-      accessTokenVerification: "eve-jwt",
-    })).toEqual({
+    ).toEqual({
       issuer: "https://idp.example",
       clientId: "eveland-playground",
       clientSecretRef: { kind: "project-secret", key: "OIDC_CLIENT_SECRET" },
@@ -186,21 +215,30 @@ describe("Agent Auth provider registry", () => {
       accessTokenVerification: "userinfo",
     };
 
-    expect(() => provider?.normalizeConfig({ ...base, issuer: "http://idp.example" })).toThrow(/HTTPS/);
-    expect(() => provider?.normalizeConfig({ ...base, audienceMode: "resource" })).toThrow(/audience/i);
-    expect(() => provider?.normalizeConfig({
-      ...base,
-      tokenEndpointAuthMethod: "client_secret_post",
-    })).toThrow(/client secret/i);
-    expect(() => provider?.normalizeConfig({
-      ...base,
-      authorizationParams: { redirect_uri: "https://attacker.example", state: "fixed" },
-    })).toThrow(/authorization parameter/i);
+    expect(() => provider?.normalizeConfig({ ...base, issuer: "http://idp.example" })).toThrow(
+      /HTTPS/,
+    );
+    expect(() => provider?.normalizeConfig({ ...base, audienceMode: "resource" })).toThrow(
+      /audience/i,
+    );
+    expect(() =>
+      provider?.normalizeConfig({
+        ...base,
+        tokenEndpointAuthMethod: "client_secret_post",
+      }),
+    ).toThrow(/client secret/i);
+    expect(() =>
+      provider?.normalizeConfig({
+        ...base,
+        authorizationParams: { redirect_uri: "https://attacker.example", state: "fixed" },
+      }),
+    ).toThrow(/authorization parameter/i);
   });
 
   test("materializes credentials from current secret references without copying values into config", async () => {
     const registry = createAgentAuthRegistry();
-    const resolveSecret = async (reference: { kind: "project-secret"; key: string }) => `${reference.kind}:${reference.key}`;
+    const resolveSecret = async (reference: { kind: "project-secret"; key: string }) =>
+      `${reference.kind}:${reference.key}`;
     const basic = registry.get("basic")!;
     const bearer = registry.get("bearer")!;
     const vercelOidc = registry.get("vercel-oidc")!;
@@ -221,25 +259,50 @@ describe("Agent Auth provider registry", () => {
       passwordRef: { kind: "project-secret", key: "BASIC_PASSWORD" },
     });
     expect(JSON.stringify(basicConfig)).not.toContain("project-secret:BASIC_PASSWORD");
-    await expect(basic.getCredential(context("basic", basicConfig, resolveSecret)))
-      .resolves.toMatchObject({ envelope: { headers: [["authorization", "Basic YWxpY2U6cHJvamVjdC1zZWNyZXQ6QkFTSUNfUEFTU1dPUkQ="]] } });
+    await expect(
+      basic.getCredential(context("basic", basicConfig, resolveSecret)),
+    ).resolves.toMatchObject({
+      envelope: {
+        headers: [["authorization", "Basic YWxpY2U6cHJvamVjdC1zZWNyZXQ6QkFTSUNfUEFTU1dPUkQ="]],
+      },
+    });
 
-    const bearerConfig = bearer.normalizeConfig({ tokenRef: { kind: "project-secret", key: "ACCESS_TOKEN" } });
-    await expect(bearer.getCredential(context("bearer", bearerConfig, resolveSecret)))
-      .resolves.toMatchObject({ envelope: { headers: [["authorization", "Bearer project-secret:ACCESS_TOKEN"]] } });
+    const bearerConfig = bearer.normalizeConfig({
+      tokenRef: { kind: "project-secret", key: "ACCESS_TOKEN" },
+    });
+    await expect(
+      bearer.getCredential(context("bearer", bearerConfig, resolveSecret)),
+    ).resolves.toMatchObject({
+      envelope: { headers: [["authorization", "Bearer project-secret:ACCESS_TOKEN"]] },
+    });
 
-    const vercelOidcConfig = vercelOidc.normalizeConfig({ tokenRef: { kind: "project-secret", key: "VERCEL_OIDC_TOKEN" } });
-    await expect(vercelOidc.getCredential(context("vercel-oidc", vercelOidcConfig, resolveSecret)))
-      .resolves.toMatchObject({ envelope: { headers: [
-        ["authorization", "Bearer project-secret:VERCEL_OIDC_TOKEN"],
-        ["x-vercel-trusted-oidc-idp-token", "project-secret:VERCEL_OIDC_TOKEN"],
-      ] } });
+    const vercelOidcConfig = vercelOidc.normalizeConfig({
+      tokenRef: { kind: "project-secret", key: "VERCEL_OIDC_TOKEN" },
+    });
+    await expect(
+      vercelOidc.getCredential(context("vercel-oidc", vercelOidcConfig, resolveSecret)),
+    ).resolves.toMatchObject({
+      envelope: {
+        headers: [
+          ["authorization", "Bearer project-secret:VERCEL_OIDC_TOKEN"],
+          ["x-vercel-trusted-oidc-idp-token", "project-secret:VERCEL_OIDC_TOKEN"],
+        ],
+      },
+    });
 
     const headerConfig = headers.normalizeConfig({
       headers: { "X-Api-Key": { kind: "project-secret", key: "API_KEY" }, "X-Tenant": "acme" },
     });
-    await expect(headers.getCredential(context("headers", headerConfig, resolveSecret)))
-      .resolves.toMatchObject({ envelope: { headers: [["x-api-key", "project-secret:API_KEY"], ["x-tenant", "acme"]] } });
+    await expect(
+      headers.getCredential(context("headers", headerConfig, resolveSecret)),
+    ).resolves.toMatchObject({
+      envelope: {
+        headers: [
+          ["x-api-key", "project-secret:API_KEY"],
+          ["x-tenant", "acme"],
+        ],
+      },
+    });
   });
 });
 
@@ -267,18 +330,23 @@ function configFor(method: string): unknown {
   if (method === "bearer") return { token: "secret" };
   if (method === "vercel-oidc") return { token: "vercel-oidc-token" };
   if (method === "headers") return { headers: { "x-api-key": "secret" } };
-  if (method === "oidc") return {
-    issuer: "https://idp.example",
-    clientId: "client",
-    scopes: ["openid"],
-    audience: "https://agent.example",
-    tokenEndpointAuthMethod: "none",
-    accessTokenVerification: "eve-jwt",
-  };
+  if (method === "oidc")
+    return {
+      issuer: "https://idp.example",
+      clientId: "client",
+      scopes: ["openid"],
+      audience: "https://agent.example",
+      tokenEndpointAuthMethod: "none",
+      accessTokenVerification: "eve-jwt",
+    };
   return {};
 }
 
-async function resolve(registry: ReturnType<typeof createAgentAuthRegistry>, method: string, input: unknown) {
+async function resolve(
+  registry: ReturnType<typeof createAgentAuthRegistry>,
+  method: string,
+  input: unknown,
+) {
   const provider = registry.get(method);
   if (!provider) throw new Error(`Missing provider ${method}.`);
   const config = provider.normalizeConfig(input);
@@ -288,18 +356,20 @@ async function resolve(registry: ReturnType<typeof createAgentAuthRegistry>, met
 }
 
 function registryWithOidc() {
-  return createAgentAuthRegistry([{
-    ...createOidcProviderDefinition(),
-    async getCredential() {
-      return {
-        failure: {
-          code: "interaction_required" as const,
-          method: "oidc",
-          message: "Authorize this connection.",
-        },
-      };
+  return createAgentAuthRegistry([
+    {
+      ...createOidcProviderDefinition(),
+      async getCredential() {
+        return {
+          failure: {
+            code: "interaction_required" as const,
+            method: "oidc",
+            message: "Authorize this connection.",
+          },
+        };
+      },
     },
-  }]);
+  ]);
 }
 
 function context(

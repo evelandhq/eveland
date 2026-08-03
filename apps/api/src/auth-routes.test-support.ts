@@ -68,8 +68,7 @@ export async function signIn(
   });
   return {
     response,
-    cookie:
-      response.headers.get("set-cookie")?.split(";", 1)[0] ?? "",
+    cookie: response.headers.get("set-cookie")?.split(";", 1)[0] ?? "",
   };
 }
 

@@ -29,6 +29,7 @@ loud restart failure when the deployed revision's source dir is missing.
 ## Task 1: build_deploy and restart stop the process they started when the deploy fails
 
 **Files:**
+
 - Edit `apps/worker/src/jobs/process.ts`
 - Edit `apps/worker/src/jobs/process.test.ts`
 
@@ -68,6 +69,7 @@ cleanup-failure logging), then rethrow. A restart that cannot come up healthy mu
 not leave a crash-looping unit behind while the project reads failed.
 
 **Tests (TDD, RED first):**
+
 - build_deploy: fake runtime whose `startProcess` succeeds and injected
   `waitForDeployment` rejects → the fake's `stopProcess` is called with the NEW
   processName (assert it is the started name, not the old deployment's), no
@@ -84,6 +86,7 @@ not leave a crash-looping unit behind while the project reads failed.
 ## Task 2: systemd build runs as the unprivileged build user
 
 **Files:**
+
 - Edit `apps/worker/src/runtime/systemd.ts`
 - Edit `apps/worker/src/runtime/select.ts`
 - Edit `apps/worker/src/runtime/systemd.test.ts`
@@ -94,6 +97,7 @@ not leave a crash-looping unit behind while the project reads failed.
 
 **`buildRelease` flow becomes** (order matters; each step keeps its existing comment
 where one exists):
+
 1. mkdir releaseDir + npmCacheDir, `cp -a` source, `injectSandboxModules`, mkdir
    sandbox cacheDir — all as the worker (root), unchanged.
 2. NEW: `chown -R <buildUser>:` releaseDir AND npmCacheDir (npm cache may be
@@ -123,6 +127,7 @@ bwrap args themselves must keep passing (the inner argv is unchanged).
 ## Task 3: preflight, infra, and docs for the build user
 
 **Files:**
+
 - Edit `apps/worker/src/runtime/preflight.ts`
 - Edit `apps/worker/src/runtime/preflight.test.ts`
 - Edit `infra/systemd/eveland-worker.env.example`
@@ -148,6 +153,7 @@ optional block, right above `#EVELAND_APP_USER=eveland-app`.
 guard next to the existing git guard.
 
 **`docs/deploy/linux.md`:**
+
 - Host prerequisites: a second service user for builds
   (`useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build`).
 - Worker configuration table: `EVELAND_BUILD_USER` row (default `eveland-build`,
@@ -163,6 +169,7 @@ guard next to the existing git guard.
 ## Task 4: carry-overs — transactional deleteProject, loud restart on missing source
 
 **Files:**
+
 - Edit `apps/api/src/db/postgres-store.ts`
 - Edit `apps/worker/src/jobs/process.ts`
 - Edit `apps/worker/src/jobs/process.test.ts`

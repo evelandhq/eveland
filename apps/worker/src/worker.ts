@@ -11,14 +11,20 @@ import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
 import { writeConfigurationSnapshotFile } from "@eveland/core/server/config-diagnostics";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import { processNextJob } from "./jobs/process.js";
-import { cleanupExpiredSourcePreflights, processNextSourcePreflight } from "./jobs/process-source-preflight.js";
+import {
+  cleanupExpiredSourcePreflights,
+  processNextSourcePreflight,
+} from "./jobs/process-source-preflight.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { sweepReleaseRetention } from "./runtime/release-reaper.js";
 import { sweepWorkflowStreamRetention } from "./runtime/workflow-world-reaper.js";
-import { reconcileRuntimeInstances, recoverStartingRuntimeInstances } from "./runtime/activation-manager.js";
+import {
+  reconcileRuntimeInstances,
+  recoverStartingRuntimeInstances,
+} from "./runtime/activation-manager.js";
 import { planDueSchedules } from "./scheduler/planner.js";
 import { createWorkerTelemetry } from "./runtime/worker-telemetry.js";
 import {
@@ -37,47 +43,32 @@ import { createWorkerObservabilityReconciler } from "./runtime/observability/rec
 const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
 const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_MS ?? 3_600_000);
-const releaseSweepIntervalMs = Number(
-  process.env.EVELAND_RELEASE_SWEEP_INTERVAL_MS ?? 3_600_000,
-);
-const workflowSweepIntervalMs = Number(
-  process.env.EVELAND_WORKFLOW_SWEEP_INTERVAL_MS ?? 3_600_000,
-);
+const releaseSweepIntervalMs = Number(process.env.EVELAND_RELEASE_SWEEP_INTERVAL_MS ?? 3_600_000);
+const workflowSweepIntervalMs = Number(process.env.EVELAND_WORKFLOW_SWEEP_INTERVAL_MS ?? 3_600_000);
 const workerId = workerInstanceId;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
-const store = instrumentRuntimeLogStore(
-  storeFactory.store,
-  runtimeObservability,
-);
-const reconcileDeploymentObservability =
-  createDeploymentObservabilityReconciler({
-    store,
-    env: process.env,
-    nodeEnv: process.env.NODE_ENV,
-  });
-const reconcileCollectorObservability =
-  createCollectorObservabilityReconciler({
-    store,
-    env: process.env,
-  });
-const reconcileObservabilityRetention =
-  createObservabilityRetentionReconciler({
-    store,
-  });
-const reconcileExternalDestinationHealth =
-  createExternalDestinationHealthReconciler({
-    store,
-    appSecretKey:
-      process.env.APP_SECRET_KEY ??
-      "eveland-dev-secret-key-000000000",
-  });
+const store = instrumentRuntimeLogStore(storeFactory.store, runtimeObservability);
+const reconcileDeploymentObservability = createDeploymentObservabilityReconciler({
+  store,
+  env: process.env,
+  nodeEnv: process.env.NODE_ENV,
+});
+const reconcileCollectorObservability = createCollectorObservabilityReconciler({
+  store,
+  env: process.env,
+});
+const reconcileObservabilityRetention = createObservabilityRetentionReconciler({
+  store,
+});
+const reconcileExternalDestinationHealth = createExternalDestinationHealthReconciler({
+  store,
+  appSecretKey: process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000",
+});
 const reconcileAgentTelemetryNetworks =
   resolveRuntimeKind(process.env) === "docker"
-    ? createAgentTelemetryNetworkReconciler(
-        process.env.EVELAND_OTEL_COLLECTOR_CONTAINER,
-      )
+    ? createAgentTelemetryNetworkReconciler(process.env.EVELAND_OTEL_COLLECTOR_CONTAINER)
     : undefined;
 const reconcileObservability = createWorkerObservabilityReconciler([
   {
@@ -119,11 +110,10 @@ try {
     jwksUrl: process.env.EVELAND_IDENTITY_JWKS_URL,
   });
   if (identityConfiguration) {
-    const restartJobs =
-      await reconcileIdentityDeploymentConfiguration(
-        storeFactory.store,
-        identityConfiguration,
-      );
+    const restartJobs = await reconcileIdentityDeploymentConfiguration(
+      storeFactory.store,
+      identityConfiguration,
+    );
     if (restartJobs.length > 0) {
       console.log(
         `Identity configuration changed; queued ${restartJobs.length} live Deployment restart${restartJobs.length === 1 ? "" : "s"}.`,
@@ -153,7 +143,11 @@ const telemetry = createWorkerTelemetry(capacityObservability.meter, {
   dataDir,
   intervalMs,
   metricIntervalMs: Number(process.env.EVELAND_HOST_METRIC_INTERVAL_MS ?? 60_000),
-  onMetricError: (error) => console.warn("Worker host metrics are unavailable:", error instanceof Error ? error.message : String(error)),
+  onMetricError: (error) =>
+    console.warn(
+      "Worker host metrics are unavailable:",
+      error instanceof Error ? error.message : String(error),
+    ),
 });
 let lastTickDurationMs = 0;
 let lastTickError: unknown | null = null;
@@ -162,9 +156,17 @@ let telemetryPublishing = false;
 function publishTelemetry() {
   if (telemetryPublishing) return;
   telemetryPublishing = true;
-  telemetry.publishTick({ durationMs: lastTickDurationMs, error: lastTickError })
-    .catch((error: unknown) => console.warn("Worker heartbeat is unavailable:", error instanceof Error ? error.message : String(error)))
-    .finally(() => { telemetryPublishing = false; });
+  telemetry
+    .publishTick({ durationMs: lastTickDurationMs, error: lastTickError })
+    .catch((error: unknown) =>
+      console.warn(
+        "Worker heartbeat is unavailable:",
+        error instanceof Error ? error.message : String(error),
+      ),
+    )
+    .finally(() => {
+      telemetryPublishing = false;
+    });
 }
 
 async function tick() {
@@ -181,34 +183,21 @@ async function tick() {
       try {
         await Promise.all([
           planDueSchedules(store, {
-            limit: Number(
-              process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25,
-            ),
+            limit: Number(process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25),
             prewarmMs: schedulerPrewarmMs,
-            activationLeaseTtlMs:
-              schedulerPrewarmMs + Math.max(10_000, intervalMs * 2),
+            activationLeaseTtlMs: schedulerPrewarmMs + Math.max(10_000, intervalMs * 2),
           }),
           reapIdleDeployments(store, {
-            idleTtlMs: Number(
-              process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 300_000,
-            ),
+            idleTtlMs: Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 300_000),
             schedulePrewarmMs: schedulerPrewarmMs,
-            limit: Number(
-              process.env.EVELAND_ACTIVATION_REAPER_BATCH_SIZE ?? 25,
-            ),
+            limit: Number(process.env.EVELAND_ACTIVATION_REAPER_BATCH_SIZE ?? 25),
           }),
           recoverStartingRuntimeInstances(store, {
-            limit: Number(
-              process.env.EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE ?? 25,
-            ),
-            staleJobAfterMs: Number(
-              process.env.EVELAND_ACTIVATION_START_STALE_MS ?? 300_000,
-            ),
+            limit: Number(process.env.EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE ?? 25),
+            staleJobAfterMs: Number(process.env.EVELAND_ACTIVATION_START_STALE_MS ?? 300_000),
           }),
           reconcileRuntimeInstances(store, {
-            limit: Number(
-              process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100,
-            ),
+            limit: Number(process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100),
           }),
           reconcileObservability(),
           store.recoverStaleJobs(
@@ -231,17 +220,14 @@ async function tick() {
         span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         lastTickError = error;
-        span.recordException(
-          error instanceof Error ? error : new Error(String(error)),
-        );
+        span.recordException(error instanceof Error ? error : new Error(String(error)));
         span.setStatus({ code: SpanStatusCode.ERROR });
         platformObservability.emitLog({
           severity: "error",
           eventName: "eveland.worker.tick.failed",
           body: "Worker control-loop tick failed.",
           attributes: {
-            "error.type":
-              error instanceof Error ? error.name : "UnknownError",
+            "error.type": error instanceof Error ? error.name : "UnknownError",
           },
         });
         console.error(error);
@@ -267,7 +253,9 @@ const reapOrphanProcesses = createOrphanProcessReaper(store, {
   graceMs: Number(process.env.EVELAND_ORPHAN_GRACE_MS ?? 300_000),
 });
 const sweepOrphans = () => {
-  reapOrphanProcesses().catch((error: unknown) => console.error("Orphan process sweep failed:", error));
+  reapOrphanProcesses().catch((error: unknown) =>
+    console.error("Orphan process sweep failed:", error),
+  );
 };
 let orphanTimer: NodeJS.Timeout | undefined;
 if (orphanSweepIntervalMs > 0) {
@@ -279,12 +267,8 @@ const sweepReleases = () => {
   sweepReleaseRetention(storeFactory.store, {
     keepRecent: Number(process.env.EVELAND_RELEASE_RETENTION ?? 3),
     limit: Number(process.env.EVELAND_RELEASE_SWEEP_BATCH_SIZE ?? 25),
-    playgroundIdleTtlMs: Number(
-      process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000,
-    ),
-    apiIdleTtlMs: Number(
-      process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000,
-    ),
+    playgroundIdleTtlMs: Number(process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000),
+    apiIdleTtlMs: Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000),
   }).catch((error: unknown) =>
     console.error(
       "Release retention sweep failed:",
@@ -300,9 +284,7 @@ if (releaseSweepIntervalMs > 0) {
 
 const sweepWorkflowWorlds = () => {
   sweepWorkflowStreamRetention(process.env, {
-    retentionMs: Number(
-      process.env.EVELAND_WORKFLOW_STREAM_RETENTION_MS ?? 86_400_000,
-    ),
+    retentionMs: Number(process.env.EVELAND_WORKFLOW_STREAM_RETENTION_MS ?? 86_400_000),
     batchSize: Number(process.env.EVELAND_WORKFLOW_SWEEP_BATCH_SIZE ?? 50_000),
   }).catch((error: unknown) =>
     console.error(

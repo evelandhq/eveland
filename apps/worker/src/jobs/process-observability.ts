@@ -7,14 +7,8 @@ import {
   createAgentTelemetryCredential,
   deriveAgentTelemetrySecret,
 } from "@eveland/core/server/agent-telemetry-credential";
-import {
-  DEFAULT_TEAM_ID,
-  type Store,
-} from "@eveland/db";
-import {
-  bundleObserverRuntime,
-  OBSERVER_RUNTIME_CONTRACT,
-} from "@eveland/agent-observer";
+import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
+import { bundleObserverRuntime, OBSERVER_RUNTIME_CONTRACT } from "@eveland/agent-observer";
 import type { ReleaseRecord } from "@eveland/core/contracts";
 import {
   resolveAgentObservabilityDirs,
@@ -73,9 +67,7 @@ export async function prepareDeploymentObservability(input: {
     input.appSecretKey ?? input.env.APP_SECRET_KEY ?? devSecretKey,
   );
   const policy = createAgentRuntimePolicy({
-    policy:
-      input.policy ??
-      (await input.store.getObservabilityPolicy(DEFAULT_TEAM_ID)),
+    policy: input.policy ?? (await input.store.getObservabilityPolicy(DEFAULT_TEAM_ID)),
     otlpEndpoint:
       input.runtimeKind === "docker"
         ? // The Docker adapter connects the Collector to this Deployment's
@@ -92,17 +84,12 @@ export async function prepareDeploymentObservability(input: {
       releaseId: input.releaseId,
       deploymentId: input.deploymentId,
       runtimeKind: input.runtimeKind,
-      environment:
-        input.nodeEnv === "production" ? "production" : "development",
+      environment: input.nodeEnv === "production" ? "production" : "development",
     },
   });
   const directories =
     input.directories ??
-    resolveAgentObservabilityDirs(
-      input.env,
-      input.projectId,
-      input.deploymentId,
-    );
+    resolveAgentObservabilityDirs(input.env, input.projectId, input.deploymentId);
   await writeAgentRuntimePolicy({
     directory: directories.workerDir,
     policy,

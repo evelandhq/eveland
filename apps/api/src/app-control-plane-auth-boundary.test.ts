@@ -4,10 +4,7 @@ import { expect, test, vi } from "vitest";
 import { registerControlPlaneAuthBoundary } from "./app-control-plane-auth-boundary.js";
 import { registerMemberRoutes } from "./app-member-routes.js";
 import { registerSystemDiagnosticsRoutes } from "./app-system-diagnostics-routes.js";
-import {
-  createAuthTestContext,
-  signIn,
-} from "./auth-routes.test-support.js";
+import { createAuthTestContext, signIn } from "./auth-routes.test-support.js";
 
 test("composes the exact public auth surface before the protected control plane", async () => {
   const { auth, store } = await createAuthTestContext();
@@ -30,9 +27,7 @@ test("composes the exact public auth surface before the protected control plane"
       observedAt: "2026-08-01T00:00:00.000Z",
     }),
   });
-  app.get("/protected-probe", (c) =>
-    c.json({ email: c.get("principal").email }),
-  );
+  app.get("/protected-probe", (c) => c.json({ email: c.get("principal").email }));
 
   expect((await app.request("/api/auth/get-session")).status).toBe(200);
   expect(
@@ -134,9 +129,7 @@ test("composes the exact public auth surface before the protected control plane"
       role: "admin",
     }),
   });
-  expect(
-    (await app.request("/members", { headers: { cookie } })).status,
-  ).toBe(200);
+  expect((await app.request("/members", { headers: { cookie } })).status).toBe(200);
   expect(
     (
       await app.request("/system/configuration", {
@@ -154,7 +147,5 @@ test("composes the exact public auth surface before the protected control plane"
     headers: { cookie, origin: "http://localhost:3000" },
   });
   expect(signOut.status).toBe(200);
-  expect(
-    (await app.request("/protected-probe", { headers: { cookie } })).status,
-  ).toBe(401);
+  expect((await app.request("/protected-probe", { headers: { cookie } })).status).toBe(401);
 });

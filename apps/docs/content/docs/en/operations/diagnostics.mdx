@@ -17,14 +17,14 @@ Instance Health stores one host sample per minute by default and provides 24-hou
 
 ## Choose the right evidence
 
-| Failure | Start here |
-| --- | --- |
-| Import or source validation | Import job and Source Preflight log |
-| Dependency install or `eve build` | Build log |
-| Unit startup or health timeout | Deploy diagnostic and systemd journal |
-| Agent process output | Runtime stdout/stderr |
-| Model, tool, subagent, or usage issue | Session timeline |
-| Stable or preview Host failure | Gateway health, route policy, and target RuntimeInstance |
+| Failure                               | Start here                                               |
+| ------------------------------------- | -------------------------------------------------------- |
+| Import or source validation           | Import job and Source Preflight log                      |
+| Dependency install or `eve build`     | Build log                                                |
+| Unit startup or health timeout        | Deploy diagnostic and systemd journal                    |
+| Agent process output                  | Runtime stdout/stderr                                    |
+| Model, tool, subagent, or usage issue | Session timeline                                         |
+| Stable or preview Host failure        | Gateway health, route policy, and target RuntimeInstance |
 
 Initial health failures capture bounded recent unit state and journal output before cleanup. Project Secret values are masked, and a diagnostic or cleanup failure never replaces the original deployment error.
 

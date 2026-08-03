@@ -35,11 +35,7 @@ import type {
   AgentAuthCredential,
   AgentAuthTransaction,
 } from "@eveland/core/contracts";
-import {
-  decodeJobPayload,
-  isJobStatus,
-  isJobType,
-} from "@eveland/core/jobs";
+import { decodeJobPayload, isJobStatus, isJobType } from "@eveland/core/jobs";
 
 export class InvalidJobRecordError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -79,21 +75,24 @@ export function sourcePreflightRowToRecord(row: {
     error: row.error,
     attempts: row.attempts,
     lockedAt: timestampToIso(row.lockedAt),
-    gitCredential: row.credentialHost && row.encryptedToken
-      ? {
-          userId: row.userId,
-          host: row.credentialHost,
-          encryptedToken: row.encryptedToken,
-          persistAfterImport: row.persistCredential,
-        }
-      : null,
+    gitCredential:
+      row.credentialHost && row.encryptedToken
+        ? {
+            userId: row.userId,
+            host: row.credentialHost,
+            encryptedToken: row.encryptedToken,
+            persistAfterImport: row.persistCredential,
+          }
+        : null,
     expiresAt: row.expiresAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-export function sourcePreflightRowToPublic(row: Parameters<typeof sourcePreflightRowToRecord>[0]): SourcePreflight {
+export function sourcePreflightRowToPublic(
+  row: Parameters<typeof sourcePreflightRowToRecord>[0],
+): SourcePreflight {
   const record = sourcePreflightRowToRecord(row);
   const {
     userId: _userId,
@@ -160,7 +159,8 @@ export function agentConnectionRowToAgentConnection(row: {
   createdAt: Date;
   updatedAt: Date;
 }): AgentConnection {
-  if (row.targetKind !== "managed-project") throw new Error(`Unsupported Agent Connection target: ${row.targetKind}.`);
+  if (row.targetKind !== "managed-project")
+    throw new Error(`Unsupported Agent Connection target: ${row.targetKind}.`);
   return {
     id: row.id,
     target: { kind: "managed-project", projectId: row.projectId },
@@ -299,9 +299,7 @@ export function jobRowToJob(row: {
   updatedAt: Date;
 }): Job {
   if (!isJobType(row.type)) {
-    throw new InvalidJobRecordError(
-      `Invalid job type ${JSON.stringify(row.type)} for ${row.id}.`,
-    );
+    throw new InvalidJobRecordError(`Invalid job type ${JSON.stringify(row.type)} for ${row.id}.`);
   }
   if (!isJobStatus(row.status)) {
     throw new InvalidJobRecordError(
@@ -312,10 +310,9 @@ export function jobRowToJob(row: {
   try {
     payload = decodeJobPayload(row.type, row.payload);
   } catch (error) {
-    throw new InvalidJobRecordError(
-      `Invalid job payload for ${row.id} (${row.type}).`,
-      { cause: error },
-    );
+    throw new InvalidJobRecordError(`Invalid job payload for ${row.id} (${row.type}).`, {
+      cause: error,
+    });
   }
   return {
     id: row.id,
@@ -383,7 +380,11 @@ export function scheduleVersionRowToScheduleVersion(row: {
   definitionHash: string;
   createdAt: Date;
 }): ScheduleVersion {
-  return { ...row, kind: row.kind as ScheduleVersion["kind"], createdAt: row.createdAt.toISOString() };
+  return {
+    ...row,
+    kind: row.kind as ScheduleVersion["kind"],
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 export function projectSchedulerTargetRowToProjectSchedulerTarget(row: {
@@ -620,7 +621,9 @@ export function sourceRevisionRowToSourceRevision(row: {
     commitSha: row.commitSha,
     sourcePath: row.sourcePath,
     summary: isRecord(row.summary) ? row.summary : {},
-    envVars: Array.isArray(row.envVars) ? row.envVars.filter((value): value is string => typeof value === "string") : [],
+    envVars: Array.isArray(row.envVars)
+      ? row.envVars.filter((value): value is string => typeof value === "string")
+      : [],
     createdAt: timestampToIso(row.createdAt),
   };
 }

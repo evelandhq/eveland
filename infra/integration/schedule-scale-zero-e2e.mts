@@ -34,9 +34,7 @@ type TestStore = Awaited<ReturnType<typeof createPgliteTestStore>>["store"];
 type TestRuntime = ReturnType<typeof createRuntimeAdapterFromEnv>;
 
 async function main(): Promise<void> {
-  const fixtureRoot = await mkdtemp(
-    path.join(os.tmpdir(), "eveland-schedule-e2e-source-"),
-  );
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-schedule-e2e-source-"));
   const priorNodeEnv = process.env.NODE_ENV;
   let cleanupStore: Awaited<ReturnType<typeof createPgliteTestStore>> | null = null;
   let cleanupRuntime: TestRuntime | null = null;
@@ -83,7 +81,8 @@ async function main(): Promise<void> {
     apiServer = serve({ fetch: api.fetch, port: 0 });
     if (!apiServer.listening) await once(apiServer, "listening");
     const apiAddress = apiServer.address();
-    if (!apiAddress || typeof apiAddress === "string") throw new Error("Schedule E2E API did not bind.");
+    if (!apiAddress || typeof apiAddress === "string")
+      throw new Error("Schedule E2E API did not bind.");
     const apiOrigin = `http://127.0.0.1:${apiAddress.port}`;
     const deploymentApiHost = runtime.name === "docker" ? "host.docker.internal" : "127.0.0.1";
     jobOptions = {
@@ -105,9 +104,17 @@ async function main(): Promise<void> {
       "EVE_MOCK_AUTHORED_MODELS",
       JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
     );
-    assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "import_source did not run");
+    assert.equal(
+      await processNextJob(store, "schedule-e2e", jobOptions),
+      true,
+      "import_source did not run",
+    );
     await store.enqueueJob(project.id, "build_deploy");
-    assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "build_deploy did not run");
+    assert.equal(
+      await processNextJob(store, "schedule-e2e", jobOptions),
+      true,
+      "build_deploy did not run",
+    );
 
     const deployment = await store.getCurrentDeployment(project.id);
     assert.ok(deployment, "schedule fixture Deployment was not recorded");
@@ -123,7 +130,10 @@ async function main(): Promise<void> {
     const gateway = createGatewayApp(store, {
       allowedBaseDomains: ["agent.localhost"],
       affinitySecret: "schedule-e2e-affinity-secret",
-      activationClient: createApiActivationClient({ apiUrl: apiOrigin, serviceToken: GATEWAY_SERVICE_TOKEN }),
+      activationClient: createApiActivationClient({
+        apiUrl: apiOrigin,
+        serviceToken: GATEWAY_SERVICE_TOKEN,
+      }),
       activationRenewIntervalMs: 5_000,
       routeCacheTtlMs: 0,
     });
@@ -139,8 +149,14 @@ async function main(): Promise<void> {
     const initialResult = sessionResult(initialBody, initial.headers);
     const initialSessionId = initialResult.sessionId;
     assert.ok(initialSessionId, `initial public turn returned no Session ID: ${initialBody}`);
-    assert.ok(initialResult.continuationToken, `initial public turn returned no continuation token: ${initialBody}`);
-    await consumeTurn(gateway, `${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}/stream?startIndex=0`);
+    assert.ok(
+      initialResult.continuationToken,
+      `initial public turn returned no continuation token: ${initialBody}`,
+    );
+    await consumeTurn(
+      gateway,
+      `${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}/stream?startIndex=0`,
+    );
     const binding = await store.findSessionBinding(project.id, initialSessionId);
     assert.equal(binding?.deploymentId, deployment.id);
 
@@ -148,14 +164,26 @@ async function main(): Promise<void> {
     assert.equal((await store.getDeployment(deployment.id))?.status, "stopped");
     assert.notEqual(await runtime.inspectProcess?.(deployment.containerName), "ready");
 
-    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date(Date.now() - 120_000));
+    await store.setProjectSchedulerTarget(
+      project.id,
+      deployment.id,
+      new Date(Date.now() - 120_000),
+    );
     assert.equal(await planDueSchedules(store, { now: new Date(), limit: 10 }), 1);
     const planned = await store.listScheduleRuns(project.id, { trigger: "cron", limit: 10 });
     assert.equal(planned.items.length, 1);
     const runId = planned.items[0]!.id;
-    assert.equal(await processNextJob(store, "schedule-e2e", jobOptions), true, "trigger_schedule did not run");
+    assert.equal(
+      await processNextJob(store, "schedule-e2e", jobOptions),
+      true,
+      "trigger_schedule did not run",
+    );
     const dispatched = await store.getScheduleRunDetail(runId);
-    assert.equal(dispatched?.status, "running", dispatched?.error ?? "ScheduleRun did not stay active");
+    assert.equal(
+      dispatched?.status,
+      "running",
+      dispatched?.error ?? "ScheduleRun did not stay active",
+    );
     assert.equal(dispatched?.attempt, 1);
     assert.equal(dispatched?.sessions.length, 2);
     assert.equal(
@@ -177,20 +205,27 @@ async function main(): Promise<void> {
     await waitPastNextMinute();
     await projectPendingOtlpLogs(store, otlpReceiver);
     const afterNativeTick = await store.listSessions(project.id);
-    assert.equal(afterNativeTick.length, beforeNativeTick.length, "native Eve cron duplicated authored execution");
+    assert.equal(
+      afterNativeTick.length,
+      beforeNativeTick.length,
+      "native Eve cron duplicated authored execution",
+    );
     assert.equal((await store.getScheduleRunDetail(runId))?.sessions.length, 2);
 
     assert.equal(await stopAfterIdle(store, runtime), 1);
     assert.equal((await store.getDeployment(deployment.id))?.status, "stopped");
 
-    const continuation = await gateway.request(`${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        continuationToken: initialResult.continuationToken,
-        message: "Continue after the idle shutdown.",
-      }),
-    });
+    const continuation = await gateway.request(
+      `${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          continuationToken: initialResult.continuationToken,
+          message: "Continue after the idle shutdown.",
+        }),
+      },
+    );
     const continuationBody = await continuation.text();
     assert.ok(continuation.ok, `continuation failed (${continuation.status}): ${continuationBody}`);
     assert.ok(
@@ -199,7 +234,10 @@ async function main(): Promise<void> {
     );
     const readyInstances = await store.listRuntimeInstances(["ready"], 10);
     assert.equal(readyInstances.at(-1)?.deploymentId, deployment.id);
-    assert.equal((await store.findSessionBinding(project.id, initialSessionId))?.deploymentId, deployment.id);
+    assert.equal(
+      (await store.findSessionBinding(project.id, initialSessionId))?.deploymentId,
+      deployment.id,
+    );
 
     console.log(
       `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=${LATEST_VERIFIED_EVE_VERSION} dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1`,
@@ -225,9 +263,7 @@ async function main(): Promise<void> {
       await attemptCleanup(() => runtime.removeRelease!(releaseRef!));
     }
     if (apiServer) {
-      await attemptCleanup(
-        () => new Promise<void>((resolve) => apiServer!.close(() => resolve())),
-      );
+      await attemptCleanup(() => new Promise<void>((resolve) => apiServer!.close(() => resolve())));
     }
     if (cleanupReceiver) {
       await attemptCleanup(() => cleanupReceiver!.close());
@@ -268,7 +304,10 @@ async function stopAfterIdle(
   });
 }
 
-async function consumeTurn(gateway: ReturnType<typeof createGatewayApp>, url: string): Promise<void> {
+async function consumeTurn(
+  gateway: ReturnType<typeof createGatewayApp>,
+  url: string,
+): Promise<void> {
   const response = await gateway.request(url, { signal: AbortSignal.timeout(30_000) });
   assert.ok(response.ok && response.body, `Session stream failed (${response.status})`);
   const reader = response.body.getReader();
@@ -280,7 +319,9 @@ async function consumeTurn(gateway: ReturnType<typeof createGatewayApp>, url: st
     for (;;) {
       const chunk = await Promise.race([
         reader.read(),
-        delay(Math.max(1, deadline - Date.now())).then(() => { throw new Error(`Session stream timed out:\n${raw}`); }),
+        delay(Math.max(1, deadline - Date.now())).then(() => {
+          throw new Error(`Session stream timed out:\n${raw}`);
+        }),
       ]);
       if (chunk.done) break;
       raw += decoder.decode(chunk.value, { stream: true });
@@ -320,9 +361,7 @@ async function waitForObservedUsage(
       return detail;
     await delay(250);
   }
-  throw new Error(
-    "OTLP logs did not project both scheduled Sessions and their provider usage.",
-  );
+  throw new Error("OTLP logs did not project both scheduled Sessions and their provider usage.");
 }
 
 async function projectPendingOtlpLogs(
@@ -330,17 +369,12 @@ async function projectPendingOtlpLogs(
   receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>>,
 ) {
   for (const payload of receiver.drain("logs")) {
-    for (
-      const observation of projectAgentEventsFromOtlpLogs(payload, {
-        resolveDeploymentId: (credential) =>
-          credential
-            ? verifyAgentTelemetryCredential(
-                credential,
-                AGENT_TELEMETRY_SECRET,
-              )?.deploymentId
-            : undefined,
-      })
-    ) {
+    for (const observation of projectAgentEventsFromOtlpLogs(payload, {
+      resolveDeploymentId: (credential) =>
+        credential
+          ? verifyAgentTelemetryCredential(credential, AGENT_TELEMETRY_SECRET)?.deploymentId
+          : undefined,
+    })) {
       await candidateStore.ingestAgentEvent(observation);
     }
   }
@@ -351,12 +385,17 @@ async function waitPastNextMinute(): Promise<void> {
   await delay(waitMs);
 }
 
-function sessionResult(body: string, headers: Headers): { sessionId: string | null; continuationToken: string | null } {
+function sessionResult(
+  body: string,
+  headers: Headers,
+): { sessionId: string | null; continuationToken: string | null } {
   try {
     const parsed = JSON.parse(body) as { sessionId?: unknown; continuationToken?: unknown };
     return {
-      sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : headers.get("x-eve-session-id"),
-      continuationToken: typeof parsed.continuationToken === "string" ? parsed.continuationToken : null,
+      sessionId:
+        typeof parsed.sessionId === "string" ? parsed.sessionId : headers.get("x-eve-session-id"),
+      continuationToken:
+        typeof parsed.continuationToken === "string" ? parsed.continuationToken : null,
     };
   } catch {
     // Fall through to the canonical response header.

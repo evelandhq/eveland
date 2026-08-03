@@ -29,9 +29,7 @@ describe("Eveland private telemetry providers", () => {
   test("do not register globally or export any signal through user providers", async () => {
     const userExporter = new InMemorySpanExporter();
     const userProvider = new BasicTracerProvider({
-      spanProcessors: [
-        new SimpleSpanProcessor(userExporter),
-      ],
+      spanProcessors: [new SimpleSpanProcessor(userExporter)],
     });
     const userLogExporter = new InMemoryLogRecordExporter();
     const userLoggerProvider = new LoggerProvider({
@@ -41,9 +39,7 @@ describe("Eveland private telemetry providers", () => {
         }),
       ],
     });
-    const userMetricExporter = new InMemoryMetricExporter(
-      AggregationTemporality.CUMULATIVE,
-    );
+    const userMetricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
     const userMeterProvider = new MeterProvider({
       readers: [
         new PeriodicExportingMetricReader({
@@ -53,14 +49,10 @@ describe("Eveland private telemetry providers", () => {
     });
     const evelandExporter = new InMemorySpanExporter();
     const evelandLogExporter = new InMemoryLogRecordExporter();
-    const evelandMetricExporter = new InMemoryMetricExporter(
-      AggregationTemporality.CUMULATIVE,
-    );
+    const evelandMetricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
 
     expect(trace.setGlobalTracerProvider(userProvider)).toBe(true);
-    expect(logs.setGlobalLoggerProvider(userLoggerProvider)).toBe(
-      userLoggerProvider,
-    );
+    expect(logs.setGlobalLoggerProvider(userLoggerProvider)).toBe(userLoggerProvider);
     expect(metrics.setGlobalMeterProvider(userMeterProvider)).toBe(true);
     const evelandRuntime = createPrivateAgentTelemetryRuntime({
       policy: {
@@ -96,10 +88,7 @@ describe("Eveland private telemetry providers", () => {
       eventName: "user.event",
       body: "user log",
     });
-    metrics
-      .getMeter("user-instrumentation")
-      .createCounter("user.counter")
-      .add(1);
+    metrics.getMeter("user-instrumentation").createCounter("user.counter").add(1);
     await evelandRuntime.capture(
       {
         type: "turn.started",
@@ -144,9 +133,10 @@ describe("Eveland private telemetry providers", () => {
     expect(evelandExporter.getFinishedSpans().map((span) => span.name)).toEqual([
       "invoke_agent Researcher",
     ]);
-    expect(
-      evelandLogExporter.getFinishedLogRecords().map((record) => record.eventName),
-    ).toEqual(["eve.turn.started", "eve.turn.completed"]);
+    expect(evelandLogExporter.getFinishedLogRecords().map((record) => record.eventName)).toEqual([
+      "eve.turn.started",
+      "eve.turn.completed",
+    ]);
     expect(
       evelandMetricExporter
         .getMetrics()

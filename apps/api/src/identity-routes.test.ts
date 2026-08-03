@@ -143,7 +143,7 @@ describe("Eveland Internal Identity routes", () => {
         enabled: true,
       }),
     });
-    const providerBody = await providerResponse.json() as {
+    const providerBody = (await providerResponse.json()) as {
       provider: { id: string; internalRealmKey: string; securityRevision: number };
     };
 
@@ -187,8 +187,7 @@ describe("Eveland Internal Identity routes", () => {
         method: "PATCH",
         headers: { cookie, origin: webOrigin, "content-type": "application/json" },
         body: JSON.stringify({
-          expectedSecurityRevision:
-            disabledProviderBody.provider.securityRevision,
+          expectedSecurityRevision: disabledProviderBody.provider.securityRevision,
           displayName: "Disabled Internal",
           enabled: true,
         }),
@@ -207,48 +206,39 @@ describe("Eveland Internal Identity routes", () => {
         enabled: true,
       }),
     });
-    const realmBody = await realmResponse.json() as { realm: { id: string } };
+    const realmBody = (await realmResponse.json()) as { realm: { id: string } };
     expect(realmResponse.status).toBe(201);
 
-    const disabledRealm = await app.request(
-      `/system/identity/realms/${realmBody.realm.id}`,
-      {
-        method: "PATCH",
-        headers: { cookie, origin: webOrigin, "content-type": "application/json" },
-        body: JSON.stringify({
-          displayName: "Eveland Members",
-          enabled: false,
-        }),
-      },
-    );
+    const disabledRealm = await app.request(`/system/identity/realms/${realmBody.realm.id}`, {
+      method: "PATCH",
+      headers: { cookie, origin: webOrigin, "content-type": "application/json" },
+      body: JSON.stringify({
+        displayName: "Eveland Members",
+        enabled: false,
+      }),
+    });
     expect(disabledRealm.status).toBe(200);
     await expect(disabledRealm.json()).resolves.toMatchObject({
       realm: { id: realmBody.realm.id, enabled: false },
     });
 
-    const immutable = await app.request(
-      `/system/identity/providers/${providerBody.provider.id}`,
-      {
-        method: "PATCH",
-        headers: { cookie, origin: webOrigin, "content-type": "application/json" },
-        body: JSON.stringify({
-          expectedSecurityRevision: 1,
-          displayName: "Eveland Internal",
-          internalRealmKey: "rewritten",
-          enabled: true,
-        }),
-      },
-    );
+    const immutable = await app.request(`/system/identity/providers/${providerBody.provider.id}`, {
+      method: "PATCH",
+      headers: { cookie, origin: webOrigin, "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedSecurityRevision: 1,
+        displayName: "Eveland Internal",
+        internalRealmKey: "rewritten",
+        enabled: true,
+      }),
+    });
     expect(immutable.status).toBe(409);
 
-    const savedTarget = await app.request(
-      "/system/identity/return-targets/eve-chats",
-      {
-        method: "PUT",
-        headers: { cookie, origin: webOrigin, "content-type": "application/json" },
-        body: JSON.stringify({ origin: "https://chat.example.com", enabled: true }),
-      },
-    );
+    const savedTarget = await app.request("/system/identity/return-targets/eve-chats", {
+      method: "PUT",
+      headers: { cookie, origin: webOrigin, "content-type": "application/json" },
+      body: JSON.stringify({ origin: "https://chat.example.com", enabled: true }),
+    });
     expect(savedTarget.status).toBe(200);
     await expect(savedTarget.json()).resolves.toMatchObject({
       target: {
@@ -321,9 +311,7 @@ describe("Eveland Internal Identity routes", () => {
     );
 
     expect(continued.status).toBe(302);
-    expect(continued.headers.get("location")).toBe(
-      `${chatOrigin}/agents/agent_123`,
-    );
+    expect(continued.headers.get("location")).toBe(`${chatOrigin}/agents/agent_123`);
     const replayed = await app.request(
       `/identity/internal/continue?state=${encodeURIComponent(state!)}`,
       {
@@ -361,9 +349,13 @@ describe("Eveland Internal Identity routes", () => {
         name: "Eveland Members",
       },
     });
-    expect(JSON.stringify(await store.getActiveIdentitySession(
-      (await store.getActiveIdentitySession("", new Date()))?.tokenHash ?? "",
-    ))).not.toContain(controlCookie);
+    expect(
+      JSON.stringify(
+        await store.getActiveIdentitySession(
+          (await store.getActiveIdentitySession("", new Date()))?.tokenHash ?? "",
+        ),
+      ),
+    ).not.toContain(controlCookie);
   });
 
   test("reuses an existing Identity session and issues Caller Tokens without Project grants", async () => {
@@ -406,8 +398,7 @@ describe("Eveland Internal Identity routes", () => {
     );
     expect(switched.status).toBe(302);
     expect(switched.headers.get("location")).toBe(`${chatOrigin}/agents/agent_456`);
-    const rotatedIdentityCookie =
-      switched.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+    const rotatedIdentityCookie = switched.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
     expect(rotatedIdentityCookie).not.toBe(identityCookie);
     expect(
       (
@@ -486,7 +477,7 @@ describe("Eveland Internal Identity routes", () => {
       },
       body: JSON.stringify({ projectId: project.id }),
     });
-    const issuedBody = await issued.json() as { token: string };
+    const issuedBody = (await issued.json()) as { token: string };
     expect(issued.status).toBe(200);
     expect(issued.headers.get("cache-control")).toBe("no-store");
     expect(issuedBody.token.split(".")).toHaveLength(3);
@@ -499,15 +490,19 @@ describe("Eveland Internal Identity routes", () => {
     expect(logout.status).toBe(204);
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
     expect(logout.headers.get("set-cookie")).toContain("Path=/identity");
-    expect((await app.request("/identity/caller-tokens", {
-      method: "POST",
-      headers: {
-        cookie: identityCookie,
-        origin: chatOrigin,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ projectId: project.id }),
-    })).status).toBe(401);
+    expect(
+      (
+        await app.request("/identity/caller-tokens", {
+          method: "POST",
+          headers: {
+            cookie: identityCookie,
+            origin: chatOrigin,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ projectId: project.id }),
+        })
+      ).status,
+    ).toBe(401);
   });
 
   test("returns stable eveChat deployments without Realm Project grants", async () => {
@@ -552,11 +547,7 @@ describe("Eveland Internal Identity routes", () => {
       runtimeKind: "docker",
     });
     await store.updateDeploymentStatus(deployment.id, "running");
-    await store.ensureDeploymentRoutes(
-      chatProject.id,
-      deployment.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(chatProject.id, deployment.id, "agent.localhost");
     await store.recordSourceRevision({
       projectId: chatProject.id,
       kind: "zip",
@@ -619,11 +610,7 @@ describe("Eveland Internal Identity routes", () => {
       runtimeKind: "docker",
     });
     await store.updateDeploymentStatus(stoppedDeployment.id, "stopped");
-    await store.ensureDeploymentRoutes(
-      stoppedProject.id,
-      stoppedDeployment.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(stoppedProject.id, stoppedDeployment.id, "agent.localhost");
 
     const undeployedProject = await store.createProject({
       name: "Undeployed Chat",
@@ -664,7 +651,6 @@ describe("Eveland Internal Identity routes", () => {
         },
       ],
     });
-
   });
 
   test("issues an app-scoped identity token for a registered return target", async () => {
@@ -683,12 +669,11 @@ describe("Eveland Internal Identity routes", () => {
       enabled: true,
     });
     const controlCookie = await signIn(app);
-    const login = await app.request(
-      "/identity/login?target=eve-chats&returnPath=%2F",
-      { headers: { cookie: controlCookie }, redirect: "manual" },
-    );
-    const identityCookie =
-      login.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+    const login = await app.request("/identity/login?target=eve-chats&returnPath=%2F", {
+      headers: { cookie: controlCookie },
+      redirect: "manual",
+    });
+    const identityCookie = login.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
     const response = await app.request("/identity/app-tokens", {
       method: "POST",

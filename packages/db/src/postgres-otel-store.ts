@@ -1,13 +1,7 @@
 import { createHash } from "node:crypto";
 import { createId } from "@eveland/core/ids";
 import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
-import {
-  modelUsageEvents,
-  otlpBatches,
-  sessionEvents,
-  sessionNodes,
-  sessions,
-} from "./schema.js";
+import { modelUsageEvents, otlpBatches, sessionEvents, sessionNodes, sessions } from "./schema.js";
 import type { ObservabilityStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 
@@ -19,15 +13,11 @@ type PostgresOtlpDomain = Pick<
   | "pruneDerivedAgentTelemetry"
 >;
 
-export function createPostgresOtlpStore(
-  context: PostgresStoreContext,
-): PostgresOtlpDomain {
+export function createPostgresOtlpStore(context: PostgresStoreContext): PostgresOtlpDomain {
   const { db } = context;
   return {
     async ingestOtlpBatch(input) {
-      const payloadHash = createHash("sha256")
-        .update(stableJson(input.payload))
-        .digest("hex");
+      const payloadHash = createHash("sha256").update(stableJson(input.payload)).digest("hex");
       const [inserted] = await db
         .insert(otlpBatches)
         .values({
@@ -50,12 +40,7 @@ export function createPostgresOtlpStore(
       const [existing] = await db
         .select({ id: otlpBatches.id })
         .from(otlpBatches)
-        .where(
-          and(
-            eq(otlpBatches.signal, input.signal),
-            eq(otlpBatches.payloadHash, payloadHash),
-          ),
-        )
+        .where(and(eq(otlpBatches.signal, input.signal), eq(otlpBatches.payloadHash, payloadHash)))
         .limit(1);
       if (!existing) {
         throw new Error("OTLP batch deduplication state is unavailable.");
@@ -149,10 +134,7 @@ function stableJson(value: unknown): string {
 
 function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJson);
-  if (
-    typeof value !== "object" ||
-    value === null
-  ) {
+  if (typeof value !== "object" || value === null) {
     return value;
   }
   return Object.fromEntries(

@@ -1,22 +1,22 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 const tabs = [
   { segment: "general", label: "General" },
   { segment: "environment", label: "Environment" },
-] as const
+] as const;
 
 export function ProjectSettingsNav({ projectId }: { projectId: string }) {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   return (
     <nav aria-label="Project settings" className="flex flex-col gap-1">
       {tabs.map((tab) => {
-        const href = `/projects/${projectId}/settings/${tab.segment}`
-        const active = pathname === href || pathname.startsWith(`${href}/`)
+        const href = `/projects/${projectId}/settings/${tab.segment}`;
+        const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
             key={tab.segment}
@@ -29,8 +29,8 @@ export function ProjectSettingsNav({ projectId }: { projectId: string }) {
           >
             {tab.label}
           </Link>
-        )
+        );
       })}
     </nav>
-  )
+  );
 }

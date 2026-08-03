@@ -37,10 +37,12 @@ export function agentAuthValuesFromConfig(
   descriptor: AgentAuthMethodDescriptor,
   config: Record<string, unknown>,
 ): Record<string, string> {
-  return Object.fromEntries(descriptor.fields.flatMap((field) => {
-    if (field.secret) return [];
-    const value = config[field.key] ?? field.defaultValue;
-    if (Array.isArray(value)) return [[field.key, value.join(" ")]];
-    return typeof value === "string" ? [[field.key, value]] : [];
-  }));
+  return Object.fromEntries(
+    descriptor.fields.flatMap((field) => {
+      if (field.secret) return [];
+      const value = config[field.key] ?? field.defaultValue;
+      if (Array.isArray(value)) return [[field.key, value.join(" ")]];
+      return typeof value === "string" ? [[field.key, value]] : [];
+    }),
+  );
 }

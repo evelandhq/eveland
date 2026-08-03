@@ -2,23 +2,14 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import {
-  BatchLogRecordProcessor,
-  LoggerProvider,
-} from "@opentelemetry/sdk-logs";
-import {
-  MeterProvider,
-  PeriodicExportingMetricReader,
-} from "@opentelemetry/sdk-metrics";
+import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
+import { MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import {
   BasicTracerProvider,
   BatchSpanProcessor,
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
-import type {
-  PrivateAgentTelemetryExporters,
-  RuntimeAgentPolicy,
-} from "./contracts.js";
+import type { PrivateAgentTelemetryExporters, RuntimeAgentPolicy } from "./contracts.js";
 
 const instrumentationScope = "@eveland/eve-runtime";
 
@@ -27,8 +18,7 @@ export function createAgentTelemetryProviders(input: {
   exporters?: PrivateAgentTelemetryExporters;
   runtimeInstanceId?: string;
 }) {
-  const runtimeInstanceId =
-    input.runtimeInstanceId ?? process.env.EVELAND_RUNTIME_INSTANCE_ID;
+  const runtimeInstanceId = input.runtimeInstanceId ?? process.env.EVELAND_RUNTIME_INSTANCE_ID;
   const endpoint = input.policy.otlp.endpoint.replace(/\/+$/, "");
   const exporters = input.exporters ?? {
     traces: new OTLPTraceExporter({ url: `${endpoint}/v1/traces` }),
@@ -47,9 +37,7 @@ export function createAgentTelemetryProviders(input: {
     "eveland.runtime.kind": input.policy.resource.runtimeKind,
     "eveland.telemetry.domain": "agent",
     "eveland.deployment.credential": input.policy.deploymentCredential,
-    ...(runtimeInstanceId
-      ? { "eveland.runtime.instance.id": runtimeInstanceId }
-      : {}),
+    ...(runtimeInstanceId ? { "eveland.runtime.instance.id": runtimeInstanceId } : {}),
   });
   const tracerProvider = new BasicTracerProvider({
     resource,
@@ -94,6 +82,4 @@ export function createAgentTelemetryProviders(input: {
   };
 }
 
-export type AgentTelemetryProviders = ReturnType<
-  typeof createAgentTelemetryProviders
->;
+export type AgentTelemetryProviders = ReturnType<typeof createAgentTelemetryProviders>;

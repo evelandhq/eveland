@@ -12,14 +12,18 @@ export function createPostgresInstanceHealthStore(
   return {
     async upsertWorkerHeartbeat(heartbeat) {
       const values = toHeartbeatRow(heartbeat);
-      const [row] = await db.insert(workerHeartbeats).values(values).onConflictDoUpdate({
-        target: workerHeartbeats.workerId,
-        set: values,
-        // Metrics delivery is at least once, so an older batch can be
-        // redelivered. Letting it win would move observedAt backwards and make
-        // a healthy worker look stale on the health page.
-        setWhere: lte(workerHeartbeats.observedAt, values.observedAt),
-      }).returning();
+      const [row] = await db
+        .insert(workerHeartbeats)
+        .values(values)
+        .onConflictDoUpdate({
+          target: workerHeartbeats.workerId,
+          set: values,
+          // Metrics delivery is at least once, so an older batch can be
+          // redelivered. Letting it win would move observedAt backwards and make
+          // a healthy worker look stale on the health page.
+          setWhere: lte(workerHeartbeats.observedAt, values.observedAt),
+        })
+        .returning();
       if (row) return heartbeatRowToRecord(row);
       const [current] = await db
         .select()
@@ -31,31 +35,35 @@ export function createPostgresInstanceHealthStore(
     },
 
     async listWorkerHeartbeats() {
-      const rows = await db.select().from(workerHeartbeats).orderBy(desc(workerHeartbeats.observedAt));
+      const rows = await db
+        .select()
+        .from(workerHeartbeats)
+        .orderBy(desc(workerHeartbeats.observedAt));
       return rows.map(heartbeatRowToRecord);
     },
 
     async recordHostMetric(sample) {
-      const [row] = await db.insert(hostMetricSamples).values({
-        ...sample,
-        id: createId("metric"),
-        observedAt: new Date(sample.observedAt),
-      }).onConflictDoUpdate({
-        target: [
-          hostMetricSamples.workerId,
-          hostMetricSamples.observedAt,
-        ],
-        set: {
-          cpuPercent: sample.cpuPercent,
-          load1: sample.load1,
-          memoryTotalBytes: sample.memoryTotalBytes,
-          memoryAvailableBytes: sample.memoryAvailableBytes,
-          diskTotalBytes: sample.diskTotalBytes,
-          diskAvailableBytes: sample.diskAvailableBytes,
-          diskInodesTotal: sample.diskInodesTotal,
-          diskInodesAvailable: sample.diskInodesAvailable,
-        },
-      }).returning();
+      const [row] = await db
+        .insert(hostMetricSamples)
+        .values({
+          ...sample,
+          id: createId("metric"),
+          observedAt: new Date(sample.observedAt),
+        })
+        .onConflictDoUpdate({
+          target: [hostMetricSamples.workerId, hostMetricSamples.observedAt],
+          set: {
+            cpuPercent: sample.cpuPercent,
+            load1: sample.load1,
+            memoryTotalBytes: sample.memoryTotalBytes,
+            memoryAvailableBytes: sample.memoryAvailableBytes,
+            diskTotalBytes: sample.diskTotalBytes,
+            diskAvailableBytes: sample.diskAvailableBytes,
+            diskInodesTotal: sample.diskInodesTotal,
+            diskInodesAvailable: sample.diskInodesAvailable,
+          },
+        })
+        .returning();
       if (!row) throw new Error("Failed to record host metric sample.");
       return metricRowToRecord(row);
     },
@@ -68,7 +76,9 @@ export function createPostgresInstanceHealthStore(
         ...(input.workerId ? [eq(hostMetricSamples.workerId, input.workerId)] : []),
         ...(input.since ? [gte(hostMetricSamples.observedAt, input.since)] : []),
       ];
-      const rows = await db.select().from(hostMetricSamples)
+      const rows = await db
+        .select()
+        .from(hostMetricSamples)
         .where(predicates.length ? and(...predicates) : undefined)
         .orderBy(desc(hostMetricSamples.observedAt))
         .limit(input.limit);
@@ -76,23 +86,34 @@ export function createPostgresInstanceHealthStore(
     },
 
     async pruneHostMetrics(before) {
-      const rows = await db.delete(hostMetricSamples).where(lt(hostMetricSamples.observedAt, before)).returning({ id: hostMetricSamples.id });
+      const rows = await db
+        .delete(hostMetricSamples)
+        .where(lt(hostMetricSamples.observedAt, before))
+        .returning({ id: hostMetricSamples.id });
       return rows.length;
     },
 
     async getInstanceWorkload() {
       const [jobGroups, runtimeGroups] = await Promise.all([
-        db.select({
-          status: jobs.status,
-          count: sql<number>`count(*)::int`,
-          oldest: sql<Date | null>`min(${jobs.createdAt})`,
-        }).from(jobs).where(inArray(jobs.status, ["queued", "running"])).groupBy(jobs.status).orderBy(asc(jobs.status)),
-        db.select({ status: runtimeInstances.status, count: sql<number>`count(*)::int` })
-          .from(runtimeInstances).groupBy(runtimeInstances.status),
+        db
+          .select({
+            status: jobs.status,
+            count: sql<number>`count(*)::int`,
+            oldest: sql<Date | null>`min(${jobs.createdAt})`,
+          })
+          .from(jobs)
+          .where(inArray(jobs.status, ["queued", "running"]))
+          .groupBy(jobs.status)
+          .orderBy(asc(jobs.status)),
+        db
+          .select({ status: runtimeInstances.status, count: sql<number>`count(*)::int` })
+          .from(runtimeInstances)
+          .groupBy(runtimeInstances.status),
       ]);
       const runtimeCounts = { starting: 0, ready: 0, draining: 0, stopped: 0, failed: 0 };
       for (const group of runtimeGroups) {
-        if (group.status in runtimeCounts) runtimeCounts[group.status as keyof typeof runtimeCounts] = group.count;
+        if (group.status in runtimeCounts)
+          runtimeCounts[group.status as keyof typeof runtimeCounts] = group.count;
       }
       const queued = jobGroups.find((group) => group.status === "queued");
       return {

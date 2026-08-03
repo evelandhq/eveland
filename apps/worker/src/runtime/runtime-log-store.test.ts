@@ -13,10 +13,7 @@ describe("runtime OTel log projection", () => {
       createdAt: "2026-07-23T12:00:00.000Z",
     });
     const emitLog = vi.fn();
-    const store = instrumentRuntimeLogStore(
-      { appendLog } as unknown as Store,
-      { emitLog },
-    );
+    const store = instrumentRuntimeLogStore({ appendLog } as unknown as Store, { emitLog });
 
     await expect(
       store.appendLog({

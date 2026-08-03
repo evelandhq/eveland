@@ -80,7 +80,10 @@ describe("run and spawn", () => {
     const { session, calls } = await makeSession();
     await session.spawn({ command: "true", workingDirectory: "sub/dir" });
     const argv = calls[0]!;
-    expect(argv.slice(argv.indexOf("--chdir"), argv.indexOf("--chdir") + 2)).toEqual(["--chdir", "/workspace/sub/dir"]);
+    expect(argv.slice(argv.indexOf("--chdir"), argv.indexOf("--chdir") + 2)).toEqual([
+      "--chdir",
+      "/workspace/sub/dir",
+    ]);
   });
 
   test("the overridden cache root is the path hidden by tmpfs", async () => {
@@ -119,7 +122,9 @@ describe("network policy", () => {
 
   test("granular policies are rejected", async () => {
     const { session } = await makeSession();
-    await expect(session.setNetworkPolicy({ allow: ["github.com"] })).rejects.toThrow(/allow-all.*deny-all/);
+    await expect(session.setNetworkPolicy({ allow: ["github.com"] })).rejects.toThrow(
+      /allow-all.*deny-all/,
+    );
   });
 });
 
@@ -128,8 +133,12 @@ describe("file I/O", () => {
     const { session } = await makeSession();
     await session.writeTextFile({ path: "notes/deep/a.txt", content: "l1\nl2\nl3" });
     expect(await session.readTextFile({ path: "notes/deep/a.txt" })).toBe("l1\nl2\nl3");
-    expect(await session.readTextFile({ path: "notes/deep/a.txt", startLine: 2, endLine: 2 })).toBe("l2");
-    expect(await session.readTextFile({ path: "notes/deep/a.txt", startLine: 2, endLine: 99 })).toBe("l2\nl3");
+    expect(await session.readTextFile({ path: "notes/deep/a.txt", startLine: 2, endLine: 2 })).toBe(
+      "l2",
+    );
+    expect(
+      await session.readTextFile({ path: "notes/deep/a.txt", startLine: 2, endLine: 99 }),
+    ).toBe("l2\nl3");
   });
 
   test("missing files resolve null across all readers", async () => {
@@ -149,8 +158,12 @@ describe("file I/O", () => {
 
   test("writes and removes outside the workspace are refused", async () => {
     const { session } = await makeSession();
-    await expect(session.writeTextFile({ path: "/etc/evil", content: "x" })).rejects.toThrow(/workspace/);
-    await expect(session.writeTextFile({ path: "a/../../escape.txt", content: "x" })).rejects.toThrow(/workspace/);
+    await expect(session.writeTextFile({ path: "/etc/evil", content: "x" })).rejects.toThrow(
+      /workspace/,
+    );
+    await expect(
+      session.writeTextFile({ path: "a/../../escape.txt", content: "x" }),
+    ).rejects.toThrow(/workspace/);
     await expect(session.removePath({ path: "/etc/hosts" })).rejects.toThrow(/workspace/);
   });
 
@@ -170,7 +183,9 @@ describe("file I/O", () => {
     await writeFile(path.join(outside, "victim.txt"), "precious");
     await symlink(outside, path.join(workspaceDir, "escape"));
 
-    await expect(session.writeTextFile({ path: "escape/victim.txt", content: "pwn" })).rejects.toThrow(/workspace/);
+    await expect(
+      session.writeTextFile({ path: "escape/victim.txt", content: "pwn" }),
+    ).rejects.toThrow(/workspace/);
     await expect(session.removePath({ path: "escape/victim.txt" })).rejects.toThrow(/workspace/);
     expect(await readFile(path.join(outside, "victim.txt"), "utf8")).toBe("precious");
   });
@@ -178,7 +193,9 @@ describe("file I/O", () => {
   test("reads of host paths outside the workspace pass through", async () => {
     const { session, appRoot } = await makeSession();
     await writeFile(path.join(appRoot, "host.txt"), "host-visible");
-    expect(await session.readTextFile({ path: path.join(appRoot, "host.txt") })).toBe("host-visible");
+    expect(await session.readTextFile({ path: path.join(appRoot, "host.txt") })).toBe(
+      "host-visible",
+    );
   });
 
   test("resolvePath anchors to /workspace and id is stable", async () => {
@@ -244,7 +261,13 @@ describe("killAll", () => {
     const appRoot = await mkdtemp(path.join(os.tmpdir(), "bwrap-killall-"));
     const workspaceDir = path.join(appRoot, "ws");
     await mkdir(workspaceDir, { recursive: true });
-    const session = createBwrapSession({ id: "s1", workspaceDir, appRoot, runner, options: resolveBwrapSandboxOptions() });
+    const session = createBwrapSession({
+      id: "s1",
+      workspaceDir,
+      appRoot,
+      runner,
+      options: resolveBwrapSandboxOptions(),
+    });
 
     await session.run({ command: "echo out" });
     await session.killAll();

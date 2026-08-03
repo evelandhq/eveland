@@ -58,11 +58,9 @@ async function defaultUserExists(name: string): Promise<boolean> {
 }
 
 async function defaultGroupExists(name: string): Promise<boolean> {
-  const result = await execa(
-    "sh",
-    ["-c", 'getent group "$1" >/dev/null 2>&1', "preflight", name],
-    { reject: false },
-  );
+  const result = await execa("sh", ["-c", 'getent group "$1" >/dev/null 2>&1', "preflight", name], {
+    reject: false,
+  });
   return result.exitCode === 0;
 }
 
@@ -71,35 +69,22 @@ async function defaultCanTraverseAs(user: string, dir: string): Promise<boolean>
   return result.exitCode === 0;
 }
 
-export async function probeDockerNetworkPool(): Promise<
-  string | undefined
-> {
-  const networkName =
-    `eveland-agent-preflight-${randomUUID()}`;
+export async function probeDockerNetworkPool(): Promise<string | undefined> {
+  const networkName = `eveland-agent-preflight-${randomUUID()}`;
   const create = await execa(
     "docker",
-    [
-      "network",
-      "create",
-      "--label",
-      "com.eveland.managed=preflight",
-      networkName,
-    ],
+    ["network", "create", "--label", "com.eveland.managed=preflight", networkName],
     { all: true, reject: false },
   );
   if (create.failed) {
     return create.all?.trim() || "docker network create failed";
   }
-  const remove = await execa(
-    "docker",
-    ["network", "rm", networkName],
-    { all: true, reject: false },
-  );
+  const remove = await execa("docker", ["network", "rm", networkName], {
+    all: true,
+    reject: false,
+  });
   if (remove.failed) {
-    return (
-      remove.all?.trim() ||
-      "Docker allocated the preflight network but could not remove it."
-    );
+    return remove.all?.trim() || "Docker allocated the preflight network but could not remove it.";
   }
   return undefined;
 }
@@ -141,27 +126,37 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
 
   // 1. Platform is linux.
   if (deps.platform !== "linux") {
-    issues.push(`The systemd runtime requires a Linux host, but this process reports platform "${deps.platform}". Run with EVELAND_RUNTIME=docker instead, or deploy on Linux.`);
+    issues.push(
+      `The systemd runtime requires a Linux host, but this process reports platform "${deps.platform}". Run with EVELAND_RUNTIME=docker instead, or deploy on Linux.`,
+    );
   }
 
   // 2. systemd is present.
   if (!(await deps.pathExists("/run/systemd/system"))) {
-    issues.push("systemd was not detected: /run/systemd/system does not exist. The systemd runtime requires a host booted with systemd as PID 1.");
+    issues.push(
+      "systemd was not detected: /run/systemd/system does not exist. The systemd runtime requires a host booted with systemd as PID 1.",
+    );
   }
 
   // 3. Running as root -- the worker itself shells out to systemd-run, systemctl and chown.
   const uid = deps.getuid();
   if (uid !== 0) {
-    issues.push(`The worker must run as root to drive systemd-run/systemctl/chown, but its uid is ${uid}. Run the worker process as root.`);
+    issues.push(
+      `The worker must run as root to drive systemd-run/systemctl/chown, but its uid is ${uid}. Run the worker process as root.`,
+    );
   }
 
   // 4. EVELAND_DATA_DIR set and absolute -- the API container and this worker
   // must agree on stored sourcePath values, so a relative default is unsafe.
   const dataDir = deps.env.EVELAND_DATA_DIR;
   if (!dataDir) {
-    issues.push('EVELAND_DATA_DIR is not set. Set it to an absolute path (e.g. "/var/lib/eveland") shared by the API container and this worker.');
+    issues.push(
+      'EVELAND_DATA_DIR is not set. Set it to an absolute path (e.g. "/var/lib/eveland") shared by the API container and this worker.',
+    );
   } else if (!path.isAbsolute(dataDir)) {
-    issues.push(`EVELAND_DATA_DIR ("${dataDir}") must be an absolute path (e.g. "/var/lib/eveland") shared by the API container and this worker.`);
+    issues.push(
+      `EVELAND_DATA_DIR ("${dataDir}") must be an absolute path (e.g. "/var/lib/eveland") shared by the API container and this worker.`,
+    );
   }
 
   // 5. Required binaries. The sandbox toolchain is platform-owned on systemd:
@@ -186,7 +181,9 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   ];
   for (const bin of requiredBinaries) {
     if (!(await deps.commandExists(bin))) {
-      issues.push(`Required binary "${bin}" was not found on PATH. Install it before starting the worker.`);
+      issues.push(
+        `Required binary "${bin}" was not found on PATH. Install it before starting the worker.`,
+      );
     }
   }
 
@@ -194,7 +191,9 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   const appUser = deps.env.EVELAND_APP_USER ?? "eveland-app";
   const appUserExists = await deps.userExists(appUser);
   if (!appUserExists) {
-    issues.push(`App user "${appUser}" does not exist. Create it with a same-named group (e.g. "useradd --system --user-group --no-create-home ${appUser}") before starting the worker.`);
+    issues.push(
+      `App user "${appUser}" does not exist. Create it with a same-named group (e.g. "useradd --system --user-group --no-create-home ${appUser}") before starting the worker.`,
+    );
   } else if (!(await deps.groupExists(appUser))) {
     issues.push(
       `Access group "${appUser}" does not exist. Dynamic Deployment users require a same-named group; recreate or update the app user with "--user-group" before starting the worker.`,
@@ -215,7 +214,9 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   // 7. /workspace exists and is a directory -- bwrap's bind destination (see sandbox-verify.ts);
   // bwrap cannot create it itself because the host root is bind-mounted read-only first.
   if (!((await deps.pathExists("/workspace")) && (await deps.isDirectory("/workspace")))) {
-    issues.push('/workspace does not exist as a directory. Create it with "mkdir -p /workspace" -- bwrap binds it as the sandbox workspace destination and cannot create it itself.');
+    issues.push(
+      '/workspace does not exist as a directory. Create it with "mkdir -p /workspace" -- bwrap binds it as the sandbox workspace destination and cannot create it itself.',
+    );
   }
 
   // 8. The sandbox backend is built.
@@ -239,7 +240,9 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
       await deps.mkdir(dataDir);
     } catch (error) {
       dataDirCreated = false;
-      issues.push(`Could not create the data dir "${dataDir}": ${error instanceof Error ? error.message : String(error)}. Ensure the worker can create it, or create it manually.`);
+      issues.push(
+        `Could not create the data dir "${dataDir}": ${error instanceof Error ? error.message : String(error)}. Ensure the worker can create it, or create it manually.`,
+      );
     }
     // No user to probe traversal as when check 6 failed; no dir to probe when mkdir did.
     if (dataDirCreated && appUserExists && !(await deps.canTraverseAs(appUser, dataDir))) {
@@ -276,14 +279,16 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
  * defaults to the systemd adapter and must get the same preflight as an
  * explicit EVELAND_RUNTIME=systemd.
  */
-export async function assertWorkerPreflight(env: NodeJS.ProcessEnv, overrides: Partial<PreflightDeps> = {}): Promise<void> {
+export async function assertWorkerPreflight(
+  env: NodeJS.ProcessEnv,
+  overrides: Partial<PreflightDeps> = {},
+): Promise<void> {
   assertValidSecretKey(env.APP_SECRET_KEY ?? devSecretKey);
   assertSchedulerPreflight(env);
   const runtimeKind = resolveRuntimeKind(env);
   const deps: PreflightDeps = { ...defaultDeps(env), ...overrides };
   if (runtimeKind === "docker") {
-    const networkPoolIssue =
-      await deps.probeDockerNetworkPool();
+    const networkPoolIssue = await deps.probeDockerNetworkPool();
     if (networkPoolIssue) {
       throw new Error(
         "docker runtime preflight failed: Docker could not allocate and release an Agent bridge network. " +
@@ -296,7 +301,9 @@ export async function assertWorkerPreflight(env: NodeJS.ProcessEnv, overrides: P
 
   const issues = await collectSystemdPreflightIssues(deps);
   if (issues.length > 0) {
-    throw new Error(`systemd runtime preflight failed:\n${issues.map((issue) => `- ${issue}`).join("\n")}`);
+    throw new Error(
+      `systemd runtime preflight failed:\n${issues.map((issue) => `- ${issue}`).join("\n")}`,
+    );
   }
 }
 
@@ -308,17 +315,21 @@ function assertSchedulerPreflight(env: NodeJS.ProcessEnv): void {
   ] as const;
   for (const [name, value] of secrets) {
     if (!value) throw new Error(`${name} is required in production.`);
-    if (Buffer.byteLength(value, "utf8") < 32) throw new Error(`${name} must be at least 32 bytes.`);
+    if (Buffer.byteLength(value, "utf8") < 32)
+      throw new Error(`${name} must be at least 32 bytes.`);
   }
   if (env.EVELAND_SCHEDULER_RUNTIME_SECRET === env.EVELAND_SCHEDULER_DISPATCH_SECRET) {
-    throw new Error("EVELAND_SCHEDULER_RUNTIME_SECRET and EVELAND_SCHEDULER_DISPATCH_SECRET must be independent values.");
+    throw new Error(
+      "EVELAND_SCHEDULER_RUNTIME_SECRET and EVELAND_SCHEDULER_DISPATCH_SECRET must be independent values.",
+    );
   }
   if (!env.EVELAND_SCHEDULER_REDEEM_URL) {
     throw new Error("EVELAND_SCHEDULER_REDEEM_URL is required in production.");
   }
   try {
     const url = new URL(env.EVELAND_SCHEDULER_REDEEM_URL);
-    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("unsupported protocol");
+    if (url.protocol !== "http:" && url.protocol !== "https:")
+      throw new Error("unsupported protocol");
   } catch {
     throw new Error("EVELAND_SCHEDULER_REDEEM_URL must be an absolute HTTP(S) URL.");
   }

@@ -1,12 +1,6 @@
 import { z } from "zod";
 
-import type {
-  Job,
-  JobPayloadMap,
-  JobStatus,
-  JobType,
-  PublicJob,
-} from "./contracts.js";
+import type { Job, JobPayloadMap, JobStatus, JobType, PublicJob } from "./contracts.js";
 
 const gitCredentialSchema = z
   .object({
@@ -30,9 +24,7 @@ const jobPayloadSchemas: {
       promoteAfterDeploy: z.boolean().optional(),
     })
     .passthrough(),
-  build_deploy: z
-    .object({ promoteAfterDeploy: z.boolean().optional() })
-    .passthrough(),
+  build_deploy: z.object({ promoteAfterDeploy: z.boolean().optional() }).passthrough(),
   restart_deployment: z
     .object({
       deploymentId: z.string().optional(),
@@ -52,20 +44,11 @@ const jobPayloadSchemas: {
       automatic: z.boolean().optional(),
     })
     .passthrough(),
-  delete_project: z
-    .object({ sourcePaths: z.array(z.string()).optional() })
-    .passthrough(),
+  delete_project: z.object({ sourcePaths: z.array(z.string()).optional() }).passthrough(),
 };
 
-const jobTypeSet = new Set<JobType>(
-  Object.keys(jobPayloadSchemas) as JobType[],
-);
-const jobStatusSet = new Set<JobStatus>([
-  "queued",
-  "running",
-  "completed",
-  "failed",
-]);
+const jobTypeSet = new Set<JobType>(Object.keys(jobPayloadSchemas) as JobType[]);
+const jobStatusSet = new Set<JobStatus>(["queued", "running", "completed", "failed"]);
 
 export function isJobType(value: string): value is JobType {
   return jobTypeSet.has(value as JobType);

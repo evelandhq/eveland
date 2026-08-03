@@ -92,8 +92,8 @@ describe("Eveland public website contract", () => {
   });
 
   test("publishes English and Chinese locale routes", () => {
-    expect(source("./lib/i18n.ts")).toContain("languages: ['en', 'zh']");
-    expect(source("./lib/i18n.ts")).toContain("defaultLanguage: 'en'");
+    expect(source("./lib/i18n.ts")).toContain('languages: ["en", "zh"]');
+    expect(source("./lib/i18n.ts")).toContain('defaultLanguage: "en"');
     expect(existsSync(path("./app/[lang]/page.tsx"))).toBe(true);
     expect(existsSync(path("./app/[lang]/docs/[[...slug]]/page.tsx"))).toBe(true);
   });
@@ -115,7 +115,7 @@ describe("Eveland public website contract", () => {
   });
 
   test("keeps English URLs clean and prefixes only Chinese URLs", () => {
-    expect(source("./lib/i18n.ts")).toContain("hideLocale: 'default-locale'");
+    expect(source("./lib/i18n.ts")).toContain('hideLocale: "default-locale"');
     expect(source("./lib/urls.ts")).toContain(
       'return lang === "en" ? normalizedPath : `/zh${normalizedPath}`',
     );

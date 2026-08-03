@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { AlertCircleIcon, KeyRoundIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { agentAuthCallbackSearch, safeAgentAuthReturnPath } from "@/lib/agent-auth-callback";
 import { completeAgentAuthCallback } from "@/lib/client-api";
@@ -27,7 +34,11 @@ export default function OidcAgentAuthCallbackPage() {
     completeAgentAuthCallback(search)
       .then(({ returnPath }) => router.replace(safeAgentAuthReturnPath(returnPath)))
       .catch((caught) => {
-        setError(caught instanceof Error ? caught.message : "Playground authentication could not be completed.");
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Playground authentication could not be completed.",
+        );
       });
   }, [router]);
 
@@ -40,7 +51,8 @@ export default function OidcAgentAuthCallbackPage() {
           </div>
           <CardTitle>Playground authentication</CardTitle>
           <CardDescription>
-            Completing the OIDC grant used to authenticate Playground requests. Tokens stay on the server.
+            Completing the OIDC grant used to authenticate Playground requests. Tokens stay on the
+            server.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -58,7 +70,9 @@ export default function OidcAgentAuthCallbackPage() {
         </CardContent>
         {error ? (
           <CardFooter>
-            <Button variant="outline" onClick={() => router.replace("/projects")}>Back to projects</Button>
+            <Button variant="outline" onClick={() => router.replace("/projects")}>
+              Back to projects
+            </Button>
           </CardFooter>
         ) : null}
       </Card>

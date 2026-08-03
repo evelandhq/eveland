@@ -20,16 +20,13 @@ describe("instance health presentation", () => {
   });
 
   test("aligns a 24-hour chart domain and ticks to half-hour boundaries", () => {
-    const scale = capacityTimelineScale([
-      "2026-07-20T01:42:00.000Z",
-      "2026-07-20T04:16:00.000Z",
-    ], 24);
+    const scale = capacityTimelineScale(
+      ["2026-07-20T01:42:00.000Z", "2026-07-20T04:16:00.000Z"],
+      24,
+    );
 
     expect(scale).toEqual({
-      domain: [
-        Date.parse("2026-07-20T01:30:00.000Z"),
-        Date.parse("2026-07-20T04:30:00.000Z"),
-      ],
+      domain: [Date.parse("2026-07-20T01:30:00.000Z"), Date.parse("2026-07-20T04:30:00.000Z")],
       ticks: [
         "2026-07-20T01:30:00.000Z",
         "2026-07-20T02:00:00.000Z",
@@ -43,7 +40,8 @@ describe("instance health presentation", () => {
   });
 
   test("formats a full timestamp for the chart tooltip", () => {
-    expect(formatCapacityTooltipTimestamp("2026-07-20T06:30:45.000Z", "Asia/Shanghai"))
-      .toContain("Jul 20, 2026, 14:30:45");
+    expect(formatCapacityTooltipTimestamp("2026-07-20T06:30:45.000Z", "Asia/Shanghai")).toContain(
+      "Jul 20, 2026, 14:30:45",
+    );
   });
 });

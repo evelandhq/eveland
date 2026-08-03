@@ -53,11 +53,19 @@ async function main(): Promise<void> {
         const chmodResult = await session.run({
           command: "printf '#!/bin/sh\\necho exec-ok\\n' > run-me.sh && chmod +x run-me.sh",
         });
-        assert.equal(chmodResult.exitCode, 0, `chmod +x failed in bootstrap: ${chmodResult.stderr}`);
+        assert.equal(
+          chmodResult.exitCode,
+          0,
+          `chmod +x failed in bootstrap: ${chmodResult.stderr}`,
+        );
       },
     });
     assert.equal(first.reused, false, "first prewarm must capture fresh state");
-    const second = await backend.prewarm({ templateKey: "smoke-template", runtimeContext, seedFiles: [] });
+    const second = await backend.prewarm({
+      templateKey: "smoke-template",
+      runtimeContext,
+      seedFiles: [],
+    });
     assert.equal(second.reused, true, "second prewarm must reuse the template");
 
     // unknown template → typed error
@@ -67,7 +75,11 @@ async function main(): Promise<void> {
     );
 
     // create: template state visible in the session workspace
-    const handle = await backend.create({ templateKey: "smoke-template", sessionKey: "sess-1", runtimeContext });
+    const handle = await backend.create({
+      templateKey: "smoke-template",
+      sessionKey: "sess-1",
+      runtimeContext,
+    });
     const session = handle.session;
     assert.equal(await session.readTextFile({ path: "seeded.txt" }), "from-seed");
     assert.equal(await session.readTextFile({ path: "boot.txt" }), "bootstrapped");
@@ -78,8 +90,16 @@ async function main(): Promise<void> {
     // filesystem. Run the bootstrap-authored script directly by name; if the
     // executable bit was lost this fails with a permission error.
     const execProbe = await session.run({ command: "./run-me.sh" });
-    assert.equal(execProbe.exitCode, 0, `executable bit lost across template->session copy: ${execProbe.stderr}`);
-    assert.equal(execProbe.stdout.trim(), "exec-ok", "run-me.sh did not produce the expected output");
+    assert.equal(
+      execProbe.exitCode,
+      0,
+      `executable bit lost across template->session copy: ${execProbe.stderr}`,
+    );
+    assert.equal(
+      execProbe.stdout.trim(),
+      "exec-ok",
+      "run-me.sh did not produce the expected output",
+    );
     console.log("EXECUTABLE BIT PROBE: template->session copy preserved the executable bit");
 
     // cwd is /workspace
@@ -113,7 +133,9 @@ async function main(): Promise<void> {
       `PID namespace isolation failed: /proc showed ${procCount.stdout.trim()} entries inside the sandbox ` +
         "(expected a tiny private table from --unshare-pid, not the host's)",
     );
-    console.log(`PID NAMESPACE PROBE: sandbox /proc shows ${sandboxPidCount} process(es), own namespace confirmed`);
+    console.log(
+      `PID NAMESPACE PROBE: sandbox /proc shows ${sandboxPidCount} process(es), own namespace confirmed`,
+    );
 
     // network: allow-all sees a non-loopback interface; deny-all does not.
     // /sys/class/net shows the namespace that mounted sysfs, so ask the kernel
@@ -122,13 +144,19 @@ async function main(): Promise<void> {
     const allowNet = await session.run({ command: ifaceCommand });
     assert.equal(allowNet.exitCode, 0, `iface probe failed: ${allowNet.stderr}`);
     assert.ok(
-      allowNet.stdout.trim().split(/\s+/).some((name) => name !== "" && name !== "lo"),
+      allowNet.stdout
+        .trim()
+        .split(/\s+/)
+        .some((name) => name !== "" && name !== "lo"),
       "allow-all must see a host network interface",
     );
     await session.setNetworkPolicy("deny-all");
     const denyNet = await session.run({ command: ifaceCommand });
     assert.equal(
-      denyNet.stdout.trim().split(/\s+/).filter((name) => name !== "" && name !== "lo").length,
+      denyNet.stdout
+        .trim()
+        .split(/\s+/)
+        .filter((name) => name !== "" && name !== "lo").length,
       0,
       "deny-all must leave at most loopback",
     );
@@ -150,7 +178,9 @@ async function main(): Promise<void> {
     if (linkSucceeded) {
       await session.run({ command: "printf pwned > /workspace/linked.txt" });
     }
-    const hostFileAfter = await readFile(hostFilePath, "utf8").catch((error: unknown) => `<unreadable: ${String(error)}>`);
+    const hostFileAfter = await readFile(hostFilePath, "utf8").catch(
+      (error: unknown) => `<unreadable: ${String(error)}>`,
+    );
     console.log(
       `HARDLINK PROBE: ${linkSucceeded ? "succeeded" : "refused"} host-file-after=${JSON.stringify(hostFileAfter)}`,
     );
@@ -179,9 +209,17 @@ async function main(): Promise<void> {
     // persistence across reconnect; isolation between sessions
     await session.writeTextFile({ path: "notes/hello.txt", content: "persisted" });
     await handle.shutdown();
-    const again = await backend.create({ templateKey: "smoke-template", sessionKey: "sess-1", runtimeContext });
+    const again = await backend.create({
+      templateKey: "smoke-template",
+      sessionKey: "sess-1",
+      runtimeContext,
+    });
     assert.equal(await again.session.readTextFile({ path: "notes/hello.txt" }), "persisted");
-    const other = await backend.create({ templateKey: "smoke-template", sessionKey: "sess-2", runtimeContext });
+    const other = await backend.create({
+      templateKey: "smoke-template",
+      sessionKey: "sess-2",
+      runtimeContext,
+    });
     assert.equal(await other.session.readTextFile({ path: "notes/hello.txt" }), null);
 
     console.log("BWRAP SMOKE OK");

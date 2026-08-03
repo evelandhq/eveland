@@ -24,10 +24,7 @@ afterEach(async () => {
 describe("managed OpenTelemetry Collector reconciliation", () => {
   test("validates and applies a policy revision once without restarting Agents", async () => {
     const store = createTestStore();
-    const dataDir = path.join(
-      os.tmpdir(),
-      `eveland-collector-policy-${Date.now()}`,
-    );
+    const dataDir = path.join(os.tmpdir(), `eveland-collector-policy-${Date.now()}`);
     temporaryDirectories.push(dataDir);
     const calls: string[] = [];
     const reconcile = createCollectorObservabilityReconciler({
@@ -39,9 +36,7 @@ describe("managed OpenTelemetry Collector reconciliation", () => {
       },
       validateConfig: async ({ workerPath }) => {
         calls.push(`validate:${workerPath}`);
-        expect(await readFile(workerPath, "utf8")).toContain(
-          "otlp_http/builtin",
-        );
+        expect(await readFile(workerPath, "utf8")).toContain("otlp_http/builtin");
       },
       restartCollector: async () => {
         calls.push("restart");
@@ -55,9 +50,9 @@ describe("managed OpenTelemetry Collector reconciliation", () => {
       `validate:${path.join(dataDir, "otel", "collector.yaml.candidate")}`,
       "restart",
     ]);
-    await expect(
-      readFile(path.join(dataDir, "otel", "collector.yaml"), "utf8"),
-    ).resolves.toContain("otlp_http/builtin");
+    await expect(readFile(path.join(dataDir, "otel", "collector.yaml"), "utf8")).resolves.toContain(
+      "otlp_http/builtin",
+    );
   });
 
   test.runIf(process.env.EVELAND_VALIDATE_OTEL_COLLECTOR === "1")(
@@ -85,10 +80,7 @@ describe("managed OpenTelemetry Collector reconciliation", () => {
           },
         ],
       });
-      const dataDir = path.join(
-        os.tmpdir(),
-        `eveland-collector-validation-${Date.now()}`,
-      );
+      const dataDir = path.join(os.tmpdir(), `eveland-collector-validation-${Date.now()}`);
       temporaryDirectories.push(dataDir);
       const reconcile = createCollectorObservabilityReconciler({
         store,

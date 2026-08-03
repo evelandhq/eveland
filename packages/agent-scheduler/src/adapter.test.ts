@@ -22,16 +22,35 @@ describe("injectSchedulerAdapter", () => {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
-        new RegExp(`supports Eve 0\\.27\\.x, 0\\.28\\.x, or 0\\.29\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+        new RegExp(
+          `supports Eve 0\\.27\\.x, 0\\.28\\.x, or 0\\.29\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+        ),
       );
     }
   });
 
   test("accepts every dependency form that stays inside a verified Eve minor", async () => {
     for (const eveVersion of [
-      "0.27.0", "0.27.13", "~0.27.2", "^0.27.0", "0.27", "0.27.x", "0.27.*",
-      "0.28.0", "~0.28.0", "^0.28.0", "0.28", "0.28.x", "0.28.*",
-      "0.29.0", "0.29.4", "~0.29.0", "^0.29.0", "0.29", "0.29.x", "0.29.*",
+      "0.27.0",
+      "0.27.13",
+      "~0.27.2",
+      "^0.27.0",
+      "0.27",
+      "0.27.x",
+      "0.27.*",
+      "0.28.0",
+      "~0.28.0",
+      "^0.28.0",
+      "0.28",
+      "0.28.x",
+      "0.28.*",
+      "0.29.0",
+      "0.29.4",
+      "~0.29.0",
+      "^0.29.0",
+      "0.29",
+      "0.29.x",
+      "0.29.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -76,17 +95,32 @@ Produce the daily report.
       "markdown",
       "markdown",
     ]);
-    const transformed = await readFile(path.join(releaseDir, "agent/schedules/billing/sweep.ts"), "utf8");
+    const transformed = await readFile(
+      path.join(releaseDir, "agent/schedules/billing/sweep.ts"),
+      "utf8",
+    );
     expect(transformed).toContain('from "../../lib/helper"');
     expect(transformed).toContain("__evelandOriginalSchedule");
     expect(transformed).toContain("run: async () => { }");
-    expect(transformed).not.toContain("export default defineSchedule({ cron: \"0 3 * * *\", async run() { await helper(); } })");
+    expect(transformed).not.toContain(
+      'export default defineSchedule({ cron: "0 3 * * *", async run() { await helper(); } })',
+    );
 
-    const markdownModule = await readFile(path.join(releaseDir, "agent/schedules/report.ts"), "utf8");
-    expect(markdownModule).toContain('export const __evelandOriginalMarkdown = "Produce the daily report."');
+    const markdownModule = await readFile(
+      path.join(releaseDir, "agent/schedules/report.ts"),
+      "utf8",
+    );
+    expect(markdownModule).toContain(
+      'export const __evelandOriginalMarkdown = "Produce the daily report."',
+    );
     expect(markdownModule).toContain('cron: "30 5 * * *"');
-    await expect(readFile(path.join(releaseDir, "agent/schedules/report.md"), "utf8")).rejects.toThrow(/ENOENT/);
-    const channel = await readFile(path.join(releaseDir, "agent/channels/eveland-scheduler.ts"), "utf8");
+    await expect(
+      readFile(path.join(releaseDir, "agent/schedules/report.md"), "utf8"),
+    ).rejects.toThrow(/ENOENT/);
+    const channel = await readFile(
+      path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
+      "utf8",
+    );
     expect(channel).toContain("markdown: schedule2.markdown");
   });
 
@@ -99,7 +133,10 @@ Produce the daily report.
     });
 
     await injectSchedulerAdapter({ releaseDir });
-    const channel = await readFile(path.join(releaseDir, "agent/channels/eveland-scheduler.ts"), "utf8");
+    const channel = await readFile(
+      path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
+      "utf8",
+    );
 
     expect(channel).toContain('from "eve/channels"');
     expect(channel).toContain('kindHint: "schedule"');
@@ -107,7 +144,9 @@ Produce the daily report.
     expect(channel).toContain("EVELAND_SCHEDULER_RUNTIME_SECRET");
     expect(channel).toContain("EVELAND_SCHEDULER_REDEEM_URL");
     expect(channel).toContain("Promise.allSettled");
-    expect(channel).toContain("const [runResult] = await Promise.allSettled([entry.definition.run(");
+    expect(channel).toContain(
+      "const [runResult] = await Promise.allSettled([entry.definition.run(",
+    );
     expect(channel).toContain("const rejected = [runResult, ...settled]");
     expect(channel).toContain("function describeScheduleFailure");
     expect(channel).not.toContain("test-secret");
@@ -141,7 +180,9 @@ Produce the daily report.
         "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
       },
     });
-    await expect(injectSchedulerAdapter({ releaseDir: identifierCollision })).rejects.toThrow(/reserved identifier/);
+    await expect(injectSchedulerAdapter({ releaseDir: identifierCollision })).rejects.toThrow(
+      /reserved identifier/,
+    );
 
     const channelCollision = await fixture({
       eveVersion: "0.29.4",
@@ -150,7 +191,9 @@ Produce the daily report.
         "agent/channels/eveland-scheduler.ts": `export default {};`,
       },
     });
-    await expect(injectSchedulerAdapter({ releaseDir: channelCollision })).rejects.toThrow(/reserved Channel/);
+    await expect(injectSchedulerAdapter({ releaseDir: channelCollision })).rejects.toThrow(
+      /reserved Channel/,
+    );
 
     const defaultReExport = await fixture({
       eveVersion: "0.29.4",
@@ -164,151 +207,214 @@ Produce the daily report.
     );
   });
 
-  test.each(compatibilityMatrix)("builds the transformed overlay with the real Eve $version compiler", async ({ packageName, version }) => {
-    const releaseDir = await fixture({
-      eveVersion: version,
-      evePackageName: packageName,
-      files: {
-        "agent/schedules/nested/markdown.md": `---
+  test.each(compatibilityMatrix)(
+    "builds the transformed overlay with the real Eve $version compiler",
+    async ({ packageName, version }) => {
+      const releaseDir = await fixture({
+        eveVersion: version,
+        evePackageName: packageName,
+        files: {
+          "agent/schedules/nested/markdown.md": `---
 cron: "0 3 * * *"
 ---
 Run the nested task.
 `,
-        "agent/schedules/zero.ts": `import { defineSchedule } from "eve/schedules";
+          "agent/schedules/zero.ts": `import { defineSchedule } from "eve/schedules";
 export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } });
 `,
-      },
-    });
-    await injectSchedulerAdapter({ releaseDir });
-
-    const compilerBin = eveBinFor(packageName);
-    const { stdout } = await execFileAsync(process.execPath, [compilerBin, "info", "--json"], { cwd: releaseDir });
-    const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as { diagnostics: { errors: number } };
-    expect(info.diagnostics.errors).toBe(0);
-    await expect(execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], { cwd: releaseDir })).resolves.toMatchObject({
-      stderr: expect.not.stringContaining("error"),
-    });
-  }, 60_000);
-
-  test.each(compatibilityMatrix)("executes the authenticated scheduler channel on Eve $version", async ({ packageName, version }) => {
-    const releaseDir = await fixture({
-      eveVersion: version,
-      evePackageName: packageName,
-      files: {
-        "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } };`,
-        "agent/schedules/broken.ts": `export default { cron: "* * * * *", async run() { throw new Error("fixture handler exploded"); } };`,
-      },
-    });
-    await injectSchedulerAdapter({ releaseDir });
-    const compilerBin = eveBinFor(packageName);
-    await execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], { cwd: releaseDir });
-    const runtimePort = await availablePort();
-    const reports: unknown[] = [];
-    const claimedCredentials = new Set<string>();
-    const redeemServer = createServer(async (request, response) => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of request) chunks.push(Buffer.from(chunk));
-      const report = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { phase?: string; credential?: string };
-      reports.push(report);
-      if (report.phase === "claim" && report.credential && claimedCredentials.has(report.credential)) {
-        response.writeHead(409, { "content-type": "application/json" });
-        response.end(JSON.stringify({ ok: false }));
-        return;
-      }
-      if (report.phase === "claim" && report.credential) claimedCredentials.add(report.credential);
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: true }));
-    });
-    await new Promise<void>((resolve) => redeemServer.listen(0, "127.0.0.1", resolve));
-    const redeemAddress = redeemServer.address();
-    if (!redeemAddress || typeof redeemAddress === "string") throw new Error("Expected redeem server port.");
-    const child = spawn(process.execPath, [compilerBin, "start", "--host", "127.0.0.1", "--port", String(runtimePort)], {
-      cwd: releaseDir,
-      env: {
-        ...process.env,
-        EVELAND_SCHEDULER_RUNTIME_SECRET: "runtime-fixture-secret",
-        EVELAND_SCHEDULER_REDEEM_URL: `http://127.0.0.1:${redeemAddress.port}/internal/scheduler/dispatch`,
-      },
-      stdio: "ignore",
-    });
-
-    try {
-      await waitUntilReachable(`http://127.0.0.1:${runtimePort}/health`);
-      const unauthenticated = await fetch(`http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ scheduleKey: "zero" }),
-      });
-      expect(unauthenticated.status).toBe(401);
-
-      const unknown = await fetch(`http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`, {
-        method: "POST",
-        headers: {
-          authorization: "Bearer unknown-fixture",
-          "content-type": "application/json",
-          "x-eveland-runtime-secret": "runtime-fixture-secret",
         },
-        body: JSON.stringify({ scheduleKey: "missing" }),
       });
-      expect(unknown.status).toBe(404);
+      await injectSchedulerAdapter({ releaseDir });
 
-      const response = await fetch(`http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`, {
-        method: "POST",
-        headers: {
-          authorization: "Bearer dispatch-fixture",
-          "content-type": "application/json",
-          "x-eveland-runtime-secret": "runtime-fixture-secret",
-        },
-        body: JSON.stringify({ scheduleKey: "zero" }),
+      const compilerBin = eveBinFor(packageName);
+      const { stdout } = await execFileAsync(process.execPath, [compilerBin, "info", "--json"], {
+        cwd: releaseDir,
       });
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({
-        scheduleRunId: "srun_fixture",
-        scheduleKey: "zero",
-        sessionIds: [],
-      });
-
-      const replay = await fetch(`http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`, {
-        method: "POST",
-        headers: {
-          authorization: "Bearer dispatch-fixture",
-          "content-type": "application/json",
-          "x-eveland-runtime-secret": "runtime-fixture-secret",
-        },
-        body: JSON.stringify({ scheduleKey: "zero" }),
-      });
-      expect(replay.status).toBe(409);
-      expect(reports).toEqual([
-        expect.objectContaining({ phase: "claim", credential: "dispatch-fixture", scheduleRunId: "srun_fixture" }),
-        expect.objectContaining({ phase: "complete", credential: "dispatch-fixture", status: "succeeded", sessionIds: [] }),
-        expect.objectContaining({ phase: "claim", credential: "dispatch-fixture", scheduleRunId: "srun_fixture" }),
-      ]);
-
-      const failing = await fetch(`http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_broken`, {
-        method: "POST",
-        headers: {
-          authorization: "Bearer dispatch-broken",
-          "content-type": "application/json",
-          "x-eveland-runtime-secret": "runtime-fixture-secret",
-        },
-        body: JSON.stringify({ scheduleKey: "broken" }),
-      });
-      expect(failing.status).toBe(500);
-      expect(reports.slice(3)).toEqual([
-        expect.objectContaining({ phase: "claim", credential: "dispatch-broken", scheduleRunId: "srun_broken" }),
-        expect.objectContaining({
-          phase: "complete",
-          credential: "dispatch-broken",
-          status: "failed",
-          sessionIds: [],
-          error: expect.stringContaining("fixture handler exploded"),
+      const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
+        diagnostics: { errors: number };
+      };
+      expect(info.diagnostics.errors).toBe(0);
+      await expect(
+        execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], {
+          cwd: releaseDir,
         }),
-      ]);
-    } finally {
-      child.kill("SIGTERM");
-      await new Promise<void>((resolve) => redeemServer.close(() => resolve()));
-    }
-  }, 60_000);
+      ).resolves.toMatchObject({
+        stderr: expect.not.stringContaining("error"),
+      });
+    },
+    60_000,
+  );
+
+  test.each(compatibilityMatrix)(
+    "executes the authenticated scheduler channel on Eve $version",
+    async ({ packageName, version }) => {
+      const releaseDir = await fixture({
+        eveVersion: version,
+        evePackageName: packageName,
+        files: {
+          "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } };`,
+          "agent/schedules/broken.ts": `export default { cron: "* * * * *", async run() { throw new Error("fixture handler exploded"); } };`,
+        },
+      });
+      await injectSchedulerAdapter({ releaseDir });
+      const compilerBin = eveBinFor(packageName);
+      await execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], {
+        cwd: releaseDir,
+      });
+      const runtimePort = await availablePort();
+      const reports: unknown[] = [];
+      const claimedCredentials = new Set<string>();
+      const redeemServer = createServer(async (request, response) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const report = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+          phase?: string;
+          credential?: string;
+        };
+        reports.push(report);
+        if (
+          report.phase === "claim" &&
+          report.credential &&
+          claimedCredentials.has(report.credential)
+        ) {
+          response.writeHead(409, { "content-type": "application/json" });
+          response.end(JSON.stringify({ ok: false }));
+          return;
+        }
+        if (report.phase === "claim" && report.credential)
+          claimedCredentials.add(report.credential);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ ok: true }));
+      });
+      await new Promise<void>((resolve) => redeemServer.listen(0, "127.0.0.1", resolve));
+      const redeemAddress = redeemServer.address();
+      if (!redeemAddress || typeof redeemAddress === "string")
+        throw new Error("Expected redeem server port.");
+      const child = spawn(
+        process.execPath,
+        [compilerBin, "start", "--host", "127.0.0.1", "--port", String(runtimePort)],
+        {
+          cwd: releaseDir,
+          env: {
+            ...process.env,
+            EVELAND_SCHEDULER_RUNTIME_SECRET: "runtime-fixture-secret",
+            EVELAND_SCHEDULER_REDEEM_URL: `http://127.0.0.1:${redeemAddress.port}/internal/scheduler/dispatch`,
+          },
+          stdio: "ignore",
+        },
+      );
+
+      try {
+        await waitUntilReachable(`http://127.0.0.1:${runtimePort}/health`);
+        const unauthenticated = await fetch(
+          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ scheduleKey: "zero" }),
+          },
+        );
+        expect(unauthenticated.status).toBe(401);
+
+        const unknown = await fetch(
+          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer unknown-fixture",
+              "content-type": "application/json",
+              "x-eveland-runtime-secret": "runtime-fixture-secret",
+            },
+            body: JSON.stringify({ scheduleKey: "missing" }),
+          },
+        );
+        expect(unknown.status).toBe(404);
+
+        const response = await fetch(
+          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer dispatch-fixture",
+              "content-type": "application/json",
+              "x-eveland-runtime-secret": "runtime-fixture-secret",
+            },
+            body: JSON.stringify({ scheduleKey: "zero" }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({
+          scheduleRunId: "srun_fixture",
+          scheduleKey: "zero",
+          sessionIds: [],
+        });
+
+        const replay = await fetch(
+          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer dispatch-fixture",
+              "content-type": "application/json",
+              "x-eveland-runtime-secret": "runtime-fixture-secret",
+            },
+            body: JSON.stringify({ scheduleKey: "zero" }),
+          },
+        );
+        expect(replay.status).toBe(409);
+        expect(reports).toEqual([
+          expect.objectContaining({
+            phase: "claim",
+            credential: "dispatch-fixture",
+            scheduleRunId: "srun_fixture",
+          }),
+          expect.objectContaining({
+            phase: "complete",
+            credential: "dispatch-fixture",
+            status: "succeeded",
+            sessionIds: [],
+          }),
+          expect.objectContaining({
+            phase: "claim",
+            credential: "dispatch-fixture",
+            scheduleRunId: "srun_fixture",
+          }),
+        ]);
+
+        const failing = await fetch(
+          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_broken`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer dispatch-broken",
+              "content-type": "application/json",
+              "x-eveland-runtime-secret": "runtime-fixture-secret",
+            },
+            body: JSON.stringify({ scheduleKey: "broken" }),
+          },
+        );
+        expect(failing.status).toBe(500);
+        expect(reports.slice(3)).toEqual([
+          expect.objectContaining({
+            phase: "claim",
+            credential: "dispatch-broken",
+            scheduleRunId: "srun_broken",
+          }),
+          expect.objectContaining({
+            phase: "complete",
+            credential: "dispatch-broken",
+            status: "failed",
+            sessionIds: [],
+            error: expect.stringContaining("fixture handler exploded"),
+          }),
+        ]);
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise<void>((resolve) => redeemServer.close(() => resolve()));
+      }
+    },
+    60_000,
+  );
 });
 
 async function availablePort(): Promise<number> {
@@ -338,7 +444,11 @@ function eveBinFor(packageName: string): string {
   return path.resolve(import.meta.dirname, `../node_modules/${packageName}/bin/eve.js`);
 }
 
-async function fixture(input: { eveVersion: string; evePackageName?: string; files: Record<string, string> }): Promise<string> {
+async function fixture(input: {
+  eveVersion: string;
+  evePackageName?: string;
+  files: Record<string, string>;
+}): Promise<string> {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-scheduler-"));
   await writeFile(
     path.join(releaseDir, "package.json"),

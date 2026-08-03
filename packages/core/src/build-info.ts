@@ -35,5 +35,9 @@ export function isSameBuild(
   left: Pick<EvelandBuildInfo, "version" | "revision" | "channel">,
   right: Pick<EvelandBuildInfo, "version" | "revision" | "channel">,
 ): boolean {
-  return left.version === right.version && left.revision === right.revision && left.channel === right.channel;
+  return (
+    left.version === right.version &&
+    left.revision === right.revision &&
+    left.channel === right.channel
+  );
 }

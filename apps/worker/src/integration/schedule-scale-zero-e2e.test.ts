@@ -12,19 +12,17 @@ describe("schedule scale-to-zero integration harness", () => {
       "../../../../infra/integration/fixtures/schedule-scale-zero",
       import.meta.url,
     );
-    const temporaryRoot = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-schedule-harness-test-"),
-    );
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-schedule-harness-test-"));
     const materializedFixture = path.join(temporaryRoot, "source");
     try {
-      await materializeEveFixtureDirectory(
-        fileURLToPath(fixtureTemplate),
-        materializedFixture,
-      );
+      await materializeEveFixtureDirectory(fileURLToPath(fixtureTemplate), materializedFixture);
       const [fixturePackage, integrationScript, e2eScript] = await Promise.all([
         readFile(path.join(materializedFixture, "package.json"), "utf8"),
         readFile(new URL("../../../../infra/integration/run.sh", import.meta.url), "utf8"),
-        readFile(new URL("../../../../infra/integration/schedule-scale-zero-e2e.mts", import.meta.url), "utf8"),
+        readFile(
+          new URL("../../../../infra/integration/schedule-scale-zero-e2e.mts", import.meta.url),
+          "utf8",
+        ),
       ]);
 
       expect(JSON.parse(fixturePackage)).toMatchObject({

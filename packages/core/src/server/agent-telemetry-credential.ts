@@ -13,9 +13,7 @@ export type AgentTelemetryCredential = {
  * agent telemetry attribution needs no additional deployment configuration.
  */
 export function deriveAgentTelemetrySecret(appSecretKey: string): string {
-  return createHmac("sha256", appSecretKey)
-    .update(secretDerivationContext)
-    .digest("base64url");
+  return createHmac("sha256", appSecretKey).update(secretDerivationContext).digest("base64url");
 }
 
 export function createAgentTelemetryCredential(
@@ -23,9 +21,7 @@ export function createAgentTelemetryCredential(
   secret: string,
 ): string {
   assertPayload(payload);
-  const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString(
-    "base64url",
-  );
+  const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   return `${encoded}.${sign(encoded, secret)}`;
 }
 
@@ -54,9 +50,7 @@ export function verifyAgentTelemetryCredential(
   }
 
   try {
-    const payload = JSON.parse(
-      Buffer.from(encoded!, "base64url").toString("utf8"),
-    ) as unknown;
+    const payload = JSON.parse(Buffer.from(encoded!, "base64url").toString("utf8")) as unknown;
     assertPayload(payload);
     return payload;
   } catch {
@@ -68,9 +62,7 @@ function sign(encoded: string, secret: string): string {
   return createHmac("sha256", secret).update(encoded).digest("base64url");
 }
 
-function assertPayload(
-  value: unknown,
-): asserts value is AgentTelemetryCredential {
+function assertPayload(value: unknown): asserts value is AgentTelemetryCredential {
   const candidate = value as AgentTelemetryCredential | null;
   if (
     typeof candidate !== "object" ||

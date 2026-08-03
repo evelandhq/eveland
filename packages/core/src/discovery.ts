@@ -109,7 +109,8 @@ function logicalPaths(value: unknown): string[] {
 }
 
 function readDiagnostics(value: unknown): { errors: number; warnings: number } | null {
-  if (!isRecord(value) || typeof value.errors !== "number" || typeof value.warnings !== "number") return null;
+  if (!isRecord(value) || typeof value.errors !== "number" || typeof value.warnings !== "number")
+    return null;
   return { errors: value.errors, warnings: value.warnings };
 }
 

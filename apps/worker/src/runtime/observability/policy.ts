@@ -9,9 +9,7 @@ import {
 } from "@eveland/core/observability";
 import { processSafeName } from "../types.js";
 
-export const AGENT_OBSERVABILITY_MOUNT_DIR = path.posix.dirname(
-  AGENT_RUNTIME_POLICY_PATH,
-);
+export const AGENT_OBSERVABILITY_MOUNT_DIR = path.posix.dirname(AGENT_RUNTIME_POLICY_PATH);
 const policyFileName = path.posix.basename(AGENT_RUNTIME_POLICY_PATH);
 export const AGENT_OBSERVABILITY_POLICY_FILE_NAME = policyFileName;
 
@@ -22,10 +20,7 @@ export async function writeAgentRuntimePolicy(input: {
   const policy = agentRuntimePolicySchema.parse(input.policy);
   const directory = path.resolve(input.directory);
   const policyPath = path.join(directory, policyFileName);
-  const temporaryPath = path.join(
-    directory,
-    `.${policyFileName}.${randomUUID()}.tmp`,
-  );
+  const temporaryPath = path.join(directory, `.${policyFileName}.${randomUUID()}.tmp`);
   await mkdir(directory, { recursive: true, mode: 0o2750 });
   await chmod(directory, 0o2750);
 
@@ -55,10 +50,7 @@ export async function writeAgentObserverRuntime(input: {
 }): Promise<string> {
   const directory = path.resolve(input.directory);
   const runtimePath = path.join(directory, OBSERVER_RUNTIME_FILE_NAME);
-  const temporaryPath = path.join(
-    directory,
-    `.${OBSERVER_RUNTIME_FILE_NAME}.${randomUUID()}.tmp`,
-  );
+  const temporaryPath = path.join(directory, `.${OBSERVER_RUNTIME_FILE_NAME}.${randomUUID()}.tmp`);
   await mkdir(directory, { recursive: true, mode: 0o2750 });
   await chmod(directory, 0o2750);
 

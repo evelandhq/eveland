@@ -48,9 +48,7 @@ export async function createScheduleRunFixture(store: Store, createRun = true) {
     runtimeKind: "docker",
   });
   await store.setProjectSchedulerTarget(project.id, deployment.id);
-  const run = createRun
-    ? await store.createManualScheduleRun(project.id, schedule.id)
-    : null;
+  const run = createRun ? await store.createManualScheduleRun(project.id, schedule.id) : null;
   return { project, schedule, deployment, run: run! };
 }
 
@@ -63,10 +61,7 @@ export async function createZipArchiveFixture(
     ? path.join(sourceDir, options.wrappedDirectory)
     : sourceDir;
   await mkdir(path.join(projectDir, "agent"), { recursive: true });
-  await writeFile(
-    path.join(projectDir, "package.json"),
-    JSON.stringify({ name: "zip-agent" }),
-  );
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ name: "zip-agent" }));
   await writeFile(
     path.join(projectDir, "agent", "instructions.md"),
     "You are a helpful test agent.",

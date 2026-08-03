@@ -7,7 +7,11 @@ export const metadata = {
   title: "Accept invitation",
 };
 
-export default async function AcceptInvitePage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
+export default async function AcceptInvitePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>;
+}) {
   const token = (await searchParams).token;
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-5 py-10">
@@ -26,7 +30,9 @@ export default async function AcceptInvitePage({ searchParams }: { searchParams:
             <Alert>
               <AlertCircleIcon />
               <AlertTitle>Invitation link missing</AlertTitle>
-              <AlertDescription>Ask an administrator to create a new invitation link.</AlertDescription>
+              <AlertDescription>
+                Ask an administrator to create a new invitation link.
+              </AlertDescription>
             </Alert>
           )}
         </CardContent>

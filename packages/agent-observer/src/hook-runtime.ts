@@ -1,16 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
 import { createPolicyManagedAgentTelemetry } from "./policy-runtime.js";
-import type {
-  AgentTelemetryEvent,
-  AgentTelemetryHookContext,
-} from "./runtime.js";
+import type { AgentTelemetryEvent, AgentTelemetryHookContext } from "./runtime.js";
 
 let lastWarningAt = 0;
 
 const telemetry = createPolicyManagedAgentTelemetry({
-  loadPolicy: async () =>
-    JSON.parse(await readFile(AGENT_RUNTIME_POLICY_PATH, "utf8")) as unknown,
+  loadPolicy: async () => JSON.parse(await readFile(AGENT_RUNTIME_POLICY_PATH, "utf8")) as unknown,
   warn: warnRateLimited,
 });
 
@@ -26,15 +22,9 @@ const telemetry = createPolicyManagedAgentTelemetry({
  */
 export default {
   events: {
-    async "*"(
-      event: AgentTelemetryEvent,
-      context: AgentTelemetryHookContext,
-    ): Promise<void> {
+    async "*"(event: AgentTelemetryEvent, context: AgentTelemetryHookContext): Promise<void> {
       await telemetry.capture(event, context);
-      if (
-        event.type === "session.completed" ||
-        event.type === "session.failed"
-      ) {
+      if (event.type === "session.completed" || event.type === "session.failed") {
         await telemetry.forceFlush();
       }
     },

@@ -54,7 +54,10 @@ test("returns undefined when the manifest is absent, and null version when eve i
 test("swallows a corrupt manifest instead of failing the build path", async () => {
   const releaseDir = await makeRelease();
   await mkdir(path.join(releaseDir, ".eve", "discovery"), { recursive: true });
-  await writeFile(path.join(releaseDir, ".eve", "discovery", "agent-discovery-manifest.json"), "{not json");
+  await writeFile(
+    path.join(releaseDir, ".eve", "discovery", "agent-discovery-manifest.json"),
+    "{not json",
+  );
 
   await expect(readReleaseDiscovery(releaseDir)).resolves.toBeUndefined();
 });

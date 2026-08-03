@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import { File, type FileOptions } from "@pierre/diffs/react"
-import { useMemo } from "react"
+import { File, type FileOptions } from "@pierre/diffs/react";
+import { useMemo } from "react";
 
 const fileOptions = {
   disableFileHeader: true,
   overflow: "scroll",
-} satisfies FileOptions<undefined>
+} satisfies FileOptions<undefined>;
 
 export function SourceCodeView({
   cacheKey,
   content,
   path,
 }: {
-  cacheKey: string
-  content: string
-  path: string
+  cacheKey: string;
+  content: string;
+  path: string;
 }) {
   const file = useMemo(
     () => ({
@@ -24,7 +24,7 @@ export function SourceCodeView({
       name: path,
     }),
     [cacheKey, content, path],
-  )
+  );
 
   return (
     <div className="h-full overflow-auto bg-background">
@@ -34,5 +34,5 @@ export function SourceCodeView({
         options={fileOptions}
       />
     </div>
-  )
+  );
 }

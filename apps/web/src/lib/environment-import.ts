@@ -49,7 +49,7 @@ export function parseDotenvImport(source: string): {
     }
 
     const quote = value[0];
-    if (quote === "'" || quote === "\"") {
+    if (quote === "'" || quote === '"') {
       if (value.length < 2 || value.at(-1) !== quote) {
         errors.push({ line, message: "Close the surrounding value quote." });
         return;

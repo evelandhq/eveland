@@ -1,52 +1,43 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { SaveIcon } from "lucide-react"
-import type { Project } from "@/lib/api"
-import { updateProjectMetadata } from "@/lib/client-api"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { Spinner } from "@/components/ui/spinner"
-import { Textarea } from "@/components/ui/textarea"
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { SaveIcon } from "lucide-react";
+import type { Project } from "@/lib/api";
+import { updateProjectMetadata } from "@/lib/client-api";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 
 export function ProjectGeneralSettings({ project }: { project: Project }) {
-  const router = useRouter()
-  const [name, setName] = useState(project.name)
-  const [description, setDescription] = useState(project.description ?? "")
-  const [pending, setPending] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const router = useRouter();
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description ?? "");
+  const [pending, setPending] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setPending(true)
-    setSaved(false)
-    setError(null)
+    event.preventDefault();
+    setPending(true);
+    setSaved(false);
+    setError(null);
     try {
       const updated = await updateProjectMetadata(project.id, {
         name,
         description,
-      })
-      setName(updated.name)
-      setDescription(updated.description ?? "")
-      setSaved(true)
-      router.refresh()
+      });
+      setName(updated.name);
+      setDescription(updated.description ?? "");
+      setSaved(true);
+      router.refresh();
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not update project details.",
-      )
+      setError(caught instanceof Error ? caught.message : "Could not update project details.");
     } finally {
-      setPending(false)
+      setPending(false);
     }
   }
 
@@ -64,8 +55,7 @@ export function ProjectGeneralSettings({ project }: { project: Project }) {
             required
           />
           <FieldDescription>
-            A human-readable name. Changing it does not alter the public Agent
-            address.
+            A human-readable name. Changing it does not alter the public Agent address.
           </FieldDescription>
         </Field>
         <Field>
@@ -79,33 +69,25 @@ export function ProjectGeneralSettings({ project }: { project: Project }) {
             placeholder="Describe what this Agent can do."
           />
           <FieldDescription>
-            Describe the Agent&apos;s routine capabilities for people and future
-            catalog discovery. {description.length}/240
+            Describe the Agent&apos;s routine capabilities for people and future catalog discovery.{" "}
+            {description.length}/240
           </FieldDescription>
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field data-disabled>
             <FieldLabel htmlFor="project-slug">Project slug</FieldLabel>
             <Input id="project-slug" value={project.slug} readOnly />
-            <FieldDescription>
-              Stable public identifier. It cannot be changed.
-            </FieldDescription>
+            <FieldDescription>Stable public identifier. It cannot be changed.</FieldDescription>
           </Field>
           <Field data-disabled>
             <FieldLabel htmlFor="project-id">Project ID</FieldLabel>
             <Input id="project-id" value={project.id} readOnly />
-            <FieldDescription>
-              Internal Eveland identifier. It cannot be changed.
-            </FieldDescription>
+            <FieldDescription>Internal Eveland identifier. It cannot be changed.</FieldDescription>
           </Field>
         </div>
         <Field data-disabled>
           <FieldLabel htmlFor="project-source">Source repository</FieldLabel>
-          <Input
-            id="project-source"
-            value={project.gitUrl ?? "Uploaded Zip"}
-            readOnly
-          />
+          <Input id="project-source" value={project.gitUrl ?? "Uploaded Zip"} readOnly />
         </Field>
       </FieldGroup>
       {error ? (
@@ -120,14 +102,10 @@ export function ProjectGeneralSettings({ project }: { project: Project }) {
       ) : null}
       <div>
         <Button type="submit" disabled={pending || name.trim().length === 0}>
-          {pending ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <SaveIcon data-icon="inline-start" />
-          )}
+          {pending ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
           {pending ? "Saving…" : "Save changes"}
         </Button>
       </div>
     </form>
-  )
+  );
 }

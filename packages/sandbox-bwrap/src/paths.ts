@@ -18,11 +18,24 @@ function keyDigest(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
-export function resolveTemplatePath(appRoot: string, templateKey: string, optionsHash: string, cacheDir?: string | null): string {
-  return join(resolveBwrapCacheRoot(appRoot, cacheDir), "templates", `${keyDigest(templateKey)}-${optionsHash}`);
+export function resolveTemplatePath(
+  appRoot: string,
+  templateKey: string,
+  optionsHash: string,
+  cacheDir?: string | null,
+): string {
+  return join(
+    resolveBwrapCacheRoot(appRoot, cacheDir),
+    "templates",
+    `${keyDigest(templateKey)}-${optionsHash}`,
+  );
 }
 
-export function resolveSessionPath(appRoot: string, sessionKey: string, cacheDir?: string | null): string {
+export function resolveSessionPath(
+  appRoot: string,
+  sessionKey: string,
+  cacheDir?: string | null,
+): string {
   return join(resolveBwrapCacheRoot(appRoot, cacheDir), "sessions", keyDigest(sessionKey));
 }
 
@@ -92,6 +105,7 @@ export function isWithinWorkspaceReal(hostPath: string, workspaceDir: string): b
   } catch {
     return false; // dangling symlink in the chain
   }
-  const finalPath = missing.length === 0 ? resolvedProbe : join(resolvedProbe, ...missing.reverse());
+  const finalPath =
+    missing.length === 0 ? resolvedProbe : join(resolvedProbe, ...missing.reverse());
   return isWithinWorkspace(finalPath, realWorkspace);
 }

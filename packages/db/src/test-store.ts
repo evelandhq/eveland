@@ -7,9 +7,7 @@ import * as schema from "./schema.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
-export async function migratePgliteDatabase(
-  db: ReturnType<typeof drizzle<typeof schema>>,
-) {
+export async function migratePgliteDatabase(db: ReturnType<typeof drizzle<typeof schema>>) {
   await migrate(db, { migrationsFolder });
 }
 

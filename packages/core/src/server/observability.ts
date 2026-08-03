@@ -4,11 +4,7 @@ import {
   type ExternalDestinationConfig,
   type ObservabilitySignal,
 } from "../observability.js";
-import {
-  decryptSecretValue,
-  encryptSecretValue,
-  type EncryptedSecret,
-} from "./secrets.js";
+import { decryptSecretValue, encryptSecretValue, type EncryptedSecret } from "./secrets.js";
 import type { LookupAddress } from "node:dns";
 import { lookup as defaultLookup } from "node:dns/promises";
 import { request as httpRequest } from "node:http";
@@ -34,19 +30,15 @@ export type ExternalObservabilityRequestInput = {
   timeoutMs?: number;
 };
 
-type DestinationLookup = (
-  hostname: string,
-) => Promise<LookupAddress[]>;
+type DestinationLookup = (hostname: string) => Promise<LookupAddress[]>;
 
 type DestinationNetworkOptions = {
   privateHostAllowlist?: ReadonlySet<string>;
   lookup?: DestinationLookup;
 };
 
-const blockedIpv4DestinationAddresses =
-  createBlockedIpv4DestinationAddresses();
-const blockedIpv6DestinationAddresses =
-  createBlockedIpv6DestinationAddresses();
+const blockedIpv4DestinationAddresses = createBlockedIpv4DestinationAddresses();
+const blockedIpv6DestinationAddresses = createBlockedIpv6DestinationAddresses();
 
 /**
  * A destination configuration is stored as one sealed blob so that adding a credential
@@ -58,9 +50,7 @@ export function encryptDestinationConfig(
   config: ExternalDestinationConfig,
   appSecretKey: string,
 ): string {
-  return JSON.stringify(
-    encryptSecretValue(JSON.stringify(config), appSecretKey),
-  );
+  return JSON.stringify(encryptSecretValue(JSON.stringify(config), appSecretKey));
 }
 
 export function decryptDestinationConfig(
@@ -77,9 +67,7 @@ export function decryptDestinationConfig(
   }
 }
 
-export function parseObservabilityPrivateHostAllowlist(
-  value: string | undefined,
-): Set<string> {
+export function parseObservabilityPrivateHostAllowlist(value: string | undefined): Set<string> {
   return new Set(
     (value ?? "")
       .split(",")
@@ -103,8 +91,7 @@ export async function requestExternalObservabilityDestination(
 ): Promise<ExternalObservabilityResponse> {
   const destination = destinationSignalRequest(input.config, input.signal);
   const resolved = await resolveSafeDestination(destination.url, input);
-  const requestImplementation =
-    destination.url.protocol === "https:" ? httpsRequest : httpRequest;
+  const requestImplementation = destination.url.protocol === "https:" ? httpsRequest : httpRequest;
   const lookup: LookupFunction = (_hostname, _options, callback) => {
     if ("all" in _options && _options.all) {
       callback(null, [resolved]);
@@ -123,9 +110,8 @@ export async function requestExternalObservabilityDestination(
       },
       lookup,
     });
-    request.setTimeout(
-      input.timeoutMs ?? defaultDestinationTimeoutMs,
-      () => request.destroy(new Error("Destination request timed out.")),
+    request.setTimeout(input.timeoutMs ?? defaultDestinationTimeoutMs, () =>
+      request.destroy(new Error("Destination request timed out.")),
     );
     request.once("error", reject);
     request.once("response", (response) => {
@@ -134,9 +120,7 @@ export async function requestExternalObservabilityDestination(
       response.on("data", (chunk: Buffer) => {
         length += chunk.byteLength;
         if (length > destinationResponseLimitBytes) {
-          response.destroy(
-            new Error("Destination response is too large."),
-          );
+          response.destroy(new Error("Destination response is too large."));
           return;
         }
         chunks.push(chunk);
@@ -157,9 +141,7 @@ export async function requestExternalObservabilityDestination(
   });
 }
 
-function destinationSignals(
-  config: ExternalDestinationConfig,
-): readonly ObservabilitySignal[] {
+function destinationSignals(config: ExternalDestinationConfig): readonly ObservabilitySignal[] {
   if (config.kind === "langfuse") return ["traces"];
   if (config.kind === "custom_otlp") return config.supportedSignals;
   return ["traces", "logs", "metrics"];
@@ -170,17 +152,15 @@ function destinationSignalRequest(
   signal: ObservabilitySignal,
 ): { url: URL; headers: Record<string, string> } {
   if (!destinationSignals(config).includes(signal)) {
-    throw new Error(
-      `Destination does not support ${signal} telemetry.`,
-    );
+    throw new Error(`Destination does not support ${signal} telemetry.`);
   }
   if (config.kind === "langfuse") {
     return {
       url: new URL(langfuseOtlpTracesEndpoint(config.baseUrl)),
       headers: {
-        authorization: `Basic ${Buffer.from(
-          `${config.publicKey}:${config.secretKey}`,
-        ).toString("base64")}`,
+        authorization: `Basic ${Buffer.from(`${config.publicKey}:${config.secretKey}`).toString(
+          "base64",
+        )}`,
         "x-langfuse-ingestion-version": "4",
       },
     };
@@ -204,8 +184,7 @@ async function resolveSafeDestination(
   options: DestinationNetworkOptions,
 ): Promise<LookupAddress> {
   const hostname = normalizeHostname(url.hostname);
-  const allowlisted =
-    options.privateHostAllowlist?.has(hostname) ?? false;
+  const allowlisted = options.privateHostAllowlist?.has(hostname) ?? false;
   if (!allowlisted && url.protocol !== "https:") {
     throw new Error(
       "External observability destinations must use HTTPS unless their host is explicitly allowlisted.",
@@ -217,13 +196,8 @@ async function resolveSafeDestination(
   if (addresses.length === 0) {
     throw new Error("Destination hostname did not resolve.");
   }
-  if (
-    !allowlisted &&
-    addresses.some((address) => !isPublicAddress(address))
-  ) {
-    throw new Error(
-      "Destination must resolve only to public IP addresses.",
-    );
+  if (!allowlisted && addresses.some((address) => !isPublicAddress(address))) {
+    throw new Error("Destination must resolve only to public IP addresses.");
   }
   return addresses[0]!;
 }

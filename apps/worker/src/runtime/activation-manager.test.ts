@@ -64,24 +64,28 @@ describe("ensureDeploymentActive", () => {
       ensureProcess,
     } as unknown as RuntimeAdapter;
 
-    const activation = await ensureDeploymentActive(drainingStore, {
-      deployment,
-      runtime,
-      kind: "schedule_run",
-      ownerId: "srun_after_drain",
-      startInput: {
-        processName: deployment.containerName,
-        releaseRef: "fixture:draining",
-        port: deployment.hostPort,
-        env: {},
-        commandContext: { hasLockfile: false },
-        sandboxCacheDir: "/tmp/cache",
-        observabilityPolicyDir: "/tmp/observability",
+    const activation = await ensureDeploymentActive(
+      drainingStore,
+      {
+        deployment,
+        runtime,
+        kind: "schedule_run",
+        ownerId: "srun_after_drain",
+        startInput: {
+          processName: deployment.containerName,
+          releaseRef: "fixture:draining",
+          port: deployment.hostPort,
+          env: {},
+          commandContext: { hasLockfile: false },
+          sandboxCacheDir: "/tmp/cache",
+          observabilityPolicyDir: "/tmp/observability",
+        },
       },
-    }, {
-      drainRetryMs: 1,
-      waitForHealth: vi.fn(),
-    });
+      {
+        drainRetryMs: 1,
+        waitForHealth: vi.fn(),
+      },
+    );
 
     expect(acquisitionAttempts).toBe(2);
     expect(ensureProcess).toHaveBeenCalledTimes(1);
@@ -130,25 +134,36 @@ describe("ensureDeploymentActive", () => {
     } satisfies ProcessStartInput;
 
     const activations = await Promise.all([
-      ensureDeploymentActive(store, {
-        deployment,
-        runtime,
-        startInput,
-        kind: "schedule_run",
-        ownerId: "srun_cold",
-      }, { waitForHealth: vi.fn() }),
-      ensureDeploymentActive(store, {
-        deployment,
-        runtime,
-        startInput,
-        kind: "public_request",
-        ownerId: "req_cold",
-      }, { waitForHealth: vi.fn() }),
+      ensureDeploymentActive(
+        store,
+        {
+          deployment,
+          runtime,
+          startInput,
+          kind: "schedule_run",
+          ownerId: "srun_cold",
+        },
+        { waitForHealth: vi.fn() },
+      ),
+      ensureDeploymentActive(
+        store,
+        {
+          deployment,
+          runtime,
+          startInput,
+          kind: "public_request",
+          ownerId: "req_cold",
+        },
+        { waitForHealth: vi.fn() },
+      ),
     ]);
 
     expect(ensureProcess).toHaveBeenCalledTimes(1);
     expect(new Set(activations.map((activation) => activation.runtimeInstance.id)).size).toBe(1);
-    expect(activations[0]?.runtimeInstance).toMatchObject({ status: "ready", endpointPort: deployment.hostPort });
+    expect(activations[0]?.runtimeInstance).toMatchObject({
+      status: "ready",
+      endpointPort: deployment.hostPort,
+    });
     expect(ensureProcess).toHaveBeenCalledWith(
       expect.objectContaining({
         env: expect.objectContaining({
@@ -202,20 +217,28 @@ describe("ensureDeploymentActive", () => {
       observabilityPolicyDir: "/tmp/observability",
     } satisfies ProcessStartInput;
 
-    const first = ensureDeploymentActive(store, {
-      deployment,
-      runtime,
-      startInput,
-      kind: "schedule_run",
-      ownerId: "srun_broken",
-    }, { waitForHealth: vi.fn(), pollIntervalMs: 1 });
-    const second = ensureDeploymentActive(store, {
-      deployment,
-      runtime,
-      startInput,
-      kind: "public_request",
-      ownerId: "req_broken",
-    }, { waitForHealth: vi.fn(), pollIntervalMs: 1 });
+    const first = ensureDeploymentActive(
+      store,
+      {
+        deployment,
+        runtime,
+        startInput,
+        kind: "schedule_run",
+        ownerId: "srun_broken",
+      },
+      { waitForHealth: vi.fn(), pollIntervalMs: 1 },
+    );
+    const second = ensureDeploymentActive(
+      store,
+      {
+        deployment,
+        runtime,
+        startInput,
+        kind: "public_request",
+        ownerId: "req_broken",
+      },
+      { waitForHealth: vi.fn(), pollIntervalMs: 1 },
+    );
     rejectStart(new Error("runtime start failed"));
 
     await expect(first).rejects.toThrow("runtime start failed");
@@ -260,21 +283,25 @@ describe("ensureDeploymentActive", () => {
     const waitForHealth = vi.fn();
 
     await expect(
-      ensureDeploymentActive(store, {
-        deployment,
-        runtime,
-        startInput: {
-          processName: deployment.containerName,
-          releaseRef: "fixture:crossed-port",
-          port: deployment.hostPort,
-          env: {},
-          commandContext: { hasLockfile: false },
-          sandboxCacheDir: "/tmp/cache",
-          observabilityPolicyDir: "/tmp/observability",
+      ensureDeploymentActive(
+        store,
+        {
+          deployment,
+          runtime,
+          startInput: {
+            processName: deployment.containerName,
+            releaseRef: "fixture:crossed-port",
+            port: deployment.hostPort,
+            env: {},
+            commandContext: { hasLockfile: false },
+            sandboxCacheDir: "/tmp/cache",
+            observabilityPolicyDir: "/tmp/observability",
+          },
+          kind: "public_request",
+          ownerId: "req_crossed_port",
         },
-        kind: "public_request",
-        ownerId: "req_crossed_port",
-      }, { waitForHealth, pollIntervalMs: 1 }),
+        { waitForHealth, pollIntervalMs: 1 },
+      ),
     ).rejects.toThrow(/eveland-proj_other-dep_7\.service/);
 
     // Readiness must never be proven by the foreign process's HTTP responses.
@@ -331,10 +358,12 @@ describe("ensureDeploymentActive", () => {
       })),
     } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
-    await expect(reconcileRuntimeInstances(store, {
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(1);
+    await expect(
+      reconcileRuntimeInstances(store, {
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(1);
 
     await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
       status: "failed",
@@ -402,12 +431,16 @@ describe("ensureDeploymentActive", () => {
       inspectProcess: vi.fn(async () => "missing" as const),
     } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
-    await expect(reconcileRuntimeInstances(store, {
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(1);
+    await expect(
+      reconcileRuntimeInstances(store, {
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(1);
 
-    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({ status: "stopped" });
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "stopped",
+    });
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "stopped" });
     await expect(store.getSession(observed.session.id)).resolves.toMatchObject({
       status: "failed",
@@ -468,12 +501,16 @@ describe("ensureDeploymentActive", () => {
       inspectProcess: vi.fn(async () => "missing" as const),
     } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
-    await expect(reconcileRuntimeInstances(store, {
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(1);
+    await expect(
+      reconcileRuntimeInstances(store, {
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(1);
 
-    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({ status: "stopped" });
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "stopped",
+    });
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "archived" });
   });
 
@@ -528,10 +565,12 @@ describe("ensureDeploymentActive", () => {
       }),
     } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
-    await expect(reconcileRuntimeInstances(store, {
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(0);
+    await expect(
+      reconcileRuntimeInstances(store, {
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(0);
 
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "running" });
   });
@@ -555,13 +594,15 @@ describe("ensureDeploymentActive", () => {
     const [recorded] = await store.recordScheduleVersions({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "daily-topics",
-        kind: "markdown",
-        cron: "0 2 * * *",
-        sourcePath: "agent/schedules/daily-topics.md",
-        definitionHash: "interrupted-v1",
-      }],
+      definitions: [
+        {
+          key: "daily-topics",
+          kind: "markdown",
+          cron: "0 2 * * *",
+          sourcePath: "agent/schedules/daily-topics.md",
+          definitionHash: "interrupted-v1",
+        },
+      ],
     });
     if (!recorded) throw new Error("Expected schedule fixture.");
     const deployment = await store.recordDeployment({
@@ -604,10 +645,12 @@ describe("ensureDeploymentActive", () => {
       inspectProcess: vi.fn(async () => "missing" as const),
     } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
-    await expect(reconcileRuntimeInstances(store, {
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(1);
+    await expect(
+      reconcileRuntimeInstances(store, {
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(1);
 
     const [session] = await store.listSessions(project.id);
     expect(session).toMatchObject({
@@ -651,11 +694,13 @@ describe("ensureDeploymentActive", () => {
       inspectProcess: vi.fn(async () => "missing" as const),
     } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
-    await expect(reconcileRuntimeInstances(store, {
-      now: new Date("2026-07-28T02:36:24.000Z"),
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(1);
+    await expect(
+      reconcileRuntimeInstances(store, {
+        now: new Date("2026-07-28T02:36:24.000Z"),
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(1);
 
     await expect(store.getScheduleRun(fixture.scheduleRunId)).resolves.toMatchObject({
       status: "failed",
@@ -669,11 +714,7 @@ describe("ensureDeploymentActive", () => {
 
   test("fails a scheduled execution after its hard runtime deadline", async () => {
     const store = createTestStore();
-    const fixture = await createRunningScheduleExecution(
-      store,
-      "Expired Schedule Agent",
-      42001,
-    );
+    const fixture = await createRunningScheduleExecution(store, "Expired Schedule Agent", 42001);
     await store.releaseActivationLease(
       fixture.activationLeaseId,
       new Date("2026-07-28T02:22:14.000Z"),
@@ -686,11 +727,13 @@ describe("ensureDeploymentActive", () => {
       inspectProcess: vi.fn(async () => "ready" as const),
     } as unknown as RuntimeAdapter & ProcessInspectionCapability;
 
-    await expect(reconcileRuntimeInstances(store, {
-      now: new Date("2026-07-29T02:21:14.001Z"),
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(1);
+    await expect(
+      reconcileRuntimeInstances(store, {
+        now: new Date("2026-07-29T02:21:14.001Z"),
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(1);
 
     await expect(store.getScheduleRun(fixture.scheduleRunId)).resolves.toMatchObject({
       status: "failed",
@@ -721,13 +764,15 @@ async function createRunningScheduleExecution(
   const [recorded] = await store.recordScheduleVersions({
     projectId: project.id,
     sourceRevisionId: revision.id,
-    definitions: [{
-      key: "daily-topics",
-      kind: "markdown",
-      cron: "0 2 * * *",
-      sourcePath: "agent/schedules/daily-topics.md",
-      definitionHash: `${name}-v1`,
-    }],
+    definitions: [
+      {
+        key: "daily-topics",
+        kind: "markdown",
+        cron: "0 2 * * *",
+        sourcePath: "agent/schedules/daily-topics.md",
+        definitionHash: `${name}-v1`,
+      },
+    ],
   });
   if (!recorded) throw new Error("Expected schedule fixture.");
   const deployment = await store.recordDeployment({
@@ -763,10 +808,7 @@ async function createRunningScheduleExecution(
     status: "succeeded",
     eveSessionIds: [`eve_${hostPort}`],
   });
-  const session = await store.getSessionByEveSessionId(
-    project.id,
-    `eve_${hostPort}`,
-  );
+  const session = await store.getSessionByEveSessionId(project.id, `eve_${hostPort}`);
   if (!session) throw new Error("Expected scheduled Session fixture.");
   return {
     deploymentId: deployment.id,
@@ -778,7 +820,12 @@ async function createRunningScheduleExecution(
 }
 
 describe("port resolution during activation", () => {
-  async function createFixture(store: ReturnType<typeof createTestStore>, name: string, hostPort: number, runtimeKind: "docker" | "systemd") {
+  async function createFixture(
+    store: ReturnType<typeof createTestStore>,
+    name: string,
+    hostPort: number,
+    runtimeKind: "docker" | "systemd",
+  ) {
     const project = await store.createProject({ name, importKind: "zip" });
     const importJob = await store.claimNextJob(`fixture-${hostPort}`);
     await store.completeJob(importJob!.id);
@@ -803,7 +850,10 @@ describe("port resolution during activation", () => {
     return deployment;
   }
 
-  function startInputFor(deployment: { containerName: string; hostPort: number }): ProcessStartInput {
+  function startInputFor(deployment: {
+    containerName: string;
+    hostPort: number;
+  }): ProcessStartInput {
     return {
       processName: deployment.containerName,
       releaseRef: "fixture:ports",
@@ -833,7 +883,10 @@ describe("port resolution during activation", () => {
     await store.updateRuntimeInstance(first.runtimeInstance.id, { status: "stopped" });
     await store.releaseActivationLease(first.lease.id);
 
-    const ensureProcess = vi.fn(async (input: ProcessStartInput) => ({ internalPort: input.port, log: "reused" }));
+    const ensureProcess = vi.fn(async (input: ProcessStartInput) => ({
+      internalPort: input.port,
+      log: "reused",
+    }));
     const runtime = {
       name: "systemd",
       buildRelease: vi.fn(),
@@ -845,13 +898,17 @@ describe("port resolution during activation", () => {
       ),
     } as unknown as RuntimeAdapter;
 
-    const activation = await ensureDeploymentActive(store, {
-      deployment,
-      runtime,
-      startInput: startInputFor(deployment),
-      kind: "public_request",
-      ownerId: "req_adopt",
-    }, { waitForHealth: vi.fn(), pollIntervalMs: 1 });
+    const activation = await ensureDeploymentActive(
+      store,
+      {
+        deployment,
+        runtime,
+        startInput: startInputFor(deployment),
+        kind: "public_request",
+        ownerId: "req_adopt",
+      },
+      { waitForHealth: vi.fn(), pollIntervalMs: 1 },
+    );
 
     expect(activation.runtimeInstance).toMatchObject({ status: "ready", endpointPort: 41888 });
     expect(ensureProcess).toHaveBeenCalledWith(expect.objectContaining({ port: 41888 }));
@@ -860,7 +917,10 @@ describe("port resolution during activation", () => {
   test("reserves a fresh port when the preferred one is held by a foreign process", async () => {
     const store = createTestStore();
     const deployment = await createFixture(store, "Fresh Port Agent", 41881, "systemd");
-    const ensureProcess = vi.fn(async (input: ProcessStartInput) => ({ internalPort: input.port, log: "started" }));
+    const ensureProcess = vi.fn(async (input: ProcessStartInput) => ({
+      internalPort: input.port,
+      log: "started",
+    }));
     const runtime = {
       name: "systemd",
       buildRelease: vi.fn(),
@@ -874,13 +934,17 @@ describe("port resolution during activation", () => {
       ),
     } as unknown as RuntimeAdapter;
 
-    const activation = await ensureDeploymentActive(store, {
-      deployment,
-      runtime,
-      startInput: startInputFor(deployment),
-      kind: "public_request",
-      ownerId: "req_fresh",
-    }, { waitForHealth: vi.fn(), pollIntervalMs: 1 });
+    const activation = await ensureDeploymentActive(
+      store,
+      {
+        deployment,
+        runtime,
+        startInput: startInputFor(deployment),
+        kind: "public_request",
+        ownerId: "req_fresh",
+      },
+      { waitForHealth: vi.fn(), pollIntervalMs: 1 },
+    );
 
     const resolvedPort = activation.runtimeInstance.endpointPort;
     expect(resolvedPort).not.toBeNull();
@@ -904,7 +968,9 @@ describe("port resolution during activation", () => {
       expiresAt: new Date(Date.now() + 60_000),
     });
     // The holder legitimately reserved the victim's port (e.g. stale data).
-    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41883)).resolves.toBe(true);
+    await expect(store.reserveRuntimeInstancePort(holder.runtimeInstance.id, 41883)).resolves.toBe(
+      true,
+    );
 
     const runtime = {
       name: "docker",
@@ -915,13 +981,17 @@ describe("port resolution during activation", () => {
     } as unknown as RuntimeAdapter;
 
     await expect(
-      ensureDeploymentActive(store, {
-        deployment: victimDeployment,
-        runtime,
-        startInput: startInputFor(victimDeployment),
-        kind: "public_request",
-        ownerId: "req_docker_victim",
-      }, { waitForHealth: vi.fn(), pollIntervalMs: 1 }),
+      ensureDeploymentActive(
+        store,
+        {
+          deployment: victimDeployment,
+          runtime,
+          startInput: startInputFor(victimDeployment),
+          kind: "public_request",
+          ownerId: "req_docker_victim",
+        },
+        { waitForHealth: vi.fn(), pollIntervalMs: 1 },
+      ),
     ).rejects.toThrow(/reserved by another live RuntimeInstance/);
   });
 });
@@ -961,21 +1031,25 @@ describe("archive claim gating", () => {
     } as unknown as RuntimeAdapter;
 
     await expect(
-      ensureDeploymentActive(store, {
-        deployment,
-        runtime,
-        kind: "public_request",
-        ownerId: "req_archiving_gate",
-        startInput: {
-          processName: deployment.containerName,
-          releaseRef: "fixture:archiving-gate",
-          port: deployment.hostPort,
-          env: {},
-          commandContext: { hasLockfile: false },
-          sandboxCacheDir: "/tmp/cache",
-          observabilityPolicyDir: "/tmp/observability",
+      ensureDeploymentActive(
+        store,
+        {
+          deployment,
+          runtime,
+          kind: "public_request",
+          ownerId: "req_archiving_gate",
+          startInput: {
+            processName: deployment.containerName,
+            releaseRef: "fixture:archiving-gate",
+            port: deployment.hostPort,
+            env: {},
+            commandContext: { hasLockfile: false },
+            sandboxCacheDir: "/tmp/cache",
+            observabilityPolicyDir: "/tmp/observability",
+          },
         },
-      }, { waitForHealth: vi.fn() }),
+        { waitForHealth: vi.fn() },
+      ),
     ).rejects.toThrow(/archiving/);
     expect(ensureProcess).not.toHaveBeenCalled();
   });

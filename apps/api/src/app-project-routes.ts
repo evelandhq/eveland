@@ -36,22 +36,12 @@ export function registerProjectRoutes(input: {
   appSecretKey: string;
   sourcePreflightTtlMs: number;
 }): void {
-  const { app, store, options, dataDir, appSecretKey, sourcePreflightTtlMs } =
-    input;
-  const rejectProjectMutationsWhileDeleting: MiddlewareHandler = async (
-    c,
-    next,
-  ) => {
+  const { app, store, options, dataDir, appSecretKey, sourcePreflightTtlMs } = input;
+  const rejectProjectMutationsWhileDeleting: MiddlewareHandler = async (c, next) => {
     const method = c.req.method;
     const projectDelete =
-      method === "DELETE" &&
-      /^\/projects\/[^/]+\/?$/.test(new URL(c.req.url).pathname);
-    if (
-      method === "GET" ||
-      method === "HEAD" ||
-      method === "OPTIONS" ||
-      projectDelete
-    ) {
+      method === "DELETE" && /^\/projects\/[^/]+\/?$/.test(new URL(c.req.url).pathname);
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS" || projectDelete) {
       await next();
       return;
     }
@@ -69,7 +59,6 @@ export function registerProjectRoutes(input: {
   };
   app.use("/projects/:projectId", rejectProjectMutationsWhileDeleting);
   app.use("/projects/:projectId/*", rejectProjectMutationsWhileDeleting);
-
 
   registerProjectSourceRoutes({ app, store, dataDir, appSecretKey, sourcePreflightTtlMs });
   registerProjectMetadataRoutes({ app, store });

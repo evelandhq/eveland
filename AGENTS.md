@@ -361,6 +361,8 @@ pnpm --filter @eveland/worker exec vitest run src/runtime/select.test.ts
 pnpm test
 pnpm typecheck
 pnpm build
+pnpm lint
+pnpm fmt:check
 
 # Before handoff
 git diff --check

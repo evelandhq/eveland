@@ -21,9 +21,7 @@ describe("StatusBadge", () => {
   });
 
   const renderedVariant = (status: string, variant?: "outline") => {
-    const { container } = render(
-      <StatusBadge status={status} {...(variant ? { variant } : {})} />,
-    );
+    const { container } = render(<StatusBadge status={status} {...(variant ? { variant } : {})} />);
     return container.querySelector("[data-variant]")?.getAttribute("data-variant");
   };
 

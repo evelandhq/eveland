@@ -2,19 +2,19 @@
   "name": "eveland",
   "version": "0.1.0",
   "license": "AGPL-3.0-only",
-  "type": "module",
   "files": [
     "dist",
     "README.md"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
+  "type": "module",
   "exports": {
     "./auth": {
       "types": "./dist/auth.d.ts",
       "import": "./dist/auth.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -22,12 +22,12 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000",
     "prepack": "pnpm build"
   },
-  "peerDependencies": {
-    "eve": "catalog:eve-peer"
-  },
   "devDependencies": {
     "eve": "catalog:",
     "vitest": "^4.1.9"
+  },
+  "peerDependencies": {
+    "eve": "catalog:eve-peer"
   },
   "engines": {
     "node": ">=24.0.0"

@@ -36,9 +36,7 @@ export function registerProjectMetadataRoutes(input: {
   });
 
   app.patch("/projects/:projectId", async (c) => {
-    const parsed = updateProjectMetadataSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = updateProjectMetadataSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
         {
@@ -48,13 +46,7 @@ export function registerProjectMetadataRoutes(input: {
         400,
       );
     }
-    const project = await store.updateProjectMetadata(
-      c.req.param("projectId"),
-      parsed.data,
-    );
-    return project
-      ? c.json({ project })
-      : c.json({ error: "Project not found" }, 404);
+    const project = await store.updateProjectMetadata(c.req.param("projectId"), parsed.data);
+    return project ? c.json({ project }) : c.json({ error: "Project not found" }, 404);
   });
-
 }

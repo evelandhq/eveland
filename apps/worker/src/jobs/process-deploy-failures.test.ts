@@ -42,10 +42,7 @@ describe("processNextJob", () => {
             async buildRelease(input) {
               buildDir = input.buildDir;
               await mkdir(input.buildDir, { recursive: true });
-              await writeFile(
-                path.join(input.buildDir, "partial-artifact"),
-                "partial",
-              );
+              await writeFile(path.join(input.buildDir, "partial-artifact"), "partial");
               throw new Error("dependency install failed");
             },
             async startProcess() {
@@ -68,9 +65,7 @@ describe("processNextJob", () => {
   });
 
   test("removes a successful build artifact when startup fails before the deployment is recorded", async () => {
-    const dataDir = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-failed-start-"),
-    );
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-failed-start-"));
     vi.stubEnv("EVELAND_DATA_DIR", dataDir);
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
@@ -102,10 +97,7 @@ describe("processNextJob", () => {
             async buildRelease(input) {
               buildDir = input.buildDir;
               await mkdir(input.buildDir, { recursive: true });
-              await writeFile(
-                path.join(input.buildDir, "complete-artifact"),
-                "complete",
-              );
+              await writeFile(path.join(input.buildDir, "complete-artifact"), "complete");
               return { releaseRef: "failed-start:image", log: "" };
             },
             async startProcess() {
@@ -241,9 +233,7 @@ describe("processNextJob", () => {
 
     expect(capturedProcessName).not.toBeNull();
     expect(stopCalls).toEqual([capturedProcessName]);
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
-      { id: "dep_old" },
-    );
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: "dep_old" });
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "failed",
       deploymentStatus: "running",
@@ -298,9 +288,7 @@ describe("processNextJob", () => {
         calls.push("stop");
       },
     } as RuntimeAdapter & {
-      getProcessDiagnostics(
-        processName: string,
-      ): Promise<{ state: string; logs: string }>;
+      getProcessDiagnostics(processName: string): Promise<{ state: string; logs: string }>;
     };
 
     await expect(
@@ -326,13 +314,9 @@ describe("processNextJob", () => {
     expect(JSON.stringify(runtimeLogs)).not.toContain(secretValue);
     expect(JSON.stringify(runtimeLogs)).toContain("***");
     expect(
-      runtimeLogs.find((log) =>
-        log.line.includes("Runtime startup diagnostics"),
-      )?.line.length,
+      runtimeLogs.find((log) => log.line.includes("Runtime startup diagnostics"))?.line.length,
     ).toBeLessThanOrEqual(32_000);
-    expect(JSON.stringify(runtimeLogs)).toContain(
-      "runtime diagnostics truncated",
-    );
+    expect(JSON.stringify(runtimeLogs)).toContain("runtime diagnostics truncated");
     expect(runtimeLogs.at(-1)?.line).toContain("health check timed out");
   });
 
@@ -456,8 +440,7 @@ describe("processNextJob", () => {
         line: expect.stringMatching(/port 41112 did not open/),
       }),
     ]);
-    const jobFailedLine =
-      (await store.listLogs(project.id, "runtime"))[2]?.line ?? "";
+    const jobFailedLine = (await store.listLogs(project.id, "runtime"))[2]?.line ?? "";
     expect(jobFailedLine).not.toContain("systemctl stop timed out");
     expect(jobFailedLine).not.toContain("docker logs unavailable");
   });
@@ -490,14 +473,10 @@ describe("processNextJob", () => {
         nodeEnv: "production",
         identityIssuer: "https://control.example.com",
         identityJwksUrl: "http://api:4000/.well-known/jwks.json",
-        workflowPostgresUrl:
-          "postgres://eveland:eveland@host.docker.internal:5432/eveland",
+        workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
         ensureProjectWorkflowWorld: async (env, projectId) => {
           ensuredProjects.push(projectId);
-          return deriveProjectWorkflowUrl(
-            env.WORKFLOW_POSTGRES_URL!,
-            projectId,
-          );
+          return deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId);
         },
         runtime: {
           name: "docker",
@@ -529,7 +508,7 @@ describe("processNextJob", () => {
       },
     });
     const run = runtimeCalls.find((call) => call.name === "startProcess");
-    expect((run?.input as { env: Record<string, string> }).env).toMatchObject({
+    expect((run!.input as { env: Record<string, string> }).env).toMatchObject({
       WORKFLOW_POSTGRES_URL: deriveProjectWorkflowUrl(
         "postgres://eveland:eveland@host.docker.internal:5432/eveland",
         project.id,
@@ -569,17 +548,14 @@ describe("processNextJob", () => {
     await store.upsertSecret(
       project.id,
       "WORKFLOW_POSTGRES_URL",
-      JSON.stringify(
-        encryptSecretValue("postgres://custom@db:5432/app", secretKey),
-      ),
+      JSON.stringify(encryptSecretValue("postgres://custom@db:5432/app", secretKey)),
     );
     await store.enqueueJob(project.id, "build_deploy");
 
     await expect(
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
-        workflowPostgresUrl:
-          "postgres://platform@host.docker.internal:5432/eveland",
+        workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
         ensureProjectWorkflowWorld: async (env, projectId) =>
           deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
         runtime: {
@@ -604,13 +580,8 @@ describe("processNextJob", () => {
     ).resolves.toBe(true);
 
     const run = runtimeCalls.find((call) => call.name === "startProcess");
-    expect(
-      (run?.input as { env: Record<string, string> }).env.WORKFLOW_POSTGRES_URL,
-    ).toBe(
-      deriveProjectWorkflowUrl(
-        "postgres://platform@host.docker.internal:5432/eveland",
-        project.id,
-      ),
+    expect((run!.input as { env: Record<string, string> }).env.WORKFLOW_POSTGRES_URL).toBe(
+      deriveProjectWorkflowUrl("postgres://platform@host.docker.internal:5432/eveland", project.id),
     );
   });
 
@@ -645,16 +616,12 @@ describe("processNextJob", () => {
         {
           key: "SHARED_TOKEN",
           kind: "secret",
-          encryptedValue: JSON.stringify(
-            encryptSecretValue("shared-default-value", secretKey),
-          ),
+          encryptedValue: JSON.stringify(encryptSecretValue("shared-default-value", secretKey)),
         },
         {
           key: "SHARED_ONLY",
           kind: "secret",
-          encryptedValue: JSON.stringify(
-            encryptSecretValue("shared-only-value", secretKey),
-          ),
+          encryptedValue: JSON.stringify(encryptSecretValue("shared-only-value", secretKey)),
         },
       ],
     });
@@ -682,14 +649,12 @@ describe("processNextJob", () => {
       async waitForDeployment() {},
     };
 
-    await expect(processNextJob(store, "worker-a", options)).resolves.toBe(
-      true,
-    );
+    await expect(processNextJob(store, "worker-a", options)).resolves.toBe(true);
     const deployment = await store.getCurrentDeployment(project.id);
     expect(deployment).not.toBeNull();
     expect(
       (
-        runtimeCalls.find((call) => call.name === "startProcess")?.input as {
+        runtimeCalls.find((call) => call.name === "startProcess")!.input as {
           env: Record<string, string>;
         }
       ).env,
@@ -698,9 +663,7 @@ describe("processNextJob", () => {
       SHARED_ONLY: "shared-only-value",
     });
     expect(
-      (await store.listLogs(project.id, "build"))
-        .map((log) => log.line)
-        .join("\n"),
+      (await store.listLogs(project.id, "build")).map((log) => log.line).join("\n"),
     ).not.toContain("shared-only-value");
   });
 
@@ -813,9 +776,7 @@ describe("processNextJob", () => {
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "deployed",
     });
-    await expect(
-      store.listLogs(project.id, "deploy"),
-    ).resolves.not.toContainEqual(
+    await expect(store.listLogs(project.id, "deploy")).resolves.not.toContainEqual(
       expect.objectContaining({ line: expect.stringContaining("Warning") }),
     );
   });
@@ -898,8 +859,7 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
-        workflowPostgresUrl:
-          "postgres://eveland:eveland@host.docker.internal:5452/eveland",
+        workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5452/eveland",
         ensureProjectWorkflowWorld: async (env, projectId) =>
           deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
         runtime: {

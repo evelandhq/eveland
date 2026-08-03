@@ -12,7 +12,11 @@ import {
 } from "@eveland/core/observability";
 import type { SessionTrigger } from "@eveland/core/contracts";
 import type { StoreDatabase } from "./client.js";
-import { appendSessionEventRow, mergeSessionRows, moveSessionEventsForMerge } from "./postgres-store-support.js";
+import {
+  appendSessionEventRow,
+  mergeSessionRows,
+  moveSessionEventsForMerge,
+} from "./postgres-store-support.js";
 import {
   sessionEventRowToSessionEvent,
   sessionNodeRowToSessionNode,
@@ -124,7 +128,7 @@ export async function ingestPostgresAgentEvent(
             ? observation.deploymentId
             : node.lastObservedDeploymentId,
           lastObservedRuntimeInstanceId: isLatestObservation
-            ? runtimeInstanceId ?? node.lastObservedRuntimeInstanceId
+            ? (runtimeInstanceId ?? node.lastObservedRuntimeInstanceId)
             : node.lastObservedRuntimeInstanceId,
           agentName: observation.agent.name ?? node.agentName,
           nodeId: observation.agent.nodeId ?? node.nodeId,
@@ -135,13 +139,8 @@ export async function ingestPostgresAgentEvent(
         .where(eq(sessionNodes.id, node.id))
         .returning();
       if (sessionRow && node!.parentNodeId === null) {
-        const discoveredTrigger = triggerFromAgentChannel(
-          observation.channelKind,
-        );
-        if (
-          sessionRow.trigger === "direct_http" &&
-          discoveredTrigger !== "direct_http"
-        ) {
+        const discoveredTrigger = triggerFromAgentChannel(observation.channelKind);
+        if (sessionRow.trigger === "direct_http" && discoveredTrigger !== "direct_http") {
           [sessionRow] = await tx
             .update(sessions)
             .set({ trigger: discoveredTrigger })
@@ -191,8 +190,7 @@ export async function ingestPostgresAgentEvent(
             .values({
               id: createId("sess"),
               projectId: deployment.projectId,
-              deploymentId:
-                parentBinding?.deploymentId ?? observation.deploymentId,
+              deploymentId: parentBinding?.deploymentId ?? observation.deploymentId,
               eveSessionId: observation.parentEveSessionId,
               continuationToken: null,
               rootNodeId: null,
@@ -207,9 +205,7 @@ export async function ingestPostgresAgentEvent(
             .returning();
         }
         if (!sessionRow)
-          throw new Error(
-            "Failed to create Agent telemetry parent placeholder session.",
-          );
+          throw new Error("Failed to create Agent telemetry parent placeholder session.");
         [parent] = await tx
           .insert(sessionNodes)
           .values({
@@ -227,8 +223,7 @@ export async function ingestPostgresAgentEvent(
             status: "running",
           })
           .returning();
-        if (!parent)
-          throw new Error("Failed to create Agent telemetry parent placeholder node.");
+        if (!parent) throw new Error("Failed to create Agent telemetry parent placeholder node.");
         [sessionRow] = await tx
           .update(sessions)
           .set({ rootNodeId: parent.id })
@@ -266,17 +261,14 @@ export async function ingestPostgresAgentEvent(
             routeId: binding?.routeId ?? null,
             experimentId: binding?.experimentId ?? null,
             variantName: binding?.variantName ?? null,
-            trigger:
-              binding?.trigger ??
-              triggerFromAgentChannel(observation.channelKind),
+            trigger: binding?.trigger ?? triggerFromAgentChannel(observation.channelKind),
             scheduleId: null,
             status: "running",
             startedAt: new Date(observation.eventAt),
           })
           .returning();
       }
-      if (!sessionRow)
-        throw new Error("Failed to create Agent telemetry root session.");
+      if (!sessionRow) throw new Error("Failed to create Agent telemetry root session.");
 
       [node] = await tx
         .insert(sessionNodes)
@@ -299,8 +291,7 @@ export async function ingestPostgresAgentEvent(
           status: "running",
         })
         .returning();
-      if (!node)
-        throw new Error("Failed to create Agent telemetry session node.");
+      if (!node) throw new Error("Failed to create Agent telemetry session node.");
       if (!parent) {
         [sessionRow] = await tx
           .update(sessions)
@@ -309,8 +300,7 @@ export async function ingestPostgresAgentEvent(
           .returning();
       }
     }
-    if (!node || !sessionRow)
-      throw new Error("Failed to resolve Agent telemetry session node.");
+    if (!node || !sessionRow) throw new Error("Failed to resolve Agent telemetry session node.");
 
     const [duplicate] = await tx
       .select()
@@ -335,10 +325,8 @@ export async function ingestPostgresAgentEvent(
     }
 
     const eventRecord = recordValue(observation.event);
-    const type =
-      typeof eventRecord?.type === "string" ? eventRecord.type : "event";
-    const payload =
-      recordValue(eventRecord?.data) ?? eventRecord ?? observation.event;
+    const type = typeof eventRecord?.type === "string" ? eventRecord.type : "event";
+    const payload = recordValue(eventRecord?.data) ?? eventRecord ?? observation.event;
     const eventRow = await appendSessionEventRow(tx, {
       id: createId("evt"),
       sessionId: sessionRow.id,
@@ -356,10 +344,7 @@ export async function ingestPostgresAgentEvent(
     const projectedStatus = isLatestObservation
       ? sessionStatusFromEveEvent(type, node.status)
       : null;
-    const runtime =
-      type === "session.started"
-        ? recordValue(recordValue(payload)?.runtime)
-        : null;
+    const runtime = type === "session.started" ? recordValue(recordValue(payload)?.runtime) : null;
     const [updatedNode] = await tx
       .update(sessionNodes)
       .set({
@@ -373,8 +358,7 @@ export async function ingestPostgresAgentEvent(
       })
       .where(eq(sessionNodes.id, node.id))
       .returning();
-    if (!updatedNode)
-      throw new Error("Failed to update observer session node.");
+    if (!updatedNode) throw new Error("Failed to update observer session node.");
     node = updatedNode;
 
     if (projectedStatus && node.parentNodeId === null) {
@@ -383,14 +367,11 @@ export async function ingestPostgresAgentEvent(
         .set({
           status: projectedStatus,
           completedAt:
-            projectedStatus === "completed" || projectedStatus === "failed"
-              ? new Date()
-              : null,
+            projectedStatus === "completed" || projectedStatus === "failed" ? new Date() : null,
         })
         .where(eq(sessions.id, sessionRow.id))
         .returning();
-      if (!updatedSession)
-        throw new Error("Failed to update observer session.");
+      if (!updatedSession) throw new Error("Failed to update observer session.");
       sessionRow = updatedSession;
       await tx
         .update(projects)
@@ -423,9 +404,7 @@ export async function ingestPostgresAgentEvent(
           and(
             eq(scheduleRunSessions.scheduleRunId, sessionRow.scheduleRunId),
             eq(scheduleRunSessions.sessionId, sessionRow.id),
-            ...(executionStatus
-              ? [eq(scheduleRunSessions.status, "running")]
-              : []),
+            ...(executionStatus ? [eq(scheduleRunSessions.status, "running")] : []),
           ),
         );
       if (executionStatus) {
@@ -435,19 +414,12 @@ export async function ingestPostgresAgentEvent(
             error: scheduleRunSessions.error,
           })
           .from(scheduleRunSessions)
-          .where(
-            eq(
-              scheduleRunSessions.scheduleRunId,
-              sessionRow.scheduleRunId,
-            ),
-          );
+          .where(eq(scheduleRunSessions.scheduleRunId, sessionRow.scheduleRunId));
         if (
           executions.length > 0 &&
           executions.every((execution) => execution.status !== "running")
         ) {
-          const failure = executions.find(
-            (execution) => execution.status === "failed",
-          );
+          const failure = executions.find((execution) => execution.status === "failed");
           await tx
             .update(scheduleRuns)
             .set({
@@ -591,13 +563,8 @@ export async function ingestPostgresAgentEvent(
       }
     }
 
-    [sessionRow] = await tx
-      .select()
-      .from(sessions)
-      .where(eq(sessions.id, sessionRow!.id))
-      .limit(1);
-    if (!sessionRow || !node)
-      throw new Error("Agent telemetry projection lost its root session.");
+    [sessionRow] = await tx.select().from(sessions).where(eq(sessions.id, sessionRow!.id)).limit(1);
+    if (!sessionRow || !node) throw new Error("Agent telemetry projection lost its root session.");
     return {
       session: sessionRowToSession(sessionRow),
       node: sessionNodeRowToSessionNode(node),
@@ -607,13 +574,10 @@ export async function ingestPostgresAgentEvent(
   });
 }
 
-function triggerFromAgentChannel(
-  channelKind: string | null,
-): SessionTrigger {
+function triggerFromAgentChannel(channelKind: string | null): SessionTrigger {
   if (channelKind === "schedule") return "cron";
   if (channelKind?.startsWith("channel:")) return "channel";
-  if (channelKind && channelKind !== "http" && channelKind !== "eve")
-    return "webhook";
+  if (channelKind && channelKind !== "http" && channelKind !== "eve") return "webhook";
   return "direct_http";
 }
 

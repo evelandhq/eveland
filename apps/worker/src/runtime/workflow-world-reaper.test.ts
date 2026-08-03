@@ -59,7 +59,10 @@ describe("sweepWorkflowStreamRetention", () => {
   });
 
   test("a database vanishing mid-sweep does not abort the remaining databases", async () => {
-    const listWorkflowDatabases = vi.fn(async () => ["eveland_wf_gone_111111", "eveland_wf_kept_222222"]);
+    const listWorkflowDatabases = vi.fn(async () => [
+      "eveland_wf_gone_111111",
+      "eveland_wf_kept_222222",
+    ]);
     const pruneTerminalStreamChunks = vi
       .fn()
       .mockRejectedValueOnce(new Error("database does not exist"))

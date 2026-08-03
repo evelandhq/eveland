@@ -112,7 +112,9 @@ export function summarizeWorkerHealth(
 }
 
 export function analyzeHostCapacity(samples: HostMetricSample[]): HostCapacityAnalysis {
-  const ordered = [...samples].sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt));
+  const ordered = [...samples].sort(
+    (left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt),
+  );
   const latest = ordered.at(-1);
   if (!latest) {
     return {
@@ -131,9 +133,17 @@ export function analyzeHostCapacity(samples: HostMetricSample[]): HostCapacityAn
   const risks: CapacityRisk[] = [];
 
   if (diskUsedPercent >= 95) {
-    risks.push({ code: "disk_capacity", severity: "critical", message: `Data filesystem is ${diskUsedPercent}% full.` });
+    risks.push({
+      code: "disk_capacity",
+      severity: "critical",
+      message: `Data filesystem is ${diskUsedPercent}% full.`,
+    });
   } else if (diskUsedPercent >= 85) {
-    risks.push({ code: "disk_capacity", severity: "warning", message: `Data filesystem is ${diskUsedPercent}% full.` });
+    risks.push({
+      code: "disk_capacity",
+      severity: "warning",
+      message: `Data filesystem is ${diskUsedPercent}% full.`,
+    });
   }
   if (projectedDaysRemaining !== null && projectedDaysRemaining <= 14) {
     risks.push({
@@ -145,22 +155,46 @@ export function analyzeHostCapacity(samples: HostMetricSample[]): HostCapacityAn
   if (latest.diskInodesTotal && latest.diskInodesAvailable !== null) {
     const inodeAvailablePercent = (latest.diskInodesAvailable / latest.diskInodesTotal) * 100;
     if (inodeAvailablePercent <= 5) {
-      risks.push({ code: "disk_inodes", severity: "critical", message: "Fewer than 5% of filesystem inodes remain." });
+      risks.push({
+        code: "disk_inodes",
+        severity: "critical",
+        message: "Fewer than 5% of filesystem inodes remain.",
+      });
     } else if (inodeAvailablePercent <= 15) {
-      risks.push({ code: "disk_inodes", severity: "warning", message: "Fewer than 15% of filesystem inodes remain." });
+      risks.push({
+        code: "disk_inodes",
+        severity: "warning",
+        message: "Fewer than 15% of filesystem inodes remain.",
+      });
     }
   }
-  const memoryAvailablePercent = latest.memoryTotalBytes > 0
-    ? (latest.memoryAvailableBytes / latest.memoryTotalBytes) * 100
-    : 100;
+  const memoryAvailablePercent =
+    latest.memoryTotalBytes > 0
+      ? (latest.memoryAvailableBytes / latest.memoryTotalBytes) * 100
+      : 100;
   if (memoryAvailablePercent <= 5) {
-    risks.push({ code: "memory_available", severity: "critical", message: "Less than 5% of host memory is available." });
+    risks.push({
+      code: "memory_available",
+      severity: "critical",
+      message: "Less than 5% of host memory is available.",
+    });
   } else if (memoryAvailablePercent <= 15) {
-    risks.push({ code: "memory_available", severity: "warning", message: "Less than 15% of host memory is available." });
+    risks.push({
+      code: "memory_available",
+      severity: "warning",
+      message: "Less than 15% of host memory is available.",
+    });
   }
-  const recentCpu = ordered.slice(-5).map((sample) => sample.cpuPercent).filter((value): value is number => value !== null);
+  const recentCpu = ordered
+    .slice(-5)
+    .map((sample) => sample.cpuPercent)
+    .filter((value): value is number => value !== null);
   if (recentCpu.length >= 3 && recentCpu.every((value) => value >= 90)) {
-    risks.push({ code: "cpu_sustained", severity: "warning", message: "Host CPU has remained above 90%." });
+    risks.push({
+      code: "cpu_sustained",
+      severity: "warning",
+      message: "Host CPU has remained above 90%.",
+    });
   }
 
   return {

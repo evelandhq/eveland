@@ -13,17 +13,15 @@ import {
 } from "./values.js";
 
 type AgentEventProjectionOptions = {
-  resolveDeploymentId: (
-    credential: string | undefined,
-  ) => string | undefined;
+  resolveDeploymentId: (credential: string | undefined) => string | undefined;
 };
 
 export function projectAgentEventsFromOtlpLogs(
   payload: Record<string, unknown>,
   options: AgentEventProjectionOptions,
 ): AgentEventObservation[] {
-  return projectAgentEventItemsFromOtlpLogs(payload, options).flatMap(
-    (observation) => (observation ? [observation] : []),
+  return projectAgentEventItemsFromOtlpLogs(payload, options).flatMap((observation) =>
+    observation ? [observation] : [],
   );
 }
 
@@ -42,26 +40,18 @@ export function projectAgentEventItemsFromOtlpLogs(
   for (const resourceLogs of arrayOfRecords(payload.resourceLogs)) {
     const resource = recordValue(resourceLogs.resource);
     const resourceAttributes = attributesFrom(resource?.attributes);
-    const isAgent =
-      resourceAttributes["eveland.telemetry.domain"] === "agent";
+    const isAgent = resourceAttributes["eveland.telemetry.domain"] === "agent";
     const deploymentId = options.resolveDeploymentId(
-      stringValue(
-        resourceAttributes["eveland.deployment.credential"],
-      ),
+      stringValue(resourceAttributes["eveland.deployment.credential"]),
     );
     const runtimeInstanceId =
-      stringValue(resourceAttributes["eveland.runtime.instance.id"]) ??
-      null;
+      stringValue(resourceAttributes["eveland.runtime.instance.id"]) ?? null;
 
     for (const scopeLogs of arrayOfRecords(resourceLogs.scopeLogs)) {
       for (const logRecord of arrayOfRecords(scopeLogs.logRecords)) {
         observations.push(
           isAgent && deploymentId
-            ? observationFromLogRecord(
-                deploymentId,
-                runtimeInstanceId,
-                logRecord,
-              )
+            ? observationFromLogRecord(deploymentId, runtimeInstanceId, logRecord)
             : null,
         );
       }
@@ -80,23 +70,15 @@ function observationFromLogRecord(
   const eventRecord = recordValue(event);
   const data = recordValue(eventRecord?.data);
   const timestamp = unixNanoToIso(
-    stringValue(logRecord.timeUnixNano) ??
-      stringValue(logRecord.observedTimeUnixNano),
+    stringValue(logRecord.timeUnixNano) ?? stringValue(logRecord.observedTimeUnixNano),
   );
   const candidate = {
     telemetryEventId: stringValue(attributes["eveland.event.id"]),
-    eventFingerprint: stringValue(
-      attributes["eveland.event.fingerprint"],
-    ),
+    eventFingerprint: stringValue(attributes["eveland.event.fingerprint"]),
     deploymentId,
     runtimeInstanceId,
-    eveSessionId: stringValue(
-      attributes["eveland.eve.session.id"],
-    ),
-    parentEveSessionId:
-      stringValue(
-        attributes["eveland.eve.parent_session.id"],
-      ) ?? null,
+    eveSessionId: stringValue(attributes["eveland.eve.session.id"]),
+    parentEveSessionId: stringValue(attributes["eveland.eve.parent_session.id"]) ?? null,
     sourceSequence: nonNegativeInteger(data?.sequence) ?? null,
     agent: {
       id:
@@ -107,13 +89,10 @@ function observationFromLogRecord(
         stringValue(recordValue(data?.runtime)?.agentName) ??
         stringValue(attributes["eveland.eve.agent.name"]) ??
         null,
-      nodeId:
-        stringValue(attributes["eveland.eve.agent.node.id"]) ?? null,
+      nodeId: stringValue(attributes["eveland.eve.agent.node.id"]) ?? null,
     },
-    channelKind:
-      stringValue(attributes["eveland.eve.channel.kind"]) ?? null,
-    eventAt:
-      stringValue(recordValue(eventRecord?.meta)?.at) ?? timestamp,
+    channelKind: stringValue(attributes["eveland.eve.channel.kind"]) ?? null,
+    eventAt: stringValue(recordValue(eventRecord?.meta)?.at) ?? timestamp,
     event,
   };
   const parsed = agentEventObservationSchema.safeParse(candidate);

@@ -66,7 +66,9 @@ export function IdentitySettings({
     try {
       await action();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Identity settings could not be updated.");
+      setError(
+        caught instanceof Error ? caught.message : "Identity settings could not be updated.",
+      );
     } finally {
       setPending(null);
     }
@@ -97,7 +99,7 @@ export function IdentitySettings({
         enabled,
       });
       setProviders((current) =>
-        current.map((candidate) => candidate.id === provider.id ? provider : candidate),
+        current.map((candidate) => (candidate.id === provider.id ? provider : candidate)),
       );
       setNotice(enabled ? "Identity Provider enabled." : "Identity Provider disabled.");
     });
@@ -137,7 +139,7 @@ export function IdentitySettings({
         enabled,
       });
       setRealms((current) =>
-        current.map((candidate) => candidate.id === realm.id ? realm : candidate),
+        current.map((candidate) => (candidate.id === realm.id ? realm : candidate)),
       );
       setNotice(enabled ? "Identity Realm enabled." : "Identity Realm disabled.");
     });
@@ -234,7 +236,8 @@ export function IdentitySettings({
         <CardHeader>
           <CardTitle>Identity Provider</CardTitle>
           <CardDescription>
-            Eveland Internal maps a verified control-plane login into a separate Agent-user identity session.
+            Eveland Internal maps a verified control-plane login into a separate Agent-user identity
+            session.
           </CardDescription>
           {internalProvider ? (
             <CardAction className="flex items-center gap-3">
@@ -305,7 +308,8 @@ export function IdentitySettings({
                     disabled={pending !== null}
                   />
                   <FieldDescription>
-                    Stable and immutable after creation. It is not a Team membership ID or email domain.
+                    Stable and immutable after creation. It is not a Team membership ID or email
+                    domain.
                   </FieldDescription>
                 </Field>
                 <Field>

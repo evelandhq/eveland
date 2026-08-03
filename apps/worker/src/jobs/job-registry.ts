@@ -10,11 +10,7 @@ import { handleTriggerScheduleJob } from "./runtime-jobs/trigger-schedule.js";
 import type { ProcessJobOptions } from "./process-types.js";
 
 export type JobDescriptor<Type extends JobType = JobType> = {
-  handle: (
-    store: Store,
-    job: Job<Type>,
-    options: ProcessJobOptions,
-  ) => Promise<void>;
+  handle: (store: Store, job: Job<Type>, options: ProcessJobOptions) => Promise<void>;
   /**
    * Settles project/runtime state after the job row itself is marked failed.
    * Claiming, heartbeat, and attempt fencing stay in process.ts; this hook
@@ -39,9 +35,7 @@ export const jobRegistry: { [Type in JobType]: JobDescriptor<Type> } = {
       const production = await store.getCurrentDeployment(job.projectId);
       await store.updateProjectState(
         job.projectId,
-        production &&
-          (production.status === "running" ||
-            production.status === "draining")
+        production && (production.status === "running" || production.status === "draining")
           ? {
               status: "failed",
               deploymentStatus: production.status,
@@ -102,11 +96,7 @@ export async function dispatchJob(
   await descriptor.handle(store, job, options);
 }
 
-export async function settleJobFailure(
-  store: Store,
-  job: Job,
-  message: string,
-): Promise<void> {
+export async function settleJobFailure(store: Store, job: Job, message: string): Promise<void> {
   const descriptor = jobRegistry[job.type] as JobDescriptor;
   await descriptor.onFailure?.(store, job, message);
 }

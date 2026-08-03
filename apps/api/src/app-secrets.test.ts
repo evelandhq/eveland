@@ -7,7 +7,6 @@ import {
 import { createApp } from "./app.js";
 import { createTestStore } from "@eveland/db/vitest";
 
-
 describe("api app", () => {
   test("stores secrets without returning secret values", async () => {
     const app = createApp(createTestStore());
@@ -18,18 +17,15 @@ describe("api app", () => {
     });
     const { project } = await createProject.json();
 
-    const secretResponse = await app.request(
-      `/projects/${project.id}/secrets`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          key: "OPENAI_API_KEY",
-          kind: "variable",
-          value: "sk-test-123456",
-        }),
-      },
-    );
+    const secretResponse = await app.request(`/projects/${project.id}/secrets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        key: "OPENAI_API_KEY",
+        kind: "variable",
+        value: "sk-test-123456",
+      }),
+    });
 
     expect(secretResponse.status).toBe(201);
     const body = await secretResponse.json();
@@ -37,9 +33,7 @@ describe("api app", () => {
     expect(JSON.stringify(body)).not.toContain("sk-test-123456");
 
     const listResponse = await app.request(`/projects/${project.id}/secrets`);
-    expect(JSON.stringify(await listResponse.json())).not.toContain(
-      "sk-test-123456",
-    );
+    expect(JSON.stringify(await listResponse.json())).not.toContain("sk-test-123456");
   });
 
   test("edits a project environment entry without returning or replacing an omitted value", async () => {
@@ -67,11 +61,17 @@ describe("api app", () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.secret).toMatchObject({ id: created.secret.id, key: "DEFAULT_MODEL", kind: "secret" });
+    expect(body.secret).toMatchObject({
+      id: created.secret.id,
+      key: "DEFAULT_MODEL",
+      kind: "secret",
+    });
     expect(JSON.stringify(body)).not.toContain("gpt-5");
     const [record] = await store.listSecretRecords(project.id);
     expect(record).toMatchObject({ id: created.secret.id, key: "DEFAULT_MODEL", kind: "secret" });
-    expect(decryptSecretValue(JSON.parse(record!.encryptedValue) as EncryptedSecret, appSecretKey)).toBe("gpt-5");
+    expect(
+      decryptSecretValue(JSON.parse(record!.encryptedValue) as EncryptedSecret, appSecretKey),
+    ).toBe("gpt-5");
   });
 
   test("queues a targeted restart for every live deployment after saving a secret", async () => {
@@ -111,17 +111,14 @@ describe("api app", () => {
       runtimeKind: "docker",
     });
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/secrets`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          key: "DEEPSEEK_API_KEY",
-          value: "sk-test-deepseek",
-        }),
-      },
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/secrets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        key: "DEEPSEEK_API_KEY",
+        value: "sk-test-deepseek",
+      }),
+    });
 
     expect(response.status).toBe(201);
     const responseBody = await response.json();
@@ -134,8 +131,7 @@ describe("api app", () => {
     );
     expect(
       responseBody.jobs.every(
-        (job: { payload: Record<string, unknown> }) =>
-          Object.keys(job.payload).length === 0,
+        (job: { payload: Record<string, unknown> }) => Object.keys(job.payload).length === 0,
       ),
     ).toBe(true);
     const queuedDeploymentIds: string[] = [];
@@ -148,9 +144,7 @@ describe("api app", () => {
       queuedDeploymentIds.push(String(job.payload.deploymentId));
       await store.completeJob(job.id);
     }
-    expect(queuedDeploymentIds).toEqual(
-      expect.arrayContaining([stable.id, preview.id]),
-    );
+    expect(queuedDeploymentIds).toEqual(expect.arrayContaining([stable.id, preview.id]));
   });
 
   test("batch upserts project environment entries and queues each live deployment restart once", async () => {
@@ -204,10 +198,12 @@ describe("api app", () => {
 
     expect(response.status).toBe(201);
     const body = await response.json();
-    expect(body.secrets).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: "MODEL_NAME", kind: "variable" }),
-      expect.objectContaining({ key: "OPENAI_API_KEY", kind: "secret" }),
-    ]));
+    expect(body.secrets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "MODEL_NAME", kind: "variable" }),
+        expect.objectContaining({ key: "OPENAI_API_KEY", kind: "secret" }),
+      ]),
+    );
     expect(body.jobs).toEqual([
       expect.objectContaining({
         type: "restart_deployment",
@@ -220,14 +216,22 @@ describe("api app", () => {
 
     const records = await store.listSecretRecords(project.id);
     expect(records).toHaveLength(2);
-    expect(decryptSecretValue(
-      JSON.parse(records.find((record) => record.key === "MODEL_NAME")!.encryptedValue) as EncryptedSecret,
-      appSecretKey,
-    )).toBe("gpt-5.4");
-    expect(decryptSecretValue(
-      JSON.parse(records.find((record) => record.key === "OPENAI_API_KEY")!.encryptedValue) as EncryptedSecret,
-      appSecretKey,
-    )).toBe("sk-batch-secret");
+    expect(
+      decryptSecretValue(
+        JSON.parse(
+          records.find((record) => record.key === "MODEL_NAME")!.encryptedValue,
+        ) as EncryptedSecret,
+        appSecretKey,
+      ),
+    ).toBe("gpt-5.4");
+    expect(
+      decryptSecretValue(
+        JSON.parse(
+          records.find((record) => record.key === "OPENAI_API_KEY")!.encryptedValue,
+        ) as EncryptedSecret,
+        appSecretKey,
+      ),
+    ).toBe("sk-batch-secret");
 
     const restart = await store.claimNextJob("test-worker");
     expect(restart).toMatchObject({
@@ -245,19 +249,16 @@ describe("api app", () => {
       importKind: "zip",
     });
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/secrets/batch`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          entries: [
-            { key: "MODEL_NAME", value: "gpt-5.4" },
-            { key: "MODEL_NAME", value: "gpt-5-mini" },
-          ],
-        }),
-      },
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/secrets/batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        entries: [
+          { key: "MODEL_NAME", value: "gpt-5.4" },
+          { key: "MODEL_NAME", value: "gpt-5-mini" },
+        ],
+      }),
+    });
 
     expect(response.status).toBe(400);
     await expect(store.listSecrets(project.id)).resolves.toEqual([]);
@@ -273,23 +274,22 @@ describe("api app", () => {
       await store.upsertSecret(project.id, `KEY_${index}`, "encrypted-placeholder");
     }
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/secrets/batch`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          entries: [
-            { key: "KEY_0", value: "replacement" },
-            { key: "OVER_THE_LIMIT", value: "new-value" },
-          ],
-        }),
-      },
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/secrets/batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        entries: [
+          { key: "KEY_0", value: "replacement" },
+          { key: "OVER_THE_LIMIT", value: "new-value" },
+        ],
+      }),
+    });
 
     expect(response.status).toBe(400);
     expect(await store.listSecrets(project.id)).toHaveLength(50);
-    expect((await store.listSecrets(project.id)).some((entry) => entry.key === "OVER_THE_LIMIT")).toBe(false);
+    expect(
+      (await store.listSecrets(project.id)).some((entry) => entry.key === "OVER_THE_LIMIT"),
+    ).toBe(false);
   });
 
   test("queues live deployment secret refreshes only when a secret was deleted", async () => {
@@ -326,20 +326,18 @@ describe("api app", () => {
     );
     const app = createApp(store);
 
-    const missing = await app.request(
-      `/projects/${project.id}/secrets/secret_missing`,
-      { method: "DELETE" },
-    );
+    const missing = await app.request(`/projects/${project.id}/secrets/secret_missing`, {
+      method: "DELETE",
+    });
     await expect(missing.json()).resolves.toMatchObject({
       deleted: false,
       jobs: [],
     });
     await expect(store.claimNextJob("test-worker")).resolves.toBeNull();
 
-    const response = await app.request(
-      `/projects/${project.id}/secrets/${secret.id}`,
-      { method: "DELETE" },
-    );
+    const response = await app.request(`/projects/${project.id}/secrets/${secret.id}`, {
+      method: "DELETE",
+    });
 
     expect(response.status).toBe(200);
     const responseBody = await response.json();
@@ -365,9 +363,7 @@ describe("api app", () => {
       createApp(createTestStore(), {
         appSecretKey: "1234567890123456789012345678901",
       }),
-    ).toThrow(
-      "APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.",
-    );
+    ).toThrow("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
   });
 
   test("returns current source revision and files", async () => {
@@ -402,9 +398,7 @@ describe("api app", () => {
     });
     await expect(
       (
-        await app.request(
-          `/projects/${project.id}/source/file?path=agent%2Finstructions.md`,
-        )
+        await app.request(`/projects/${project.id}/source/file?path=agent%2Finstructions.md`)
       ).json(),
     ).resolves.toMatchObject({
       file: expect.objectContaining({ content: "You are concise." }),

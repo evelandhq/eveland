@@ -11,10 +11,14 @@ import type { ReleaseDiscovery } from "./types.js";
  */
 export const DISCOVERY_MANIFEST_RELEASE_PATH = ".eve/discovery/agent-discovery-manifest.json";
 
-export async function readReleaseDiscovery(releaseDir: string): Promise<ReleaseDiscovery | undefined> {
+export async function readReleaseDiscovery(
+  releaseDir: string,
+): Promise<ReleaseDiscovery | undefined> {
   let manifest: unknown;
   try {
-    manifest = JSON.parse(await readFile(path.join(releaseDir, DISCOVERY_MANIFEST_RELEASE_PATH), "utf8"));
+    manifest = JSON.parse(
+      await readFile(path.join(releaseDir, DISCOVERY_MANIFEST_RELEASE_PATH), "utf8"),
+    );
   } catch {
     return undefined;
   }

@@ -3,11 +3,7 @@ import type { Store } from "@eveland/db";
 import { access, mkdir } from "node:fs/promises";
 
 import { resolveAgentObservabilityDirs } from "../runtime/observability/policy.js";
-import type {
-  ProcessStartInput,
-  RuntimeAdapter,
-  RuntimeCommandContext,
-} from "../runtime/types.js";
+import type { ProcessStartInput, RuntimeAdapter, RuntimeCommandContext } from "../runtime/types.js";
 import {
   prepareDeploymentObservability,
   warnStaleObserverRelease,
@@ -59,15 +55,10 @@ export type DeploymentStartInput = Readonly<{
 
 export type LaunchInputStore = Pick<
   Store,
-  | "listSecretRecords"
-  | "getSharedAgentEnvironmentRecord"
-  | "getObservabilityPolicy"
-  | "appendLog"
+  "listSecretRecords" | "getSharedAgentEnvironmentRecord" | "getObservabilityPolicy" | "appendLog"
 >;
 
-export function createDeploymentStartInput(
-  input: DeploymentStartInput,
-): ProcessStartInput {
+export function createDeploymentStartInput(input: DeploymentStartInput): ProcessStartInput {
   const usesHostVisiblePaths = input.launchContext.runtimeKind === "docker";
   return {
     processName: input.processName,
@@ -88,10 +79,7 @@ export function createDeploymentStartInput(
 }
 
 export async function resolveDeploymentLaunchPrerequisites(input: {
-  store: Pick<
-    LaunchInputStore,
-    "listSecretRecords" | "getSharedAgentEnvironmentRecord"
-  >;
+  store: Pick<LaunchInputStore, "listSecretRecords" | "getSharedAgentEnvironmentRecord">;
   workerEnv: NodeJS.ProcessEnv;
   projectId: string;
   deploymentId: string;
@@ -103,10 +91,7 @@ export async function resolveDeploymentLaunchPrerequisites(input: {
 }): Promise<DeploymentLaunchPrerequisites> {
   // Resolve sequentially: environment bootstrap errors should remain visible
   // before source metadata errors, matching the existing launch paths.
-  const appSecretKey =
-    input.options.appSecretKey ??
-    input.workerEnv.APP_SECRET_KEY ??
-    devSecretKey;
+  const appSecretKey = input.options.appSecretKey ?? input.workerEnv.APP_SECRET_KEY ?? devSecretKey;
   const { env, secretValues } = await composeDeploymentEnv(
     input.store,
     input.projectId,
@@ -126,10 +111,7 @@ export async function resolveDeploymentLaunchPrerequisites(input: {
     env,
     secretValues,
     commandContext,
-    sandboxCacheDirs: resolveSandboxCacheDirs(
-      input.workerEnv,
-      input.projectId,
-    ),
+    sandboxCacheDirs: resolveSandboxCacheDirs(input.workerEnv, input.projectId),
     observabilityPolicyDirs: resolveAgentObservabilityDirs(
       input.workerEnv,
       input.projectId,
@@ -195,18 +177,14 @@ export async function resolveRecoverableRuntimeSource(
     summary: Record<string, unknown>;
   }>,
 ): Promise<{
-  persistedSourceFiles: Awaited<
-    ReturnType<Store["listSourceRevisionFiles"]>
-  >;
+  persistedSourceFiles: Awaited<ReturnType<Store["listSourceRevisionFiles"]>>;
   persistedCommandContext?: RuntimeCommandContext;
 }> {
   try {
     await access(revision.sourcePath);
     return { persistedSourceFiles: [] };
   } catch {
-    const persistedSourceFiles = await store.listSourceRevisionFiles(
-      revision.id,
-    );
+    const persistedSourceFiles = await store.listSourceRevisionFiles(revision.id);
     if (!persistedSourceFiles.some((file) => file.path === "package.json")) {
       throw new Error(
         `Source directory for revision ${revision.id} is missing: ${revision.sourcePath}. Re-import the source and deploy instead.`,
@@ -222,9 +200,7 @@ export async function resolveRecoverableRuntimeSource(
   }
 }
 
-function parseRuntimeCommandContext(
-  value: unknown,
-): RuntimeCommandContext | undefined {
+function parseRuntimeCommandContext(value: unknown): RuntimeCommandContext | undefined {
   if (!value || typeof value !== "object") return undefined;
   const candidate = value as Record<string, unknown>;
   if (candidate.packageManager === "pnpm") {
@@ -232,10 +208,7 @@ function parseRuntimeCommandContext(
       ? { packageManager: "pnpm", hasLockfile: true }
       : undefined;
   }
-  if (
-    candidate.packageManager === "npm" &&
-    typeof candidate.hasLockfile === "boolean"
-  ) {
+  if (candidate.packageManager === "npm" && typeof candidate.hasLockfile === "boolean") {
     return {
       packageManager: "npm",
       hasLockfile: candidate.hasLockfile,

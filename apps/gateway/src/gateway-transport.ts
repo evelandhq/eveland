@@ -1,9 +1,6 @@
 import http from "node:http";
 import { Readable } from "node:stream";
-import {
-  DownstreamAbortedError,
-  RequestBodyTooLargeError,
-} from "./gateway-routing.js";
+import { DownstreamAbortedError, RequestBodyTooLargeError } from "./gateway-routing.js";
 
 // Raw loopback HTTP transport: socket handling, hop-by-hop hygiene, body
 // limits, and abort propagation. No routing or session semantics here.
@@ -44,7 +41,8 @@ export function proxyToDeployment(input: {
         for (let index = 0; index < response.rawHeaders.length; index += 2) {
           const name = response.rawHeaders[index];
           const value = response.rawHeaders[index + 1];
-          if (name && value !== undefined && !hopByHopHeaders.has(name.toLowerCase())) headers.append(name, value);
+          if (name && value !== undefined && !hopByHopHeaders.has(name.toLowerCase()))
+            headers.append(name, value);
         }
         resolve(
           new Response(proxyResponseBody(response, request), {
@@ -64,7 +62,10 @@ export function proxyToDeployment(input: {
     request.once("close", cleanup);
     if (input.signal?.aborted) abort();
     else input.signal?.addEventListener("abort", abort, { once: true });
-    if (input.timeoutMs) request.setTimeout(input.timeoutMs, () => request.destroy(new Error("Upstream request timed out.")));
+    if (input.timeoutMs)
+      request.setTimeout(input.timeoutMs, () =>
+        request.destroy(new Error("Upstream request timed out.")),
+      );
     request.end(input.body ?? undefined);
   });
 }
@@ -102,7 +103,10 @@ export async function readLimitedBody(
   return joined;
 }
 
-function proxyResponseBody(response: http.IncomingMessage, request: http.ClientRequest): ReadableStream<Uint8Array> {
+function proxyResponseBody(
+  response: http.IncomingMessage,
+  request: http.ClientRequest,
+): ReadableStream<Uint8Array> {
   const body = Readable.toWeb(response) as ReadableStream<Uint8Array>;
   const reader = body.getReader();
   return new ReadableStream<Uint8Array>({

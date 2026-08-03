@@ -12,7 +12,11 @@ type SealedConfigEnvelope = {
   ciphertext: string;
 };
 
-export function sealAgentAuthConfig(config: unknown, appSecretKey: string, binding: AgentAuthConfigBinding): string {
+export function sealAgentAuthConfig(
+  config: unknown,
+  appSecretKey: string,
+  binding: AgentAuthConfigBinding,
+): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", deriveKey(appSecretKey), iv);
   cipher.setAAD(configAad(binding));
@@ -26,9 +30,17 @@ export function sealAgentAuthConfig(config: unknown, appSecretKey: string, bindi
   } satisfies SealedConfigEnvelope);
 }
 
-export function openAgentAuthConfig(value: string, appSecretKey: string, binding: AgentAuthConfigBinding): unknown {
+export function openAgentAuthConfig(
+  value: string,
+  appSecretKey: string,
+  binding: AgentAuthConfigBinding,
+): unknown {
   const envelope = parseEnvelope(value);
-  const decipher = createDecipheriv("aes-256-gcm", deriveKey(appSecretKey), Buffer.from(envelope.iv, "base64"));
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    deriveKey(appSecretKey),
+    Buffer.from(envelope.iv, "base64"),
+  );
   decipher.setAAD(configAad(binding));
   decipher.setAuthTag(Buffer.from(envelope.authTag, "base64"));
   const plaintext = Buffer.concat([
@@ -53,22 +65,19 @@ function normalizeAppSecretKey(value: string): Buffer {
 }
 
 function configAad(binding: AgentAuthConfigBinding): Buffer {
-  return Buffer.from(JSON.stringify([
-    "config",
-    binding.agentConnectionId,
-    binding.method,
-    binding.securityRevision,
-  ]));
+  return Buffer.from(
+    JSON.stringify(["config", binding.agentConnectionId, binding.method, binding.securityRevision]),
+  );
 }
 
 function parseEnvelope(value: string): SealedConfigEnvelope {
   const parsed = JSON.parse(value) as Partial<SealedConfigEnvelope>;
   if (
-    parsed.version !== 1
-    || parsed.algorithm !== "aes-256-gcm"
-    || typeof parsed.iv !== "string"
-    || typeof parsed.authTag !== "string"
-    || typeof parsed.ciphertext !== "string"
+    parsed.version !== 1 ||
+    parsed.algorithm !== "aes-256-gcm" ||
+    typeof parsed.iv !== "string" ||
+    typeof parsed.authTag !== "string" ||
+    typeof parsed.ciphertext !== "string"
   ) {
     throw new Error("Invalid sealed Playground authentication config.");
   }

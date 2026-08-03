@@ -1,9 +1,9 @@
-import Link from "next/link"
-import { FolderIcon, RocketIcon } from "lucide-react"
-import { DateTime } from "@/components/date-time"
-import { StatusBadge } from "@/components/status-badge"
-import { Badge } from "@/components/ui/badge"
-import { buttonVariants } from "@/components/ui/button"
+import Link from "next/link";
+import { FolderIcon, RocketIcon } from "lucide-react";
+import { DateTime } from "@/components/date-time";
+import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Empty,
   EmptyContent,
@@ -11,7 +11,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty"
+} from "@/components/ui/empty";
 import {
   Table,
   TableBody,
@@ -19,25 +19,25 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { getDeploymentOverview, getProjects } from "@/lib/server-api"
+} from "@/components/ui/table";
+import { getDeploymentOverview, getProjects } from "@/lib/server-api";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Deployments",
-}
+};
 
 export default async function DeploymentsPage() {
-  const projects = await getProjects()
+  const projects = await getProjects();
   const projectDeployments = await Promise.all(
     projects.map(async (project) => ({
       project,
       overview: await getDeploymentOverview(project.id),
     })),
-  )
+  );
   const deployments = projectDeployments.flatMap(({ project, overview }) =>
     overview.deployments.map((deployment) => ({ deployment, project })),
-  )
+  );
 
   return (
     <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
@@ -100,7 +100,9 @@ export default async function DeploymentsPage() {
                       >
                         {deployment.deploymentKey}
                       </Link>
-                      {project.deploymentId === deployment.id ? <Badge variant="secondary">Production</Badge> : null}
+                      {project.deploymentId === deployment.id ? (
+                        <Badge variant="secondary">Production</Badge>
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell>{deployment.runtimeKind}</TableCell>
@@ -118,5 +120,5 @@ export default async function DeploymentsPage() {
         </div>
       )}
     </section>
-  )
+  );
 }

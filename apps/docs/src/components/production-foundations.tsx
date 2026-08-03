@@ -19,7 +19,10 @@ export function ProductionFoundations({ lang }: { lang: Language }) {
             <div>
               <h3>{item.title}</h3>
               <p>{item.body}</p>
-              <Link href={item.href}>{item.link}<ArrowRight aria-hidden="true" /></Link>
+              <Link href={item.href}>
+                {item.link}
+                <ArrowRight aria-hidden="true" />
+              </Link>
             </div>
           </li>
         ))}

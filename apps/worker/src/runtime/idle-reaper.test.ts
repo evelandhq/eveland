@@ -21,13 +21,15 @@ describe("reapIdleDeployments", () => {
     await store.recordScheduleVersions({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "heartbeat",
-        kind: "handler",
-        cron: "* * * * *",
-        sourcePath: "agent/schedules/heartbeat.ts",
-        definitionHash: "heartbeat-v1",
-      }],
+      definitions: [
+        {
+          key: "heartbeat",
+          kind: "handler",
+          cron: "* * * * *",
+          sourcePath: "agent/schedules/heartbeat.ts",
+          definitionHash: "heartbeat-v1",
+        },
+      ],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -38,7 +40,11 @@ describe("reapIdleDeployments", () => {
       hostPort: 41988,
       runtimeKind: "docker",
     });
-    await store.setProjectSchedulerTarget(project.id, deployment.id, new Date("2026-07-16T03:00:00.000Z"));
+    await store.setProjectSchedulerTarget(
+      project.id,
+      deployment.id,
+      new Date("2026-07-16T03:00:00.000Z"),
+    );
     const claim = await store.acquireActivationLease({
       deploymentId: deployment.id,
       kind: "public_request",
@@ -46,11 +52,15 @@ describe("reapIdleDeployments", () => {
       expiresAt: new Date("2026-07-16T02:51:00.000Z"),
       now: new Date("2026-07-16T02:50:00.000Z"),
     });
-    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
-      status: "ready",
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, new Date("2026-07-16T02:50:00.000Z"));
+    await store.updateRuntimeInstance(
+      claim.runtimeInstance.id,
+      {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      },
+      new Date("2026-07-16T02:50:00.000Z"),
+    );
     await store.releaseActivationLease(claim.lease.id, new Date("2026-07-16T02:51:00.000Z"));
     const stopProcess = vi.fn(async () => {});
     const runtime = {
@@ -60,16 +70,20 @@ describe("reapIdleDeployments", () => {
       stopProcess,
     } as unknown as RuntimeAdapter;
 
-    await expect(reapIdleDeployments(store, {
-      now: new Date("2026-07-16T03:00:10.000Z"),
-      idleTtlMs: 0,
-      schedulePrewarmMs: 60_000,
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(0);
+    await expect(
+      reapIdleDeployments(store, {
+        now: new Date("2026-07-16T03:00:10.000Z"),
+        idleTtlMs: 0,
+        schedulePrewarmMs: 60_000,
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(0);
 
     expect(stopProcess).not.toHaveBeenCalled();
-    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({ status: "ready" });
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "ready",
+    });
   });
 
   test("stops a ready process only after its final lease idle deadline", async () => {
@@ -102,11 +116,15 @@ describe("reapIdleDeployments", () => {
       expiresAt: new Date("2026-07-15T03:01:00.000Z"),
       now: new Date("2026-07-15T03:00:00.000Z"),
     });
-    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
-      status: "ready",
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, new Date("2026-07-15T03:00:00.000Z"));
+    await store.updateRuntimeInstance(
+      claim.runtimeInstance.id,
+      {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      },
+      new Date("2026-07-15T03:00:00.000Z"),
+    );
     await store.releaseActivationLease(claim.lease.id, new Date("2026-07-15T03:01:00.000Z"));
     const stopProcess = vi.fn(async () => {});
     const runtime = {
@@ -116,21 +134,27 @@ describe("reapIdleDeployments", () => {
       stopProcess,
     } as unknown as RuntimeAdapter;
 
-    await expect(reapIdleDeployments(store, {
-      now: new Date("2026-07-15T03:01:59.999Z"),
-      idleTtlMs: 60_000,
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(0);
-    await expect(reapIdleDeployments(store, {
-      now: new Date("2026-07-15T03:02:00.000Z"),
-      idleTtlMs: 60_000,
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(1);
+    await expect(
+      reapIdleDeployments(store, {
+        now: new Date("2026-07-15T03:01:59.999Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      reapIdleDeployments(store, {
+        now: new Date("2026-07-15T03:02:00.000Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(1);
 
     expect(stopProcess).toHaveBeenCalledWith(deployment.containerName);
-    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({ status: "stopped" });
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "stopped",
+    });
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "stopped" });
   });
 
@@ -164,11 +188,15 @@ describe("reapIdleDeployments", () => {
       expiresAt: new Date("2026-07-15T03:01:00.000Z"),
       now: new Date("2026-07-15T03:00:00.000Z"),
     });
-    await store.updateRuntimeInstance(claim.runtimeInstance.id, {
-      status: "ready",
-      endpointHost: "127.0.0.1",
-      endpointPort: deployment.hostPort,
-    }, new Date("2026-07-15T03:00:00.000Z"));
+    await store.updateRuntimeInstance(
+      claim.runtimeInstance.id,
+      {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      },
+      new Date("2026-07-15T03:00:00.000Z"),
+    );
     await store.releaseActivationLease(claim.lease.id, new Date("2026-07-15T03:01:00.000Z"));
     const stopProcess = vi.fn(async () => {});
     const runtime = {
@@ -189,15 +217,19 @@ describe("reapIdleDeployments", () => {
       return readRuntimeInstance(runtimeInstanceId);
     });
 
-    await expect(reapIdleDeployments(store, {
-      now: new Date("2026-07-15T03:02:00.000Z"),
-      idleTtlMs: 60_000,
-      limit: 10,
-      runtimeForKind: () => runtime,
-    })).resolves.toBe(0);
+    await expect(
+      reapIdleDeployments(store, {
+        now: new Date("2026-07-15T03:02:00.000Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(0);
 
     expect(stopProcess).not.toHaveBeenCalled();
-    await expect(readRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({ status: "stopped" });
+    await expect(readRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "stopped",
+    });
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "running" });
   });
 });

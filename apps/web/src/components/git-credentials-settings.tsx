@@ -7,13 +7,7 @@ import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -22,10 +16,21 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { deleteGitCredential } from "@/lib/client-api";
 
-export function GitCredentialsSettings({ initialCredentials }: { initialCredentials: PublicGitCredential[] }) {
+export function GitCredentialsSettings({
+  initialCredentials,
+}: {
+  initialCredentials: PublicGitCredential[];
+}) {
   const [credentials, setCredentials] = useState(initialCredentials);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,17 +53,26 @@ export function GitCredentialsSettings({ initialCredentials }: { initialCredenti
       <CardHeader>
         <CardTitle>Saved hosts</CardTitle>
         <CardDescription>
-          PATs are encrypted and scoped to your account. A new or replacement PAT is saved only after a successful import.
+          PATs are encrypted and scoped to your account. A new or replacement PAT is saved only
+          after a successful import.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
         {credentials.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyMedia variant="icon"><KeyRoundIcon /></EmptyMedia>
+              <EmptyMedia variant="icon">
+                <KeyRoundIcon />
+              </EmptyMedia>
               <EmptyTitle>No saved Git credentials</EmptyTitle>
-              <EmptyDescription>Enter a GitLab PAT while importing a private repository to add one.</EmptyDescription>
+              <EmptyDescription>
+                Enter a GitLab PAT while importing a private repository to add one.
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -68,15 +82,21 @@ export function GitCredentialsSettings({ initialCredentials }: { initialCredenti
                 <TableHead>Host</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Updated</TableHead>
-                <TableHead><span className="sr-only">Actions</span></TableHead>
+                <TableHead>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {credentials.map((credential) => (
                 <TableRow key={credential.id}>
                   <TableCell className="font-medium">{credential.host}</TableCell>
-                  <TableCell><Badge variant="secondary">Encrypted</Badge></TableCell>
-                  <TableCell><DateTime value={credential.updatedAt} /></TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">Encrypted</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <DateTime value={credential.updatedAt} />
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       type="button"
@@ -85,9 +105,11 @@ export function GitCredentialsSettings({ initialCredentials }: { initialCredenti
                       disabled={deletingId === credential.id}
                       onClick={() => void removeCredential(credential.id)}
                     >
-                      {deletingId === credential.id
-                        ? <Spinner data-icon="inline-start" />
-                        : <Trash2Icon data-icon="inline-start" />}
+                      {deletingId === credential.id ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : (
+                        <Trash2Icon data-icon="inline-start" />
+                      )}
                       Remove
                     </Button>
                   </TableCell>

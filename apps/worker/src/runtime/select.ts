@@ -29,14 +29,15 @@ export function resolveBackendDistDir(): string {
   return path.dirname(entry);
 }
 
-export function createRuntimeAdapterForKind(kind: "docker" | "systemd", env: NodeJS.ProcessEnv = process.env): CompleteRuntimeAdapter {
+export function createRuntimeAdapterForKind(
+  kind: "docker" | "systemd",
+  env: NodeJS.ProcessEnv = process.env,
+): CompleteRuntimeAdapter {
   if (kind === "docker") {
     return createDockerAdapter({
       internalPort: Number(env.EVELAND_INTERNAL_PORT ?? 3000),
       dataDir: path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data"),
-      collectorContainerName:
-        env.EVELAND_OTEL_COLLECTOR_CONTAINER ??
-        "eveland-otel-collector",
+      collectorContainerName: env.EVELAND_OTEL_COLLECTOR_CONTAINER ?? "eveland-otel-collector",
       backendDistDir: resolveBackendDistDir,
     });
   }
@@ -72,7 +73,9 @@ export function resolveRuntimeKind(env: NodeJS.ProcessEnv): string {
   return "docker";
 }
 
-export function createRuntimeAdapterFromEnv(env: NodeJS.ProcessEnv = process.env): CompleteRuntimeAdapter {
+export function createRuntimeAdapterFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): CompleteRuntimeAdapter {
   const kind = resolveRuntimeKind(env);
 
   if (kind !== "docker" && kind !== "systemd") {

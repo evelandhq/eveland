@@ -7,20 +7,30 @@ import {
 
 describe("Playground OIDC route auth", () => {
   test("recognizes only Eveland redirect interactions", () => {
-    expect(interactionFromClientError({
-      status: 401,
-      body: JSON.stringify({
-        code: "interaction_required",
-        interaction: { type: "redirect", url: "/api/eveland/agent-connections/acon_1/auth/interactions/oidc/start" },
+    expect(
+      interactionFromClientError({
+        status: 401,
+        body: JSON.stringify({
+          code: "interaction_required",
+          interaction: {
+            type: "redirect",
+            url: "/api/eveland/agent-connections/acon_1/auth/interactions/oidc/start",
+          },
+        }),
       }),
-    })).toEqual({
+    ).toEqual({
       type: "redirect",
       url: "/api/eveland/agent-connections/acon_1/auth/interactions/oidc/start",
     });
-    expect(interactionFromClientError({
-      status: 401,
-      body: JSON.stringify({ code: "interaction_required", interaction: { type: "redirect", url: "https://attacker.example" } }),
-    })).toBeNull();
+    expect(
+      interactionFromClientError({
+        status: 401,
+        body: JSON.stringify({
+          code: "interaction_required",
+          interaction: { type: "redirect", url: "https://attacker.example" },
+        }),
+      }),
+    ).toBeNull();
   });
 
   test("stores a pending first turn before redirect and claims it exactly once", () => {
@@ -36,7 +46,10 @@ describe("Playground OIDC route auth", () => {
         status: 401,
         body: JSON.stringify({
           code: "interaction_required",
-          interaction: { type: "redirect", url: "/api/eveland/agent-connections/acon_1/auth/interactions/oidc/start" },
+          interaction: {
+            type: "redirect",
+            url: "/api/eveland/agent-connections/acon_1/auth/interactions/oidc/start",
+          },
         }),
       },
       message: "hello",

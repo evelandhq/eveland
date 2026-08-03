@@ -40,13 +40,33 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getGitCredentials } from "@/lib/client-api";
 import type { AgentEndpoints, Job, LogLine, Project } from "@/lib/api";
 import {
@@ -56,10 +76,7 @@ import {
   validateNewProjectEnvironmentVariables,
 } from "@/lib/new-project";
 import { cn } from "@/lib/utils";
-import {
-  EnvironmentImportDialog,
-  type EnvironmentImportEntry,
-} from "./environment-import-dialog";
+import { EnvironmentImportDialog, type EnvironmentImportEntry } from "./environment-import-dialog";
 import {
   browserGet,
   browserGetOptional,
@@ -76,7 +93,8 @@ import {
   type NewProjectStep as Step,
 } from "./new-project-flow-parts";
 
-const invalidNameMessage = "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.";
+const invalidNameMessage =
+  "Use lowercase letters, numbers, and hyphens, with no leading or trailing hyphen.";
 
 type Availability = "idle" | "checking" | "available" | "unavailable" | "error";
 type EnvironmentVariableDraft = NewProjectEnvironmentVariable;
@@ -102,9 +120,12 @@ export function NewProjectFlow() {
   const [environmentVariables, setEnvironmentVariables] = useState<EnvironmentVariableDraft[]>([]);
   const [environmentImportOpen, setEnvironmentImportOpen] = useState(false);
   const [environmentDialogOpen, setEnvironmentDialogOpen] = useState(false);
-  const [editingEnvironmentVariableId, setEditingEnvironmentVariableId] = useState<number | null>(null);
+  const [editingEnvironmentVariableId, setEditingEnvironmentVariableId] = useState<number | null>(
+    null,
+  );
   const [environmentDraft, setEnvironmentDraft] = useState<EnvironmentVariableDraft | null>(null);
-  const [environmentDraftErrors, setEnvironmentDraftErrors] = useState<EnvironmentVariableDraftErrors>({});
+  const [environmentDraftErrors, setEnvironmentDraftErrors] =
+    useState<EnvironmentVariableDraftErrors>({});
   const [pending, setPending] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -118,7 +139,8 @@ export function NewProjectFlow() {
   const inferredGitName = inferProjectSlugFromGitUrl(gitUrl);
   const inferredZipName = archive ? safeProjectSlug(archive.name.replace(/\.zip$/i, "")) : null;
   const repositoryInvalid = sourceKind === "git" && gitUrl.length > 0 && inferredGitName === null;
-  const nameInvalid = name.length > 0 && (name.length > PROJECT_SLUG_MAX_LENGTH || !PROJECT_SLUG_PATTERN.test(name));
+  const nameInvalid =
+    name.length > 0 && (name.length > PROJECT_SLUG_MAX_LENGTH || !PROJECT_SLUG_PATTERN.test(name));
   const gitHost = sourceKind === "git" ? normalizeGitHttpHost(gitUrl) : null;
   const savedCredential = savedCredentials.find((credential) => credential.host === gitHost);
   const patUnsupported = sourceKind === "git" && gitlabPat.length > 0 && gitHost === null;
@@ -129,12 +151,15 @@ export function NewProjectFlow() {
   );
 
   useEffect(() => {
-    if (step !== "source" || !preflight || !["queued", "running"].includes(preflight.status)) return;
+    if (step !== "source" || !preflight || !["queued", "running"].includes(preflight.status))
+      return;
 
     let cancelled = false;
     const refresh = async () => {
       try {
-        const result = await browserGet<{ preflight: SourcePreflight }>(`/source-preflights/${preflight.id}`);
+        const result = await browserGet<{ preflight: SourcePreflight }>(
+          `/source-preflights/${preflight.id}`,
+        );
         if (cancelled) return;
         setPreflight(result.preflight);
         if (result.preflight.status === "completed") {
@@ -143,7 +168,10 @@ export function NewProjectFlow() {
           setStep("configure");
         }
       } catch (error) {
-        if (!cancelled) setCreateError(error instanceof Error ? error.message : "Could not refresh source validation.");
+        if (!cancelled)
+          setCreateError(
+            error instanceof Error ? error.message : "Could not refresh source validation.",
+          );
       }
     };
     void refresh();
@@ -181,14 +209,17 @@ export function NewProjectFlow() {
         signal: controller.signal,
       })
         .then(async (response) => {
-          if (!response.ok) throw new Error(await readError(response, "Could not check the project name."));
+          if (!response.ok)
+            throw new Error(await readError(response, "Could not check the project name."));
           return response.json() as Promise<{ available: boolean }>;
         })
         .then((result) => setAvailability(result.available ? "available" : "unavailable"))
         .catch((error: unknown) => {
           if (controller.signal.aborted) return;
           setAvailability("error");
-          setAvailabilityError(error instanceof Error ? error.message : "Could not check the project name.");
+          setAvailabilityError(
+            error instanceof Error ? error.message : "Could not check the project name.",
+          );
         });
     }, 300);
 
@@ -217,7 +248,10 @@ export function NewProjectFlow() {
         setLogs(logsResult.logs);
         setEndpoints(endpointsResult ?? { stable: null, previews: [] });
       } catch (error) {
-        if (!cancelled) setCreateError(error instanceof Error ? error.message : "Could not refresh deployment status.");
+        if (!cancelled)
+          setCreateError(
+            error instanceof Error ? error.message : "Could not refresh deployment status.",
+          );
       }
     };
 
@@ -244,14 +278,16 @@ export function NewProjectFlow() {
     setCreateError(null);
     setPending(true);
     try {
-      const response = sourceKind === "git"
-        ? await apiFetch("/source-preflights", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ kind: "git", gitUrl, ...(gitlabPat ? { gitlabPat } : {}) }),
-          })
-        : await uploadZipPreflight(archive!);
-      if (!response.ok) throw new Error(await readError(response, "Could not validate the source."));
+      const response =
+        sourceKind === "git"
+          ? await apiFetch("/source-preflights", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ kind: "git", gitUrl, ...(gitlabPat ? { gitlabPat } : {}) }),
+            })
+          : await uploadZipPreflight(archive!);
+      if (!response.ok)
+        throw new Error(await readError(response, "Could not validate the source."));
       const body = (await response.json()) as { preflight: SourcePreflight };
       setPreflight(body.preflight);
     } catch (error) {
@@ -264,13 +300,14 @@ export function NewProjectFlow() {
   async function deploy(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (
-      !preflight
-      || preflight.status !== "completed"
-      || !name
-      || nameInvalid
-      || availability !== "available"
-      || environmentValidation.invalid
-    ) return;
+      !preflight ||
+      preflight.status !== "completed" ||
+      !name ||
+      nameInvalid ||
+      availability !== "available" ||
+      environmentValidation.invalid
+    )
+      return;
 
     setPending(true);
     setCreateError(null);
@@ -300,7 +337,8 @@ export function NewProjectFlow() {
     if (!response.ok) {
       const message = await readError(response, "Could not create the project.");
       setCreateError(message);
-      if (response.status === 409 && message.toLowerCase().includes("name")) setAvailability("unavailable");
+      if (response.status === 409 && message.toLowerCase().includes("name"))
+        setAvailability("unavailable");
       return;
     }
 
@@ -314,7 +352,13 @@ export function NewProjectFlow() {
   function addEnvironmentVariable() {
     setEnvironmentOpen(true);
     setEditingEnvironmentVariableId(null);
-    setEnvironmentDraft({ id: nextEnvironmentVariableId.current++, key: "", kind: "secret", value: "", visible: false });
+    setEnvironmentDraft({
+      id: nextEnvironmentVariableId.current++,
+      key: "",
+      kind: "secret",
+      value: "",
+      visible: false,
+    });
     setEnvironmentDraftErrors({});
     setEnvironmentDialogOpen(true);
   }
@@ -327,7 +371,7 @@ export function NewProjectFlow() {
   }
 
   function updateEnvironmentDraft(patch: Partial<EnvironmentVariableDraft>) {
-    setEnvironmentDraft((current) => current ? { ...current, ...patch } : current);
+    setEnvironmentDraft((current) => (current ? { ...current, ...patch } : current));
     setEnvironmentDraftErrors({});
   }
 
@@ -343,10 +387,12 @@ export function NewProjectFlow() {
     event.preventDefault();
     event.stopPropagation();
     if (!environmentDraft) return;
-    const nextVariables = editingEnvironmentVariableId === null
-      ? [...environmentVariables, environmentDraft]
-      : environmentVariables.map((variable) =>
-          variable.id === editingEnvironmentVariableId ? environmentDraft : variable);
+    const nextVariables =
+      editingEnvironmentVariableId === null
+        ? [...environmentVariables, environmentDraft]
+        : environmentVariables.map((variable) =>
+            variable.id === editingEnvironmentVariableId ? environmentDraft : variable,
+          );
     const validation = validateNewProjectEnvironmentVariables(nextVariables);
     const draftErrors = validation.errors.get(environmentDraft.id) ?? {};
     if (!environmentDraft.key.trim() && !environmentDraft.value) {
@@ -362,11 +408,13 @@ export function NewProjectFlow() {
   }
 
   function importEnvironmentVariables(imported: EnvironmentImportEntry[]) {
-    setEnvironmentVariables((current) => mergeImportedEnvironmentVariables(
-      current,
-      imported,
-      () => nextEnvironmentVariableId.current++,
-    ));
+    setEnvironmentVariables((current) =>
+      mergeImportedEnvironmentVariables(
+        current,
+        imported,
+        () => nextEnvironmentVariableId.current++,
+      ),
+    );
     setEnvironmentOpen(true);
   }
 
@@ -385,14 +433,20 @@ export function NewProjectFlow() {
           >
             <header className="flex flex-col gap-3">
               <p className="text-sm font-medium text-primary">Create project</p>
-              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Bring your Eve agent online.</h1>
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                Bring your Eve agent online.
+              </h1>
               <p className="max-w-xl text-base text-muted-foreground">
-                Start from a GitHub or GitLab repository, or upload the same Zip source you use today.
+                Start from a GitHub or GitLab repository, or upload the same Zip source you use
+                today.
               </p>
             </header>
 
             {preflight && ["queued", "running"].includes(preflight.status) ? (
-              <section className="flex flex-col gap-5 rounded-xl border bg-card p-6" aria-live="polite">
+              <section
+                className="flex flex-col gap-5 rounded-xl border bg-card p-6"
+                aria-live="polite"
+              >
                 <div className="flex items-start gap-4">
                   <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <Spinner />
@@ -413,97 +467,136 @@ export function NewProjectFlow() {
                 <Alert variant="destructive">
                   <AlertCircleIcon />
                   <AlertTitle>Source validation failed</AlertTitle>
-                  <AlertDescription>{preflight.error ?? "This source is not a supported Eve project."}</AlertDescription>
+                  <AlertDescription>
+                    {preflight.error ?? "This source is not a supported Eve project."}
+                  </AlertDescription>
                 </Alert>
-                <Button type="button" variant="outline" onClick={() => { setPreflight(null); setCreateError(null); }}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setPreflight(null);
+                    setCreateError(null);
+                  }}
+                >
                   <ArrowLeftIcon data-icon="inline-start" />
                   Choose another source
                 </Button>
               </div>
             ) : (
-            <form onSubmit={continueFromSource} className="flex flex-col gap-8">
-              <FieldGroup>
-                <Field data-invalid={repositoryInvalid || undefined}>
-                  <FieldLabel htmlFor="git-url">Git repository URL</FieldLabel>
-                  <Input
-                    id="git-url"
-                    value={gitUrl}
-                    onChange={(event) => {
-                      setGitUrl(event.target.value);
-                      setSourceKind("git");
-                    }}
-                    aria-invalid={repositoryInvalid}
-                    placeholder="https://github.com/evelandhq/sample-office-assistant.git"
-                    autoComplete="url"
-                  />
-                  <FieldDescription>GitHub, GitLab, HTTPS, SSH, and SCP-style addresses are supported.</FieldDescription>
-                  {repositoryInvalid ? <FieldError>Enter a Git repository URL with a repository name.</FieldError> : null}
-                </Field>
-                {sourceKind === "git" ? (
-                  <Field data-invalid={patUnsupported || undefined}>
-                    <FieldLabel htmlFor="gitlab-pat">GitLab personal access token</FieldLabel>
+              <form onSubmit={continueFromSource} className="flex flex-col gap-8">
+                <FieldGroup>
+                  <Field data-invalid={repositoryInvalid || undefined}>
+                    <FieldLabel htmlFor="git-url">Git repository URL</FieldLabel>
                     <Input
-                      id="gitlab-pat"
-                      type="password"
-                      value={gitlabPat}
-                      onChange={(event) => setGitlabPat(event.target.value)}
-                      aria-invalid={patUnsupported}
-                      autoComplete="off"
-                      placeholder={savedCredential ? "Saved PAT will be reused" : "glpat-…"}
+                      id="git-url"
+                      value={gitUrl}
+                      onChange={(event) => {
+                        setGitUrl(event.target.value);
+                        setSourceKind("git");
+                      }}
+                      aria-invalid={repositoryInvalid}
+                      placeholder="https://github.com/evelandhq/sample-office-assistant.git"
+                      autoComplete="url"
                     />
                     <FieldDescription>
-                      {savedCredential && !gitlabPat
-                        ? `A saved PAT for ${savedCredential.host} will be reused during validation.`
-                        : "Optional for private GitLab repositories. Use read_repository scope."}
+                      GitHub, GitLab, HTTPS, SSH, and SCP-style addresses are supported.
                     </FieldDescription>
-                    {patUnsupported ? <FieldError>PAT authentication requires an HTTPS URL without embedded credentials.</FieldError> : null}
+                    {repositoryInvalid ? (
+                      <FieldError>Enter a Git repository URL with a repository name.</FieldError>
+                    ) : null}
                   </Field>
-                ) : null}
-              </FieldGroup>
-
-              <div className="flex items-center gap-4" aria-hidden="true">
-                <Separator className="flex-1" />
-                <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">or</span>
-                <Separator className="flex-1" />
-              </div>
-
-              <FieldGroup>
-                <Field data-invalid={sourceKind === "zip" && archive !== null && inferredZipName === null || undefined}>
-                  <FieldLabel htmlFor="source-archive">Upload a Zip archive</FieldLabel>
-                  <Input
-                    id="source-archive"
-                    type="file"
-                    accept=".zip,application/zip"
-                    onChange={(event) => {
-                      const nextArchive = event.target.files?.[0] ?? null;
-                      setArchive(nextArchive);
-                      if (nextArchive) setSourceKind("zip");
-                    }}
-                  />
-                  <FieldDescription>{archive ? `${archive.name} selected` : "Choose a source snapshot from your computer."}</FieldDescription>
-                  {sourceKind === "zip" && archive && !inferredZipName ? (
-                    <FieldError>The archive filename must contain at least one letter or number.</FieldError>
+                  {sourceKind === "git" ? (
+                    <Field data-invalid={patUnsupported || undefined}>
+                      <FieldLabel htmlFor="gitlab-pat">GitLab personal access token</FieldLabel>
+                      <Input
+                        id="gitlab-pat"
+                        type="password"
+                        value={gitlabPat}
+                        onChange={(event) => setGitlabPat(event.target.value)}
+                        aria-invalid={patUnsupported}
+                        autoComplete="off"
+                        placeholder={savedCredential ? "Saved PAT will be reused" : "glpat-…"}
+                      />
+                      <FieldDescription>
+                        {savedCredential && !gitlabPat
+                          ? `A saved PAT for ${savedCredential.host} will be reused during validation.`
+                          : "Optional for private GitLab repositories. Use read_repository scope."}
+                      </FieldDescription>
+                      {patUnsupported ? (
+                        <FieldError>
+                          PAT authentication requires an HTTPS URL without embedded credentials.
+                        </FieldError>
+                      ) : null}
+                    </Field>
                   ) : null}
-                </Field>
-              </FieldGroup>
+                </FieldGroup>
 
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full"
-                disabled={pending || (sourceKind === "git" ? !inferredGitName || repositoryInvalid || patUnsupported : !archive || !inferredZipName)}
-              >
-                {pending ? <Spinner data-icon="inline-start" /> : <ArrowRightIcon data-icon="inline-start" />}
-                {pending ? "Submitting source…" : "Validate source"}
-              </Button>
-              {createError ? (
-                <Alert variant="destructive">
-                  <AlertCircleIcon />
-                  <AlertTitle>Source could not be submitted</AlertTitle>
-                  <AlertDescription>{createError}</AlertDescription>
-                </Alert>
-              ) : null}
-            </form>
+                <div className="flex items-center gap-4" aria-hidden="true">
+                  <Separator className="flex-1" />
+                  <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                    or
+                  </span>
+                  <Separator className="flex-1" />
+                </div>
+
+                <FieldGroup>
+                  <Field
+                    data-invalid={
+                      (sourceKind === "zip" && archive !== null && inferredZipName === null) ||
+                      undefined
+                    }
+                  >
+                    <FieldLabel htmlFor="source-archive">Upload a Zip archive</FieldLabel>
+                    <Input
+                      id="source-archive"
+                      type="file"
+                      accept=".zip,application/zip"
+                      onChange={(event) => {
+                        const nextArchive = event.target.files?.[0] ?? null;
+                        setArchive(nextArchive);
+                        if (nextArchive) setSourceKind("zip");
+                      }}
+                    />
+                    <FieldDescription>
+                      {archive
+                        ? `${archive.name} selected`
+                        : "Choose a source snapshot from your computer."}
+                    </FieldDescription>
+                    {sourceKind === "zip" && archive && !inferredZipName ? (
+                      <FieldError>
+                        The archive filename must contain at least one letter or number.
+                      </FieldError>
+                    ) : null}
+                  </Field>
+                </FieldGroup>
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full"
+                  disabled={
+                    pending ||
+                    (sourceKind === "git"
+                      ? !inferredGitName || repositoryInvalid || patUnsupported
+                      : !archive || !inferredZipName)
+                  }
+                >
+                  {pending ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : (
+                    <ArrowRightIcon data-icon="inline-start" />
+                  )}
+                  {pending ? "Submitting source…" : "Validate source"}
+                </Button>
+                {createError ? (
+                  <Alert variant="destructive">
+                    <AlertCircleIcon />
+                    <AlertTitle>Source could not be submitted</AlertTitle>
+                    <AlertDescription>{createError}</AlertDescription>
+                  </Alert>
+                ) : null}
+              </form>
             )}
           </motion.section>
         ) : null}
@@ -518,40 +611,71 @@ export function NewProjectFlow() {
             className="mx-auto flex w-full max-w-2xl flex-col gap-8 pt-12"
           >
             <header className="flex flex-col gap-3">
-              <Button type="button" variant="ghost" className="w-fit" onClick={() => { setPreflight(null); setStep("source"); }}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-fit"
+                onClick={() => {
+                  setPreflight(null);
+                  setStep("source");
+                }}
+              >
                 <ArrowLeftIcon data-icon="inline-start" />
                 Change source
               </Button>
-              <h1 className="text-3xl font-semibold tracking-tight">Name and deploy your project.</h1>
-              <p className="text-muted-foreground">The name becomes the permanent public address for this agent.</p>
+              <h1 className="text-3xl font-semibold tracking-tight">
+                Name and deploy your project.
+              </h1>
+              <p className="text-muted-foreground">
+                The name becomes the permanent public address for this agent.
+              </p>
             </header>
 
-            <SourceSummary sourceKind={sourceKind} gitUrl={gitUrl} archive={archive} preflight={preflight} />
+            <SourceSummary
+              sourceKind={sourceKind}
+              gitUrl={gitUrl}
+              archive={archive}
+              preflight={preflight}
+            />
 
             <form onSubmit={deploy} className="flex flex-col gap-8">
               <FieldGroup>
-                <Field data-invalid={nameInvalid || availability === "unavailable" || availability === "error" || undefined}>
+                <Field
+                  data-invalid={
+                    nameInvalid ||
+                    availability === "unavailable" ||
+                    availability === "error" ||
+                    undefined
+                  }
+                >
                   <FieldLabel htmlFor="project-name">Project name</FieldLabel>
                   <Input
                     id="project-name"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
-                    aria-invalid={nameInvalid || availability === "unavailable" || availability === "error"}
+                    aria-invalid={
+                      nameInvalid || availability === "unavailable" || availability === "error"
+                    }
                     maxLength={PROJECT_SLUG_MAX_LENGTH}
                     autoComplete="off"
                     required
                   />
                   {!nameInvalid && availability === "checking" ? (
-                    <FieldDescription className="flex items-center gap-2"><Spinner /> Checking availability…</FieldDescription>
+                    <FieldDescription className="flex items-center gap-2">
+                      <Spinner /> Checking availability…
+                    </FieldDescription>
                   ) : null}
                   {!nameInvalid && availability === "available" ? (
-                    <FieldDescription className="flex items-center gap-2"><CheckIcon /> This name is available.</FieldDescription>
+                    <FieldDescription className="flex items-center gap-2">
+                      <CheckIcon /> This name is available.
+                    </FieldDescription>
                   ) : null}
                   {nameInvalid ? <FieldError>{invalidNameMessage}</FieldError> : null}
-                  {availability === "unavailable" ? <FieldError>This project name is already in use.</FieldError> : null}
+                  {availability === "unavailable" ? (
+                    <FieldError>This project name is already in use.</FieldError>
+                  ) : null}
                   {availability === "error" ? <FieldError>{availabilityError}</FieldError> : null}
                 </Field>
-
               </FieldGroup>
 
               <Collapsible
@@ -559,7 +683,10 @@ export function NewProjectFlow() {
                 onOpenChange={setEnvironmentVariablesOpen}
                 className="overflow-hidden rounded-xl border bg-card"
               >
-                <CollapsibleTrigger type="button" className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50">
+                <CollapsibleTrigger
+                  type="button"
+                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
                   <span className="flex min-w-0 flex-col gap-1">
                     <span className="font-medium">Environment variables</span>
                     <span className="text-sm font-normal text-muted-foreground">
@@ -568,16 +695,22 @@ export function NewProjectFlow() {
                   </span>
                   <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
                     {environmentValidation.variables.length > 0 ? (
-                      <span className="text-xs tabular-nums">{environmentValidation.variables.length} added</span>
+                      <span className="text-xs tabular-nums">
+                        {environmentValidation.variables.length} added
+                      </span>
                     ) : null}
-                    <ChevronDownIcon className={cn("size-4 transition-transform", environmentOpen && "rotate-180")} />
+                    <ChevronDownIcon
+                      className={cn("size-4 transition-transform", environmentOpen && "rotate-180")}
+                    />
                   </span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="border-t outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-top-2">
                   <div className="flex flex-col gap-5 p-5">
                     <div className="flex items-start justify-between gap-4">
                       <p className="text-sm text-muted-foreground">
-                        Add provider keys such as <code className="font-mono text-foreground">OPENAI_API_KEY</code>. Values are encrypted before they are stored.
+                        Add provider keys such as{" "}
+                        <code className="font-mono text-foreground">OPENAI_API_KEY</code>. Values
+                        are encrypted before they are stored.
                       </p>
                       <div className="flex shrink-0 items-center gap-2">
                         <Button
@@ -608,7 +741,9 @@ export function NewProjectFlow() {
                             <TableHead className="w-28">Type</TableHead>
                             <TableHead>Name</TableHead>
                             <TableHead>Value</TableHead>
-                            <TableHead className="w-24"><span className="sr-only">Actions</span></TableHead>
+                            <TableHead className="w-24">
+                              <span className="sr-only">Actions</span>
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -617,53 +752,68 @@ export function NewProjectFlow() {
                               <TableCell colSpan={4}>
                                 <Empty className="border-0 py-9">
                                   <EmptyHeader>
-                                    <EmptyMedia variant="icon"><LockKeyholeIcon /></EmptyMedia>
+                                    <EmptyMedia variant="icon">
+                                      <LockKeyholeIcon />
+                                    </EmptyMedia>
                                     <EmptyTitle>No environment variables</EmptyTitle>
-                                    <EmptyDescription>Add only the secrets or runtime configuration this project needs.</EmptyDescription>
+                                    <EmptyDescription>
+                                      Add only the secrets or runtime configuration this project
+                                      needs.
+                                    </EmptyDescription>
                                   </EmptyHeader>
                                 </Empty>
                               </TableCell>
                             </TableRow>
-                          ) : environmentVariables.map((variable) => (
-                            <TableRow key={variable.id}>
-                              <TableCell><Badge variant="secondary">{variable.kind === "secret" ? "Secret" : "Variable"}</Badge></TableCell>
-                              <TableCell className="font-mono text-xs font-medium">{variable.key}</TableCell>
-                              <TableCell>
-                                <span className="inline-flex items-center gap-2 text-muted-foreground">
-                                  <LockKeyholeIcon className="size-4" />
-                                  ••••••••
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex justify-end gap-1">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label={`Edit entry ${variable.key}`}
-                                    title="Edit entry"
-                                    onClick={() => editEnvironmentVariable(variable)}
-                                  >
-                                    <PencilIcon />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label={`Remove entry ${variable.key}`}
-                                    title="Remove entry"
-                                    onClick={() => removeEnvironmentVariable(variable.id)}
-                                  >
-                                    <Trash2Icon />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          ) : (
+                            environmentVariables.map((variable) => (
+                              <TableRow key={variable.id}>
+                                <TableCell>
+                                  <Badge variant="secondary">
+                                    {variable.kind === "secret" ? "Secret" : "Variable"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-mono text-xs font-medium">
+                                  {variable.key}
+                                </TableCell>
+                                <TableCell>
+                                  <span className="inline-flex items-center gap-2 text-muted-foreground">
+                                    <LockKeyholeIcon className="size-4" />
+                                    ••••••••
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex justify-end gap-1">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      aria-label={`Edit entry ${variable.key}`}
+                                      title="Edit entry"
+                                      onClick={() => editEnvironmentVariable(variable)}
+                                    >
+                                      <PencilIcon />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      aria-label={`Remove entry ${variable.key}`}
+                                      title="Remove entry"
+                                      onClick={() => removeEnvironmentVariable(variable.id)}
+                                    >
+                                      <Trash2Icon />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
                         </TableBody>
                       </Table>
                     </div>
-                    <p className="text-xs text-muted-foreground">Available to preview and stable deployments.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Available to preview and stable deployments.
+                    </p>
                   </div>
                 </CollapsibleContent>
               </Collapsible>
@@ -677,39 +827,56 @@ export function NewProjectFlow() {
               >
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>{editingEnvironmentVariableId === null ? "Add entry" : "Edit entry"}</DialogTitle>
+                    <DialogTitle>
+                      {editingEnvironmentVariableId === null ? "Add entry" : "Edit entry"}
+                    </DialogTitle>
                     <DialogDescription>
-                      Values are held only for this setup flow and encrypted when the project is created.
+                      Values are held only for this setup flow and encrypted when the project is
+                      created.
                     </DialogDescription>
                   </DialogHeader>
                   {environmentDraft ? (
                     <form className="flex flex-col gap-6" onSubmit={submitEnvironmentVariable}>
                       <FieldGroup>
                         <Field>
-                          <FieldLabel htmlFor={`environment-kind-${environmentDraft.id}`}>Type</FieldLabel>
+                          <FieldLabel htmlFor={`environment-kind-${environmentDraft.id}`}>
+                            Type
+                          </FieldLabel>
                           <Select
                             items={environmentKindItems}
                             value={environmentDraft.kind}
                             onValueChange={(value) => {
-                              if (value === "variable" || value === "secret") updateEnvironmentDraft({ kind: value, visible: false });
+                              if (value === "variable" || value === "secret")
+                                updateEnvironmentDraft({ kind: value, visible: false });
                             }}
                           >
-                            <SelectTrigger id={`environment-kind-${environmentDraft.id}`} className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectTrigger
+                              id={`environment-kind-${environmentDraft.id}`}
+                              className="w-full"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
                             <SelectContent alignItemWithTrigger={false}>
                               <SelectGroup>
                                 {environmentKindItems.map((item) => (
-                                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                                  <SelectItem key={item.value} value={item.value}>
+                                    {item.label}
+                                  </SelectItem>
                                 ))}
                               </SelectGroup>
                             </SelectContent>
                           </Select>
                         </Field>
                         <Field data-invalid={Boolean(environmentDraftErrors.key) || undefined}>
-                          <FieldLabel htmlFor={`environment-key-${environmentDraft.id}`}>Name</FieldLabel>
+                          <FieldLabel htmlFor={`environment-key-${environmentDraft.id}`}>
+                            Name
+                          </FieldLabel>
                           <Input
                             id={`environment-key-${environmentDraft.id}`}
                             value={environmentDraft.key}
-                            onChange={(event) => updateEnvironmentDraft({ key: event.target.value.toUpperCase() })}
+                            onChange={(event) =>
+                              updateEnvironmentDraft({ key: event.target.value.toUpperCase() })
+                            }
                             aria-invalid={Boolean(environmentDraftErrors.key)}
                             autoCapitalize="characters"
                             autoComplete="off"
@@ -717,18 +884,30 @@ export function NewProjectFlow() {
                             className="font-mono"
                             placeholder="OPENAI_API_KEY"
                           />
-                          <FieldDescription>Use uppercase letters, numbers, and underscores.</FieldDescription>
-                          {environmentDraftErrors.key ? <FieldError>{environmentDraftErrors.key}</FieldError> : null}
+                          <FieldDescription>
+                            Use uppercase letters, numbers, and underscores.
+                          </FieldDescription>
+                          {environmentDraftErrors.key ? (
+                            <FieldError>{environmentDraftErrors.key}</FieldError>
+                          ) : null}
                         </Field>
 
                         <Field data-invalid={Boolean(environmentDraftErrors.value) || undefined}>
-                          <FieldLabel htmlFor={`environment-value-${environmentDraft.id}`}>Value</FieldLabel>
+                          <FieldLabel htmlFor={`environment-value-${environmentDraft.id}`}>
+                            Value
+                          </FieldLabel>
                           <div className="relative">
                             <Input
                               id={`environment-value-${environmentDraft.id}`}
-                              type={environmentDraft.kind === "variable" || environmentDraft.visible ? "text" : "password"}
+                              type={
+                                environmentDraft.kind === "variable" || environmentDraft.visible
+                                  ? "text"
+                                  : "password"
+                              }
                               value={environmentDraft.value}
-                              onChange={(event) => updateEnvironmentDraft({ value: event.target.value })}
+                              onChange={(event) =>
+                                updateEnvironmentDraft({ value: event.target.value })
+                              }
                               aria-invalid={Boolean(environmentDraftErrors.value)}
                               autoComplete="new-password"
                               className={environmentDraft.kind === "secret" ? "pr-10" : undefined}
@@ -740,17 +919,27 @@ export function NewProjectFlow() {
                                 size="icon-sm"
                                 className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
                                 aria-label={environmentDraft.visible ? "Hide value" : "Show value"}
-                                onClick={() => updateEnvironmentDraft({ visible: !environmentDraft.visible })}
+                                onClick={() =>
+                                  updateEnvironmentDraft({ visible: !environmentDraft.visible })
+                                }
                               >
                                 {environmentDraft.visible ? <EyeOffIcon /> : <EyeIcon />}
                               </Button>
                             ) : null}
                           </div>
-                          {environmentDraftErrors.value ? <FieldError>{environmentDraftErrors.value}</FieldError> : null}
+                          {environmentDraftErrors.value ? (
+                            <FieldError>{environmentDraftErrors.value}</FieldError>
+                          ) : null}
                         </Field>
                       </FieldGroup>
                       <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setEnvironmentDialogOpen(false)}>Cancel</Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setEnvironmentDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
                         <Button type="submit">
                           {editingEnvironmentVariableId === null ? "Add entry" : "Save changes"}
                         </Button>
@@ -779,9 +968,18 @@ export function NewProjectFlow() {
                 type="submit"
                 size="lg"
                 className="w-full"
-                disabled={pending || nameInvalid || availability !== "available" || environmentValidation.invalid}
+                disabled={
+                  pending ||
+                  nameInvalid ||
+                  availability !== "available" ||
+                  environmentValidation.invalid
+                }
               >
-                {pending ? <Spinner data-icon="inline-start" /> : <RocketIcon data-icon="inline-start" />}
+                {pending ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <RocketIcon data-icon="inline-start" />
+                )}
                 {pending ? "Starting deployment…" : "Deploy"}
               </Button>
             </form>
@@ -800,11 +998,18 @@ export function NewProjectFlow() {
               <div className="flex flex-col gap-2">
                 <p className="text-sm font-medium text-primary">{project.name}</p>
                 <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                  {progress.phase === "ready" ? "Deployment complete." : progress.phase === "failed" ? "Deployment needs attention." : "Deploying your agent…"}
+                  {progress.phase === "ready"
+                    ? "Deployment complete."
+                    : progress.phase === "failed"
+                      ? "Deployment needs attention."
+                      : "Deploying your agent…"}
                 </h1>
                 <p className="text-muted-foreground">{progress.detail}</p>
               </div>
-              <Link href={`/projects/${project.id}`} className={buttonVariants({ variant: "outline" })}>
+              <Link
+                href={`/projects/${project.id}`}
+                className={buttonVariants({ variant: "outline" })}
+              >
                 View project
                 <ArrowRightIcon data-icon="inline-end" />
               </Link>
@@ -813,7 +1018,10 @@ export function NewProjectFlow() {
             <ol className="grid gap-3 sm:grid-cols-2">
               <DeploymentStage
                 label="Import source"
-                complete={Boolean(project.sourceRevisionId) || jobs.some((job) => job.type === "import_source" && job.status === "completed")}
+                complete={
+                  Boolean(project.sourceRevisionId) ||
+                  jobs.some((job) => job.type === "import_source" && job.status === "completed")
+                }
                 failed={jobs.some((job) => job.type === "import_source" && job.status === "failed")}
                 active={!project.sourceRevisionId && progress.phase === "importing"}
               />
@@ -831,17 +1039,21 @@ export function NewProjectFlow() {
                   <TerminalIcon className="size-4" />
                   Deployment logs
                 </div>
-                {progress.phase === "importing" || progress.phase === "deploying" ? <Spinner /> : <Badge variant="secondary">{progress.phase}</Badge>}
+                {progress.phase === "importing" || progress.phase === "deploying" ? (
+                  <Spinner />
+                ) : (
+                  <Badge variant="secondary">{progress.phase}</Badge>
+                )}
               </div>
-              <div ref={logRef} className="h-72 overflow-y-auto px-4 py-4 font-mono text-xs leading-6" aria-live="polite">
+              <div
+                ref={logRef}
+                className="h-72 overflow-y-auto px-4 py-4 font-mono text-xs leading-6"
+                aria-live="polite"
+              >
                 {logs.length === 0 ? <p className="text-background/65">{progress.detail}</p> : null}
                 {logs.map((log) => (
                   <p key={log.id} className="grid grid-cols-[5.5rem_1fr] gap-3">
-                    <DateTime
-                      className="text-background/45"
-                      value={log.createdAt}
-                      display="time"
-                    />
+                    <DateTime className="text-background/45" value={log.createdAt} display="time" />
                     <span className="whitespace-pre-wrap break-words">{log.line}</span>
                   </p>
                 ))}
@@ -852,7 +1064,9 @@ export function NewProjectFlow() {
               <Alert variant="destructive">
                 <AlertCircleIcon />
                 <AlertTitle>Deployment failed</AlertTitle>
-                <AlertDescription>{progress.detail} Your project and logs have been preserved.</AlertDescription>
+                <AlertDescription>
+                  {progress.detail} Your project and logs have been preserved.
+                </AlertDescription>
               </Alert>
             ) : null}
 
@@ -867,7 +1081,9 @@ export function NewProjectFlow() {
                     <CheckIcon className="size-5 text-primary" />
                     <h2 className="text-lg font-semibold">Your agent is live</h2>
                   </div>
-                  <p className="text-sm text-muted-foreground">Use this stable URL to connect to the deployed agent.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Use this stable URL to connect to the deployed agent.
+                  </p>
                 </div>
                 <div className="flex flex-col gap-3 rounded-lg bg-muted p-4 sm:flex-row sm:items-center sm:justify-between">
                   <code className="break-all text-sm">{endpoints.stable}</code>
@@ -880,11 +1096,18 @@ export function NewProjectFlow() {
                       window.setTimeout(() => setCopied(false), 1800);
                     }}
                   >
-                    {copied ? <CheckIcon data-icon="inline-start" /> : <CopyIcon data-icon="inline-start" />}
+                    {copied ? (
+                      <CheckIcon data-icon="inline-start" />
+                    ) : (
+                      <CopyIcon data-icon="inline-start" />
+                    )}
                     {copied ? "Copied" : "Copy URL"}
                   </Button>
                 </div>
-                <Link href={`/projects/${project.id}`} className={cn(buttonVariants(), "w-full sm:w-fit")}>
+                <Link
+                  href={`/projects/${project.id}`}
+                  className={cn(buttonVariants(), "w-full sm:w-fit")}
+                >
                   View project details
                   <ArrowRightIcon data-icon="inline-end" />
                 </Link>

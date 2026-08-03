@@ -35,7 +35,8 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: Geist, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  font-family:
+    Geist, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
   text-rendering: optimizeLegibility;
 }
 

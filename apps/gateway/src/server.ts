@@ -24,7 +24,9 @@ const affinitySecret = resolveSecretWithDevFallback(
   "eveland-dev-affinity-secret",
 );
 if (!affinitySecret)
-  throw new Error("EVELAND_GATEWAY_AFFINITY_SECRET is required unless NODE_ENV is explicitly development.");
+  throw new Error(
+    "EVELAND_GATEWAY_AFFINITY_SECRET is required unless NODE_ENV is explicitly development.",
+  );
 const internalServiceToken = resolveSecretWithDevFallback(
   process.env,
   process.env.EVELAND_GATEWAY_SERVICE_TOKEN,
@@ -59,7 +61,9 @@ platformObservability.emitLog({
 });
 
 async function shutdown() {
-  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
   await Promise.all([close(), platformObservability.shutdown()]);
 }
 

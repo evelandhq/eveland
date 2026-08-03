@@ -1,8 +1,8 @@
-import { describe, expect, test } from "vitest"
-import type { EveMessagePart } from "eve/react"
-import { groupPlaygroundParts } from "./playground-activity"
+import { describe, expect, test } from "vitest";
+import type { EveMessagePart } from "eve/react";
+import { groupPlaygroundParts } from "./playground-activity";
 
-const part = (value: EveMessagePart) => value
+const part = (value: EveMessagePart) => value;
 
 describe("groupPlaygroundParts", () => {
   test("groups consecutive reasoning and tools before visible text", () => {
@@ -17,7 +17,7 @@ describe("groupPlaygroundParts", () => {
         state: "output-available",
       }),
       part({ type: "text", text: "Here is what I found.", state: "done" }),
-    ]
+    ];
 
     expect(groupPlaygroundParts(parts, "complete")).toEqual([
       {
@@ -26,8 +26,8 @@ describe("groupPlaygroundParts", () => {
         parts: [parts[0], parts[1]],
       },
       { kind: "part", part: parts[2] },
-    ])
-  })
+    ]);
+  });
 
   test("uses text and files as activity boundaries while ignoring step markers", () => {
     const parts = [
@@ -42,16 +42,16 @@ describe("groupPlaygroundParts", () => {
         input: { path: "notes.txt" },
         state: "input-available",
       }),
-    ]
+    ];
 
     expect(groupPlaygroundParts(parts, "streaming").map((item) => item.kind)).toEqual([
       "part",
       "activity",
       "part",
       "activity",
-    ])
-    expect(groupPlaygroundParts(parts, "streaming").at(-1)).toMatchObject({ status: "running" })
-  })
+    ]);
+    expect(groupPlaygroundParts(parts, "streaming").at(-1)).toMatchObject({ status: "running" });
+  });
 
   test("keeps authorization requests open and surfaces terminal failures", () => {
     const authorization = part({
@@ -62,7 +62,7 @@ describe("groupPlaygroundParts", () => {
       description: "Connect GitHub",
       stepIndex: 0,
       turnId: "turn_0",
-    })
+    });
     const failedTool = part({
       type: "dynamic-tool",
       toolCallId: "call_3",
@@ -70,13 +70,13 @@ describe("groupPlaygroundParts", () => {
       input: {},
       errorText: "Deployment failed",
       state: "output-error",
-    })
+    });
 
     expect(groupPlaygroundParts([authorization], "streaming")).toMatchObject([
       { kind: "activity", status: "running" },
-    ])
+    ]);
     expect(groupPlaygroundParts([failedTool], "failed")).toMatchObject([
       { kind: "activity", status: "failed" },
-    ])
-  })
-})
+    ]);
+  });
+});

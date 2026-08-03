@@ -7,14 +7,14 @@ description: Review application ownership, dependency direction, data paths, and
 
 ## Application ownership
 
-| Component | Responsibility |
-| --- | --- |
-| Web | Authenticated team control panel |
-| API | Control-plane contract, persistence, auth, import handling, and Built-in OTLP ingest |
-| Gateway | Public Agent data plane, trusted routing, affinity, streaming, and private Playground path |
-| Worker | Import, build, systemd runtime control, schedules, recovery, and cleanup |
-| OpenTelemetry Collector | OTLP receive, domain filtering, retry queues, and destination fan-out |
-| Postgres | Control-plane state plus platform-owned durable workflow databases |
+| Component               | Responsibility                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| Web                     | Authenticated team control panel                                                           |
+| API                     | Control-plane contract, persistence, auth, import handling, and Built-in OTLP ingest       |
+| Gateway                 | Public Agent data plane, trusted routing, affinity, streaming, and private Playground path |
+| Worker                  | Import, build, systemd runtime control, schedules, recovery, and cleanup                   |
+| OpenTelemetry Collector | OTLP receive, domain filtering, retry queues, and destination fan-out                      |
+| Postgres                | Control-plane state plus platform-owned durable workflow databases                         |
 
 ## Dependency direction
 

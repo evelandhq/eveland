@@ -54,10 +54,9 @@ export function SourceFileTree({
       if (!nextPath || nextPath === selectedPathRef.current) return;
 
       selectedPathRef.current = nextPath;
-      router.replace(
-        `/projects/${projectId}/source?path=${encodeURIComponent(nextPath)}`,
-        { scroll: false },
-      );
+      router.replace(`/projects/${projectId}/source?path=${encodeURIComponent(nextPath)}`, {
+        scroll: false,
+      });
     },
     paths,
     search: true,
@@ -87,11 +86,5 @@ export function SourceFileTree({
     isSynchronizingRef.current = false;
   }, [model, selectedPath]);
 
-  return (
-    <FileTree
-      aria-label="Source files"
-      model={model}
-      style={treeStyles}
-    />
-  );
+  return <FileTree aria-label="Source files" model={model} style={treeStyles} />;
 }

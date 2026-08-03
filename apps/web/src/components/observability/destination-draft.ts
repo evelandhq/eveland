@@ -6,8 +6,7 @@ import {
   type TelemetryDomain,
 } from "@eveland/core/observability";
 
-export type ObservabilityDestination =
-  PublicExternalObservabilityDestination;
+export type ObservabilityDestination = PublicExternalObservabilityDestination;
 export type DestinationKind = ExternalDestinationConfigPatch["kind"];
 export type DestinationDraft = {
   kind: DestinationKind;
@@ -48,29 +47,18 @@ export function emptyDestinationDraft(): DestinationDraft {
 }
 
 export function destinationKindLabel(kind: DestinationKind): string {
-  return (
-    destinationKindItems.find((item) => item.value === kind)?.label ??
-    "Custom OTLP"
-  );
+  return destinationKindItems.find((item) => item.value === kind)?.label ?? "Custom OTLP";
 }
 
-export function draftFromDestination(
-  destination: ObservabilityDestination,
-): DestinationDraft {
+export function draftFromDestination(destination: ObservabilityDestination): DestinationDraft {
   const config = destination.config;
-  const signals: readonly ObservabilitySignal[] =
-    destination.supportedSignals;
+  const signals: readonly ObservabilitySignal[] = destination.supportedSignals;
   const domains: readonly TelemetryDomain[] =
     "domains" in destination ? destination.domains : TELEMETRY_DOMAINS;
   return {
     kind: destination.kind,
-    endpoint: config
-      ? config.kind === "langfuse"
-        ? config.baseUrl
-        : config.endpoint
-      : "",
-    authorizationType:
-      config?.kind === "elastic" ? config.authorization.type : "bearer",
+    endpoint: config ? (config.kind === "langfuse" ? config.baseUrl : config.endpoint) : "",
+    authorizationType: config?.kind === "elastic" ? config.authorization.type : "bearer",
     credential: "",
     publicKey: "",
     secretKey: "",
@@ -89,9 +77,7 @@ export function draftFromDestination(
   };
 }
 
-export function destinationPatch(
-  draft: DestinationDraft,
-): ExternalDestinationConfigPatch {
+export function destinationPatch(draft: DestinationDraft): ExternalDestinationConfigPatch {
   if (draft.kind === "elastic") {
     return {
       kind: "elastic",
@@ -111,14 +97,10 @@ export function destinationPatch(
     };
   }
 
-  const supportedSignals = (
-    Object.entries(draft.signals) as [ObservabilitySignal, boolean][]
-  )
+  const supportedSignals = (Object.entries(draft.signals) as [ObservabilitySignal, boolean][])
     .filter(([, enabled]) => enabled)
     .map(([signal]) => signal);
-  const domains = (
-    Object.entries(draft.domains) as [TelemetryDomain, boolean][]
-  )
+  const domains = (Object.entries(draft.domains) as [TelemetryDomain, boolean][])
     .filter(([, enabled]) => enabled)
     .map(([domain]) => domain);
   if (supportedSignals.length === 0 || domains.length === 0) {

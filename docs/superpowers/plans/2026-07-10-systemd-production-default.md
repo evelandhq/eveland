@@ -21,7 +21,7 @@ the prod overlay so the next reader doesn't re-open this.
 ## Global Constraints
 
 - Resolution precedence is exactly: explicit `EVELAND_RUNTIME` > `NODE_ENV ===
-  "production"` → `"systemd"` > `"docker"`. Unknown explicit values still throw the
+"production"` → `"systemd"` > `"docker"`. Unknown explicit values still throw the
   existing error.
 - No behavior change for: base compose dev (pins docker), prod overlay legacy
   profile (pins docker), the host worker env example (pins systemd), CI (no
@@ -33,6 +33,7 @@ the prod overlay so the next reader doesn't re-open this.
 ## Task 1: Default flip in select.ts + docs
 
 **Files:**
+
 - Edit `apps/worker/src/runtime/select.ts`
 - Edit `apps/worker/src/runtime/select.test.ts`
 - Edit `docs/deploy/linux.md`
@@ -82,6 +83,7 @@ inside deployed agent containers via the docker adapter's `--add-host ...:host-g
 ## Task 2: Review carry-overs — preflight traversal probe, restart guard test, doc wording
 
 **Files:**
+
 - Edit `apps/worker/src/runtime/preflight.ts`
 - Edit `apps/worker/src/runtime/preflight.test.ts`
 - Edit `apps/worker/src/jobs/process.test.ts`
@@ -102,6 +104,7 @@ still passes.
 job fails with the startProcess error.
 
 **linux.md wording fixes (from PR 3's re-review):**
+
 1. The build-env sentence that lists the allowlist as "PATH, HOME, and
    npm_config_cache": HOME is not in the execa allowlist — it is injected after the
    user switch (bwrap `--setenv` / `env` wrapper), and runuser also sets
@@ -114,11 +117,13 @@ job fails with the startProcess error.
 ## Task 3: VM proof of failure cleanup + reboot-recovery known limit
 
 **Files:**
+
 - Edit `apps/worker/src/integration/systemd-smoke.ts`
 - Edit `docs/deploy/linux.md`
 
 **systemd-smoke.ts:** after the existing deploy/restart/delete flow (which ends with
 the project deleted), add a failed-deploy proof in the script's established style:
+
 1. Create a second fixture project whose start command binds nothing (reuse the
    existing fixture-creation helper with a start script like `sh -lc "sleep 30"`,
    or the equivalent the script's fixture supports — the health check must time
@@ -133,7 +138,7 @@ the project deleted), add a failed-deploy proof in the script's established styl
    existing delete_project path is fine and re-proves it).
 
 **docs/deploy/linux.md — Known limits:** add the honest gap the roadmap's
-verification list surfaced: deployed agents run as systemd *transient* units, which
+verification list surfaced: deployed agents run as systemd _transient_ units, which
 do not survive a host reboot; the worker itself does (installed unit), but
 deployments must be redeployed/restarted after boot until a reconciliation loop
 exists (explicitly future work, PR 5+ territory). State it plainly rather than

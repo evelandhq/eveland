@@ -23,9 +23,7 @@ import {
 } from "./schema.js";
 import type { AgentAuthCredentialKey } from "./store-domains.js";
 
-type JobPayloadInput<Type extends JobType> = Parameters<
-  typeof decodeJobPayload<Type>
->[1];
+type JobPayloadInput<Type extends JobType> = Parameters<typeof decodeJobPayload<Type>>[1];
 
 export type PostgresStoreContext = {
   database: StoreDatabase;
@@ -73,9 +71,7 @@ export async function appendRuntimeLostEventTx(
     id: createId("evt"),
     sessionId: input.sessionId,
     ...(input.sessionNodeId ? { sessionNodeId: input.sessionNodeId } : {}),
-    ...(input.observedDeploymentId
-      ? { observedDeploymentId: input.observedDeploymentId }
-      : {}),
+    ...(input.observedDeploymentId ? { observedDeploymentId: input.observedDeploymentId } : {}),
     observedRuntimeInstanceId: input.runtimeInstanceId,
     type: "platform.runtime_lost",
     payload: { runtimeInstanceId: input.runtimeInstanceId, reason: input.reason },
@@ -164,10 +160,7 @@ export async function applySchedulerTargetTx(
     await tx
       .update(projectSchedules)
       .set({
-        nextRunAt:
-          version && scheduleRow.enabled
-            ? getNextRunAt(version.cron, input.now)
-            : null,
+        nextRunAt: version && scheduleRow.enabled ? getNextRunAt(version.cron, input.now) : null,
         updatedAt: input.now,
       })
       .where(eq(projectSchedules.id, scheduleRow.id));
@@ -186,21 +179,26 @@ export function agentAuthCredentialWhere(key: AgentAuthCredentialKey) {
   );
 }
 
-export function normalizeSharedAgentEnvironmentEntries(value: unknown): SharedAgentEnvironmentRecord["entries"] {
+export function normalizeSharedAgentEnvironmentEntries(
+  value: unknown,
+): SharedAgentEnvironmentRecord["entries"] {
   if (!Array.isArray(value)) throw new Error("Invalid shared Agent environment entries.");
-  return value.map((entry) => {
-    if (!entry || typeof entry !== "object") throw new Error("Invalid shared Agent environment entry.");
-    const candidate = entry as Record<string, unknown>;
-    if (
-      typeof candidate.key !== "string"
-      || (candidate.kind !== "variable" && candidate.kind !== "secret")
-      || typeof candidate.encryptedValue !== "string"
-    ) {
-      throw new Error("Invalid shared Agent environment entry.");
-    }
-    const kind = candidate.kind as "variable" | "secret";
-    return { key: candidate.key, kind, encryptedValue: candidate.encryptedValue };
-  }).sort((left, right) => left.key.localeCompare(right.key));
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object")
+        throw new Error("Invalid shared Agent environment entry.");
+      const candidate = entry as Record<string, unknown>;
+      if (
+        typeof candidate.key !== "string" ||
+        (candidate.kind !== "variable" && candidate.kind !== "secret") ||
+        typeof candidate.encryptedValue !== "string"
+      ) {
+        throw new Error("Invalid shared Agent environment entry.");
+      }
+      const kind = candidate.kind as "variable" | "secret";
+      return { key: candidate.key, kind, encryptedValue: candidate.encryptedValue };
+    })
+    .sort((left, right) => left.key.localeCompare(right.key));
 }
 
 export function sharedAgentEnvironmentRowToRecord(
@@ -247,15 +245,28 @@ export function modelUsageRowToModelUsageEvent(
 }
 
 export function normalizeBaseDomain(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
-  if (!normalized || !/^[a-z0-9.-]+$/.test(normalized)) throw new Error(`Invalid Agent base domain: ${value}`);
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, "");
+  if (!normalized || !/^[a-z0-9.-]+$/.test(normalized))
+    throw new Error(`Invalid Agent base domain: ${value}`);
   return normalized;
 }
 
 export function isUniqueConstraint(error: unknown, constraint: string): boolean {
   if (typeof error !== "object" || error === null) return false;
-  const record = error as { code?: unknown; constraint_name?: unknown; constraint?: unknown; cause?: unknown };
-  if (record.code === "23505" && (record.constraint_name === constraint || record.constraint === constraint)) return true;
+  const record = error as {
+    code?: unknown;
+    constraint_name?: unknown;
+    constraint?: unknown;
+    cause?: unknown;
+  };
+  if (
+    record.code === "23505" &&
+    (record.constraint_name === constraint || record.constraint === constraint)
+  )
+    return true;
   return isUniqueConstraint(record.cause, constraint);
 }
 

@@ -4,11 +4,7 @@ import { CircleCheckIcon, InfoIcon, TriangleAlertIcon } from "lucide-react";
 import type { EveVersionInfo } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export type EveVersionStatusKind = "current" | "upgrade" | "unsupported";
@@ -96,7 +92,12 @@ export function EveVersionStatus({
         </Badge>
       )}
       {showMessage ? (
-        <span className={cn("text-xs", status === "current" ? "text-emerald-700 dark:text-emerald-400" : "text-destructive")}>
+        <span
+          className={cn(
+            "text-xs",
+            status === "current" ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+          )}
+        >
           {message}
         </span>
       ) : null}

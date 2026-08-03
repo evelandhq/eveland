@@ -51,8 +51,7 @@ export async function handleTriggerScheduleJob(
   const startedAtMs = Date.now();
   let failurePhase = "ScheduleRun validation";
   try {
-    if (!run)
-      throw new Error("Schedule trigger is missing a valid ScheduleRun.");
+    if (!run) throw new Error("Schedule trigger is missing a valid ScheduleRun.");
     const schedule = await store.getProjectSchedule(run.scheduleId);
     const deployment = await store.getDeployment(run.deploymentId);
     const release = await store.getRelease(run.releaseId);
@@ -74,14 +73,10 @@ export async function handleTriggerScheduleJob(
     );
     if (
       !versions.some(
-        (entry) =>
-          entry.version.id === run!.scheduleVersionId &&
-          entry.schedule.id === schedule.id,
+        (entry) => entry.version.id === run!.scheduleVersionId && entry.schedule.id === schedule.id,
       )
     ) {
-      throw new Error(
-        "ScheduleRun version does not belong to its pinned Release.",
-      );
+      throw new Error("ScheduleRun version does not belong to its pinned Release.");
     }
     const claimedRun = await store.claimScheduleRunActivation(run.id);
     if (!claimedRun) {
@@ -99,36 +94,27 @@ export async function handleTriggerScheduleJob(
     }
     run = claimedRun;
     const dispatchSecret =
-      options.schedulerDispatchSecret ??
-      resolveSchedulerDispatchSecret(process.env);
+      options.schedulerDispatchSecret ?? resolveSchedulerDispatchSecret(process.env);
     const runtimeSecret =
-      options.schedulerRuntimeSecret ??
-      resolveSchedulerRuntimeSecret(process.env);
+      options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(process.env);
     if (!dispatchSecret || !runtimeSecret)
       throw new Error("Scheduler dispatch credentials are not configured.");
     const revision = await store.getSourceRevision(release.sourceRevisionId);
-    if (!revision)
-      throw new Error("ScheduleRun Release has no SourceRevision.");
-    const recoverableSource = await resolveRecoverableRuntimeSource(
-      store,
-      revision,
-    );
+    if (!revision) throw new Error("ScheduleRun Release has no SourceRevision.");
+    const recoverableSource = await resolveRecoverableRuntimeSource(store, revision);
     const runtime =
       options.runtime ??
-      (options.runtimeForKind ?? createRuntimeAdapterForKind)(
-        deployment.runtimeKind,
-      );
-    const launchPrerequisites =
-      await resolveDeploymentLaunchPrerequisites({
-        store,
-        workerEnv: process.env,
-        projectId: job.projectId,
-        deploymentId: deployment.id,
-        runtimeKind: runtime.name,
-        sourcePath: revision.sourcePath,
-        ...recoverableSource,
-        options,
-      });
+      (options.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
+    const launchPrerequisites = await resolveDeploymentLaunchPrerequisites({
+      store,
+      workerEnv: process.env,
+      projectId: job.projectId,
+      deploymentId: deployment.id,
+      runtimeKind: runtime.name,
+      sourcePath: revision.sourcePath,
+      ...recoverableSource,
+      options,
+    });
     await ensureDeploymentLaunchSandbox(launchPrerequisites);
     const maxRuntimeMs = scheduleRunMaxRuntimeMs(options);
     failurePhase = "Deployment activation";
@@ -160,9 +146,7 @@ export async function handleTriggerScheduleJob(
       },
       {
         waitForHealth: options.waitForDeployment,
-        readyTimeoutMs: Number(
-          process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000,
-        ),
+        readyTimeoutMs: Number(process.env.EVELAND_HEALTH_TIMEOUT_MS ?? 15_000),
         leaseTtlMs: maxRuntimeMs,
       },
     );
@@ -184,9 +168,7 @@ export async function handleTriggerScheduleJob(
       },
       dispatchSecret,
     );
-    const result = await (
-      options.dispatchSchedule ?? dispatchScheduleToRuntime
-    )({
+    const result = await (options.dispatchSchedule ?? dispatchScheduleToRuntime)({
       scheduleRunId: run.id,
       scheduleKey: schedule.key,
       deploymentId: deployment.id,
@@ -200,21 +182,15 @@ export async function handleTriggerScheduleJob(
         status: "succeeded",
         eveSessionIds: result.sessionIds,
       });
-    } else if (
-      !reported ||
-      !["running", "succeeded", "failed"].includes(reported.status)
-    ) {
-      throw new Error(
-        "Scheduler Channel returned without a durable dispatch result.",
-      );
+    } else if (!reported || !["running", "succeeded", "failed"].includes(reported.status)) {
+      throw new Error("Scheduler Channel returned without a durable dispatch result.");
     }
     if (reported?.status === "running") {
       const renewed = await store.renewActivationLease(
         activationLeaseId,
         new Date(Date.now() + maxRuntimeMs),
       );
-      if (!renewed)
-        throw new Error("ScheduleRun activation lease could not be extended.");
+      if (!renewed) throw new Error("ScheduleRun activation lease could not be extended.");
       activationLeaseHandedOff = true;
     }
     await store.appendLog({
@@ -240,13 +216,10 @@ export async function handleTriggerScheduleJob(
         }
       } else if (
         current &&
-        !["succeeded", "failed", "dispatch_unknown", "skipped"].includes(
-          current.status,
-        )
+        !["succeeded", "failed", "dispatch_unknown", "skipped"].includes(current.status)
       ) {
         await store.completeScheduleRun(run.id, {
-          status:
-            current.status === "dispatching" ? "dispatch_unknown" : "failed",
+          status: current.status === "dispatching" ? "dispatch_unknown" : "failed",
           error: message,
         });
       }
@@ -270,9 +243,7 @@ function scheduleRunMaxRuntimeMs(options: ProcessJobOptions): number {
     options.scheduleRunMaxRuntimeMs ??
     Number(process.env.EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS ?? 86_400_000);
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(
-      "EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS must be a positive integer.",
-    );
+    throw new Error("EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS must be a positive integer.");
   }
   return value;
 }

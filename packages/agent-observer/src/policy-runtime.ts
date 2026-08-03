@@ -8,10 +8,7 @@ import {
 } from "./runtime.js";
 
 export type PolicyManagedAgentTelemetry = {
-  capture(
-    event: AgentTelemetryEvent,
-    context: AgentTelemetryHookContext,
-  ): Promise<void>;
+  capture(event: AgentTelemetryEvent, context: AgentTelemetryHookContext): Promise<void>;
   forceFlush(): Promise<void>;
   shutdown(): Promise<void>;
 };
@@ -21,16 +18,11 @@ export function createPolicyManagedAgentTelemetry(input: {
   refreshIntervalMillis?: number;
   operationTimeoutMillis?: number;
   now?: () => number;
-  createRuntime?: (input: {
-    policy: RuntimeAgentPolicy;
-  }) => PrivateAgentTelemetryRuntime;
+  createRuntime?: (input: { policy: RuntimeAgentPolicy }) => PrivateAgentTelemetryRuntime;
   warn?: (error: unknown) => void;
 }): PolicyManagedAgentTelemetry {
   const refreshIntervalMillis = input.refreshIntervalMillis ?? 5_000;
-  const operationTimeoutMillis = Math.max(
-    1,
-    input.operationTimeoutMillis ?? 2_000,
-  );
+  const operationTimeoutMillis = Math.max(1, input.operationTimeoutMillis ?? 2_000);
   const now = input.now ?? Date.now;
   const createRuntime =
     input.createRuntime ??
@@ -78,9 +70,7 @@ export function createPolicyManagedAgentTelemetry(input: {
   async function reload(): Promise<void> {
     let policy: RuntimeAgentPolicy;
     try {
-      const parsed = agentRuntimePolicySchema.safeParse(
-        await input.loadPolicy(),
-      );
+      const parsed = agentRuntimePolicySchema.safeParse(await input.loadPolicy());
       if (!parsed.success) {
         throw new Error(
           `Invalid Agent observability policy: ${parsed.error.issues
@@ -123,11 +113,7 @@ export function createPolicyManagedAgentTelemetry(input: {
     if (stopped) return;
     try {
       if (active) {
-        await runBounded(
-          active.runtime.forceFlush(),
-          operationTimeoutMillis,
-          "forceFlush",
-        );
+        await runBounded(active.runtime.forceFlush(), operationTimeoutMillis, "forceFlush");
       }
     } catch (error) {
       input.warn?.(error);
@@ -142,34 +128,20 @@ export function createPolicyManagedAgentTelemetry(input: {
 
   return { capture, forceFlush, shutdown };
 
-  async function stopRuntime(
-    runtime: PrivateAgentTelemetryRuntime | undefined,
-  ): Promise<void> {
+  async function stopRuntime(runtime: PrivateAgentTelemetryRuntime | undefined): Promise<void> {
     if (!runtime) return;
     try {
-      await runBounded(
-        runtime.shutdown(),
-        operationTimeoutMillis,
-        "shutdown",
-      );
+      await runBounded(runtime.shutdown(), operationTimeoutMillis, "shutdown");
     } catch (error) {
       input.warn?.(error);
     }
   }
 }
 
-function runBounded<T>(
-  operation: Promise<T>,
-  timeoutMillis: number,
-  name: string,
-): Promise<T> {
+function runBounded<T>(operation: Promise<T>, timeoutMillis: number, name: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(
-        new Error(
-          `Eveland private Provider ${name} exceeded ${timeoutMillis} ms.`,
-        ),
-      );
+      reject(new Error(`Eveland private Provider ${name} exceeded ${timeoutMillis} ms.`));
     }, timeoutMillis);
     timer.unref?.();
     void operation.then(

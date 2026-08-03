@@ -117,31 +117,20 @@ export function createObservabilityPolicyService(input: {
     destination: ExternalObservabilityDestination,
   ): ExternalDestinationConfig | null {
     try {
-      return decryptDestinationConfig(
-        destination.encryptedConfig,
-        appSecretKey,
-      );
+      return decryptDestinationConfig(destination.encryptedConfig, appSecretKey);
     } catch {
       return null;
     }
   }
 
   async function getPublicPolicy(policy?: ObservabilityPolicy) {
-    const resolvedPolicy =
-      policy ?? (await store.getObservabilityPolicy(DEFAULT_TEAM_ID));
-    const destinationHealth =
-      await store.listExternalObservabilityDestinationHealth();
-    const destinationConfigs = new Map<
-      string,
-      PublicExternalDestinationConfig
-    >();
+    const resolvedPolicy = policy ?? (await store.getObservabilityPolicy(DEFAULT_TEAM_ID));
+    const destinationHealth = await store.listExternalObservabilityDestinationHealth();
+    const destinationConfigs = new Map<string, PublicExternalDestinationConfig>();
     for (const destination of resolvedPolicy.externalDestinations) {
       const config = readDestinationConfig(destination);
       if (config) {
-        destinationConfigs.set(
-          destination.id,
-          toPublicExternalDestinationConfig(config),
-        );
+        destinationConfigs.set(destination.id, toPublicExternalDestinationConfig(config));
       }
     }
     return toPublicObservabilityPolicy(resolvedPolicy, {

@@ -62,13 +62,15 @@ describe("instance health diagnostics", () => {
     });
 
     expect(report.status).toBe("healthy");
-    expect(report.components).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: "api", status: "healthy" }),
-      expect.objectContaining({ key: "postgres", status: "healthy" }),
-      expect.objectContaining({ key: "gateway", status: "healthy" }),
-      expect.objectContaining({ key: "worker", status: "healthy" }),
-      expect.objectContaining({ key: "collector", status: "healthy" }),
-    ]));
+    expect(report.components).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "api", status: "healthy" }),
+        expect.objectContaining({ key: "postgres", status: "healthy" }),
+        expect.objectContaining({ key: "gateway", status: "healthy" }),
+        expect.objectContaining({ key: "worker", status: "healthy" }),
+        expect.objectContaining({ key: "collector", status: "healthy" }),
+      ]),
+    );
     expect(report.capacity.overall).toBe("healthy");
     expect(report.metrics).toHaveLength(1);
     expect(report.workload.queuedJobs).toBe(0);
@@ -96,10 +98,12 @@ describe("instance health diagnostics", () => {
     });
 
     expect(report.status).toBe("unavailable");
-    expect(report.components).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: "gateway", status: "unavailable" }),
-      expect.objectContaining({ key: "worker", status: "unavailable" }),
-    ]));
+    expect(report.components).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "gateway", status: "unavailable" }),
+        expect.objectContaining({ key: "worker", status: "unavailable" }),
+      ]),
+    );
   });
 
   test("marks the Collector unavailable when no batch has arrived recently", async () => {
@@ -151,5 +155,4 @@ describe("instance health diagnostics", () => {
       }),
     );
   });
-
 });

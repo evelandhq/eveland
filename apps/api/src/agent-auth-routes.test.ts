@@ -25,7 +25,11 @@ describe("Agent Auth control-plane routes", () => {
         expect.objectContaining({ method: "basic", credentialScope: "connection" }),
         expect.objectContaining({ method: "bearer", credentialScope: "connection" }),
         expect.objectContaining({ method: "vercel-oidc", credentialScope: "connection" }),
-        expect.objectContaining({ method: "oidc", credentialScope: "principal", interactive: true }),
+        expect.objectContaining({
+          method: "oidc",
+          credentialScope: "principal",
+          interactive: true,
+        }),
         expect.objectContaining({ method: "headers", credentialScope: "connection" }),
       ],
     });
@@ -47,7 +51,7 @@ describe("Agent Auth control-plane routes", () => {
     const project = await store.createProject({ name: "bearer-control-plane", importKind: "zip" });
     const app = createApp(store, { appSecretKey });
     const initial = await app.request(`/projects/${project.id}/playground/connection`);
-    const initialBody = await initial.json() as { connection: { id: string } };
+    const initialBody = (await initial.json()) as { connection: { id: string } };
 
     const configured = await app.request(`/agent-connections/${initialBody.connection.id}`, {
       method: "PUT",
@@ -79,7 +83,9 @@ describe("Agent Auth control-plane routes", () => {
     await expect(stale.json()).resolves.toEqual({
       error: "Playground authentication was updated by another request",
     });
-    expect((await store.getProjectAgentConnection(project.id))?.configEncrypted).not.toContain("agent-token-must-stay-secret");
+    expect((await store.getProjectAgentConnection(project.id))?.configEncrypted).not.toContain(
+      "agent-token-must-stay-secret",
+    );
   });
 
   test("rejects an unsafe custom credential header without changing the Connection", async () => {
@@ -87,7 +93,7 @@ describe("Agent Auth control-plane routes", () => {
     const project = await store.createProject({ name: "unsafe-header", importKind: "zip" });
     const app = createApp(store, { appSecretKey });
     const initial = await app.request(`/projects/${project.id}/playground/connection`);
-    const body = await initial.json() as { connection: { id: string } };
+    const body = (await initial.json()) as { connection: { id: string } };
 
     const response = await app.request(`/agent-connections/${body.connection.id}`, {
       method: "PUT",
@@ -100,7 +106,10 @@ describe("Agent Auth control-plane routes", () => {
     });
 
     expect(response.status).toBe(422);
-    await expect(store.getProjectAgentConnection(project.id)).resolves.toMatchObject({ method: "local-dev", securityRevision: 1 });
+    await expect(store.getProjectAgentConnection(project.id)).resolves.toMatchObject({
+      method: "local-dev",
+      securityRevision: 1,
+    });
   });
 
   test("resolves the current credential for every canonical Playground request", async () => {
@@ -137,11 +146,15 @@ describe("Agent Auth control-plane routes", () => {
       },
     });
     const initial = await app.request(`/projects/${project.id}/playground/connection`);
-    const body = await initial.json() as { connection: { id: string } };
+    const body = (await initial.json()) as { connection: { id: string } };
     await app.request(`/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ expectedSecurityRevision: 1, method: "bearer", config: { token: "protected-token" } }),
+      body: JSON.stringify({
+        expectedSecurityRevision: 1,
+        method: "bearer",
+        config: { token: "protected-token" },
+      }),
     });
 
     const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
@@ -154,35 +167,52 @@ describe("Agent Auth control-plane routes", () => {
     await app.request(`/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ expectedSecurityRevision: 2, method: "bearer", config: { token: "continued-token" } }),
+      body: JSON.stringify({
+        expectedSecurityRevision: 2,
+        method: "bearer",
+        config: { token: "continued-token" },
+      }),
     });
-    const continuation = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_protected`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: "continue" }),
-    });
+    const continuation = await app.request(
+      `/projects/${project.id}/playground/eve/v1/session/eve_protected`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "continue" }),
+      },
+    );
     expect(continuation.status).toBe(202);
     await app.request(`/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ expectedSecurityRevision: 3, method: "bearer", config: { token: "stream-token" } }),
+      body: JSON.stringify({
+        expectedSecurityRevision: 3,
+        method: "bearer",
+        config: { token: "stream-token" },
+      }),
     });
-    const stream = await app.request(`/projects/${project.id}/playground/eve/v1/session/eve_protected/stream`);
+    const stream = await app.request(
+      `/projects/${project.id}/playground/eve/v1/session/eve_protected/stream`,
+    );
     expect(stream.status).toBe(200);
 
-    expect(seen.map((value) => decodeAgentAuthEnvelope(value))).toEqual([{
-      version: 1,
-      authority: "canonical",
-      headers: [["authorization", "Bearer protected-token"]],
-    }, {
-      version: 1,
-      authority: "canonical",
-      headers: [["authorization", "Bearer continued-token"]],
-    }, {
-      version: 1,
-      authority: "canonical",
-      headers: [["authorization", "Bearer stream-token"]],
-    }]);
+    expect(seen.map((value) => decodeAgentAuthEnvelope(value))).toEqual([
+      {
+        version: 1,
+        authority: "canonical",
+        headers: [["authorization", "Bearer protected-token"]],
+      },
+      {
+        version: 1,
+        authority: "canonical",
+        headers: [["authorization", "Bearer continued-token"]],
+      },
+      {
+        version: 1,
+        authority: "canonical",
+        headers: [["authorization", "Bearer stream-token"]],
+      },
+    ]);
   });
 
   test("holds the first turn until the OIDC callback and then sends it once", async () => {
@@ -193,7 +223,10 @@ describe("Agent Auth control-plane routes", () => {
       appSecretKey,
       webOrigin: "https://eveland.example",
       oidcProtocol: mockOidcProtocol(),
-      oidcVerifyAccessToken: async () => ({ issuer: "https://idp.example", subject: "agent-subject" }),
+      oidcVerifyAccessToken: async () => ({
+        issuer: "https://idp.example",
+        subject: "agent-subject",
+      }),
       playgroundProxy: async (input) => {
         seen.push(input.agentAuthEnvelope ?? "");
         return Response.json(
@@ -218,10 +251,12 @@ describe("Agent Auth control-plane routes", () => {
     const first = await sendInitialTurn(app, project.id);
     expect(first.status).toBe(401);
     expect(seen).toHaveLength(0);
-    const failure = await first.json() as { code: string; interaction: { url: string } };
+    const failure = (await first.json()) as { code: string; interaction: { url: string } };
     expect(failure.code).toBe("interaction_required");
     const interactionUrl = new URL(failure.interaction.url, "https://eveland.example");
-    const start = await app.request(`${interactionUrl.pathname.replace(/^\/api\/eveland/, "")}${interactionUrl.search}`);
+    const start = await app.request(
+      `${interactionUrl.pathname.replace(/^\/api\/eveland/, "")}${interactionUrl.search}`,
+    );
     expect(start.status).toBe(302);
     const authorization = new URL(start.headers.get("location")!);
     const state = authorization.searchParams.get("state");
@@ -230,10 +265,14 @@ describe("Agent Auth control-plane routes", () => {
     const callback = await app.request("/agent-auth/callback/oidc", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ search: `?code=authorization-code&state=${encodeURIComponent(state!)}` }),
+      body: JSON.stringify({
+        search: `?code=authorization-code&state=${encodeURIComponent(state!)}`,
+      }),
     });
     expect(callback.status).toBe(200);
-    await expect(callback.json()).resolves.toEqual({ returnPath: `/projects/${project.id}/playground` });
+    await expect(callback.json()).resolves.toEqual({
+      returnPath: `/projects/${project.id}/playground`,
+    });
 
     const resumed = await sendInitialTurn(app, project.id);
     expect(resumed.status).toBe(202);
@@ -266,12 +305,17 @@ describe("Agent Auth control-plane routes", () => {
           };
         },
       }),
-      oidcVerifyAccessToken: async () => ({ issuer: "https://idp.example", subject: "agent-subject" }),
+      oidcVerifyAccessToken: async () => ({
+        issuer: "https://idp.example",
+        subject: "agent-subject",
+      }),
       playgroundProxy: async (input) => {
         upstreamCalls += 1;
         const envelope = decodeAgentAuthEnvelope(input.agentAuthEnvelope ?? "");
-        if (responseMode === "forbidden") return Response.json({ error: "forbidden" }, { status: 403 });
-        if (responseMode === "unauthorized") return Response.json({ error: "unauthorized" }, { status: 401 });
+        if (responseMode === "forbidden")
+          return Response.json({ error: "forbidden" }, { status: 403 });
+        if (responseMode === "unauthorized")
+          return Response.json({ error: "unauthorized" }, { status: 401 });
         if (envelope.headers[0]?.[1] === "Bearer oidc-access-token") {
           return Response.json({ error: "expired" }, { status: 401 });
         }
@@ -331,7 +375,8 @@ describe("Agent Auth control-plane routes", () => {
       playgroundProxy: async (input) => {
         upstreamCalls += 1;
         const credential = decodeAgentAuthEnvelope(input.agentAuthEnvelope ?? "").headers[0]?.[1];
-        if (credential === "Bearer generation-1") return Response.json({ error: "expired" }, { status: 401 });
+        if (credential === "Bearer generation-1")
+          return Response.json({ error: "expired" }, { status: 401 });
         return Response.json(
           { sessionId: "eve_opaque", continuationToken: "continue_opaque" },
           { status: 202, headers: { "x-eve-session-id": "eve_opaque" } },
@@ -354,7 +399,9 @@ describe("Agent Auth control-plane routes", () => {
       ...opaqueProvider("future-interactive", true),
       interaction: {
         async start(input: { returnPath: string }) {
-          return { authorizationUrl: `https://identity.example/authorize?return=${encodeURIComponent(input.returnPath)}` };
+          return {
+            authorizationUrl: `https://identity.example/authorize?return=${encodeURIComponent(input.returnPath)}`,
+          };
         },
         async callback() {
           return { returnPath: `/projects/${project.id}/playground` };
@@ -376,12 +423,17 @@ describe("Agent Auth control-plane routes", () => {
     expect(start.status).toBe(302);
     expect(start.headers.get("location")).toContain("https://identity.example/authorize");
     expect(callback.status).toBe(200);
-    await expect(callback.json()).resolves.toEqual({ returnPath: `/projects/${project.id}/playground` });
+    await expect(callback.json()).resolves.toEqual({
+      returnPath: `/projects/${project.id}/playground`,
+    });
   });
 
   test("resolves the current Project Secret reference for every Agent request", async () => {
     const store = createTestStore();
-    const project = await store.createProject({ name: "referenced-bearer-playground", importKind: "zip" });
+    const project = await store.createProject({
+      name: "referenced-bearer-playground",
+      importKind: "zip",
+    });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
       kind: "zip",
@@ -400,7 +452,11 @@ describe("Agent Auth control-plane routes", () => {
       hostPort: 41992,
       runtimeKind: "docker",
     });
-    await store.upsertSecret(project.id, "PROJECT_TOKEN", JSON.stringify(encryptSecretValue("project-token-v1", appSecretKey)));
+    await store.upsertSecret(
+      project.id,
+      "PROJECT_TOKEN",
+      JSON.stringify(encryptSecretValue("project-token-v1", appSecretKey)),
+    );
     await store.upsertSecret(
       project.id,
       "MODEL_NAME",
@@ -408,12 +464,16 @@ describe("Agent Auth control-plane routes", () => {
       "variable",
     );
     const catalogApp = createApp(store, { appSecretKey });
-    const catalogResponse = await catalogApp.request(`/projects/${project.id}/agent-auth/secret-references`);
+    const catalogResponse = await catalogApp.request(
+      `/projects/${project.id}/agent-auth/secret-references`,
+    );
     expect(catalogResponse.status).toBe(200);
     const catalog = await catalogResponse.json();
-    expect(catalog).toEqual({ references: [
-      { kind: "project-secret", key: "PROJECT_TOKEN", label: "Project Secret · PROJECT_TOKEN" },
-    ] });
+    expect(catalog).toEqual({
+      references: [
+        { kind: "project-secret", key: "PROJECT_TOKEN", label: "Project Secret · PROJECT_TOKEN" },
+      ],
+    });
     expect(JSON.stringify(catalog)).not.toContain("project-token-v1");
     const seen: string[] = [];
     const app = createApp(store, {
@@ -421,13 +481,16 @@ describe("Agent Auth control-plane routes", () => {
       playgroundProxy: async (input) => {
         seen.push(input.agentAuthEnvelope ?? "");
         return Response.json(
-          { sessionId: `eve_reference_${seen.length}`, continuationToken: `continue_reference_${seen.length}` },
+          {
+            sessionId: `eve_reference_${seen.length}`,
+            continuationToken: `continue_reference_${seen.length}`,
+          },
           { status: 202, headers: { "x-eve-session-id": `eve_reference_${seen.length}` } },
         );
       },
     });
     const initial = await app.request(`/projects/${project.id}/playground/connection`);
-    const body = await initial.json() as { connection: { id: string } };
+    const body = (await initial.json()) as { connection: { id: string } };
 
     await app.request(`/agent-connections/${body.connection.id}`, {
       method: "PUT",
@@ -453,7 +516,11 @@ describe("Agent Auth control-plane routes", () => {
         config: { tokenRef: { kind: "project-secret", key: "PROJECT_TOKEN" } },
       }),
     });
-    await store.upsertSecret(project.id, "PROJECT_TOKEN", JSON.stringify(encryptSecretValue("project-token-v2", appSecretKey)));
+    await store.upsertSecret(
+      project.id,
+      "PROJECT_TOKEN",
+      JSON.stringify(encryptSecretValue("project-token-v2", appSecretKey)),
+    );
     await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -535,8 +602,12 @@ function mockOidcProtocol(overrides: Partial<OidcProtocol> = {}): OidcProtocol {
         subject: "id-token-subject",
       };
     },
-    async refresh() { throw new Error("refresh should not run"); },
-    async fetchUserInfo() { return { subject: "id-token-subject" }; },
+    async refresh() {
+      throw new Error("refresh should not run");
+    },
+    async fetchUserInfo() {
+      return { subject: "id-token-subject" };
+    },
     ...overrides,
   };
 }
@@ -582,9 +653,11 @@ async function authorizeOidc(app: ReturnType<typeof createApp>, projectId: strin
   });
   expect(configured.status).toBe(200);
   const first = await sendInitialTurn(app, projectId);
-  const failure = await first.json() as { interaction: { url: string } };
+  const failure = (await first.json()) as { interaction: { url: string } };
   const interaction = new URL(failure.interaction.url, "https://eveland.example");
-  const start = await app.request(`${interaction.pathname.replace(/^\/api\/eveland/, "")}${interaction.search}`);
+  const start = await app.request(
+    `${interaction.pathname.replace(/^\/api\/eveland/, "")}${interaction.search}`,
+  );
   const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
   const callback = await app.request("/agent-auth/callback/oidc", {
     method: "POST",
@@ -607,8 +680,12 @@ function opaqueProvider(method: string, interactive = false) {
     },
     credentialScope: "principal" as const,
     authority: "canonical" as const,
-    normalizeConfig() { return {}; },
-    redactConfig() { return {}; },
+    normalizeConfig() {
+      return {};
+    },
+    redactConfig() {
+      return {};
+    },
     async getCredential() {
       return {
         envelope: { version: 1 as const, authority: "canonical" as const, headers: [] },
@@ -618,7 +695,11 @@ function opaqueProvider(method: string, interactive = false) {
   };
 }
 
-async function configureConnection(app: ReturnType<typeof createApp>, projectId: string, method: string): Promise<string> {
+async function configureConnection(
+  app: ReturnType<typeof createApp>,
+  projectId: string,
+  method: string,
+): Promise<string> {
   const initial = await app.request(`/projects/${projectId}/playground/connection`);
   const connectionId = ((await initial.json()) as { connection: { id: string } }).connection.id;
   const configured = await app.request(`/agent-connections/${connectionId}`, {

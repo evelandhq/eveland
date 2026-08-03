@@ -46,9 +46,7 @@ describe("Agent telemetry network reconciliation", () => {
       .mockResolvedValueOnce({ failed: false, all: "" } as never)
       .mockResolvedValueOnce({ failed: false, all: "" } as never);
 
-    const reconcile = createAgentTelemetryNetworkReconciler(
-      "custom-otel-collector",
-    );
+    const reconcile = createAgentTelemetryNetworkReconciler("custom-otel-collector");
 
     await reconcile();
     await reconcile();
@@ -72,11 +70,7 @@ describe("Agent telemetry network reconciliation", () => {
         ],
         { all: true, reject: false },
       ],
-      [
-        "docker",
-        ["inspect", "--type", "container", processA],
-        { all: true, reject: false },
-      ],
+      ["docker", ["inspect", "--type", "container", processA], { all: true, reject: false }],
       [
         "docker",
         [
@@ -89,11 +83,7 @@ describe("Agent telemetry network reconciliation", () => {
         ],
         { all: true, reject: false },
       ],
-      [
-        "docker",
-        ["inspect", "--type", "container", processB],
-        { all: true, reject: false },
-      ],
+      ["docker", ["inspect", "--type", "container", processB], { all: true, reject: false }],
       [
         "docker",
         ["inspect", "--format", "{{.Id}}", "custom-otel-collector"],
@@ -116,11 +106,7 @@ describe("Agent telemetry network reconciliation", () => {
         ],
         { all: true, reject: false },
       ],
-      [
-        "docker",
-        ["inspect", "--type", "container", processA],
-        { all: true, reject: false },
-      ],
+      ["docker", ["inspect", "--type", "container", processA], { all: true, reject: false }],
       [
         "docker",
         [

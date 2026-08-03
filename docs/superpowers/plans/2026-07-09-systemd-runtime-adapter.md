@@ -26,11 +26,13 @@
 ### Task 1: Runtime adapter types + docker adapter reshape
 
 **Files:**
+
 - Create: `apps/worker/src/runtime/types.ts`
 - Modify: `apps/worker/src/runtime/docker.ts` (append; keep all existing exports)
 - Test: `apps/worker/src/docker.test.ts` (append)
 
 **Interfaces:**
+
 - Consumes: existing `dockerBuild`, `dockerRun`, `dockerStopAndRemove`, `writeGeneratedDockerfile` from `docker.ts`; `inferEveRuntimeCommand` from `@eveland/shared/runtime`.
 - Produces (later tasks rely on these exact shapes):
 
@@ -65,7 +67,10 @@ export type RuntimeAdapter = {
 };
 export function processSafeName(value: string): string;
 // docker.ts additions
-export function buildDockerStartCommand(context: RuntimeCommandContext, internalPort: number): string;
+export function buildDockerStartCommand(
+  context: RuntimeCommandContext,
+  internalPort: number,
+): string;
 export function createDockerAdapter(config: { internalPort: number }): RuntimeAdapter;
 ```
 
@@ -85,13 +90,19 @@ describe("processSafeName", () => {
 
 describe("buildDockerStartCommand", () => {
   test("bridges Ollama and executes eve start for eve projects", () => {
-    const command = buildDockerStartCommand({ isEveProject: true, hasLockfile: true, scripts: {} }, 3000);
+    const command = buildDockerStartCommand(
+      { isEveProject: true, hasLockfile: true, scripts: {} },
+      3000,
+    );
     expect(command).toContain("socat TCP-LISTEN:11434");
     expect(command).toContain("exec npx eve start --host 0.0.0.0 --port 3000");
   });
 
   test("falls back to the inferred runtime command for plain node projects", () => {
-    const command = buildDockerStartCommand({ isEveProject: false, hasLockfile: true, scripts: { start: "node server.js" } }, 3000);
+    const command = buildDockerStartCommand(
+      { isEveProject: false, hasLockfile: true, scripts: { start: "node server.js" } },
+      3000,
+    );
     expect(command).toBe("npm run start");
   });
 });
@@ -162,7 +173,15 @@ Add these imports at the top (keep existing ones):
 
 ```ts
 import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
-import { processSafeName, type ProcessStartInput, type ProcessStartResult, type ReleaseBuildInput, type ReleaseBuildResult, type RuntimeAdapter, type RuntimeCommandContext } from "./types.js";
+import {
+  processSafeName,
+  type ProcessStartInput,
+  type ProcessStartResult,
+  type ReleaseBuildInput,
+  type ReleaseBuildResult,
+  type RuntimeAdapter,
+  type RuntimeCommandContext,
+} from "./types.js";
 ```
 
 Append at the bottom:
@@ -170,9 +189,13 @@ Append at the bottom:
 ```ts
 // Bridges the container's loopback model port to the host so eve apps that call a
 // locally running Ollama (default http://127.0.0.1:11434) reach the host daemon.
-const ollamaBridgeCommand = "socat TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434 >/dev/null 2>&1 &";
+const ollamaBridgeCommand =
+  "socat TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434 >/dev/null 2>&1 &";
 
-export function buildDockerStartCommand(context: RuntimeCommandContext, internalPort: number): string {
+export function buildDockerStartCommand(
+  context: RuntimeCommandContext,
+  internalPort: number,
+): string {
   if (context.isEveProject) {
     // The image already ran `eve build`; serve the compiled output bound to all
     // interfaces so the published host port can reach it.
@@ -229,10 +252,12 @@ git commit -m "feat(worker): add release-shaped RuntimeAdapter interface and doc
 ### Task 2: HTTP health check
 
 **Files:**
+
 - Create: `apps/worker/src/runtime/health.ts`
 - Test: `apps/worker/src/runtime/health.test.ts`
 
 **Interfaces:**
+
 - Produces: `waitForHttpHealth(input: { host: string; port: number; timeoutMs: number; healthPath?: string }): Promise<void>` — resolves on **any** HTTP response (eve answers `/eve/v1/health`; plain node apps answer 404, which still proves the server is up); rejects after `timeoutMs` of connection failures. Task 3 wires it as the default `waitForDeployment`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -262,18 +287,26 @@ describe("waitForHttpHealth", () => {
     const port = await listen(server);
 
     try {
-      await expect(waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 2000 })).resolves.toBeUndefined();
+      await expect(
+        waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 2000 }),
+      ).resolves.toBeUndefined();
     } finally {
-      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
     }
   });
 
   test("rejects with the last connection error when nothing listens", async () => {
     const server = http.createServer();
     const port = await listen(server);
-    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
 
-    await expect(waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 700 })).rejects.toThrow(/did not respond within 700ms/);
+    await expect(waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 700 })).rejects.toThrow(
+      /did not respond within 700ms/,
+    );
   });
 });
 ```
@@ -336,10 +369,12 @@ git commit -m "feat(worker): HTTP health check against eve's /eve/v1/health"
 ### Task 3: process.ts consumes the release-shaped adapter
 
 **Files:**
+
 - Modify: `apps/worker/src/jobs/process.ts`
 - Test: `apps/worker/src/jobs/process.test.ts` (update the fake runtime in the three deploy tests)
 
 **Interfaces:**
+
 - Consumes: `RuntimeAdapter`, `RuntimeCommandContext`, `processSafeName` from `../runtime/types.js` (Task 1); `createDockerAdapter` from `../runtime/docker.js` (Task 1); `waitForHttpHealth` from `../runtime/health.js` (Task 2).
 - Produces: `ProcessJobOptions.runtime` is now typed `RuntimeAdapter`. Task 5's `createRuntimeAdapterFromEnv` replaces the inline default construction added here.
 
@@ -378,7 +413,11 @@ Replace the imports of docker functions and the local `RuntimeAdapter` type:
 ```ts
 import { createDockerAdapter } from "../runtime/docker.js";
 import { waitForHttpHealth } from "../runtime/health.js";
-import { processSafeName, type RuntimeAdapter, type RuntimeCommandContext } from "../runtime/types.js";
+import {
+  processSafeName,
+  type RuntimeAdapter,
+  type RuntimeCommandContext,
+} from "../runtime/types.js";
 import { access } from "node:fs/promises";
 ```
 
@@ -407,13 +446,26 @@ const currentDeployment = await store.getCurrentDeployment(job.projectId);
 const releaseId = createId("rel");
 const deploymentId = createId("dep");
 const processName = `eveland-${processSafeName(project.id)}-${processSafeName(deploymentId)}`;
-const buildDir = path.join(process.env.EVELAND_DATA_DIR ?? ".eveland-data", "builds", project.id, releaseId);
-const hostPort = currentDeployment?.hostPort ?? (await (options.allocateHostPort ?? allocateAvailableHostPort)());
-const secrets = await readRuntimeSecrets(store, job.projectId, options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey);
+const buildDir = path.join(
+  process.env.EVELAND_DATA_DIR ?? ".eveland-data",
+  "builds",
+  project.id,
+  releaseId,
+);
+const hostPort =
+  currentDeployment?.hostPort ?? (await (options.allocateHostPort ?? allocateAvailableHostPort)());
+const secrets = await readRuntimeSecrets(
+  store,
+  job.projectId,
+  options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey,
+);
 const secretValues = Object.values(secrets);
 const commandContext = await resolveRuntimeCommandContext(revision.sourcePath);
 
-await store.updateProjectState(job.projectId, { status: "build_pending", deploymentStatus: "building" });
+await store.updateProjectState(job.projectId, {
+  status: "build_pending",
+  deploymentStatus: "building",
+});
 await store.appendLog({
   projectId: job.projectId,
   type: "build",
@@ -504,22 +556,34 @@ git commit -m "refactor(worker): deploy jobs drive the release-shaped runtime ad
 ### Task 4: systemd pure builders
 
 **Files:**
+
 - Create: `apps/worker/src/runtime/systemd.ts`
 - Test: `apps/worker/src/runtime/systemd.test.ts`
 
 **Interfaces:**
+
 - Consumes: `RuntimeCommandContext` from `./types.js`; `inferEveRuntimeCommand` from `@eveland/shared/runtime`.
 - Produces (Task 5's adapter calls these):
 
 ```ts
 export type SystemdStartInput = {
-  unitName: string; releaseDir: string; envFilePath: string; port: number;
-  user: string; memoryMax: string; cpuQuota: string; command: string;
+  unitName: string;
+  releaseDir: string;
+  envFilePath: string;
+  port: number;
+  user: string;
+  memoryMax: string;
+  cpuQuota: string;
+  command: string;
 };
 export function buildSystemdRunArgs(input: SystemdStartInput): string[];
 export function buildSystemdStartCommand(context: RuntimeCommandContext, port: number): string;
 export function buildReleaseBuildCommand(context: RuntimeCommandContext): string;
-export function buildBwrapArgs(input: { releaseDir: string; npmCacheDir: string; command: string }): string[];
+export function buildBwrapArgs(input: {
+  releaseDir: string;
+  npmCacheDir: string;
+  command: string;
+}): string[];
 export function buildEnvFileContent(env: Record<string, string>): string;
 ```
 
@@ -529,7 +593,13 @@ Create `apps/worker/src/runtime/systemd.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
-import { buildBwrapArgs, buildEnvFileContent, buildReleaseBuildCommand, buildSystemdRunArgs, buildSystemdStartCommand } from "./systemd.js";
+import {
+  buildBwrapArgs,
+  buildEnvFileContent,
+  buildReleaseBuildCommand,
+  buildSystemdRunArgs,
+  buildSystemdStartCommand,
+} from "./systemd.js";
 
 describe("buildSystemdRunArgs", () => {
   test("creates a hardened transient unit bound to the release dir", () => {
@@ -570,23 +640,33 @@ describe("buildSystemdRunArgs", () => {
 
 describe("buildSystemdStartCommand", () => {
   test("serves eve projects on loopback without any bridge hack", () => {
-    const command = buildSystemdStartCommand({ isEveProject: true, hasLockfile: true, scripts: {} }, 41000);
+    const command = buildSystemdStartCommand(
+      { isEveProject: true, hasLockfile: true, scripts: {} },
+      41000,
+    );
     expect(command).toBe("npx eve start --host 127.0.0.1 --port 41000");
   });
 
   test("falls back to the inferred runtime command for plain node projects", () => {
-    const command = buildSystemdStartCommand({ isEveProject: false, hasLockfile: false, scripts: { start: "node server.js" } }, 41000);
+    const command = buildSystemdStartCommand(
+      { isEveProject: false, hasLockfile: false, scripts: { start: "node server.js" } },
+      41000,
+    );
     expect(command).toBe("npm run start");
   });
 });
 
 describe("buildReleaseBuildCommand", () => {
   test("uses npm ci and eve build when a lockfile and eve dependency exist", () => {
-    expect(buildReleaseBuildCommand({ isEveProject: true, hasLockfile: true, scripts: {} })).toBe("npm ci && npx eve build");
+    expect(buildReleaseBuildCommand({ isEveProject: true, hasLockfile: true, scripts: {} })).toBe(
+      "npm ci && npx eve build",
+    );
   });
 
   test("uses npm install without eve build for plain projects without a lockfile", () => {
-    expect(buildReleaseBuildCommand({ isEveProject: false, hasLockfile: false, scripts: {} })).toBe("npm install");
+    expect(buildReleaseBuildCommand({ isEveProject: false, hasLockfile: false, scripts: {} })).toBe(
+      "npm install",
+    );
   });
 });
 
@@ -599,16 +679,28 @@ describe("buildBwrapArgs", () => {
     });
 
     expect(args).toEqual([
-      "--ro-bind", "/", "/",
-      "--dev", "/dev",
-      "--proc", "/proc",
-      "--tmpfs", "/tmp",
-      "--bind", "/data/builds/proj_123/rel_789", "/data/builds/proj_123/rel_789",
-      "--bind", "/data/npm-cache", "/data/npm-cache",
+      "--ro-bind",
+      "/",
+      "/",
+      "--dev",
+      "/dev",
+      "--proc",
+      "/proc",
+      "--tmpfs",
+      "/tmp",
+      "--bind",
+      "/data/builds/proj_123/rel_789",
+      "/data/builds/proj_123/rel_789",
+      "--bind",
+      "/data/npm-cache",
+      "/data/npm-cache",
       "--unshare-pid",
       "--die-with-parent",
-      "--chdir", "/data/builds/proj_123/rel_789",
-      "sh", "-lc", "npm ci && npx eve build",
+      "--chdir",
+      "/data/builds/proj_123/rel_789",
+      "sh",
+      "-lc",
+      "npm ci && npx eve build",
     ]);
   });
 });
@@ -692,16 +784,28 @@ export type BwrapBuildInput = {
 
 export function buildBwrapArgs(input: BwrapBuildInput): string[] {
   return [
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    "--proc", "/proc",
-    "--tmpfs", "/tmp",
-    "--bind", input.releaseDir, input.releaseDir,
-    "--bind", input.npmCacheDir, input.npmCacheDir,
+    "--ro-bind",
+    "/",
+    "/",
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
+    "--tmpfs",
+    "/tmp",
+    "--bind",
+    input.releaseDir,
+    input.releaseDir,
+    "--bind",
+    input.npmCacheDir,
+    input.npmCacheDir,
     "--unshare-pid",
     "--die-with-parent",
-    "--chdir", input.releaseDir,
-    "sh", "-lc", input.command,
+    "--chdir",
+    input.releaseDir,
+    "sh",
+    "-lc",
+    input.command,
   ];
 }
 
@@ -710,7 +814,9 @@ export function buildEnvFileContent(env: Record<string, string>): string {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => {
       if (value.includes("\n")) {
-        throw new Error(`Secret ${key} contains a newline; systemd EnvironmentFile cannot represent it.`);
+        throw new Error(
+          `Secret ${key} contains a newline; systemd EnvironmentFile cannot represent it.`,
+        );
       }
       return `${key}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
     });
@@ -735,19 +841,25 @@ git commit -m "feat(worker): systemd-run, bwrap, and env-file builders"
 ### Task 5: systemd adapter + adapter selection from env
 
 **Files:**
+
 - Modify: `apps/worker/src/runtime/systemd.ts` (append `createSystemdAdapter`)
 - Create: `apps/worker/src/runtime/select.ts`
 - Test: `apps/worker/src/runtime/select.test.ts`
 - Modify: `apps/worker/src/jobs/process.ts` (default runtime uses `createRuntimeAdapterFromEnv`)
 
 **Interfaces:**
+
 - Consumes: everything Task 4 produces; `RuntimeAdapter` from `./types.js`; `createDockerAdapter` from `./docker.js`.
 - Produces:
 
 ```ts
 // systemd.ts
 export type SystemdAdapterConfig = {
-  dataDir: string; user: string; memoryMax: string; cpuQuota: string; buildSandbox: "bwrap" | "none";
+  dataDir: string;
+  user: string;
+  memoryMax: string;
+  cpuQuota: string;
+  buildSandbox: "bwrap" | "none";
 };
 export function createSystemdAdapter(config: SystemdAdapterConfig): RuntimeAdapter;
 // select.ts
@@ -772,7 +884,9 @@ describe("createRuntimeAdapterFromEnv", () => {
   });
 
   test("rejects unknown runtime kinds", () => {
-    expect(() => createRuntimeAdapterFromEnv({ EVELAND_RUNTIME: "kubernetes" })).toThrow(/Unknown EVELAND_RUNTIME/);
+    expect(() => createRuntimeAdapterFromEnv({ EVELAND_RUNTIME: "kubernetes" })).toThrow(
+      /Unknown EVELAND_RUNTIME/,
+    );
   });
 });
 ```
@@ -790,7 +904,13 @@ Add imports at the top:
 import { execa } from "execa";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ProcessStartInput, ProcessStartResult, ReleaseBuildInput, ReleaseBuildResult, RuntimeAdapter } from "./types.js";
+import type {
+  ProcessStartInput,
+  ProcessStartResult,
+  ReleaseBuildInput,
+  ReleaseBuildResult,
+  RuntimeAdapter,
+} from "./types.js";
 ```
 
 Append at the bottom:
@@ -923,12 +1043,14 @@ git commit -m "feat(worker): systemd adapter and EVELAND_RUNTIME selection"
 ### Task 6: Lima VM, integration smoke test, and deploy docs
 
 **Files:**
+
 - Create: `infra/lima/eveland.yaml`
 - Create: `infra/integration/run.sh`
 - Create: `apps/worker/src/integration/systemd-smoke.ts`
 - Create: `docs/deploy/linux.md`
 
 **Interfaces:**
+
 - Consumes: the full worker path (`processNextJob` with `EVELAND_RUNTIME=systemd`), `createMemoryStore` from `@eveland/api/store`.
 - Produces: a repeatable `bash infra/integration/run.sh` that provisions the VM and exits 0 printing `SMOKE OK`.
 
@@ -975,7 +1097,9 @@ import path from "node:path";
 import { processNextJob } from "../jobs/process.js";
 
 if (process.env.EVELAND_RUNTIME !== "systemd") {
-  throw new Error("Run with EVELAND_RUNTIME=systemd (this smoke test exercises the systemd adapter).");
+  throw new Error(
+    "Run with EVELAND_RUNTIME=systemd (this smoke test exercises the systemd adapter).",
+  );
 }
 
 const sourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-smoke-"));
@@ -983,7 +1107,11 @@ await mkdir(path.join(sourcePath, "agent"), { recursive: true });
 await writeFile(path.join(sourcePath, "agent", "instructions.md"), "Smoke fixture.\n");
 await writeFile(
   path.join(sourcePath, "package.json"),
-  JSON.stringify({ name: "eveland-smoke", version: "0.0.0", scripts: { start: "node server.js" } }, null, 2),
+  JSON.stringify(
+    { name: "eveland-smoke", version: "0.0.0", scripts: { start: "node server.js" } },
+    null,
+    2,
+  ),
 );
 await writeFile(
   path.join(sourcePath, "server.js"),
@@ -993,12 +1121,14 @@ await writeFile(
 const store = createMemoryStore();
 const project = await store.createProject({ name: "Systemd Smoke", importKind: "zip", sourcePath });
 
-if (!(await processNextJob(store, "smoke-worker"))) throw new Error("import_source job did not run.");
+if (!(await processNextJob(store, "smoke-worker")))
+  throw new Error("import_source job did not run.");
 const imported = await store.getProject(project.id);
 if (imported?.status !== "imported") throw new Error(`Import failed: ${JSON.stringify(imported)}`);
 
 await store.enqueueJob(project.id, "build_deploy");
-if (!(await processNextJob(store, "smoke-worker"))) throw new Error("build_deploy job did not run.");
+if (!(await processNextJob(store, "smoke-worker")))
+  throw new Error("build_deploy job did not run.");
 
 const deployed = await store.getProject(project.id);
 const deployment = await store.getCurrentDeployment(project.id);
@@ -1011,7 +1141,9 @@ const response = await fetch(`http://127.0.0.1:${deployment.hostPort}/`);
 const body = await response.text();
 
 await execa("systemctl", ["stop", `${deployment.containerName}.service`], { reject: false });
-await execa("systemctl", ["reset-failed", `${deployment.containerName}.service`], { reject: false });
+await execa("systemctl", ["reset-failed", `${deployment.containerName}.service`], {
+  reject: false,
+});
 
 if (!body.includes("smoke-ok")) throw new Error(`Unexpected response body: ${body}`);
 console.log("SMOKE OK");
@@ -1078,14 +1210,14 @@ If it fails inside the VM, inspect from the VM: `limactl shell eveland-test -- s
 
 ## Worker configuration
 
-| Env var | Default | Meaning |
-| --- | --- | --- |
-| `EVELAND_RUNTIME` | `docker` | Set `systemd` on the deploy host. |
-| `EVELAND_APP_USER` | `eveland-app` | Unix user deployments run as. |
-| `EVELAND_MEMORY_MAX` | `2G` | systemd `MemoryMax` per deployment. |
-| `EVELAND_CPU_QUOTA` | `200%` | systemd `CPUQuota` per deployment. |
-| `EVELAND_BUILD_SANDBOX` | `bwrap` | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
-| `EVELAND_DATA_DIR` | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland-data`. |
+| Env var                 | Default         | Meaning                                                                                                |
+| ----------------------- | --------------- | ------------------------------------------------------------------------------------------------------ |
+| `EVELAND_RUNTIME`       | `docker`        | Set `systemd` on the deploy host.                                                                      |
+| `EVELAND_APP_USER`      | `eveland-app`   | Unix user deployments run as.                                                                          |
+| `EVELAND_MEMORY_MAX`    | `2G`            | systemd `MemoryMax` per deployment.                                                                    |
+| `EVELAND_CPU_QUOTA`     | `200%`          | systemd `CPUQuota` per deployment.                                                                     |
+| `EVELAND_BUILD_SANDBOX` | `bwrap`         | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts). |
+| `EVELAND_DATA_DIR`      | `.eveland-data` | Sources, builds, npm cache, env files. Use an absolute path, e.g. `/var/lib/eveland-data`.             |
 
 ## How a deployment runs
 

@@ -25,20 +25,14 @@ describe("processNextJob", () => {
     const leaseLost = new JobLeaseLostError();
     controller.abort(leaseLost);
 
-    await expect(
-      dispatchJob(store, job!, { signal: controller.signal }),
-    ).rejects.toBe(leaseLost);
-    await expect(
-      store.getCurrentSourceRevision(project.id),
-    ).resolves.toBeNull();
+    await expect(dispatchJob(store, job!, { signal: controller.signal })).rejects.toBe(leaseLost);
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toBeNull();
     await expect(store.listLogs(project.id, "build")).resolves.toEqual([]);
   });
 
   test("isolates Git source directories by claim attempt", async () => {
     const store = createTestStore();
-    const dataDir = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-attempt-import-"),
-    );
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-attempt-import-"));
     const gitSource = await createFixtureEveProject();
     await execa("git", ["init", "--initial-branch=main"], { cwd: gitSource });
     await execa("git", ["config", "user.email", "worker@example.test"], {
@@ -61,16 +55,8 @@ describe("processNextJob", () => {
     try {
       await dispatchJob(store, job!, {});
 
-      await expect(
-        store.getCurrentSourceRevision(project.id),
-      ).resolves.toMatchObject({
-        sourcePath: path.join(
-          dataDir,
-          "sources",
-          project.id,
-          job!.id,
-          `attempt-${job!.attempts}`,
-        ),
+      await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
+        sourcePath: path.join(dataDir, "sources", project.id, job!.id, `attempt-${job!.attempts}`),
       });
     } finally {
       if (previousDataDir === undefined) delete process.env.EVELAND_DATA_DIR;
@@ -93,12 +79,12 @@ describe("processNextJob", () => {
       status: "imported",
       sourceRevisionId: expect.stringMatching(/^src_/),
     });
-    await expect(
-      store.getCurrentSourceRevision(project.id),
-    ).resolves.toMatchObject({ summary: { eveVersion: "0.29.4" } });
-    await expect(
-      store.getSourceFile(project.id, "agent/instructions.md"),
-    ).resolves.toMatchObject({ content: "You are concise." });
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
+      summary: { eveVersion: "0.29.4" },
+    });
+    await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({
+      content: "You are concise.",
+    });
     await expect(store.listLogs(project.id, "build")).resolves.toEqual([
       expect.objectContaining({
         line: "Source import completed for import-agent.",
@@ -129,13 +115,9 @@ describe("processNextJob", () => {
       },
     });
 
-    await expect(
-      store.getGitCredential("user_one", "gitlab.example.com"),
-    ).resolves.toBeNull();
+    await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toBeNull();
     await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
-    await expect(
-      store.getGitCredential("user_one", "gitlab.example.com"),
-    ).resolves.toMatchObject({
+    await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toMatchObject({
       encryptedToken: "encrypted-token",
     });
     await expect(
@@ -151,9 +133,7 @@ describe("processNextJob", () => {
 
   test("removes a pending Git credential from a failed import job without saving it", async () => {
     const store = createTestStore();
-    const invalidSourcePath = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-invalid-git-import-"),
-    );
+    const invalidSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-invalid-git-import-"));
     const project = await store.createProject({
       name: "Failed Private GitLab Agent",
       importKind: "git",
@@ -173,9 +153,7 @@ describe("processNextJob", () => {
     });
 
     await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
-    await expect(
-      store.getGitCredential("user_one", "gitlab.example.com"),
-    ).resolves.toBeNull();
+    await expect(store.getGitCredential("user_one", "gitlab.example.com")).resolves.toBeNull();
     await expect(
       store.listProjectJobs(project.id, { type: "import_source", limit: 1 }),
     ).resolves.toEqual([
@@ -438,12 +416,10 @@ describe("processNextJob", () => {
         line: "Deployment running on 127.0.0.1:41001.",
       }),
     );
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
-      { runtimeKind: "docker" },
-    );
-    await expect(
-      store.listProjectScheduleVersions(project.id, revision.id),
-    ).resolves.toEqual([
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({
+      runtimeKind: "docker",
+    });
+    await expect(store.listProjectScheduleVersions(project.id, revision.id)).resolves.toEqual([
       expect.objectContaining({
         schedule: expect.objectContaining({ key: "daily" }),
         version: expect.objectContaining({
@@ -458,10 +434,7 @@ describe("processNextJob", () => {
   test("selects pnpm when the imported source has a pnpm lockfile", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
-    await writeFile(
-      path.join(sourcePath, "pnpm-lock.yaml"),
-      "lockfileVersion: '9.0'\n",
-    );
+    await writeFile(path.join(sourcePath, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
     const project = await store.createProject({
       name: "Pnpm Agent",
       importKind: "zip",
@@ -587,9 +560,9 @@ describe("processNextJob", () => {
       deploymentId: "dep_old",
       releaseId: "rel_old",
     });
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
-      { runtimeKind: "docker" },
-    );
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({
+      runtimeKind: "docker",
+    });
   });
 
   test("promotes the exact deployment created by a promote-enabled build", async () => {
@@ -623,11 +596,7 @@ describe("processNextJob", () => {
       hostPort: 41080,
       runtimeKind: "docker",
     });
-    await store.ensureDeploymentRoutes(
-      project.id,
-      production.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, production.id, "agent.localhost");
     await store.enqueueJob(project.id, "build_deploy", {
       promoteAfterDeploy: true,
     });
@@ -652,9 +621,7 @@ describe("processNextJob", () => {
     ).resolves.toBe(true);
 
     const deployments = await store.listDeployments(project.id);
-    const promoted = deployments.find(
-      (deployment) => deployment.id !== production.id,
-    );
+    const promoted = deployments.find((deployment) => deployment.id !== production.id);
     expect(promoted).toBeDefined();
     await expect(store.findProjectRoute(project.id)).resolves.toMatchObject({
       targets: [
@@ -664,9 +631,9 @@ describe("processNextJob", () => {
         }),
       ],
     });
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
-      { id: promoted!.id },
-    );
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({
+      id: promoted!.id,
+    });
     expect(stoppedProcesses).not.toContain(production.containerName);
   });
 
@@ -710,14 +677,10 @@ describe("processNextJob", () => {
     const oldKindAdapter: RuntimeAdapter = {
       name: "systemd",
       async buildRelease() {
-        throw new Error(
-          "the old deployment's adapter must never be asked to build",
-        );
+        throw new Error("the old deployment's adapter must never be asked to build");
       },
       async startProcess() {
-        throw new Error(
-          "the old deployment's adapter must never be asked to start",
-        );
+        throw new Error("the old deployment's adapter must never be asked to start");
       },
       async stopProcess(processName) {
         oldRuntimeStopCalls.push({ processName });
@@ -756,18 +719,15 @@ describe("processNextJob", () => {
 
     expect(runtimeForKindCalledWith).toBeNull();
     expect(oldRuntimeStopCalls).toEqual([]);
-    expect(activeRuntimeCalls.some((call) => call.name === "stopProcess")).toBe(
-      false,
-    );
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
-      { id: current.id, runtimeKind: "systemd" },
-    );
+    expect(activeRuntimeCalls.some((call) => call.name === "stopProcess")).toBe(false);
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({
+      id: current.id,
+      runtimeKind: "systemd",
+    });
   });
 
   test("archives only an unprotected artifact outside the recent-three retention window and removes its build directory", async () => {
-    const dataDir = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-archive-build-"),
-    );
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-archive-build-"));
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
     const project = await store.createProject({
@@ -800,21 +760,12 @@ describe("processNextJob", () => {
         }),
       );
     }
-    await store.ensureDeploymentRoutes(
-      project.id,
-      versions[3]!.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, versions[3]!.id, "agent.localhost");
     await store.promoteDeployment(project.id, versions[3]!.id);
     await store.enqueueJob(project.id, "archive_deployment", {
       deploymentId: versions[0]!.id,
     });
-    const buildDir = path.join(
-      dataDir,
-      "builds",
-      project.id,
-      versions[0]!.releaseId,
-    );
+    const buildDir = path.join(dataDir, "builds", project.id, versions[0]!.releaseId);
     await mkdir(buildDir, { recursive: true });
     await writeFile(path.join(buildDir, "artifact"), "release");
     const calls: string[] = [];
@@ -892,11 +843,7 @@ describe("processNextJob", () => {
         }),
       );
     }
-    await store.ensureDeploymentRoutes(
-      project.id,
-      versions[3]!.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, versions[3]!.id, "agent.localhost");
     await store.updateDeploymentStatus(versions[0]!.id, "stopped");
     await store.enqueueJob(project.id, "archive_deployment", {
       deploymentId: versions[0]!.id,

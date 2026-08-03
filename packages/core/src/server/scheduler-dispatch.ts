@@ -12,14 +12,25 @@ export type ScheduleDispatchCredential = {
 };
 
 export function resolveSchedulerRuntimeSecret(env: NodeJS.ProcessEnv): string | undefined {
-  return resolveSecretWithDevFallback(env, env.EVELAND_SCHEDULER_RUNTIME_SECRET, developmentRuntimeSecret);
+  return resolveSecretWithDevFallback(
+    env,
+    env.EVELAND_SCHEDULER_RUNTIME_SECRET,
+    developmentRuntimeSecret,
+  );
 }
 
 export function resolveSchedulerDispatchSecret(env: NodeJS.ProcessEnv): string | undefined {
-  return resolveSecretWithDevFallback(env, env.EVELAND_SCHEDULER_DISPATCH_SECRET, developmentDispatchSecret);
+  return resolveSecretWithDevFallback(
+    env,
+    env.EVELAND_SCHEDULER_DISPATCH_SECRET,
+    developmentDispatchSecret,
+  );
 }
 
-export function createScheduleDispatchCredential(payload: ScheduleDispatchCredential, secret: string): string {
+export function createScheduleDispatchCredential(
+  payload: ScheduleDispatchCredential,
+  secret: string,
+): string {
   assertDispatchSecret(secret);
   assertPayload(payload);
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -39,12 +50,18 @@ export function verifyScheduleDispatchCredential(
   const expectedSignature = sign(encoded!, secret);
   const suppliedBytes = Buffer.from(suppliedSignature!, "base64url");
   const expectedBytes = Buffer.from(expectedSignature, "base64url");
-  if (suppliedBytes.length !== expectedBytes.length || !timingSafeEqual(suppliedBytes, expectedBytes)) return null;
+  if (
+    suppliedBytes.length !== expectedBytes.length ||
+    !timingSafeEqual(suppliedBytes, expectedBytes)
+  )
+    return null;
 
   try {
     const payload = JSON.parse(Buffer.from(encoded!, "base64url").toString("utf8")) as unknown;
     assertPayload(payload);
-    return options.allowExpired || new Date(payload.expiresAt).getTime() > now.getTime() ? payload : null;
+    return options.allowExpired || new Date(payload.expiresAt).getTime() > now.getTime()
+      ? payload
+      : null;
   } catch {
     return null;
   }

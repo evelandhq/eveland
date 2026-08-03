@@ -56,15 +56,12 @@ export async function handleBuildDeployJob(
 
   const revision = await store.getCurrentSourceRevision(job.projectId);
   if (!revision) {
-    throw new Error(
-      `Project ${job.projectId} has no source revision to deploy.`,
-    );
+    throw new Error(`Project ${job.projectId} has no source revision to deploy.`);
   }
 
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
   const isProduction = nodeEnv === "production";
-  const workflowPostgresUrl =
-    options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
+  const workflowPostgresUrl = options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
 
   if (isProduction && !workflowPostgresUrl) {
     const detail =
@@ -78,9 +75,7 @@ export async function handleBuildDeployJob(
   }
 
   const runtime = options.runtime ?? createRuntimeAdapterFromEnv();
-  const previousDeployment = await store.getCurrentDeployment(
-    job.projectId,
-  );
+  const previousDeployment = await store.getCurrentDeployment(job.projectId);
   const releaseId = createId("rel");
   const deploymentId = createId("dep");
   const processName = `eveland-${processSafeName(project.id)}-${processSafeName(deploymentId)}`;
@@ -90,16 +85,15 @@ export async function handleBuildDeployJob(
     project.id,
     releaseId,
   );
-  const launchPrerequisites =
-    await resolveDeploymentLaunchPrerequisites({
-      store,
-      workerEnv: process.env,
-      projectId: project.id,
-      deploymentId,
-      runtimeKind: runtime.name,
-      sourcePath: revision.sourcePath,
-      options,
-    });
+  const launchPrerequisites = await resolveDeploymentLaunchPrerequisites({
+    store,
+    workerEnv: process.env,
+    projectId: project.id,
+    deploymentId,
+    runtimeKind: runtime.name,
+    sourcePath: revision.sourcePath,
+    options,
+  });
 
   await store.updateProjectState(job.projectId, {
     status: "build_pending",
@@ -131,10 +125,7 @@ export async function handleBuildDeployJob(
     await store.appendLog({
       projectId: job.projectId,
       type: "build",
-      line: maskKnownSecrets(
-        build.log.trim(),
-        launchPrerequisites.secretValues,
-      ),
+      line: maskKnownSecrets(build.log.trim(), launchPrerequisites.secretValues),
     });
   }
   if (build.schedulerDefinitions) {
@@ -242,7 +233,9 @@ export async function handleBuildDeployJob(
         type: "build",
         line:
           `Recorded the release summary from eve's discovery manifest (v${discoveryProjection!.manifestVersion}` +
-          (build.discovery?.resolvedEveVersion ? `, eve ${build.discovery.resolvedEveVersion}` : "") +
+          (build.discovery?.resolvedEveVersion
+            ? `, eve ${build.discovery.resolvedEveVersion}`
+            : "") +
           ").",
       });
     }
@@ -252,16 +245,11 @@ export async function handleBuildDeployJob(
     const materializedRoutes = await store.ensureDeploymentRoutes(
       project.id,
       deployment.id,
-      (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost")
-        .split(",")[0]!
-        .trim(),
+      (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost").split(",")[0]!.trim(),
     );
     if (job.payload.promoteAfterDeploy === true) {
       options.signal?.throwIfAborted();
-      await store.promoteDeployment(
-        project.id,
-        deployment.id,
-      );
+      await store.promoteDeployment(project.id, deployment.id);
       await store.appendLog({
         projectId: project.id,
         deploymentId: deployment.id,
@@ -269,10 +257,7 @@ export async function handleBuildDeployJob(
         line: `Promoted deployment ${deployment.deploymentKey} to the stable route.`,
       });
     }
-    await invalidateGatewayRouteCache(
-      process.env,
-      materializedRoutes,
-    ).catch(async (error) => {
+    await invalidateGatewayRouteCache(process.env, materializedRoutes).catch(async (error) => {
       await store.appendLog({
         projectId: project.id,
         deploymentId: deployment.id,
@@ -311,9 +296,7 @@ export async function handleBuildDeployJob(
           await runtime.removeRelease(build.releaseRef);
         } catch (cleanupError) {
           cleanupErrors.push(
-            cleanupError instanceof Error
-              ? cleanupError.message
-              : String(cleanupError),
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
           );
         }
       }
@@ -321,9 +304,7 @@ export async function handleBuildDeployJob(
         await rm(buildDir, { recursive: true, force: true });
       } catch (cleanupError) {
         cleanupErrors.push(
-          cleanupError instanceof Error
-            ? cleanupError.message
-            : String(cleanupError),
+          cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
         );
       }
       if (cleanupErrors.length > 0) {

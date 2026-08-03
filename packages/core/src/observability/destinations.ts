@@ -5,14 +5,9 @@ import {
   type TelemetryDomain,
 } from "@eveland/core/observability/shared";
 
-export const EXTERNAL_DESTINATION_KINDS = [
-  "elastic",
-  "langfuse",
-  "custom_otlp",
-] as const;
+export const EXTERNAL_DESTINATION_KINDS = ["elastic", "langfuse", "custom_otlp"] as const;
 
-export type ExternalDestinationKind =
-  (typeof EXTERNAL_DESTINATION_KINDS)[number];
+export type ExternalDestinationKind = (typeof EXTERNAL_DESTINATION_KINDS)[number];
 
 export const EXTERNAL_DESTINATION_CAPABILITIES = {
   elastic: {
@@ -40,9 +35,7 @@ const allSignalsSchema = z
   .array(signalSchema)
   .length(OBSERVABILITY_SIGNALS.length)
   .superRefine((signals, context) => {
-    if (
-      OBSERVABILITY_SIGNALS.some((signal) => !signals.includes(signal))
-    ) {
+    if (OBSERVABILITY_SIGNALS.some((signal) => !signals.includes(signal))) {
       context.addIssue({
         code: "custom",
         message: "Elastic must receive traces, logs, and metrics.",
@@ -109,17 +102,11 @@ const reservedDestinationHeaders = new Set([
   "transfer-encoding",
 ]);
 const destinationHeadersSchema = z
-  .record(
-    z.string().regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/),
-    z.string().max(4096),
-  )
+  .record(z.string().regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/), z.string().max(4096))
   .superRefine((headers, context) => {
     for (const name of Object.keys(headers)) {
       const normalized = name.toLowerCase();
-      if (
-        reservedDestinationHeaders.has(normalized) ||
-        normalized.startsWith("x-forwarded-")
-      ) {
+      if (reservedDestinationHeaders.has(normalized) || normalized.startsWith("x-forwarded-")) {
         context.addIssue({
           code: "custom",
           path: [name],
@@ -132,40 +119,37 @@ const destinationHeadersSchema = z
 const authorizationTypeSchema = z.enum(["bearer", "api_key"]);
 const credentialSchema = z.string().min(1).max(4096);
 
-export const externalDestinationConfigSchema = z.discriminatedUnion(
-  "kind",
-  [
-    z
-      .object({
-        kind: z.literal("elastic"),
-        endpoint: externalHttpUrlSchema,
-        authorization: z
-          .object({
-            type: authorizationTypeSchema,
-            value: credentialSchema,
-          })
-          .strict(),
-      })
-      .strict(),
-    z
-      .object({
-        kind: z.literal("langfuse"),
-        baseUrl: externalHttpUrlSchema,
-        publicKey: z.string().min(1).max(1024),
-        secretKey: credentialSchema,
-      })
-      .strict(),
-    z
-      .object({
-        kind: z.literal("custom_otlp"),
-        endpoint: externalHttpUrlSchema,
-        supportedSignals: uniqueNonEmptySignalsSchema,
-        domains: uniqueNonEmptyDomainsSchema,
-        headers: destinationHeadersSchema,
-      })
-      .strict(),
-  ],
-);
+export const externalDestinationConfigSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("elastic"),
+      endpoint: externalHttpUrlSchema,
+      authorization: z
+        .object({
+          type: authorizationTypeSchema,
+          value: credentialSchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("langfuse"),
+      baseUrl: externalHttpUrlSchema,
+      publicKey: z.string().min(1).max(1024),
+      secretKey: credentialSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("custom_otlp"),
+      endpoint: externalHttpUrlSchema,
+      supportedSignals: uniqueNonEmptySignalsSchema,
+      domains: uniqueNonEmptyDomainsSchema,
+      headers: destinationHeadersSchema,
+    })
+    .strict(),
+]);
 
 /**
  * Submitted configuration. Credential fields are optional because they are never returned
@@ -173,40 +157,37 @@ export const externalDestinationConfigSchema = z.discriminatedUnion(
  * `mergeExternalDestinationConfig` carries the stored credential forward when one is
  * absent, and rejects the payload when there is nothing stored to carry.
  */
-export const externalDestinationConfigPatchSchema = z.discriminatedUnion(
-  "kind",
-  [
-    z
-      .object({
-        kind: z.literal("elastic"),
-        endpoint: externalHttpUrlSchema,
-        authorization: z
-          .object({
-            type: authorizationTypeSchema,
-            value: credentialSchema.optional(),
-          })
-          .strict(),
-      })
-      .strict(),
-    z
-      .object({
-        kind: z.literal("langfuse"),
-        baseUrl: externalHttpUrlSchema,
-        publicKey: z.string().min(1).max(1024).optional(),
-        secretKey: credentialSchema.optional(),
-      })
-      .strict(),
-    z
-      .object({
-        kind: z.literal("custom_otlp"),
-        endpoint: externalHttpUrlSchema,
-        supportedSignals: uniqueNonEmptySignalsSchema,
-        domains: uniqueNonEmptyDomainsSchema,
-        headers: destinationHeadersSchema.optional(),
-      })
-      .strict(),
-  ],
-);
+export const externalDestinationConfigPatchSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("elastic"),
+      endpoint: externalHttpUrlSchema,
+      authorization: z
+        .object({
+          type: authorizationTypeSchema,
+          value: credentialSchema.optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("langfuse"),
+      baseUrl: externalHttpUrlSchema,
+      publicKey: z.string().min(1).max(1024).optional(),
+      secretKey: credentialSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("custom_otlp"),
+      endpoint: externalHttpUrlSchema,
+      supportedSignals: uniqueNonEmptySignalsSchema,
+      domains: uniqueNonEmptyDomainsSchema,
+      headers: destinationHeadersSchema.optional(),
+    })
+    .strict(),
+]);
 
 const elasticDestinationSchema = z
   .object({
@@ -236,22 +217,17 @@ const customOtlpDestinationSchema = z
   })
   .strict();
 
-export const externalObservabilityDestinationSchema =
-  z.discriminatedUnion("kind", [
-    elasticDestinationSchema,
-    langfuseDestinationSchema,
-    customOtlpDestinationSchema,
-  ]);
+export const externalObservabilityDestinationSchema = z.discriminatedUnion("kind", [
+  elasticDestinationSchema,
+  langfuseDestinationSchema,
+  customOtlpDestinationSchema,
+]);
 
 export type ExternalObservabilityDestination = z.infer<
   typeof externalObservabilityDestinationSchema
 >;
-export type ExternalDestinationConfig = z.infer<
-  typeof externalDestinationConfigSchema
->;
-export type ExternalDestinationConfigPatch = z.infer<
-  typeof externalDestinationConfigPatchSchema
->;
+export type ExternalDestinationConfig = z.infer<typeof externalDestinationConfigSchema>;
+export type ExternalDestinationConfigPatch = z.infer<typeof externalDestinationConfigPatchSchema>;
 
 export function externalDestinationDomains(
   destination: ExternalObservabilityDestination,
@@ -263,9 +239,7 @@ export function externalDestinationDomains(
 export const COLLECTOR_SELF_SERVICE_NAME = "eveland-otel-collector";
 
 /** Collector component id for a destination's exporter, used in rendered pipelines. */
-export function collectorExporterComponentId(
-  destinationId: string,
-): string {
+export function collectorExporterComponentId(destinationId: string): string {
   return `otlp_http/${destinationId.replace(/[^a-zA-Z0-9_]/g, "_")}`;
 }
 
@@ -326,9 +300,7 @@ export function mergeExternalDestinationConfig(
     case "elastic": {
       const value =
         patch.authorization.value ??
-        (previous?.kind === "elastic"
-          ? previous.authorization.value
-          : undefined);
+        (previous?.kind === "elastic" ? previous.authorization.value : undefined);
       if (!value) throw new Error("An Elastic credential is required.");
       return externalDestinationConfigSchema.parse({
         ...patch,
@@ -337,19 +309,11 @@ export function mergeExternalDestinationConfig(
     }
     case "langfuse": {
       const publicKey =
-        patch.publicKey ??
-        (previous?.kind === "langfuse"
-          ? previous.publicKey
-          : undefined);
+        patch.publicKey ?? (previous?.kind === "langfuse" ? previous.publicKey : undefined);
       const secretKey =
-        patch.secretKey ??
-        (previous?.kind === "langfuse"
-          ? previous.secretKey
-          : undefined);
+        patch.secretKey ?? (previous?.kind === "langfuse" ? previous.secretKey : undefined);
       if (!publicKey || !secretKey) {
-        throw new Error(
-          "A Langfuse public key and secret key are required.",
-        );
+        throw new Error("A Langfuse public key and secret key are required.");
       }
       return externalDestinationConfigSchema.parse({
         ...patch,
@@ -359,10 +323,7 @@ export function mergeExternalDestinationConfig(
     }
     case "custom_otlp": {
       const headers =
-        patch.headers ??
-        (previous?.kind === "custom_otlp"
-          ? previous.headers
-          : undefined);
+        patch.headers ?? (previous?.kind === "custom_otlp" ? previous.headers : undefined);
       if (!headers) throw new Error("Custom OTLP headers are required.");
       return externalDestinationConfigSchema.parse({ ...patch, headers });
     }

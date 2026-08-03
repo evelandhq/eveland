@@ -4,10 +4,9 @@ import type { IdentityProviderConnection } from "@eveland/core/identity";
 
 // Wire shape of /system/identity/providers; shared here so client-api and
 // server-api both import it without importing each other.
-export type PublicIdentityProvider = Omit<
-  IdentityProviderConnection,
-  "clientSecretEncrypted"
-> & { clientSecretConfigured: boolean };
+export type PublicIdentityProvider = Omit<IdentityProviderConnection, "clientSecretEncrypted"> & {
+  clientSecretConfigured: boolean;
+};
 
 import type {
   LogRecord,
@@ -93,7 +92,8 @@ export function getProjectImportNotice(job: Job | null): ProjectImportNotice | n
   return {
     active: false,
     title: "Repository fetch failed",
-    detail: job.lastError ?? "The repository could not be fetched. Check the worker logs and retry.",
+    detail:
+      job.lastError ?? "The repository could not be fetched. Check the worker logs and retry.",
   };
 }
 

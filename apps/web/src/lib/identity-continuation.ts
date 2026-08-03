@@ -11,10 +11,7 @@ export function safeLoginNextPath(value: string | undefined): string {
   return "/projects";
 }
 
-export function buildIdentityInternalContinuationUrl(
-  state: string,
-  apiOrigin: string,
-): string {
+export function buildIdentityInternalContinuationUrl(state: string, apiOrigin: string): string {
   const normalizedState = state.trim();
   if (!normalizedState) throw new Error("Identity continuation state is required.");
   const url = new URL("/identity/internal/continue", apiOrigin);

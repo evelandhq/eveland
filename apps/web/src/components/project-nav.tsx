@@ -1,20 +1,20 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
-} from "@/components/ui/sidebar"
-import { getProjectNavigationItems, isNavigationItemActive } from "@/lib/navigation"
+} from "@/components/ui/sidebar";
+import { getProjectNavigationItems, isNavigationItemActive } from "@/lib/navigation";
 
 export function ProjectNav({ projectId }: { projectId: string }) {
-  const pathname = usePathname()
-  const items = getProjectNavigationItems(projectId)
-  const dailyItems = items.filter((item) => item.section === "daily")
-  const manageItems = items.filter((item) => item.section === "manage")
+  const pathname = usePathname();
+  const items = getProjectNavigationItems(projectId);
+  const dailyItems = items.filter((item) => item.section === "daily");
+  const manageItems = items.filter((item) => item.section === "manage");
 
   return (
     <>
@@ -22,20 +22,20 @@ export function ProjectNav({ projectId }: { projectId: string }) {
       <SidebarSeparator className="my-2" />
       <ProjectNavigationMenu items={manageItems} pathname={pathname} />
     </>
-  )
+  );
 }
 
 function ProjectNavigationMenu({
   items,
   pathname,
 }: {
-  items: ReadonlyArray<ReturnType<typeof getProjectNavigationItems>[number]>
-  pathname: string
+  items: ReadonlyArray<ReturnType<typeof getProjectNavigationItems>[number]>;
+  pathname: string;
 }) {
   return (
     <SidebarMenu>
       {items.map((item) => {
-        const Icon = item.icon
+        const Icon = item.icon;
         return (
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton
@@ -47,8 +47,8 @@ function ProjectNavigationMenu({
               <span>{item.label}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-        )
+        );
       })}
     </SidebarMenu>
-  )
+  );
 }

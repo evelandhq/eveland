@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import {
-  createProjectEnvironmentEntries,
-  enqueueBuildDeploy,
-  syncSource,
-} from "./client-api";
+import { createProjectEnvironmentEntries, enqueueBuildDeploy, syncSource } from "./client-api";
 import { getProjectImportNotice, selectProjectLogs, type Job, type LogLine } from "./api";
 
 describe("web api helpers", () => {
@@ -13,10 +9,13 @@ describe("web api helpers", () => {
 
   test("enqueues a current-source preview build for a project", async () => {
     const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({ job: { id: "job_123", type: "build_deploy", status: "queued" } }), {
-        status: 202,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ job: { id: "job_123", type: "build_deploy", status: "queued" } }),
+        {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -35,10 +34,13 @@ describe("web api helpers", () => {
 
   test("enqueues a current-source build with promotion", async () => {
     const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({ job: { id: "job_promote", type: "build_deploy", status: "queued" } }), {
-        status: 202,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ job: { id: "job_promote", type: "build_deploy", status: "queued" } }),
+        {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -101,12 +103,12 @@ describe("web api helpers", () => {
       },
     ];
 
-    expect(selectProjectLogs(logs, { type: "runtime", query: "ready", order: "desc" })).toEqual([logs[1]]);
-    expect(selectProjectLogs(logs, { type: "all", query: "", order: "asc" }).map((log) => log.id)).toEqual([
-      "log_old",
-      "log_middle",
-      "log_new",
+    expect(selectProjectLogs(logs, { type: "runtime", query: "ready", order: "desc" })).toEqual([
+      logs[1],
     ]);
+    expect(
+      selectProjectLogs(logs, { type: "all", query: "", order: "asc" }).map((log) => log.id),
+    ).toEqual(["log_old", "log_middle", "log_new"]);
     expect(logs.map((log) => log.id)).toEqual(["log_old", "log_new", "log_middle"]);
   });
 
@@ -166,10 +168,13 @@ describe("web api helpers", () => {
 
   test("syncs source and asks the API to deploy and promote the latest commit", async () => {
     const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({ job: { id: "job_sync", type: "import_source", status: "queued" } }), {
-        status: 202,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ job: { id: "job_sync", type: "import_source", status: "queued" } }),
+        {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -188,10 +193,13 @@ describe("web api helpers", () => {
 
   test("syncs source into a preview without promotion", async () => {
     const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({ job: { id: "job_preview", type: "import_source", status: "queued" } }), {
-        status: 202,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ job: { id: "job_preview", type: "import_source", status: "queued" } }),
+        {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -210,10 +218,13 @@ describe("web api helpers", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
-        return new Response(JSON.stringify({ error: "Only git projects can sync source from a repository." }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Only git projects can sync source from a repository." }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        );
       }),
     );
 
@@ -222,16 +233,19 @@ describe("web api helpers", () => {
 
   test("sends project environment entries through the batch endpoint", async () => {
     const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({
-        secrets: [
-          { id: "secret_1", projectId: "proj_123", key: "MODEL_NAME", kind: "variable" },
-          { id: "secret_2", projectId: "proj_123", key: "OPENAI_API_KEY", kind: "secret" },
-        ],
-        jobs: [],
-      }), {
-        status: 201,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          secrets: [
+            { id: "secret_1", projectId: "proj_123", key: "MODEL_NAME", kind: "variable" },
+            { id: "secret_2", projectId: "proj_123", key: "OPENAI_API_KEY", kind: "secret" },
+          ],
+          jobs: [],
+        }),
+        {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
     const entries = [
@@ -245,20 +259,26 @@ describe("web api helpers", () => {
         { key: "OPENAI_API_KEY", kind: "secret" },
       ],
     });
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/projects/proj_123/secrets/batch", {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ entries }),
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4000/projects/proj_123/secrets/batch",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ entries }),
+      },
+    );
   });
 
   test("requests asynchronous project deletion and returns its job", async () => {
     const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({ job: { id: "job_delete", type: "delete_project", status: "queued" } }), {
-        status: 202,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ job: { id: "job_delete", type: "delete_project", status: "queued" } }),
+        {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
     const clientApi = await import("./client-api");
@@ -274,5 +294,4 @@ describe("web api helpers", () => {
       credentials: "include",
     });
   });
-
 });

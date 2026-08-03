@@ -7,8 +7,5 @@ import {
 if (supportsSyncHooks()) {
   registerSyncHooks();
 } else {
-  registerAsyncHook(
-    "@opentelemetry/instrumentation/hook.mjs",
-    import.meta.url,
-  );
+  registerAsyncHook("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
 }

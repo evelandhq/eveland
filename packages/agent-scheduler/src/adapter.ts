@@ -25,7 +25,9 @@ export type SchedulerInjectionResult = {
   definitions: SchedulerDefinition[];
 };
 
-export async function injectSchedulerAdapter(input: { releaseDir: string }): Promise<SchedulerInjectionResult> {
+export async function injectSchedulerAdapter(input: {
+  releaseDir: string;
+}): Promise<SchedulerInjectionResult> {
   const releaseDir = path.resolve(input.releaseDir);
   const eveVersion = await readDeclaredEveVersion(releaseDir);
   if (eveVersion === null || !isSupportedEveDependency(eveVersion)) {
@@ -36,7 +38,9 @@ export async function injectSchedulerAdapter(input: { releaseDir: string }): Pro
 
   const channelPath = path.join(releaseDir, reservedChannelPath);
   if (await exists(channelPath)) {
-    throw new Error(`The authored Release already contains the reserved Channel ${reservedChannelPath}.`);
+    throw new Error(
+      `The authored Release already contains the reserved Channel ${reservedChannelPath}.`,
+    );
   }
 
   const schedulesRoot = path.join(releaseDir, "agent/schedules");
@@ -48,14 +52,17 @@ export async function injectSchedulerAdapter(input: { releaseDir: string }): Pro
     const sourcePath = path.posix.join("agent/schedules", relativePath.split(path.sep).join("/"));
     const content = await readFile(path.join(schedulesRoot, relativePath), "utf8");
     const discovered = parseScheduleSource(sourcePath, content);
-    if (keys.has(discovered.key)) throw new Error(`Schedule key ${discovered.key} is declared more than once.`);
+    if (keys.has(discovered.key))
+      throw new Error(`Schedule key ${discovered.key} is declared more than once.`);
     keys.add(discovered.key);
 
     if (discovered.kind === "markdown") {
       const generatedRelativePath = relativePath.replace(/\.md$/, ".ts");
       const generatedPath = path.join(schedulesRoot, generatedRelativePath);
       if (await exists(generatedPath)) {
-        throw new Error(`Markdown schedule ${sourcePath} collides with reserved generated module ${generatedRelativePath}.`);
+        throw new Error(
+          `Markdown schedule ${sourcePath} collides with reserved generated module ${generatedRelativePath}.`,
+        );
       }
       await writeFile(
         generatedPath,
@@ -75,7 +82,10 @@ export async function injectSchedulerAdapter(input: { releaseDir: string }): Pro
         cron: discovered.cron,
         sourcePath,
         definitionHash: hashDefinition(content),
-        modulePath: path.posix.join("agent/schedules", generatedRelativePath.split(path.sep).join("/")),
+        modulePath: path.posix.join(
+          "agent/schedules",
+          generatedRelativePath.split(path.sep).join("/"),
+        ),
       });
       continue;
     }
@@ -97,14 +107,26 @@ export async function injectSchedulerAdapter(input: { releaseDir: string }): Pro
   return { eveVersion, channelPath: reservedChannelPath, definitions };
 }
 
-function transformModuleSchedule(sourcePath: string, content: string): { code: string; cron: string; kind: "markdown" | "handler" } {
-  const sourceFile = ts.createSourceFile(sourcePath, content, ts.ScriptTarget.Latest, true, scriptKind(sourcePath));
+function transformModuleSchedule(
+  sourcePath: string,
+  content: string,
+): { code: string; cron: string; kind: "markdown" | "handler" } {
+  const sourceFile = ts.createSourceFile(
+    sourcePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind(sourcePath),
+  );
   assertNoReservedIdentifier(sourceFile, sourcePath);
   const exportAssignment = sourceFile.statements.find(
-    (statement): statement is ts.ExportAssignment => ts.isExportAssignment(statement) && !statement.isExportEquals,
+    (statement): statement is ts.ExportAssignment =>
+      ts.isExportAssignment(statement) && !statement.isExportEquals,
   );
   if (!exportAssignment) {
-    throw new Error(`Schedule ${sourcePath} must use a concrete default export; default re-exports are not supported.`);
+    throw new Error(
+      `Schedule ${sourcePath} must use a concrete default export; default re-exports are not supported.`,
+    );
   }
   const definition = resolveDefinitionExpression(sourceFile, exportAssignment.expression);
   const cron = readStringProperty(definition, "cron", sourcePath);
@@ -118,7 +140,14 @@ function transformModuleSchedule(sourcePath: string, content: string): { code: s
   const originalDeclaration = factory.createVariableStatement(
     undefined,
     factory.createVariableDeclarationList(
-      [factory.createVariableDeclaration(reservedOriginalSchedule, undefined, undefined, exportAssignment.expression)],
+      [
+        factory.createVariableDeclaration(
+          reservedOriginalSchedule,
+          undefined,
+          undefined,
+          exportAssignment.expression,
+        ),
+      ],
       ts.NodeFlags.Const,
     ),
   );
@@ -126,7 +155,11 @@ function transformModuleSchedule(sourcePath: string, content: string): { code: s
     undefined,
     false,
     factory.createNamedExports([
-      factory.createExportSpecifier(false, undefined, factory.createIdentifier(reservedOriginalSchedule)),
+      factory.createExportSpecifier(
+        false,
+        undefined,
+        factory.createIdentifier(reservedOriginalSchedule),
+      ),
     ]),
   );
   const noopDefault = factory.createExportAssignment(
@@ -136,7 +169,10 @@ function transformModuleSchedule(sourcePath: string, content: string): { code: s
       [
         factory.createPropertyAssignment(
           "cron",
-          factory.createPropertyAccessExpression(factory.createIdentifier(reservedOriginalSchedule), "cron"),
+          factory.createPropertyAccessExpression(
+            factory.createIdentifier(reservedOriginalSchedule),
+            "cron",
+          ),
         ),
         factory.createPropertyAssignment(
           "run",
@@ -154,7 +190,9 @@ function transformModuleSchedule(sourcePath: string, content: string): { code: s
     ),
   );
   const statements = sourceFile.statements.flatMap((statement) =>
-    statement === exportAssignment ? [originalDeclaration, originalExport, noopDefault] : [statement],
+    statement === exportAssignment
+      ? [originalDeclaration, originalExport, noopDefault]
+      : [statement],
   );
   const next = factory.updateSourceFile(sourceFile, statements);
   const code = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }).printFile(next);
@@ -163,14 +201,19 @@ function transformModuleSchedule(sourcePath: string, content: string): { code: s
 
 function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
   const imports = definitions.map((definition, index) => {
-    const exportName = definition.sourcePath.endsWith(".md") ? reservedOriginalMarkdown : reservedOriginalSchedule;
+    const exportName = definition.sourcePath.endsWith(".md")
+      ? reservedOriginalMarkdown
+      : reservedOriginalSchedule;
     return `import { ${exportName} as schedule${index} } from ${JSON.stringify(moduleSpecifierFromChannel(definition.modulePath))};`;
   });
   const entries = definitions.map((definition, index) => {
-    const markdown = definition.sourcePath.endsWith(".md") ? `schedule${index}` : `schedule${index}.markdown`;
-    const value = definition.kind === "markdown"
-      ? `{ kind: "markdown", markdown: ${markdown} }`
-      : `{ kind: "handler", definition: schedule${index} }`;
+    const markdown = definition.sourcePath.endsWith(".md")
+      ? `schedule${index}`
+      : `schedule${index}.markdown`;
+    const value =
+      definition.kind === "markdown"
+        ? `{ kind: "markdown", markdown: ${markdown} }`
+        : `{ kind: "handler", definition: schedule${index} }`;
     return `  ${JSON.stringify(definition.key)}: ${value},`;
   });
 
@@ -312,7 +355,10 @@ async function safeEqual(expected: string, actual: string): Promise<boolean> {
 `;
 }
 
-function resolveDefinitionExpression(sourceFile: ts.SourceFile, expression: ts.Expression): ts.ObjectLiteralExpression {
+function resolveDefinitionExpression(
+  sourceFile: ts.SourceFile,
+  expression: ts.Expression,
+): ts.ObjectLiteralExpression {
   let candidate = expression;
   if (ts.isCallExpression(candidate)) candidate = candidate.arguments[0] ?? candidate;
   if (ts.isIdentifier(candidate)) {
@@ -325,20 +371,32 @@ function resolveDefinitionExpression(sourceFile: ts.SourceFile, expression: ts.E
     if (ts.isCallExpression(candidate)) candidate = candidate.arguments[0] ?? candidate;
   }
   if (!ts.isObjectLiteralExpression(candidate)) {
-    throw new Error(`Schedule ${sourceFile.fileName} must expose a statically analyzable Eve ${SUPPORTED_EVE_VERSION_RANGE} definition.`);
+    throw new Error(
+      `Schedule ${sourceFile.fileName} must expose a statically analyzable Eve ${SUPPORTED_EVE_VERSION_RANGE} definition.`,
+    );
   }
   return candidate;
 }
 
-function findProperty(definition: ts.ObjectLiteralExpression, name: string): ts.ObjectLiteralElementLike | undefined {
+function findProperty(
+  definition: ts.ObjectLiteralExpression,
+  name: string,
+): ts.ObjectLiteralElementLike | undefined {
   return definition.properties.find((property) => {
     const propertyName = property.name;
-    return propertyName !== undefined &&
-      ((ts.isIdentifier(propertyName) || ts.isStringLiteral(propertyName)) && propertyName.text === name);
+    return (
+      propertyName !== undefined &&
+      (ts.isIdentifier(propertyName) || ts.isStringLiteral(propertyName)) &&
+      propertyName.text === name
+    );
   });
 }
 
-function readStringProperty(definition: ts.ObjectLiteralExpression, name: string, sourcePath: string): string {
+function readStringProperty(
+  definition: ts.ObjectLiteralExpression,
+  name: string,
+  sourcePath: string,
+): string {
   const property = findProperty(definition, name);
   if (!property || !ts.isPropertyAssignment(property)) {
     throw new Error(`Schedule ${sourcePath} must declare a static ${name} string.`);
@@ -378,7 +436,11 @@ async function listScheduleFiles(root: string, relativeDir = ""): Promise<string
   for (const entry of entries) {
     const relativePath = path.join(relativeDir, entry.name);
     if (entry.isDirectory()) files.push(...(await listScheduleFiles(root, relativePath)));
-    else if (entry.isFile() && (entry.name.endsWith(".md") || moduleExtensions.has(path.extname(entry.name)))) files.push(relativePath);
+    else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".md") || moduleExtensions.has(path.extname(entry.name)))
+    )
+      files.push(relativePath);
   }
   return files;
 }

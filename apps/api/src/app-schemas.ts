@@ -52,9 +52,7 @@ export const createProjectSchema = z.discriminatedUnion("importKind", [
 ]);
 
 export const environmentVariableSchema = z.object({
-  key: z
-    .string()
-    .regex(ENVIRONMENT_ENTRY_KEY_PATTERN, ENVIRONMENT_ENTRY_KEY_MESSAGE),
+  key: z.string().regex(ENVIRONMENT_ENTRY_KEY_PATTERN, ENVIRONMENT_ENTRY_KEY_MESSAGE),
   kind: z.enum(["variable", "secret"]).default("secret"),
   value: z.string().min(1).max(65_536),
 });
@@ -64,10 +62,7 @@ export const createProjectFromPreflightSchema = z
     name: projectNameSchema,
     preflightId: z.string().regex(/^pre_[0-9A-Za-z]+$/),
     deployAfterImport: z.boolean().optional(),
-    environmentVariables: z
-      .array(environmentVariableSchema)
-      .max(50)
-      .default([]),
+    environmentVariables: z.array(environmentVariableSchema).max(50).default([]),
   })
   .superRefine((input, context) => {
     const keys = new Set<string>();
@@ -128,9 +123,7 @@ export const updateSecretSchema = environmentVariableSchema.extend({
 });
 
 export const sharedAgentEnvironmentEntrySchema = z.object({
-  key: z
-    .string()
-    .regex(ENVIRONMENT_ENTRY_KEY_PATTERN, ENVIRONMENT_ENTRY_KEY_MESSAGE),
+  key: z.string().regex(ENVIRONMENT_ENTRY_KEY_PATTERN, ENVIRONMENT_ENTRY_KEY_MESSAGE),
   kind: z.enum(["variable", "secret"]),
   value: z.string().min(1).max(65_536).optional(),
 });
@@ -164,10 +157,7 @@ export const agentAuthCallbackSchema = z.object({
     .string()
     .min(1)
     .max(8_192)
-    .refine(
-      (value) => value.startsWith("?"),
-      "OIDC callback search must start with ?.",
-    ),
+    .refine((value) => value.startsWith("?"), "OIDC callback search must start with ?."),
 });
 
 export const invitationSchema = z.object({
@@ -185,8 +175,7 @@ export const acceptInvitationSchema = z.object({
 });
 
 export const profileImageSchema = z.string().superRefine((value, context) => {
-  const match =
-    /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  const match = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
   if (!match?.[1]) {
     context.addIssue({
       code: "custom",
@@ -205,14 +194,20 @@ export const profileImageSchema = z.string().superRefine((value, context) => {
 export const profileSchema = z.object({
   name: z.string().trim().min(1).max(80),
   image: profileImageSchema.nullable(),
-  displayTimezone: z.string().trim().min(1).max(100).refine((value) => {
-    try {
-      new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
-      return true;
-    } catch {
-      return false;
-    }
-  }, "Display timezone must be a valid IANA timezone.").optional(),
+  displayTimezone: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .refine((value) => {
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Display timezone must be a valid IANA timezone.")
+    .optional(),
 });
 
 export const passwordChangeSchema = z.object({
@@ -235,11 +230,7 @@ export const createIdentityProviderSchema = z.discriminatedUnion("type", [
     clientSecret: z.string().min(1).max(8_192).optional(),
     scopes: z.array(z.string().trim().min(1)).min(1),
     authorizationParameters: z.record(z.string(), z.string()).default({}),
-    tokenEndpointAuthMethod: z.enum([
-      "client_secret_basic",
-      "client_secret_post",
-      "none",
-    ]),
+    tokenEndpointAuthMethod: z.enum(["client_secret_basic", "client_secret_post", "none"]),
     externalRealmResolution: z.enum([
       "connection",
       "id_token_claim",
@@ -260,9 +251,7 @@ export const updateIdentityProviderSchema = z.object({
   clientSecret: z.string().min(1).max(8_192).nullable().optional(),
   scopes: z.array(z.string().trim().min(1)).min(1).optional(),
   authorizationParameters: z.record(z.string(), z.string()).optional(),
-  tokenEndpointAuthMethod: z
-    .enum(["client_secret_basic", "client_secret_post", "none"])
-    .optional(),
+  tokenEndpointAuthMethod: z.enum(["client_secret_basic", "client_secret_post", "none"]).optional(),
   externalRealmResolution: z
     .enum(["connection", "id_token_claim", "userinfo_claim", "provider_api"])
     .optional(),
@@ -292,19 +281,17 @@ export const updateIdentityRealmSchema = z.object({
 });
 
 export const upsertIdentityReturnTargetSchema = z.object({
-  origin: z
-    .url()
-    .refine((value) => {
-      const url = new URL(value);
-      return (
-        (url.protocol === "http:" || url.protocol === "https:") &&
-        !url.username &&
-        !url.password &&
-        url.pathname === "/" &&
-        !url.search &&
-        !url.hash
-      );
-    }, "Return target must be an exact HTTP(S) origin."),
+  origin: z.url().refine((value) => {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username &&
+      !url.password &&
+      url.pathname === "/" &&
+      !url.search &&
+      !url.hash
+    );
+  }, "Return target must be an exact HTTP(S) origin."),
   enabled: z.boolean(),
 });
 
@@ -361,15 +348,7 @@ export const scheduleRunListQuerySchema = z.object({
 
 export const sessionListQuerySchema = z.object({
   trigger: z
-    .enum([
-      "playground",
-      "api",
-      "cron",
-      "manual",
-      "webhook",
-      "channel",
-      "direct_http",
-    ])
+    .enum(["playground", "api", "cron", "manual", "webhook", "channel", "direct_http"])
     .optional(),
   scheduleId: z.string().min(1).optional(),
   scheduleRunId: z.string().min(1).optional(),
@@ -411,19 +390,14 @@ function validateTargetsPayload(
   value: { targets: Array<{ deploymentId: string; weight: number }> },
   context: z.RefinementCtx,
 ): void {
-  if (
-    value.targets.reduce((sum, target) => sum + target.weight, 0) !== 10_000
-  ) {
+  if (value.targets.reduce((sum, target) => sum + target.weight, 0) !== 10_000) {
     context.addIssue({
       code: "custom",
       path: ["targets"],
       message: "Route target weights must total 10,000.",
     });
   }
-  if (
-    new Set(value.targets.map((target) => target.deploymentId)).size !==
-    value.targets.length
-  ) {
+  if (new Set(value.targets.map((target) => target.deploymentId)).size !== value.targets.length) {
     context.addIssue({
       code: "custom",
       path: ["targets"],

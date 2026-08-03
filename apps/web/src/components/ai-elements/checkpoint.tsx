@@ -2,27 +2,16 @@
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { BookmarkIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 
 export type CheckpointProps = HTMLAttributes<HTMLDivElement>;
 
-export const Checkpoint = ({
-  className,
-  children,
-  ...props
-}: CheckpointProps) => (
+export const Checkpoint = ({ className, children, ...props }: CheckpointProps) => (
   <div
-    className={cn(
-      "flex items-center gap-0.5 overflow-hidden text-muted-foreground",
-      className
-    )}
+    className={cn("flex items-center gap-0.5 overflow-hidden text-muted-foreground", className)}
     {...props}
   >
     {children}
@@ -34,14 +23,8 @@ export type CheckpointIconProps = ComponentProps<typeof BookmarkIcon> & {
   children?: ReactNode;
 };
 
-export const CheckpointIcon = ({
-  className,
-  children,
-  ...props
-}: CheckpointIconProps) =>
-  children ?? (
-    <BookmarkIcon className={cn("size-4 shrink-0", className)} {...props} />
-  );
+export const CheckpointIcon = ({ className, children, ...props }: CheckpointIconProps) =>
+  children ?? <BookmarkIcon className={cn("size-4 shrink-0", className)} {...props} />;
 
 export type CheckpointTriggerProps = ComponentProps<typeof Button> & {
   tooltip?: string;
@@ -56,7 +39,9 @@ export const CheckpointTrigger = ({
 }: CheckpointTriggerProps) =>
   tooltip ? (
     <Tooltip>
-      <TooltipTrigger render={<Button size={size} type="button" variant={variant} {...props} />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<Button size={size} type="button" variant={variant} {...props} />}>
+        {children}
+      </TooltipTrigger>
       <TooltipContent align="start" side="bottom">
         {tooltip}
       </TooltipContent>

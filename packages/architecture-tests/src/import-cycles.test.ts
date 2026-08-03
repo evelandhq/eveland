@@ -71,7 +71,9 @@ describe("import cycles", () => {
   test("no import cycles beyond the shrinking allowlist", () => {
     const found: string[][] = [];
     for (const workspace of listWorkspaces()) {
-      found.push(...findCycleGroups(listSourceFiles(`${workspace.directory}/src`, { includeTests: true })));
+      found.push(
+        ...findCycleGroups(listSourceFiles(`${workspace.directory}/src`, { includeTests: true })),
+      );
     }
     const foundKeys = found.map((group) => group.join(" <-> ")).sort();
     const allowedKeys = CYCLE_ALLOWLIST.map((group) => [...group].sort().join(" <-> ")).sort();

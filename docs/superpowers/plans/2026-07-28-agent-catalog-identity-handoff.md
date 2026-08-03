@@ -167,8 +167,7 @@ v0/v1 先采用：
 
 ```ts
 type ActiveIdentityProvider =
-  | { kind: "internal" }
-  | { kind: "oidc"; /* provider-neutral OIDC config */ };
+  { kind: "internal" } | { kind: "oidc" /* provider-neutral OIDC config */ };
 ```
 
 当前为 Internal Provider；下一步预计加入金数据 OIDC。Agent 与客户端都不应知道 Eveland
@@ -195,16 +194,16 @@ Agent 只关心统一 Caller Token，不关心上游 provider。客户端也不�
 
 Agent auth 方法与 Catalog membership 完全独立：
 
-| Agent route auth | Catalog | Eveland 是否参与 |
-| --- | --- | --- |
-| `none()` | 收录 | 不参与 |
-| `localDev()` | 收录 | 不参与；仅 loopback/local development |
-| `httpBasic()` | 收录 | 不参与；客户端处理 Basic credential |
-| `jwtHmac()` / `jwtEcdsa()` | 收录 | 默认不参与；客户端必须有对应 Bearer token |
-| general `oidc()` | 收录 | 默认不参与；客户端走 Agent 指定的通用 OIDC |
-| `vercelOidc()` | 收录 | 不参与；支持该 workload identity 的客户端取得 token |
-| `evelandIdentity()` | 收录 | 参与；Eveland 负责完整身份流程并签发 Caller Token |
-| custom `AuthFn` | 收录 | 不推断；客户端按 Agent 协议处理 |
+| Agent route auth           | Catalog | Eveland 是否参与                                    |
+| -------------------------- | ------- | --------------------------------------------------- |
+| `none()`                   | 收录    | 不参与                                              |
+| `localDev()`               | 收录    | 不参与；仅 loopback/local development               |
+| `httpBasic()`              | 收录    | 不参与；客户端处理 Basic credential                 |
+| `jwtHmac()` / `jwtEcdsa()` | 收录    | 默认不参与；客户端必须有对应 Bearer token           |
+| general `oidc()`           | 收录    | 默认不参与；客户端走 Agent 指定的通用 OIDC          |
+| `vercelOidc()`             | 收录    | 不参与；支持该 workload identity 的客户端取得 token |
+| `evelandIdentity()`        | 收录    | 参与；Eveland 负责完整身份流程并签发 Caller Token   |
+| custom `AuthFn`            | 收录    | 不推断；客户端按 Agent 协议处理                     |
 
 `localDev()` 不是匿名认证；真正匿名的是 `none()`。
 

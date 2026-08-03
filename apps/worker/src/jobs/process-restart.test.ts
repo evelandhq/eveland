@@ -53,8 +53,7 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
-        workflowPostgresUrl:
-          "postgres://platform@host.docker.internal:5432/eveland",
+        workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
         ensureProjectWorkflowWorld: async (env, projectId) =>
           deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
         runtime: {
@@ -564,10 +563,7 @@ describe("processNextJob", () => {
 
     // Once for the restart's own stop of the running deployment, once more
     // for cleanup of the freshly restarted (but unhealthy) replacement.
-    expect(stopCalls).toEqual([
-      deployment.containerName,
-      deployment.containerName,
-    ]);
+    expect(stopCalls).toEqual([deployment.containerName, deployment.containerName]);
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "failed",
       deploymentStatus: "failed",
@@ -719,9 +715,7 @@ describe("processNextJob", () => {
       },
     };
 
-    await expect(
-      processNextJob(storeWithMissingRelease, "worker-a"),
-    ).resolves.toBe(true);
+    await expect(processNextJob(storeWithMissingRelease, "worker-a")).resolves.toBe(true);
 
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "failed",
@@ -744,9 +738,7 @@ describe("processNextJob", () => {
     await store.completeJob(importJob!.id);
     // A real temp dir, then removed -- the revision's sourcePath row still
     // points at it, but nothing exists there anymore on disk.
-    const vanishedSourcePath = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-vanished-"),
-    );
+    const vanishedSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-vanished-"));
     await rm(vanishedSourcePath, { recursive: true, force: true });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
@@ -785,9 +777,7 @@ describe("processNextJob", () => {
             throw new Error("restart must never build a release");
           },
           async startProcess() {
-            throw new Error(
-              "restart must never start a process when the source dir is missing",
-            );
+            throw new Error("restart must never start a process when the source dir is missing");
           },
           async stopProcess(processName) {
             stopCalls.push(processName);

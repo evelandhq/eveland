@@ -40,9 +40,18 @@ export function DeleteProjectAction({
 
   if (deletionStatus === "deleting") {
     return (
-      <Button type="button" size={appearance === "card" ? "icon-sm" : "default"} variant="outline" disabled>
+      <Button
+        type="button"
+        size={appearance === "card" ? "icon-sm" : "default"}
+        variant="outline"
+        disabled
+      >
         <Spinner data-icon="inline-start" />
-        {appearance === "danger" ? "Deleting…" : <span className="sr-only">Deleting {projectName}</span>}
+        {appearance === "danger" ? (
+          "Deleting…"
+        ) : (
+          <span className="sr-only">Deleting {projectName}</span>
+        )}
       </Button>
     );
   }
@@ -62,7 +71,9 @@ export function DeleteProjectAction({
       router.replace("/projects");
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Project deletion could not be requested.");
+      setError(
+        caught instanceof Error ? caught.message : "Project deletion could not be requested.",
+      );
       setPending(false);
     }
   }
@@ -89,15 +100,22 @@ export function DeleteProjectAction({
           />
         }
       >
-        {retry ? <RotateCcwIcon data-icon="inline-start" /> : <Trash2Icon data-icon="inline-start" />}
+        {retry ? (
+          <RotateCcwIcon data-icon="inline-start" />
+        ) : (
+          <Trash2Icon data-icon="inline-start" />
+        )}
         {appearance === "danger" ? (retry ? "Retry deletion" : "Delete project") : null}
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{retry ? "Retry permanent deletion?" : "Permanently delete this project?"}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {retry ? "Retry permanent deletion?" : "Permanently delete this project?"}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            This stops every deployment and removes routes, source snapshots, releases, sessions, usage, secrets, logs,
-            telemetry data, and sandbox workspaces. This action cannot be undone.
+            This stops every deployment and removes routes, source snapshots, releases, sessions,
+            usage, secrets, logs, telemetry data, and sandbox workspaces. This action cannot be
+            undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <form className="flex flex-col gap-6" onSubmit={submit}>
@@ -120,9 +138,15 @@ export function DeleteProjectAction({
             </Field>
           </FieldGroup>
           <AlertDialogFooter>
-            <AlertDialogCancel type="button" disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel type="button" disabled={pending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction type="submit" variant="destructive" disabled={!confirmed || pending}>
-              {pending ? <Spinner data-icon="inline-start" /> : <Trash2Icon data-icon="inline-start" />}
+              {pending ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <Trash2Icon data-icon="inline-start" />
+              )}
               {pending ? "Requesting deletion…" : retry ? "Retry deletion" : "Delete permanently"}
             </AlertDialogAction>
           </AlertDialogFooter>

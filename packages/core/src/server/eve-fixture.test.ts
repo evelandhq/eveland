@@ -4,10 +4,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 type FixtureModule = {
-  materializeEveFixturePackageJson?: (
-    packageJson: string,
-    eveVersion?: string,
-  ) => string;
+  materializeEveFixturePackageJson?: (packageJson: string, eveVersion?: string) => string;
   materializeEveFixtureDirectory?: (
     sourceDirectory: string,
     destinationDirectory: string,
@@ -64,45 +61,30 @@ describe("Eve integration fixture materialization", () => {
       2,
     )}\n`;
 
-    expect(() => materialize(source, "0.29.999")).toThrow(
-      /must declare the Eve catalog marker/,
-    );
+    expect(() => materialize(source, "0.29.999")).toThrow(/must declare the Eve catalog marker/);
   });
 
   test("copies a fixture and materializes only its Eve dependency", async () => {
     const materializeDirectory = await directoryMaterializer();
-    const temporaryRoot = await mkdtemp(
-      path.join(os.tmpdir(), "eveland-eve-fixture-test-"),
-    );
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-eve-fixture-test-"));
     const sourceDirectory = path.join(temporaryRoot, "source");
     const destinationDirectory = path.join(temporaryRoot, "materialized");
     await mkdir(path.join(sourceDirectory, "agent"), { recursive: true });
     await writeFile(
       path.join(sourceDirectory, "package.json"),
-      `${JSON.stringify(
-        { name: "fixture", dependencies: { eve: "catalog:" } },
-        null,
-        2,
-      )}\n`,
+      `${JSON.stringify({ name: "fixture", dependencies: { eve: "catalog:" } }, null, 2)}\n`,
     );
     await writeFile(path.join(sourceDirectory, "agent", "agent.ts"), "export default {};\n");
 
     try {
       await expect(
-        materializeDirectory(
-          sourceDirectory,
-          destinationDirectory,
-          "0.29.999",
-        ),
+        materializeDirectory(sourceDirectory, destinationDirectory, "0.29.999"),
       ).resolves.toBe(destinationDirectory);
       await expect(
         readFile(path.join(destinationDirectory, "package.json"), "utf8"),
       ).resolves.toContain('"eve": "0.29.999"');
       await expect(
-        readFile(
-          path.join(destinationDirectory, "agent", "agent.ts"),
-          "utf8",
-        ),
+        readFile(path.join(destinationDirectory, "agent", "agent.ts"), "utf8"),
       ).resolves.toBe("export default {};\n");
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true });

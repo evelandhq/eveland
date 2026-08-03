@@ -35,11 +35,25 @@ export function LoginForm({ nextPath = "/projects" }: { nextPath?: string }) {
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="email">Email</FieldLabel>
-          <Input id="email" name="email" type="email" autoComplete="email" defaultValue="admin@example.com" required />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            defaultValue="admin@example.com"
+            required
+          />
         </Field>
         <Field data-invalid={Boolean(error)}>
           <FieldLabel htmlFor="password">Password</FieldLabel>
-          <Input id="password" name="password" type="password" autoComplete="current-password" aria-invalid={Boolean(error)} required />
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            aria-invalid={Boolean(error)}
+            required
+          />
           {error ? <FieldError>{error}</FieldError> : null}
         </Field>
         <Field>

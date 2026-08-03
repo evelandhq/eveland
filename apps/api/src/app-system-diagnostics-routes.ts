@@ -37,8 +37,7 @@ export function registerSystemDiagnosticsRoutes(input: {
       return c.json(
         await collectInstanceHealth(store, {
           historyHours,
-          gatewayHealth:
-            gatewayHealth ?? (() => probeGatewayHealth(process.env)),
+          gatewayHealth: gatewayHealth ?? (() => probeGatewayHealth(process.env)),
         }),
       );
     } catch {

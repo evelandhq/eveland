@@ -97,7 +97,10 @@ describe("injectSandboxModules", () => {
   test("preserves an authored workspace seed directory", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
-    await writeFile(path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"), "seeded\n");
+    await writeFile(
+      path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"),
+      "seeded\n",
+    );
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
@@ -106,16 +109,22 @@ describe("injectSandboxModules", () => {
     await expect(
       readFile(path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"), "utf8"),
     ).resolves.toBe("seeded\n");
-    await expect(readFile(path.join(releaseDir, "agent", "sandbox", "sandbox.js"), "utf8")).resolves.toContain(
-      'from "../../.eveland/sandbox-bwrap/index.js"',
-    );
+    await expect(
+      readFile(path.join(releaseDir, "agent", "sandbox", "sandbox.js"), "utf8"),
+    ).resolves.toContain('from "../../.eveland/sandbox-bwrap/index.js"');
   });
 
   test("replaces an authored folder sandbox module without removing workspace seeds", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
-    await writeFile(path.join(releaseDir, "agent", "sandbox", "sandbox.ts"), "export default {};\n");
-    await writeFile(path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"), "seeded\n");
+    await writeFile(
+      path.join(releaseDir, "agent", "sandbox", "sandbox.ts"),
+      "export default {};\n",
+    );
+    await writeFile(
+      path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"),
+      "seeded\n",
+    );
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
@@ -133,14 +142,22 @@ describe("injectSandboxModules", () => {
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
-    expect(result.generated.sort()).toEqual(["agent/sandbox.js", "agent/subagents/researcher/sandbox.js"]);
-    const sub = await readFile(path.join(releaseDir, "agent", "subagents", "researcher", "sandbox.js"), "utf8");
+    expect(result.generated.sort()).toEqual([
+      "agent/sandbox.js",
+      "agent/subagents/researcher/sandbox.js",
+    ]);
+    const sub = await readFile(
+      path.join(releaseDir, "agent", "subagents", "researcher", "sandbox.js"),
+      "utf8",
+    );
     expect(sub).toContain('from "../../../.eveland/sandbox-bwrap/index.js"');
   });
 
   test("generates a module for nested subagents at any depth", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
-    await mkdir(path.join(releaseDir, "agent", "subagents", "outer", "subagents", "inner"), { recursive: true });
+    await mkdir(path.join(releaseDir, "agent", "subagents", "outer", "subagents", "inner"), {
+      recursive: true,
+    });
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
@@ -149,7 +166,10 @@ describe("injectSandboxModules", () => {
       "agent/subagents/outer/sandbox.js",
       "agent/subagents/outer/subagents/inner/sandbox.js",
     ]);
-    const inner = await readFile(path.join(releaseDir, "agent", "subagents", "outer", "subagents", "inner", "sandbox.js"), "utf8");
+    const inner = await readFile(
+      path.join(releaseDir, "agent", "subagents", "outer", "subagents", "inner", "sandbox.js"),
+      "utf8",
+    );
     expect(inner).toContain('from "../../../../../.eveland/sandbox-bwrap/index.js"');
   });
 
@@ -216,6 +236,8 @@ describe("injectSandboxModules", () => {
     await mkdir(path.join(releaseDir, "agent"), { recursive: true });
     await mkdir(backendDistDir, { recursive: true });
 
-    await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(/sandbox-bwrap build/);
+    await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(
+      /sandbox-bwrap build/,
+    );
   });
 });

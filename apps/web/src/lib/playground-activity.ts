@@ -1,45 +1,48 @@
-import type { EveMessage, EveMessagePart } from "eve/react"
+import type { EveMessage, EveMessagePart } from "eve/react";
 
-type VisiblePlaygroundPart = Extract<EveMessagePart, { type: "text" | "file" }>
-export type PlaygroundActivityPart = Extract<EveMessagePart, { type: "reasoning" | "dynamic-tool" | "authorization" }>
+type VisiblePlaygroundPart = Extract<EveMessagePart, { type: "text" | "file" }>;
+export type PlaygroundActivityPart = Extract<
+  EveMessagePart,
+  { type: "reasoning" | "dynamic-tool" | "authorization" }
+>;
 
 export type PlaygroundDisplayItem =
   | { kind: "part"; part: VisiblePlaygroundPart }
   | {
-      kind: "activity"
-      status: "completed" | "failed" | "cancelled" | "running"
-      parts: PlaygroundActivityPart[]
-    }
+      kind: "activity";
+      status: "completed" | "failed" | "cancelled" | "running";
+      parts: PlaygroundActivityPart[];
+    };
 
 export function groupPlaygroundParts(
   parts: readonly EveMessagePart[],
   messageStatus: NonNullable<EveMessage["metadata"]>["status"],
 ): PlaygroundDisplayItem[] {
-  const displayItems: PlaygroundDisplayItem[] = []
-  let activityParts: PlaygroundActivityPart[] = []
+  const displayItems: PlaygroundDisplayItem[] = [];
+  let activityParts: PlaygroundActivityPart[] = [];
 
   const flushActivity = (trailing = false) => {
-    if (activityParts.length === 0) return
+    if (activityParts.length === 0) return;
     displayItems.push({
       kind: "activity",
       status: playgroundActivityStatus(activityParts, messageStatus, trailing),
       parts: activityParts,
-    })
-    activityParts = []
-  }
+    });
+    activityParts = [];
+  };
 
   for (const current of parts) {
-    if (current.type === "step-start") continue
+    if (current.type === "step-start") continue;
     if (current.type === "text" || current.type === "file") {
-      flushActivity()
-      displayItems.push({ kind: "part", part: current })
+      flushActivity();
+      displayItems.push({ kind: "part", part: current });
     } else {
-      activityParts.push(current)
+      activityParts.push(current);
     }
   }
-  flushActivity(true)
+  flushActivity(true);
 
-  return displayItems
+  return displayItems;
 }
 
 function playgroundActivityStatus(
@@ -55,7 +58,7 @@ function playgroundActivityStatus(
     ) ||
     (trailing && messageStatus === "failed")
   ) {
-    return "failed"
+    return "failed";
   }
   if (
     parts.some(
@@ -66,7 +69,7 @@ function playgroundActivityStatus(
           (part.outcome === "declined" || part.outcome === "timed-out")),
     )
   ) {
-    return "cancelled"
+    return "cancelled";
   }
   if (
     parts.some(
@@ -80,7 +83,7 @@ function playgroundActivityStatus(
     ) ||
     (trailing && (messageStatus === "streaming" || messageStatus === "submitted"))
   ) {
-    return "running"
+    return "running";
   }
-  return "completed"
+  return "completed";
 }

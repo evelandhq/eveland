@@ -4,29 +4,23 @@ import {
   type ObservabilityPolicy,
 } from "@eveland/core/observability/policy";
 
-export const AGENT_RUNTIME_POLICY_PATH =
-  "/run/eveland/observability/agent-policy.json";
+export const AGENT_RUNTIME_POLICY_PATH = "/run/eveland/observability/agent-policy.json";
 
-const agentOtlpEndpointSchema = z.url().superRefine(
-  (endpoint, context) => {
-    const parsed = new URL(endpoint);
-    if (
-      parsed.protocol !== "http:" &&
-      parsed.protocol !== "https:"
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Agent OTLP endpoint must use HTTP or HTTPS.",
-      });
-    }
-    if (parsed.username || parsed.password) {
-      context.addIssue({
-        code: "custom",
-        message: "Agent OTLP endpoint must not contain credentials.",
-      });
-    }
-  },
-);
+const agentOtlpEndpointSchema = z.url().superRefine((endpoint, context) => {
+  const parsed = new URL(endpoint);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    context.addIssue({
+      code: "custom",
+      message: "Agent OTLP endpoint must use HTTP or HTTPS.",
+    });
+  }
+  if (parsed.username || parsed.password) {
+    context.addIssue({
+      code: "custom",
+      message: "Agent OTLP endpoint must not contain credentials.",
+    });
+  }
+});
 
 export const agentRuntimePolicySchema = z
   .object({
@@ -83,9 +77,7 @@ export const agentEventObservationSchema = z
   .strict();
 
 export type AgentRuntimePolicy = z.infer<typeof agentRuntimePolicySchema>;
-export type AgentEventObservation = z.infer<
-  typeof agentEventObservationSchema
->;
+export type AgentEventObservation = z.infer<typeof agentEventObservationSchema>;
 
 export class UnmanagedTelemetryResourceError extends Error {
   readonly code = "UNMANAGED_TELEMETRY_RESOURCE";

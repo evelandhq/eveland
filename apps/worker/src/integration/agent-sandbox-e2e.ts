@@ -33,15 +33,16 @@ import {
 } from "../runtime/systemd.js";
 
 if (resolveRuntimeKind(process.env) !== "systemd") {
-  throw new Error("Run with EVELAND_RUNTIME=systemd (this test exercises the systemd + bwrap sandbox injection path).");
+  throw new Error(
+    "Run with EVELAND_RUNTIME=systemd (this test exercises the systemd + bwrap sandbox injection path).",
+  );
 }
 
 // Matches jobs/process.ts's own dev fallback. Passed explicitly to every
 // processNextJob call below so secret encryption/decryption never depends on
 // an ambient APP_SECRET_KEY the VM shell may or may not have set.
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
-const DEPLOY_ACCESS_GROUP =
-  process.env.EVELAND_APP_USER ?? "eveland-app";
+const DEPLOY_ACCESS_GROUP = process.env.EVELAND_APP_USER ?? "eveland-app";
 const FIXTURE_SOURCE_PATH = fileURLToPath(new URL("./fixtures/agent-sandbox-e2e", import.meta.url));
 
 const TEMPLATE_KEY = "e2e-template";
@@ -140,7 +141,12 @@ console.log("E2E SANDBOX CHECK OK");
  * different identities for seed and verify proves the durable cache remains
  * usable across the UID turnover that restart and cold activation can cause.
  */
-function buildCheckArgs(input: { releaseDir: string; cacheDir: string; scriptPath: string; mode: "seed" | "verify" }): string[] {
+function buildCheckArgs(input: {
+  releaseDir: string;
+  cacheDir: string;
+  scriptPath: string;
+  mode: "seed" | "verify";
+}): string[] {
   const dynamicUser = resolveSystemdDeploymentUser(
     `eveland-sandbox-check-${process.pid}-${input.mode}`,
   );
@@ -168,7 +174,11 @@ function buildCheckArgs(input: { releaseDir: string; cacheDir: string; scriptPat
   ];
 }
 
-async function runDeterministicCheck(input: { releaseDir: string; cacheDir: string; mode: "seed" | "verify" }): Promise<void> {
+async function runDeterministicCheck(input: {
+  releaseDir: string;
+  cacheDir: string;
+  mode: "seed" | "verify";
+}): Promise<void> {
   const scriptPath = path.join(input.releaseDir, ".eveland", "e2e-check.mjs");
   await mkdir(path.dirname(scriptPath), { recursive: true });
   await writeFile(scriptPath, buildCheckScript(), "utf8");
@@ -185,7 +195,9 @@ async function runDeterministicCheck(input: { releaseDir: string; cacheDir: stri
   );
   const output = result.all ?? "";
   if (result.exitCode !== 0 || !output.includes("E2E SANDBOX CHECK OK")) {
-    throw new Error(`Deterministic sandbox check (${input.mode}) failed (exit=${result.exitCode ?? "unknown"}):\n${output}`);
+    throw new Error(
+      `Deterministic sandbox check (${input.mode}) failed (exit=${result.exitCode ?? "unknown"}):\n${output}`,
+    );
   }
 }
 
@@ -241,7 +253,10 @@ async function runHttpTurnOnce(input: {
     });
     const createBody = await createResponse.text();
     if (!createResponse.ok) {
-      return { kind: "transient", detail: `POST /eve/v1/session -> ${createResponse.status}: ${createBody}` };
+      return {
+        kind: "transient",
+        detail: `POST /eve/v1/session -> ${createResponse.status}: ${createBody}`,
+      };
     }
 
     let sessionId: string | undefined;
@@ -288,11 +303,14 @@ async function runHttpTurnOnce(input: {
           // by `session.waiting` for the next user message (confirmed live
           // against a running deployment -- the docs' abbreviated event list
           // is misleading here). Treat either turn-level signal as done.
-          if (event.type === "turn.completed" || event.type === "session.completed") sawCompletion = true;
+          if (event.type === "turn.completed" || event.type === "session.completed")
+            sawCompletion = true;
           if (event.type === "turn.failed") sawFailure = true;
           if (
             event.type === "actions.requested" &&
-            event.data?.actions?.some((action) => action.kind === "tool-call" && action.toolName === "load_skill")
+            event.data?.actions?.some(
+              (action) => action.kind === "tool-call" && action.toolName === "load_skill",
+            )
           ) {
             sawSkillLoad = true;
           }
@@ -310,7 +328,10 @@ async function runHttpTurnOnce(input: {
       return { kind: "fatal", detail: `turn.failed observed in the event stream:\n${raw}` };
     }
     if (!sawCompletion) {
-      return { kind: "transient", detail: `stream ended without turn.completed within timeout:\n${raw}` };
+      return {
+        kind: "transient",
+        detail: `stream ended without turn.completed within timeout:\n${raw}`,
+      };
     }
     if (!sawSkillLoad) {
       return {
@@ -336,7 +357,10 @@ async function runHttpTurnOnce(input: {
     // Thrown by fetch/stream on connection-level problems (refused,
     // reset, DNS, abort) -- indistinguishable from the unit still warming
     // up, so treated as transient.
-    return { kind: "transient", detail: error instanceof Error ? (error.stack ?? error.message) : String(error) };
+    return {
+      kind: "transient",
+      detail: error instanceof Error ? (error.stack ?? error.message) : String(error),
+    };
   }
 }
 
@@ -365,7 +389,9 @@ async function runLiveHttpTurn(input: {
   for (let attempt = 1; attempt <= HTTP_TURN_MAX_ATTEMPTS; attempt++) {
     const outcome = await runHttpTurnOnce(input);
     if (outcome.kind === "success") return outcome.detail;
-    attemptDetails.push(`attempt ${attempt}/${HTTP_TURN_MAX_ATTEMPTS} (${outcome.kind}): ${outcome.detail}`);
+    attemptDetails.push(
+      `attempt ${attempt}/${HTTP_TURN_MAX_ATTEMPTS} (${outcome.kind}): ${outcome.detail}`,
+    );
     if (outcome.kind === "fatal") break;
     if (attempt < HTTP_TURN_MAX_ATTEMPTS) await delay(HTTP_TURN_RETRY_DELAY_MS);
   }
@@ -379,20 +405,30 @@ const syncedSourcePath = path.join(sourceTempRoot, "source");
 await materializeEveFixtureDirectory(FIXTURE_SOURCE_PATH, syncedSourcePath);
 
 const { store, close } = await createPgliteTestStore();
-const project = await store.createProject({ name: "Agent Sandbox E2E", importKind: "zip", sourcePath: syncedSourcePath });
+const project = await store.createProject({
+  name: "Agent Sandbox E2E",
+  importKind: "zip",
+  sourcePath: syncedSourcePath,
+});
 
 // So the deployed unit can run a real turn (step C) with no model
 // credentials: EVE_MOCK_AUTHORED_MODELS=1 activates eve's deterministic mock
 // model adapter (fact 7). Injected the same way any project secret reaches
 // the unit's environment -- through the real store/build_deploy pipeline,
 // with no code change to systemd.ts needed.
-await store.upsertSecret(project.id, "EVE_MOCK_AUTHORED_MODELS", JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)));
+await store.upsertSecret(
+  project.id,
+  "EVE_MOCK_AUTHORED_MODELS",
+  JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+);
 await store.saveSharedAgentEnvironment({
-  entries: [{
-    key: SHARED_ENVIRONMENT_KEY,
-    kind: "secret",
-    encryptedValue: JSON.stringify(encryptSecretValue(SHARED_ENVIRONMENT_VALUE, APP_SECRET_KEY)),
-  }],
+  entries: [
+    {
+      key: SHARED_ENVIRONMENT_KEY,
+      kind: "secret",
+      encryptedValue: JSON.stringify(encryptSecretValue(SHARED_ENVIRONMENT_VALUE, APP_SECRET_KEY)),
+    },
+  ],
 });
 let deployment: DeploymentRecord | null = null;
 
@@ -401,7 +437,8 @@ try {
     throw new Error("import_source job did not run.");
   }
   const imported = await store.getProject(project.id);
-  if (imported?.status !== "imported") throw new Error(`Import failed: ${JSON.stringify(imported)}`);
+  if (imported?.status !== "imported")
+    throw new Error(`Import failed: ${JSON.stringify(imported)}`);
 
   // --- Deploy 1 --------------------------------------------------------
   await store.enqueueJob(project.id, "build_deploy");
@@ -416,12 +453,14 @@ try {
     throw new Error(`First deploy failed: ${JSON.stringify({ deployedOnce, logs })}`);
   }
 
-  const mainPid = (await execa("systemctl", [
-    "show",
-    "--property=MainPID",
-    "--value",
-    `${deployment.containerName}.service`,
-  ])).stdout.trim();
+  const mainPid = (
+    await execa("systemctl", [
+      "show",
+      "--property=MainPID",
+      "--value",
+      `${deployment.containerName}.service`,
+    ])
+  ).stdout.trim();
   assert.match(mainPid, /^[1-9][0-9]*$/, "the deployed systemd unit must have a running MainPID");
   const processEnvironment = (await readFile(`/proc/${mainPid}/environ`, "utf8")).split("\0");
   assert.ok(
@@ -430,13 +469,18 @@ try {
   );
 
   const buildLogs = (await store.listLogs(project.id, "build")).map((log) => log.line).join("\n");
-  assert.ok(!buildLogs.includes(SHARED_ENVIRONMENT_VALUE), "the shared environment value must be masked from build logs");
+  assert.ok(
+    !buildLogs.includes(SHARED_ENVIRONMENT_VALUE),
+    "the shared environment value must be masked from build logs",
+  );
   assert.ok(
     buildLogs.includes("Injected eve sandbox modules: agent/sandbox/sandbox.js"),
     `build log missing the injection line:\n${buildLogs}`,
   );
   assert.ok(
-    buildLogs.includes("WARNING: replaced the project's authored sandbox (agent/sandbox/sandbox.ts)"),
+    buildLogs.includes(
+      "WARNING: replaced the project's authored sandbox (agent/sandbox/sandbox.ts)",
+    ),
     `build log missing the replaced-authored-sandbox warning:\n${buildLogs}`,
   );
 
@@ -474,7 +518,9 @@ try {
     cacheDir: projectCacheDir,
     expectedSeedContent: INITIAL_SEED_CONTENT,
   });
-  console.log(`Eve's deployed runtime invoked the injected bwrap backend for a live turn -- ${liveTurnDetail}`);
+  console.log(
+    `Eve's deployed runtime invoked the injected bwrap backend for a live turn -- ${liveTurnDetail}`,
+  );
 
   // --- Sync and deploy ---------------------------------------------------
   // Update the imported source's authored workspace, then exercise the same
@@ -489,7 +535,9 @@ try {
   // not replace the current production Deployment. Track the IDs that already
   // exist so the second Release is selected as the newly-created preview,
   // rather than asking getCurrentDeployment() for the still-current first one.
-  const deploymentIdsBeforeRedeploy = new Set((await store.listDeployments(project.id)).map((item) => item.id));
+  const deploymentIdsBeforeRedeploy = new Set(
+    (await store.listDeployments(project.id)).map((item) => item.id),
+  );
   await store.enqueueJob(project.id, "import_source", {
     sourcePath: syncedSourcePath,
     deployAfterImport: true,
@@ -502,8 +550,14 @@ try {
   }
 
   const deployedTwice = await store.getProject(project.id);
-  const newDeployments = (await store.listDeployments(project.id)).filter((item) => !deploymentIdsBeforeRedeploy.has(item.id));
-  assert.equal(newDeployments.length, 1, "redeploy must create exactly one concurrent preview Deployment");
+  const newDeployments = (await store.listDeployments(project.id)).filter(
+    (item) => !deploymentIdsBeforeRedeploy.has(item.id),
+  );
+  assert.equal(
+    newDeployments.length,
+    1,
+    "redeploy must create exactly one concurrent preview Deployment",
+  );
   const deployment2 = newDeployments[0];
   if (deployedTwice?.deploymentStatus !== "running" || deployment2?.status !== "running") {
     const logs = await store.listLogs(project.id, "runtime");
@@ -518,7 +572,10 @@ try {
     `${releaseDir2}/agent/sandbox/sandbox.js must exist`,
   );
   assert.equal(
-    await readFile(path.join(releaseDir2, "agent", "sandbox", "workspace", "eveland-seed.txt"), "utf8"),
+    await readFile(
+      path.join(releaseDir2, "agent", "sandbox", "workspace", "eveland-seed.txt"),
+      "utf8",
+    ),
     `${UPDATED_SEED_CONTENT}\n`,
     "the second Release must contain the synced workspace seed",
   );
@@ -528,12 +585,20 @@ try {
     cacheDir: projectCacheDir,
     expectedSeedContent: UPDATED_SEED_CONTENT,
   });
-  console.log(`A new Session used the synced workspace seed from release 2 -- ${updatedLiveTurnDetail}`);
+  console.log(
+    `A new Session used the synced workspace seed from release 2 -- ${updatedLiveTurnDetail}`,
+  );
 
   // --- Regression proof: the durable session workspace survives the
   // redeploy because the cache dir lives outside the release dir. ---------
-  await runDeterministicCheck({ releaseDir: releaseDir2, cacheDir: projectCacheDir, mode: "verify" });
-  console.log("Deterministic sandbox check (verify) passed against release 2: durable session survived the redeploy.");
+  await runDeterministicCheck({
+    releaseDir: releaseDir2,
+    cacheDir: projectCacheDir,
+    mode: "verify",
+  });
+  console.log(
+    "Deterministic sandbox check (verify) passed against release 2: durable session survived the redeploy.",
+  );
 
   console.log("AGENT SANDBOX E2E OK");
 } finally {

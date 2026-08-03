@@ -43,20 +43,25 @@ describe("processNextJob", () => {
     });
 
     await expect(processNextSourcePreflight(store, "preflight-worker")).resolves.toBe(true);
-    await expect(store.getSourcePreflight(preflight.id, "user_local_admin")).resolves.toMatchObject({
-      status: "completed",
-      summary: expect.objectContaining({
-        eveVersion: expect.any(String),
-        capabilities: { eveChat: true },
-      }),
-    });
+    await expect(store.getSourcePreflight(preflight.id, "user_local_admin")).resolves.toMatchObject(
+      {
+        status: "completed",
+        summary: expect.objectContaining({
+          eveVersion: expect.any(String),
+          capabilities: { eveChat: true },
+        }),
+      },
+    );
     await expect(store.listProjects()).resolves.toEqual([]);
   });
 
   test("reports invalid Eve source without creating a Project", async () => {
     const store = createTestStore();
     const sourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-invalid-preflight-"));
-    await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve: "0.23.0" } }));
+    await writeFile(
+      path.join(sourcePath, "package.json"),
+      JSON.stringify({ dependencies: { eve: "0.23.0" } }),
+    );
     const preflight = await store.createSourcePreflight({
       userId: "user_local_admin",
       kind: "zip",
@@ -65,10 +70,12 @@ describe("processNextJob", () => {
     });
 
     await expect(processNextSourcePreflight(store, "preflight-worker")).resolves.toBe(true);
-    await expect(store.getSourcePreflight(preflight.id, "user_local_admin")).resolves.toMatchObject({
-      status: "failed",
-      error: expect.stringContaining("Eve"),
-    });
+    await expect(store.getSourcePreflight(preflight.id, "user_local_admin")).resolves.toMatchObject(
+      {
+        status: "failed",
+        error: expect.stringContaining("Eve"),
+      },
+    );
     await expect(store.listProjects()).resolves.toEqual([]);
     await rm(sourcePath, { recursive: true, force: true });
   });
@@ -79,7 +86,10 @@ describe("processNextJob", () => {
     const managedSource = path.join(dataDir, "preflights", "pre_managed", "source");
     const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-outside-"));
     const outsideSource = path.join(outsideRoot, "source");
-    await Promise.all([mkdir(managedSource, { recursive: true }), mkdir(outsideSource, { recursive: true })]);
+    await Promise.all([
+      mkdir(managedSource, { recursive: true }),
+      mkdir(outsideSource, { recursive: true }),
+    ]);
 
     for (const sourcePath of [managedSource, outsideSource]) {
       const preflight = await store.createSourcePreflight({
@@ -88,15 +98,20 @@ describe("processNextJob", () => {
         sourcePath,
         expiresAt: new Date("2026-07-17T00:00:00.000Z"),
       });
-      const claimed = await store.claimNextSourcePreflight("cleanup-worker", new Date("2026-07-16T00:00:00.000Z"));
-      await store.completeSourcePreflight(preflight.id, claimed!.attempts, { sourcePath, commitSha: null, summary: {} });
+      const claimed = await store.claimNextSourcePreflight(
+        "cleanup-worker",
+        new Date("2026-07-16T00:00:00.000Z"),
+      );
+      await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
+        sourcePath,
+        commitSha: null,
+        summary: {},
+      });
     }
 
-    await expect(cleanupExpiredSourcePreflights(
-      store,
-      dataDir,
-      new Date("2026-07-18T00:00:00.000Z"),
-    )).resolves.toBe(1);
+    await expect(
+      cleanupExpiredSourcePreflights(store, dataDir, new Date("2026-07-18T00:00:00.000Z")),
+    ).resolves.toBe(1);
     await expect(access(managedSource)).rejects.toThrow();
     await expect(access(outsideSource)).resolves.toBeUndefined();
     await Promise.all([
@@ -108,12 +123,20 @@ describe("processNextJob", () => {
   test("heartbeats while a claimed job is still running", async () => {
     let finish!: (value: string) => void;
     let heartbeatObserved!: () => void;
-    const observed = new Promise<void>((resolve) => { heartbeatObserved = resolve; });
+    const observed = new Promise<void>((resolve) => {
+      heartbeatObserved = resolve;
+    });
 
     const running = runWithJobHeartbeat({
       intervalMs: 1,
-      heartbeat: async () => { heartbeatObserved(); return true; },
-      work: () => new Promise<string>((resolve) => { finish = resolve; }),
+      heartbeat: async () => {
+        heartbeatObserved();
+        return true;
+      },
+      work: () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
     });
     await observed;
     finish("done");
@@ -129,13 +152,14 @@ describe("processNextJob", () => {
         intervalMs: 1,
         // First beat holds the lease, second observes it fenced away.
         heartbeat: async () => ++heartbeats < 2,
-        work: (signal) => new Promise<never>((_resolve, reject) => {
-          workSignal = signal;
-          signal.addEventListener("abort", () => {
-            resolve(signal.reason);
-            reject(signal.reason);
-          });
-        }),
+        work: (signal) =>
+          new Promise<never>((_resolve, reject) => {
+            workSignal = signal;
+            signal.addEventListener("abort", () => {
+              resolve(signal.reason);
+              reject(signal.reason);
+            });
+          }),
       }).catch(() => undefined);
     });
 
@@ -149,7 +173,9 @@ describe("processNextJob", () => {
     let finish!: (value: string) => void;
     let failuresObserved = 0;
     let observeFailures!: () => void;
-    const observed = new Promise<void>((resolve) => { observeFailures = resolve; });
+    const observed = new Promise<void>((resolve) => {
+      observeFailures = resolve;
+    });
 
     const running = runWithJobHeartbeat({
       intervalMs: 1,
@@ -158,10 +184,11 @@ describe("processNextJob", () => {
         if (failuresObserved >= 3) observeFailures();
         throw new Error("database briefly unreachable");
       },
-      work: (signal) => new Promise<string>((resolve, reject) => {
-        finish = resolve;
-        signal.addEventListener("abort", () => reject(signal.reason));
-      }),
+      work: (signal) =>
+        new Promise<string>((resolve, reject) => {
+          finish = resolve;
+          signal.addEventListener("abort", () => reject(signal.reason));
+        }),
     });
     await observed;
     finish("done");
@@ -205,14 +232,19 @@ describe("processNextJob", () => {
       runtimeInstanceId: claim.runtimeInstance.id,
     });
     const ensureProcess = vi.fn(
-      async (
-        _input: Parameters<NonNullable<RuntimeAdapter["ensureProcess"]>>[0],
-      ) => ({ internalPort: 3000, log: "started" }),
+      async (_input: Parameters<NonNullable<RuntimeAdapter["ensureProcess"]>>[0]) => ({
+        internalPort: 3000,
+        log: "started",
+      }),
     );
     const runtime: RuntimeAdapter = {
       name: "docker",
-      async buildRelease() { throw new Error("not used"); },
-      async startProcess() { return { internalPort: 3000, log: "started" }; },
+      async buildRelease() {
+        throw new Error("not used");
+      },
+      async startProcess() {
+        return { internalPort: 3000, log: "started" };
+      },
       ensureProcess,
       async stopProcess() {},
     };
@@ -221,11 +253,13 @@ describe("processNextJob", () => {
       spanProcessors: [new SimpleSpanProcessor(spanExporter)],
     });
 
-    await expect(processNextJob(store, "wake-worker", {
-      runtime,
-      waitForDeployment: async () => {},
-      tracer: tracerProvider.getTracer("worker-job-test"),
-    })).resolves.toBe(true);
+    await expect(
+      processNextJob(store, "wake-worker", {
+        runtime,
+        waitForDeployment: async () => {},
+        tracer: tracerProvider.getTracer("worker-job-test"),
+      }),
+    ).resolves.toBe(true);
 
     expect(ensureProcess).toHaveBeenCalledTimes(1);
     expect(ensureProcess).toHaveBeenCalledWith(
@@ -262,7 +296,10 @@ describe("processNextJob", () => {
     test(`leaves a Deployment ${retired.status} mid-activation alone instead of writing it back to running`, async () => {
       const store = createTestStore();
       const sourcePath = await createFixtureEveProject();
-      const project = await store.createProject({ name: `Retired ${retired.status} Wake`, importKind: "zip" });
+      const project = await store.createProject({
+        name: `Retired ${retired.status} Wake`,
+        importKind: "zip",
+      });
       const importJob = await store.claimNextJob("fixture-import");
       await store.completeJob(importJob!.id);
       const revision = await store.recordSourceRevision({
@@ -296,8 +333,12 @@ describe("processNextJob", () => {
       });
       const runtime: RuntimeAdapter = {
         name: "docker",
-        async buildRelease() { throw new Error("not used"); },
-        async startProcess() { return { internalPort: 3000, log: "started" }; },
+        async buildRelease() {
+          throw new Error("not used");
+        },
+        async startProcess() {
+          return { internalPort: 3000, log: "started" };
+        },
         async ensureProcess() {
           await store.updateDeploymentStatus(deployment.id, retired.status);
           return { internalPort: 3000, log: "started" };
@@ -305,18 +346,24 @@ describe("processNextJob", () => {
         async stopProcess() {},
       };
 
-      await expect(processNextJob(store, "wake-worker", {
-        runtime,
-        waitForDeployment: async () => {},
-      })).resolves.toBe(true);
+      await expect(
+        processNextJob(store, "wake-worker", {
+          runtime,
+          waitForDeployment: async () => {},
+        }),
+      ).resolves.toBe(true);
 
-      await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: retired.status });
+      await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({
+        status: retired.status,
+      });
     });
   }
 
   test("starts a prebuilt Release from persisted SourceRevision metadata when its source directory is gone", async () => {
     const store = createTestStore();
-    const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-persisted-activation-source-"));
+    const missingSourcePath = await mkdtemp(
+      path.join(os.tmpdir(), "eveland-persisted-activation-source-"),
+    );
     await rm(missingSourcePath, { recursive: true, force: true });
     const project = await store.createProject({ name: "Persisted Wake", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
@@ -365,21 +412,28 @@ describe("processNextJob", () => {
       runtimeInstanceId: claim.runtimeInstance.id,
     });
     const ensureProcess = vi.fn(
-      async (
-        _input: Parameters<NonNullable<RuntimeAdapter["ensureProcess"]>>[0],
-      ) => ({ internalPort: 3000, log: "started" }),
+      async (_input: Parameters<NonNullable<RuntimeAdapter["ensureProcess"]>>[0]) => ({
+        internalPort: 3000,
+        log: "started",
+      }),
     );
 
-    await expect(processNextJob(store, "wake-worker", {
-      runtime: {
-        name: "docker",
-        async buildRelease() { throw new Error("not used"); },
-        async startProcess() { return { internalPort: 3000, log: "started" }; },
-        ensureProcess,
-        async stopProcess() {},
-      },
-      waitForDeployment: async () => {},
-    })).resolves.toBe(true);
+    await expect(
+      processNextJob(store, "wake-worker", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("not used");
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "started" };
+          },
+          ensureProcess,
+          async stopProcess() {},
+        },
+        waitForDeployment: async () => {},
+      }),
+    ).resolves.toBe(true);
 
     expect(ensureProcess).toHaveBeenCalledTimes(1);
     expect(ensureProcess).toHaveBeenCalledWith(
@@ -395,7 +449,9 @@ describe("processNextJob", () => {
 
   test("records activation preparation failures on the RuntimeInstance", async () => {
     const store = createTestStore();
-    const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-missing-activation-source-"));
+    const missingSourcePath = await mkdtemp(
+      path.join(os.tmpdir(), "eveland-missing-activation-source-"),
+    );
     await rm(missingSourcePath, { recursive: true, force: true });
     const project = await store.createProject({ name: "Failed Wake", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
@@ -430,14 +486,20 @@ describe("processNextJob", () => {
       runtimeInstanceId: claim.runtimeInstance.id,
     });
 
-    await expect(processNextJob(store, "wake-worker", {
-      runtime: {
-        name: "docker",
-        async buildRelease() { throw new Error("not used"); },
-        async startProcess() { throw new Error("must not start"); },
-        async stopProcess() {},
-      },
-    })).resolves.toBe(true);
+    await expect(
+      processNextJob(store, "wake-worker", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("not used");
+          },
+          async startProcess() {
+            throw new Error("must not start");
+          },
+          async stopProcess() {},
+        },
+      }),
+    ).resolves.toBe(true);
 
     await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
       status: "failed",
@@ -504,14 +566,20 @@ describe("processNextJob", () => {
       runtimeInstanceId: claim.runtimeInstance.id,
     });
 
-    await expect(processNextJob(store, "wake-worker", {
-      runtime: {
-        name: "docker",
-        async buildRelease() { throw new Error("not used"); },
-        async startProcess() { throw new Error("must not start"); },
-        async stopProcess() {},
-      },
-    })).resolves.toBe(true);
+    await expect(
+      processNextJob(store, "wake-worker", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("not used");
+          },
+          async startProcess() {
+            throw new Error("must not start");
+          },
+          async stopProcess() {},
+        },
+      }),
+    ).resolves.toBe(true);
 
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "deployed",
@@ -548,13 +616,15 @@ describe("processNextJob", () => {
     const versions = await store.recordScheduleVersions({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      definitions: [{
-        key: "billing/sweep",
-        kind: "handler",
-        cron: "0 3 * * *",
-        sourcePath: "agent/schedules/billing/sweep.ts",
-        definitionHash: "trigger-v1",
-      }],
+      definitions: [
+        {
+          key: "billing/sweep",
+          kind: "handler",
+          cron: "0 3 * * *",
+          sourcePath: "agent/schedules/billing/sweep.ts",
+          definitionHash: "trigger-v1",
+        },
+      ],
     });
     const schedule = versions[0]?.schedule;
     if (!schedule) throw new Error("Expected schedule fixture.");
@@ -569,14 +639,24 @@ describe("processNextJob", () => {
     });
     await store.setProjectSchedulerTarget(project.id, deployment.id);
     await rm(sourcePath, { recursive: true, force: true });
-    const run = await store.createManualScheduleRun(project.id, schedule.id, new Date("2026-07-15T01:02:03.000Z"));
+    const run = await store.createManualScheduleRun(
+      project.id,
+      schedule.id,
+      new Date("2026-07-15T01:02:03.000Z"),
+    );
     await store.enqueueJob(project.id, "trigger_schedule", { scheduleRunId: run.id });
     const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
     const runtime: RuntimeAdapter = {
       name: "docker",
-      async buildRelease() { throw new Error("not used"); },
-      async startProcess() { return { internalPort: 3000, log: "started" }; },
-      async ensureProcess() { return { internalPort: 3000, log: "started" }; },
+      async buildRelease() {
+        throw new Error("not used");
+      },
+      async startProcess() {
+        return { internalPort: 3000, log: "started" };
+      },
+      async ensureProcess() {
+        return { internalPort: 3000, log: "started" };
+      },
       async stopProcess() {},
     };
 
@@ -593,13 +673,13 @@ describe("processNextJob", () => {
         scheduleKey: schedule.key,
       });
       await expect(
-        store.hasActiveActivationLeases(
-          deployment.id,
-          new Date(Date.now() + 10 * 60_000),
-        ),
+        store.hasActiveActivationLeases(deployment.id, new Date(Date.now() + 10 * 60_000)),
       ).resolves.toBe(true);
       await store.redeemScheduleRunDispatch(run.id, deployment.id);
-      await store.completeScheduleRun(run.id, { status: "succeeded", eveSessionIds: ["eve_worker_schedule"] });
+      await store.completeScheduleRun(run.id, {
+        status: "succeeded",
+        eveSessionIds: ["eve_worker_schedule"],
+      });
       return { sessionIds: ["eve_worker_schedule"] };
     });
     const options = {
@@ -612,18 +692,20 @@ describe("processNextJob", () => {
     await expect(processNextJob(store, "schedule-worker", options)).resolves.toBe(true);
     await expect(processNextJob(store, "schedule-worker", options)).resolves.toBe(true);
 
-    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "running", attempt: 1 });
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
+      status: "running",
+      attempt: 1,
+    });
     expect(dispatchSchedule).toHaveBeenCalledTimes(1);
-    await expect(store.listSessions(project.id)).resolves.toContainEqual(expect.objectContaining({
-      eveSessionId: "eve_worker_schedule",
-      scheduleRunId: run.id,
-    }));
+    await expect(store.listSessions(project.id)).resolves.toContainEqual(
+      expect.objectContaining({
+        eveSessionId: "eve_worker_schedule",
+        scheduleRunId: run.id,
+      }),
+    );
     await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(true);
     await expect(
-      store.hasActiveActivationLeases(
-        deployment.id,
-        new Date(Date.now() + 10 * 60_000),
-      ),
+      store.hasActiveActivationLeases(deployment.id, new Date(Date.now() + 10 * 60_000)),
     ).resolves.toBe(true);
     await expect(store.listLogs(project.id, "runtime")).resolves.toEqual(
       expect.arrayContaining([
@@ -635,20 +717,24 @@ describe("processNextJob", () => {
         }),
         expect.objectContaining({
           line: expect.stringMatching(
-            new RegExp(`^ScheduleRun ${run.id} started billing/sweep with 1 Session after \\d+ms\\.$`),
+            new RegExp(
+              `^ScheduleRun ${run.id} started billing/sweep with 1 Session after \\d+ms\\.$`,
+            ),
           ),
         }),
       ]),
     );
 
     const unknownRun = await store.createManualScheduleRun(project.id, schedule.id);
-    await expect(processNextJob(store, "schedule-worker", {
-      ...options,
-      dispatchSchedule: async () => {
-        await store.redeemScheduleRunDispatch(unknownRun.id, deployment.id);
-        throw new Error("runtime connection closed after dispatch claim");
-      },
-    })).resolves.toBe(true);
+    await expect(
+      processNextJob(store, "schedule-worker", {
+        ...options,
+        dispatchSchedule: async () => {
+          await store.redeemScheduleRunDispatch(unknownRun.id, deployment.id);
+          throw new Error("runtime connection closed after dispatch claim");
+        },
+      }),
+    ).resolves.toBe(true);
     await expect(store.getScheduleRun(unknownRun.id)).resolves.toMatchObject({
       status: "dispatch_unknown",
       attempt: 1,
@@ -665,39 +751,37 @@ describe("processNextJob", () => {
       }),
     );
 
-    const acknowledgedRun = await store.createManualScheduleRun(
-      project.id,
-      schedule.id,
-    );
-    await expect(processNextJob(store, "schedule-worker", {
-      ...options,
-      dispatchSchedule: async () => {
-        await store.redeemScheduleRunDispatch(
-          acknowledgedRun.id,
-          deployment.id,
-        );
-        await store.completeScheduleRun(acknowledgedRun.id, {
-          status: "succeeded",
-          eveSessionIds: ["eve_acknowledged_schedule"],
-        });
-        throw new Error("runtime response was lost after durable completion");
-      },
-    })).resolves.toBe(true);
+    const acknowledgedRun = await store.createManualScheduleRun(project.id, schedule.id);
+    await expect(
+      processNextJob(store, "schedule-worker", {
+        ...options,
+        dispatchSchedule: async () => {
+          await store.redeemScheduleRunDispatch(acknowledgedRun.id, deployment.id);
+          await store.completeScheduleRun(acknowledgedRun.id, {
+            status: "succeeded",
+            eveSessionIds: ["eve_acknowledged_schedule"],
+          });
+          throw new Error("runtime response was lost after durable completion");
+        },
+      }),
+    ).resolves.toBe(true);
     await expect(store.getScheduleRun(acknowledgedRun.id)).resolves.toMatchObject({
       status: "running",
       completedAt: null,
     });
-    await expect(store.getSessionByEveSessionId(
-      project.id,
-      "eve_acknowledged_schedule",
-    )).resolves.toMatchObject({ status: "running" });
+    await expect(
+      store.getSessionByEveSessionId(project.id, "eve_acknowledged_schedule"),
+    ).resolves.toMatchObject({ status: "running" });
     await expect(store.hasActiveActivationLeases(deployment.id)).resolves.toBe(true);
   });
 
   test("invalidates each materialized Gateway hostname when service credentials are configured", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     await invalidateGatewayRouteCache(
-      { EVELAND_GATEWAY_INTERNAL_URL: "http://gateway:4080", EVELAND_GATEWAY_SERVICE_TOKEN: "secret" },
+      {
+        EVELAND_GATEWAY_INTERNAL_URL: "http://gateway:4080",
+        EVELAND_GATEWAY_SERVICE_TOKEN: "secret",
+      },
       [{ hostname: "p-one.agent.localhost" }, { hostname: "d-one--p-one.agent.localhost" }],
       async (url, init) => {
         calls.push({ url: String(url), init });
@@ -717,7 +801,10 @@ describe("processNextJob", () => {
   test("maps the durable sandbox cache to worker-visible and Docker-host paths", () => {
     expect(
       resolveSandboxCacheDirs(
-        { EVELAND_DATA_DIR: "/workspace/.eveland-data", EVELAND_HOST_DATA_DIR: "/host/eveland/.eveland-data" },
+        {
+          EVELAND_DATA_DIR: "/workspace/.eveland-data",
+          EVELAND_HOST_DATA_DIR: "/host/eveland/.eveland-data",
+        },
         "proj_123",
       ),
     ).toEqual({
@@ -739,7 +826,9 @@ describe("processNextJob", () => {
       expect(port).toBeGreaterThan(address.port);
       expect(port).toBeLessThanOrEqual(address.port + 10);
     } finally {
-      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
     }
   });
 
@@ -762,5 +851,4 @@ describe("processNextJob", () => {
     expect(port).toBeGreaterThan(address.port);
     expect(port).toBeLessThanOrEqual(address.port + 10);
   });
-
 });

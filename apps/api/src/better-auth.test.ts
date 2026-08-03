@@ -44,12 +44,17 @@ async function createTestRuntime(
   return { database, runtime };
 }
 
-async function signIn(runtime: ReturnType<typeof createBetterAuthRuntime>, password = "admin-password") {
-  const response = await runtime.handler(new Request("http://localhost:4000/api/auth/sign-in/email", {
-    method: "POST",
-    headers: { "content-type": "application/json", origin: "http://localhost:3000" },
-    body: JSON.stringify({ email: "admin@example.com", password }),
-  }));
+async function signIn(
+  runtime: ReturnType<typeof createBetterAuthRuntime>,
+  password = "admin-password",
+) {
+  const response = await runtime.handler(
+    new Request("http://localhost:4000/api/auth/sign-in/email", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      body: JSON.stringify({ email: "admin@example.com", password }),
+    }),
+  );
   const cookie = response.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
   return { cookie, response };
 }
@@ -58,8 +63,16 @@ describe("Better Auth runtime", () => {
   test("bootstraps one default organization admin without resetting an established password", async () => {
     const { database, runtime } = await createTestRuntime();
 
-    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
-    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "replacement-password" });
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "replacement-password",
+    });
 
     await expect(database.db.select().from(users)).resolves.toEqual([
       expect.objectContaining({ id: "user_local_admin", email: "admin@example.com" }),
@@ -79,16 +92,24 @@ describe("Better Auth runtime", () => {
 
   test("uses Better Auth sessions and the stable Eveland cookie name", async () => {
     const { runtime } = await createTestRuntime();
-    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
 
     const { cookie, response } = await signIn(runtime);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain(`${SESSION_COOKIE_NAME}=`);
     expect(response.headers.get("set-cookie")).toContain("HttpOnly");
-    await expect(runtime.authenticate(new Request("http://localhost:4000/projects", {
-      headers: { cookie },
-    }))).resolves.toMatchObject({ email: "admin@example.com", role: "admin" });
+    await expect(
+      runtime.authenticate(
+        new Request("http://localhost:4000/projects", {
+          headers: { cookie },
+        }),
+      ),
+    ).resolves.toMatchObject({ email: "admin@example.com", role: "admin" });
   });
 
   test("adopts the legacy project owner row as the configured admin", async () => {
@@ -105,10 +126,18 @@ describe("Better Auth runtime", () => {
       updatedAt: now,
     });
 
-    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
 
     await expect(database.db.select().from(users)).resolves.toEqual([
-      expect.objectContaining({ id: "user_local_admin", email: "admin@example.com", name: "Admin" }),
+      expect.objectContaining({
+        id: "user_local_admin",
+        email: "admin@example.com",
+        name: "Admin",
+      }),
     ]);
     await expect(database.db.select().from(authAccounts)).resolves.toHaveLength(1);
     expect((await signIn(runtime)).response.status).toBe(200);
@@ -116,7 +145,11 @@ describe("Better Auth runtime", () => {
 
   test("uses the Organization plugin for seven-day invitations and memberships", async () => {
     const { database, runtime } = await createTestRuntime();
-    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
     const { cookie } = await signIn(runtime);
     const request = new Request("http://localhost:4000/invitations", { headers: { cookie } });
 
@@ -130,9 +163,15 @@ describe("Better Auth runtime", () => {
     });
 
     expect(issued.invitation.role).toBe("member");
-    expect(new Date(issued.invitation.expiresAt).getTime() - Date.now()).toBeGreaterThan(6 * 24 * 60 * 60 * 1_000);
+    expect(new Date(issued.invitation.expiresAt).getTime() - Date.now()).toBeGreaterThan(
+      6 * 24 * 60 * 60 * 1_000,
+    );
     await expect(database.db.select().from(invitations)).resolves.toEqual([
-      expect.objectContaining({ id: issued.token, organizationId: "team_local", status: "accepted" }),
+      expect.objectContaining({
+        id: issued.token,
+        organizationId: "team_local",
+        status: "accepted",
+      }),
     ]);
     await expect(database.db.select().from(teamMemberships)).resolves.toHaveLength(2);
     expect(accepted.principal).toMatchObject({ email: "member@example.com", role: "member" });
@@ -141,12 +180,20 @@ describe("Better Auth runtime", () => {
 
   test("lists only invitations that can still be accepted", async () => {
     const { database, runtime } = await createTestRuntime();
-    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
     const { cookie } = await signIn(runtime);
     const request = new Request("http://localhost:4000/invitations", { headers: { cookie } });
 
     const used = await runtime.invite(request, "used@example.com");
-    await runtime.acceptInvitation({ token: used.token, name: "Used", password: "member-password" });
+    await runtime.acceptInvitation({
+      token: used.token,
+      name: "Used",
+      password: "member-password",
+    });
     const revoked = await runtime.invite(request, "revoked@example.com");
     await runtime.revokeInvitation(request, invitationHandle(revoked.invitation.id));
     await database.db.insert(invitations).values({
@@ -161,7 +208,11 @@ describe("Better Auth runtime", () => {
     const live = await runtime.invite(request, "live@example.com");
 
     await expect(runtime.listInvitations(request)).resolves.toEqual([
-      expect.objectContaining({ id: live.invitation.id, email: "live@example.com", status: "pending" }),
+      expect.objectContaining({
+        id: live.invitation.id,
+        email: "live@example.com",
+        status: "pending",
+      }),
     ]);
     await expect(database.db.select().from(invitations)).resolves.toHaveLength(4);
   });
@@ -213,7 +264,11 @@ describe("last-admin concurrency", () => {
         return (adapter.deleteMany as (input: unknown) => Promise<unknown>)(input);
       },
     }));
-    await runtime.bootstrapDefaultAdmin({ email: "admin@example.com", name: "Admin", password: "admin-password" });
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
     const { cookie } = await signIn(runtime);
     const adminRequest = new Request("http://localhost:4000/members", { headers: { cookie } });
     const issued = await runtime.invite(adminRequest, "second-admin@example.com", "admin");
@@ -223,7 +278,9 @@ describe("last-admin concurrency", () => {
       password: "second-password-123",
     });
     const secondCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
-    const secondRequest = new Request("http://localhost:4000/members", { headers: { cookie: secondCookie } });
+    const secondRequest = new Request("http://localhost:4000/members", {
+      headers: { cookie: secondCookie },
+    });
     const members = await runtime.listMembers(adminRequest);
     const firstId = members.find((member) => member.email === "admin@example.com")!.userId;
     const secondId = accepted.principal.userId;

@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  destinationPatch,
-  draftFromDestination,
-  emptyDestinationDraft,
-} from "./destination-draft";
+import { destinationPatch, draftFromDestination, emptyDestinationDraft } from "./destination-draft";
 
 describe("observability destination drafts", () => {
   test("omits blank stored credentials from update patches", () => {

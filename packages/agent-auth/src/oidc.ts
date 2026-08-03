@@ -1,4 +1,11 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+} from "node:crypto";
 import { isIP } from "node:net";
 import type {
   AgentAuthCredential,
@@ -7,7 +14,11 @@ import type {
 } from "@eveland/core/contracts";
 import { verifyOidc } from "eve/channels/auth";
 import * as oidc from "openid-client";
-import { sealAgentAuthCredential, openAgentAuthCredential, type AgentAuthCredentialBinding } from "./sealed-credential.js";
+import {
+  sealAgentAuthCredential,
+  openAgentAuthCredential,
+  type AgentAuthCredentialBinding,
+} from "./sealed-credential.js";
 import {
   createOidcProviderDefinition,
   type AgentAuthConnectionSnapshot,
@@ -98,9 +109,7 @@ export class OidcAccessTokenRejectedError extends Error {}
 export class OidcReauthorizationRequiredError extends Error {}
 
 export type OidcAuthorizationCodePersistence = {
-  getAgentAuthCredential(
-    key: AgentAuthCredentialBinding,
-  ): Promise<AgentAuthCredential | null>;
+  getAgentAuthCredential(key: AgentAuthCredentialBinding): Promise<AgentAuthCredential | null>;
   putAgentAuthCredential(
     input: AgentAuthCredentialBinding & {
       payloadEncrypted: string;
@@ -151,10 +160,7 @@ export type OidcAuthorizationCodePersistence = {
     payloadEncrypted: string;
     expiresAt: Date;
   }): Promise<AgentAuthTransaction>;
-  consumeAgentAuthTransaction(
-    stateHash: string,
-    now?: Date,
-  ): Promise<AgentAuthTransaction | null>;
+  consumeAgentAuthTransaction(stateHash: string, now?: Date): Promise<AgentAuthTransaction | null>;
   deleteExpiredAgentAuthTransactions(now?: Date, limit?: number): Promise<number>;
 };
 
@@ -162,7 +168,10 @@ export type OidcAuthorizationCodeProviderOptions = {
   store: OidcAuthorizationCodePersistence;
   appSecretKey: string;
   callbackUrl: string;
-  resolveClientSecret(config: OidcAuthorizationCodeConfig, connection: OidcConnectionSnapshot): Promise<string | undefined>;
+  resolveClientSecret(
+    config: OidcAuthorizationCodeConfig,
+    connection: OidcConnectionSnapshot,
+  ): Promise<string | undefined>;
   protocol?: OidcProtocol;
   verifyAccessToken?: (
     accessToken: string,
@@ -178,35 +187,60 @@ export type OidcAuthorizationCodeProviderOptions = {
 
 export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCodeProviderOptions) {
   const now = options.now ?? (() => new Date());
-  const protocol = options.protocol ?? createOpenIdClientProtocol({ allowInsecureIssuer: options.allowInsecureIssuer });
+  const protocol =
+    options.protocol ??
+    createOpenIdClientProtocol({ allowInsecureIssuer: options.allowInsecureIssuer });
   const owner = `oidc-${randomUUID()}`;
   const refreshFlights = new Map<string, Promise<void>>();
-  const verifyAccessToken = options.verifyAccessToken ?? (async (accessToken, config, expected, clientSecret) => {
-    if (config.accessTokenVerification === "userinfo") {
-      let result: { subject: string };
-      try {
-        result = await protocol.fetchUserInfo(config, clientSecret, accessToken, expected.subject);
-      } catch (error) {
-        const rejection = classifyUserInfoRejection(error);
-        if (rejection) throw new OidcAccessTokenRejectedError(rejection);
-        throw error;
+  const verifyAccessToken =
+    options.verifyAccessToken ??
+    (async (accessToken, config, expected, clientSecret) => {
+      if (config.accessTokenVerification === "userinfo") {
+        let result: { subject: string };
+        try {
+          result = await protocol.fetchUserInfo(
+            config,
+            clientSecret,
+            accessToken,
+            expected.subject,
+          );
+        } catch (error) {
+          const rejection = classifyUserInfoRejection(error);
+          if (rejection) throw new OidcAccessTokenRejectedError(rejection);
+          throw error;
+        }
+        if (result.subject !== expected.subject) {
+          throw new OidcAccessTokenRejectedError(
+            "OIDC UserInfo subject does not match the verified ID token subject.",
+          );
+        }
+        return { issuer: config.issuer, subject: result.subject };
       }
-      if (result.subject !== expected.subject) {
-        throw new OidcAccessTokenRejectedError("OIDC UserInfo subject does not match the verified ID token subject.");
-      }
-      return { issuer: config.issuer, subject: result.subject };
-    }
-    if (!config.audience) throw new OidcAccessTokenRejectedError("OIDC JWT verification requires an audience.");
-    const result = await verifyOidc(accessToken, { issuer: config.issuer, audiences: [config.audience] });
-    if (!result.ok) throw new OidcAccessTokenRejectedError("OIDC access token is not accepted by Eve's verifier.");
-    return {
-      issuer: result.sessionAuth.issuer ?? config.issuer,
-      subject: result.sessionAuth.subject ?? result.sessionAuth.principalId,
-    };
-  });
+      if (!config.audience)
+        throw new OidcAccessTokenRejectedError("OIDC JWT verification requires an audience.");
+      const result = await verifyOidc(accessToken, {
+        issuer: config.issuer,
+        audiences: [config.audience],
+      });
+      if (!result.ok)
+        throw new OidcAccessTokenRejectedError(
+          "OIDC access token is not accepted by Eve's verifier.",
+        );
+      return {
+        issuer: result.sessionAuth.issuer ?? config.issuer,
+        subject: result.sessionAuth.subject ?? result.sessionAuth.principalId,
+      };
+    });
 
-  const openPayload = (credential: AgentAuthCredential, key: AgentAuthCredentialBinding): CredentialPayload =>
-    openAgentAuthCredential(credential.payloadEncrypted, options.appSecretKey, key) as CredentialPayload;
+  const openPayload = (
+    credential: AgentAuthCredential,
+    key: AgentAuthCredentialBinding,
+  ): CredentialPayload =>
+    openAgentAuthCredential(
+      credential.payloadEncrypted,
+      options.appSecretKey,
+      key,
+    ) as CredentialPayload;
 
   const verifyCandidate = async (
     token: OidcTokenSet,
@@ -214,7 +248,12 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     clientSecret: string | undefined,
   ): Promise<CredentialPayload> => {
     try {
-      const verified = await verifyAccessToken(token.accessToken, config, { issuer: token.issuer, subject: token.subject }, clientSecret);
+      const verified = await verifyAccessToken(
+        token.accessToken,
+        config,
+        { issuer: token.issuer, subject: token.subject },
+        clientSecret,
+      );
       return {
         state: "active",
         accessToken: token.accessToken,
@@ -238,7 +277,10 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     }
   };
 
-  const keyFor = (connection: OidcConnectionSnapshot, callerPrincipalId: string): AgentAuthCredentialBinding => ({
+  const keyFor = (
+    connection: OidcConnectionSnapshot,
+    callerPrincipalId: string,
+  ): AgentAuthCredentialBinding => ({
     agentConnectionId: connection.id,
     securityRevision: connection.securityRevision,
     authMethod: "oidc",
@@ -251,24 +293,35 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     code: "interaction_required",
     method: "oidc",
     message: "Complete Playground authentication before sending a message.",
-    ...(returnPath ? {
-      interaction: {
-        type: "redirect",
-        url: `/api/eveland/agent-connections/${encodeURIComponent(connectionId)}/auth/interactions/oidc/start?returnPath=${encodeURIComponent(returnPath)}`,
-      },
-    } : {}),
+    ...(returnPath
+      ? {
+          interaction: {
+            type: "redirect",
+            url: `/api/eveland/agent-connections/${encodeURIComponent(connectionId)}/auth/interactions/oidc/start?returnPath=${encodeURIComponent(returnPath)}`,
+          },
+        }
+      : {}),
   });
 
-  const waitForRefreshWinner = async (key: AgentAuthCredentialBinding, rejectedRotationSeq: number): Promise<void> => {
+  const waitForRefreshWinner = async (
+    key: AgentAuthCredentialBinding,
+    rejectedRotationSeq: number,
+  ): Promise<void> => {
     const deadline = Date.now() + (options.refreshWaitMs ?? 35_000);
     while (Date.now() < deadline) {
       const current = await options.store.getAgentAuthCredential(key);
       if (!current) throw new OidcReauthorizationRequiredError();
       if (current.rotationSeq > rejectedRotationSeq) return;
-      if (!current.refreshLeaseUntil || new Date(current.refreshLeaseUntil).getTime() <= now().getTime()) return;
+      if (
+        !current.refreshLeaseUntil ||
+        new Date(current.refreshLeaseUntil).getTime() <= now().getTime()
+      )
+        return;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    throw new Error("Timed out waiting for another Eveland instance to refresh the OIDC credential.");
+    throw new Error(
+      "Timed out waiting for another Eveland instance to refresh the OIDC credential.",
+    );
   };
 
   const refreshCredential = async (
@@ -294,7 +347,12 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     try {
       if (!payload.refreshToken) throw new OidcReauthorizationRequiredError();
       const clientSecret = await options.resolveClientSecret(connection.config, connection);
-      const token = await protocol.refresh(connection.config, clientSecret, payload.refreshToken, payload.idTokenSubject);
+      const token = await protocol.refresh(
+        connection.config,
+        clientSecret,
+        payload.refreshToken,
+        payload.idTokenSubject,
+      );
       const nextPayload = await verifyCandidate(token, connection.config, clientSecret);
       const completed = await options.store.completeAgentAuthCredentialRefresh({
         ...key,
@@ -328,14 +386,20 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     credential: AgentAuthCredential,
     payload: CredentialPayload,
   ) => {
-    const flightKey = JSON.stringify([connection.id, connection.securityRevision, callerPrincipalId]);
+    const flightKey = JSON.stringify([
+      connection.id,
+      connection.securityRevision,
+      callerPrincipalId,
+    ]);
     let flight = refreshFlights.get(flightKey);
     if (!flight) {
       flight = refreshCredential(connection, callerPrincipalId, credential, payload);
       refreshFlights.set(flightKey, flight);
-      void flight.finally(() => {
-        if (refreshFlights.get(flightKey) === flight) refreshFlights.delete(flightKey);
-      }).catch(() => undefined);
+      void flight
+        .finally(() => {
+          if (refreshFlights.get(flightKey) === flight) refreshFlights.delete(flightKey);
+        })
+        .catch(() => undefined);
     }
     return flight;
   };
@@ -362,10 +426,19 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     try {
       payload = openPayload(credential, key);
     } catch {
-      return { failure: { code: "configuration_invalid", method: "oidc", message: "The stored Agent credential could not be decrypted." } };
+      return {
+        failure: {
+          code: "configuration_invalid",
+          method: "oidc",
+          message: "The stored Agent credential could not be decrypted.",
+        },
+      };
     }
     if (payload.state === "pending_verification") {
-      const clientSecret = await options.resolveClientSecret(input.connection.config, input.connection);
+      const clientSecret = await options.resolveClientSecret(
+        input.connection.config,
+        input.connection,
+      );
       try {
         const verified = await verifyAccessToken(
           payload.candidateAccessToken,
@@ -391,29 +464,49 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
         });
         if (!replaced) {
           if (attempt + 1 >= MAX_CREDENTIAL_RESOLUTION_ATTEMPTS) {
-            return { failure: { code: "retry_required", method: "oidc", message: "The Agent credential changed; retry the request." } };
+            return {
+              failure: {
+                code: "retry_required",
+                method: "oidc",
+                message: "The Agent credential changed; retry the request.",
+              },
+            };
           }
           return resolveCredential(input, attempt + 1);
         }
         credential = replaced;
         payload = active;
       } catch (error) {
-        return { failure: {
-          code: error instanceof OidcAccessTokenRejectedError ? "configuration_invalid" : "provider_unavailable",
-          method: "oidc",
-          message: error instanceof OidcAccessTokenRejectedError
-            ? error.message
-            : "The OIDC access token is awaiting verification.",
-        } };
+        return {
+          failure: {
+            code:
+              error instanceof OidcAccessTokenRejectedError
+                ? "configuration_invalid"
+                : "provider_unavailable",
+            method: "oidc",
+            message:
+              error instanceof OidcAccessTokenRejectedError
+                ? error.message
+                : "The OIDC access token is awaiting verification.",
+          },
+        };
       }
     }
     if (isExpiringSoon(credential, now())) {
-      if (!payload.refreshToken) return { failure: interactionRequired(input.connection.id, input.returnPath) };
+      if (!payload.refreshToken)
+        return { failure: interactionRequired(input.connection.id, input.returnPath) };
       if (attempt + 1 >= MAX_CREDENTIAL_RESOLUTION_ATTEMPTS) {
         // A refresh already succeeded on an earlier pass and the rotated
         // credential is still inside the expiring-soon window: another
         // refresh would mint another about-to-expire token, not progress.
-        return { failure: { code: "provider_unavailable", method: "oidc", message: "The identity provider keeps returning Agent credentials that are already about to expire." } };
+        return {
+          failure: {
+            code: "provider_unavailable",
+            method: "oidc",
+            message:
+              "The identity provider keeps returning Agent credentials that are already about to expire.",
+          },
+        };
       }
       try {
         await getOrStartRefresh(input.connection, input.callerPrincipalId, credential, payload);
@@ -422,15 +515,30 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
           return { failure: interactionRequired(input.connection.id, input.returnPath) };
         }
         if (error instanceof OidcAccessTokenRejectedError) {
-          return { failure: { code: "configuration_invalid", method: "oidc", message: error.message } };
+          return {
+            failure: { code: "configuration_invalid", method: "oidc", message: error.message },
+          };
         }
-        return { failure: { code: "provider_unavailable", method: "oidc", message: "The identity provider could not refresh the Agent credential." } };
+        return {
+          failure: {
+            code: "provider_unavailable",
+            method: "oidc",
+            message: "The identity provider could not refresh the Agent credential.",
+          },
+        };
       }
       return resolveCredential(input, attempt + 1);
     }
     return {
-      envelope: { version: 1, authority: "canonical", headers: [["authorization", `Bearer ${payload.accessToken}`]] },
-      version: { securityRevision: input.connection.securityRevision, rotationSeq: credential.rotationSeq },
+      envelope: {
+        version: 1,
+        authority: "canonical",
+        headers: [["authorization", `Bearer ${payload.accessToken}`]],
+      },
+      version: {
+        securityRevision: input.connection.securityRevision,
+        rotationSeq: credential.rotationSeq,
+      },
     };
   };
 
@@ -440,7 +548,11 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
       const clientSecret = await options.resolveClientSecret(connection.config, connection);
       await protocol.preflight(connection.config, clientSecret);
     },
-    async start(input: { connection: OidcConnectionSnapshot; callerPrincipalId: string; returnPath: string }) {
+    async start(input: {
+      connection: OidcConnectionSnapshot;
+      callerPrincipalId: string;
+      returnPath: string;
+    }) {
       assertReturnPath(input.returnPath, input.connection.target.projectId);
       await provider.preflight(input.connection);
       await options.store.deleteExpiredAgentAuthTransactions(now(), 100);
@@ -463,8 +575,15 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
         payloadEncrypted: sealTransaction(transaction, options.appSecretKey, stateHash),
         expiresAt: new Date(now().getTime() + 10 * 60_000),
       });
-      const clientSecret = await options.resolveClientSecret(input.connection.config, input.connection);
-      const authorizationUrl = await protocol.buildAuthorizationUrl(input.connection.config, clientSecret, transaction);
+      const clientSecret = await options.resolveClientSecret(
+        input.connection.config,
+        input.connection,
+      );
+      const authorizationUrl = await protocol.buildAuthorizationUrl(
+        input.connection.config,
+        clientSecret,
+        transaction,
+      );
       return { state, authorizationUrl: authorizationUrl.toString() };
     },
     async callback(input: {
@@ -475,20 +594,40 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     }) {
       const stateHash = hashState(input.state);
       const stored = await options.store.consumeAgentAuthTransaction(stateHash, now());
-      if (!stored) throw new Error("OIDC authorization transaction is invalid, expired, or already used.");
+      if (!stored)
+        throw new Error("OIDC authorization transaction is invalid, expired, or already used.");
       const transaction = openTransaction(stored.payloadEncrypted, options.appSecretKey, stateHash);
-      if (transaction.state !== input.state) throw new Error("OIDC authorization state does not match.");
-      if (transaction.callerPrincipalId !== input.callerPrincipalId) throw new Error("OIDC authorization belongs to a different caller.");
+      if (transaction.state !== input.state)
+        throw new Error("OIDC authorization state does not match.");
+      if (transaction.callerPrincipalId !== input.callerPrincipalId)
+        throw new Error("OIDC authorization belongs to a different caller.");
       const connection = await input.getConnection(transaction.agentConnectionId);
-      if (!connection || connection.method !== "oidc" || connection.securityRevision !== transaction.securityRevision) {
-        throw new Error("Playground authentication changed while OIDC authorization was in progress.");
+      if (
+        !connection ||
+        connection.method !== "oidc" ||
+        connection.securityRevision !== transaction.securityRevision
+      ) {
+        throw new Error(
+          "Playground authentication changed while OIDC authorization was in progress.",
+        );
       }
       const clientSecret = await options.resolveClientSecret(connection.config, connection);
-      const token = await protocol.exchangeAuthorizationCode(connection.config, clientSecret, transaction, input.currentUrl);
+      const token = await protocol.exchangeAuthorizationCode(
+        connection.config,
+        clientSecret,
+        transaction,
+        input.currentUrl,
+      );
       const payload = await verifyCandidate(token, connection.config, clientSecret);
       const currentConnection = await input.getConnection(transaction.agentConnectionId);
-      if (!currentConnection || currentConnection.method !== "oidc" || currentConnection.securityRevision !== transaction.securityRevision) {
-        throw new Error("Playground authentication changed while OIDC authorization was in progress.");
+      if (
+        !currentConnection ||
+        currentConnection.method !== "oidc" ||
+        currentConnection.securityRevision !== transaction.securityRevision
+      ) {
+        throw new Error(
+          "Playground authentication changed while OIDC authorization was in progress.",
+        );
       }
       const key = keyFor(connection, input.callerPrincipalId);
       await options.store.putAgentAuthCredential({
@@ -514,36 +653,74 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
     }): Promise<{ action: "retry" } | { action: "give_up"; failure: AgentAuthFailure }> {
       const key = keyFor(input.connection, input.callerPrincipalId);
       if (input.rejectedVersion.securityRevision !== input.connection.securityRevision) {
-        return { action: "give_up", failure: { code: "retry_required", method: "oidc", message: "Playground authentication changed; retry the request." } };
+        return {
+          action: "give_up",
+          failure: {
+            code: "retry_required",
+            method: "oidc",
+            message: "Playground authentication changed; retry the request.",
+          },
+        };
       }
       const credential = await options.store.getAgentAuthCredential(key);
-      if (!credential) return { action: "give_up", failure: interactionRequired(input.connection.id, input.returnPath) };
+      if (!credential)
+        return {
+          action: "give_up",
+          failure: interactionRequired(input.connection.id, input.returnPath),
+        };
       if (credential.rotationSeq > input.rejectedVersion.rotationSeq) return { action: "retry" };
       if (credential.rotationSeq !== input.rejectedVersion.rotationSeq) {
-        return { action: "give_up", failure: { code: "retry_required", method: "oidc", message: "The Agent credential changed; retry the request." } };
+        return {
+          action: "give_up",
+          failure: {
+            code: "retry_required",
+            method: "oidc",
+            message: "The Agent credential changed; retry the request.",
+          },
+        };
       }
       if (input.attempt === 1) {
         await options.store.deleteAgentAuthCredential(key, credential.rotationSeq);
-        return { action: "give_up", failure: interactionRequired(input.connection.id, input.returnPath) };
+        return {
+          action: "give_up",
+          failure: interactionRequired(input.connection.id, input.returnPath),
+        };
       }
       let payload: CredentialPayload;
       try {
         payload = openPayload(credential, key);
       } catch {
-        return { action: "give_up", failure: { code: "configuration_invalid", method: "oidc", message: "The stored Agent credential could not be decrypted." } };
+        return {
+          action: "give_up",
+          failure: {
+            code: "configuration_invalid",
+            method: "oidc",
+            message: "The stored Agent credential could not be decrypted.",
+          },
+        };
       }
-      if (!payload.refreshToken) return { action: "give_up", failure: interactionRequired(input.connection.id, input.returnPath) };
+      if (!payload.refreshToken)
+        return {
+          action: "give_up",
+          failure: interactionRequired(input.connection.id, input.returnPath),
+        };
       try {
         await getOrStartRefresh(input.connection, input.callerPrincipalId, credential, payload);
         return { action: "retry" };
       } catch (error) {
         return {
           action: "give_up",
-          failure: error instanceof OidcReauthorizationRequiredError
-            ? interactionRequired(input.connection.id, input.returnPath)
-            : error instanceof OidcAccessTokenRejectedError
-              ? { code: "configuration_invalid", method: "oidc", message: error.message }
-            : { code: "provider_unavailable", method: "oidc", message: "The identity provider could not refresh the rejected Agent credential." },
+          failure:
+            error instanceof OidcReauthorizationRequiredError
+              ? interactionRequired(input.connection.id, input.returnPath)
+              : error instanceof OidcAccessTokenRejectedError
+                ? { code: "configuration_invalid", method: "oidc", message: error.message }
+                : {
+                    code: "provider_unavailable",
+                    method: "oidc",
+                    message:
+                      "The identity provider could not refresh the rejected Agent credential.",
+                  },
         };
       }
     },
@@ -559,7 +736,8 @@ export function createOidcAgentAuthProvider(
 ): AgentAuthProviderRegistration {
   const runtime = createOidcAuthorizationCodeProvider(options);
   const connection = (snapshot: AgentAuthConnectionSnapshot): OidcConnectionSnapshot => {
-    if (snapshot.method !== "oidc") throw new Error("OIDC is not available for Playground authentication.");
+    if (snapshot.method !== "oidc")
+      throw new Error("OIDC is not available for Playground authentication.");
     return snapshot as OidcConnectionSnapshot;
   };
   return {
@@ -621,7 +799,9 @@ export function createOidcAgentAuthProvider(
   };
 }
 
-export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: boolean } = {}): OidcProtocol {
+export function createOpenIdClientProtocol(
+  options: { allowInsecureIssuer?: boolean } = {},
+): OidcProtocol {
   const cache = new Map<string, Promise<oidc.Configuration>>();
   const getConfiguration = (config: OidcAuthorizationCodeConfig, clientSecret?: string) => {
     const secretFingerprint = clientSecret
@@ -631,32 +811,35 @@ export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: bool
     let pending = cache.get(key);
     if (!pending) {
       assertOidcUrl(new URL(config.issuer), options.allowInsecureIssuer === true);
-      const clientAuth = config.tokenEndpointAuthMethod === "client_secret_basic"
-        ? oidc.ClientSecretBasic(clientSecret)
-        : config.tokenEndpointAuthMethod === "client_secret_post"
-          ? oidc.ClientSecretPost(clientSecret)
-          : oidc.None();
-      pending = oidc.discovery(
-        new URL(config.issuer),
-        config.clientId,
-        { token_endpoint_auth_method: config.tokenEndpointAuthMethod },
-        clientAuth,
-        {
-          timeout: 10,
-          // Defense in depth: openid-client v6 happens not to follow
-          // redirects during discovery, but that is its internal behavior,
-          // not a contract. Pinning the hardened fetch here makes the
-          // no-redirect/per-URL-assertion policy explicit for the one request
-          // a hostile issuer most directly controls, and the accompanying
-          // test fails if a library upgrade ever starts following redirects.
-          [oidc.customFetch]: safeOidcFetch(options.allowInsecureIssuer === true),
-          ...(options.allowInsecureIssuer ? { execute: [oidc.allowInsecureRequests] } : {}),
-        },
-      ).then((configuration) => {
-        validateDiscoveredEndpoints(configuration, options.allowInsecureIssuer === true);
-        configuration[oidc.customFetch] = safeOidcFetch(options.allowInsecureIssuer === true);
-        return configuration;
-      });
+      const clientAuth =
+        config.tokenEndpointAuthMethod === "client_secret_basic"
+          ? oidc.ClientSecretBasic(clientSecret)
+          : config.tokenEndpointAuthMethod === "client_secret_post"
+            ? oidc.ClientSecretPost(clientSecret)
+            : oidc.None();
+      pending = oidc
+        .discovery(
+          new URL(config.issuer),
+          config.clientId,
+          { token_endpoint_auth_method: config.tokenEndpointAuthMethod },
+          clientAuth,
+          {
+            timeout: 10,
+            // Defense in depth: openid-client v6 happens not to follow
+            // redirects during discovery, but that is its internal behavior,
+            // not a contract. Pinning the hardened fetch here makes the
+            // no-redirect/per-URL-assertion policy explicit for the one request
+            // a hostile issuer most directly controls, and the accompanying
+            // test fails if a library upgrade ever starts following redirects.
+            [oidc.customFetch]: safeOidcFetch(options.allowInsecureIssuer === true),
+            ...(options.allowInsecureIssuer ? { execute: [oidc.allowInsecureRequests] } : {}),
+          },
+        )
+        .then((configuration) => {
+          validateDiscoveredEndpoints(configuration, options.allowInsecureIssuer === true);
+          configuration[oidc.customFetch] = safeOidcFetch(options.allowInsecureIssuer === true);
+          return configuration;
+        });
       cache.set(key, pending);
       void pending.catch(() => {
         if (cache.get(key) === pending) cache.delete(key);
@@ -667,12 +850,18 @@ export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: bool
   const audienceParams = (config: OidcAuthorizationCodeConfig) => {
     if (!config.audience) return {};
     return {
-      ...(config.audienceMode === "resource" || config.audienceMode === "both" ? { resource: config.audience } : {}),
-      ...(config.audienceMode === "audience" || config.audienceMode === "both" ? { audience: config.audience } : {}),
+      ...(config.audienceMode === "resource" || config.audienceMode === "both"
+        ? { resource: config.audience }
+        : {}),
+      ...(config.audienceMode === "audience" || config.audienceMode === "both"
+        ? { audience: config.audience }
+        : {}),
     };
   };
   return {
-    async preflight(config, secret) { await getConfiguration(config, secret); },
+    async preflight(config, secret) {
+      await getConfiguration(config, secret);
+    },
     async buildAuthorizationUrl(config, secret, transaction) {
       const configuration = await getConfiguration(config, secret);
       return oidc.buildAuthorizationUrl(configuration, {
@@ -689,14 +878,22 @@ export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: bool
     },
     async exchangeAuthorizationCode(config, secret, transaction, currentUrl) {
       const configuration = await getConfiguration(config, secret);
-      const tokens = await oidc.authorizationCodeGrant(configuration, currentUrl, {
-        pkceCodeVerifier: transaction.codeVerifier,
-        expectedState: transaction.state,
-        expectedNonce: transaction.nonce,
-        idTokenExpected: true,
-      }, audienceParams(config));
+      const tokens = await oidc.authorizationCodeGrant(
+        configuration,
+        currentUrl,
+        {
+          pkceCodeVerifier: transaction.codeVerifier,
+          expectedState: transaction.state,
+          expectedNonce: transaction.nonce,
+          idTokenExpected: true,
+        },
+        audienceParams(config),
+      );
       const claims = tokens.claims();
-      if (!tokens.access_token || !claims?.iss || !claims.sub) throw new Error("OIDC token response is missing an access token or verified ID token identity.");
+      if (!tokens.access_token || !claims?.iss || !claims.sub)
+        throw new Error(
+          "OIDC token response is missing an access token or verified ID token identity.",
+        );
       return {
         accessToken: tokens.access_token,
         ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
@@ -706,10 +903,16 @@ export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: bool
       };
     },
     async refresh(config, secret, refreshToken, subject) {
-      const tokens = await oidc.refreshTokenGrant(await getConfiguration(config, secret), refreshToken, audienceParams(config));
-      if (!tokens.access_token) throw new Error("OIDC refresh response is missing an access token.");
+      const tokens = await oidc.refreshTokenGrant(
+        await getConfiguration(config, secret),
+        refreshToken,
+        audienceParams(config),
+      );
+      if (!tokens.access_token)
+        throw new Error("OIDC refresh response is missing an access token.");
       const claims = tokens.claims();
-      if (claims?.sub && claims.sub !== subject) throw new OidcAccessTokenRejectedError("OIDC refresh changed the authorized subject.");
+      if (claims?.sub && claims.sub !== subject)
+        throw new OidcAccessTokenRejectedError("OIDC refresh changed the authorized subject.");
       return {
         accessToken: tokens.access_token,
         ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
@@ -719,21 +922,32 @@ export function createOpenIdClientProtocol(options: { allowInsecureIssuer?: bool
       };
     },
     async fetchUserInfo(config, secret, accessToken, expectedSubject) {
-      const result = await oidc.fetchUserInfo(await getConfiguration(config, secret), accessToken, expectedSubject);
+      const result = await oidc.fetchUserInfo(
+        await getConfiguration(config, secret),
+        accessToken,
+        expectedSubject,
+      );
       return { subject: result.sub };
     },
   };
 }
 
 function isExpiringSoon(credential: AgentAuthCredential, now: Date): boolean {
-  return credential.expiresAt !== null && new Date(credential.expiresAt).getTime() <= now.getTime() + 30_000;
+  return (
+    credential.expiresAt !== null &&
+    new Date(credential.expiresAt).getTime() <= now.getTime() + 30_000
+  );
 }
 
-function isOidcCredentialVersion(value: unknown): value is { securityRevision: number; rotationSeq: number } {
-  return typeof value === "object"
-    && value !== null
-    && typeof (value as { securityRevision?: unknown }).securityRevision === "number"
-    && typeof (value as { rotationSeq?: unknown }).rotationSeq === "number";
+function isOidcCredentialVersion(
+  value: unknown,
+): value is { securityRevision: number; rotationSeq: number } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { securityRevision?: unknown }).securityRevision === "number" &&
+    typeof (value as { rotationSeq?: unknown }).rotationSeq === "number"
+  );
 }
 
 function hashState(state: string): string {
@@ -742,14 +956,22 @@ function hashState(state: string): string {
 
 function assertReturnPath(returnPath: string, projectId: string): void {
   const expected = `/projects/${projectId}/playground`;
-  if (returnPath !== expected && !returnPath.startsWith(`${expected}?`)) throw new Error("OIDC return path is not allowed.");
+  if (returnPath !== expected && !returnPath.startsWith(`${expected}?`))
+    throw new Error("OIDC return path is not allowed.");
 }
 
-function sealTransaction(transaction: OidcTransaction, appSecretKey: string, stateHash: string): string {
+function sealTransaction(
+  transaction: OidcTransaction,
+  appSecretKey: string,
+  stateHash: string,
+): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", transactionKey(appSecretKey), iv);
   cipher.setAAD(Buffer.from(JSON.stringify(["transaction", stateHash])));
-  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(transaction), "utf8"), cipher.final()]);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(transaction), "utf8"),
+    cipher.final(),
+  ]);
   return JSON.stringify({
     version: 1,
     algorithm: "aes-256-gcm",
@@ -760,27 +982,49 @@ function sealTransaction(transaction: OidcTransaction, appSecretKey: string, sta
 }
 
 function openTransaction(value: string, appSecretKey: string, stateHash: string): OidcTransaction {
-  const parsed = JSON.parse(value) as { version?: unknown; algorithm?: unknown; iv?: unknown; authTag?: unknown; ciphertext?: unknown };
-  if (parsed.version !== 1 || parsed.algorithm !== "aes-256-gcm" || typeof parsed.iv !== "string" || typeof parsed.authTag !== "string" || typeof parsed.ciphertext !== "string") {
+  const parsed = JSON.parse(value) as {
+    version?: unknown;
+    algorithm?: unknown;
+    iv?: unknown;
+    authTag?: unknown;
+    ciphertext?: unknown;
+  };
+  if (
+    parsed.version !== 1 ||
+    parsed.algorithm !== "aes-256-gcm" ||
+    typeof parsed.iv !== "string" ||
+    typeof parsed.authTag !== "string" ||
+    typeof parsed.ciphertext !== "string"
+  ) {
     throw new Error("Invalid sealed OIDC transaction.");
   }
-  const decipher = createDecipheriv("aes-256-gcm", transactionKey(appSecretKey), Buffer.from(parsed.iv, "base64"));
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    transactionKey(appSecretKey),
+    Buffer.from(parsed.iv, "base64"),
+  );
   decipher.setAAD(Buffer.from(JSON.stringify(["transaction", stateHash])));
   decipher.setAuthTag(Buffer.from(parsed.authTag, "base64"));
-  return JSON.parse(Buffer.concat([
-    decipher.update(Buffer.from(parsed.ciphertext, "base64")),
-    decipher.final(),
-  ]).toString("utf8")) as OidcTransaction;
+  return JSON.parse(
+    Buffer.concat([
+      decipher.update(Buffer.from(parsed.ciphertext, "base64")),
+      decipher.final(),
+    ]).toString("utf8"),
+  ) as OidcTransaction;
 }
 
 function transactionKey(appSecretKey: string): Buffer {
   const utf8 = Buffer.from(appSecretKey, "utf8");
   const normalized = utf8.length === 32 ? utf8 : Buffer.from(appSecretKey, "base64");
-  if (normalized.length !== 32) throw new Error("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
+  if (normalized.length !== 32)
+    throw new Error("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
   return createHmac("sha256", normalized).update("eveland:agent-auth:transaction:v1").digest();
 }
 
-function validateDiscoveredEndpoints(configuration: oidc.Configuration, allowInsecure: boolean): void {
+function validateDiscoveredEndpoints(
+  configuration: oidc.Configuration,
+  allowInsecure: boolean,
+): void {
   const metadata = configuration.serverMetadata();
   for (const candidate of [
     metadata.authorization_endpoint,
@@ -793,10 +1037,18 @@ function validateDiscoveredEndpoints(configuration: oidc.Configuration, allowIns
 }
 
 function assertOidcUrl(url: URL, allowInsecure: boolean): void {
-  if (url.username || url.password || url.hash) throw new Error("OIDC URLs must not contain userinfo or fragments.");
-  if (url.protocol !== "https:" && !(allowInsecure && url.protocol === "http:")) throw new Error("OIDC URLs must use HTTPS.");
+  if (url.username || url.password || url.hash)
+    throw new Error("OIDC URLs must not contain userinfo or fragments.");
+  if (url.protocol !== "https:" && !(allowInsecure && url.protocol === "http:"))
+    throw new Error("OIDC URLs must use HTTPS.");
   const hostname = url.hostname.toLowerCase();
-  if (!allowInsecure && (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || isPrivateIp(hostname))) {
+  if (
+    !allowInsecure &&
+    (hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".local") ||
+      isPrivateIp(hostname))
+  ) {
     throw new Error("OIDC URLs must not target loopback or private network addresses.");
   }
 }
@@ -806,7 +1058,12 @@ function isPrivateIp(hostname: string): boolean {
     return /^(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(hostname);
   }
   if (isIP(hostname) === 6) {
-    return hostname === "::1" || hostname.startsWith("fc") || hostname.startsWith("fd") || hostname.startsWith("fe80:");
+    return (
+      hostname === "::1" ||
+      hostname.startsWith("fc") ||
+      hostname.startsWith("fd") ||
+      hostname.startsWith("fe80:")
+    );
   }
   return false;
 }
@@ -814,9 +1071,11 @@ function isPrivateIp(hostname: string): boolean {
 function isInvalidGrant(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const candidate = error as { error?: unknown; code?: unknown; cause?: { error?: unknown } };
-  return candidate.error === "invalid_grant"
-    || candidate.code === "invalid_grant"
-    || candidate.cause?.error === "invalid_grant";
+  return (
+    candidate.error === "invalid_grant" ||
+    candidate.code === "invalid_grant" ||
+    candidate.cause?.error === "invalid_grant"
+  );
 }
 
 function classifyUserInfoRejection(error: unknown): string | null {
@@ -827,14 +1086,21 @@ function classifyUserInfoRejection(error: unknown): string | null {
     if (error.code === "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED") {
       return "The UserInfo subject does not match the verified ID token subject.";
     }
-    if (error.code === "OAUTH_MISSING_SERVER_METADATA" || error.code === "OAUTH_INVALID_SERVER_METADATA") {
+    if (
+      error.code === "OAUTH_MISSING_SERVER_METADATA" ||
+      error.code === "OAUTH_INVALID_SERVER_METADATA"
+    ) {
       return "The identity provider does not advertise a valid UserInfo endpoint.";
     }
   }
-  if (typeof error === "object" && error !== null && "code" in error
-    && (error.code === "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED"
-      || error.code === "OAUTH_MISSING_SERVER_METADATA"
-      || error.code === "OAUTH_INVALID_SERVER_METADATA")) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED" ||
+      error.code === "OAUTH_MISSING_SERVER_METADATA" ||
+      error.code === "OAUTH_INVALID_SERVER_METADATA")
+  ) {
     return error.code === "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED"
       ? "The UserInfo subject does not match the verified ID token subject."
       : "The identity provider does not advertise a valid UserInfo endpoint.";

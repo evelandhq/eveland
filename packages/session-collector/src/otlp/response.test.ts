@@ -1,8 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  countOtlpSignalItems,
-  createOtlpPartialSuccessResponse,
-} from "./response.js";
+import { countOtlpSignalItems, createOtlpPartialSuccessResponse } from "./response.js";
 
 describe("OTLP response accounting", () => {
   test("counts signal items and uses the standard partial-success fields", () => {
@@ -30,10 +27,7 @@ describe("OTLP response accounting", () => {
           {
             scopeMetrics: [
               {
-                metrics: [
-                  { gauge: { dataPoints: [{}, {}] } },
-                  { histogram: { dataPoints: [{}] } },
-                ],
+                metrics: [{ gauge: { dataPoints: [{}, {}] } }, { histogram: { dataPoints: [{}] } }],
               },
             ],
           },

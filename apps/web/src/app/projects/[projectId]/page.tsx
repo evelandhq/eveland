@@ -1,10 +1,10 @@
-import Link from "next/link"
-import { ArrowRightIcon, PlayIcon } from "lucide-react"
-import { DateTime } from "@/components/date-time"
-import { EveVersionStatus } from "@/components/eve-version-status"
-import { ProjectOverviewTrend } from "@/components/project-overview-trend"
-import { StatusBadge } from "@/components/status-badge"
-import { buttonVariants } from "@/components/ui/button"
+import Link from "next/link";
+import { ArrowRightIcon, PlayIcon } from "lucide-react";
+import { DateTime } from "@/components/date-time";
+import { EveVersionStatus } from "@/components/eve-version-status";
+import { ProjectOverviewTrend } from "@/components/project-overview-trend";
+import { StatusBadge } from "@/components/status-badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -12,48 +12,41 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
 import {
   getAgentEndpoints,
   getEveVersion,
   getProject,
   getProjectUsageAnalytics,
   getSchedules,
-} from "@/lib/server-api"
-import {
-  completionRate,
-  formatTokenCount,
-  formatUsd,
-  usageCoverage,
-} from "@/lib/usage"
+} from "@/lib/server-api";
+import { completionRate, formatTokenCount, formatUsd, usageCoverage } from "@/lib/usage";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 export default async function ProjectOverviewPage({
   params,
 }: {
-  params: Promise<{ projectId: string }>
+  params: Promise<{ projectId: string }>;
 }) {
-  const { projectId } = await params
-  const [project, endpoints, eveVersion, schedules, analytics] =
-    await Promise.all([
-      getProject(projectId),
-      getAgentEndpoints(projectId),
-      getEveVersion(projectId),
-      getSchedules(projectId),
-      getProjectUsageAnalytics(projectId, { range: "7d" }),
-    ])
-  const completion = completionRate(analytics.summary)
-  const coverage = usageCoverage(analytics.summary)
-  const totalTokens =
-    analytics.summary.inputTokens + analytics.summary.outputTokens
+  const { projectId } = await params;
+  const [project, endpoints, eveVersion, schedules, analytics] = await Promise.all([
+    getProject(projectId),
+    getAgentEndpoints(projectId),
+    getEveVersion(projectId),
+    getSchedules(projectId),
+    getProjectUsageAnalytics(projectId, { range: "7d" }),
+  ]);
+  const completion = completionRate(analytics.summary);
+  const coverage = usageCoverage(analytics.summary);
+  const totalTokens = analytics.summary.inputTokens + analytics.summary.outputTokens;
   const nextSchedule = schedules
     .filter(({ schedule }) => schedule.enabled && schedule.nextRunAt)
     .sort(
       (left, right) =>
         new Date(left.schedule.nextRunAt!).getTime() -
         new Date(right.schedule.nextRunAt!).getTime(),
-    )[0]
+    )[0];
 
   return (
     <div className="flex min-w-0 flex-col gap-8">
@@ -65,10 +58,7 @@ export default async function ProjectOverviewPage({
             Execution volume, reliability, and the latest activity for this Agent.
           </p>
         </div>
-        <Link
-          href={`/projects/${projectId}/playground`}
-          className={buttonVariants()}
-        >
+        <Link href={`/projects/${projectId}/playground`} className={buttonVariants()}>
           <PlayIcon data-icon="inline-start" />
           Open Playground
         </Link>
@@ -109,9 +99,11 @@ export default async function ProjectOverviewPage({
         <OverviewContext
           label="Next schedule"
           value={
-            nextSchedule?.schedule.nextRunAt
-              ? <DateTime value={nextSchedule.schedule.nextRunAt} />
-              : "None scheduled"
+            nextSchedule?.schedule.nextRunAt ? (
+              <DateTime value={nextSchedule.schedule.nextRunAt} />
+            ) : (
+              "None scheduled"
+            )
           }
           detail={nextSchedule?.schedule.key ?? `${schedules.length} discovered`}
         />
@@ -149,9 +141,7 @@ export default async function ProjectOverviewPage({
           <OverviewStat
             label="Model tokens"
             value={formatTokenCount(totalTokens)}
-            detail={
-              coverage === null ? "No usage reported" : `${coverage.toFixed(1)}% coverage`
-            }
+            detail={coverage === null ? "No usage reported" : `${coverage.toFixed(1)}% coverage`}
           />
           <OverviewStat
             label="Provider cost"
@@ -204,19 +194,14 @@ export default async function ProjectOverviewPage({
                       {session.id}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {session.trigger}
-                  </TableCell>
+                  <TableCell className="text-muted-foreground">{session.trigger}</TableCell>
                   <TableCell>
                     <StatusBadge status={session.status} />
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {session.usage.status === "none" ||
-                    session.usage.status === "missing"
+                    {session.usage.status === "none" || session.usage.status === "missing"
                       ? "—"
-                      : formatTokenCount(
-                          session.usage.inputTokens + session.usage.outputTokens,
-                        )}
+                      : formatTokenCount(session.usage.inputTokens + session.usage.outputTokens)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     <DateTime value={session.startedAt} />
@@ -225,10 +210,7 @@ export default async function ProjectOverviewPage({
               ))}
               {analytics.recentSessions.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="h-24 text-center text-muted-foreground"
-                  >
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     No Sessions observed in the last 7 days.
                   </TableCell>
                 </TableRow>
@@ -238,7 +220,7 @@ export default async function ProjectOverviewPage({
         </div>
       </section>
     </div>
-  )
+  );
 }
 
 function OverviewContext({
@@ -246,9 +228,9 @@ function OverviewContext({
   value,
   detail,
 }: {
-  label: string
-  value: React.ReactNode
-  detail: string
+  label: string;
+  value: React.ReactNode;
+  detail: string;
 }) {
   return (
     <div className="min-w-0 bg-background p-4">
@@ -256,23 +238,15 @@ function OverviewContext({
       <div className="mt-2 min-w-0 text-sm font-medium">{value}</div>
       <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>
     </div>
-  )
+  );
 }
 
-function OverviewStat({
-  label,
-  value,
-  detail,
-}: {
-  label: string
-  value: string
-  detail: string
-}) {
+function OverviewStat({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-2 font-mono text-xl font-semibold">{value}</dd>
       <dd className="mt-1 text-xs text-muted-foreground">{detail}</dd>
     </div>
-  )
+  );
 }

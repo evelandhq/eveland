@@ -28,10 +28,10 @@ describe("Gateway", () => {
       setTimeout(() => response.write('{"type":"turn.started"}\n'), 50);
       setTimeout(() => response.end('{"type":"turn.completed"}\n'), 250);
     });
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      { allowedBaseDomains: ["agent.localhost"], affinitySecret },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
     const startedAt = Date.now();
     const response = await app.request(
       "http://p-alpha.agent.localhost/eve/v1/session/eve_1/stream",
@@ -51,10 +51,7 @@ describe("Gateway", () => {
       Promise.race([
         closed,
         new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error("upstream stream stayed open")),
-            200,
-          ),
+          setTimeout(() => reject(new Error("upstream stream stayed open")), 200),
         ),
       ]),
     ).resolves.toBeUndefined();
@@ -70,10 +67,10 @@ describe("Gateway", () => {
       });
       response.end('{"type":"session.waiting"}\n');
     });
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      { allowedBaseDomains: ["agent.localhost"], affinitySecret },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
 
     const response = await app.request(
       "http://p-alpha.agent.localhost/eve/v1/session/eve_1/stream?startIndex=1&includeTailIndex=1",
@@ -82,9 +79,7 @@ describe("Gateway", () => {
       },
     );
 
-    expect(upstreamPath).toBe(
-      "/eve/v1/session/eve_1/stream?startIndex=1&includeTailIndex=1",
-    );
+    expect(upstreamPath).toBe("/eve/v1/session/eve_1/stream?startIndex=1&includeTailIndex=1");
     expect(response.headers.get("x-eve-stream-tail-index")).toBe("2");
     await expect(response.text()).resolves.toContain("session.waiting");
   });
@@ -105,13 +100,10 @@ describe("Gateway", () => {
         );
       });
     });
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      {
-        allowedBaseDomains: ["agent.localhost"],
-        affinitySecret,
-      },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
 
     const response = await app.request(
       "http://p-alpha.agent.localhost/channels/slack/events?team=T1",
@@ -151,17 +143,14 @@ describe("Gateway", () => {
       affinitySecret,
     });
 
-    const create = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost:4080",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ message: "hello" }),
+    const create = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost:4080",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({ message: "hello" }),
+    });
     const continuation = await app.request(
       "http://p-alpha.agent.localhost/eve/v1/session/eve_bound",
       {
@@ -184,12 +173,8 @@ describe("Gateway", () => {
         deploymentId: "dep_1",
       }),
     ]);
-    await expect(continuation.text()).resolves.toBe(
-      "proxied:/eve/v1/session/eve_bound",
-    );
-    await expect(workflow.text()).resolves.toBe(
-      "proxied:/.well-known/workflow/v1/flow",
-    );
+    await expect(continuation.text()).resolves.toBe("proxied:/eve/v1/session/eve_bound");
+    await expect(workflow.text()).resolves.toBe("proxied:/.well-known/workflow/v1/flow");
   });
 
   test("returns 410 instead of routing an expired public API SessionBinding", async () => {
@@ -241,9 +226,7 @@ describe("Gateway", () => {
       response.writeHead(202, { "content-type": "application/json" });
       response.end(JSON.stringify({ sessionId: "eve_live_api" }));
     });
-    const repo = repository([
-      route({ hostPort: upstream.port, deploymentStatus: "stopped" }),
-    ]);
+    const repo = repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]);
     repo.bindings.push({
       id: "bind_live_api",
       projectId: "proj_1",
@@ -324,9 +307,7 @@ describe("Gateway", () => {
           responseBody,
         });
       const cancel = vi.spyOn(ReadableStream.prototype, "cancel");
-      const errorLog = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
+      const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
       const app = createGatewayApp(repo, {
         allowedBaseDomains: ["agent.localhost"],
         affinitySecret,
@@ -335,17 +316,14 @@ describe("Gateway", () => {
       });
 
       try {
-        const result = await app.request(
-          `http://p-alpha.agent.localhost${path}`,
-          {
-            method: "POST",
-            headers: {
-              host: "p-alpha.agent.localhost",
-              "content-type": "application/json",
-            },
-            body,
+        const result = await app.request(`http://p-alpha.agent.localhost${path}`, {
+          method: "POST",
+          headers: {
+            host: "p-alpha.agent.localhost",
+            "content-type": "application/json",
           },
-        );
+          body,
+        });
 
         expect(result.status).toBe(500);
         expect(repo.setSessionBindingContinuationToken).toHaveBeenCalledWith(
@@ -355,9 +333,7 @@ describe("Gateway", () => {
         );
         expect(cancel).toHaveBeenCalledWith(persistenceError);
         expect(activationClient.release).toHaveBeenCalledTimes(1);
-        expect(activationClient.release).toHaveBeenCalledWith(
-          "lease_persist_api",
-        );
+        expect(activationClient.release).toHaveBeenCalledWith("lease_persist_api");
       } finally {
         cancel.mockRestore();
         errorLog.mockRestore();
@@ -380,9 +356,7 @@ describe("Gateway", () => {
         "content-type": "application/json",
         "x-eve-session-id": "eve_weighted",
       });
-      response.end(
-        JSON.stringify({ deployment: "b", sessionId: "eve_weighted" }),
-      );
+      response.end(JSON.stringify({ deployment: "b", sessionId: "eve_weighted" }));
     });
     const weighted = route({
       targets: [
@@ -410,26 +384,18 @@ describe("Gateway", () => {
       affinitySecret,
       routeCacheTtlMs: 0,
     });
-    const affinity = Array.from(
-      { length: 10_000 },
-      (_, index) => `bucket-${index}`,
-    ).find(
-      (key) =>
-        affinityBucketForRoute(weighted.id, weighted.policyRevision, key) >=
-        9_000,
+    const affinity = Array.from({ length: 10_000 }, (_, index) => `bucket-${index}`).find(
+      (key) => affinityBucketForRoute(weighted.id, weighted.policyRevision, key) >= 9_000,
     )!;
-    const initial = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "x-eveland-version-key": affinity,
-          "content-type": "application/json",
-        },
-        body: "{}",
+    const initial = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "x-eveland-version-key": affinity,
+        "content-type": "application/json",
       },
-    );
+      body: "{}",
+    });
     await expect(initial.json()).resolves.toMatchObject({ deployment: "b" });
     expect(repo.bindings).toContainEqual(
       expect.objectContaining({
@@ -491,18 +457,15 @@ describe("Gateway", () => {
         status: "running",
       },
     ];
-    const afterZero = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "x-eveland-version-key": affinity,
-          "content-type": "application/json",
-        },
-        body: "{}",
+    const afterZero = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "x-eveland-version-key": affinity,
+        "content-type": "application/json",
       },
-    );
+      body: "{}",
+    });
     await expect(afterZero.json()).resolves.toMatchObject({ deployment: "a" });
     const pinnedAfterZero = await app.request(
       "http://p-alpha.agent.localhost/eve/v1/session/eve_weighted",
@@ -551,13 +514,15 @@ describe("Gateway", () => {
     const first = await startUpstream(async (request, response) => {
       selected.push(`a:${request.url}`);
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({
-        deployment: "a",
-        ok: true,
-        sessionId: "eve_from_a",
-        continuationToken: "continue_reset",
-        status: request.url === "/eve/v1/session/reset" ? "no_active_session" : undefined,
-      }));
+      response.end(
+        JSON.stringify({
+          deployment: "a",
+          ok: true,
+          sessionId: "eve_from_a",
+          continuationToken: "continue_reset",
+          status: request.url === "/eve/v1/session/reset" ? "no_active_session" : undefined,
+        }),
+      );
     });
     const second = await startUpstream(async (request, response) => {
       const chunks: Buffer[] = [];
@@ -565,20 +530,24 @@ describe("Gateway", () => {
       selected.push(`b:${request.url}`);
       response.setHeader("content-type", "application/json");
       if (request.url === "/eve/v1/session/reset") {
-        response.end(JSON.stringify({
-          deployment: "b",
-          ok: true,
-          previousSessionId: "eve_reset_owner",
-          status: "reset",
-        }));
+        response.end(
+          JSON.stringify({
+            deployment: "b",
+            ok: true,
+            previousSessionId: "eve_reset_owner",
+            status: "reset",
+          }),
+        );
         return;
       }
-      response.end(JSON.stringify({
-        deployment: "b",
-        ok: true,
-        sessionId: "eve_reset_owner",
-        continuationToken: "continue_reset",
-      }));
+      response.end(
+        JSON.stringify({
+          deployment: "b",
+          ok: true,
+          sessionId: "eve_reset_owner",
+          continuationToken: "continue_reset",
+        }),
+      );
     });
     const weighted = route({
       targets: [
@@ -600,13 +569,8 @@ describe("Gateway", () => {
         },
       ],
     });
-    const affinity = Array.from(
-      { length: 10_000 },
-      (_, index) => `reset-bucket-${index}`,
-    ).find(
-      (key) =>
-        affinityBucketForRoute(weighted.id, weighted.policyRevision, key) >=
-        9_000,
+    const affinity = Array.from({ length: 10_000 }, (_, index) => `reset-bucket-${index}`).find(
+      (key) => affinityBucketForRoute(weighted.id, weighted.policyRevision, key) >= 9_000,
     )!;
     const repo = repository([weighted]);
     const app = createGatewayApp(repo, {
@@ -615,24 +579,23 @@ describe("Gateway", () => {
       routeCacheTtlMs: 0,
     });
 
-    const initial = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "content-type": "application/json",
-          "x-eveland-version-key": affinity,
-        },
-        body: JSON.stringify({ message: "first" }),
+    const initial = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "content-type": "application/json",
+        "x-eveland-version-key": affinity,
       },
-    );
+      body: JSON.stringify({ message: "first" }),
+    });
     await expect(initial.json()).resolves.toMatchObject({ deployment: "b" });
-    expect(repo.bindings).toContainEqual(expect.objectContaining({
-      eveSessionId: "eve_reset_owner",
-      continuationToken: "continue_reset",
-      deploymentId: "dep_b",
-    }));
+    expect(repo.bindings).toContainEqual(
+      expect.objectContaining({
+        eveSessionId: "eve_reset_owner",
+        continuationToken: "continue_reset",
+        deploymentId: "dep_b",
+      }),
+    );
 
     weighted.policyRevision = 2;
     weighted.targets = [
@@ -654,45 +617,36 @@ describe("Gateway", () => {
       },
     ];
 
-    const resumedCreate = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          continuationToken: "continue_reset",
-          message: "resume by token",
-        }),
+    const resumedCreate = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        continuationToken: "continue_reset",
+        message: "resume by token",
+      }),
+    });
     await expect(resumedCreate.json()).resolves.toMatchObject({ deployment: "b" });
 
-    const reset = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/session/reset",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ continuationToken: "continue_reset" }),
+    const reset = await app.request("http://p-alpha.agent.localhost/eve/v1/session/reset", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({ continuationToken: "continue_reset" }),
+    });
     await expect(reset.json()).resolves.toMatchObject({
       deployment: "b",
       previousSessionId: "eve_reset_owner",
       status: "reset",
     });
-    expect(selected.slice(-2)).toEqual([
-      "b:/eve/v1/session",
-      "b:/eve/v1/session/reset",
-    ]);
-    expect(repo.bindings.find(
-      (binding) => binding.eveSessionId === "eve_reset_owner",
-    )).toMatchObject({ continuationToken: null });
+    expect(selected.slice(-2)).toEqual(["b:/eve/v1/session", "b:/eve/v1/session/reset"]);
+    expect(
+      repo.bindings.find((binding) => binding.eveSessionId === "eve_reset_owner"),
+    ).toMatchObject({ continuationToken: null });
   });
 
   test("issues and verifies a signed HttpOnly affinity cookie without storing the raw key", async () => {
@@ -741,17 +695,14 @@ describe("Gateway", () => {
       affinitySecret,
     });
 
-    const initial = await app.request(
-      "https://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "content-type": "application/json",
-        },
-        body: "{}",
+    const initial = await app.request("https://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "content-type": "application/json",
       },
-    );
+      body: "{}",
+    });
     const affinityCookie = initial.headers
       .getSetCookie()
       .find((value) => value.startsWith("eveland_affinity="));
@@ -760,26 +711,21 @@ describe("Gateway", () => {
     );
     const cookiePair = affinityCookie!.split(";", 1)[0]!;
 
-    const replay = await app.request(
-      "https://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          cookie: `${cookiePair}; app_session=user`,
-          "content-type": "application/json",
-        },
-        body: "{}",
+    const replay = await app.request("https://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        cookie: `${cookiePair}; app_session=user`,
+        "content-type": "application/json",
       },
-    );
+      body: "{}",
+    });
 
     const replayBody = (await replay.json()) as {
       headers: Record<string, string>;
     };
     expect(
-      replay.headers
-        .getSetCookie()
-        .some((value) => value.startsWith("eveland_affinity=")),
+      replay.headers.getSetCookie().some((value) => value.startsWith("eveland_affinity=")),
     ).toBe(false);
     expect(replayBody.headers.cookie).toBe("app_session=user");
     expect(selected[1]).toBe(selected[0]);
@@ -795,54 +741,40 @@ describe("Gateway", () => {
         }),
       ]),
     );
-    expect(JSON.stringify(repo.bindings)).not.toContain(
-      cookiePair.split("=", 2)[1],
-    );
+    expect(JSON.stringify(repo.bindings)).not.toContain(cookiePair.split("=", 2)[1]);
 
     const [name, value] = cookiePair.split("=", 2);
-    const base64UrlAlphabet =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const base64UrlAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     const trailingCharacterIndex = base64UrlAlphabet.indexOf(value!.at(-1)!);
     expect(trailingCharacterIndex).toBeGreaterThanOrEqual(0);
     expect(trailingCharacterIndex % 4).toBe(0);
-    const equivalentTrailingCharacter =
-      base64UrlAlphabet[trailingCharacterIndex + 1]!;
+    const equivalentTrailingCharacter = base64UrlAlphabet[trailingCharacterIndex + 1]!;
     const tampered = `${name}=${value!.slice(0, -1)}${equivalentTrailingCharacter}`;
-    const rejectedTamper = await app.request(
-      "https://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          cookie: tampered,
-          "content-type": "application/json",
-        },
-        body: "{}",
+    const rejectedTamper = await app.request("https://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        cookie: tampered,
+        "content-type": "application/json",
       },
-    );
+      body: "{}",
+    });
     expect(
-      rejectedTamper.headers
-        .getSetCookie()
-        .some((entry) => entry.startsWith("eveland_affinity=")),
+      rejectedTamper.headers.getSetCookie().some((entry) => entry.startsWith("eveland_affinity=")),
     ).toBe(true);
 
-    const malformed = await app.request(
-      "https://p-alpha.agent.localhost/eve/v1/session",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          cookie: "eveland_affinity=%",
-          "content-type": "application/json",
-        },
-        body: "{}",
+    const malformed = await app.request("https://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        cookie: "eveland_affinity=%",
+        "content-type": "application/json",
       },
-    );
+      body: "{}",
+    });
     expect(malformed.status).toBe(202);
     expect(
-      malformed.headers
-        .getSetCookie()
-        .some((entry) => entry.startsWith("eveland_affinity=")),
+      malformed.headers.getSetCookie().some((entry) => entry.startsWith("eveland_affinity=")),
     ).toBe(true);
   });
 
@@ -852,26 +784,20 @@ describe("Gateway", () => {
       upstreamRequests += 1;
       response.end("unexpected");
     });
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      {
-        allowedBaseDomains: ["agent.localhost"],
-        affinitySecret,
-        maxRequestBodyBytes: 4,
-      },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      maxRequestBodyBytes: 4,
+    });
 
-    const response = await app.request(
-      "http://p-alpha.agent.localhost/custom-channel",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "content-type": "text/plain",
-        },
-        body: "12345",
+    const response = await app.request("http://p-alpha.agent.localhost/custom-channel", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "content-type": "text/plain",
       },
-    );
+      body: "12345",
+    });
 
     expect(response.status).toBe(413);
     expect(upstreamRequests).toBe(0);
@@ -886,28 +812,22 @@ describe("Gateway", () => {
       renew: vi.fn(async () => {}),
       release: vi.fn(async () => {}),
     };
-    const app = createGatewayApp(
-      repository([route({ deploymentStatus: "stopped" })]),
-      {
-        allowedBaseDomains: ["agent.localhost"],
-        affinitySecret,
-        maxRequestBodyBytes: 4,
-        activationClient,
-      },
-    );
+    const app = createGatewayApp(repository([route({ deploymentStatus: "stopped" })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      maxRequestBodyBytes: 4,
+      activationClient,
+    });
 
-    const response = await app.request(
-      "http://p-alpha.agent.localhost/custom-channel",
-      {
-        method: "POST",
-        headers: {
-          host: "p-alpha.agent.localhost",
-          "content-type": "text/plain",
-          "content-length": "5",
-        },
-        body: "12345",
+    const response = await app.request("http://p-alpha.agent.localhost/custom-channel", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agent.localhost",
+        "content-type": "text/plain",
+        "content-length": "5",
       },
-    );
+      body: "12345",
+    });
 
     expect(response.status).toBe(413);
     expect(activationClient.activate).not.toHaveBeenCalled();
@@ -927,13 +847,10 @@ describe("Gateway", () => {
       response.once("close", markClosed);
       setTimeout(() => response.end("late"), 500);
     });
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      {
-        allowedBaseDomains: ["agent.localhost"],
-        affinitySecret,
-      },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
     const controller = new AbortController();
     const pending = app.request("http://p-alpha.agent.localhost/slow", {
       headers: { host: "p-alpha.agent.localhost" },
@@ -967,20 +884,16 @@ describe("Gateway", () => {
       response.writeHead(200, { "content-type": "application/x-ndjson" });
       response.write('{"type":"turn.started"}\n');
     });
-    const app = createGatewayApp(
-      repository([route({ hostPort: upstream.port })]),
-      {
-        allowedBaseDomains: ["agent.localhost"],
-        affinitySecret,
-      },
-    );
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
     const gateway = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
     gatewayServers.push(gateway);
     if (!gateway.listening)
       await new Promise<void>((resolve) => gateway.once("listening", resolve));
     const address = gateway.address();
-    if (!address || typeof address === "string")
-      throw new Error("Gateway fixture did not bind.");
+    if (!address || typeof address === "string") throw new Error("Gateway fixture did not bind.");
 
     await new Promise<void>((resolve, reject) => {
       const request = httpRequest(
@@ -1005,10 +918,7 @@ describe("Gateway", () => {
       Promise.race([
         upstreamClosed,
         new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error("upstream survived downstream disconnect")),
-            500,
-          ),
+          setTimeout(() => reject(new Error("upstream survived downstream disconnect")), 500),
         ),
       ]),
     ).resolves.toBeUndefined();

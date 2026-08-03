@@ -26,18 +26,18 @@ describe("job payload contracts", () => {
         },
       }),
     ).toMatchObject({ importKind: "git", deployAfterImport: true });
-    expect(
-      decodeJobPayload("build_deploy", { promoteAfterDeploy: true }),
-    ).toEqual({ promoteAfterDeploy: true });
+    expect(decodeJobPayload("build_deploy", { promoteAfterDeploy: true })).toEqual({
+      promoteAfterDeploy: true,
+    });
     expect(
       decodeJobPayload("restart_deployment", {
         deploymentId: "dep_1",
         reason: "secret_changed",
       }),
     ).toEqual({ deploymentId: "dep_1", reason: "secret_changed" });
-    expect(
-      decodeJobPayload("trigger_schedule", { scheduleRunId: "run_1" }),
-    ).toEqual({ scheduleRunId: "run_1" });
+    expect(decodeJobPayload("trigger_schedule", { scheduleRunId: "run_1" })).toEqual({
+      scheduleRunId: "run_1",
+    });
     expect(
       decodeJobPayload("ensure_deployment_running", {
         deploymentId: "dep_1",
@@ -50,9 +50,9 @@ describe("job payload contracts", () => {
         automatic: true,
       }),
     ).toEqual({ deploymentId: "dep_1", automatic: true });
-    expect(
-      decodeJobPayload("delete_project", { sourcePaths: ["/managed/source"] }),
-    ).toEqual({ sourcePaths: ["/managed/source"] });
+    expect(decodeJobPayload("delete_project", { sourcePaths: ["/managed/source"] })).toEqual({
+      sourcePaths: ["/managed/source"],
+    });
   });
 
   test("rejects a payload that does not match its job type", async () => {
@@ -61,12 +61,8 @@ describe("job payload contracts", () => {
     const decodeJobPayload = contracts.decodeJobPayload!;
 
     expect(() => decodeJobPayload("trigger_schedule", {})).toThrow();
-    expect(() =>
-      decodeJobPayload("archive_deployment", { deploymentId: 42 }),
-    ).toThrow();
-    expect(() =>
-      decodeJobPayload("delete_project", { sourcePaths: ["valid", 42] }),
-    ).toThrow();
+    expect(() => decodeJobPayload("archive_deployment", { deploymentId: 42 })).toThrow();
+    expect(() => decodeJobPayload("delete_project", { sourcePaths: ["valid", 42] })).toThrow();
   });
 
   test("preserves legacy metadata while validating known payload fields", async () => {

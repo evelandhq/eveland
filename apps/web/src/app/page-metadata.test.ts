@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from "node:fs"
-import { fileURLToPath } from "node:url"
-import { describe, expect, test } from "vitest"
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 
 function source(relativePath: string): string {
-  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8")
+  return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
 }
 
 const titledPages = [
@@ -30,36 +30,36 @@ const titledPages = [
   ["./projects/[projectId]/sessions/page.tsx", "Sessions"],
   ["./projects/[projectId]/source/page.tsx", "Source"],
   ["./projects/[projectId]/usage/page.tsx", "Usage"],
-] as const
+] as const;
 
 describe("page metadata", () => {
   test("gives every rendered page its own title", () => {
     for (const [relativePath, title] of titledPages) {
-      const url = new URL(relativePath, import.meta.url)
-      expect(existsSync(fileURLToPath(url)), relativePath).toBe(true)
-      if (!existsSync(fileURLToPath(url))) continue
+      const url = new URL(relativePath, import.meta.url);
+      expect(existsSync(fileURLToPath(url)), relativePath).toBe(true);
+      if (!existsSync(fileURLToPath(url))) continue;
 
-      expect(source(relativePath), relativePath).toContain(`title: "${title}"`)
+      expect(source(relativePath), relativePath).toContain(`title: "${title}"`);
     }
-  })
+  });
 
   test("composes project titles from the page and project name", () => {
-    const rootLayout = source("./layout.tsx")
-    const projectLayout = source("./projects/[projectId]/layout.tsx")
+    const rootLayout = source("./layout.tsx");
+    const projectLayout = source("./projects/[projectId]/layout.tsx");
 
-    expect(rootLayout).toContain('default: "Eveland"')
-    expect(rootLayout).toContain('template: "%s | Eveland"')
-    expect(projectLayout).toContain("export async function generateMetadata")
-    expect(projectLayout).toContain("getProject(projectId)")
-    expect(projectLayout).toContain('template: `%s · ${project.name} | Eveland`')
-  })
+    expect(rootLayout).toContain('default: "Eveland"');
+    expect(rootLayout).toContain('template: "%s | Eveland"');
+    expect(projectLayout).toContain("export async function generateMetadata");
+    expect(projectLayout).toContain("getProject(projectId)");
+    expect(projectLayout).toContain("template: `%s · ${project.name} | Eveland`");
+  });
 
   test("identifies dynamic detail pages in their titles", () => {
     expect(source("./projects/[projectId]/sessions/[sessionId]/page.tsx")).toContain(
       "title: `Session ${sessionId}`",
-    )
+    );
     expect(source("./projects/[projectId]/schedule-runs/[scheduleRunId]/page.tsx")).toContain(
       "title: `Schedule run ${scheduleRunId}`",
-    )
-  })
-})
+    );
+  });
+});

@@ -30,9 +30,7 @@ describe("worker telemetry", () => {
 
     expect(attempts).toBe(1);
     await metrics.reader.forceFlush();
-    expect(metricNames(metrics.exporter)).toContain(
-      "eveland.worker.capacity.collection.failures",
-    );
+    expect(metricNames(metrics.exporter)).toContain("eveland.worker.capacity.collection.failures");
     await metrics.provider.shutdown();
   });
 
@@ -99,9 +97,7 @@ describe("worker telemetry", () => {
 });
 
 function createTestMetrics() {
-  const exporter = new InMemoryMetricExporter(
-    AggregationTemporality.CUMULATIVE,
-  );
+  const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
   const reader = new PeriodicExportingMetricReader({
     exporter,
     exportIntervalMillis: 60_000,

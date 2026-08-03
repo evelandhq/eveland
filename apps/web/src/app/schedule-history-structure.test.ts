@@ -11,7 +11,10 @@ describe("schedule history surfaces", () => {
     const sessions = source("./projects/[projectId]/sessions/page.tsx");
     const schedules = source("./projects/[projectId]/schedules/page.tsx");
     const sessionDetail = source("./projects/[projectId]/sessions/[sessionId]/page.tsx");
-    const detailPath = new URL("./projects/[projectId]/schedule-runs/[scheduleRunId]/page.tsx", import.meta.url);
+    const detailPath = new URL(
+      "./projects/[projectId]/schedule-runs/[scheduleRunId]/page.tsx",
+      import.meta.url,
+    );
 
     expect(existsSync(fileURLToPath(detailPath))).toBe(true);
     expect(sessions).toContain("getSessionsPage");
@@ -25,9 +28,7 @@ describe("schedule history surfaces", () => {
     expect(schedules).toContain("Recent runs");
     expect(schedules).toContain("describeScheduleCron");
     expect(schedules).toContain("run.sessions.length === 1");
-    expect(schedules).toContain(
-      'href={`/projects/${projectId}/schedules#recent-runs`}',
-    );
+    expect(schedules).toContain("href={`/projects/${projectId}/schedules#recent-runs`}");
     expect(schedules).toContain("Markdown and TypeScript schedules");
     expect(schedules).toContain("<RunScheduleAction");
     expect(schedules).toContain("<Card");

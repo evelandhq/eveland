@@ -25,10 +25,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import {
-  destinationKindLabel,
-  type ObservabilityDestination,
-} from "./destination-draft";
+import { destinationKindLabel, type ObservabilityDestination } from "./destination-draft";
 
 export function ObservabilityDestinationList({
   destinations,
@@ -52,17 +49,11 @@ export function ObservabilityDestinationList({
       <CardHeader>
         <CardTitle>External destinations</CardTitle>
         <CardDescription>
-          Forward Eveland telemetry through the managed OpenTelemetry
-          Collector. Elastic receives every signal and domain; Langfuse
-          receives Agent traces only.
+          Forward Eveland telemetry through the managed OpenTelemetry Collector. Elastic receives
+          every signal and domain; Langfuse receives Agent traces only.
         </CardDescription>
         <CardAction>
-          <Button
-            type="button"
-            size="sm"
-            onClick={onCreate}
-            disabled={pending}
-          >
+          <Button type="button" size="sm" onClick={onCreate} disabled={pending}>
             <PlusIcon data-icon="inline-start" />
             Add destination
           </Button>
@@ -76,8 +67,8 @@ export function ObservabilityDestinationList({
         ) : null}
         {destinations.length === 0 ? (
           <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-            No external destination is configured. Until one is added, span,
-            log, and metric detail is not retained anywhere.
+            No external destination is configured. Until one is added, span, log, and metric detail
+            is not retained anywhere.
           </div>
         ) : (
           destinations.map((destination) => (
@@ -92,9 +83,8 @@ export function ObservabilityDestinationList({
           ))
         )}
         <p className="text-xs text-muted-foreground">
-          Credentials are encrypted at rest and are never returned to the
-          browser after saving. Changes are applied without restarting Agent
-          Deployments.
+          Credentials are encrypted at rest and are never returned to the browser after saving.
+          Changes are applied without restarting Agent Deployments.
         </p>
       </CardContent>
     </Card>
@@ -123,13 +113,7 @@ function DestinationRow({
           <Badge variant={destination.enabled ? "secondary" : "outline"}>
             {destination.enabled ? "Enabled" : "Paused"}
           </Badge>
-          <Badge
-            variant={
-              destination.health.status === "degraded"
-                ? "destructive"
-                : "outline"
-            }
-          >
+          <Badge variant={destination.health.status === "degraded" ? "destructive" : "outline"}>
             {destination.health.status === "pending"
               ? "Probe pending"
               : destination.health.status === "healthy"
@@ -153,14 +137,10 @@ function DestinationRow({
                 </Badge>
               ))
             : null}
-          {destination.kind === "langfuse" ? (
-            <Badge variant="outline">agent</Badge>
-          ) : null}
+          {destination.kind === "langfuse" ? <Badge variant="outline">agent</Badge> : null}
         </div>
         {destination.health.lastError ? (
-          <p className="text-xs text-destructive">
-            {destination.health.lastError}
-          </p>
+          <p className="text-xs text-destructive">{destination.health.lastError}</p>
         ) : destination.health.checkedAt ? (
           <p className="text-xs text-muted-foreground">
             Last checked <DateTime value={destination.health.checkedAt} />
@@ -202,8 +182,8 @@ function DestinationRow({
             <AlertDialogHeader>
               <AlertDialogTitle>Remove {label}?</AlertDialogTitle>
               <AlertDialogDescription>
-                Eveland will stop forwarding telemetry to this destination and
-                its stored credentials are deleted.
+                Eveland will stop forwarding telemetry to this destination and its stored
+                credentials are deleted.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -219,16 +199,12 @@ function DestinationRow({
   );
 }
 
-function DestinationEndpoint({
-  destination,
-}: {
-  destination: ObservabilityDestination;
-}) {
+function DestinationEndpoint({ destination }: { destination: ObservabilityDestination }) {
   if (!destination.config) {
     return (
       <p className="text-xs text-destructive">
-        The stored configuration cannot be read with the current
-        APP_SECRET_KEY. Edit the destination to replace it.
+        The stored configuration cannot be read with the current APP_SECRET_KEY. Edit the
+        destination to replace it.
       </p>
     );
   }

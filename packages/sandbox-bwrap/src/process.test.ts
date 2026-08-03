@@ -18,7 +18,11 @@ describe("createNodeProcessRunner", () => {
 
   test("captures stdout, stderr, and the exit code", async () => {
     const proc = runner.spawn(["sh", "-c", "echo out; echo err >&2; exit 7"]);
-    const [stdout, stderr, result] = await Promise.all([readAll(proc.stdout), readAll(proc.stderr), proc.wait()]);
+    const [stdout, stderr, result] = await Promise.all([
+      readAll(proc.stdout),
+      readAll(proc.stderr),
+      proc.wait(),
+    ]);
     expect(stdout).toBe("out\n");
     expect(stderr).toBe("err\n");
     expect(result.exitCode).toBe(7);
@@ -56,7 +60,11 @@ describe("isBwrapAvailable", () => {
 describe("describeMissingPrereqs", () => {
   test("returns null when bwrap is present and the workspace mountpoint exists", () => {
     expect(
-      describeMissingPrereqs({ bwrapPresent: true, workspaceMountpointPresent: true, bwrapPath: "bwrap" }),
+      describeMissingPrereqs({
+        bwrapPresent: true,
+        workspaceMountpointPresent: true,
+        bwrapPath: "bwrap",
+      }),
     ).toBeNull();
   });
 
@@ -90,6 +98,8 @@ describe("describeMissingPrereqs", () => {
     });
     expect(message).toContain("apt-get install bubblewrap");
     expect(message).toContain(WORKSPACE_ROOT);
-    expect(message?.indexOf("apt-get install bubblewrap")).toBeLessThan(message?.indexOf(WORKSPACE_ROOT) ?? -1);
+    expect(message?.indexOf("apt-get install bubblewrap")).toBeLessThan(
+      message?.indexOf(WORKSPACE_ROOT) ?? -1,
+    );
   });
 });

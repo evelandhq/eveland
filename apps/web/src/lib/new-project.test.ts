@@ -2,11 +2,16 @@ import { describe, expect, test } from "vitest";
 import type { Job, Project } from "./api";
 
 type NewProjectModule = {
-  getNewProjectProgress: (project: Project | null, jobs: Job[]) => {
+  getNewProjectProgress: (
+    project: Project | null,
+    jobs: Job[],
+  ) => {
     phase: "importing" | "deploying" | "ready" | "failed";
     detail: string;
   };
-  validateNewProjectEnvironmentVariables: (variables: Array<{ id: number; key: string; value: string }>) => {
+  validateNewProjectEnvironmentVariables: (
+    variables: Array<{ id: number; key: string; value: string }>,
+  ) => {
     variables: Array<{ id: number; key: string; value: string }>;
     errors: Map<number, { key?: string; value?: string }>;
     invalid: boolean;
@@ -79,18 +84,39 @@ describe("new project deployment progress", () => {
     expect(module).not.toBeNull();
     if (!module) return;
 
-    expect(module.getNewProjectProgress(baseProject, [job("import_source", "running")])).toMatchObject({
+    expect(
+      module.getNewProjectProgress(baseProject, [job("import_source", "running")]),
+    ).toMatchObject({
       phase: "importing",
     });
-    expect(module.getNewProjectProgress(
-      { ...baseProject, sourceRevisionId: "rev_123", status: "build_pending", deploymentStatus: "building" },
-      [job("build_deploy", "running"), job("import_source", "completed")],
-    )).toMatchObject({ phase: "deploying" });
-    expect(module.getNewProjectProgress(
-      { ...baseProject, sourceRevisionId: "rev_123", deploymentId: "dep_123", status: "deployed", deploymentStatus: "running" },
-      [job("build_deploy", "completed"), job("import_source", "completed")],
-    )).toMatchObject({ phase: "ready" });
-    expect(module.getNewProjectProgress(baseProject, [job("import_source", "failed", "Unsupported Eve version")])).toEqual({
+    expect(
+      module.getNewProjectProgress(
+        {
+          ...baseProject,
+          sourceRevisionId: "rev_123",
+          status: "build_pending",
+          deploymentStatus: "building",
+        },
+        [job("build_deploy", "running"), job("import_source", "completed")],
+      ),
+    ).toMatchObject({ phase: "deploying" });
+    expect(
+      module.getNewProjectProgress(
+        {
+          ...baseProject,
+          sourceRevisionId: "rev_123",
+          deploymentId: "dep_123",
+          status: "deployed",
+          deploymentStatus: "running",
+        },
+        [job("build_deploy", "completed"), job("import_source", "completed")],
+      ),
+    ).toMatchObject({ phase: "ready" });
+    expect(
+      module.getNewProjectProgress(baseProject, [
+        job("import_source", "failed", "Unsupported Eve version"),
+      ]),
+    ).toEqual({
       phase: "failed",
       detail: "Unsupported Eve version",
     });
@@ -126,17 +152,19 @@ describe("new project deployment progress", () => {
     if (!module) return;
     let nextId = 8;
 
-    expect(module.mergeImportedEnvironmentVariables(
-      [
-        { id: 3, key: "MODEL_NAME", kind: "variable", value: "gpt-old", visible: true },
-        { id: 7, key: "REGION", kind: "variable", value: "us-east-1", visible: false },
-      ],
-      [
-        { key: "MODEL_NAME", kind: "secret", value: "gpt-5.4" },
-        { key: "OPENAI_API_KEY", kind: "secret", value: "sk-test" },
-      ],
-      () => nextId++,
-    )).toEqual([
+    expect(
+      module.mergeImportedEnvironmentVariables(
+        [
+          { id: 3, key: "MODEL_NAME", kind: "variable", value: "gpt-old", visible: true },
+          { id: 7, key: "REGION", kind: "variable", value: "us-east-1", visible: false },
+        ],
+        [
+          { key: "MODEL_NAME", kind: "secret", value: "gpt-5.4" },
+          { key: "OPENAI_API_KEY", kind: "secret", value: "sk-test" },
+        ],
+        () => nextId++,
+      ),
+    ).toEqual([
       { id: 3, key: "MODEL_NAME", kind: "secret", value: "gpt-5.4", visible: false },
       { id: 7, key: "REGION", kind: "variable", value: "us-east-1", visible: false },
       { id: 8, key: "OPENAI_API_KEY", kind: "secret", value: "sk-test", visible: false },

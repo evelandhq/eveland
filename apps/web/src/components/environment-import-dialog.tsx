@@ -2,13 +2,7 @@
 
 import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  AlertCircleIcon,
-  ArrowLeftIcon,
-  EyeIcon,
-  EyeOffIcon,
-  FileUpIcon,
-} from "lucide-react";
+import { AlertCircleIcon, ArrowLeftIcon, EyeIcon, EyeOffIcon, FileUpIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,13 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupAddon,
@@ -51,10 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  parseDotenvImport,
-  type DotenvImportError,
-} from "@/lib/environment-import";
+import { parseDotenvImport, type DotenvImportError } from "@/lib/environment-import";
 
 export type EnvironmentImportEntry = {
   key: string;
@@ -145,13 +130,19 @@ export function EnvironmentImportDialog({
   }
 
   function updateKind(key: string, kind: "variable" | "secret") {
-    setEntries((current) => current.map((entry) =>
-      entry.key === key ? { ...entry, kind, visible: kind === "variable" ? true : entry.visible } : entry));
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.key === key
+          ? { ...entry, kind, visible: kind === "variable" ? true : entry.visible }
+          : entry,
+      ),
+    );
   }
 
   function toggleVisible(key: string) {
-    setEntries((current) => current.map((entry) =>
-      entry.key === key ? { ...entry, visible: !entry.visible } : entry));
+    setEntries((current) =>
+      current.map((entry) => (entry.key === key ? { ...entry, visible: !entry.visible } : entry)),
+    );
   }
 
   async function submitImport(event: React.FormEvent<HTMLFormElement>) {
@@ -165,7 +156,9 @@ export function EnvironmentImportDialog({
       reset();
       onOpenChange(false);
     } catch (caught) {
-      setSubmitError(caught instanceof Error ? caught.message : "Environment variables could not be imported.");
+      setSubmitError(
+        caught instanceof Error ? caught.message : "Environment variables could not be imported.",
+      );
       setSubmitting(false);
     }
   }
@@ -211,12 +204,13 @@ export function EnvironmentImportDialog({
                     }}
                     aria-invalid={Boolean(inputError)}
                     className="max-h-[40svh] min-h-52 overflow-y-auto font-mono text-xs"
-                    placeholder={"OPENAI_API_KEY=sk-...\nMODEL_NAME=\"gpt-5.4\""}
+                    placeholder={'OPENAI_API_KEY=sk-...\nMODEL_NAME="gpt-5.4"'}
                     autoComplete="off"
                     spellCheck={false}
                   />
                   <FieldDescription>
-                    One KEY=value pair per line. Blank lines and # comments are ignored; export prefixes are accepted.
+                    One KEY=value pair per line. Blank lines and # comments are ignored; export
+                    prefixes are accepted.
                   </FieldDescription>
                   {inputError ? <FieldError>{inputError}</FieldError> : null}
                 </Field>
@@ -253,17 +247,23 @@ export function EnvironmentImportDialog({
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <span>{entries.length} parsed</span>
                 {newCount > 0 ? <Badge variant="secondary">{newCount} New</Badge> : null}
-                {overwriteCount > 0 ? <Badge variant="outline">{overwriteCount} Overwrite</Badge> : null}
+                {overwriteCount > 0 ? (
+                  <Badge variant="outline">{overwriteCount} Overwrite</Badge>
+                ) : null}
               </div>
 
               {parseErrors.length > 0 ? (
                 <Alert variant="destructive">
                   <AlertCircleIcon />
-                  <AlertTitle>Fix {parseErrors.length} invalid line{parseErrors.length === 1 ? "" : "s"}</AlertTitle>
+                  <AlertTitle>
+                    Fix {parseErrors.length} invalid line{parseErrors.length === 1 ? "" : "s"}
+                  </AlertTitle>
                   <AlertDescription>
                     <ul className="flex list-disc flex-col gap-1 pl-4">
                       {parseErrors.map((error) => (
-                        <li key={`${error.line}-${error.message}`}>Line {error.line}: {error.message}</li>
+                        <li key={`${error.line}-${error.message}`}>
+                          Line {error.line}: {error.message}
+                        </li>
                       ))}
                     </ul>
                   </AlertDescription>
@@ -275,7 +275,8 @@ export function EnvironmentImportDialog({
                   <AlertCircleIcon />
                   <AlertTitle>Project environment limit exceeded</AlertTitle>
                   <AlertDescription>
-                    This import would create {resultingCount} entries. A project can have at most 50.
+                    This import would create {resultingCount} entries. A project can have at most
+                    50.
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -306,7 +307,8 @@ export function EnvironmentImportDialog({
                             items={kindItems}
                             value={entry.kind}
                             onValueChange={(value) => {
-                              if (value === "variable" || value === "secret") updateKind(entry.key, value);
+                              if (value === "variable" || value === "secret")
+                                updateKind(entry.key, value);
                             }}
                             disabled={submitting}
                           >
@@ -316,7 +318,9 @@ export function EnvironmentImportDialog({
                             <SelectContent alignItemWithTrigger={false}>
                               <SelectGroup>
                                 {kindItems.map((item) => (
-                                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                                  <SelectItem key={item.value} value={item.value}>
+                                    {item.label}
+                                  </SelectItem>
                                 ))}
                               </SelectGroup>
                             </SelectContent>
@@ -327,7 +331,9 @@ export function EnvironmentImportDialog({
                           <InputGroup>
                             <InputGroupInput
                               aria-label={`Value for ${entry.key}`}
-                              type={entry.kind === "variable" || entry.visible ? "text" : "password"}
+                              type={
+                                entry.kind === "variable" || entry.visible ? "text" : "password"
+                              }
                               value={entry.value}
                               readOnly
                               className="font-mono text-xs"
@@ -336,7 +342,9 @@ export function EnvironmentImportDialog({
                               <InputGroupAddon align="inline-end">
                                 <InputGroupButton
                                   size="icon-xs"
-                                  aria-label={entry.visible ? `Hide ${entry.key}` : `Show ${entry.key}`}
+                                  aria-label={
+                                    entry.visible ? `Hide ${entry.key}` : `Show ${entry.key}`
+                                  }
                                   onClick={() => toggleVisible(entry.key)}
                                 >
                                   {entry.visible ? <EyeOffIcon /> : <EyeIcon />}
@@ -371,10 +379,14 @@ export function EnvironmentImportDialog({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={submitting || parseErrors.length > 0 || overLimit || entries.length === 0}
+                  disabled={
+                    submitting || parseErrors.length > 0 || overLimit || entries.length === 0
+                  }
                 >
                   {submitting ? <Spinner data-icon="inline-start" /> : null}
-                  {submitting ? "Importing…" : `Import ${entries.length} variable${entries.length === 1 ? "" : "s"}`}
+                  {submitting
+                    ? "Importing…"
+                    : `Import ${entries.length} variable${entries.length === 1 ? "" : "s"}`}
                 </Button>
               </DialogFooter>
             </motion.form>

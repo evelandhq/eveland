@@ -5,10 +5,7 @@ import {
   passwordChangeSchema,
   profileSchema,
 } from "./app-schemas.js";
-import {
-  authErrorResponse,
-  getSetCookies,
-} from "./app-support.js";
+import { authErrorResponse, getSetCookies } from "./app-support.js";
 import { publicInvitation } from "./app-public-projections.js";
 import type { ApiApp } from "./app-types.js";
 
@@ -34,19 +31,12 @@ export function registerMemberRoutes(input: {
 }) {
   const { app, auth, webOrigin } = input;
 
-  app.get("/auth/session", (c) =>
-    c.json({ member: c.get("principal") }),
-  );
+  app.get("/auth/session", (c) => c.json({ member: c.get("principal") }));
 
   app.patch("/profile", async (c) => {
-    const parsed = profileSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = profileSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid profile", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid profile", issues: parsed.error.issues }, 400);
     }
     try {
       const updated = await auth.updateProfile(c.req.raw, parsed.data);
@@ -60,14 +50,9 @@ export function registerMemberRoutes(input: {
   });
 
   app.post("/profile/password", async (c) => {
-    const parsed = passwordChangeSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = passwordChangeSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid password change", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid password change", issues: parsed.error.issues }, 400);
     }
     try {
       const headers = await auth.changePassword(c.req.raw, parsed.data);
@@ -80,9 +65,7 @@ export function registerMemberRoutes(input: {
     }
   });
 
-  app.get("/members", async (c) =>
-    c.json({ members: await auth.listMembers(c.req.raw) }),
-  );
+  app.get("/members", async (c) => c.json({ members: await auth.listMembers(c.req.raw) }));
 
   app.get("/invitations", async (c) => {
     try {
@@ -94,14 +77,9 @@ export function registerMemberRoutes(input: {
   });
 
   app.post("/invitations", async (c) => {
-    const parsed = invitationSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = invitationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid invitation input", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid invitation input", issues: parsed.error.issues }, 400);
     }
     try {
       const issued = await auth.invite(c.req.raw, parsed.data.email);
@@ -119,10 +97,7 @@ export function registerMemberRoutes(input: {
 
   app.post("/invitations/:invitationId/resend", async (c) => {
     try {
-      const issued = await auth.reissueInvitation(
-        c.req.raw,
-        c.req.param("invitationId"),
-      );
+      const issued = await auth.reissueInvitation(c.req.raw, c.req.param("invitationId"));
       return c.json({
         invitation: publicInvitation(issued.invitation),
         inviteUrl: `${webOrigin}/accept-invite?token=${encodeURIComponent(issued.token)}`,
@@ -134,22 +109,15 @@ export function registerMemberRoutes(input: {
 
   app.delete("/invitations/:invitationId", async (c) => {
     try {
-      const revoked = await auth.revokeInvitation(
-        c.req.raw,
-        c.req.param("invitationId"),
-      );
-      return revoked
-        ? c.body(null, 204)
-        : c.json({ error: "Invitation not found" }, 404);
+      const revoked = await auth.revokeInvitation(c.req.raw, c.req.param("invitationId"));
+      return revoked ? c.body(null, 204) : c.json({ error: "Invitation not found" }, 404);
     } catch (error) {
       return authErrorResponse(c, error);
     }
   });
 
   app.patch("/members/:userId", async (c) => {
-    const parsed = memberRoleSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+    const parsed = memberRoleSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid member role" }, 400);
     }
@@ -167,13 +135,8 @@ export function registerMemberRoutes(input: {
 
   app.delete("/members/:userId", async (c) => {
     try {
-      const removed = await auth.removeMember(
-        c.req.raw,
-        c.req.param("userId"),
-      );
-      return removed
-        ? c.body(null, 204)
-        : c.json({ error: "Member not found" }, 404);
+      const removed = await auth.removeMember(c.req.raw, c.req.param("userId"));
+      return removed ? c.body(null, 204) : c.json({ error: "Member not found" }, 404);
     } catch (error) {
       return authErrorResponse(c, error);
     }

@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import { createApp } from "./app.js";
 import { createTestStore } from "@eveland/db/vitest";
 
-
 describe("api app", () => {
   test("syncs the latest git source with deployment and promotion chained", async () => {
     const store = createTestStore();
@@ -18,14 +17,11 @@ describe("api app", () => {
     });
     const { project } = await createResponse.json();
 
-    const syncResponse = await app.request(
-      `/projects/${project.id}/sync-source`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deploy: true, promote: true }),
-      },
-    );
+    const syncResponse = await app.request(`/projects/${project.id}/sync-source`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deploy: true, promote: true }),
+    });
 
     expect(syncResponse.status).toBe(202);
     const syncBody = await syncResponse.json();
@@ -55,14 +51,11 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const syncResponse = await app.request(
-      `/projects/${project.id}/sync-source`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deploy: true, promote: false }),
-      },
-    );
+    const syncResponse = await app.request(`/projects/${project.id}/sync-source`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deploy: true, promote: false }),
+    });
 
     expect(syncResponse.status).toBe(202);
     const syncBody = await syncResponse.json();
@@ -90,14 +83,11 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const response = await app.request(
-      `/projects/${project.id}/build-deploy`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ promote: true }),
-      },
-    );
+    const response = await app.request(`/projects/${project.id}/build-deploy`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ promote: true }),
+    });
 
     expect(response.status).toBe(202);
     const body = await response.json();
@@ -119,14 +109,11 @@ describe("api app", () => {
       sourcePath: "/tmp/invalid-deploy",
     });
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/build-deploy`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ promote: "yes" }),
-      },
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/build-deploy`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ promote: "yes" }),
+    });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -142,14 +129,11 @@ describe("api app", () => {
       gitUrl: "https://example.com/invalid-promotion.git",
     });
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/sync-source`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deploy: false, promote: true }),
-      },
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/sync-source`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deploy: false, promote: true }),
+    });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -168,14 +152,9 @@ describe("api app", () => {
     await store.failJob(job!.id, "Repository fetch timed out after 120000ms.");
     await store.enqueueJob(project.id, "build_deploy");
     const buildJob = await store.claimNextJob("worker-a");
-    await store.failJob(
-      buildJob!.id,
-      "provider returned a sensitive build detail",
-    );
+    await store.failJob(buildJob!.id, "provider returned a sensitive build detail");
 
-    const response = await createApp(store).request(
-      `/projects/${project.id}/jobs`,
-    );
+    const response = await createApp(store).request(`/projects/${project.id}/jobs`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -219,10 +198,9 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const syncResponse = await app.request(
-      `/projects/${project.id}/sync-source`,
-      { method: "POST" },
-    );
+    const syncResponse = await app.request(`/projects/${project.id}/sync-source`, {
+      method: "POST",
+    });
 
     expect(syncResponse.status).toBe(202);
     const syncBody = await syncResponse.json();

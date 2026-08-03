@@ -10,10 +10,7 @@ const issuedAt = "2026-07-23T12:00:00.000Z";
 
 describe("Agent telemetry credential", () => {
   test("round-trips the deployment it was issued for", () => {
-    const credential = createAgentTelemetryCredential(
-      { deploymentId: "dep_1", issuedAt },
-      secret,
-    );
+    const credential = createAgentTelemetryCredential({ deploymentId: "dep_1", issuedAt }, secret);
 
     expect(verifyAgentTelemetryCredential(credential, secret)).toEqual({
       deploymentId: "dep_1",
@@ -23,25 +20,18 @@ describe("Agent telemetry credential", () => {
 
   test("derives a key distinct from the APP_SECRET_KEY it is built from", () => {
     expect(secret).not.toBe("eveland-dev-secret-key-000000000");
-    expect(
-      deriveAgentTelemetrySecret("eveland-dev-secret-key-000000001"),
-    ).not.toBe(secret);
+    expect(deriveAgentTelemetrySecret("eveland-dev-secret-key-000000001")).not.toBe(secret);
   });
 
   test("rejects a payload re-signed for another deployment", () => {
-    const credential = createAgentTelemetryCredential(
-      { deploymentId: "dep_1", issuedAt },
-      secret,
-    );
+    const credential = createAgentTelemetryCredential({ deploymentId: "dep_1", issuedAt }, secret);
     const [, signature] = credential.split(".");
     const forgedPayload = Buffer.from(
       JSON.stringify({ deploymentId: "dep_victim", issuedAt }),
       "utf8",
     ).toString("base64url");
 
-    expect(
-      verifyAgentTelemetryCredential(`${forgedPayload}.${signature}`, secret),
-    ).toBeNull();
+    expect(verifyAgentTelemetryCredential(`${forgedPayload}.${signature}`, secret)).toBeNull();
   });
 
   test("rejects a credential signed with a different secret", () => {

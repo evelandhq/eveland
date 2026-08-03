@@ -46,8 +46,11 @@ const defaultValue = (value: string): ResolvedValue => ({ value, source: "defaul
 const derivedValue = (value: string): ResolvedValue => ({ value, source: "derived" });
 const developmentSecret = (env: Environment): ResolvedValue | undefined =>
   production(env) ? undefined : defaultValue("development fallback");
-const productionSecretWarning = (env: Environment, _value: string, source: ConfigurationEntry["source"]) =>
-  !production(env) && source === "default";
+const productionSecretWarning = (
+  env: Environment,
+  _value: string,
+  source: ConfigurationEntry["source"],
+) => !production(env) && source === "default";
 const allComponents: EvelandComponent[] = ["web", "api", "gateway", "worker"];
 
 /**
@@ -57,10 +60,31 @@ const allComponents: EvelandComponent[] = ["web", "api", "gateway", "worker"];
  * because nothing tied the two together.
  */
 export const configurationDefinitions: ConfigurationDefinition[] = [
-  { ...entry("NODE_ENV", allComponents, "Controls production-only validation and runtime defaults.", "development"), emptyUsesFallback: true },
-  { ...entry("EVELAND_RELEASE_CHANNEL", allComponents, "Labels this Eveland build as dev, edge, prerelease, or stable.", "dev"), emptyUsesFallback: true },
   {
-    ...entry("EVELAND_REVISION", allComponents, "Identifies the exact Git revision running this component.", "unknown"),
+    ...entry(
+      "NODE_ENV",
+      allComponents,
+      "Controls production-only validation and runtime defaults.",
+      "development",
+    ),
+    emptyUsesFallback: true,
+  },
+  {
+    ...entry(
+      "EVELAND_RELEASE_CHANNEL",
+      allComponents,
+      "Labels this Eveland build as dev, edge, prerelease, or stable.",
+      "dev",
+    ),
+    emptyUsesFallback: true,
+  },
+  {
+    ...entry(
+      "EVELAND_REVISION",
+      allComponents,
+      "Identifies the exact Git revision running this component.",
+      "unknown",
+    ),
     warning: (_env, value) => value === "unknown",
     emptyUsesFallback: true,
   },
@@ -71,7 +95,12 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     purpose: "Connects the component to the Eveland Postgres database.",
     required: true,
   },
-  entry("DATABASE_POOL_SIZE", ["api", "gateway", "worker"], "Limits Postgres connections opened by this process.", "10"),
+  entry(
+    "DATABASE_POOL_SIZE",
+    ["api", "gateway", "worker"],
+    "Limits Postgres connections opened by this process.",
+    "10",
+  ),
   {
     name: "APP_SECRET_KEY",
     components: ["api", "worker"],
@@ -104,14 +133,28 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     purpose: "Server-side API origin used by the Web process.",
     fallback: (env) => derivedValue(env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"),
   },
-  urlEntry("NEXT_PUBLIC_API_URL", ["web"], "Browser-visible control-plane API origin.", "http://localhost:4000"),
+  urlEntry(
+    "NEXT_PUBLIC_API_URL",
+    ["web"],
+    "Browser-visible control-plane API origin.",
+    "http://localhost:4000",
+  ),
   entry("PORT", ["api"], "TCP port used by the control-plane API.", "4000"),
-  { ...urlEntry("WEB_ORIGIN", ["api"], "Allowed browser origin for authenticated control-plane CORS.", "http://localhost:3000"), emptyUsesFallback: true },
+  {
+    ...urlEntry(
+      "WEB_ORIGIN",
+      ["api"],
+      "Allowed browser origin for authenticated control-plane CORS.",
+      "http://localhost:3000",
+    ),
+    emptyUsesFallback: true,
+  },
   {
     name: "BETTER_AUTH_SECRET",
     components: ["api"],
     sensitivity: "secret",
-    purpose: "Signs and encrypts Better Auth sessions; independent from application and Gateway secrets.",
+    purpose:
+      "Signs and encrypts Better Auth sessions; independent from application and Gateway secrets.",
     required: true,
   },
   {
@@ -122,8 +165,24 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     fallback: (env) => derivedValue(`http://localhost:${env.PORT ?? "4000"}`),
     emptyUsesFallback: true,
   },
-  { ...entry("EVELAND_ADMIN_EMAIL", ["api"], "Email address of the default bootstrapped administrator.", "admin@example.com"), emptyUsesFallback: true },
-  { ...entry("EVELAND_ADMIN_NAME", ["api"], "Display name of the default bootstrapped administrator.", "Admin"), emptyUsesFallback: true },
+  {
+    ...entry(
+      "EVELAND_ADMIN_EMAIL",
+      ["api"],
+      "Email address of the default bootstrapped administrator.",
+      "admin@example.com",
+    ),
+    emptyUsesFallback: true,
+  },
+  {
+    ...entry(
+      "EVELAND_ADMIN_NAME",
+      ["api"],
+      "Display name of the default bootstrapped administrator.",
+      "Admin",
+    ),
+    emptyUsesFallback: true,
+  },
   {
     name: "EVELAND_ADMIN_PASSWORD",
     components: ["api"],
@@ -131,7 +190,14 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     purpose: "Initial password used to bootstrap the default administrator.",
     required: true,
   },
-  { ...entry("EVELAND_COOKIE_DOMAIN", ["api"], "Optional shared parent domain for the control-plane session cookie."), emptyUsesFallback: true },
+  {
+    ...entry(
+      "EVELAND_COOKIE_DOMAIN",
+      ["api"],
+      "Optional shared parent domain for the control-plane session cookie.",
+    ),
+    emptyUsesFallback: true,
+  },
   urlEntry(
     "EVELAND_IDENTITY_ISSUER",
     ["api", "worker"],
@@ -156,19 +222,30 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ),
     required: production,
   },
-  entry("EVELAND_DATA_DIR", ["api", "worker"], "Root for managed sources, releases, and runtime state.", ".eveland-data"),
+  entry(
+    "EVELAND_DATA_DIR",
+    ["api", "worker"],
+    "Root for managed sources, releases, and runtime state.",
+    ".eveland-data",
+  ),
   {
     name: "EVELAND_HOST_DATA_DIR",
     components: ["worker"],
     purpose: "Host-daemon view of EVELAND_DATA_DIR for a containerized Docker worker.",
     fallback: (env) => derivedValue(env.EVELAND_DATA_DIR ?? ".eveland-data"),
   },
-  entry("EVELAND_OTLP_ENDPOINT", ["api", "gateway", "worker"], "Internal OTLP/HTTP endpoint used by Eveland platform telemetry.", "http://127.0.0.1:4318"),
+  entry(
+    "EVELAND_OTLP_ENDPOINT",
+    ["api", "gateway", "worker"],
+    "Internal OTLP/HTTP endpoint used by Eveland platform telemetry.",
+    "http://127.0.0.1:4318",
+  ),
   {
     name: "EVELAND_OTLP_SERVICE_TOKEN",
     components: ["api", "gateway", "worker"],
     sensitivity: "secret",
-    purpose: "Authenticates platform producers to the managed Collector and the Collector to API observability endpoints.",
+    purpose:
+      "Authenticates platform producers to the managed Collector and the Collector to API observability endpoints.",
     required: production,
   },
   entry(
@@ -177,30 +254,107 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "Exact destination hosts allowed to resolve to private addresses or use HTTP. The Worker probes destination health, so a value set only on the API reports allowlisted destinations degraded.",
     "",
   ),
-  entry("EVELAND_OTEL_METRIC_INTERVAL_MS", ["api", "gateway", "worker"], "Platform metric export interval in milliseconds.", "60000"),
-  entry("EVELAND_RELEASE_RETENTION", ["api", "worker"], "Minimum number of newest Release artifacts protected from archival.", "3"),
-  entry("EVELAND_MAX_UPLOAD_BYTES", ["api"], "Maximum accepted source upload archive size in bytes.", "104857600"),
-  entry("EVELAND_ORPHAN_SWEEP_INTERVAL_MS", ["worker"], "Interval between orphan runtime process sweeps.", "3600000"),
-  entry("EVELAND_ORPHAN_GRACE_MS", ["worker"], "Minimum age before the orphan sweep may adopt or stop an unmanaged runtime process.", "300000"),
-  entry("EVELAND_SANDBOX_TEMPLATE_REVISION", ["worker"], "Overrides the sandbox command template revision injected into prepared Releases."),
-  entry("EVELAND_RELEASE_SWEEP_INTERVAL_MS", ["worker"], "Interval between automatic Release retention sweeps.", "3600000"),
-  entry("EVELAND_RELEASE_SWEEP_BATCH_SIZE", ["worker"], "Maximum archive jobs enqueued by one Release retention sweep.", "25"),
-  entry("EVELAND_WORKFLOW_SWEEP_INTERVAL_MS", ["worker"], "Interval between stream-chunk retention sweeps across per-project workflow databases. 0 disables the sweep.", "3600000"),
-  entry("EVELAND_WORKFLOW_STREAM_RETENTION_MS", ["worker"], "Resume window after a run turns terminal before its stream chunks become deletable.", "86400000"),
-  entry("EVELAND_WORKFLOW_SWEEP_BATCH_SIZE", ["worker"], "Maximum stream-chunk rows deleted per DELETE batch during a workflow retention sweep.", "50000"),
-  { ...entry("EVELAND_GATEWAY_PUBLIC_SCHEME", ["api", "gateway"], "Public Agent URL scheme and affinity-cookie security mode.", "http"), emptyUsesFallback: true },
+  entry(
+    "EVELAND_OTEL_METRIC_INTERVAL_MS",
+    ["api", "gateway", "worker"],
+    "Platform metric export interval in milliseconds.",
+    "60000",
+  ),
+  entry(
+    "EVELAND_RELEASE_RETENTION",
+    ["api", "worker"],
+    "Minimum number of newest Release artifacts protected from archival.",
+    "3",
+  ),
+  entry(
+    "EVELAND_MAX_UPLOAD_BYTES",
+    ["api"],
+    "Maximum accepted source upload archive size in bytes.",
+    "104857600",
+  ),
+  entry(
+    "EVELAND_ORPHAN_SWEEP_INTERVAL_MS",
+    ["worker"],
+    "Interval between orphan runtime process sweeps.",
+    "3600000",
+  ),
+  entry(
+    "EVELAND_ORPHAN_GRACE_MS",
+    ["worker"],
+    "Minimum age before the orphan sweep may adopt or stop an unmanaged runtime process.",
+    "300000",
+  ),
+  entry(
+    "EVELAND_SANDBOX_TEMPLATE_REVISION",
+    ["worker"],
+    "Overrides the sandbox command template revision injected into prepared Releases.",
+  ),
+  entry(
+    "EVELAND_RELEASE_SWEEP_INTERVAL_MS",
+    ["worker"],
+    "Interval between automatic Release retention sweeps.",
+    "3600000",
+  ),
+  entry(
+    "EVELAND_RELEASE_SWEEP_BATCH_SIZE",
+    ["worker"],
+    "Maximum archive jobs enqueued by one Release retention sweep.",
+    "25",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_SWEEP_INTERVAL_MS",
+    ["worker"],
+    "Interval between stream-chunk retention sweeps across per-project workflow databases. 0 disables the sweep.",
+    "3600000",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_STREAM_RETENTION_MS",
+    ["worker"],
+    "Resume window after a run turns terminal before its stream chunks become deletable.",
+    "86400000",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_SWEEP_BATCH_SIZE",
+    ["worker"],
+    "Maximum stream-chunk rows deleted per DELETE batch during a workflow retention sweep.",
+    "50000",
+  ),
+  {
+    ...entry(
+      "EVELAND_GATEWAY_PUBLIC_SCHEME",
+      ["api", "gateway"],
+      "Public Agent URL scheme and affinity-cookie security mode.",
+      "http",
+    ),
+    emptyUsesFallback: true,
+  },
   {
     name: "EVELAND_GATEWAY_PUBLIC_PORT",
     components: ["api"],
     purpose: "Optional public Agent port appended to generated endpoints.",
-    fallback: (env) => derivedValue((env.EVELAND_GATEWAY_PUBLIC_SCHEME || "http") === "http" ? "4080" : "0"),
+    fallback: (env) =>
+      derivedValue((env.EVELAND_GATEWAY_PUBLIC_SCHEME || "http") === "http" ? "4080" : "0"),
   },
-  urlEntry("EVELAND_GATEWAY_INTERNAL_URL", ["api"], "Private Gateway origin used for Playground and diagnostics.", "http://127.0.0.1:4080"),
+  urlEntry(
+    "EVELAND_GATEWAY_INTERNAL_URL",
+    ["api"],
+    "Private Gateway origin used for Playground and diagnostics.",
+    "http://127.0.0.1:4080",
+  ),
   {
-    ...urlEntry("EVELAND_GATEWAY_INTERNAL_URL", ["worker"], "Private Gateway origin used for route-cache invalidation."),
+    ...urlEntry(
+      "EVELAND_GATEWAY_INTERNAL_URL",
+      ["worker"],
+      "Private Gateway origin used for route-cache invalidation.",
+    ),
     required: production,
   },
-  entry("EVELAND_AGENT_BASE_DOMAINS", ["api", "gateway", "worker"], "Allowed Agent hostname suffixes; the first is canonical.", "agent.localhost"),
+  entry(
+    "EVELAND_AGENT_BASE_DOMAINS",
+    ["api", "gateway", "worker"],
+    "Allowed Agent hostname suffixes; the first is canonical.",
+    "agent.localhost",
+  ),
   entry("GATEWAY_PORT", ["gateway"], "TCP port used by the public Agent Gateway.", "4080"),
   {
     name: "EVELAND_GATEWAY_AFFINITY_SECRET",
@@ -211,11 +365,36 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     required: production,
     warning: productionSecretWarning,
   },
-  entry("EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES", ["gateway"], "Maximum buffered public request body accepted by Gateway.", "10485760"),
-  entry("EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS", ["gateway"], "Socket idle timeout for public upstream proxying; streaming resets it.", "120000"),
-  entry("EVELAND_PLAYGROUND_TIMEOUT_MS", ["gateway"], "Timeout for privileged Playground requests proxied to a Deployment.", "120000"),
-  urlEntry("EVELAND_API_INTERNAL_URL", ["gateway"], "Private API origin used for service-authenticated runtime activation.", "http://127.0.0.1:4000"),
-  entry("EVELAND_ACTIVATION_LEASE_TTL_MS", ["api"], "Lifetime of request, stream, turn, and ScheduleRun activation leases.", "180000"),
+  entry(
+    "EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES",
+    ["gateway"],
+    "Maximum buffered public request body accepted by Gateway.",
+    "10485760",
+  ),
+  entry(
+    "EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS",
+    ["gateway"],
+    "Socket idle timeout for public upstream proxying; streaming resets it.",
+    "120000",
+  ),
+  entry(
+    "EVELAND_PLAYGROUND_TIMEOUT_MS",
+    ["gateway"],
+    "Timeout for privileged Playground requests proxied to a Deployment.",
+    "120000",
+  ),
+  urlEntry(
+    "EVELAND_API_INTERNAL_URL",
+    ["gateway"],
+    "Private API origin used for service-authenticated runtime activation.",
+    "http://127.0.0.1:4000",
+  ),
+  entry(
+    "EVELAND_ACTIVATION_LEASE_TTL_MS",
+    ["api"],
+    "Lifetime of request, stream, turn, and ScheduleRun activation leases.",
+    "180000",
+  ),
   entry(
     "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS",
     ["api", "gateway", "worker"],
@@ -228,9 +407,24 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "Idle time after the last successful public API session request before its Deployment binding expires.",
     "604800000",
   ),
-  entry("EVELAND_COLD_START_TIMEOUT_MS", ["api"], "Maximum time Gateway may wait for a dormant Deployment to become ready.", "30000"),
-  entry("EVELAND_SOURCE_PREFLIGHT_TTL_MS", ["api"], "Lifetime of an unconsumed validated source snapshot.", "3600000"),
-  entry("EVELAND_ACTIVATION_RENEW_INTERVAL_MS", ["gateway"], "Interval for renewing a lease while an upstream response stream remains active.", "60000"),
+  entry(
+    "EVELAND_COLD_START_TIMEOUT_MS",
+    ["api"],
+    "Maximum time Gateway may wait for a dormant Deployment to become ready.",
+    "30000",
+  ),
+  entry(
+    "EVELAND_SOURCE_PREFLIGHT_TTL_MS",
+    ["api"],
+    "Lifetime of an unconsumed validated source snapshot.",
+    "3600000",
+  ),
+  entry(
+    "EVELAND_ACTIVATION_RENEW_INTERVAL_MS",
+    ["gateway"],
+    "Interval for renewing a lease while an upstream response stream remains active.",
+    "60000",
+  ),
   {
     name: "EVELAND_SCHEDULER_RUNTIME_SECRET",
     components: ["api", "worker"],
@@ -257,8 +451,18 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ),
     required: true,
   },
-  entry("EVELAND_SCHEDULER_PLANNER_BATCH_SIZE", ["worker"], "Maximum due schedules claimed in one planner tick.", "25"),
-  entry("EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS", ["worker"], "Maximum private Scheduler Channel dispatch duration.", "120000"),
+  entry(
+    "EVELAND_SCHEDULER_PLANNER_BATCH_SIZE",
+    ["worker"],
+    "Maximum due schedules claimed in one planner tick.",
+    "25",
+  ),
+  entry(
+    "EVELAND_SCHEDULER_DISPATCH_TIMEOUT_MS",
+    ["worker"],
+    "Maximum private Scheduler Channel dispatch duration.",
+    "120000",
+  ),
   {
     name: "WORKFLOW_POSTGRES_URL",
     components: ["worker"],
@@ -280,41 +484,156 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     fallback: (env) => derivedValue(production(env) ? "systemd" : "docker"),
     emptyUsesFallback: true,
   },
-  entry("EVELAND_APP_USER", ["worker"], "Unix account used to run systemd Agent Deployments.", "eveland-app"),
-  entry("EVELAND_BUILD_USER", ["worker"], "Unprivileged Unix account used for Project builds.", "eveland-build"),
+  entry(
+    "EVELAND_APP_USER",
+    ["worker"],
+    "Unix account used to run systemd Agent Deployments.",
+    "eveland-app",
+  ),
+  entry(
+    "EVELAND_BUILD_USER",
+    ["worker"],
+    "Unprivileged Unix account used for Project builds.",
+    "eveland-build",
+  ),
   {
-    ...entry("EVELAND_BUILD_SANDBOX", ["worker"], "Build isolation backend; none disables lifecycle-script sandboxing.", "bwrap"),
+    ...entry(
+      "EVELAND_BUILD_SANDBOX",
+      ["worker"],
+      "Build isolation backend; none disables lifecycle-script sandboxing.",
+      "bwrap",
+    ),
     warning: (_env, value) => value === "none",
     emptyUsesFallback: true,
   },
   entry("EVELAND_MEMORY_MAX", ["worker"], "systemd MemoryMax limit applied per Deployment.", "2G"),
   entry("EVELAND_CPU_QUOTA", ["worker"], "systemd CPUQuota limit applied per Deployment.", "200%"),
-  entry("EVELAND_INTERNAL_PORT", ["worker"], "Container-internal port used by Docker Deployments.", "3000"),
-  entry("EVELAND_DEPLOYMENT_PORT", ["worker"], "Start of the private host-port allocation range.", "41000"),
-  entry("EVELAND_GIT_CLONE_TIMEOUT_MS", ["worker"], "Maximum duration of a non-interactive Git source clone.", "120000"),
-  entry("EVELAND_GIT_CLONE_MAX_ATTEMPTS", ["worker"], "Maximum attempts for transient Git clone failures.", "3"),
-  entry("EVELAND_GIT_CLONE_RETRY_DELAY_MS", ["worker"], "Initial exponential backoff delay for Git clone retries.", "1000"),
-  entry("EVELAND_HEALTH_TIMEOUT_MS", ["worker"], "Time allowed for a Deployment to become healthy.", "15000"),
-  entry("EVELAND_HOST_METRIC_INTERVAL_MS", ["worker"], "Cadence for standard host CPU, memory, filesystem, workload, and heartbeat metrics.", "60000"),
-  entry("EVELAND_OTEL_COLLECTOR_CONTAINER", ["worker"], "Managed Collector container reloaded after a validated settings revision.", "eveland-otel-collector"),
-  entry("EVELAND_OTEL_COLLECTOR_IMAGE", ["worker"], "Official Collector image used to validate generated configuration.", "otel/opentelemetry-collector-contrib:0.149.0"),
-  entry("EVELAND_SCHEDULER_PREWARM_MS", ["worker"], "How far before nextRunAt a scheduler target is kept warm or proactively activated.", "60000"),
-  entry("EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS", ["worker"], "Hard deadline for a dispatched ScheduleRun when no Observer execution boundary arrives.", "86400000"),
-  entry("EVELAND_ACTIVATION_IDLE_TTL_MS", ["worker"], "Idle time after the final lease before a ready RuntimeInstance is stopped.", "300000"),
-  entry("EVELAND_ACTIVATION_REAPER_BATCH_SIZE", ["worker"], "Maximum idle RuntimeInstances claimed in one reaper tick.", "25"),
-  entry("EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE", ["worker"], "Maximum starting RuntimeInstances recovered in one worker tick.", "25"),
-  entry("EVELAND_ACTIVATION_START_STALE_MS", ["worker"], "Age after which a running activation job may be reclaimed after a crash.", "300000"),
-  entry("EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE", ["worker"], "Maximum ready RuntimeInstances checked against their owning runtime per tick.", "100"),
+  entry(
+    "EVELAND_INTERNAL_PORT",
+    ["worker"],
+    "Container-internal port used by Docker Deployments.",
+    "3000",
+  ),
+  entry(
+    "EVELAND_DEPLOYMENT_PORT",
+    ["worker"],
+    "Start of the private host-port allocation range.",
+    "41000",
+  ),
+  entry(
+    "EVELAND_GIT_CLONE_TIMEOUT_MS",
+    ["worker"],
+    "Maximum duration of a non-interactive Git source clone.",
+    "120000",
+  ),
+  entry(
+    "EVELAND_GIT_CLONE_MAX_ATTEMPTS",
+    ["worker"],
+    "Maximum attempts for transient Git clone failures.",
+    "3",
+  ),
+  entry(
+    "EVELAND_GIT_CLONE_RETRY_DELAY_MS",
+    ["worker"],
+    "Initial exponential backoff delay for Git clone retries.",
+    "1000",
+  ),
+  entry(
+    "EVELAND_HEALTH_TIMEOUT_MS",
+    ["worker"],
+    "Time allowed for a Deployment to become healthy.",
+    "15000",
+  ),
+  entry(
+    "EVELAND_HOST_METRIC_INTERVAL_MS",
+    ["worker"],
+    "Cadence for standard host CPU, memory, filesystem, workload, and heartbeat metrics.",
+    "60000",
+  ),
+  entry(
+    "EVELAND_OTEL_COLLECTOR_CONTAINER",
+    ["worker"],
+    "Managed Collector container reloaded after a validated settings revision.",
+    "eveland-otel-collector",
+  ),
+  entry(
+    "EVELAND_OTEL_COLLECTOR_IMAGE",
+    ["worker"],
+    "Official Collector image used to validate generated configuration.",
+    "otel/opentelemetry-collector-contrib:0.149.0",
+  ),
+  entry(
+    "EVELAND_SCHEDULER_PREWARM_MS",
+    ["worker"],
+    "How far before nextRunAt a scheduler target is kept warm or proactively activated.",
+    "60000",
+  ),
+  entry(
+    "EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS",
+    ["worker"],
+    "Hard deadline for a dispatched ScheduleRun when no Observer execution boundary arrives.",
+    "86400000",
+  ),
+  entry(
+    "EVELAND_ACTIVATION_IDLE_TTL_MS",
+    ["worker"],
+    "Idle time after the final lease before a ready RuntimeInstance is stopped.",
+    "300000",
+  ),
+  entry(
+    "EVELAND_ACTIVATION_REAPER_BATCH_SIZE",
+    ["worker"],
+    "Maximum idle RuntimeInstances claimed in one reaper tick.",
+    "25",
+  ),
+  entry(
+    "EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE",
+    ["worker"],
+    "Maximum starting RuntimeInstances recovered in one worker tick.",
+    "25",
+  ),
+  entry(
+    "EVELAND_ACTIVATION_START_STALE_MS",
+    ["worker"],
+    "Age after which a running activation job may be reclaimed after a crash.",
+    "300000",
+  ),
+  entry(
+    "EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE",
+    ["worker"],
+    "Maximum ready RuntimeInstances checked against their owning runtime per tick.",
+    "100",
+  ),
   {
     name: "EVELAND_SANDBOX_CACHE_DIR",
     components: ["worker"],
     purpose: "Durable per-Project Eve sandbox workspace root.",
     fallback: (env) => derivedValue(joinPath(env.EVELAND_DATA_DIR ?? ".eveland-data", "sandbox")),
   },
-  entry("WORKER_POLL_INTERVAL_MS", ["worker"], "Delay between Worker job-queue polling attempts.", "5000"),
-  entry("WORKER_JOB_HEARTBEAT_INTERVAL_MS", ["worker"], "Interval used to renew a running job lease.", "30000"),
-  entry("WORKER_JOB_STALE_MS", ["worker"], "Age after which a running job without a heartbeat is recovered.", "120000"),
-  entry("WORKER_JOB_RECOVERY_BATCH_SIZE", ["worker"], "Maximum stale jobs recovered in one worker tick.", "25"),
+  entry(
+    "WORKER_POLL_INTERVAL_MS",
+    ["worker"],
+    "Delay between Worker job-queue polling attempts.",
+    "5000",
+  ),
+  entry(
+    "WORKER_JOB_HEARTBEAT_INTERVAL_MS",
+    ["worker"],
+    "Interval used to renew a running job lease.",
+    "30000",
+  ),
+  entry(
+    "WORKER_JOB_STALE_MS",
+    ["worker"],
+    "Age after which a running job without a heartbeat is recovered.",
+    "120000",
+  ),
+  entry(
+    "WORKER_JOB_RECOVERY_BATCH_SIZE",
+    ["worker"],
+    "Maximum stale jobs recovered in one worker tick.",
+    "25",
+  ),
   {
     name: "WORKER_ID",
     components: ["worker"],
@@ -344,19 +663,28 @@ function resolveEntry(
   const raw = env[definition.name];
   const explicitlyEmpty = raw !== undefined && raw.trim() === "";
   const configured = explicitlyEmpty && definition.emptyUsesFallback ? undefined : raw;
-  const fallback = configured !== undefined ? undefined : resolveFallback(definition.fallback, env, component);
+  const fallback =
+    configured !== undefined ? undefined : resolveFallback(definition.fallback, env, component);
   const effective = configured ?? fallback?.value;
   const source: ConfigurationEntry["source"] =
-    configured !== undefined ? "environment" : fallback?.source ?? "not_configured";
+    configured !== undefined ? "environment" : (fallback?.source ?? "not_configured");
   const required =
-    typeof definition.required === "function" ? definition.required(env, component) : (definition.required ?? false);
+    typeof definition.required === "function"
+      ? definition.required(env, component)
+      : (definition.required ?? false);
   const sensitivity = definition.sensitivity ?? "public";
   const status =
     effective === undefined
-      ? required ? "missing" : "ok"
+      ? required
+        ? "missing"
+        : "ok"
       : effective === ""
-        ? required || sensitivity === "secret" ? "missing" : "warning"
-        : definition.warning?.(env, effective, source) ? "warning" : "ok";
+        ? required || sensitivity === "secret"
+          ? "missing"
+          : "warning"
+        : definition.warning?.(env, effective, source)
+          ? "warning"
+          : "ok";
 
   return {
     name: definition.name,
@@ -388,7 +716,9 @@ function displayValue(value: string, sensitivity: ConfigurationEntry["sensitivit
   try {
     const parsed = new URL(value);
     const authority = parsed.username || parsed.password ? `••••@${parsed.host}` : parsed.host;
-    const query = [...parsed.searchParams.keys()].map((key) => `${encodeURIComponent(key)}=••••`).join("&");
+    const query = [...parsed.searchParams.keys()]
+      .map((key) => `${encodeURIComponent(key)}=••••`)
+      .join("&");
     return `${parsed.protocol}//${authority}${parsed.pathname}${query ? `?${query}` : ""}`;
   } catch {
     return "Configured (invalid URL)";
@@ -399,7 +729,8 @@ function resolveWorkflowBootstrapUrl(env: Environment): ResolvedValue | undefine
   const workflowUrl = nonEmpty(env.WORKFLOW_POSTGRES_URL);
   if (!workflowUrl) return undefined;
   const databaseUrl = nonEmpty(env.DATABASE_URL);
-  if (databaseUrl && isHostDatabaseAlias(workflowUrl, databaseUrl)) return derivedValue(databaseUrl);
+  if (databaseUrl && isHostDatabaseAlias(workflowUrl, databaseUrl))
+    return derivedValue(databaseUrl);
   return derivedValue(workflowUrl);
 }
 

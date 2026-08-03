@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import { createApp } from "./app.js";
 import { createTestStore } from "@eveland/db/vitest";
 
-
 describe("api app", () => {
   test("forwards a canonical Playground session request when the current Deployment is dormant", async () => {
     const store = createTestStore();
@@ -64,14 +63,11 @@ describe("api app", () => {
     });
     const app = createApp(store, { playgroundProxy });
 
-    const response = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: "Wake up" }),
-      },
-    );
+    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Wake up" }),
+    });
 
     expect(response.status).toBe(202);
     expect(playgroundProxy).toHaveBeenCalledOnce();
@@ -153,14 +149,11 @@ describe("api app", () => {
       },
     });
 
-    const response = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: "Use the selected variant" }),
-      },
-    );
+    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Use the selected variant" }),
+    });
 
     expect(response.status).toBe(202);
     await expect(store.listSessions(project.id)).resolves.toEqual([
@@ -172,9 +165,9 @@ describe("api app", () => {
         variantName: "selected",
       }),
     ]);
-    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject(
-      { id: projectCurrentDeployment.id },
-    );
+    await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({
+      id: projectCurrentDeployment.id,
+    });
     expect(gatewaySelectedDeployment.id).not.toBe(projectCurrentDeployment.id);
   });
 
@@ -207,8 +200,7 @@ describe("api app", () => {
       deployment.id,
       "agent.localhost",
     );
-    const proxyCalls: Array<{ method: string; path: string; body: string }> =
-      [];
+    const proxyCalls: Array<{ method: string; path: string; body: string }> = [];
     let cancelCalls = 0;
     const app = createApp(store, {
       async playgroundProxy(input) {
@@ -293,15 +285,8 @@ describe("api app", () => {
             },
           );
         }
-        if (
-          input.method === "POST" &&
-          input.path === "/eve/v1/session/eve_chat"
-        ) {
-          await store.setSessionBindingContinuationToken(
-            project.id,
-            "eve_chat",
-            "continue_2",
-          );
+        if (input.method === "POST" && input.path === "/eve/v1/session/eve_chat") {
+          await store.setSessionBindingContinuationToken(project.id, "eve_chat", "continue_2");
           return new Response(
             JSON.stringify({
               sessionId: "eve_chat",
@@ -316,22 +301,12 @@ describe("api app", () => {
             },
           );
         }
-        if (
-          input.method === "POST" &&
-          input.path === "/eve/v1/session/eve_chat/cancel"
-        ) {
+        if (input.method === "POST" && input.path === "/eve/v1/session/eve_chat/cancel") {
           cancelCalls += 1;
-          if (cancelCalls > 1)
-            return new Response("not found", { status: 404 });
-          return Response.json(
-            { sessionId: "eve_chat", status: "accepted" },
-            { status: 202 },
-          );
+          if (cancelCalls > 1) return new Response("not found", { status: 404 });
+          return Response.json({ sessionId: "eve_chat", status: "accepted" }, { status: 202 });
         }
-        if (
-          input.method === "POST" &&
-          input.path === "/eve/v1/session/reset"
-        ) {
+        if (input.method === "POST" && input.path === "/eve/v1/session/reset") {
           return Response.json({
             ok: true,
             previousSessionId: "eve_chat",
@@ -354,14 +329,11 @@ describe("api app", () => {
       ],
     });
 
-    const initial = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: initialBody,
-      },
-    );
+    const initial = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: initialBody,
+    });
     const stream = await app.request(
       `/projects/${project.id}/playground/eve/v1/session/eve_chat/stream?startIndex=0&includeTailIndex=1`,
       {
@@ -386,9 +358,9 @@ describe("api app", () => {
       }),
     ]);
     const [platformSession] = await store.listSessions(project.id);
-    expect(
-      JSON.stringify(await store.listSessionEvents(platformSession!.id)),
-    ).not.toContain(attachmentData);
+    expect(JSON.stringify(await store.listSessionEvents(platformSession!.id))).not.toContain(
+      attachmentData,
+    );
 
     const continuationBody = JSON.stringify({
       continuationToken: "continue_1",
@@ -429,14 +401,11 @@ describe("api app", () => {
     );
     expect(unsupportedCancel.status).toBe(404);
     const resetBody = JSON.stringify({ continuationToken: "continue_2" });
-    const reset = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/reset`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: resetBody,
-      },
-    );
+    const reset = await app.request(`/projects/${project.id}/playground/eve/v1/session/reset`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: resetBody,
+    });
     expect(reset.status).toBe(200);
     await expect(reset.json()).resolves.toEqual({
       ok: true,
@@ -525,14 +494,11 @@ describe("api app", () => {
       },
     });
 
-    const playground = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: "hello" }),
-      },
-    );
+    const playground = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
     expect(playground.status).toBe(409);
     await expect(playground.json()).resolves.toMatchObject({
       error: "Unsupported Eve version",
@@ -560,11 +526,7 @@ describe("api app", () => {
       hostPort: 41009,
       runtimeKind: "docker",
     });
-    await store.ensureDeploymentRoutes(
-      project.id,
-      supportedDeployment.id,
-      "agent.localhost",
-    );
+    await store.ensureDeploymentRoutes(project.id, supportedDeployment.id, "agent.localhost");
     await store.promoteDeployment(project.id, supportedDeployment.id);
     const pinnedOldSession = await store.createSession({
       projectId: project.id,

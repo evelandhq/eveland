@@ -22,10 +22,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
   app.get("/usage", async (c) => {
     const parsed = usageAnalyticsQuerySchema.safeParse(c.req.query());
     if (!parsed.success)
-      return c.json(
-        { error: "Invalid usage filters", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid usage filters", issues: parsed.error.issues }, 400);
     return c.json({
       usage: publicUsageAnalytics(await store.getUsageAnalytics(parsed.data)),
     });
@@ -33,26 +30,18 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
 
   app.get("/projects/:projectId/usage", async (c) => {
     const projectId = c.req.param("projectId");
-    if (!(await store.getProject(projectId)))
-      return c.json({ error: "Project not found" }, 404);
+    if (!(await store.getProject(projectId))) return c.json({ error: "Project not found" }, 404);
     const parsed = usageAnalyticsQuerySchema.safeParse(c.req.query());
     if (!parsed.success)
-      return c.json(
-        { error: "Invalid usage filters", issues: parsed.error.issues },
-        400,
-      );
+      return c.json({ error: "Invalid usage filters", issues: parsed.error.issues }, 400);
     return c.json({
-      usage: publicUsageAnalytics(
-        await store.getUsageAnalytics({ ...parsed.data, projectId }),
-      ),
+      usage: publicUsageAnalytics(await store.getUsageAnalytics({ ...parsed.data, projectId })),
     });
   });
 
   app.get("/projects/:projectId/schedules", async (c) => {
     return c.json({
-      schedules: await store.listProjectScheduleSummaries(
-        c.req.param("projectId"),
-      ),
+      schedules: await store.listProjectScheduleSummaries(c.req.param("projectId")),
     });
   });
 
@@ -65,24 +54,15 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
       return c.json({ run }, 201);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return c.json(
-        { error: message },
-        message === "Project schedule not found." ? 404 : 409,
-      );
+      return c.json({ error: message }, message === "Project schedule not found." ? 404 : 409);
     }
   });
 
   app.get("/projects/:projectId/schedule-runs", async (c) => {
     const parsed = scheduleRunListQuerySchema.safeParse(c.req.query());
     if (!parsed.success)
-      return c.json(
-        { error: "Invalid schedule-run filters", issues: parsed.error.issues },
-        400,
-      );
-    const page = await store.listScheduleRuns(
-      c.req.param("projectId"),
-      parsed.data,
-    );
+      return c.json({ error: "Invalid schedule-run filters", issues: parsed.error.issues }, 400);
+    const page = await store.listScheduleRuns(c.req.param("projectId"), parsed.data);
     return c.json({
       runs: page.items.map((run) => ({
         ...run,
@@ -107,9 +87,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
   });
 
   app.get("/projects/:projectId/source/revision", async (c) => {
-    const revision = await store.getCurrentSourceRevision(
-      c.req.param("projectId"),
-    );
+    const revision = await store.getCurrentSourceRevision(c.req.param("projectId"));
     return c.json({
       revision: revision ? publicSourceRevision(revision) : null,
     });
@@ -117,8 +95,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
 
   app.get("/projects/:projectId/eve-version", async (c) => {
     const projectId = c.req.param("projectId");
-    if (!(await store.getProject(projectId)))
-      return c.json({ error: "Project not found" }, 404);
+    if (!(await store.getProject(projectId))) return c.json({ error: "Project not found" }, 404);
     return c.json({
       eveVersion: await resolveProjectEveVersion(store, projectId),
     });
@@ -144,14 +121,8 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
   app.get("/projects/:projectId/sessions", async (c) => {
     const parsed = sessionListQuerySchema.safeParse(c.req.query());
     if (!parsed.success)
-      return c.json(
-        { error: "Invalid Session filters", issues: parsed.error.issues },
-        400,
-      );
-    const page = await store.listSessionsPage(
-      c.req.param("projectId"),
-      parsed.data,
-    );
+      return c.json({ error: "Invalid Session filters", issues: parsed.error.issues }, 400);
+    const page = await store.listSessionsPage(c.req.param("projectId"), parsed.data);
     return c.json({
       sessions: page.items.map(publicSession),
       nextCursor: page.nextCursor,

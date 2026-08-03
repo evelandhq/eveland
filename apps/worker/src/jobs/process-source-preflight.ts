@@ -29,7 +29,9 @@ export async function processNextSourcePreflight(
 
   try {
     await runWithJobHeartbeat({
-      intervalMs: options.jobHeartbeatIntervalMs ?? Number(process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000),
+      intervalMs:
+        options.jobHeartbeatIntervalMs ??
+        Number(process.env.WORKER_JOB_HEARTBEAT_INTERVAL_MS ?? 30_000),
       heartbeat: () => store.heartbeatSourcePreflight(preflight.id, preflight.attempts),
       work: async (signal) => {
         let sourcePath = preflight.sourcePath;
@@ -42,10 +44,7 @@ export async function processNextSourcePreflight(
             preflight.id,
             `attempt-${preflight.attempts}`,
           );
-          sourcePath = path.join(
-            managedAttemptDir,
-            "source",
-          );
+          sourcePath = path.join(managedAttemptDir, "source");
           commitSha = await materializeGitSource({
             gitUrl: preflight.gitUrl,
             targetDir: sourcePath,
