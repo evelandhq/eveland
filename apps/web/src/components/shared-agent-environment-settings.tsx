@@ -182,7 +182,9 @@ export function SharedAgentEnvironmentSettings({
           <CardTitle>Variables and secrets</CardTitle>
           <CardDescription>
             Shared fallback values are encrypted and applied to every Agent Deployment. Project
-            Secrets take precedence.
+            Secrets take precedence. A secret only ever reaches the running agent; a variable is
+            also readable by every project&rsquo;s build, and reaches what a project compiled on its
+            next deploy rather than on the restart this queues.
           </CardDescription>
           <CardAction>
             <Button

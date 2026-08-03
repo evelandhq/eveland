@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import path from "node:path";
 import { execa } from "execa";
+import { readFileSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import {
   buildBwrapArgs,
@@ -328,14 +329,40 @@ describe("buildReleaseBuildEnvironment", () => {
     expect(rejectedKeys).toEqual(["NPM_CONFIG_CACHE", "PATH"]);
   });
 
-  test("carries no secret-bearing worker environment into the build", () => {
-    const { environment } = buildReleaseBuildEnvironment({
+  // The install and `npx eve build` share one shell, so NODE_ENV=production
+  // here would omit devDependencies from the very tree eve build compiles
+  // against.
+  test("keeps NODE_ENV away from the install that eve build runs against", () => {
+    const { environment, rejectedKeys } = buildReleaseBuildEnvironment({
       npmCacheDir: "/var/lib/eveland/npm-cache",
       pathValue: "/usr/bin",
-      variables: { MODEL_NAME: "configured-model" },
+      variables: { MODEL_NAME: "configured-model", NODE_ENV: "production" },
     });
 
-    expect(Object.keys(environment).sort()).toEqual(["MODEL_NAME", "PATH", "npm_config_cache"]);
+    expect(environment.NODE_ENV).toBeUndefined();
+    expect(environment.MODEL_NAME).toBe("configured-model");
+    expect(rejectedKeys).toEqual(["NODE_ENV"]);
+  });
+});
+
+/**
+ * `buildReleaseBuildEnvironment` returning a complete environment only keeps
+ * worker secrets out while its caller also passes `extendEnv: false` -- execa
+ * extends `process.env` by default, and this process holds APP_SECRET_KEY,
+ * DATABASE_URL and WORKFLOW_POSTGRES_URL. That pairing used to be self-evident
+ * from one inline literal beside the execa call; now that the environment is
+ * built elsewhere, only this asserts it.
+ */
+describe("release build execa contract", () => {
+  // readFileSync, because this file mocks node:fs/promises.
+  test("every build execa call that takes buildEnv also refuses process.env", () => {
+    const source = readFileSync(new URL("./systemd.ts", import.meta.url), "utf8");
+    const uses = [...source.matchAll(/env: buildEnv/g)];
+
+    expect(uses.length).toBeGreaterThanOrEqual(2);
+    for (const use of uses) {
+      expect(source.slice(use.index, use.index + 200)).toContain("extendEnv: false");
+    }
   });
 });
 

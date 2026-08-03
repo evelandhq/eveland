@@ -272,7 +272,12 @@ export async function composeDeploymentEnv(
 
 /**
  * The subset of the Agent environment a Release build may see: `variable`
- * entries only, never a `secret`. See ../runtime/build-environment.ts.
+ * entries only, never a `secret`.
+ *
+ * Which of those names the build actually keeps is the adapter's call, not
+ * this one's -- `selectBuildVariables` drops the platform-owned ones at the
+ * runtime boundary, where the rejected keys can still reach that build's log.
+ * See ../runtime/build-environment.ts.
  */
 export async function composeBuildVariables(
   store: Pick<Store, "listSecretRecords" | "getSharedAgentEnvironmentRecord">,

@@ -212,6 +212,12 @@ export function ProjectSecretsSettings({
               Values are encrypted and never returned after saving. Saving changes restarts live
               deployments; otherwise, they apply the next time this project starts.
             </p>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              A secret only ever reaches the running agent. A variable is also readable by the
+              project&rsquo;s own build, so an agent config that picks its model from the
+              environment compiles the configured value — but a restart alone cannot refresh what
+              the build compiled, so that change lands on the next deploy.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button

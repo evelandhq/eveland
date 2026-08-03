@@ -21,7 +21,6 @@ import {
   allocateAvailableHostPort,
   claimInFlightPort,
   composeBuildVariables,
-  devSecretKey,
   invalidateGatewayRouteCache,
   releaseInFlightPort,
   stopStartedProcessOnFailure,
@@ -102,7 +101,9 @@ export async function handleBuildDeployJob(
   const buildVariables = await composeBuildVariables(
     store,
     project.id,
-    options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey,
+    // The same key composeDeploymentEnv just decrypted this deploy's runtime
+    // environment with -- resolved once, above, from the injected worker env.
+    launchPrerequisites.observability.appSecretKey,
   );
 
   await store.updateProjectState(job.projectId, {

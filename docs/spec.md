@@ -962,12 +962,21 @@ config 在模块加载期从 `process.env` 读到的值（最典型的是 model 
 build：install/build lifecycle script 是不可信的项目代码，无论以哪个用户运行都能通过
 `/proc/self/environ` 读到 build 进程自己的环境。
 
-- `PATH`、`HOME`、`NPM_CONFIG_CACHE` 由平台保留。同名条目在 build 中被丢弃并在 Build Log
-  记录 `WARNING`，但仍照常注入已部署进程，不能静默丢弃。
+- `PATH`、`HOME`、`NPM_CONFIG_CACHE` 由平台保留（build 工具链自身）。同名条目在 build 中被丢弃并在
+  Build Log 记录 `WARNING`，但仍照常注入已部署进程，不能静默丢弃。
+- 运行时保留变量同样不进入 build：`NODE_ENV`、`EVELAND_PROJECT_ID`、`EVELAND_IDENTITY_ISSUER`、
+  `EVELAND_IDENTITY_JWKS_URL`、`EVELAND_SCHEDULER_REDEEM_URL`、`EVELAND_SCHEDULER_RUNTIME_SECRET`、
+  `WORKFLOW_POSTGRES_URL`、`WORKFLOW_POSTGRES_MAX_POOL_SIZE`。运行时以保留层最后覆盖它们，build
+  若采用 Project 值就会编译出运行时随即覆盖的结果——正是 build 可见 variable 要消除的那类
+  build/runtime 分歧。其中 `NODE_ENV` 无条件丢弃：`npm ci` 与 `pnpm install --frozen-lockfile` 在
+  `NODE_ENV=production` 下都会跳过 devDependencies，会把项目自己的构建工具链从 `npx eve build`
+  所依赖的依赖树里剥掉。该保留名单必须与运行时保留层保持一致，由测试锁定。
 - Release 不可变，因此改动 `variable` 只在下一次 deploy 刷新编译产物；单纯的环境变更仍然只对
-  live Deployment 排 restart，沿用原 Release。
+  live Deployment 排 restart，沿用原 Release。Environment 页面必须让 operator 看到这一点。
 - Docker runtime 通过 generated Dockerfile 的 `ARG` 与 `docker build --build-arg` 传递这些
   variable，其值会出现在该镜像的 build metadata 中；这是 `variable` 与 `secret` 分级的直接后果。
+  `ARG` 声明在依赖安装层之后，因此 Docker 上只有 `npx eve build` 能读到；systemd 把 install 与
+  build 放在同一个 shell，两者都能读到。
 - Build Log 仍对完整 Project/Shared Environment 值集合脱敏。
 
 ---
