@@ -609,8 +609,7 @@ describe("private Agent telemetry runtime", () => {
       );
     expect(modelSpans).toHaveLength(2);
 
-    // The step requested a tool without emitting visible text: before reasoning and
-    // tool calls became part of the output it had no output at all.
+    // The step requested a tool without emitting visible text.
     expect(JSON.parse(String(modelSpans[0]?.attributes["gen_ai.output.messages"]))).toEqual([
       {
         finish_reason: "tool_call",
@@ -622,7 +621,6 @@ describe("private Agent telemetry runtime", () => {
       },
     ]);
 
-    // The second model call sees everything the first one produced.
     expect(JSON.parse(String(modelSpans[1]?.attributes["gen_ai.input.messages"]))).toEqual([
       { parts: [{ content: "tag the conversations", type: "text" }], role: "user" },
       {

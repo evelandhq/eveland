@@ -45,11 +45,7 @@ type MessagePart =
 /**
  * One reconstructed conversation message. Eve's stream never carries the messages
  * a model call actually received, so the observer rebuilds the visible part of the
- * conversation from the events it does see; see {@link transcriptFor}.
- *
- * `finish_reason` is required on output messages and absent on input messages, so
- * the same message is serialized both ways: {@link toInputMessage} drops it and
- * {@link toOutputMessage} supplies a default.
+ * conversation from the events it does see; see {@link setReconstructedInput}.
  */
 type TranscriptMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -71,7 +67,6 @@ const finishReasons: Record<string, string> = {
   "tool-calls": "tool_call",
 };
 
-/** Per-message content cap applied before the whole-transcript budget. */
 const maxTranscriptMessageChars = 8_000;
 /** Serialized transcript budget, below `serializeAttribute`'s hard cap so the JSON stays valid. */
 const maxTranscriptChars = 48_000;
@@ -84,7 +79,6 @@ export type AgentTelemetryRuntimeState = {
   stepStartedAt: Map<string, number>;
   actions: Map<string, Span>;
   subagents: Map<string, Span>;
-  /** Turn-scoped reconstructed conversation, keyed by turn. */
   transcripts: Map<string, TranscriptMessage[]>;
   /**
    * The assistant message a step is producing, keyed by step. Held by reference
@@ -92,7 +86,6 @@ export type AgentTelemetryRuntimeState = {
    * while it already sits in the transcript in the right chat order.
    */
   stepAssistants: Map<string, TranscriptMessage>;
-  /** Tool name per in-flight action, so a tool result can name itself in the transcript. */
   actionToolNames: Map<string, string>;
 };
 
@@ -201,9 +194,7 @@ export function mapAgentTelemetryLifecycle(input: {
     }
     case "actions.requested": {
       const actions = Array.isArray(data.actions) ? data.actions : [];
-      // A step's tool calls belong to the model call that requested them, so the
-      // spans nest under the step when it is still open and fall back to the turn
-      // for actions the runtime dispatches after the step closed.
+      // Falls back to the turn for actions the runtime dispatches after the step closed.
       const actionParent = spanContext(
         (stepKey ? state.steps.get(stepKey) : undefined) ??
           (turnKey ? state.turns.get(turnKey) : undefined),
@@ -233,10 +224,6 @@ export function mapAgentTelemetryLifecycle(input: {
             },
             actionParent,
           );
-          // A subagent invocation is an agent operation, so its input belongs in the
-          // conventions' message attribute. `gen_ai.agent.input` is not a registered
-          // attribute, and squatting in the `gen_ai.*` namespace left it readable only
-          // to destinations configured to know the invented name.
           if (capture.recordInputs && action.input !== undefined) {
             span.setAttribute(
               ATTR_GEN_AI_INPUT_MESSAGES,
@@ -355,10 +342,8 @@ export function mapAgentTelemetryLifecycle(input: {
     }
     case "compaction.completed": {
       // Eve replaced the visible history with a checkpoint the event stream never
-      // exposes, so the reconstruction drops what the model can no longer see and
-      // says so with the conventions' compaction part.
-      // A step still holding an assistant message keeps it: that output really was
-      // produced. Only the reconstructed history the next model call sees is reset.
+      // exposes, so the reconstruction drops what the model can no longer see. A step
+      // still holding an assistant message keeps it: that output really was produced.
       if (turnKey) {
         state.transcripts.set(turnKey, [
           { role: "system", parts: [{ type: "compaction", content: null }] },
@@ -538,12 +523,11 @@ function transcriptFor(state: AgentTelemetryRuntimeState, turnKey: string): Tran
 }
 
 /**
- * Returns the assistant message this step is building, appending it to the turn
+ * Returns the assistant message this step is building, appended to the turn
  * transcript on first use so it sits before the tool results that answer it.
  *
- * An event that identifies no step gets a detached message: without a step key
- * there is nothing to deduplicate against, and appending one per event would
- * grow the transcript without bound.
+ * An event that identifies no step gets a detached message: with nothing to
+ * deduplicate against, one per event would grow the transcript without bound.
  */
 function stepAssistantFor(
   state: AgentTelemetryRuntimeState,
@@ -598,11 +582,6 @@ function setReconstructedInput(
   if (elided) span.setAttribute("eveland.gen_ai.input.elided", true);
 }
 
-/**
- * Wraps a subagent's returned value as an output message. A subagent invocation is
- * an agent operation, so the conventions' message attribute is where its result
- * belongs; `gen_ai.agent.output` is not a registered attribute.
- */
 function subagentOutputMessage(output: unknown): TranscriptMessage {
   return {
     role: "assistant",
@@ -635,9 +614,8 @@ function mapFinishReason(finishReason: string | undefined): string | undefined {
  * Keeps the serialized transcript under budget while leaving valid JSON.
  *
  * Every step carries the whole turn so far, which makes span bytes quadratic in
- * turn length; a single tool result in production has exceeded 60 KB. Oversized
- * contents are clipped first, then the oldest messages are dropped in favour of
- * an explicit marker, because the newest exchanges are the ones being debugged.
+ * turn length; a single tool result in production has exceeded 60 KB. The newest
+ * exchanges are the ones being debugged, so the oldest are the ones dropped.
  */
 function budgetTranscript(transcript: TranscriptMessage[]): {
   messages: TranscriptMessage[];
