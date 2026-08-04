@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -23,6 +23,32 @@ describe("Eve observer hook compatibility matrix", () => {
       const { stdout } = await execFileAsync(process.execPath, [eveBin(packageName), "--version"]);
 
       expect(stdout.trim()).toBe(version);
+    },
+  );
+
+  test.each(compatibilityMatrix)(
+    "Eve $version leaves global AI SDK telemetry integrations reachable for model capture",
+    async ({ packageName }) => {
+      // model-capture.ts registers on globalThis.AI_SDK_TELEMETRY_INTEGRATIONS,
+      // which the AI SDK only consults when a call passes no per-call
+      // `integrations`. Eve passes them solely when authored instrumentation
+      // defines AI SDK hooks; every other call must keep `integrations`
+      // undefined. If either pinned expression changes shape in a new Eve
+      // line, re-verify model-capture.ts against it before bumping the matrix.
+      const evePackageDir = await realpath(evePackage(packageName));
+      const toolLoop = await readFile(
+        path.join(evePackageDir, "dist/src/harness/tool-loop.js"),
+        "utf8",
+      );
+      expect(toolLoop).toContain(
+        "integrations:r===void 0?void 0:e===void 0?[r]:[r,createOtelIntegration()]",
+      );
+
+      const aiDist = await readFile(path.join(evePackageDir, "../ai/dist/index.js"), "utf8");
+      expect(aiDist).toContain("globalThis.AI_SDK_TELEMETRY_INTEGRATIONS");
+      expect(aiDist).toMatch(
+        /localIntegrations != null \? asArray\d*\(localIntegrations\) : getGlobalTelemetryIntegrations\(\)/,
+      );
     },
   );
 

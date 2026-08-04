@@ -122,6 +122,50 @@ describe("OTLP Agent event projection", () => {
     ]);
   });
 
+  test("carries the observed model from log attributes into the observation", () => {
+    const observations = projectAgentEventsFromOtlpLogs(
+      {
+        resourceLogs: [
+          {
+            resource: {
+              attributes: [
+                attribute("eveland.telemetry.domain", "agent"),
+                attribute("eveland.deployment.credential", "credential_dep_1"),
+              ],
+            },
+            scopeLogs: [
+              {
+                logRecords: [
+                  {
+                    timeUnixNano: "1784808000000000000",
+                    attributes: [
+                      attribute("eveland.event.id", "event_1"),
+                      attribute("eveland.event.fingerprint", "fingerprint_1"),
+                      attribute("eveland.eve.session.id", "eve_session_1"),
+                      attribute("eveland.gen_ai.observed.model", "openai/gpt-6"),
+                      attribute("eveland.gen_ai.observed.response_model", "gpt-6-2026-01-01"),
+                    ],
+                    body: anyValue({
+                      type: "step.completed",
+                      data: { turnId: "turn_1", stepIndex: 0 },
+                    }),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      projection,
+    );
+
+    expect(observations).toHaveLength(1);
+    expect(observations[0]?.observedModel).toEqual({
+      modelId: "openai/gpt-6",
+      responseModelId: "gpt-6-2026-01-01",
+    });
+  });
+
   test("ignores non-Agent resources and malformed LogRecords", () => {
     expect(
       projectAgentEventsFromOtlpLogs(

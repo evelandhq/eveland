@@ -570,6 +570,7 @@ export function sessionNodeRowToSessionNode(row: {
   nodeId: string | null;
   channelKind: string | null;
   modelId: string | null;
+  observedModelId: string | null;
   eveVersion: string | null;
   remoteUrl: string | null;
   resolutionStatus: string;

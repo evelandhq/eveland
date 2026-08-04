@@ -7,6 +7,7 @@ import {
   ATTR_GEN_AI_OPERATION_NAME,
   ATTR_GEN_AI_OUTPUT_MESSAGES,
   ATTR_GEN_AI_REQUEST_MODEL,
+  ATTR_GEN_AI_RESPONSE_MODEL,
   ATTR_GEN_AI_TOOL_CALL_ARGUMENTS,
   ATTR_GEN_AI_TOOL_CALL_ID,
   ATTR_GEN_AI_TOOL_CALL_RESULT,
@@ -29,6 +30,7 @@ import {
   transcriptFor,
 } from "./messages.js";
 import { recordUsage, type AgentTelemetryMetrics } from "./metrics.js";
+import type { ObservedModelCall } from "./model-capture.js";
 import {
   endSessionSpans,
   endTurnChildren,
@@ -50,8 +52,20 @@ export function mapAgentTelemetryLifecycle(input: {
   metrics: AgentTelemetryMetrics;
   now: () => number;
   capture: RuntimeAgentPolicy["capture"];
+  observedModel?: ObservedModelCall;
 }): Span | undefined {
-  const { eventType, data, sessionId, context, state, tracer, metrics, now, capture } = input;
+  const {
+    eventType,
+    data,
+    sessionId,
+    context,
+    state,
+    tracer,
+    metrics,
+    now,
+    capture,
+    observedModel,
+  } = input;
   const turnId = asString(data.turnId);
   const stepIndex = asNonNegativeInteger(data.stepIndex);
   const turnKey = turnId ? spanKey(sessionId, turnId) : undefined;
@@ -361,6 +375,14 @@ export function mapAgentTelemetryLifecycle(input: {
         if (stepKey) state.stepAssistants.delete(stepKey);
         if (eventType === "step.failed") setErrorStatus(span, data);
         if (eventType === "step.completed") {
+          if (observedModel) {
+            state.sessionModels.set(sessionId, observedModel.modelId);
+            span.updateName(`chat ${observedModel.modelId}`);
+            span.setAttribute(ATTR_GEN_AI_REQUEST_MODEL, observedModel.modelId);
+            if (observedModel.responseModelId) {
+              span.setAttribute(ATTR_GEN_AI_RESPONSE_MODEL, observedModel.responseModelId);
+            }
+          }
           recordUsage({
             data,
             modelId: state.sessionModels.get(sessionId),

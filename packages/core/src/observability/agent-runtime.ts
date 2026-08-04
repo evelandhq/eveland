@@ -70,6 +70,20 @@ export const agentEventObservationSchema = z
       })
       .strict(),
     channelKind: z.string().nullable(),
+    /**
+     * The model the Agent process was observed actually calling, captured by
+     * the observer from the AI SDK telemetry registry. Absent when the event
+     * is not a step completion or the capture saw no matching call; the
+     * manifest-derived `runtime.modelId` remains the fallback.
+     */
+    observedModel: z
+      .object({
+        modelId: z.string().min(1),
+        responseModelId: z.string().min(1).nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
     eventAt: z.iso.datetime(),
     event: z.unknown(),
   })

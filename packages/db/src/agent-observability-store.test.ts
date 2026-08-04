@@ -34,6 +34,35 @@ describe("Agent observability ingestion repository", () => {
     expect(await store.listSessionEvents(session!.id)).toHaveLength(2);
   });
 
+  test("records the observed model on the usage event and the session node", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "started",
+        event: { type: "session.started", data: { runtime: { modelId: "openai/gpt-5" } } },
+      }),
+    );
+
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "step",
+        sourceSequence: 2,
+        observedModel: { modelId: "openai/gpt-6", responseModelId: "gpt-6-2026-01-01" },
+        event: {
+          type: "step.completed",
+          data: { turnId: "turn_1", stepIndex: 0, usage: { inputTokens: 12, outputTokens: 3 } },
+        },
+      }),
+    );
+
+    const [session] = await store.listSessions(projectId);
+    const [node] = await store.listSessionNodes(session!.id);
+    expect(node).toMatchObject({ modelId: "openai/gpt-5", observedModelId: "openai/gpt-6" });
+    expect(await store.listModelUsageEvents(session!.id)).toMatchObject([
+      { modelId: "openai/gpt-6", inputTokens: 12, outputTokens: 3 },
+    ]);
+  });
+
   test("records the RuntimeInstance generation that emitted each observer event", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const activation = await store.acquireActivationLease({
