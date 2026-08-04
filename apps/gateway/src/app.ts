@@ -8,6 +8,7 @@ import {
 import {
   classifyEveSessionRequest,
   isEveSessionNamespace,
+  isWorkflowQueueNamespace,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
 } from "@eveland/core/eve";
 import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
@@ -175,6 +176,15 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (!route?.enabled) return context.json({ error: "Route not found" }, 404);
 
     const requestUrl = new URL(context.req.url);
+    // The Agent's Workflow queue endpoints are unauthenticated by design: eve
+    // expects them to be reachable only by a queue runner on the same host. Both
+    // real callers — an in-process runner over loopback, and the platform
+    // dispatcher on the deployment's own port — bypass the Gateway entirely, so
+    // anything arriving here is external and has no business driving a
+    // project's workflow steps.
+    if (isWorkflowQueueNamespace(requestUrl.pathname)) {
+      return context.json({ error: "Route not found" }, 404);
+    }
     const eveRequest = classifyEveSessionRequest(context.req.method, requestUrl.pathname);
     if (!eveRequest && isEveSessionNamespace(requestUrl.pathname)) {
       return context.json({ error: "Route not found" }, 404);

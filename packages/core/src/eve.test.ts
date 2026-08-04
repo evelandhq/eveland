@@ -123,6 +123,21 @@ describe("Eve session request classification", () => {
     expect(Eve.isEveSessionNamespace("/eve/v1/session/eve_1/unknown")).toBe(true);
     expect(Eve.isEveSessionNamespace("/eve/v1/session-like/eve_1")).toBe(false);
   });
+
+  test("recognises the Workflow queue namespace the Gateway must refuse", () => {
+    // eve mounts these under the fixed base path from @workflow/utils and
+    // authenticates nothing on them, so the Gateway refuses the whole
+    // namespace — including anything nested, which is where `step` lives.
+    expect(Eve.isWorkflowQueueNamespace("/.well-known/workflow/v1")).toBe(true);
+    expect(Eve.isWorkflowQueueNamespace("/.well-known/workflow/v1/flow")).toBe(true);
+    expect(Eve.isWorkflowQueueNamespace("/.well-known/workflow/v1/step")).toBe(true);
+    // A prefix that merely looks similar must still route: refusing it would
+    // break an Agent that legitimately serves its own /.well-known paths.
+    expect(Eve.isWorkflowQueueNamespace("/.well-known/workflow/v2/flow")).toBe(false);
+    expect(Eve.isWorkflowQueueNamespace("/.well-known/workflow/v1x/flow")).toBe(false);
+    expect(Eve.isWorkflowQueueNamespace("/.well-known/security.txt")).toBe(false);
+    expect(Eve.isWorkflowQueueNamespace("/api/.well-known/workflow/v1/flow")).toBe(false);
+  });
 });
 
 describe("Playground turn validation", () => {
