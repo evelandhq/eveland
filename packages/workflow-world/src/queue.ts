@@ -46,6 +46,7 @@ import type { ResolvedWorldConfig } from "./config.js";
 import { MessageData } from "./message.js";
 import {
   checkDispatchVersion,
+  DEPLOYMENT_HEADER,
   DISPATCH_VERSION_HEADER,
   RUNTIME_SECRET_HEADER,
   secretMatches,
@@ -195,6 +196,17 @@ export function createQueue(config: ResolvedWorldConfig, pool: Pool): PostgresQu
         const expected = process.env.EVELAND_SCHEDULER_RUNTIME_SECRET;
         if (!expected || !secretMatches(expected, req.headers.get(RUNTIME_SECRET_HEADER))) {
           return Response.json({ error: "Unauthorized workflow dispatch." }, { status: 401 });
+        }
+        // The runtime secret is shared platform-wide, so on its own it does not
+        // say *which* deployment a dispatch was meant for. Binding to the
+        // target means a captured request cannot be replayed at another
+        // deployment on the same host.
+        const target = req.headers.get(DEPLOYMENT_HEADER);
+        if (target && target !== config.deploymentId) {
+          return Response.json(
+            { error: "Workflow dispatch was addressed to a different deployment." },
+            { status: 401 },
+          );
         }
       }
       return inner(req);

@@ -896,7 +896,7 @@ export const activationLeases = pgTable(
     index("activation_leases_active_idx").on(table.deploymentId, table.expiresAt, table.releasedAt),
     check(
       "activation_leases_kind_check",
-      sql`${table.kind} in ('public_request', 'stream', 'turn', 'schedule_run')`,
+      sql`${table.kind} in ('public_request', 'stream', 'turn', 'schedule_run', 'workflow_step')`,
     ),
   ],
 );

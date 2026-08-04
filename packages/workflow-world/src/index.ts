@@ -124,13 +124,20 @@ export function createWorld(
      */
     processExitTriggersQueueRedelivery: false,
     /**
-     * The promote-follows hook: eve calls this when a run is started with
-     * `deploymentId: 'latest'`. Resolving it to the project's currently
-     * promoted deployment is what makes new runs land on the newest code while
-     * in-flight runs stay pinned to the deployment that created them.
+     * Called by eve when a run is started with `deploymentId: 'latest'`.
      *
-     * The promoted deployment is whichever one is serving this process, so the
-     * ambient deployment id is the answer — no control-plane call needed.
+     * KNOWN LIMITATION. This returns the deployment this process *is*, not the
+     * project's currently promoted one. For ordinary traffic they coincide,
+     * because the gateway routes new sessions to the promoted deployment — but
+     * they diverge in exactly the case this package introduces: a superseded
+     * deployment woken by the dispatcher to finish a pinned run would start any
+     * new `'latest'` run on itself rather than on the newest code.
+     *
+     * Resolving it properly needs promotion state, which lives in the control
+     * plane rather than the workflow database, and reaching for it from inside
+     * a tenant process would break the rule that agents and the platform
+     * rendezvous only in Postgres. Left as-is deliberately; §16 of the design
+     * records it as unfinished rather than as implementing Phase 3c.
      */
     async resolveLatestDeploymentId() {
       return resolved.deploymentId;

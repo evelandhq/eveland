@@ -1,4 +1,5 @@
 import { MessageData } from "@eveland/workflow-world";
+import { getQueueTopicPrefix } from "@workflow/world";
 import { makeWorkerUtils, run, type Runner, type WorkerUtils } from "graphile-worker";
 import type { Pool } from "pg";
 import {
@@ -6,6 +7,7 @@ import {
   createRunLookup,
   dispatchMessage,
   readRunId,
+  type DispatchOutcome,
   type DispatcherDeps,
   type Fairness,
 } from "./dispatcher.js";
@@ -87,14 +89,28 @@ export async function startDispatcher(input: {
       const message = MessageData.parse(payload);
       const attempt = readAttempt(helpers) ?? message.attempt;
       const isFinalAttempt = readIsFinalAttempt(helpers);
-      const queueName = message.id;
+      // `MessageData.id` is only the sub-queue id: the enqueue path ran it
+      // through `parseQueueName`, which strips the `__wkf_<kind>_` prefix. eve's
+      // handler rejects a name without that prefix outright ("Unhandled
+      // queue", 400), and a 400 is non-retryable — so sending the bare id
+      // dead-letters every message. The embedded runner rebuilds the full name
+      // for the same reason.
+      const queueName = `${getQueueTopicPrefix(route === "flow" ? "workflow" : "step")}${message.id}`;
 
       fairness.acquire(message.tenantId);
       try {
-        const outcome = await dispatchMessage(
-          { message, jobName, queueName, route, attempt },
-          deps,
-        );
+        let outcome: DispatchOutcome;
+        try {
+          outcome = await dispatchMessage({ message, jobName, queueName, route, attempt }, deps);
+        } catch (error) {
+          // dispatchMessage can throw rather than return — a database error in
+          // the run lookup, a rejected activation fetch. Treating that as an
+          // ordinary retryable outcome keeps the final-attempt dead-letter
+          // below on the path; letting it propagate meant the last attempt
+          // vanished with no record, which is precisely the silent loss the
+          // dead-letter table exists to prevent.
+          outcome = { type: "retry", reason: `Dispatch threw: ${String(error)}` };
+        }
 
         if (outcome.type === "completed" || outcome.type === "rescheduled") return;
 

@@ -369,6 +369,75 @@ later touches nothing else.
 the message preserved verbatim, rather than becoming a `run_failed` event. A run
 that could have succeeded is an operator problem, not a workflow outcome.
 
+### Corrections from review (2026-08-04)
+
+A review of the implementation found three blockers that the unit tests could
+not catch, because they all live at the boundary between the dispatcher and
+existing platform APIs — exactly where the tests substituted fakes. All are
+fixed; each now has a test that fails without the fix.
+
+1. **The dispatcher sent an unprefixed vqs queue name.** `MessageData.id` is the
+   sub-queue id — the enqueue path already ran it through `parseQueueName`,
+   which strips `__wkf_<kind>_`. eve rejects a name without that prefix with a
+   400, and §7 classifies 4xx as non-retryable, so _every_ message would have
+   dead-lettered. The embedded runner rebuilds the full name; the dispatcher now
+   does too. The test helper had encoded the same mistake, which is why the
+   suite was green.
+2. **`kind: "workflow"` is not a valid activation kind.** Both
+   `runtimeActivationSchema` and the `activation_leases_kind_check` constraint
+   rejected it, so no activation could ever succeed. Added `workflow_step` to
+   the contract type, the API schema, and the constraint (migration 0046).
+3. **The internal service token was sent to tenant deployments.** §7 said
+   "bearer, scheduler pattern", but the scheduler pattern is a _signed,
+   two-minute, run-bound credential_ — not a bearer token. Sending
+   `EVELAND_GATEWAY_SERVICE_TOKEN` handed tenant code a credential that
+   activates and releases leases on any deployment. The header is gone; the
+   runtime secret already authenticates platform dispatch, and the deployment
+   now also rejects a dispatch addressed to a different deployment id, so a
+   captured request cannot be replayed elsewhere.
+
+Four further corrections:
+
+- **Rollback was unsafe.** Both the world choice and the runner mode were
+  re-resolved from worker env on _every launch_, not baked. Turning the rollout
+  flag off therefore stopped injecting `EVELAND_WORKFLOW_WORLD_URL` for a bundle
+  that still imported the multi-tenant world — which then fell through
+  `resolveConnectionString`'s fallback chain onto the legacy single-tenant
+  database. Injection no longer depends on the flag (the flag governs the next
+  build, which is all it ever should have), and the fallback chain is gone: a
+  missing world URL now throws by name instead of silently connecting somewhere
+  plausible.
+- **`forceUnlockWorkers` was a no-op.** It matched `locked_by` against the pg
+  `application_name`, but graphile mints its own `worker-<hex>` id and refuses
+  an external one above concurrency 1. Removed, and §8's claim corrected: what
+  actually recovers a stranded run is the run-keyed re-enqueue, which supersedes
+  the locked job rather than waiting on it.
+- **A thrown dispatch skipped the dead-letter.** Only a _returned_ retry outcome
+  reached the final-attempt check, so a database error in the run lookup made
+  the last attempt vanish silently — the exact case §8 says must never be
+  implicit.
+- **The dedup conflict translation never fired.** `events.create` matched the
+  parent index name, but a partitioned table reports the _child_ index name,
+  generated from the partition name plus columns and truncated to 63 bytes — so
+  it is neither the parent name nor a stable suffix (measured: a short tenant
+  ends `_correlation_id_type_idx`, a longer one loses the columns entirely).
+  Provisioning now renames the child index to a derived, predictable name and
+  the matcher compares exactly.
+
+Also fixed: the retention guard is now injected by the release reaper as well as
+the archive job (without it the reaper re-enqueued archive jobs that the archive
+job then refused, flapping the deployment); the tenancy isolation suite now runs
+in CI (it self-skips without a database URL, so it had never run there); the
+Compose dispatcher used a dev scheduler secret that did not match the worker's,
+which would have 401'd every local dispatch; and the world URL is masked in logs
+alongside the other connection strings.
+
+**Known limitation, not fixed.** `resolveLatestDeploymentId` returns the ambient
+deployment rather than the promoted one. They coincide for ordinary traffic but
+diverge for a superseded deployment woken by the dispatcher. Resolving it needs
+promotion state, which lives in the control plane, and reaching for it from a
+tenant process would break D7. Phase 3c is therefore still open, not done.
+
 **Still open before Phase 4.** The §4 public vqs endpoint fix (prerequisite).
 The Phase 2 gate itself — `sleep 10min` surviving the idle reaper — needs a real
 deployment and has not been run. `docs/deploy/linux.md` connection sizing (4c)

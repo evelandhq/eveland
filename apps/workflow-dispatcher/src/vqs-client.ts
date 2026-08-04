@@ -39,7 +39,6 @@ export type VqsRequest = {
   deploymentId: string;
   runId?: string;
   runtimeSecret: string;
-  credential: string;
   timeoutMs: number;
   signal?: AbortSignal;
 };
@@ -55,9 +54,15 @@ export async function postVqsMessage(request: VqsRequest): Promise<VqsResult> {
     [VQS_QUEUE_NAME_HEADER]: request.queueName,
     [VQS_MESSAGE_ID_HEADER]: request.messageId,
     [VQS_MESSAGE_ATTEMPT_HEADER]: String(request.attempt),
-    // Eveland's. The secret is what distinguishes platform dispatch from a
-    // request that merely reached the same route.
-    authorization: `Bearer ${request.credential}`,
+    // Eveland's. The runtime secret is what distinguishes platform dispatch
+    // from a request that merely reached the same route.
+    //
+    // Deliberately NOT the internal service token: this port is served by the
+    // tenant's own agent process, which can read any header it receives. That
+    // token authorizes activating, renewing and releasing leases on *any*
+    // deployment, so handing it to tenant code would be a privilege escalation
+    // across projects. The deployment id below binds the request to one target,
+    // so a captured dispatch cannot be replayed at a different deployment.
     [RUNTIME_SECRET_HEADER]: request.runtimeSecret,
     [DISPATCH_VERSION_HEADER]: String(DISPATCH_VERSION),
     [TENANT_HEADER]: request.tenantId,

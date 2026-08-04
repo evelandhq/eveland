@@ -233,10 +233,18 @@ export async function composeDeploymentEnv(
   // Partitions must exist before the first write — there is deliberately no
   // DEFAULT partition, so an unprovisioned tenant fails loudly rather than
   // having its rows land somewhere unreclaimable.
-  const evelandWorldUrl = usesEvelandWorld
-    ? (options.evelandWorkflowWorldUrl ?? workerEnv.EVELAND_WORKFLOW_WORLD_URL)
-    : undefined;
-  if (usesEvelandWorld && evelandWorldUrl) {
+  //
+  // Deliberately NOT gated on the rollout flag. The flag chooses what the *next
+  // build* bakes in, but this function runs on every launch, and a deployment's
+  // world is fixed at build time. Gating here meant that turning the flag off
+  // stopped injecting the world URL for a bundle that still imports the
+  // multi-tenant world — which then fell back to the legacy single-tenant
+  // database, one with no tenant_id column and no partitions. Injecting
+  // whenever the platform has a world configured keeps an already-built
+  // deployment pointed at the right database until it is rebuilt, which is what
+  // makes the documented rollback ("flag off, then rebuild") actually safe.
+  const evelandWorldUrl = options.evelandWorkflowWorldUrl ?? workerEnv.EVELAND_WORKFLOW_WORLD_URL;
+  if (evelandWorldUrl) {
     const ensureTenant = options.ensureEvelandWorkflowTenant ?? ensureEvelandWorkflowTenant;
     await ensureTenant(evelandWorldUrl, projectId);
   }
@@ -267,7 +275,7 @@ export async function composeDeploymentEnv(
     // Only injected for deployments actually built against the platform world.
     // A deployment on world-postgres has no use for them, and leaving them out
     // keeps the two topologies visibly distinct in `printenv`.
-    ...(usesEvelandWorld && evelandWorldUrl
+    ...(evelandWorldUrl
       ? {
           EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
           EVELAND_WORKFLOW_RUNNER: resolveWorkflowRunnerMode(workerEnv),
@@ -299,6 +307,9 @@ export async function composeDeploymentEnv(
     ...Object.values(sharedEnvironment),
     ...(workflowPostgresUrl ? [workflowPostgresUrl] : []),
     ...(projectWorkflowUrl ? [projectWorkflowUrl] : []),
+    // Carries credentials like the other two connection strings, so it is
+    // masked out of build and runtime logs the same way.
+    ...(evelandWorldUrl ? [evelandWorldUrl] : []),
     ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),
   ];
   return { env, secretValues };

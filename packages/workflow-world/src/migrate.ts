@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 import { PARTITIONED_TABLES } from "./drizzle/schema.js";
-import { assertValidTenantId, derivePartitionName } from "./tenant.js";
+import { assertValidTenantId, dedupIndexName, derivePartitionName } from "./tenant.js";
 
 /**
  * Migrations are hand-written SQL rather than drizzle-kit output because the
@@ -91,6 +91,42 @@ export async function ensureTenantPartitions(pool: Pool, tenantId: string): Prom
       if (sqlState(error) !== "42P07") throw error;
     }
   }
+  await renameDedupIndex(pool, tenantId);
+}
+
+/**
+ * Give this tenant's correlated-event dedup index a name the storage layer can
+ * predict.
+ *
+ * A unique violation reports the child index's name, and Postgres derives that
+ * from the partition name plus columns, truncated to 63 bytes — unpredictable
+ * and length-dependent. `events.create` has to recognise the conflict to
+ * translate it into EntityConflictError (the dedup signal the runtime expects),
+ * so the child is renamed once, here, rather than matched by guesswork.
+ *
+ * The index is selected as the partition's only *partial* unique index: the
+ * primary key is unique but total, so there is no ambiguity.
+ */
+async function renameDedupIndex(pool: Pool, tenantId: string): Promise<void> {
+  const partition = derivePartitionName("workflow_events", tenantId);
+  const target = dedupIndexName(tenantId);
+  const { rows } = await pool.query<{ relname: string }>(
+    `select ci.relname
+       from pg_index i
+       join pg_class ci on ci.oid = i.indexrelid
+       join pg_class ct on ct.oid = i.indrelid
+       join pg_namespace n on n.oid = ct.relnamespace
+      where n.nspname = 'workflow'
+        and ct.relname = $1
+        and i.indisunique
+        and i.indpred is not null`,
+    [partition],
+  );
+  const current = rows[0]?.relname;
+  if (!current || current === target) return;
+  await pool.query(
+    `alter index workflow.${quoteIdentifier(current)} rename to ${quoteIdentifier(target)}`,
+  );
 }
 
 /**

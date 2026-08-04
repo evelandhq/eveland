@@ -84,6 +84,11 @@ jobs:
           --health-retries 20
     env:
       EVELAND_POSTGRES_TEST_URL: postgres://eveland:eveland@localhost:5432/eveland_test
+      # Tenant isolation in the workflow world is enforced by WHERE-clause
+      # discipline across ~50 query sites, which no type or lint can check. The
+      # isolation suite is the only guard, and it self-skips without a database
+      # URL — so leaving this unset meant it never ran in CI at all.
+      EVELAND_WORKFLOW_WORLD_TEST_URL: postgres://eveland:eveland@localhost:5432/eveland_workflow_test
     steps:
       - uses: actions/checkout@v4
 
@@ -108,6 +113,11 @@ jobs:
           pnpm --filter @eveland/db db:migrate
         env:
           DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland_test
+
+      - name: Create the workflow world test database
+        run: >-
+          PGPASSWORD=eveland psql -h localhost -U eveland -d eveland_test
+          -c 'CREATE DATABASE eveland_workflow_test' || true
 
       - name: Run tests
         run: ${{ matrix.command }}

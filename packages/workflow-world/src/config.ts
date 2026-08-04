@@ -53,11 +53,24 @@ export function resolveRunnerMode(value: string | undefined): WorkflowRunnerMode
   throw new Error(`Invalid workflow runner mode "${value}": expected "embedded" or "external".`);
 }
 
+/**
+ * The shared world database, required explicitly.
+ *
+ * There is deliberately no fallback chain. Upstream falls back
+ * `WORKFLOW_POSTGRES_URL -> DATABASE_URL -> a hardcoded localhost URL`, which is
+ * harmless for a single-tenant world but actively dangerous here: those are
+ * single-tenant databases with no `tenant_id` column and no partitions, so a
+ * misconfigured deployment would connect to one and fail in confusing ways at
+ * the first write — or worse, appear to work against a database that is not the
+ * one holding its runs. Failing at startup with the missing variable named is
+ * strictly better than either.
+ */
 export function resolveConnectionString(env: NodeJS.ProcessEnv): string {
-  return (
-    env.EVELAND_WORKFLOW_WORLD_URL ||
-    env.WORKFLOW_POSTGRES_URL ||
-    env.DATABASE_URL ||
-    "postgres://world:world@localhost:5432/world"
-  );
+  const url = env.EVELAND_WORKFLOW_WORLD_URL;
+  if (!url) {
+    throw new Error(
+      "EVELAND_WORKFLOW_WORLD_URL is required by @eveland/workflow-world. The platform injects it into every deployment; a missing value means this process was configured for a different world.",
+    );
+  }
+  return url;
 }

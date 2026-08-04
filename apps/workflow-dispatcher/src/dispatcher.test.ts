@@ -1,5 +1,6 @@
 import type { MessageData } from "@eveland/workflow-world";
 import { DISPATCH_VERSION_HEADER, RUNTIME_SECRET_HEADER } from "@eveland/workflow-world";
+import { getQueueTopicPrefix } from "@workflow/world";
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { ActivationClient, ActivationOutcome } from "./activation-client.js";
@@ -52,7 +53,7 @@ async function startFakeAgent(
 
 function message(overrides: Partial<MessageData> = {}): MessageData {
   return {
-    id: "__wkf_workflow_greet",
+    id: "greet",
     data: Buffer.from(JSON.stringify({ runId: "wrun_1" })),
     attempt: 1,
     messageId: "msg_1" as MessageData["messageId"],
@@ -83,7 +84,6 @@ function deps(overrides: Partial<DispatcherDeps> = {}): DispatcherDeps {
     }),
     runLookup: async () => null,
     runtimeSecret: "s3cret",
-    credential: "token",
     dispatchTimeoutMs: 5_000,
     leaseRenewIntervalMs: 60_000,
     reenqueue: vi.fn(async () => {}),
@@ -92,9 +92,21 @@ function deps(overrides: Partial<DispatcherDeps> = {}): DispatcherDeps {
   };
 }
 
+// Mirrors what runner.ts builds. The helper used to pass `msg.id` — the same
+// mistake the production path had — which is precisely why the test suite went
+// green against a queue name eve would have rejected with a 400.
+const fullQueueName = (msg: MessageData, route: "flow" | "step" = "flow") =>
+  `${getQueueTopicPrefix(route === "flow" ? "workflow" : "step")}${msg.id}`;
+
 const dispatch = (d: DispatcherDeps, msg = message(), attempt = 1) =>
   dispatchMessage(
-    { message: msg, jobName: "eveland_wf_flows", queueName: msg.id, route: "flow", attempt },
+    {
+      message: msg,
+      jobName: "eveland_wf_flows",
+      queueName: fullQueueName(msg),
+      route: "flow",
+      attempt,
+    },
     d,
   );
 
@@ -158,12 +170,17 @@ describe("dispatch outcomes", () => {
     });
     await dispatch(d);
 
+    // eve rejects a name without the `__wkf_<kind>_` prefix outright, and that
+    // 400 is non-retryable — a bare sub-queue id dead-letters every message.
     expect(seen["x-vqs-queue-name"]).toBe("__wkf_workflow_greet");
     expect(seen["x-vqs-message-id"]).toBe("msg_1");
     expect(seen["x-vqs-message-attempt"]).toBe("1");
     expect(seen[DISPATCH_VERSION_HEADER]).toBe("1");
     expect(seen[RUNTIME_SECRET_HEADER]).toBe("s3cret");
-    expect(seen.authorization).toBe("Bearer token");
+    // The internal service token must never reach a tenant process: it
+    // authorizes lease operations on every deployment on the host.
+    expect(seen.authorization).toBeUndefined();
+    expect(seen["x-eveland-deployment-id"]).toBe("dep_1");
   });
 
   test("a {timeoutSeconds} response re-enqueues the SAME message id", async () => {

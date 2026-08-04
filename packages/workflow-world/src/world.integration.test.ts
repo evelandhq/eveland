@@ -1,3 +1,4 @@
+import { EntityConflictError } from "@workflow/errors";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createWorld } from "./index.js";
@@ -9,7 +10,7 @@ import {
   tenantPartitionsExist,
 } from "./migrate.js";
 import { PARTITIONED_TABLES } from "./drizzle/schema.js";
-import { derivePartitionName } from "./tenant.js";
+import { dedupIndexName, derivePartitionName } from "./tenant.js";
 
 /**
  * Tenancy is enforced by WHERE-clause discipline across ~50 query sites, which
@@ -173,5 +174,37 @@ describe.skipIf(!testUrl)("multi-tenant world", () => {
 
   test("provisioning is idempotent", async () => {
     await expect(ensureTenantPartitions(admin, ALPHA)).resolves.toBeUndefined();
+  });
+
+  test("a duplicate correlated event surfaces as EntityConflictError", async () => {
+    // The dedup contract the runtime depends on. Postgres reports the *child*
+    // partition's index name here, not the parent's, so this is what proves the
+    // translation still recognises it — a raw driver error instead would make
+    // two concurrent replays with the same correlationId both take effect.
+    const correlationId = `step_${suffix}`;
+    const create = () =>
+      alpha.events.create(alphaRunId, {
+        eventType: "step_created",
+        correlationId,
+        eventData: { stepName: "greet", input: [] },
+        specVersion: 5,
+      } as Parameters<typeof alpha.events.create>[1]);
+
+    await create();
+    await expect(create()).rejects.toThrow(EntityConflictError);
+  });
+
+  test("the dedup index is renamed to the predictable name", async () => {
+    const { rows } = await admin.query<{ relname: string }>(
+      `select ci.relname
+         from pg_index i
+         join pg_class ci on ci.oid = i.indexrelid
+         join pg_class ct on ct.oid = i.indrelid
+         join pg_namespace n on n.oid = ct.relnamespace
+        where n.nspname = 'workflow' and ct.relname = $1
+          and i.indisunique and i.indpred is not null`,
+      [derivePartitionName("workflow_events", ALPHA)],
+    );
+    expect(rows[0]?.relname).toBe(dedupIndexName(ALPHA));
   });
 });

@@ -323,7 +323,7 @@ export const schedulerDispatchSchema = z.discriminatedUnion("phase", [
 
 export const runtimeActivationSchema = z.object({
   deploymentId: z.string().min(1),
-  kind: z.enum(["public_request", "stream", "turn"]),
+  kind: z.enum(["public_request", "stream", "turn", "workflow_step"]),
   ownerId: z.string().min(1).max(256),
 });
 

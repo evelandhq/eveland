@@ -5,40 +5,22 @@ import type { Pool } from "pg";
 import { FLOW_JOB_NAME } from "./runner.js";
 
 /**
- * A dispatcher that dies mid-POST leaves its graphile jobs locked to a worker
- * id that will never come back. graphile only releases those after a multi-hour
- * abandonment timeout, which for a durable timer is indistinguishable from
- * being lost.
+ * Recovery after a dispatcher that died mid-dispatch.
  *
- * Every generation of the dispatcher therefore takes a distinct worker-id
- * prefix and force-unlocks the previous generations' at boot. All claim state
- * lives in Postgres, so a restart is a brief pause, never data loss — and
- * nothing here depends on the dispatcher being a singleton.
+ * The design called for `forceUnlockWorkers` on the previous generation's
+ * worker ids, and an earlier version of this file tried to find them by
+ * matching the pg connection's `application_name`. That does not work:
+ * graphile's `locked_by` is its own `worker-<18 hex>` id, minted internally
+ * (`worker.js`), with no relationship to `application_name` — and graphile
+ * refuses an externally supplied `workerId` at concurrency > 1, so the ids
+ * cannot be made predictable either. The match found nothing and the "recovery"
+ * was a no-op that read as if it worked.
+ *
+ * What actually recovers a stranded run is the re-enqueue below: it is keyed by
+ * run, so a job still locked to a dead worker is superseded rather than waited
+ * on. graphile releases the abandoned lock on its own schedule; nothing depends
+ * on that having happened first.
  */
-export const WORKER_ID_PREFIX = "eveland-dispatcher";
-
-export async function releaseAbandonedLocks(input: {
-  pool: Pool;
-  workerUtils: WorkerUtils;
-  currentWorkerId: string;
-  log?: (message: string, meta?: Record<string, unknown>) => void;
-}): Promise<number> {
-  const { rows } = await input.pool.query<{ worker_id: string }>(
-    `select distinct locked_by as worker_id
-       from graphile_worker.jobs
-      where locked_by is not null
-        and locked_by like $1
-        and locked_by <> $2`,
-    [`${WORKER_ID_PREFIX}%`, input.currentWorkerId],
-  );
-  const stale = rows.map((row) => row.worker_id);
-  if (stale.length === 0) return 0;
-  await input.workerUtils.forceUnlockWorkers(stale);
-  input.log?.("released locks from previous dispatcher generations", {
-    workers: stale.length,
-  });
-  return stale.length;
-}
 
 /**
  * Re-enqueue every tenant's active runs across the shared database.

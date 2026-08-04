@@ -54,3 +54,19 @@ export function tenantStreamChannel(tenantId: string): string {
   // embedding the raw id.
   return derivePartitionName("wf_stream", tenantId);
 }
+
+/**
+ * Deterministic name for this tenant's correlated-event dedup index.
+ *
+ * Postgres names a partition's child indexes itself, from the partition name
+ * plus the indexed columns, then truncates the result to 63 bytes. The truncated
+ * form is not predictable from the parent index name and varies with how long
+ * the tenant id is — for a short tenant it ends
+ * `..._correlation_id_type_idx`, for a longer one `..._correlation__idx`. Since
+ * a unique violation reports the *child* name, matching it is the only way to
+ * recognise a dedup conflict, so the child is renamed to this at provisioning
+ * time and matched exactly.
+ */
+export function dedupIndexName(tenantId: string): string {
+  return derivePartitionName("wf_events_dedup", tenantId);
+}

@@ -7,11 +7,7 @@ import { runMigrations } from "@eveland/workflow-world";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { createActivationClient } from "./activation-client.js";
-import {
-  releaseAbandonedLocks,
-  reenqueueActiveRunsForAllTenants,
-  WORKER_ID_PREFIX,
-} from "./boot-recovery.js";
+import { reenqueueActiveRunsForAllTenants } from "./boot-recovery.js";
 import { resolveDispatcherConfig } from "./config.js";
 import { startDispatcher } from "./runner.js";
 
@@ -44,9 +40,7 @@ if (!runtimeSecret) {
 const pool = new Pool({
   connectionString: config.worldUrl,
   max: config.poolSize,
-  // Each generation is distinguishable so the next boot can force-unlock the
-  // jobs this one leaves behind if it dies mid-dispatch.
-  application_name: `${WORKER_ID_PREFIX}-${randomUUID().slice(0, 8)}`,
+  application_name: `eveland-workflow-dispatcher-${randomUUID().slice(0, 8)}`,
 });
 
 await runMigrations(pool, {
@@ -66,7 +60,6 @@ const dispatcher = await startDispatcher({
       serviceToken,
     }),
     runtimeSecret,
-    credential: serviceToken,
     dispatchTimeoutMs: config.dispatchTimeoutMs,
     leaseRenewIntervalMs: config.leaseRenewIntervalMs,
     log: (message, meta) =>
@@ -79,12 +72,6 @@ const dispatcher = await startDispatcher({
   },
 });
 
-await releaseAbandonedLocks({
-  pool,
-  workerUtils: dispatcher.workerUtils,
-  currentWorkerId: String(pool.options.application_name),
-  log: (message, meta) => console.log(`[workflow-dispatcher] ${message}`, meta ?? ""),
-});
 await reenqueueActiveRunsForAllTenants({
   pool,
   workerUtils: dispatcher.workerUtils,

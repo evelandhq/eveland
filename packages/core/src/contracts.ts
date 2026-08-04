@@ -663,7 +663,15 @@ export type RuntimeInstance = {
   lastError: string | null;
 };
 
-export type ActivationLeaseKind = "public_request" | "stream" | "turn" | "schedule_run";
+export type ActivationLeaseKind =
+  | "public_request"
+  | "stream"
+  | "turn"
+  | "schedule_run"
+  // Held by the workflow dispatcher for the duration of one step. Unlike
+  // the request kinds it can outlive a single HTTP exchange, so it is
+  // renewed rather than acquired once.
+  | "workflow_step";
 
 export type ActivationLease = {
   id: string;

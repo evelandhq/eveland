@@ -31,7 +31,6 @@ export type DispatcherDeps = {
   activation: ActivationClient;
   runLookup: RunLookup;
   runtimeSecret: string;
-  credential: string;
   dispatchTimeoutMs: number;
   leaseRenewIntervalMs: number;
   reenqueue: (input: {
@@ -112,7 +111,7 @@ export async function dispatchMessage(
 
   const activation = await deps.activation.activate({
     deploymentId: affinity.deploymentId,
-    kind: "workflow",
+    kind: "workflow_step",
     ownerId: `workflow-dispatcher:${message.messageId}`,
   });
 
@@ -153,7 +152,6 @@ export async function dispatchMessage(
         deploymentId: affinity.deploymentId,
         ...(affinity.runId ? { runId: affinity.runId } : {}),
         runtimeSecret: deps.runtimeSecret,
-        credential: deps.credential,
         timeoutMs: deps.dispatchTimeoutMs,
         signal,
       }),

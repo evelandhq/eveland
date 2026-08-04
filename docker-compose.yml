@@ -142,7 +142,7 @@ services:
       EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@postgres:5432/eveland
       EVELAND_API_INTERNAL_URL: http://api:4000
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
-      EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-secret-key-000000000}
+      EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-scheduler-runtime-secret}
       EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
       EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}

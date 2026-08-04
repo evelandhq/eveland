@@ -68,6 +68,7 @@ import { and, asc, desc, eq, gt, lt, notInArray, sql } from "drizzle-orm";
 import { monotonicFactory } from "ulid";
 import { type Drizzle, Schema } from "./drizzle/index.js";
 import type { SerializedContent } from "./drizzle/schema.js";
+import { dedupIndexName } from "./tenant.js";
 import { compact } from "./util.js";
 
 /**
@@ -109,6 +110,29 @@ function deserializeStepError(step: any): Step {
     ...rest,
     startedAt,
   } as Step;
+}
+
+/**
+ * Whether a 23505 came from the correlated-event dedup index.
+ *
+ * `workflow_events` is partitioned, and Postgres reports the *child* index name
+ * on conflict, never the parent's. That generated name is derived from the
+ * partition name plus the indexed columns and truncated to 63 bytes, so it is
+ * neither the parent name nor a stable suffix — for a short tenant id it ends
+ * `_correlation_id_type_idx`, for a longer one the columns are truncated away
+ * entirely. Provisioning therefore renames it to `dedupIndexName(tenantId)`, and
+ * this matches that exactly. The parent name is still accepted so an
+ * unpartitioned table (or a future migration back to one) keeps working.
+ */
+function isCorrelatedEventUniqueViolation(
+  constraint: string | undefined,
+  tenantId: string,
+): boolean {
+  if (!constraint) return false;
+  return (
+    constraint === "workflow_events_entity_creation_unique" ||
+    constraint === dedupIndexName(tenantId)
+  );
 }
 
 export function createRunsStorage(drizzle: Drizzle, tenantId: string): Storage["runs"] {
@@ -1647,7 +1671,7 @@ export function createEventsStorage(drizzle: Drizzle, tenantId: string): Storage
         }
       } catch (err) {
         // Translate unique-violation on the correlated-event partial index
-        // (workflow_events_entity_creation_unique) into EntityConflictError
+        // into EntityConflictError
         // so the runtime's existing dedup catch path can handle it. Without
         // this, two concurrent invocations producing identical
         // correlationIds (e.g. snapshot runtime deterministic ULIDs) would
@@ -1669,7 +1693,7 @@ export function createEventsStorage(drizzle: Drizzle, tenantId: string): Storage
         if (
           isDeduplicatedCorrelatedEvent &&
           pgCode === "23505" &&
-          pgConstraint === "workflow_events_entity_creation_unique"
+          isCorrelatedEventUniqueViolation(pgConstraint, tenantId)
         ) {
           throw new EntityConflictError(
             `${data.eventType} for correlationId "${data.correlationId}" already exists in run "${effectiveRunId}"`,
