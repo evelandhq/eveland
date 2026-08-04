@@ -432,6 +432,23 @@ Compose dispatcher used a dev scheduler secret that did not match the worker's,
 which would have 401'd every local dispatch; and the world URL is masked in logs
 alongside the other connection strings.
 
+**Two integration guards added.** The review's lesson was that fakes hid every
+blocker, so the boundaries now have tests that talk to the real thing:
+
+- `apps/workflow-dispatcher/src/dispatch-loop.integration.test.ts` runs the
+  whole loop — the real world enqueues, the real dispatcher claims, and delivery
+  lands in **eve's own queue handler** rather than a stand-in. Reintroducing the
+  unprefixed queue name makes it time out, which is what a fake could never
+  show.
+- `packages/architecture-tests/src/activation-kind-contract.test.ts` checks that
+  an activation kind is spelled the same in the contracts union, the API request
+  schema, the check constraint, and the literal the caller sends — the four
+  places that had silently disagreed. Reverting to `kind: "workflow"` fails
+  three of its assertions.
+
+Both run in CI: the dispatcher is in the `remaining` test matrix entry, which now
+carries a database URL.
+
 **Known limitation, not fixed.** `resolveLatestDeploymentId` returns the ambient
 deployment rather than the promoted one. They coincide for ordinary traffic but
 diverge for a superseded deployment woken by the dispatcher. Resolving it needs
