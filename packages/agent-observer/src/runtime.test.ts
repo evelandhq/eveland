@@ -687,6 +687,79 @@ describe("private Agent telemetry runtime", () => {
     ]);
   });
 
+  test("records a subagent invocation's input and output as conventions messages", async () => {
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordInputs: true, recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "actions.requested",
+        data: {
+          turnId: "turn_1",
+          stepIndex: 0,
+          actions: [
+            {
+              kind: "subagent-call",
+              callId: "call_sub",
+              subagentName: "Summarizer",
+              name: "Summarizer",
+              nodeId: "root/summarizer",
+              description: "summarize",
+              input: { text: "long report" },
+            },
+          ],
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "action.result",
+        data: {
+          turnId: "turn_1",
+          stepIndex: 0,
+          status: "completed",
+          result: { kind: "subagent-result", callId: "call_sub", output: "three bullets" },
+        },
+      },
+      context,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
+    await runtime.forceFlush();
+
+    const subagentSpan = traces
+      .getFinishedSpans()
+      .find((span) => span.name === "invoke_agent Summarizer");
+    // `gen_ai.agent.input` / `gen_ai.agent.output` are not registered attributes, so
+    // the invocation reports through the conventions' message attributes instead.
+    expect(Object.keys(subagentSpan?.attributes ?? {})).not.toContain("gen_ai.agent.input");
+    expect(Object.keys(subagentSpan?.attributes ?? {})).not.toContain("gen_ai.agent.output");
+    expect(JSON.parse(String(subagentSpan?.attributes["gen_ai.input.messages"]))).toEqual([
+      { parts: [{ content: JSON.stringify({ text: "long report" }), type: "text" }], role: "user" },
+    ]);
+    expect(JSON.parse(String(subagentSpan?.attributes["gen_ai.output.messages"]))).toEqual([
+      {
+        finish_reason: "stop",
+        parts: [{ content: "three bullets", type: "text" }],
+        role: "assistant",
+      },
+    ]);
+  });
+
   test("keeps reasoning out of spans when outputs are not recorded", async () => {
     const traces = new InMemorySpanExporter();
     const runtime = createPrivateAgentTelemetryRuntime({

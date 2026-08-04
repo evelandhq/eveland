@@ -1,5 +1,17 @@
 import type { Attributes, Span } from "@opentelemetry/api";
 import type { MeterProvider } from "@opentelemetry/sdk-metrics";
+import {
+  ATTR_GEN_AI_REQUEST_MODEL,
+  ATTR_GEN_AI_TOKEN_TYPE,
+  ATTR_GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+  ATTR_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+  ATTR_GEN_AI_USAGE_INPUT_TOKENS,
+  ATTR_GEN_AI_USAGE_OUTPUT_TOKENS,
+  GEN_AI_TOKEN_TYPE_VALUE_INPUT,
+  GEN_AI_TOKEN_TYPE_VALUE_OUTPUT,
+  METRIC_GEN_AI_CLIENT_OPERATION_DURATION,
+  METRIC_GEN_AI_CLIENT_TOKEN_USAGE,
+} from "@opentelemetry/semantic-conventions/incubating";
 import { asNonNegativeInteger, asNonNegativeNumber, asRecord } from "./values.js";
 
 type Meter = ReturnType<MeterProvider["getMeter"]>;
@@ -8,7 +20,7 @@ export type AgentTelemetryMetrics = ReturnType<typeof createAgentTelemetryMetric
 
 export function createAgentTelemetryMetrics(meter: Meter) {
   return {
-    tokenUsage: meter.createHistogram("gen_ai.client.token.usage", {
+    tokenUsage: meter.createHistogram(METRIC_GEN_AI_CLIENT_TOKEN_USAGE, {
       unit: "{token}",
       description: "Number of input and output tokens used by a generative AI operation.",
     }),
@@ -20,7 +32,7 @@ export function createAgentTelemetryMetrics(meter: Meter) {
       unit: "USD",
       description: "Provider-reported generative AI cost.",
     }),
-    operationDuration: meter.createHistogram("gen_ai.client.operation.duration", {
+    operationDuration: meter.createHistogram(METRIC_GEN_AI_CLIENT_OPERATION_DURATION, {
       unit: "s",
       description: "Duration of a generative AI operation.",
     }),
@@ -48,7 +60,7 @@ export function recordUsage(input: {
   const usage = asRecord(input.data.usage);
   if (!usage) return;
   const modelAttributes: Attributes = input.modelId
-    ? { "gen_ai.request.model": input.modelId }
+    ? { [ATTR_GEN_AI_REQUEST_MODEL]: input.modelId }
     : {};
   const inputTokens = asNonNegativeInteger(usage.inputTokens);
   const outputTokens = asNonNegativeInteger(usage.outputTokens);
@@ -57,28 +69,28 @@ export function recordUsage(input: {
   const costUsd = asNonNegativeNumber(usage.costUsd);
 
   if (inputTokens !== undefined) {
-    input.span.setAttribute("gen_ai.usage.input_tokens", inputTokens);
+    input.span.setAttribute(ATTR_GEN_AI_USAGE_INPUT_TOKENS, inputTokens);
     input.metrics.tokenUsage.record(inputTokens, {
       ...modelAttributes,
-      "gen_ai.token.type": "input",
+      [ATTR_GEN_AI_TOKEN_TYPE]: GEN_AI_TOKEN_TYPE_VALUE_INPUT,
     });
   }
   if (outputTokens !== undefined) {
-    input.span.setAttribute("gen_ai.usage.output_tokens", outputTokens);
+    input.span.setAttribute(ATTR_GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens);
     input.metrics.tokenUsage.record(outputTokens, {
       ...modelAttributes,
-      "gen_ai.token.type": "output",
+      [ATTR_GEN_AI_TOKEN_TYPE]: GEN_AI_TOKEN_TYPE_VALUE_OUTPUT,
     });
   }
   if (cacheReadTokens !== undefined) {
-    input.span.setAttribute("gen_ai.usage.cache_read.input_tokens", cacheReadTokens);
+    input.span.setAttribute(ATTR_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, cacheReadTokens);
     input.metrics.cacheTokenUsage.record(cacheReadTokens, {
       ...modelAttributes,
       "eveland.cache.operation": "read",
     });
   }
   if (cacheWriteTokens !== undefined) {
-    input.span.setAttribute("gen_ai.usage.cache_creation.input_tokens", cacheWriteTokens);
+    input.span.setAttribute(ATTR_GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS, cacheWriteTokens);
     input.metrics.cacheTokenUsage.record(cacheWriteTokens, {
       ...modelAttributes,
       "eveland.cache.operation": "write",

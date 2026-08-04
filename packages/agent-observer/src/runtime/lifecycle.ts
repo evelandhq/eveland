@@ -8,6 +8,23 @@ import {
   type Span,
 } from "@opentelemetry/api";
 import type { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
+import {
+  ATTR_ERROR_TYPE,
+  ATTR_GEN_AI_AGENT_NAME,
+  ATTR_GEN_AI_CONVERSATION_ID,
+  ATTR_GEN_AI_INPUT_MESSAGES,
+  ATTR_GEN_AI_OPERATION_NAME,
+  ATTR_GEN_AI_OUTPUT_MESSAGES,
+  ATTR_GEN_AI_REQUEST_MODEL,
+  ATTR_GEN_AI_TOOL_CALL_ARGUMENTS,
+  ATTR_GEN_AI_TOOL_CALL_ID,
+  ATTR_GEN_AI_TOOL_CALL_RESULT,
+  ATTR_GEN_AI_TOOL_NAME,
+  ATTR_SESSION_ID,
+  GEN_AI_OPERATION_NAME_VALUE_CHAT,
+  GEN_AI_OPERATION_NAME_VALUE_EXECUTE_TOOL,
+  GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+} from "@opentelemetry/semantic-conventions/incubating";
 import type { AgentTelemetryHookContext, RuntimeAgentPolicy } from "./contracts.js";
 import { recordUsage, type AgentTelemetryMetrics } from "./metrics.js";
 import { asNonNegativeInteger, asRecord, asString, serializeAttribute } from "./values.js";
@@ -128,8 +145,8 @@ export function mapAgentTelemetryLifecycle(input: {
         {
           kind: SpanKind.INTERNAL,
           attributes: commonAttributes(sessionId, turnId, context, {
-            "gen_ai.operation.name": "invoke_agent",
-            "gen_ai.agent.name": agentName,
+            [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+            [ATTR_GEN_AI_AGENT_NAME]: agentName,
           }),
         },
         parentContext(context, state),
@@ -137,7 +154,7 @@ export function mapAgentTelemetryLifecycle(input: {
       state.turns.set(turnKey, span);
       state.turnStartedAt.set(turnKey, now());
       metrics.agentInvocations.add(1, {
-        "gen_ai.agent.name": agentName,
+        [ATTR_GEN_AI_AGENT_NAME]: agentName,
       });
       return span;
     }
@@ -152,7 +169,7 @@ export function mapAgentTelemetryLifecycle(input: {
       }
       if (span && message && capture.recordInputs) {
         span.setAttribute(
-          "gen_ai.input.messages",
+          ATTR_GEN_AI_INPUT_MESSAGES,
           serializeAttribute([{ role: "user", parts: [{ type: "text", content: message }] }]),
         );
       }
@@ -168,8 +185,8 @@ export function mapAgentTelemetryLifecycle(input: {
         {
           kind: SpanKind.CLIENT,
           attributes: commonAttributes(sessionId, turnId, context, {
-            "gen_ai.operation.name": "chat",
-            ...(modelId ? { "gen_ai.request.model": modelId } : {}),
+            [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_CHAT,
+            ...(modelId ? { [ATTR_GEN_AI_REQUEST_MODEL]: modelId } : {}),
             "eveland.eve.step.index": stepIndex,
           }),
         },
@@ -209,15 +226,24 @@ export function mapAgentTelemetryLifecycle(input: {
             {
               kind: SpanKind.INTERNAL,
               attributes: commonAttributes(sessionId, turnId, context, {
-                "gen_ai.operation.name": "invoke_agent",
-                "gen_ai.agent.name": agentName,
-                "gen_ai.tool.call.id": callId,
+                [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+                [ATTR_GEN_AI_AGENT_NAME]: agentName,
+                [ATTR_GEN_AI_TOOL_CALL_ID]: callId,
               }),
             },
             actionParent,
           );
+          // A subagent invocation is an agent operation, so its input belongs in the
+          // conventions' message attribute. `gen_ai.agent.input` is not a registered
+          // attribute, and squatting in the `gen_ai.*` namespace left it readable only
+          // to destinations configured to know the invented name.
           if (capture.recordInputs && action.input !== undefined) {
-            span.setAttribute("gen_ai.agent.input", serializeAttribute(action.input));
+            span.setAttribute(
+              ATTR_GEN_AI_INPUT_MESSAGES,
+              serializeAttribute([
+                { role: "user", parts: [{ type: "text", content: stringify(action.input) }] },
+              ]),
+            );
           }
           state.subagents.set(actionKey, span);
           state.actionToolNames.set(actionKey, agentName);
@@ -232,21 +258,21 @@ export function mapAgentTelemetryLifecycle(input: {
           {
             kind: SpanKind.INTERNAL,
             attributes: commonAttributes(sessionId, turnId, context, {
-              "gen_ai.operation.name": "execute_tool",
-              "gen_ai.tool.name": toolName,
-              "gen_ai.tool.call.id": callId,
+              [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_EXECUTE_TOOL,
+              [ATTR_GEN_AI_TOOL_NAME]: toolName,
+              [ATTR_GEN_AI_TOOL_CALL_ID]: callId,
             }),
           },
           actionParent,
         );
         if (capture.recordInputs && action.input !== undefined) {
-          span.setAttribute("gen_ai.tool.call.arguments", serializeAttribute(action.input));
+          span.setAttribute(ATTR_GEN_AI_TOOL_CALL_ARGUMENTS, serializeAttribute(action.input));
         }
         state.actions.set(actionKey, span);
         state.actionToolNames.set(actionKey, toolName);
         recordToolCall(state, stepKey, turnKey, callId, toolName, action.input, capture);
         metrics.toolCalls.add(1, {
-          "gen_ai.tool.name": toolName,
+          [ATTR_GEN_AI_TOOL_NAME]: toolName,
         });
       }
       return stepKey
@@ -278,10 +304,14 @@ export function mapAgentTelemetryLifecycle(input: {
       state.actionToolNames.delete(actionKey);
       if (span) {
         if (capture.recordOutputs && result?.output !== undefined) {
-          span.setAttribute(
-            state.actions.has(actionKey) ? "gen_ai.tool.call.result" : "gen_ai.agent.output",
-            serializeAttribute(result.output),
-          );
+          if (state.actions.has(actionKey)) {
+            span.setAttribute(ATTR_GEN_AI_TOOL_CALL_RESULT, serializeAttribute(result.output));
+          } else {
+            span.setAttribute(
+              ATTR_GEN_AI_OUTPUT_MESSAGES,
+              serializeAttribute([subagentOutputMessage(result.output)]),
+            );
+          }
         }
         if (data.status !== "completed" || data.error !== undefined) {
           setErrorStatus(span, data);
@@ -299,7 +329,7 @@ export function mapAgentTelemetryLifecycle(input: {
         stepAssistantFor(state, stepKey, turnKey).parts.push({ type: "text", content: message });
         if (turnKey) {
           state.turns.get(turnKey)?.setAttribute(
-            "gen_ai.output.messages",
+            ATTR_GEN_AI_OUTPUT_MESSAGES,
             serializeAttribute([
               toOutputMessage({
                 role: "assistant",
@@ -353,9 +383,9 @@ export function mapAgentTelemetryLifecycle(input: {
         {
           kind: SpanKind.INTERNAL,
           attributes: commonAttributes(sessionId, turnId, context, {
-            "gen_ai.operation.name": "invoke_agent",
-            "gen_ai.agent.name": agentName,
-            "gen_ai.tool.call.id": callId,
+            [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+            [ATTR_GEN_AI_AGENT_NAME]: agentName,
+            [ATTR_GEN_AI_TOOL_CALL_ID]: callId,
           }),
         },
         spanContext(turnKey ? state.turns.get(turnKey) : undefined),
@@ -369,7 +399,10 @@ export function mapAgentTelemetryLifecycle(input: {
       const span = actionKey ? state.subagents.get(actionKey) : undefined;
       if (span) {
         if (capture.recordOutputs && data.output !== undefined) {
-          span.setAttribute("gen_ai.agent.output", serializeAttribute(data.output));
+          span.setAttribute(
+            ATTR_GEN_AI_OUTPUT_MESSAGES,
+            serializeAttribute([subagentOutputMessage(data.output)]),
+          );
         }
         span.end();
         state.subagents.delete(actionKey!);
@@ -387,7 +420,7 @@ export function mapAgentTelemetryLifecycle(input: {
             (eventType === "step.failed" ? "error" : undefined) ??
             assistant.finish_reason;
           span.setAttribute(
-            "gen_ai.output.messages",
+            ATTR_GEN_AI_OUTPUT_MESSAGES,
             serializeAttribute([toOutputMessage(assistant)]),
           );
         }
@@ -406,11 +439,12 @@ export function mapAgentTelemetryLifecycle(input: {
           metrics.operationDuration.record(Math.max(0, now() - startedAt) / 1_000, {
             ...(state.sessionModels.get(sessionId)
               ? {
-                  "gen_ai.request.model": state.sessionModels.get(sessionId)!,
+                  [ATTR_GEN_AI_REQUEST_MODEL]: state.sessionModels.get(sessionId)!,
                 }
               : {}),
-            "gen_ai.operation.name": "chat",
-            "error.type": eventType === "step.failed" ? (asString(data.code) ?? "unknown") : "",
+            [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_CHAT,
+            [ATTR_ERROR_TYPE]:
+              eventType === "step.failed" ? (asString(data.code) ?? "unknown") : "",
           });
         }
         span.end();
@@ -429,8 +463,8 @@ export function mapAgentTelemetryLifecycle(input: {
         if (eventType === "turn.failed") {
           setErrorStatus(span, data);
           metrics.agentFailures.add(1, {
-            "gen_ai.agent.name": asString(context.agent?.name) ?? "agent",
-            "error.type": asString(data.code) ?? "unknown",
+            [ATTR_GEN_AI_AGENT_NAME]: asString(context.agent?.name) ?? "agent",
+            [ATTR_ERROR_TYPE]: asString(data.code) ?? "unknown",
           });
         }
         if (eventType === "turn.cancelled") {
@@ -468,13 +502,13 @@ export function commonAttributes(
   const channelKind = asString(context.channel?.kind);
   return {
     ...attributes,
-    "gen_ai.conversation.id": sessionId,
-    "session.id": sessionId,
+    [ATTR_GEN_AI_CONVERSATION_ID]: sessionId,
+    [ATTR_SESSION_ID]: sessionId,
     "eveland.eve.session.id": sessionId,
     ...(turnId ? { "eveland.eve.turn.id": turnId } : {}),
     ...(agentName
       ? {
-          "gen_ai.agent.name": agentName,
+          [ATTR_GEN_AI_AGENT_NAME]: agentName,
           "eveland.eve.agent.name": agentName,
         }
       : {}),
@@ -559,9 +593,26 @@ function setReconstructedInput(
   const transcript = state.transcripts.get(turnKey);
   if (!transcript?.length) return;
   const { messages, elided } = budgetTranscript(transcript);
-  span.setAttribute("gen_ai.input.messages", serializeAttribute(messages.map(toInputMessage)));
+  span.setAttribute(ATTR_GEN_AI_INPUT_MESSAGES, serializeAttribute(messages.map(toInputMessage)));
   span.setAttribute("eveland.gen_ai.input.reconstructed", true);
   if (elided) span.setAttribute("eveland.gen_ai.input.elided", true);
+}
+
+/**
+ * Wraps a subagent's returned value as an output message. A subagent invocation is
+ * an agent operation, so the conventions' message attribute is where its result
+ * belongs; `gen_ai.agent.output` is not a registered attribute.
+ */
+function subagentOutputMessage(output: unknown): TranscriptMessage {
+  return {
+    role: "assistant",
+    parts: [{ type: "text", content: stringify(output) }],
+    finish_reason: "stop",
+  };
+}
+
+function stringify(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 /** Input messages carry no `finish_reason`. */
