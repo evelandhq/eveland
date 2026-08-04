@@ -7,7 +7,7 @@ import type {
   AgentTelemetryHookContext,
   RuntimeAgentPolicy,
 } from "./contracts.js";
-import { commonAttributes } from "./lifecycle.js";
+import { commonAttributes } from "./attributes.js";
 import { asDate, asNonNegativeInteger, asRecord, asString, canonicalJson } from "./values.js";
 
 const collectedEventTypes = new Set([

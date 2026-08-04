@@ -5,14 +5,11 @@ import {
   type PrivateAgentTelemetryRuntime,
   type RuntimeAgentPolicy,
 } from "./runtime/contracts.js";
-import {
-  createAgentTelemetryRuntimeState,
-  endAllAgentTelemetrySpans,
-  mapAgentTelemetryLifecycle,
-} from "./runtime/lifecycle.js";
+import { mapAgentTelemetryLifecycle } from "./runtime/lifecycle.js";
 import { emitAgentTelemetryEventLog, shouldCollectAgentTelemetryEvent } from "./runtime/logs.js";
 import { createAgentTelemetryMetrics } from "./runtime/metrics.js";
 import { createAgentTelemetryProviders } from "./runtime/provider.js";
+import { createAgentTelemetryRuntimeState, endAllAgentTelemetrySpans } from "./runtime/spans.js";
 import { asRecord, asString } from "./runtime/values.js";
 
 export type {
