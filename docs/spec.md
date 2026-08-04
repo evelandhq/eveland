@@ -314,9 +314,10 @@ Deployment/RuntimeInstance provenance。判据是 Eve 自带的 per-session `dat
 
 Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
 
-- Agent capture 开关、trace sampling、input/output content 与 reasoning policy 只作用于
+- Agent capture 开关、trace sampling 与 input/output content policy 只作用于
   Eveland 注入的私有 provider，并由运行中的 Agent 动态加载，不重启 Deployment；
-  input、output 与 reasoning content 默认开启，Admin 可以分别关闭
+  input 与 output content 默认开启，Admin 可以分别关闭；reasoning 属于 output，
+  不是独立开关
 - Session 完成与私有 Provider revision 切换最多等待两秒完成 flush/shutdown；超时或失败只
   产生限频降级告警，不能使 Eve event hook 或 Agent turn 失败
 - Elastic 固定接收 Eveland 的全部 traces、logs、metrics 和 agent/platform/runtime/capacity domain

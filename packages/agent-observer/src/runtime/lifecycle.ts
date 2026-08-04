@@ -1,38 +1,44 @@
-import {
-  ROOT_CONTEXT,
-  SpanKind,
-  SpanStatusCode,
-  trace,
-  type Attributes,
-  type Context,
-  type Span,
-} from "@opentelemetry/api";
+import { SpanKind, type Span } from "@opentelemetry/api";
 import type { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
+import {
+  ATTR_ERROR_TYPE,
+  ATTR_GEN_AI_AGENT_NAME,
+  ATTR_GEN_AI_INPUT_MESSAGES,
+  ATTR_GEN_AI_OPERATION_NAME,
+  ATTR_GEN_AI_OUTPUT_MESSAGES,
+  ATTR_GEN_AI_REQUEST_MODEL,
+  ATTR_GEN_AI_TOOL_CALL_ARGUMENTS,
+  ATTR_GEN_AI_TOOL_CALL_ID,
+  ATTR_GEN_AI_TOOL_CALL_RESULT,
+  ATTR_GEN_AI_TOOL_NAME,
+  GEN_AI_OPERATION_NAME_VALUE_CHAT,
+  GEN_AI_OPERATION_NAME_VALUE_EXECUTE_TOOL,
+  GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+} from "@opentelemetry/semantic-conventions/incubating";
+import { commonAttributes } from "./attributes.js";
 import type { AgentTelemetryHookContext, RuntimeAgentPolicy } from "./contracts.js";
+import {
+  compactionMessage,
+  mapFinishReason,
+  reconstructedInputAttributes,
+  recordToolCall,
+  serializedTextMessage,
+  stepAssistantFor,
+  textMessage,
+  toOutputMessage,
+  transcriptFor,
+} from "./messages.js";
 import { recordUsage, type AgentTelemetryMetrics } from "./metrics.js";
+import {
+  endSessionSpans,
+  endTurnChildren,
+  parentContext,
+  setErrorStatus,
+  spanContext,
+  spanKey,
+  type AgentTelemetryRuntimeState,
+} from "./spans.js";
 import { asNonNegativeInteger, asRecord, asString, serializeAttribute } from "./values.js";
-
-export type AgentTelemetryRuntimeState = {
-  sessionModels: Map<string, string>;
-  turns: Map<string, Span>;
-  turnStartedAt: Map<string, number>;
-  steps: Map<string, Span>;
-  stepStartedAt: Map<string, number>;
-  actions: Map<string, Span>;
-  subagents: Map<string, Span>;
-};
-
-export function createAgentTelemetryRuntimeState(): AgentTelemetryRuntimeState {
-  return {
-    sessionModels: new Map(),
-    turns: new Map(),
-    turnStartedAt: new Map(),
-    steps: new Map(),
-    stepStartedAt: new Map(),
-    actions: new Map(),
-    subagents: new Map(),
-  };
-}
 
 export function mapAgentTelemetryLifecycle(input: {
   eventType: string;
@@ -48,9 +54,9 @@ export function mapAgentTelemetryLifecycle(input: {
   const { eventType, data, sessionId, context, state, tracer, metrics, now, capture } = input;
   const turnId = asString(data.turnId);
   const stepIndex = asNonNegativeInteger(data.stepIndex);
-  const turnKey = turnId ? key(sessionId, turnId) : undefined;
+  const turnKey = turnId ? spanKey(sessionId, turnId) : undefined;
   const stepKey =
-    turnId && stepIndex !== undefined ? key(sessionId, turnId, String(stepIndex)) : undefined;
+    turnId && stepIndex !== undefined ? spanKey(sessionId, turnId, String(stepIndex)) : undefined;
 
   switch (eventType) {
     case "session.started": {
@@ -68,8 +74,8 @@ export function mapAgentTelemetryLifecycle(input: {
         {
           kind: SpanKind.INTERNAL,
           attributes: commonAttributes(sessionId, turnId, context, {
-            "gen_ai.operation.name": "invoke_agent",
-            "gen_ai.agent.name": agentName,
+            [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+            [ATTR_GEN_AI_AGENT_NAME]: agentName,
           }),
         },
         parentContext(context, state),
@@ -77,17 +83,23 @@ export function mapAgentTelemetryLifecycle(input: {
       state.turns.set(turnKey, span);
       state.turnStartedAt.set(turnKey, now());
       metrics.agentInvocations.add(1, {
-        "gen_ai.agent.name": agentName,
+        [ATTR_GEN_AI_AGENT_NAME]: agentName,
       });
       return span;
     }
     case "message.received": {
       const span = turnKey ? state.turns.get(turnKey) : undefined;
       const message = asString(data.message);
+      if (turnKey && message) {
+        transcriptFor(state, turnKey).push({
+          role: "user",
+          parts: capture.recordInputs ? [{ type: "text", content: message }] : [],
+        });
+      }
       if (span && message && capture.recordInputs) {
         span.setAttribute(
-          "gen_ai.input.messages",
-          serializeAttribute([{ role: "user", content: message }]),
+          ATTR_GEN_AI_INPUT_MESSAGES,
+          serializeAttribute([textMessage("user", message)]),
         );
       }
       return span;
@@ -102,24 +114,32 @@ export function mapAgentTelemetryLifecycle(input: {
         {
           kind: SpanKind.CLIENT,
           attributes: commonAttributes(sessionId, turnId, context, {
-            "gen_ai.operation.name": "chat",
-            ...(modelId ? { "gen_ai.request.model": modelId } : {}),
+            [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_CHAT,
+            ...(modelId ? { [ATTR_GEN_AI_REQUEST_MODEL]: modelId } : {}),
             "eveland.eve.step.index": stepIndex,
           }),
         },
         spanContext(turnKey ? state.turns.get(turnKey) : undefined),
       );
+      const reconstructed =
+        capture.recordInputs && turnKey ? reconstructedInputAttributes(state, turnKey) : undefined;
+      if (reconstructed) span.setAttributes(reconstructed);
       state.steps.set(stepKey, span);
       state.stepStartedAt.set(stepKey, now());
       return span;
     }
     case "actions.requested": {
       const actions = Array.isArray(data.actions) ? data.actions : [];
+      // Falls back to the turn for actions the runtime dispatches after the step closed.
+      const actionParent = spanContext(
+        (stepKey ? state.steps.get(stepKey) : undefined) ??
+          (turnKey ? state.turns.get(turnKey) : undefined),
+      );
       for (const value of actions) {
         const action = asRecord(value);
         const callId = asString(action?.callId);
         if (!action || !callId) continue;
-        const actionKey = key(sessionId, callId);
+        const actionKey = spanKey(sessionId, callId);
         const kind = asString(action.kind);
         if (kind === "subagent-call" || kind === "remote-agent-call") {
           if (state.subagents.has(actionKey)) continue;
@@ -133,17 +153,30 @@ export function mapAgentTelemetryLifecycle(input: {
             {
               kind: SpanKind.INTERNAL,
               attributes: commonAttributes(sessionId, turnId, context, {
-                "gen_ai.operation.name": "invoke_agent",
-                "gen_ai.agent.name": agentName,
-                "gen_ai.tool.call.id": callId,
+                [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+                [ATTR_GEN_AI_AGENT_NAME]: agentName,
+                [ATTR_GEN_AI_TOOL_CALL_ID]: callId,
               }),
             },
-            spanContext(turnKey ? state.turns.get(turnKey) : undefined),
+            actionParent,
           );
           if (capture.recordInputs && action.input !== undefined) {
-            span.setAttribute("gen_ai.agent.input", serializeAttribute(action.input));
+            span.setAttribute(
+              ATTR_GEN_AI_INPUT_MESSAGES,
+              serializeAttribute([serializedTextMessage("user", action.input)]),
+            );
           }
           state.subagents.set(actionKey, span);
+          state.actionToolNames.set(actionKey, agentName);
+          recordToolCall(state, {
+            stepKey,
+            turnKey,
+            callId,
+            toolName: agentName,
+            ...(capture.recordInputs && action.input !== undefined
+              ? { arguments: action.input }
+              : {}),
+          });
           continue;
         }
         if (state.actions.has(actionKey)) continue;
@@ -154,19 +187,29 @@ export function mapAgentTelemetryLifecycle(input: {
           {
             kind: SpanKind.INTERNAL,
             attributes: commonAttributes(sessionId, turnId, context, {
-              "gen_ai.operation.name": "execute_tool",
-              "gen_ai.tool.name": toolName,
-              "gen_ai.tool.call.id": callId,
+              [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_EXECUTE_TOOL,
+              [ATTR_GEN_AI_TOOL_NAME]: toolName,
+              [ATTR_GEN_AI_TOOL_CALL_ID]: callId,
             }),
           },
-          spanContext(turnKey ? state.turns.get(turnKey) : undefined),
+          actionParent,
         );
         if (capture.recordInputs && action.input !== undefined) {
-          span.setAttribute("gen_ai.tool.call.arguments", serializeAttribute(action.input));
+          span.setAttribute(ATTR_GEN_AI_TOOL_CALL_ARGUMENTS, serializeAttribute(action.input));
         }
         state.actions.set(actionKey, span);
+        state.actionToolNames.set(actionKey, toolName);
+        recordToolCall(state, {
+          stepKey,
+          turnKey,
+          callId,
+          toolName,
+          ...(capture.recordInputs && action.input !== undefined
+            ? { arguments: action.input }
+            : {}),
+        });
         metrics.toolCalls.add(1, {
-          "gen_ai.tool.name": toolName,
+          [ATTR_GEN_AI_TOOL_NAME]: toolName,
         });
       }
       return stepKey
@@ -179,14 +222,35 @@ export function mapAgentTelemetryLifecycle(input: {
       const result = asRecord(data.result);
       const callId = asString(result?.callId);
       if (!callId) return turnKey ? state.turns.get(turnKey) : undefined;
-      const actionKey = key(sessionId, callId);
+      const actionKey = spanKey(sessionId, callId);
       const span = state.actions.get(actionKey) ?? state.subagents.get(actionKey);
+      if (turnKey) {
+        const toolName = state.actionToolNames.get(actionKey);
+        transcriptFor(state, turnKey).push({
+          role: "tool",
+          ...(toolName ? { name: toolName } : {}),
+          parts: [
+            {
+              type: "tool_call_response",
+              id: callId,
+              response: capture.recordOutputs ? (result?.output ?? null) : null,
+            },
+          ],
+        });
+      }
+      state.actionToolNames.delete(actionKey);
       if (span) {
         if (capture.recordOutputs && result?.output !== undefined) {
-          span.setAttribute(
-            state.actions.has(actionKey) ? "gen_ai.tool.call.result" : "gen_ai.agent.output",
-            serializeAttribute(result.output),
-          );
+          if (state.actions.has(actionKey)) {
+            span.setAttribute(ATTR_GEN_AI_TOOL_CALL_RESULT, serializeAttribute(result.output));
+          } else {
+            span.setAttribute(
+              ATTR_GEN_AI_OUTPUT_MESSAGES,
+              serializeAttribute([
+                toOutputMessage(serializedTextMessage("assistant", result.output)),
+              ]),
+            );
+          }
         }
         if (data.status !== "completed" || data.error !== undefined) {
           setErrorStatus(span, data);
@@ -201,10 +265,17 @@ export function mapAgentTelemetryLifecycle(input: {
       const message = asString(data.message);
       const span = stepKey ? state.steps.get(stepKey) : undefined;
       if (message && capture.recordOutputs) {
-        const output = serializeAttribute([{ role: "assistant", content: message }]);
-        span?.setAttribute("gen_ai.output.messages", output);
+        stepAssistantFor(state, stepKey, turnKey).parts.push({ type: "text", content: message });
         if (turnKey) {
-          state.turns.get(turnKey)?.setAttribute("gen_ai.output.messages", output);
+          state.turns.get(turnKey)?.setAttribute(
+            ATTR_GEN_AI_OUTPUT_MESSAGES,
+            serializeAttribute([
+              toOutputMessage({
+                ...textMessage("assistant", message),
+                finish_reason: mapFinishReason(asString(data.finishReason)),
+              }),
+            ]),
+          );
         }
       }
       return span ?? (turnKey ? state.turns.get(turnKey) : undefined);
@@ -212,16 +283,32 @@ export function mapAgentTelemetryLifecycle(input: {
     case "reasoning.completed": {
       const span = stepKey ? state.steps.get(stepKey) : undefined;
       const reasoning = asString(data.reasoning);
-      if (span && reasoning && capture.includeReasoning) {
-        span.setAttribute("eveland.gen_ai.reasoning", serializeAttribute(reasoning));
+      if (reasoning && capture.recordOutputs) {
+        stepAssistantFor(state, stepKey, turnKey).parts.push({
+          type: "reasoning",
+          content: reasoning,
+        });
       }
       return span;
+    }
+    case "compaction.completed": {
+      // Eve replaced the visible history with a checkpoint the event stream never
+      // exposes, so the reconstruction drops what the model can no longer see. A step
+      // still holding an assistant message keeps it: that output really was produced.
+      if (turnKey) {
+        state.transcripts.set(turnKey, [compactionMessage()]);
+      }
+      return stepKey
+        ? (state.steps.get(stepKey) ?? (turnKey ? state.turns.get(turnKey) : undefined))
+        : turnKey
+          ? state.turns.get(turnKey)
+          : undefined;
     }
     case "subagent.called":
     case "subagent.started": {
       const callId = asString(data.callId);
       if (!callId) return turnKey ? state.turns.get(turnKey) : undefined;
-      const actionKey = key(sessionId, callId);
+      const actionKey = spanKey(sessionId, callId);
       const existing = state.subagents.get(actionKey);
       if (existing) return existing;
       const agentName = asString(data.name) ?? asString(data.subagentName) ?? "subagent";
@@ -230,9 +317,9 @@ export function mapAgentTelemetryLifecycle(input: {
         {
           kind: SpanKind.INTERNAL,
           attributes: commonAttributes(sessionId, turnId, context, {
-            "gen_ai.operation.name": "invoke_agent",
-            "gen_ai.agent.name": agentName,
-            "gen_ai.tool.call.id": callId,
+            [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+            [ATTR_GEN_AI_AGENT_NAME]: agentName,
+            [ATTR_GEN_AI_TOOL_CALL_ID]: callId,
           }),
         },
         spanContext(turnKey ? state.turns.get(turnKey) : undefined),
@@ -242,11 +329,14 @@ export function mapAgentTelemetryLifecycle(input: {
     }
     case "subagent.completed": {
       const callId = asString(data.callId);
-      const actionKey = callId ? key(sessionId, callId) : undefined;
+      const actionKey = callId ? spanKey(sessionId, callId) : undefined;
       const span = actionKey ? state.subagents.get(actionKey) : undefined;
       if (span) {
         if (capture.recordOutputs && data.output !== undefined) {
-          span.setAttribute("gen_ai.agent.output", serializeAttribute(data.output));
+          span.setAttribute(
+            ATTR_GEN_AI_OUTPUT_MESSAGES,
+            serializeAttribute([toOutputMessage(serializedTextMessage("assistant", data.output))]),
+          );
         }
         span.end();
         state.subagents.delete(actionKey!);
@@ -257,6 +347,18 @@ export function mapAgentTelemetryLifecycle(input: {
     case "step.failed": {
       const span = stepKey ? state.steps.get(stepKey) : undefined;
       if (span) {
+        const assistant = stepKey ? state.stepAssistants.get(stepKey) : undefined;
+        if (assistant && capture.recordOutputs) {
+          assistant.finish_reason =
+            mapFinishReason(asString(data.finishReason)) ??
+            (eventType === "step.failed" ? "error" : undefined) ??
+            assistant.finish_reason;
+          span.setAttribute(
+            ATTR_GEN_AI_OUTPUT_MESSAGES,
+            serializeAttribute([toOutputMessage(assistant)]),
+          );
+        }
+        if (stepKey) state.stepAssistants.delete(stepKey);
         if (eventType === "step.failed") setErrorStatus(span, data);
         if (eventType === "step.completed") {
           recordUsage({
@@ -271,11 +373,12 @@ export function mapAgentTelemetryLifecycle(input: {
           metrics.operationDuration.record(Math.max(0, now() - startedAt) / 1_000, {
             ...(state.sessionModels.get(sessionId)
               ? {
-                  "gen_ai.request.model": state.sessionModels.get(sessionId)!,
+                  [ATTR_GEN_AI_REQUEST_MODEL]: state.sessionModels.get(sessionId)!,
                 }
               : {}),
-            "gen_ai.operation.name": "chat",
-            "error.type": eventType === "step.failed" ? (asString(data.code) ?? "unknown") : "",
+            [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_CHAT,
+            [ATTR_ERROR_TYPE]:
+              eventType === "step.failed" ? (asString(data.code) ?? "unknown") : "",
           });
         }
         span.end();
@@ -294,8 +397,8 @@ export function mapAgentTelemetryLifecycle(input: {
         if (eventType === "turn.failed") {
           setErrorStatus(span, data);
           metrics.agentFailures.add(1, {
-            "gen_ai.agent.name": asString(context.agent?.name) ?? "agent",
-            "error.type": asString(data.code) ?? "unknown",
+            [ATTR_GEN_AI_AGENT_NAME]: asString(context.agent?.name) ?? "agent",
+            [ATTR_ERROR_TYPE]: asString(data.code) ?? "unknown",
           });
         }
         if (eventType === "turn.cancelled") {
@@ -320,114 +423,4 @@ export function mapAgentTelemetryLifecycle(input: {
           ? state.turns.get(turnKey)
           : undefined;
   }
-}
-
-export function commonAttributes(
-  sessionId: string,
-  turnId: string | undefined,
-  context: AgentTelemetryHookContext,
-  attributes: Attributes,
-): Attributes {
-  const agentName = asString(context.agent?.name);
-  const agentNodeId = asString(context.agent?.nodeId);
-  const channelKind = asString(context.channel?.kind);
-  return {
-    ...attributes,
-    "gen_ai.conversation.id": sessionId,
-    "session.id": sessionId,
-    "eveland.eve.session.id": sessionId,
-    ...(turnId ? { "eveland.eve.turn.id": turnId } : {}),
-    ...(agentName
-      ? {
-          "gen_ai.agent.name": agentName,
-          "eveland.eve.agent.name": agentName,
-        }
-      : {}),
-    ...(agentNodeId ? { "eveland.eve.agent.node.id": agentNodeId } : {}),
-    ...(channelKind ? { "eveland.eve.channel.kind": channelKind } : {}),
-  };
-}
-
-export function endAllAgentTelemetrySpans(state: AgentTelemetryRuntimeState): void {
-  for (const spans of [state.steps, state.actions, state.subagents, state.turns]) {
-    for (const span of spans.values()) span.end();
-    spans.clear();
-  }
-  state.stepStartedAt.clear();
-  state.turnStartedAt.clear();
-}
-
-function parentContext(
-  context: AgentTelemetryHookContext,
-  state: AgentTelemetryRuntimeState,
-): Context {
-  const parentSessionId = asString(context.session?.parent?.sessionId);
-  const callId = asString(context.session?.parent?.callId);
-  return spanContext(
-    parentSessionId && callId ? state.subagents.get(key(parentSessionId, callId)) : undefined,
-  );
-}
-
-function spanContext(span: Span | undefined): Context {
-  return span ? trace.setSpan(ROOT_CONTEXT, span) : ROOT_CONTEXT;
-}
-
-function setErrorStatus(span: Span, data: Record<string, unknown>): void {
-  const error = asRecord(data.error);
-  span.setStatus({
-    code: SpanStatusCode.ERROR,
-    message:
-      asString(error?.message) ??
-      asString(data.message) ??
-      asString(data.status) ??
-      "Eve operation failed",
-  });
-}
-
-function endTurnChildren(
-  state: AgentTelemetryRuntimeState,
-  sessionId: string,
-  turnId: string,
-): void {
-  const prefix = key(sessionId, turnId);
-  for (const [stepKey, span] of state.steps) {
-    if (!stepKey.startsWith(`${prefix}\0`)) continue;
-    span.end();
-    state.steps.delete(stepKey);
-    state.stepStartedAt.delete(stepKey);
-  }
-  const sessionPrefix = `${sessionId}\0`;
-  for (const spans of [state.actions, state.subagents]) {
-    for (const [spanKey, span] of spans) {
-      if (!spanKey.startsWith(sessionPrefix)) continue;
-      span.end();
-      spans.delete(spanKey);
-    }
-  }
-}
-
-function endSessionSpans(
-  state: AgentTelemetryRuntimeState,
-  sessionId: string,
-  failed: boolean,
-  data: Record<string, unknown>,
-): void {
-  const prefix = `${sessionId}\0`;
-  for (const spans of [state.steps, state.actions, state.subagents, state.turns]) {
-    for (const [spanKey, span] of spans) {
-      if (!spanKey.startsWith(prefix)) continue;
-      if (failed) setErrorStatus(span, data);
-      span.end();
-      spans.delete(spanKey);
-    }
-  }
-  for (const startedAt of [state.stepStartedAt, state.turnStartedAt]) {
-    for (const startedAtKey of startedAt.keys()) {
-      if (startedAtKey.startsWith(prefix)) startedAt.delete(startedAtKey);
-    }
-  }
-}
-
-function key(...parts: string[]): string {
-  return parts.join("\0");
 }

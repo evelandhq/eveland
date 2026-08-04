@@ -7,7 +7,7 @@ import type {
   AgentTelemetryHookContext,
   RuntimeAgentPolicy,
 } from "./contracts.js";
-import { commonAttributes } from "./lifecycle.js";
+import { commonAttributes } from "./attributes.js";
 import { asDate, asNonNegativeInteger, asRecord, asString, canonicalJson } from "./values.js";
 
 const collectedEventTypes = new Set([
@@ -40,10 +40,10 @@ const collectedEventTypes = new Set([
 
 export function shouldCollectAgentTelemetryEvent(
   eventType: string,
-  includeReasoning: boolean,
+  recordOutputs: boolean,
 ): boolean {
   return (
-    collectedEventTypes.has(eventType) || (includeReasoning && eventType === "reasoning.completed")
+    collectedEventTypes.has(eventType) || (recordOutputs && eventType === "reasoning.completed")
   );
 }
 
@@ -116,7 +116,6 @@ function sanitizeForPolicy(
     if (!capture.recordOutputs && isOutputKey(nestedEventType, keyName)) {
       continue;
     }
-    if (!capture.includeReasoning && isReasoningKey(keyName)) continue;
     result[keyName] = sanitizeForPolicy(child, capture, nestedEventType);
   }
   return result;
@@ -163,6 +162,7 @@ function isInputKey(eventType: string, keyName: string): boolean {
 }
 
 function isOutputKey(eventType: string, keyName: string): boolean {
+  if (isReasoningKey(keyName)) return true;
   if (eventType === "message.completed") return keyName === "message";
   if (eventType === "result.completed") return keyName === "result";
   if (eventType === "action.result" || eventType === "subagent.completed") {

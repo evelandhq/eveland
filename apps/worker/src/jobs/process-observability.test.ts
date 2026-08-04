@@ -36,7 +36,6 @@ describe("Deployment observability policy", () => {
         sampling: { ratio: 0.5 },
         recordInputs: true,
         recordOutputs: false,
-        includeReasoning: false,
       },
       externalDestinations: [],
     });
@@ -220,7 +219,6 @@ describe("Deployment observability policy", () => {
         sampling: { ratio: 0.25 },
         recordInputs: false,
         recordOutputs: false,
-        includeReasoning: false,
       },
       externalDestinations: [],
     });

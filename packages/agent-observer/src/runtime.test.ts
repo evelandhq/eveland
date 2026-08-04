@@ -162,11 +162,19 @@ describe("private Agent telemetry runtime", () => {
       "gen_ai.agent.name": "Researcher",
       "gen_ai.conversation.id": "eve_session_1",
       "eveland.eve.turn.id": "turn_1",
-      "gen_ai.input.messages": JSON.stringify([{ content: "private prompt", role: "user" }]),
-      "gen_ai.output.messages": JSON.stringify([{ content: "final answer", role: "assistant" }]),
     });
+    expect(JSON.parse(String(turnSpan?.attributes["gen_ai.input.messages"]))).toEqual([
+      { parts: [{ content: "private prompt", type: "text" }], role: "user" },
+    ]);
+    expect(JSON.parse(String(turnSpan?.attributes["gen_ai.output.messages"]))).toEqual([
+      {
+        finish_reason: "stop",
+        parts: [{ content: "final answer", type: "text" }],
+        role: "assistant",
+      },
+    ]);
     expect(modelSpan?.parentSpanContext?.spanId).toBe(turnSpan?.spanContext().spanId);
-    expect(toolSpan?.parentSpanContext?.spanId).toBe(turnSpan?.spanContext().spanId);
+    expect(toolSpan?.parentSpanContext?.spanId).toBe(modelSpan?.spanContext().spanId);
     expect(modelSpan?.attributes).toMatchObject({
       "gen_ai.operation.name": "chat",
       "gen_ai.request.model": "openai/gpt-5",
@@ -175,8 +183,27 @@ describe("private Agent telemetry runtime", () => {
       "gen_ai.usage.cache_read.input_tokens": 10,
       "gen_ai.usage.cache_creation.input_tokens": 4,
       "eveland.gen_ai.usage.cost_usd": 0.012,
-      "gen_ai.output.messages": JSON.stringify([{ content: "final answer", role: "assistant" }]),
+      "eveland.gen_ai.input.reconstructed": true,
     });
+    expect(JSON.parse(String(modelSpan?.attributes["gen_ai.input.messages"]))).toEqual([
+      { parts: [{ content: "private prompt", type: "text" }], role: "user" },
+    ]);
+    expect(JSON.parse(String(modelSpan?.attributes["gen_ai.output.messages"]))).toEqual([
+      {
+        finish_reason: "stop",
+        parts: [
+          { arguments: { q: "otel" }, id: "call_1", name: "search", type: "tool_call" },
+          {
+            arguments: { url: "https://example.com" },
+            id: "call_2",
+            name: "fetch",
+            type: "tool_call",
+          },
+          { content: "final answer", type: "text" },
+        ],
+        role: "assistant",
+      },
+    ]);
     expect(toolSpan?.attributes).toMatchObject({
       "gen_ai.operation.name": "execute_tool",
       "gen_ai.tool.name": "search",
@@ -490,6 +517,283 @@ describe("private Agent telemetry runtime", () => {
       traces.getFinishedSpans().find((span) => span.name === "invoke_agent Researcher")?.attributes,
     ).toMatchObject({ "eveland.turn.cancelled": true });
   });
+
+  test("gives a tool-only model call reasoning and tool calls as its output", async () => {
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordInputs: true, recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture(
+      { type: "session.started", data: { runtime: { modelId: "openai/gpt-5" } } },
+      context,
+    );
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
+    await runtime.capture(
+      { type: "message.received", data: { turnId: "turn_1", message: "tag the conversations" } },
+      context,
+    );
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "reasoning.completed",
+        data: { turnId: "turn_1", stepIndex: 0, reasoning: "load the skill first" },
+      },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "actions.requested",
+        data: {
+          turnId: "turn_1",
+          stepIndex: 0,
+          actions: [{ kind: "load-skill", callId: "call_1", input: { name: "rubric" } }],
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "action.result",
+        data: {
+          turnId: "turn_1",
+          stepIndex: 0,
+          status: "completed",
+          result: { kind: "load-skill-result", callId: "call_1", output: "rubric body" },
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "step.completed",
+        data: { turnId: "turn_1", stepIndex: 0, finishReason: "tool-calls" },
+      },
+      context,
+    );
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 1 } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "message.completed",
+        data: { turnId: "turn_1", stepIndex: 1, finishReason: "stop", message: "tagged 50" },
+      },
+      context,
+    );
+    await runtime.capture(
+      { type: "step.completed", data: { turnId: "turn_1", stepIndex: 1, finishReason: "stop" } },
+      context,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
+    await runtime.forceFlush();
+
+    const modelSpans = traces
+      .getFinishedSpans()
+      .filter((span) => span.name === "chat openai/gpt-5")
+      .sort(
+        (left, right) =>
+          Number(left.attributes["eveland.eve.step.index"]) -
+          Number(right.attributes["eveland.eve.step.index"]),
+      );
+    expect(modelSpans).toHaveLength(2);
+
+    // The step requested a tool without emitting visible text.
+    expect(JSON.parse(String(modelSpans[0]?.attributes["gen_ai.output.messages"]))).toEqual([
+      {
+        finish_reason: "tool_call",
+        parts: [
+          { content: "load the skill first", type: "reasoning" },
+          { arguments: { name: "rubric" }, id: "call_1", name: "load_skill", type: "tool_call" },
+        ],
+        role: "assistant",
+      },
+    ]);
+
+    expect(JSON.parse(String(modelSpans[1]?.attributes["gen_ai.input.messages"]))).toEqual([
+      { parts: [{ content: "tag the conversations", type: "text" }], role: "user" },
+      {
+        parts: [
+          { content: "load the skill first", type: "reasoning" },
+          { arguments: { name: "rubric" }, id: "call_1", name: "load_skill", type: "tool_call" },
+        ],
+        role: "assistant",
+      },
+      {
+        name: "load_skill",
+        parts: [{ id: "call_1", response: "rubric body", type: "tool_call_response" }],
+        role: "tool",
+      },
+    ]);
+  });
+
+  test("replaces the reconstructed history with a compaction part once Eve compacts", async () => {
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordInputs: true, recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
+    await runtime.capture(
+      { type: "message.received", data: { turnId: "turn_1", message: "keep going" } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "compaction.completed",
+        data: { turnId: "turn_1", sessionId: "eve_session_1", modelId: "openai/gpt-5" },
+      },
+      context,
+    );
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
+      context,
+    );
+    await runtime.capture(
+      { type: "step.completed", data: { turnId: "turn_1", stepIndex: 0, finishReason: "stop" } },
+      context,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
+    await runtime.forceFlush();
+
+    const modelSpan = traces.getFinishedSpans().find((span) => span.name === "chat");
+    expect(modelSpan?.attributes).toMatchObject({
+      "eveland.gen_ai.input.reconstructed": true,
+    });
+    // The user message Eve folded into the checkpoint is gone, because the model can
+    // no longer see it either.
+    expect(JSON.parse(String(modelSpan?.attributes["gen_ai.input.messages"]))).toEqual([
+      { parts: [{ content: null, type: "compaction" }], role: "system" },
+    ]);
+  });
+
+  test("records a subagent invocation's input and output as conventions messages", async () => {
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordInputs: true, recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "actions.requested",
+        data: {
+          turnId: "turn_1",
+          stepIndex: 0,
+          actions: [
+            {
+              kind: "subagent-call",
+              callId: "call_sub",
+              subagentName: "Summarizer",
+              name: "Summarizer",
+              nodeId: "root/summarizer",
+              description: "summarize",
+              input: { text: "long report" },
+            },
+          ],
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "action.result",
+        data: {
+          turnId: "turn_1",
+          stepIndex: 0,
+          status: "completed",
+          result: { kind: "subagent-result", callId: "call_sub", output: "three bullets" },
+        },
+      },
+      context,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
+    await runtime.forceFlush();
+
+    const subagentSpan = traces
+      .getFinishedSpans()
+      .find((span) => span.name === "invoke_agent Summarizer");
+    // `gen_ai.agent.input` / `gen_ai.agent.output` are not registered attributes, so
+    // the invocation reports through the conventions' message attributes instead.
+    expect(Object.keys(subagentSpan?.attributes ?? {})).not.toContain("gen_ai.agent.input");
+    expect(Object.keys(subagentSpan?.attributes ?? {})).not.toContain("gen_ai.agent.output");
+    expect(JSON.parse(String(subagentSpan?.attributes["gen_ai.input.messages"]))).toEqual([
+      { parts: [{ content: JSON.stringify({ text: "long report" }), type: "text" }], role: "user" },
+    ]);
+    expect(JSON.parse(String(subagentSpan?.attributes["gen_ai.output.messages"]))).toEqual([
+      {
+        finish_reason: "stop",
+        parts: [{ content: "three bullets", type: "text" }],
+        role: "assistant",
+      },
+    ]);
+  });
+
+  test("keeps reasoning out of spans when outputs are not recorded", async () => {
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordInputs: true, recordOutputs: false }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "reasoning.completed",
+        data: { turnId: "turn_1", stepIndex: 0, reasoning: "private chain of thought" },
+      },
+      context,
+    );
+    await runtime.capture(
+      { type: "step.completed", data: { turnId: "turn_1", stepIndex: 0, finishReason: "stop" } },
+      context,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
+    await runtime.forceFlush();
+
+    expect(JSON.stringify(traces.getFinishedSpans().map((span) => span.attributes))).not.toContain(
+      "private chain of thought",
+    );
+  });
 });
 
 function policy(capture: Partial<RuntimeAgentPolicy["capture"]> = {}): RuntimeAgentPolicy {
@@ -501,7 +805,6 @@ function policy(capture: Partial<RuntimeAgentPolicy["capture"]> = {}): RuntimeAg
       sampleRatio: 1,
       recordInputs: false,
       recordOutputs: false,
-      includeReasoning: false,
       ...capture,
     },
     deploymentCredential: "credential.signature",

@@ -291,8 +291,6 @@ describe("managed OpenTelemetry Collector configuration", () => {
         'set(span.attributes["langfuse.observation.model.name"], span.attributes["gen_ai.request.model"]) where span.attributes["gen_ai.request.model"] != nil',
         'set(span.attributes["langfuse.observation.input"], span.attributes["gen_ai.tool.call.arguments"]) where span.attributes["gen_ai.tool.call.arguments"] != nil',
         'set(span.attributes["langfuse.observation.output"], span.attributes["gen_ai.tool.call.result"]) where span.attributes["gen_ai.tool.call.result"] != nil',
-        'set(span.attributes["langfuse.observation.input"], span.attributes["gen_ai.agent.input"]) where span.attributes["gen_ai.agent.input"] != nil',
-        'set(span.attributes["langfuse.observation.output"], span.attributes["gen_ai.agent.output"]) where span.attributes["gen_ai.agent.output"] != nil',
         'set(span.attributes["langfuse.observation.cost_details"], Format("{\\"total\\":%v}", [span.attributes["eveland.gen_ai.usage.cost_usd"]])) where span.attributes["eveland.gen_ai.usage.cost_usd"] != nil',
       ]),
     );
