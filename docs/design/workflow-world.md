@@ -449,6 +449,49 @@ blocker, so the boundaries now have tests that talk to the real thing:
 Both run in CI: the dispatcher is in the `remaining` test matrix entry, which now
 carries a database URL.
 
+### End-to-end result (2026-08-04)
+
+The Phase 2 gate was run against a real platform — isolated database, isolated
+data directory, API + worker + dispatcher from this branch, a fixture Agent
+deployed through the normal job pipeline on the Docker runtime.
+
+**Proven, reproduced twice.** With `EVELAND_ACTIVATION_IDLE_TTL_MS=60000` and a
+workflow job scheduled 120s out: the Agent deployed on
+`@eveland/workflow-world` in `external` mode (verified inside the container —
+real `EVELAND_DEPLOYMENT_ID`, the package installed, `agent.ts` pointing at it);
+the idle reaper stopped it 120s before the job was due; and when the job came
+due the dispatcher activated the stopped deployment back to ready and delivered
+the message. Due at 01:48:20, woken at **01:48:24**. That is the sequence the
+whole project exists to make possible, and it does not happen at all on
+world-postgres.
+
+**Not proven: the workflow body resuming.** eve registers a queue only for a
+workflow it discovers in the bundle, and no fixture written here got discovered
+— a `"use workflow"` function under `agent/workflows/` never reached the built
+output. So the Agent answered 400 "Unhandled queue", which is correct behaviour
+for a workflow it does not have. The dispatch contract and the 4xx dead-letter
+path were exercised properly; the workflow body was not. Closing that needs
+eve's workflow authoring convention, which is orthogonal to this change.
+
+**Three defects the run found, none reachable from any test:**
+
+- The legacy chunk reaper enumerates databases by the `eveland_wf_` prefix, so
+  it swept the _shared_ world database too and logged a failure every tick. It
+  now skips the configured world database.
+- `EVELAND_WORKFLOW_WORLD_URL` served two audiences that need different values:
+  a deployment reaches Postgres as `host.docker.internal`, the platform reaches
+  it as `localhost`. The dispatcher crashed on boot with ENOTFOUND. Added
+  `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`, mirroring the split the legacy world
+  already makes.
+- The world cannot be installed into a build before it is published. Added
+  `EVELAND_WORKFLOW_WORLD_TARBALL`, which copies a packed tarball into the
+  Release directory and installs it by relative path — needed for
+  pre-publication validation and useful for air-gapped installs. Phase 0c
+  (claiming the npm scope) is still a prerequisite for real rollout.
+
+The harness lives at `apps/worker/src/integration/workflow-wake-e2e.ts` and
+prints what it proved and what it did not, rather than a bare pass.
+
 **Known limitation, not fixed.** `resolveLatestDeploymentId` returns the ambient
 deployment rather than the promoted one. They coincide for ordinary traffic but
 diverge for a superseded deployment woken by the dispatcher. Resolving it needs

@@ -29,7 +29,12 @@ export function deriveMaxInFlightPerTenant(machine: { cpuCoreCount: number }): n
 }
 
 export function resolveDispatcherConfig(env: NodeJS.ProcessEnv): DispatcherConfiguration {
-  const worldUrl = env.EVELAND_WORKFLOW_WORLD_URL ?? env.WORKFLOW_POSTGRES_URL;
+  // The dispatcher runs on the host, so it needs the host's view of the shared
+  // database. `EVELAND_WORKFLOW_WORLD_URL` is the value injected into
+  // deployments, which on Docker Desktop names `host.docker.internal` and does
+  // not resolve here — hence the bootstrap override, mirroring the split the
+  // legacy world already makes with WORKFLOW_POSTGRES_BOOTSTRAP_URL.
+  const worldUrl = env.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL ?? env.EVELAND_WORKFLOW_WORLD_URL;
   if (!worldUrl) {
     throw new Error(
       "EVELAND_WORKFLOW_WORLD_URL is required: the dispatcher claims jobs from the shared workflow database.",

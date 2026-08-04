@@ -17,6 +17,10 @@ import {
   type RuntimeCommandContext,
 } from "../runtime/types.js";
 import { ensureEvelandWorkflowTenant } from "../runtime/eveland-workflow-world-bootstrap.js";
+import {
+  resolveWorkflowWorldDeploymentUrl,
+  resolveWorkflowWorldPlatformUrl,
+} from "../runtime/eveland-workflow-world-url.js";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import {
   EVELAND_WORKFLOW_WORLD,
@@ -243,10 +247,16 @@ export async function composeDeploymentEnv(
   // whenever the platform has a world configured keeps an already-built
   // deployment pointed at the right database until it is rebuilt, which is what
   // makes the documented rollback ("flag off, then rebuild") actually safe.
-  const evelandWorldUrl = options.evelandWorkflowWorldUrl ?? workerEnv.EVELAND_WORKFLOW_WORLD_URL;
-  if (evelandWorldUrl) {
+  // Injected into the deployment: the container's view of the database.
+  const evelandWorldUrl =
+    options.evelandWorkflowWorldUrl ?? resolveWorkflowWorldDeploymentUrl(workerEnv);
+  // Used from this process: the host's view. On Docker Desktop the injected
+  // URL names `host.docker.internal`, which does not resolve on the host.
+  const evelandWorldPlatformUrl =
+    options.evelandWorkflowWorldUrl ?? resolveWorkflowWorldPlatformUrl(workerEnv);
+  if (evelandWorldPlatformUrl) {
     const ensureTenant = options.ensureEvelandWorkflowTenant ?? ensureEvelandWorkflowTenant;
-    await ensureTenant(evelandWorldUrl, projectId);
+    await ensureTenant(evelandWorldPlatformUrl, projectId);
   }
   const schedulerRuntimeSecret =
     options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(workerEnv);

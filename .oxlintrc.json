@@ -1,4 +1,4 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["packages/db/drizzle/**", "**/next-env.d.ts"]
+  "ignorePatterns": ["packages/db/drizzle/**", "**/next-env.d.ts", ".eveland-e2e-data/**"]
 }

@@ -1,4 +1,5 @@
 import { dropEvelandWorkflowTenant } from "../../runtime/eveland-workflow-world-bootstrap.js";
+import { resolveWorkflowWorldPlatformUrl } from "../../runtime/eveland-workflow-world-url.js";
 import type { Store } from "@eveland/db";
 
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
@@ -72,7 +73,7 @@ export async function handleDeleteProjectJob(
   // Same for the platform world, where the project owns partitions rather than
   // a database. DROP TABLE on a partition reclaims the space immediately, which
   // is the whole reason the big tables are partitioned by tenant.
-  const evelandWorldUrl = process.env.EVELAND_WORKFLOW_WORLD_URL;
+  const evelandWorldUrl = resolveWorkflowWorldPlatformUrl(process.env);
   if (evelandWorldUrl) {
     await (options.dropEvelandWorkflowTenant ?? dropEvelandWorkflowTenant)(
       evelandWorldUrl,

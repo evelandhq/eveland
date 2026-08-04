@@ -590,9 +590,19 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "300000",
   ),
   urlEntry(
+    "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
+    ["worker", "workflow-dispatcher"],
+    "Host-reachable URL for the shared workflow database. Set when deployments reach Postgres by a different name than the platform does (e.g. host.docker.internal under Docker Desktop); defaults to EVELAND_WORKFLOW_WORLD_URL.",
+  ),
+  urlEntry(
     "EVELAND_WORKFLOW_WORLD_URL",
     ["worker", "workflow-dispatcher"],
     "Shared Postgres database backing @eveland/workflow-world; unset keeps projects on the per-project world-postgres databases.",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_WORLD_TARBALL",
+    ["worker"],
+    "Absolute path to a packed @eveland/workflow-world tarball to install instead of resolving it from the registry. For pre-publication validation and air-gapped installs.",
   ),
   entry(
     "EVELAND_WORKFLOW_WORLD_ROLLOUT",

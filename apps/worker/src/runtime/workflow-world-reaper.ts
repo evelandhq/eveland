@@ -66,11 +66,20 @@ export async function sweepWorkflowStreamRetention(
   const batchSize = sanitize(options.batchSize, 50_000, 1);
   const bootstrapBaseUrl = resolveBootstrapPostgresUrl(env, workflowPostgresUrl);
 
+  // The shared platform-world database can legitimately be named with the same
+  // `eveland_wf_` prefix these per-project databases use, and it has a
+  // different schema — partitioned chunks, no per-database sweep needed. Left
+  // in, this sweep tries to prune it every tick and logs a failure each time.
+  const platformWorldDatabase = databaseNameOf(
+    env.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL ?? env.EVELAND_WORKFLOW_WORLD_URL,
+  );
+
   let deleted = 0;
   for (const databaseName of await deps.listWorkflowDatabases(
     bootstrapBaseUrl,
     PROJECT_WORKFLOW_DATABASE_PREFIX,
   )) {
+    if (databaseName === platformWorldDatabase) continue;
     const url = new URL(bootstrapBaseUrl);
     url.pathname = `/${databaseName}`;
     try {
@@ -129,5 +138,14 @@ async function pruneTerminalStreamChunks(
     }
   } finally {
     await sql.end();
+  }
+}
+
+function databaseNameOf(connectionString: string | undefined): string | undefined {
+  if (!connectionString) return undefined;
+  try {
+    return new URL(connectionString).pathname.replace(/^\//, "") || undefined;
+  } catch {
+    return undefined;
   }
 }

@@ -1,4 +1,5 @@
 import { listDeploymentsWithActiveWorkflowRuns } from "../../runtime/eveland-workflow-world-bootstrap.js";
+import { resolveWorkflowWorldPlatformUrl } from "../../runtime/eveland-workflow-world-url.js";
 import type { DeploymentStatus } from "@eveland/core/contracts";
 import type { Store } from "@eveland/db";
 import { rm } from "node:fs/promises";
@@ -77,7 +78,7 @@ export async function handleArchiveDeploymentJob(
         // the only things able to resume it.
         deploymentsWithActiveWorkflowRuns: await (
           options.listDeploymentsWithActiveWorkflowRuns ?? listDeploymentsWithActiveWorkflowRuns
-        )(process.env.EVELAND_WORKFLOW_WORLD_URL, job.projectId),
+        )(resolveWorkflowWorldPlatformUrl(process.env), job.projectId),
       },
     );
     const policy = retention.find((entry) => entry.deployment.id === deployment.id);

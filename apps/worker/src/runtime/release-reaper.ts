@@ -1,6 +1,7 @@
 import type { Store } from "@eveland/db";
 import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
 import { listDeploymentsWithActiveWorkflowRuns } from "./eveland-workflow-world-bootstrap.js";
+import { resolveWorkflowWorldPlatformUrl } from "./eveland-workflow-world-url.js";
 
 export async function sweepReleaseRetention(
   store: Store,
@@ -32,7 +33,7 @@ export async function sweepReleaseRetention(
     // between `stopped` and `archiving` on every tick.
     const deploymentsWithActiveWorkflowRuns = await (
       input.listDeploymentsWithActiveWorkflowRuns ?? listDeploymentsWithActiveWorkflowRuns
-    )(input.evelandWorkflowWorldUrl ?? process.env.EVELAND_WORKFLOW_WORLD_URL, project.id);
+    )(input.evelandWorkflowWorldUrl ?? resolveWorkflowWorldPlatformUrl(process.env), project.id);
     const retention = await store.getDeploymentRetention(project.id, keepRecent, {
       ...input,
       deploymentsWithActiveWorkflowRuns,

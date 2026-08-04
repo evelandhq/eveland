@@ -21,6 +21,7 @@ import {
 } from "./types.js";
 import {
   buildWorkflowWorldInstallCommand,
+  WORKFLOW_WORLD_TARBALL_FILENAME,
   type WorkflowWorldBuildConfig,
 } from "./workflow-world.js";
 import { AGENT_OBSERVABILITY_MOUNT_DIR } from "./observability/policy.js";
@@ -221,8 +222,13 @@ export async function writeGeneratedDockerfile(
   await mkdir(buildDir, { recursive: true });
   const dockerfilePath = path.join(buildDir, "Dockerfile");
   const sandboxPackages = SANDBOX_TOOLCHAIN_APK_PACKAGES.join(" ");
+  // A tarball install reads a file, so it has to be in the image before the RUN
+  // that installs it — the broad `COPY . .` below happens afterwards.
+  const workflowWorldCopy = workflowWorld?.packageTarball
+    ? `COPY ${WORKFLOW_WORLD_TARBALL_FILENAME} ./\n`
+    : "";
   const workflowWorldInstall = workflowWorld
-    ? `RUN if [ -f pnpm-lock.yaml ]; then ${buildWorkflowWorldInstallCommand(workflowWorld, "pnpm")}; else ${buildWorkflowWorldInstallCommand(workflowWorld, "npm")}; fi\n`
+    ? `${workflowWorldCopy}RUN if [ -f pnpm-lock.yaml ]; then ${buildWorkflowWorldInstallCommand(workflowWorld, "pnpm")}; else ${buildWorkflowWorldInstallCommand(workflowWorld, "npm")}; fi\n`
     : "";
   // ARG, not ENV: a build arg is an environment variable for the RUN below
   // without persisting into the deployed image, where the runtime --env-file

@@ -4,6 +4,7 @@
     "CHANGELOG.md",
     ".release-please-manifest.json",
     "packages/db/drizzle/**",
-    "pnpm-lock.yaml"
+    "pnpm-lock.yaml",
+    ".eveland-e2e-data/**"
   ]
 }
