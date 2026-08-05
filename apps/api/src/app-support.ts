@@ -287,6 +287,19 @@ export function currentUserId(c: Context<{ Variables: { principal: AuthPrincipal
   return c.get("principal")?.userId ?? "user_local_admin";
 }
 
+/**
+ * Display attributes of the signed-in control-plane user, for the Playground
+ * authentication methods that mint an Eveland identity naming them. Returned
+ * separately from the id so the id stays the only thing most providers see.
+ */
+export function currentUserProfile(
+  c: Context<{ Variables: { principal: AuthPrincipal } }>,
+): { displayName: string | null; email: string | null } | undefined {
+  const principal = c.get("principal");
+  if (!principal) return undefined;
+  return { displayName: principal.name ?? null, email: principal.email ?? null };
+}
+
 export function agentAuthFailureStatus(failure: AgentAuthFailure): 401 | 409 | 422 | 503 {
   if (failure.code === "interaction_required" || failure.code === "credential_rejected") return 401;
   if (failure.code === "retry_required") return 409;

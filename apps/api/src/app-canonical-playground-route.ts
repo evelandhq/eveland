@@ -13,6 +13,7 @@ import type { AgentAuthService } from "./agent-auth-service.js";
 import {
   agentAuthFailureStatus,
   currentUserId,
+  currentUserProfile,
   monitorPlaygroundStream,
   parsePlaygroundBody,
   parsePlaygroundResponse,
@@ -64,6 +65,7 @@ export function registerCanonicalPlaygroundRoute(input: {
       const resolved = await agentAuth.resolveProjectAgentAuthCredential(
         projectId,
         currentUserId(c),
+        currentUserProfile(c),
       );
       if ("failure" in resolved.resolution) {
         return c.json(

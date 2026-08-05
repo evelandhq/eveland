@@ -7,7 +7,9 @@ const unsupported = async (): Promise<never> => {
 
 const persistence = {
   getIdentityProviderConnection: unsupported,
+  listIdentityProviderConnections: unsupported,
   getIdentityRealmByExternalId: unsupported,
+  createIdentityRealm: unsupported,
   upsertIdentityPrincipal: unsupported,
   createIdentitySession: unsupported,
   getActiveIdentitySession: unsupported,

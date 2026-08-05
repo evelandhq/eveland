@@ -7,6 +7,7 @@ import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
 import { createStoreFromEnv } from "@eveland/db/factory";
 import { createGatewayApp } from "./app.js";
 import { createApiActivationClient } from "./activation-client.js";
+import { createApiIdentityClient } from "./identity-client.js";
 
 const port = Number(process.env.GATEWAY_PORT ?? 4080);
 const buildInfo = createBuildInfoFromEnv("gateway", process.env);
@@ -32,6 +33,7 @@ const internalServiceToken = resolveSecretWithDevFallback(
   process.env.EVELAND_GATEWAY_SERVICE_TOKEN,
   "eveland-dev-gateway-token",
 );
+const apiInternalUrl = process.env.EVELAND_API_INTERNAL_URL ?? "http://127.0.0.1:4000";
 const { store, close } = createStoreFromEnv();
 await store.reconcileAgentRoutes(allowedBaseDomains[0] ?? "agent.localhost");
 const app = createGatewayApp(store, {
@@ -44,7 +46,13 @@ const app = createGatewayApp(store, {
   internalServiceToken,
   activationClient: internalServiceToken
     ? createApiActivationClient({
-        apiUrl: process.env.EVELAND_API_INTERNAL_URL ?? "http://127.0.0.1:4000",
+        apiUrl: apiInternalUrl,
+        serviceToken: internalServiceToken,
+      })
+    : undefined,
+  identityClient: internalServiceToken
+    ? createApiIdentityClient({
+        apiUrl: apiInternalUrl,
         serviceToken: internalServiceToken,
       })
     : undefined,

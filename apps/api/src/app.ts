@@ -8,6 +8,7 @@ import { proxyGatewayPlayground } from "./gateway-playground.js";
 import { registerInternalRoutes } from "./app-internal-routes.js";
 import {
   createIdentityRouteServices,
+  registerInternalIdentityRoutes,
   registerPublicIdentityRoutes,
   registerSystemIdentityRoutes,
 } from "./app-identity-routes.js";
@@ -18,6 +19,7 @@ import { registerSecretRoutes } from "./app-secret-routes.js";
 import type { AppOptions } from "./app-types.js";
 import { registerObservabilityRoutes } from "./app-observability-routes.js";
 import { createAgentAuthService } from "./agent-auth-service.js";
+import { createEvelandIdentityAgentAuthProvider } from "./agent-auth-eveland-identity.js";
 import { registerAgentAuthRoutes } from "./app-agent-auth-routes.js";
 import { registerCanonicalPlaygroundRoute } from "./app-canonical-playground-route.js";
 import {
@@ -74,7 +76,12 @@ export function createApp(
     appSecretKey,
     oidcCallbackUrl:
       options.oidcCallbackUrl ?? `${webOrigin.replace(/\/$/, "")}/agent-auth/oidc/callback`,
-    ...(options.agentAuthProviders ? { agentAuthProviders: options.agentAuthProviders } : {}),
+    agentAuthProviders: [
+      createEvelandIdentityAgentAuthProvider({
+        mintCallerToken: (request) => identityRouteServices.broker.mintPlatformCallerToken(request),
+      }),
+      ...(options.agentAuthProviders ?? []),
+    ],
     ...(options.oidcProtocol ? { oidcProtocol: options.oidcProtocol } : {}),
     ...(options.oidcVerifyAccessToken
       ? { oidcVerifyAccessToken: options.oidcVerifyAccessToken }
@@ -116,6 +123,9 @@ export function createApp(
     runtimeActivationWaitTimeoutMs,
     appSecretKey,
   });
+  // Before the control-plane auth boundary: the Gateway authenticates with the
+  // service token, not a member session.
+  registerInternalIdentityRoutes(identityRouteContext, identityRouteServices);
   registerPublicIdentityRoutes(identityRouteContext, identityRouteServices);
   registerAgentCatalogRoutes({
     app,

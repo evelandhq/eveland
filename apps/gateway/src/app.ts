@@ -188,6 +188,12 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       limitBytes: maxRequestBodyBytes,
     });
     if (!routingBody.ok) return routingBody.response;
+    // Only minted when the caller sent nothing of its own; a failed mint
+    // yields null and the request is forwarded unchanged.
+    const injectedCallerToken =
+      options.identityClient && !context.req.header("authorization")
+        ? await options.identityClient.callerToken(route.projectId)
+        : null;
     const session = await resolveGatewaySessionBinding({
       repository,
       projectId: route.projectId,
@@ -235,6 +241,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
             requestUrl.protocol,
             requestId,
             remoteIp,
+            injectedCallerToken,
           ),
         decorateResponseHeaders: (headers) => {
           if (affinity.cookieValue) {
