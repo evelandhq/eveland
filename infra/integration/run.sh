@@ -81,6 +81,15 @@ limactl shell "$VM" -- sudo bash -c "
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/gateway-e2e.mts
 
+  # Identity Provider handoff proof: an Agent authenticating with the workspace
+  # SDK's evelandIdentity() only, deployed for real, driven through the Gateway.
+  # Open access injects a verifiable Caller Token; Eveland Internal refuses
+  # anonymous callers with the eveland challenge and admits a token minted via
+  # the real /identity/login -> /identity/caller-tokens handoff.
+  EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
+    EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
+    corepack pnpm exec tsx infra/integration/identity-e2e.mts
+
   # Complete scheduler/scale-to-zero proof against the latest verified Eve and the real
   # systemd runtime: dormant cron wake, OTLP usage, native no-op, idle
   # shutdown, and a bound public continuation wake.

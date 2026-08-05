@@ -3,9 +3,52 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import {
+  authAccounts,
+  authSessions,
+  authVerifications,
+  invitations,
+  teamMemberships,
+  teams,
+  users,
+} from "@eveland/db/schema";
 import type { Store } from "@eveland/db";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { createBetterAuthRuntime } from "./auth.js";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * The Better Auth runtime wired the way identity-routes.test.ts wires it, but
+ * exported so out-of-package harnesses (infra/integration/*.mts) can build a
+ * control plane with real sign-in without resolving `better-auth` themselves --
+ * bare specifiers only resolve from inside apps/api.
+ */
+export function createControlPlaneAuthRuntime(input: {
+  /** A drizzle database over the same PGlite/Postgres the Store uses. */
+  db: unknown;
+  baseURL: string;
+  webOrigin: string;
+  secret: string;
+}) {
+  return createBetterAuthRuntime({
+    database: drizzleAdapter(input.db as Parameters<typeof drizzleAdapter>[0], {
+      provider: "pg",
+      schema: {
+        user: users,
+        session: authSessions,
+        account: authAccounts,
+        verification: authVerifications,
+        organization: teams,
+        member: teamMemberships,
+        invitation: invitations,
+      },
+    }),
+    baseURL: input.baseURL,
+    webOrigin: input.webOrigin,
+    secret: input.secret,
+  });
+}
 
 export async function createScheduleRunFixture(store: Store, createRun = true) {
   const project = await store.createProject({
