@@ -1,6 +1,6 @@
 {
-  "id": "ae72c4b4-4766-4ffa-9fc0-47d41e79bac1",
-  "prevId": "6937f7c3-b31e-482f-8f25-6223c184383a",
+  "id": "9e299c7a-40c7-4365-8075-1c3acac6f3e4",
+  "prevId": "ae72c4b4-4766-4ffa-9fc0-47d41e79bac1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1758,18 +1758,18 @@
         }
       },
       "indexes": {
-        "identity_provider_connections_one_enabled_internal_idx": {
-          "name": "identity_provider_connections_one_enabled_internal_idx",
+        "identity_provider_connections_one_enabled_idx": {
+          "name": "identity_provider_connections_one_enabled_idx",
           "columns": [
             {
-              "expression": "type",
-              "isExpression": false,
+              "expression": "(true)",
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "where": "\"identity_provider_connections\".\"type\" = 'internal' and \"identity_provider_connections\".\"enabled\" = true",
+          "where": "\"identity_provider_connections\".\"enabled\" = true",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1782,7 +1782,7 @@
       "checkConstraints": {
         "identity_provider_connections_type_check": {
           "name": "identity_provider_connections_type_check",
-          "value": "\"identity_provider_connections\".\"type\" in ('internal', 'oidc')"
+          "value": "\"identity_provider_connections\".\"type\" in ('internal', 'oidc', 'open')"
         },
         "identity_provider_connections_revision_check": {
           "name": "identity_provider_connections_revision_check",
@@ -1790,7 +1790,7 @@
         },
         "identity_provider_connections_shape_check": {
           "name": "identity_provider_connections_shape_check",
-          "value": "(\n        \"identity_provider_connections\".\"type\" = 'internal'\n        and \"identity_provider_connections\".\"internal_realm_key\" is not null\n        and \"identity_provider_connections\".\"issuer\" is null\n        and \"identity_provider_connections\".\"client_id\" is null\n      ) or (\n        \"identity_provider_connections\".\"type\" = 'oidc'\n        and \"identity_provider_connections\".\"internal_realm_key\" is null\n        and \"identity_provider_connections\".\"issuer\" is not null\n        and \"identity_provider_connections\".\"client_id\" is not null\n        and \"identity_provider_connections\".\"token_endpoint_auth_method\" in ('client_secret_basic', 'client_secret_post', 'none')\n      )"
+          "value": "(\n        \"identity_provider_connections\".\"type\" = 'open'\n        and \"identity_provider_connections\".\"internal_realm_key\" is null\n        and \"identity_provider_connections\".\"issuer\" is null\n        and \"identity_provider_connections\".\"client_id\" is null\n      ) or (\n        \"identity_provider_connections\".\"type\" = 'internal'\n        and \"identity_provider_connections\".\"internal_realm_key\" is not null\n        and \"identity_provider_connections\".\"issuer\" is null\n        and \"identity_provider_connections\".\"client_id\" is null\n      ) or (\n        \"identity_provider_connections\".\"type\" = 'oidc'\n        and \"identity_provider_connections\".\"internal_realm_key\" is null\n        and \"identity_provider_connections\".\"issuer\" is not null\n        and \"identity_provider_connections\".\"client_id\" is not null\n        and \"identity_provider_connections\".\"token_endpoint_auth_method\" in ('client_secret_basic', 'client_secret_post', 'none')\n      )"
         }
       },
       "isRLSEnabled": false

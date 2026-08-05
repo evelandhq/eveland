@@ -438,7 +438,10 @@ export type SessionNode = {
   agentName: string | null;
   nodeId: string | null;
   channelKind: string | null;
+  /** The manifest model id Eve reported on `session.started`. */
   modelId: string | null;
+  /** The model the Agent process was last observed actually calling. */
+  observedModelId: string | null;
   eveVersion: string | null;
   remoteUrl: string | null;
   resolutionStatus: "observed" | "unresolved";
@@ -466,6 +469,8 @@ export type ModelUsageEvent = {
   agentName: string | null;
   turnId: string;
   stepIndex: number;
+  /** The model observed actually serving this step; null before the capture existed. */
+  modelId: string | null;
   finishReason: string | null;
   inputTokens: number | null;
   outputTokens: number | null;

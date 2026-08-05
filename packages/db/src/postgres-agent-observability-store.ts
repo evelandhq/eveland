@@ -353,6 +353,7 @@ export async function ingestPostgresAgentEvent(
         agentId: stringValue(runtime?.agentId) ?? node.agentId,
         agentName: stringValue(runtime?.agentName) ?? node.agentName,
         modelId: stringValue(runtime?.modelId) ?? node.modelId,
+        observedModelId: observation.observedModel?.modelId ?? node.observedModelId,
         eveVersion: stringValue(runtime?.eveVersion) ?? node.eveVersion,
         updatedAt: new Date(),
       })
@@ -532,6 +533,7 @@ export async function ingestPostgresAgentEvent(
           agentName: node!.agentName,
           turnId: usage.turnId,
           stepIndex: usage.stepIndex,
+          modelId: observation.observedModel?.modelId ?? null,
           finishReason: usage.finishReason,
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,

@@ -4,6 +4,7 @@ import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { InputRequestedStreamEvent } from "eve/client";
 import { afterEach, describe, expect, test } from "vitest";
+import { createModelCallCapture } from "./runtime/model-capture.js";
 import {
   createPrivateAgentTelemetryRuntime,
   type PrivateAgentTelemetryRuntime,
@@ -793,6 +794,82 @@ describe("private Agent telemetry runtime", () => {
     expect(JSON.stringify(traces.getFinishedSpans().map((span) => span.attributes))).not.toContain(
       "private chain of thought",
     );
+  });
+
+  test("replaces the manifest model with the one the AI SDK actually called", async () => {
+    const traces = new InMemorySpanExporter();
+    const logs = new InMemoryLogRecordExporter();
+    const target: { AI_SDK_TELEMETRY_INTEGRATIONS?: Array<Record<string, unknown>> } = {};
+    const modelCapture = createModelCallCapture(target);
+    modelCapture.install();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy(),
+      exporters: {
+        traces,
+        logs,
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+      modelCapture,
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+    const onStepEnd = target.AI_SDK_TELEMETRY_INTEGRATIONS?.[0]?.onStepEnd as (
+      event: unknown,
+    ) => void;
+
+    await runtime.capture(
+      { type: "session.started", data: { runtime: { modelId: "openai/gpt-5" } } },
+      context,
+    );
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
+      context,
+    );
+    // The env-derived model diverged from the manifest; the AI SDK reports
+    // the call that actually ran before Eve emits step.completed.
+    onStepEnd({
+      model: { provider: "gateway", modelId: "openai/gpt-6" },
+      response: { modelId: "gpt-6-2026-01-01" },
+      usage: { inputTokens: 12, outputTokens: 3 },
+      finishReason: "tool-calls",
+    });
+    await runtime.capture(
+      {
+        type: "step.completed",
+        data: {
+          turnId: "turn_1",
+          stepIndex: 0,
+          finishReason: "tool-calls",
+          usage: { inputTokens: 12, outputTokens: 3 },
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 1 } },
+      context,
+    );
+    await runtime.capture(
+      { type: "step.completed", data: { turnId: "turn_1", stepIndex: 1, finishReason: "stop" } },
+      context,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
+    await runtime.forceFlush();
+
+    const chatSpans = traces.getFinishedSpans().filter((span) => span.name.startsWith("chat"));
+    expect(chatSpans.map((span) => span.name)).toEqual(["chat openai/gpt-6", "chat openai/gpt-6"]);
+    expect(chatSpans[0]?.attributes).toMatchObject({
+      "gen_ai.request.model": "openai/gpt-6",
+      "gen_ai.response.model": "gpt-6-2026-01-01",
+    });
+    const stepLog = logs
+      .getFinishedLogRecords()
+      .find((record) => record.attributes["eveland.eve.event.type"] === "step.completed");
+    expect(stepLog?.attributes).toMatchObject({
+      "eveland.gen_ai.observed.model": "openai/gpt-6",
+      "eveland.gen_ai.observed.response_model": "gpt-6-2026-01-01",
+    });
   });
 });
 

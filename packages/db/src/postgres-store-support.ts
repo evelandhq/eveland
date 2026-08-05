@@ -233,6 +233,7 @@ export function modelUsageRowToModelUsageEvent(
     agentName: row.agentName,
     turnId: row.turnId,
     stepIndex: row.stepIndex,
+    modelId: row.modelId,
     finishReason: row.finishReason,
     inputTokens: row.inputTokens,
     outputTokens: row.outputTokens,
