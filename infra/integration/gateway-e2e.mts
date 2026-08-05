@@ -117,11 +117,7 @@ async function main(): Promise<void> {
         headers: { "content-type": "application/json", "x-eveland-version-key": candidateAffinity },
         body: JSON.stringify({ message: "Ask the researcher to verify Gateway streaming." }),
       });
-      assert.equal(
-        created.statusCode,
-        202,
-        `*.localhost should receive Eve localDev access: ${created.body}`,
-      );
+      assert.equal(created.statusCode, 202, `session create failed: ${created.body}`);
       const createdBody = JSON.parse(created.body) as { sessionId?: string };
       const eveSessionId = created.headers["x-eve-session-id"]?.toString() ?? createdBody.sessionId;
       assert.ok(eveSessionId);
@@ -249,6 +245,19 @@ async function main(): Promise<void> {
           `Agent port was publicly bound: ${dockerPort.stdout}`,
         );
 
+      // This used to assert 401: the fixture ran localDev(), which authorized on
+      // the request Host, so a spoofed `x-forwarded-host: localhost` reaching
+      // the Agent would have authenticated and the 401 proved the Gateway had
+      // rebuilt the forwarding headers. Eve 0.30's localDev() ignores Host
+      // entirely, so nothing downstream can be fooled by a Host spoof any more
+      // and the assertion would pass for a reason unrelated to what it guarded.
+      //
+      // The invariant itself lives in the Gateway, and that is where it is now
+      // asserted -- apps/gateway/src/app.test.ts drives a real upstream that
+      // echoes its received headers and checks the Agent is never handed a
+      // loopback authority, nor client-supplied forwarding headers. What stays
+      // worth proving end to end is that a non-localhost production Host routes
+      // at all, which the previous shape could not distinguish from a 401.
       await store.reconcileAgentRoutes("agents.example.com");
       const productionRoute = await store.findProjectRoute(project.id);
       assert.ok(productionRoute);
@@ -261,16 +270,12 @@ async function main(): Promise<void> {
           "x-forwarded-host": "localhost",
           forwarded: "host=localhost",
         },
-        body: JSON.stringify({ message: "must remain unauthorized" }),
+        body: JSON.stringify({ message: "production Host must route" }),
       });
-      assert.equal(
-        production.statusCode,
-        401,
-        `production Host spoofing reached Eve localDev: ${production.body}`,
-      );
+      assert.equal(production.statusCode, 202, `production Host did not route: ${production.body}`);
 
       console.log(
-        `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=${cancelledBody.status} promoted=1 rolledBack=1 preview=200 localDev=202 production=401 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
+        `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=${cancelledBody.status} promoted=1 rolledBack=1 preview=200 create=202 production=202 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
       );
     } finally {
       if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));

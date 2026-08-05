@@ -1,7 +1,7 @@
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 
 import { describe, expect, test, vi } from "vitest";
-import { httpBasic, localDev, routeAuth } from "eve/channels/auth";
+import { httpBasic, routeAuth } from "eve/channels/auth";
 
 import { evelandIdentity, parseEvelandAuthenticationChallenge } from "./auth.js";
 
@@ -490,7 +490,7 @@ describe("evelandIdentity", () => {
     await expect(auth(request(fixture.token({}, { typ: "JOSE" })))).resolves.toBeNull();
   });
 
-  test("lets an explicit localDev fallback handle unrecognized credentials", async () => {
+  test("lets an explicit fallback handle unrecognized credentials", async () => {
     const fixture = tokenFixture();
     const auth = evelandIdentity({
       issuer,
@@ -499,11 +499,22 @@ describe("evelandIdentity", () => {
       fetch: fixture.fetch,
     });
 
+    // The fallback is httpBasic rather than localDev: from Eve 0.30, localDev()
+    // admits nothing unless the process is `eve dev`, so it could no longer
+    // show that the walk continued. What matters here is that a credential
+    // this AuthFn does not recognize reaches the next one and authenticates
+    // there, instead of ending the walk.
+    const basic = Buffer.from("agent:secret").toString("base64");
     await expect(
-      routeAuth(request("not-a-jwt", "http://localhost/eve/v1/session"), [auth, localDev()]),
+      routeAuth(
+        new Request("https://agent.example/eve/v1/session", {
+          method: "POST",
+          headers: { authorization: `Basic ${basic}` },
+        }),
+        [auth, httpBasic({ username: "agent", password: "secret" }, { realm: "agent" })],
+      ),
     ).resolves.toMatchObject({
-      authenticator: "local-dev",
-      principalType: "local-dev",
+      authenticator: "http-basic",
     });
   });
 

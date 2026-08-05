@@ -169,8 +169,8 @@ describe("Gateway", () => {
     });
     repo.getDeploymentEveVersion = vi.fn(async () => ({
       version: "0.22.6",
-      expected: "0.27.x, 0.28.x, or 0.29.x" as const,
-      supportedRanges: ["0.27.x", "0.28.x", "0.29.x"] as const,
+      expected: "0.28.x, 0.29.x, or 0.30.x" as const,
+      supportedRanges: ["0.28.x", "0.29.x", "0.30.x"] as const,
       supported: false,
       sourceRevisionId: "src_old",
     }));
@@ -201,11 +201,11 @@ describe("Gateway", () => {
       await expect(response.json()).resolves.toEqual({
         error: "Unsupported Eve version",
         detail:
-          'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.27.x, 0.28.x, or 0.29.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+          'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.28.x, 0.29.x, or 0.30.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
         eveVersion: {
           version: "0.22.6",
-          expected: "0.27.x, 0.28.x, or 0.29.x",
-          supportedRanges: ["0.27.x", "0.28.x", "0.29.x"],
+          expected: "0.28.x, 0.29.x, or 0.30.x",
+          supportedRanges: ["0.28.x", "0.29.x", "0.30.x"],
           supported: false,
           sourceRevisionId: "src_old",
         },
@@ -478,6 +478,44 @@ describe("Gateway", () => {
       "eve_session=abc; HttpOnly",
       "variant=v1; HttpOnly",
     ]);
+  });
+
+  test("never hands a public Agent a loopback authority, however the caller spoofs", async () => {
+    const upstream = await startUpstream((request, response) => {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify(request.headers));
+    });
+    const app = createGatewayApp(
+      repository([route({ hostname: "p-alpha.agents.example.com", hostPort: upstream.port })]),
+      { allowedBaseDomains: ["agents.example.com"], affinitySecret },
+    );
+
+    const response = await app.request("http://p-alpha.agents.example.com/eve/v1/session", {
+      method: "POST",
+      headers: {
+        host: "p-alpha.agents.example.com",
+        "content-type": "application/json",
+        "x-forwarded-host": "localhost",
+        "x-forwarded-for": "127.0.0.1",
+        forwarded: "host=localhost;for=127.0.0.1",
+      },
+      body: JSON.stringify({ message: "hello" }),
+    });
+    const headers = (await response.json()) as Record<string, string>;
+
+    // Agents on Eve 0.28/0.29 authorize on the request Host through localDev(),
+    // so a caller that could make the Agent see a loopback name would
+    // authenticate itself. Eve 0.30 stopped reading Host, but those lines are
+    // still inside the supported window, and this is the Gateway's invariant
+    // either way -- the Playground reaches an Agent over loopback deliberately,
+    // and public traffic must never be able to imitate it.
+    const loopback = /^(localhost|127\.|\[::1\])/;
+    expect(headers.host).toBe("p-alpha.agents.example.com");
+    expect(headers.host).not.toMatch(loopback);
+    expect(headers["x-forwarded-host"]).toBe("p-alpha.agents.example.com");
+    expect(headers["x-forwarded-host"]).not.toMatch(loopback);
+    expect(headers.forwarded).toContain("host=");
+    expect(headers.forwarded).not.toContain("localhost");
   });
 
   test("transparently forwards Agent authentication challenges", async () => {
