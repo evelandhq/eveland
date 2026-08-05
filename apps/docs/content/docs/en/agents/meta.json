@@ -1,4 +1,4 @@
 {
   "title": "Deploy agents",
-  "pages": ["first-deployment", "secrets-connections", "releases-routing"]
+  "pages": ["first-deployment", "secrets-connections", "releases-routing", "migrate-eve-0-30"]
 }

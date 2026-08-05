@@ -100,6 +100,16 @@ describe("Eve compatibility repository contract", () => {
       `  eve-peer:\n    eve: "${EVE_COMPATIBILITY_POLICY.peerDependencyRange}"`,
     );
 
+    // The SDK's ceiling is deliberately independent of the platform window, but
+    // its floor is not: advertising support for a line Eveland can no longer
+    // host would point developers at an Agent that cannot be deployed.
+    const sdkPeerRange = /\n {2}eve-sdk-peer:\n {4}eve: "([^"]+)"/.exec(workspace)?.[1];
+    const policyFloor = /^(>=\d+\.\d+\.\d+)/.exec(
+      EVE_COMPATIBILITY_POLICY.peerDependencyRange,
+    )?.[1];
+    expect(sdkPeerRange, "eve-sdk-peer must be declared").toBeDefined();
+    expect(sdkPeerRange).toContain(policyFloor!);
+
     const packagePaths = globSync(
       ["apps/**/package.json", "packages/**/package.json", "infra/**/package.json"],
       {
@@ -143,7 +153,13 @@ describe("Eve compatibility repository contract", () => {
       }
       if (packageJson.peerDependencies?.eve !== undefined) {
         peerConsumers.add(packagePath);
-        expect(packageJson.peerDependencies.eve, packagePath).toBe("catalog:eve-peer");
+        // Two contracts, deliberately not one. sandbox-bwrap implements
+        // SandboxBackend and is vendored into every Release, so it tracks
+        // exactly what the platform can host. The published SDK imports four
+        // auth primitives and versions on its own; see eve-sdk-peer.
+        expect(packageJson.peerDependencies.eve, packagePath).toBe(
+          packagePath === "packages/sdk/package.json" ? "catalog:eve-sdk-peer" : "catalog:eve-peer",
+        );
       }
     }
 

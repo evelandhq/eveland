@@ -526,9 +526,9 @@ Project 页面展示最近 Git import job 的 queued/running/failed 状态，在
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 
 Eveland 在 Eve 达到稳定产品兼容承诺前，支持“最新一个已经完成验证的 minor 与其前两个
-minor”的三版本滑动窗口；当前窗口是 0.27.x、0.28.x 与 0.29.x。允许精确的 0.27/0.28/0.29
-patch、锚定在对应 minor patch 上的 `~`/`^` range，以及 `0.27` / `0.27.x` / `0.27.*`、
-`0.28` / `0.28.x` / `0.28.*`、`0.29` / `0.29.x` / `0.29.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
+minor”的三版本滑动窗口；当前窗口是 0.28.x、0.29.x 与 0.30.x。允许精确的 0.28/0.29/0.30
+patch、锚定在对应 minor patch 上的 `~`/`^` range，以及 `0.28` / `0.28.x` / `0.28.*`、
+`0.29` / `0.29.x` / `0.29.*`、`0.30` / `0.30.x` / `0.30.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
 Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、reset 和 stream 请求，不能通过已有的
@@ -620,11 +620,20 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 不是 Project、Deployment、Eve Connection 或控制面登录 Session。Connection 专指 Eve
 `agent/connections/*` 中 Agent 访问外部 MCP/OpenAPI server 的能力。Playground authentication 当前通用方法包括：
 
-- `local-dev`：不发送 credential，并且只允许 Gateway 用 loopback Host 调用 Eve `localDev()`；
+- `local-dev`：不发送 credential，并且用 loopback Host 调用 Agent。**这只对 Eve
+  0.28/0.29 的 Agent 构成认证**——它们的 `localDev()` 看请求 Host。Eve 0.30 起
+  `localDev()` 改为只看进程是否 `eve dev`，而 Agent 在 Eveland 上以 `eve start` 运行，
+  因此该方法对 0.30 Agent 不再放行任何请求；这类项目应改用 `eveland-identity` 或 Agent
+  自有的 AuthFn。Gateway“绝不为公网流量把 Host 改写成 loopback”的不变量与本条无关，
+  且必须保留；
 - `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
+- `eveland-identity`：发送 Eveland 签发的 Caller Token，让 Agent 的 `evelandIdentity()`
+  看到与真实调用方一致的身份。无配置字段：token 代表哪个 Principal 取决于实例的
+  Identity Provider——Open 模式用共享 Principal，Eveland Internal 用当前登录的控制面
+  用户（因此按 Caller 而非按 Connection 缓存），OIDC 暂不支持；
 - `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
 - `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
-- `vercel-oidc`：镜像 Eve 0.29.5 Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
+- `vercel-oidc`：镜像 Eve Client，同时发送 Vercel OIDC Bearer 与 trusted deployment header；
 - `oidc`：每个 Caller Principal 独立通过 Authorization Code + PKCE 获取、验证并刷新 Bearer token；
 - `headers`：发送显式配置、经过保留 Header policy 校验的 custom credential headers。
 

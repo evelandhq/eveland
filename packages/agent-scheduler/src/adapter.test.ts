@@ -18,12 +18,20 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
 );
 describe("injectSchedulerAdapter", () => {
   test("fails closed outside the latest three verified Eve minors", async () => {
-    for (const eveVersion of ["0.26.2", "0.30.0", "~0.30.0", ">=0.27.0", "*", "latest"]) {
+    for (const eveVersion of [
+      "0.26.2",
+      "0.27.13",
+      "0.31.0",
+      "~0.31.0",
+      ">=0.28.0",
+      "*",
+      "latest",
+    ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
         new RegExp(
-          `supports Eve 0\\.27\\.x, 0\\.28\\.x, or 0\\.29\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+          `supports Eve 0\\.28\\.x, 0\\.29\\.x, or 0\\.30\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
         ),
       );
     }
@@ -31,13 +39,6 @@ describe("injectSchedulerAdapter", () => {
 
   test("accepts every dependency form that stays inside a verified Eve minor", async () => {
     for (const eveVersion of [
-      "0.27.0",
-      "0.27.13",
-      "~0.27.2",
-      "^0.27.0",
-      "0.27",
-      "0.27.x",
-      "0.27.*",
       "0.28.0",
       "~0.28.0",
       "^0.28.0",
@@ -51,6 +52,13 @@ describe("injectSchedulerAdapter", () => {
       "0.29",
       "0.29.x",
       "0.29.*",
+      "0.30.0",
+      "0.30.6",
+      "~0.30.2",
+      "^0.30.0",
+      "0.30",
+      "0.30.x",
+      "0.30.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 

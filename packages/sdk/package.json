@@ -1,6 +1,6 @@
 {
   "name": "eveland",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "AGPL-3.0-only",
   "files": [
     "dist",
@@ -27,7 +27,7 @@
     "vitest": "^4.1.9"
   },
   "peerDependencies": {
-    "eve": "catalog:eve-peer"
+    "eve": "catalog:eve-sdk-peer"
   },
   "engines": {
     "node": ">=24.0.0"
