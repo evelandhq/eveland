@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.26.0](https://github.com/evelandhq/eveland/compare/v0.25.0...v0.26.0) (2026-08-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **eve:** Agents pinned to Eve 0.27.x are no longer supported. Import, build, restart, cold activation, Playground traffic, public session requests, and schedule execution fail closed with a diagnostic asking the project owner to upgrade.
+
+### Features
+
+* **eve:** support Eve 0.30 and slide the verified window to 0.28-0.30 ([#271](https://github.com/evelandhq/eveland/issues/271)) ([d665de9](https://github.com/evelandhq/eveland/commit/d665de9fa579f3e3ae72a2fe530bcf1fdea2557c))
+* **identity:** open access Identity Provider with Gateway Caller Token injection ([#269](https://github.com/evelandhq/eveland/issues/269)) ([eb6b54d](https://github.com/evelandhq/eveland/commit/eb6b54d53397b1ec70e6a3c36c9b16d4fb238bd7))
+* **observability:** capture the model id the Agent actually calls ([#268](https://github.com/evelandhq/eveland/issues/268)) ([1d2499b](https://github.com/evelandhq/eveland/commit/1d2499ba7f59db516510c8b48d33154dcb6694f3))
+* **observability:** record Agent model call input and output as GenAI messages ([#264](https://github.com/evelandhq/eveland/issues/264)) ([76260d4](https://github.com/evelandhq/eveland/commit/76260d4f544b56db6f26510f7985a3df07bdfe05))
+
 ## [0.25.0](https://github.com/evelandhq/eveland/compare/v0.24.0...v0.25.0) (2026-08-03)
 
 
