@@ -28,7 +28,7 @@ import {
   type AgentAuthSecretReferenceOption,
 } from "@/lib/client-api";
 
-export function AgentConnectionSettings({ projectId }: { projectId: string }) {
+export function PlaygroundAuthenticationSettings({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [methods, setMethods] = useState<AgentAuthMethodDescriptor[]>([]);
   const [connection, setConnection] = useState<AgentConnectionView | null>(null);
