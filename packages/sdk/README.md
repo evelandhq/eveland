@@ -72,6 +72,20 @@ evelandIdentity({ logger: (message, fields) => log.debug(message, fields) });
 
 `eveland` versions independently of the Eveland platform: its compatibility
 contract is the `eve` peer range plus the exports documented above, not a
-platform release number. Publishing is a manual, deliberate step; CI verifies
+platform release number.
+
+That peer range is deliberately wider than the Eve version window Eveland can
+host. This package imports four primitives from `eve/channels/auth`, and they
+have been stable across every line in the window; the platform pins Eve far
+more tightly because it also has to build, sandbox, and stream Agents. Tying
+the two together meant republishing the SDK on every window slide and leaving
+anyone already on a newer Eve with a peer warning that told them nothing. The
+lower bound still follows the window, because an Agent on a line Eveland cannot
+host is not deployable whatever this package supports.
+
+Eve is pre-1.0, so a future minor may still change those four primitives
+without a major bump. This package's tests import them from the newest Eve in
+the window, so CI fails the moment one disappears — but a consumer who upgrades
+Eve ahead of that will not get an install-time warning first. Publishing is a manual, deliberate step; CI verifies
 on every commit that the packed tarball installs into a clean project and
 imports cleanly, so the package stays publishable from `main` at any time.
