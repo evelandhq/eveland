@@ -209,7 +209,9 @@ export function createPostgresUsageStore({ db }: PostgresStoreContext): UsageSto
             startedAt: sessions.startedAt,
           },
           projectName: projects.name,
-          modelId: sessionNodes.modelId,
+          modelId: sql<
+            string | null
+          >`coalesce(${modelUsageEvents.modelId}, ${sessionNodes.modelId})`,
         })
         .from(modelUsageEvents)
         .innerJoin(sessions, eq(sessions.id, modelUsageEvents.sessionId))

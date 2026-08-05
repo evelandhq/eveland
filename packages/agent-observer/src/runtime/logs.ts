@@ -8,6 +8,7 @@ import type {
   RuntimeAgentPolicy,
 } from "./contracts.js";
 import { commonAttributes } from "./attributes.js";
+import type { ObservedModelCall } from "./model-capture.js";
 import { asDate, asNonNegativeInteger, asRecord, asString, canonicalJson } from "./values.js";
 
 const collectedEventTypes = new Set([
@@ -55,6 +56,7 @@ export function emitAgentTelemetryEventLog(input: {
   correlatedSpan: Span | undefined;
   logger: ReturnType<LoggerProvider["getLogger"]>;
   policy: RuntimeAgentPolicy;
+  observedModel?: ObservedModelCall;
 }): void {
   const body = sanitizeForPolicy(input.event, input.policy.capture, input.eventType);
   const eventData = asRecord(input.event.data);
@@ -75,6 +77,12 @@ export function emitAgentTelemetryEventLog(input: {
         .digest("hex"),
       ...(parentSessionId ? { "eveland.eve.parent_session.id": parentSessionId } : {}),
       ...(stepIndex !== undefined ? { "eveland.eve.step.index": stepIndex } : {}),
+      ...(input.observedModel
+        ? { "eveland.gen_ai.observed.model": input.observedModel.modelId }
+        : {}),
+      ...(input.observedModel?.responseModelId
+        ? { "eveland.gen_ai.observed.response_model": input.observedModel.responseModelId }
+        : {}),
     },
   );
   const eventDate = asDate(input.event.meta?.at);

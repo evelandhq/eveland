@@ -1,9 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
 import { createPolicyManagedAgentTelemetry } from "./policy-runtime.js";
+import { modelCallCapture } from "./runtime/model-capture.js";
 import type { AgentTelemetryEvent, AgentTelemetryHookContext } from "./runtime.js";
 
 let lastWarningAt = 0;
+
+// Hooks load at Agent startup, before any model call, so the capture sees
+// every call the AI SDK dispatches in this process.
+modelCallCapture.install();
 
 const telemetry = createPolicyManagedAgentTelemetry({
   loadPolicy: async () => JSON.parse(await readFile(AGENT_RUNTIME_POLICY_PATH, "utf8")) as unknown,

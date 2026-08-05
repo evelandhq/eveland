@@ -182,7 +182,9 @@ export default async function SessionTimelinePage({
                 </div>
                 <div className="text-right text-muted-foreground">
                   <div>{node.status}</div>
-                  <div className="mt-1">{node.modelId ?? node.channelKind ?? "local"}</div>
+                  <div className="mt-1">
+                    {node.observedModelId ?? node.modelId ?? node.channelKind ?? "local"}
+                  </div>
                 </div>
               </div>
             ))}
