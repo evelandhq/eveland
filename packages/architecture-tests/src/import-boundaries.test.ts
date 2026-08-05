@@ -33,11 +33,23 @@ function declaredWorkspaceDependencies(manifest: Record<string, unknown>): Set<s
   return names;
 }
 
+// Standalone e2e fixtures are imported eve PROJECTS embedded as data, not
+// workspace source: each declares its own `eve` (and identity-e2e the
+// published `eveland`) exactly the way a customer project does, and the
+// worker's tsconfig excludes them from compilation for the same reason. Their
+// imports are the customer's imports, so the workspace boundary rules do not
+// apply to them; the compatibility ratchet pins their dependency shape
+// instead (eve-compatibility-consistency.test.ts).
+function isStandaloneFixtureFile(file: string): boolean {
+  return file.includes("/integration/fixtures/");
+}
+
 describe("workspace import boundaries", () => {
   test("no app imports another app, and nothing imports the published sdk", () => {
     const violations: string[] = [];
     for (const workspace of workspaces) {
       for (const file of listSourceFiles(`${workspace.directory}/src`)) {
+        if (isStandaloneFixtureFile(file)) continue;
         for (const specifier of importSpecifiers(readSource(file))) {
           const packageName = specifier.startsWith("@")
             ? specifier.split("/").slice(0, 2).join("/")
