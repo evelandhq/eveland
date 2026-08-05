@@ -506,6 +506,24 @@ export function createPostgresIdentityStore(context: PostgresStoreContext): Iden
 }
 
 function providerValues(input: Parameters<IdentityStore["createIdentityProviderConnection"]>[0]) {
+  if (input.type === "open") {
+    return {
+      id: createId("idpc"),
+      type: input.type,
+      displayName: input.displayName,
+      internalRealmKey: null,
+      issuer: null,
+      clientId: null,
+      clientSecretEncrypted: null,
+      scopes: [],
+      authorizationParameters: {},
+      tokenEndpointAuthMethod: null,
+      externalRealmResolution: "open_shared",
+      externalRealmClaim: null,
+      enabled: input.enabled,
+      securityRevision: 1,
+    };
+  }
   if (input.type === "internal") {
     if (!input.internalRealmKey) throw new Error("Internal Realm key is required.");
     return {

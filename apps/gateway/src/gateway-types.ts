@@ -11,6 +11,16 @@ export type GatewayRepository = GatewaySessionBindingRepository & {
   getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
 };
 
+export type GatewayIdentityClient = {
+  /**
+   * The open-access Caller Token for this Project, or null when one cannot be
+   * minted. Null means "forward without injecting" -- the Gateway is a
+   * transport, so a degraded Identity service must not stop traffic reaching
+   * Agents that never asked for an Eveland identity in the first place.
+   */
+  callerToken(projectId: string): Promise<string | null>;
+};
+
 export type GatewayActivationClient = {
   activate(
     input: { deploymentId: string; kind: "public_request" | "stream" | "turn"; ownerId: string },
@@ -34,6 +44,7 @@ export type GatewayAppOptions = {
   maxRequestBodyBytes?: number;
   affinityCookieSecure?: boolean;
   activationClient?: GatewayActivationClient;
+  identityClient?: GatewayIdentityClient;
   activationRenewIntervalMs?: number;
   playgroundSessionIdleTtlMs?: number;
   apiSessionIdleTtlMs?: number;

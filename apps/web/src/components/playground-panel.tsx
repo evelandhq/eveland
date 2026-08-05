@@ -77,7 +77,7 @@ import {
 } from "@/lib/playground-session";
 import type { EveVersionInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { AgentConnectionSettings } from "@/components/agent-connection-settings";
+import { PlaygroundAuthenticationSettings } from "@/components/playground-authentication-settings";
 import {
   claimPendingPlaygroundTurn,
   handleRouteAuthError,
@@ -198,7 +198,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           >
             New conversation
           </Button>
-          <AgentConnectionSettings projectId={projectId} />
+          <PlaygroundAuthenticationSettings projectId={projectId} />
         </div>
       </div>
       <Conversation className="min-h-0">

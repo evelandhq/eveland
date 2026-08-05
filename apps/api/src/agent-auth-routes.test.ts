@@ -22,6 +22,9 @@ describe("Agent Auth control-plane routes", () => {
       methods: [
         expect.objectContaining({ method: "local-dev", credentialScope: "connection" }),
         expect.objectContaining({ method: "none", credentialScope: "connection" }),
+        // Per-caller: in Eveland Internal mode the token names the signed-in
+        // user, so two members of one Project must not share a credential.
+        expect.objectContaining({ method: "eveland-identity", credentialScope: "principal" }),
         expect.objectContaining({ method: "basic", credentialScope: "connection" }),
         expect.objectContaining({ method: "bearer", credentialScope: "connection" }),
         expect.objectContaining({ method: "vercel-oidc", credentialScope: "connection" }),

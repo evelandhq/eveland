@@ -110,12 +110,14 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
     connection: AgentConnection,
     callerPrincipalId: string,
     returnPath?: string,
+    callerProfile?: AgentCredentialContext["callerProfile"],
   ): AgentCredentialContext => ({
     connection: {
       ...connection,
       config: readConnectionConfig(connection),
     },
     callerPrincipalId,
+    ...(callerProfile ? { callerProfile } : {}),
     ...(returnPath ? { returnPath } : {}),
     resolveSecret: (reference) => resolveAgentAuthSecret(connection.target.projectId, reference),
   });
@@ -188,6 +190,7 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
   const resolveProjectAgentAuthCredential = async (
     projectId: string,
     callerPrincipalId: string,
+    callerProfile?: AgentCredentialContext["callerProfile"],
   ) => {
     const connection = await ensureProjectAgentConnection(projectId);
     const provider = registry.get(connection.method);
@@ -198,6 +201,7 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
       connection,
       callerPrincipalId,
       `/projects/${projectId}/playground`,
+      callerProfile,
     );
     return {
       connection,

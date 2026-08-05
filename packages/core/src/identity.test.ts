@@ -25,6 +25,23 @@ describe("identity contracts", () => {
     });
   });
 
+  test("normalizes an open provider without accepting Realm or OIDC fields", () => {
+    expect(
+      normalizeIdentityProviderConnection({
+        type: "open",
+        displayName: " Open for all ",
+        enabled: true,
+        internalRealmKey: "ignored",
+        issuer: "https://ignored.example",
+        clientId: "ignored",
+      }),
+    ).toEqual({
+      type: "open",
+      displayName: "Open for all",
+      enabled: true,
+    });
+  });
+
   test("rejects an Internal provider without a stable Realm key", () => {
     expect(() =>
       normalizeIdentityProviderConnection({

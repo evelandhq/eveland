@@ -46,6 +46,16 @@ const defaultValue = (value: string): ResolvedValue => ({ value, source: "defaul
 const derivedValue = (value: string): ResolvedValue => ({ value, source: "derived" });
 const developmentSecret = (env: Environment): ResolvedValue | undefined =>
   production(env) ? undefined : defaultValue("development fallback");
+/**
+ * A default the runtime itself only applies outside production. Modelling one
+ * as an unconditional fallback makes the entry report a value production will
+ * never use, and silently defeats `required: production` -- the entry can never
+ * be "missing" once something always fills it in.
+ */
+const developmentDefault =
+  (value: string) =>
+  (env: Environment): ResolvedValue | undefined =>
+    production(env) ? undefined : defaultValue(value);
 const productionSecretWarning = (
   env: Environment,
   _value: string,
@@ -198,12 +208,22 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ),
     emptyUsesFallback: true,
   },
-  urlEntry(
-    "EVELAND_IDENTITY_ISSUER",
-    ["api", "worker"],
-    "Stable public issuer for Agent-user Caller Tokens.",
-    "http://localhost:4000",
-  ),
+  {
+    // Reported as missing in production alongside EVELAND_IDENTITY_JWKS_URL:
+    // the Worker injects both into a Deployment only when they are set, and an
+    // Agent that reaches production without the issuer rejects every Caller
+    // Token with nothing to diagnose. The fallback mirrors
+    // resolveIdentityDeploymentConfiguration, which applies it outside
+    // production only -- reporting it in production would advertise an issuer
+    // no Deployment is actually given.
+    ...urlEntry(
+      "EVELAND_IDENTITY_ISSUER",
+      ["api", "worker"],
+      "Stable public issuer for Agent-user Caller Tokens.",
+    ),
+    fallback: developmentDefault("http://localhost:4000"),
+    required: production,
+  },
   {
     ...entry(
       "EVELAND_IDENTITY_ALLOWED_ORIGINS",

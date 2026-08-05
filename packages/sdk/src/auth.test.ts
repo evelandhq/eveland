@@ -1,7 +1,7 @@
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 
 import { describe, expect, test, vi } from "vitest";
-import { httpBasic, UnauthenticatedError, localDev, routeAuth } from "eve/channels/auth";
+import { httpBasic, localDev, routeAuth } from "eve/channels/auth";
 
 import { evelandIdentity, parseEvelandAuthenticationChallenge } from "./auth.js";
 
@@ -169,20 +169,33 @@ describe("evelandIdentity", () => {
     await expect(auth(request(fixture.token({ email: 123 })))).resolves.toBeNull();
   });
 
-  test("fails closed when a Caller Token reaches an unconfigured Agent", async () => {
+  // Every infrastructure failure below declines rather than throws. Throwing
+  // aborts Eve's whole auth walk, so `[evelandIdentity(), httpBasic()]` could
+  // never reach Basic while Eveland was degraded. Declining silently is only
+  // diagnosable through the log, so each case asserts the reason was recorded.
+  test("declines and reports why when a Caller Token reaches an unconfigured Agent", async () => {
     const fixture = tokenFixture();
+    const logger = vi.fn();
     const auth = evelandIdentity({
       issuer: "",
       projectId: "",
       jwksUrl: "",
       fetch: fixture.fetch,
+      logger,
     });
 
-    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(UnauthenticatedError);
+    await expect(auth(request(fixture.token()))).resolves.toBeNull();
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining("not configured"),
+      expect.objectContaining({
+        missing: ["EVELAND_IDENTITY_ISSUER", "EVELAND_PROJECT_ID", "EVELAND_IDENTITY_JWKS_URL"],
+      }),
+    );
   });
 
-  test("fails closed when Eveland signing keys are unavailable", async () => {
+  test("declines and reports why when the Eveland key set is unreachable", async () => {
     const fixture = tokenFixture();
+    const logger = vi.fn();
     const auth = evelandIdentity({
       issuer,
       projectId,
@@ -190,13 +203,87 @@ describe("evelandIdentity", () => {
       fetch: async () => {
         throw new Error("network unavailable");
       },
+      logger,
     });
 
-    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(UnauthenticatedError);
+    await expect(auth(request(fixture.token()))).resolves.toBeNull();
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining("could not be fetched"),
+      expect.objectContaining({
+        jwksUrl: `${issuer}/.well-known/jwks.json`,
+        error: "network unavailable",
+      }),
+    );
   });
 
-  test("fails closed when a matching Eveland signing key is malformed", async () => {
+  test("declines and reports the status when the Eveland key set errors", async () => {
     const fixture = tokenFixture();
+    const logger = vi.fn();
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: async () => new Response("upstream failure", { status: 503 }),
+      logger,
+    });
+
+    await expect(auth(request(fixture.token()))).resolves.toBeNull();
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining("error status"),
+      expect.objectContaining({ status: 503 }),
+    );
+  });
+
+  test("declines and reports why when the Eveland key set is not a key set", async () => {
+    const fixture = tokenFixture();
+    const logger = vi.fn();
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: async () => Response.json({ keys: "not-an-array" }),
+      logger,
+    });
+
+    await expect(auth(request(fixture.token()))).resolves.toBeNull();
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining("malformed"),
+      expect.objectContaining({ jwksUrl: `${issuer}/.well-known/jwks.json` }),
+    );
+  });
+
+  test("declines and reports both sides when a token is bound to another Project", async () => {
+    const fixture = tokenFixture();
+    const logger = vi.fn();
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: fixture.fetch,
+      now: () => new Date("2029-01-01T00:00:30.000Z"),
+      logger,
+    });
+
+    // A Caller Token is audience-bound to one Project, and the Gateway mints
+    // one per Project. Getting that keying wrong rejects every token here, and
+    // an audience mismatch is indistinguishable from "not our token" -- so the
+    // log has to name what the two sides expected.
+    const otherProject = await auth(request(fixture.token({ aud: "eveland:project:proj_other" })));
+
+    expect(otherProject).toBeNull();
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining("failed verification"),
+      expect.objectContaining({
+        expectedAudience: `eveland:project:${projectId}`,
+        tokenAudience: "eveland:project:proj_other",
+        expectedIssuer: issuer,
+      }),
+    );
+  });
+
+  test("declines and reports the kid when a matching Eveland signing key is malformed", async () => {
+    const fixture = tokenFixture();
+    const logger = vi.fn();
     const auth = evelandIdentity({
       issuer,
       projectId,
@@ -205,9 +292,87 @@ describe("evelandIdentity", () => {
         Response.json({
           keys: [{ kid: "key-1", kty: "EC", alg: "ES256", use: "sig" }],
         }),
+      logger,
     });
 
-    await expect(auth(request(fixture.token()))).rejects.toBeInstanceOf(UnauthenticatedError);
+    await expect(auth(request(fixture.token()))).resolves.toBeNull();
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining("could not be imported"),
+      expect.objectContaining({ kid: "key-1" }),
+    );
+  });
+
+  test("keeps authenticating from cached signing keys while Eveland is unreachable", async () => {
+    const fixture = tokenFixture();
+    const logger = vi.fn();
+    let current = new Date("2029-01-01T00:00:30.000Z").getTime();
+    let reachable = true;
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: async () => {
+        if (!reachable) throw new Error("network unavailable");
+        return fixture.fetch();
+      },
+      now: () => new Date(current),
+      logger,
+    });
+
+    await expect(auth(request(fixture.token()))).resolves.toMatchObject({
+      subject: "iprn_user",
+    });
+
+    // The Identity service goes down and the fresh window lapses: the cached
+    // key set has to carry every already-authenticated user through it.
+    reachable = false;
+    current += 5 * 60_000;
+    await expect(auth(request(fixture.token()))).resolves.toMatchObject({
+      subject: "iprn_user",
+    });
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining("Continuing with cached signing keys"),
+      expect.objectContaining({ jwksUrl: `${issuer}/.well-known/jwks.json` }),
+    );
+
+    // The grace window is bounded: once it lapses the stale keys are dropped
+    // rather than trusted indefinitely.
+    current += 60 * 60_000;
+    await expect(auth(request(fixture.token()))).resolves.toBeNull();
+    expect(logger).toHaveBeenCalledWith(
+      expect.stringContaining("No usable cached signing keys remain"),
+      expect.objectContaining({ jwksUrl: `${issuer}/.well-known/jwks.json` }),
+    );
+  });
+
+  test("backs off instead of refetching a failing key set on every request", async () => {
+    const fixture = tokenFixture();
+    let current = new Date("2029-01-01T00:00:30.000Z").getTime();
+    let reachable = true;
+    const fetchJwks = vi.fn(async () => {
+      if (!reachable) throw new Error("network unavailable");
+      return fixture.fetch();
+    });
+    const auth = evelandIdentity({
+      issuer,
+      projectId,
+      jwksUrl: `${issuer}/.well-known/jwks.json`,
+      fetch: fetchJwks,
+      now: () => new Date(current),
+      logger: () => {},
+    });
+
+    await expect(auth(request(fixture.token()))).resolves.toMatchObject({
+      subject: "iprn_user",
+    });
+    reachable = false;
+    current += 5 * 60_000;
+
+    // One failed refresh, then two more requests inside the backoff floor.
+    await auth(request(fixture.token()));
+    await auth(request(fixture.token()));
+    await auth(request(fixture.token()));
+    expect(fetchJwks).toHaveBeenCalledTimes(2);
   });
 
   test("caches verified signing keys between requests", async () => {

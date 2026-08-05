@@ -1,9 +1,29 @@
 "use client";
 
 import { useId, useState } from "react";
-import { FingerprintIcon, Globe2Icon, KeyRoundIcon, ShieldCheckIcon } from "lucide-react";
-import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity";
+import {
+  CheckIcon,
+  FingerprintIcon,
+  Globe2Icon,
+  KeyRoundIcon,
+  ShieldCheckIcon,
+} from "lucide-react";
+import type {
+  IdentityProviderType,
+  IdentityRealm,
+  IdentityReturnTarget,
+} from "@eveland/core/identity";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,12 +47,14 @@ import { Switch } from "@/components/ui/switch";
 import {
   createInternalIdentityProvider,
   createInternalIdentityRealm,
+  createOpenIdentityProvider,
   preflightIdentityProvider,
+  setIdentityProviderEnabled,
   updateIdentityRealm,
-  updateInternalIdentityProvider,
   upsertIdentityReturnTarget,
 } from "@/lib/client-api";
 import type { PublicIdentityProvider } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 export function IdentitySettings({
   initialProviders,
@@ -53,8 +75,12 @@ export function IdentitySettings({
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<IdentityProviderType | null>(null);
 
+  const openProvider = providers.find((provider) => provider.type === "open");
   const internalProvider = providers.find((provider) => provider.type === "internal");
+  const activeProvider = providers.find((provider) => provider.enabled);
+  const activeType = activeProvider?.type ?? null;
   const internalRealm = internalProvider
     ? realms.find((realm) => realm.providerConnectionId === internalProvider.id)
     : undefined;
@@ -74,6 +100,20 @@ export function IdentitySettings({
     }
   }
 
+  function replaceProviders(...updated: PublicIdentityProvider[]) {
+    setProviders((current) => {
+      const next = current.map(
+        (candidate) => updated.find((provider) => provider.id === candidate.id) ?? candidate,
+      );
+      return [...next, ...updated.filter((provider) => !next.some((c) => c.id === provider.id))];
+    });
+  }
+
+  /**
+   * Creates the Internal Provider disabled, so a failure here leaves the
+   * platform on whatever Provider it was already using rather than stranding
+   * it with none enabled.
+   */
   async function createProvider(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -81,27 +121,66 @@ export function IdentitySettings({
       const provider = await createInternalIdentityProvider({
         displayName: String(data.get("displayName") ?? ""),
         internalRealmKey: String(data.get("internalRealmKey") ?? ""),
-        enabled: true,
+        enabled: false,
       });
-      setProviders((current) => [...current, provider]);
-      setNotice("Eveland Internal is enabled. Add its allowed Identity Realm next.");
+      replaceProviders(provider);
+      setNotice(
+        "Eveland Internal is configured. Add its allowed Identity Realm, then select it below.",
+      );
     });
   }
 
-  async function toggleProvider(enabled: boolean) {
-    if (!internalProvider?.internalRealmKey) return;
-    await run("provider-toggle", async () => {
-      const provider = await updateInternalIdentityProvider({
-        id: internalProvider.id,
-        expectedSecurityRevision: internalProvider.securityRevision,
-        displayName: internalProvider.displayName,
-        internalRealmKey: internalProvider.internalRealmKey!,
-        enabled,
-      });
-      setProviders((current) =>
-        current.map((candidate) => (candidate.id === provider.id ? provider : candidate)),
+  /**
+   * Switches the platform Identity Provider. Exactly one may be enabled, so
+   * the outgoing one is disabled first; if enabling the replacement then
+   * fails, the previous Provider is restored rather than left off.
+   */
+  async function selectProvider(type: IdentityProviderType) {
+    setConfirming(null);
+    if (type === activeType) return;
+    await run(`select-${type}`, async () => {
+      let target = type === "open" ? openProvider : internalProvider;
+      if (type === "open" && !target) {
+        target = await createOpenIdentityProvider({ displayName: "Open for all", enabled: false });
+        replaceProviders(target);
+      }
+      if (!target) throw new Error("Configure this Identity Provider before selecting it.");
+
+      const previous = activeProvider;
+      const disabled = previous
+        ? await setIdentityProviderEnabled({
+            id: previous.id,
+            expectedSecurityRevision: previous.securityRevision,
+            displayName: previous.displayName,
+            enabled: false,
+          })
+        : undefined;
+      try {
+        const enabled = await setIdentityProviderEnabled({
+          id: target.id,
+          expectedSecurityRevision: target.securityRevision,
+          displayName: target.displayName,
+          enabled: true,
+        });
+        replaceProviders(...(disabled ? [disabled, enabled] : [enabled]));
+      } catch (caught) {
+        if (disabled) {
+          replaceProviders(
+            await setIdentityProviderEnabled({
+              id: disabled.id,
+              expectedSecurityRevision: disabled.securityRevision,
+              displayName: disabled.displayName,
+              enabled: true,
+            }),
+          );
+        }
+        throw caught;
+      }
+      setNotice(
+        type === "open"
+          ? "Eveland is now open to all callers. Existing identity sessions no longer authenticate anyone."
+          : "Eveland Internal is now the Identity Provider. Existing identity sessions were invalidated.",
       );
-      setNotice(enabled ? "Identity Provider enabled." : "Identity Provider disabled.");
     });
   }
 
@@ -236,26 +315,42 @@ export function IdentitySettings({
         <CardHeader>
           <CardTitle>Identity Provider</CardTitle>
           <CardDescription>
-            Eveland Internal maps a verified control-plane login into a separate Agent-user identity
-            session.
+            One Identity Provider serves the whole instance. It decides who Eveland will vouch for
+            when an Agent asks; it does not decide which Agents are reachable.
           </CardDescription>
-          {internalProvider ? (
-            <CardAction className="flex items-center gap-3">
-              <Badge variant={internalProvider.enabled ? "default" : "secondary"}>
-                {internalProvider.enabled ? "Enabled" : "Disabled"}
-              </Badge>
-              <Switch
-                aria-label="Enable Eveland Internal"
-                checked={internalProvider.enabled}
-                onCheckedChange={toggleProvider}
-                disabled={pending !== null}
-              />
-            </CardAction>
-          ) : null}
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-6">
+          <div className="flex flex-col gap-3">
+            <ProviderOption
+              title="Open for all"
+              description="Eveland authenticates nobody. Every caller shares one identity, and Agents that ask for an Eveland identity accept them all."
+              selected={activeType === "open"}
+              pending={pending === "select-open"}
+              disabled={pending !== null}
+              onSelect={() => setConfirming("open")}
+            />
+            <ProviderOption
+              title="Eveland Internal"
+              description="Maps a verified control-plane login into a separate Agent-user identity session."
+              selected={activeType === "internal"}
+              pending={pending === "select-internal"}
+              disabled={pending !== null || !internalProvider}
+              hint={internalProvider ? undefined : "Configure it below first"}
+              onSelect={() => setConfirming("internal")}
+            />
+            <ProviderOption
+              title="OIDC"
+              description="Delegate identity to your own OpenID Connect provider."
+              selected={false}
+              pending={false}
+              disabled
+              hint="Coming soon"
+              onSelect={() => {}}
+            />
+          </div>
+
           {internalProvider ? (
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-5 border-t pt-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1">
                   <span className="text-sm font-medium">{internalProvider.displayName}</span>
@@ -284,7 +379,7 @@ export function IdentitySettings({
               </Button>
             </div>
           ) : (
-            <form onSubmit={createProvider}>
+            <form onSubmit={createProvider} className="border-t pt-6">
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor={providerNameId}>Display name</FieldLabel>
@@ -319,7 +414,7 @@ export function IdentitySettings({
                     ) : (
                       <KeyRoundIcon data-icon="inline-start" />
                     )}
-                    {pending === "provider" ? "Creating…" : "Create Internal provider"}
+                    {pending === "provider" ? "Creating…" : "Configure Eveland Internal"}
                   </Button>
                 </Field>
               </FieldGroup>
@@ -327,6 +422,36 @@ export function IdentitySettings({
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={confirming !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirming(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirming === "open"
+                ? "Open this instance to all callers?"
+                : "Switch to Eveland Internal?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Every identity session issued by the current Identity Provider stops authenticating
+              anyone, and users signed in through it have to sign in again.
+              {confirming === "open"
+                ? " Agents that rely on an Eveland identity will accept every caller."
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirming && void selectProvider(confirming)}>
+              Switch Identity Provider
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Card>
         <CardHeader>
@@ -401,5 +526,50 @@ export function IdentitySettings({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ProviderOption({
+  title,
+  description,
+  hint,
+  selected,
+  pending,
+  disabled,
+  onSelect,
+}: {
+  title: string;
+  description: string;
+  hint?: string;
+  selected: boolean;
+  pending: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      disabled={disabled || selected}
+      onClick={onSelect}
+      className={cn(
+        "flex items-start gap-3 rounded-lg border p-4 text-left transition-colors",
+        selected ? "border-primary bg-accent/40" : "hover:bg-accent/30",
+        disabled && !selected ? "opacity-60" : null,
+      )}
+    >
+      <span className="flex size-5 shrink-0 items-center justify-center pt-0.5">
+        {pending ? <Spinner /> : selected ? <CheckIcon className="size-4 text-primary" /> : null}
+      </span>
+      <span className="flex flex-col gap-1">
+        <span className="flex items-center gap-2 text-sm font-medium">
+          {title}
+          {selected ? <Badge>Active</Badge> : null}
+          {hint ? <Badge variant="secondary">{hint}</Badge> : null}
+        </span>
+        <span className="text-sm text-muted-foreground">{description}</span>
+      </span>
+    </button>
   );
 }

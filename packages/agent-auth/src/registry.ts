@@ -28,6 +28,12 @@ export type AgentAuthConnectionSnapshot = AgentConnection & { config: unknown };
 export type AgentCredentialContext = {
   connection: AgentAuthConnectionSnapshot;
   callerPrincipalId: string;
+  /**
+   * Display attributes of the control-plane user behind `callerPrincipalId`.
+   * Only providers that mint an identity for that user read it; the rest key
+   * their per-caller state off the id alone.
+   */
+  callerProfile?: { displayName: string | null; email: string | null };
   returnPath?: string;
   resolveSecret?: (reference: AgentAuthSecretReference) => Promise<string>;
 };
@@ -715,7 +721,16 @@ function validateProvider(
 }
 
 function providerOrder(method: string): number {
-  const order = ["local-dev", "none", "basic", "bearer", "vercel-oidc", "oidc", "headers"];
+  const order = [
+    "local-dev",
+    "none",
+    "eveland-identity",
+    "basic",
+    "bearer",
+    "vercel-oidc",
+    "oidc",
+    "headers",
+  ];
   const index = order.indexOf(method);
   return index === -1 ? order.length : index;
 }

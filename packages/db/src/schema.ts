@@ -333,14 +333,27 @@ export const identityProviderConnections = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("identity_provider_connections_one_enabled_internal_idx")
-      .on(table.type)
-      .where(sql`${table.type} = 'internal' and ${table.enabled} = true`),
-    check("identity_provider_connections_type_check", sql`${table.type} in ('internal', 'oidc')`),
+    // The Identity Provider is platform-wide and exclusive: open, internal, or
+    // OIDC, never two at once. The index expression is the constant `true`
+    // rather than a column so the uniqueness stays global no matter how the
+    // predicate is later widened -- indexing a column that the predicate
+    // happens to pin to one value only reads as global by accident.
+    uniqueIndex("identity_provider_connections_one_enabled_idx")
+      .on(sql`(true)`)
+      .where(sql`${table.enabled} = true`),
+    check(
+      "identity_provider_connections_type_check",
+      sql`${table.type} in ('internal', 'oidc', 'open')`,
+    ),
     check("identity_provider_connections_revision_check", sql`${table.securityRevision} > 0`),
     check(
       "identity_provider_connections_shape_check",
       sql`(
+        ${table.type} = 'open'
+        and ${table.internalRealmKey} is null
+        and ${table.issuer} is null
+        and ${table.clientId} is null
+      ) or (
         ${table.type} = 'internal'
         and ${table.internalRealmKey} is not null
         and ${table.issuer} is null

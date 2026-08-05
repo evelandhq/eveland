@@ -327,11 +327,27 @@ export async function createInternalIdentityProvider(input: {
   }).then((data) => data.provider);
 }
 
-export async function updateInternalIdentityProvider(input: {
+export async function createOpenIdentityProvider(input: {
+  displayName: string;
+  enabled: boolean;
+}): Promise<PublicIdentityProvider> {
+  return clientRequest<{ provider: PublicIdentityProvider }>("/system/identity/providers", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "open", ...input }),
+  }).then((data) => data.provider);
+}
+
+/**
+ * Enables or disables a Provider of any type. It deliberately sends no
+ * type-specific field: the Provider is only being switched on or off, and
+ * echoing back an Internal Realm key would risk tripping the immutability
+ * guard on a value the caller never meant to change.
+ */
+export async function setIdentityProviderEnabled(input: {
   id: string;
   expectedSecurityRevision: number;
   displayName: string;
-  internalRealmKey: string;
   enabled: boolean;
 }): Promise<PublicIdentityProvider> {
   return clientRequest<{ provider: PublicIdentityProvider }>(

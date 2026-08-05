@@ -49,8 +49,24 @@ standalone or combined header.
 
 `localDev()` and other AuthFns remain explicit fallbacks. Eve aggregates their
 challenges, so a route such as `[evelandIdentity(), httpBasic()]` advertises
-both methods. A recognized Eveland token fails closed when the helper is
-unconfigured or signing keys are unavailable.
+both methods.
+
+The helper declines rather than throws, so an `auth` array stays an ordered
+fallback chain: if Eveland Identity is unconfigured or its signing keys are
+unreachable, `[evelandIdentity(), httpBasic()]` still reaches Basic instead of
+answering 401 for the whole route. Nothing about signature, audience, or claim
+verification is relaxed — an unverifiable token is simply not an
+Eveland-authenticated one. A successfully fetched key set also keeps being used
+for a grace period when a later refresh fails, so a brief Identity outage does
+not drop already-authenticated users.
+
+Declining is invisible to the caller by design, so every reason is written to
+the log. Run the Agent with `EVE_LOG_LEVEL=debug` to see them, or pass
+`logger` to route them into your own logging:
+
+```ts
+evelandIdentity({ logger: (message, fields) => log.debug(message, fields) });
+```
 
 ## Versioning
 

@@ -157,6 +157,13 @@ export function buildUpstreamHeaders(
   protocol: string,
   requestId: string,
   remoteIp: string | null,
+  /**
+   * Open-access Caller Token, injected only when the client sent no
+   * `authorization` of its own. An Agent-owned Authorization header is still
+   * forwarded untouched: the Gateway cannot verify it, that is the Agent's
+   * job, and overwriting one would break every Agent using its own auth.
+   */
+  injectedCallerToken?: string | null,
 ): Headers {
   const headers = new Headers();
   for (const [name, value] of input) {
@@ -192,6 +199,9 @@ export function buildUpstreamHeaders(
   headers.set("x-forwarded-host", authority);
   headers.set("x-forwarded-proto", proto);
   headers.set("x-eveland-request-id", requestId);
+  if (injectedCallerToken && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${injectedCallerToken}`);
+  }
   return headers;
 }
 

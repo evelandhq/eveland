@@ -217,6 +217,11 @@ export const passwordChangeSchema = z.object({
 
 export const createIdentityProviderSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("open"),
+    displayName: z.string().trim().min(1).max(100),
+    enabled: z.boolean(),
+  }),
+  z.object({
     type: z.literal("internal"),
     displayName: z.string().trim().min(1).max(100),
     internalRealmKey: z.string().trim().min(1).max(256),
@@ -296,6 +301,10 @@ export const upsertIdentityReturnTargetSchema = z.object({
 });
 
 export const callerTokenRequestSchema = z.object({
+  projectId: z.string().min(1),
+});
+
+export const openCallerTokenRequestSchema = z.object({
   projectId: z.string().min(1),
 });
 
