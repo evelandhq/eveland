@@ -1,0 +1,74 @@
+---
+title: 将 Agent 迁移到 Eve 0.30
+description: 把导入的 Agent 的 eve 依赖升到 0.30 之前需要改什么。
+---
+
+**不升级 eve 就什么都不用做。** 每个项目自己钉 eve 版本，停在 `0.28.x` 或 `0.29.x` 的 Agent 行为完全不变。本页只针对要迁到 `0.30.x` 的项目。
+
+## 变了什么
+
+Eve 0.30 重新定义了 `localDev()`。它原本按请求的 Host 授权，接受 `localhost`、`*.localhost`、`127.0.0.0/8` 与 `::1`；现在只在进程是 `eve dev` 或 `vercel dev` 时才返回 Session：
+
+```ts
+// 0.29 —— 每个请求按 Host 判定
+localDev(); // 接受 loopback Host
+
+// 0.30 —— 只按进程判定一次
+localDev(); // 除非 EVE_DEV=1 或 vercel dev，否则什么都不接受
+```
+
+你的 Agent 在 Eveland 上以 `eve start` 运行，所以升级后 `localDev()` 不再放行任何请求。如果它是 `auth` 数组里唯一一项，每个 Playground 请求都会返回 401。
+
+框架默认 Channel 还新增了 `placeholderAuth()`。它只在 `VERCEL_ENV=production` 时才抛出那条友好的 "Production auth is not configured"。自托管 Eveland 不设 `VERCEL_ENV`，因此它返回 null，Auth Walk 走空，Eve 给出一个**只带 `www-authenticate: Bearer`、不含任何解释的裸 401**。直接升级而不做处理，看到的就是这个现象。
+
+**不要用 `EVE_DEV=1` 把旧行为找回来。** Eve 0.30 在 auth 之外还有多处读取该变量：它会让 Workflow 路由到 `latest` deployment 而不是被钉住的那个、允许运行时自动安装可选 engine 包、把每条 bash 命令打进日志，并且跳过 SIGINT/SIGTERM 的沙箱拆除 handler 注册，导致重启时泄漏沙箱。
+
+## 第一步 —— 选一种认证策略
+
+改 `agent/channels/eve.ts`，按 Agent 的实际需要选一种。
+
+**用 Eveland 的平台身份。** 调用方由 Eveland 识别，Agent 拿到一个已验证的 Principal：
+
+```ts
+import { eveChannel } from "eve/channels/eve";
+import { localDev } from "eve/channels/auth";
+import { evelandIdentity } from "eveland/auth";
+
+export default eveChannel({
+  auth: [evelandIdentity(), localDev()],
+});
+```
+
+如果你本地还会用 `eve dev` 跑这个 Agent，把 `localDev()` 留在末尾——在那里它仍然有效，因为进程确实是 `eve dev`。
+
+```bash
+pnpm add eveland
+```
+
+`evelandIdentity()` 在 Eveland Identity 不可达或未配置时是 decline 而不是 throw，因此数组里排在它后面的 AuthFn 仍然会被轮到。
+
+**用你自己的认证。** 如果已经接了 Auth.js、Clerk 或别的方案，`evelandIdentity()` 只是可选项——把 `placeholderAuth()` 换成你自己的 `AuthFn` 即可，其余不用动。
+
+**接受所有人。** 如果这个 Agent 本来就没在认证任何人，且你接受它对外开放：
+
+```ts
+import { none } from "eve/channels/auth";
+
+export default eveChannel({ auth: [none()] });
+```
+
+这会让任何能访问其公开 Host 的人都能调用该 Agent。请明确地选择它。
+
+顺手把 `vercelOidc()` 删掉。Eveland 不签发 Vercel OIDC token，它在这里一直是死代码。
+
+## 第二步 —— 把 Playground authentication 指过去
+
+如果选了 `evelandIdentity()`，打开项目的 **Playground authentication** 设置，把方法切换成 **Eveland Identity**。默认仍然是 `local-dev`，它不发送任何 credential——对 0.30 的 Agent 就会产生上面那个裸 401。
+
+这个切换是按项目的，因此可以一个 Agent 一个 Agent 地迁移。
+
+## 第三步 —— 部署
+
+刷新 Lockfile，让构建真正解析到 `0.30.6`，然后重新部署。`^0.30.0` 这类 Range 只是允许它，并不会自动改变实际安装的版本。
+
+部署后发一条 Playground 消息：拿到已验证的调用方 Principal 说明迁移成功；仍是裸 401 说明 `auth` 数组里还没有任何一个 AuthFn 放行 Eveland 的 Playground 请求。

@@ -3,23 +3,17 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.27.x`、`0.28.x` 与 `0.29.x`，验证版本为 `0.27.13`、`0.28.0` 与 `0.29.5`。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.28.x`、`0.29.x` 与 `0.30.x`，验证版本为 `0.28.0`、`0.29.5` 与 `0.30.6`。
 
-UI 仅将最新支持线 `0.29.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
+UI 仅将最新支持线 `0.30.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
-Eve 0.27 将 Nuxt 部署迁移到 Vercel 稳定 Services Model，改善 Compaction 与 Prompt Cache，并让 Route Auth 返回符合标准的 Challenge。HTTP Basic 现在声明 Realm 与 UTF-8 Charset，并在 Unicode NFC 规范化后比较 Credential。Eveland 不通过 Eve 的 Nuxt Integration 托管导入的 Agent，也不会根据 401 Challenge 推断 Playground authentication method，因此不需要新增 Adapter 分支。
+窗口此前依赖 Eve 0.27 的能力现在都是基线：通过 `POST /eve/v1/session/reset` 的 Durable Session Reset、通过 `session.stream({ follow: false })` 与 `x-eve-stream-tail-index` Header 的有界 Catch-up Read、符合标准的 Route Auth Challenge，以及默认关闭的 Remote Principal Forwarding。Eveland 在公开路径与 Playground 路径都原样保留这些 Query、Header 与无缓冲 NDJSON Body，且从不替 Agent 开启信任、重写 Principal 或转发 Credential。Eve 0.27.3 及以后要求 AI SDK `ai@^7.0.34`，若项目单独钉死了更旧的 AI SDK，应一并升级。
 
-0.27.1–0.27.3 Patch 改善了 Workflow 并发与取消、队列化 Channel Delivery、Slack/Teams Routing、带 Prefix 的 Callback Route、Dynamic Tool 刷新、Sandbox Seed 写入顺序和 Diagnostic。Eve 0.27.2 还会在打开 NDJSON Stream 时先发送一个空白字节，并允许 Client Caller 显式关闭自动 Stream Reconnect。Eveland 的 Stream Monitor 已忽略空行，Gateway 会无缓冲透传该字节，Playground 则保留默认的 Durable Reconnect 行为。
+**Eve 0.30 改变了 `localDev()`；导入的 Agent 若直接升级而不做处理，会被挡在 Playground 之外。** 它不再看请求的 Host，只在进程是 `eve dev` / `vercel dev` 时才返回 Session。Agent 在 Eveland 上以 `eve start` 运行，因此 `localDev()` 从此不再放行任何请求。框架默认 Channel 还新增了 `placeholderAuth()`，而它只在 `VERCEL_ENV=production` 时才抛出那条友好的 "Production auth is not configured"；自托管 Eveland 下它返回 null，Auth Walk 走空，Route 只给出一个不带任何解释的裸 401。需要改什么见[将 Agent 迁移到 Eve 0.30](/docs/agents/migrate-eve-0-30)。
 
-Eve 0.27.4 新增通过 `POST /eve/v1/session/reset` 执行的 Durable Session Reset。Eveland 将最新 continuation token 保存在 SessionBinding 中，因此即使发生 Promote、Rollback 或 Weight 变化，按 token 恢复和 reset 仍会发送到拥有该 Durable Workflow 的 Deployment。Reset 成功后只清除 token 绑定；历史 Session → Deployment 绑定继续用于 Stream、观测与 Retention。迁移 `0029_sparkling_hammerhead` 会先回填已知 token，再创建唯一 Routing Index。
+Eve 0.30.5 还重命名了 Durable Cancellation Hook。`sessionCancelHookToken(sessionId)` 原本产生 `{sessionId}:cancel`，现在稳定的命令收件箱是 `eve:session:{sessionId}:inbox`，并由它转发一个私有的按 Turn 的 Hook。手工 resume 旧 token 来取消 Turn 的 Agent 代码在升级后会**静默失效**。走 HTTP `POST /eve/v1/session/:id/cancel` 的不受影响——该 Route 与响应 Schema 均未变，Eveland 自己用的就是它。
 
-Eve 0.27.6 新增 Remote Agent 的显式 Principal Metadata Forwarding、忽略空的 Remote `outputSchema`，并修复 Base Path 下的 Remote Create/Cancel URL。Forwarding 默认关闭：发送端必须设置 `forwardPrincipal: true`，接收 Agent 必须定义精确的 `trustedForwarders` Predicate。Eveland 只透明代理 Body 和 Agent 自有认证，不会替 Agent 开启信任、重写 Principal 或转发 Credential。除此之外，经验证窗口内的 canonical create/continue/cancel/stream Message、Vercel OIDC Header、Eve Hook Event、Schedule 定义和 `SandboxBackend` 契约保持兼容。
-
-Eve 0.27.7 新增通过 `session.stream({ follow: false })` 执行的有界 Catch-up Read。Client 会请求 `includeTailIndex=1`，Eve Route 返回 `x-eve-stream-tail-index`，读取到打开 Stream 时观测到的 Durable Tail 后即结束。Eveland 在公开路径与 Playground 路径中都原样保留该 Query、响应 Header 和无缓冲 NDJSON Body。有界读取要求 Client 与 Agent 均使用 Eve 0.27.7 或更高版本；旧 Agent 不返回 Tail Header，新 Client 会明确失败，而不是静默地永久 Follow。现有 Playground 继续采用默认 Live Follow。该 Patch 还会解析 Provider-executed Tool 的 Raw JSON String 参数，并把无法解析的参数转换成 Failed Tool Result，而不是让整个 Turn 失败；Eveland 私有 Telemetry Hook 继续接收正常的后续 Event Flow。单次 Nitro Build 优化只影响 Eve 的 Vercel Output，不改变 Eveland 的 Standalone Release Build。
-
-Eve 0.27.8 新增 Authoring-time 的 `eve add` 与 `eve registry` 命令。Eveland 在 Import 或 Deployment 中不会运行这些命令，因此它们不会修改已导入的 Source Snapshot，也不会为 Release 增加额外 Network、Filesystem 或 Sandbox 权限。
-
-依赖这些命令的项目必须使用 Eve 0.27.8 或更高版本。对于当前最新支持线，即使 `^0.29.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.29.5`。Eve 0.27.3+ 要求 AI SDK `ai@^7.0.34`；若项目单独钉死或锁定了更旧的 AI SDK，应一并升级。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out，并且只有当目标 Agent 也使用 Eve 0.27.7+ 时才使用 `follow: false`；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
+对于当前最新支持线，即使 `^0.30.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.30.6`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
 
 仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；进入时会有意识地移除较旧 Minor。
 
