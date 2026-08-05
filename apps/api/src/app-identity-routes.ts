@@ -12,12 +12,13 @@ import {
 } from "@eveland/identity-broker";
 import type { Store } from "@eveland/db";
 import type { AppOptions, ApiApp } from "./app-types.js";
-import { publicGatewayUrl } from "./app-support.js";
+import { isServiceRequest, publicGatewayUrl } from "./app-support.js";
 import {
   callerTokenRequestSchema,
   createIdentityProviderSchema,
   createIdentityRealmSchema,
   identityAppTokenRequestSchema,
+  openCallerTokenRequestSchema,
   updateIdentityRealmSchema,
   updateIdentityProviderSchema,
   upsertIdentityReturnTargetSchema,
@@ -25,6 +26,8 @@ import {
 
 export const IDENTITY_SESSION_COOKIE_NAME = "eveland_identity";
 const LOGIN_TRANSACTION_TTL_MS = 10 * 60 * 1_000;
+const ONE_ENABLED_PROVIDER_ERROR =
+  "Only one Identity Provider can be enabled. Disable the current one first.";
 
 type IdentityRoutesContext = {
   app: ApiApp;
@@ -131,6 +134,17 @@ export function registerPublicIdentityRoutes(
       );
     }
     const provider = providers[0]!;
+    // Open access never redirects a caller into a login: non-browser callers
+    // cannot follow one, and there is no identity to establish.
+    if (provider.type === "open") {
+      return c.json(
+        {
+          code: "identity_login_not_required",
+          error: "This Eveland instance is open to all callers; no identity login is used.",
+        },
+        503,
+      );
+    }
     if (provider.type !== "internal") {
       return c.json(
         {
@@ -288,6 +302,41 @@ export function registerPublicIdentityRoutes(
   });
 }
 
+/**
+ * Session-less Caller Token minting for the Gateway.
+ *
+ * Sits behind the same service token as `/internal/runtime/activations`; the
+ * Gateway is the only caller and already holds it. The route deliberately
+ * exposes only the open-access mint, which derives its Principal from the
+ * enabled Provider rather than from anything the caller supplies -- the service
+ * token proves "this is the Gateway", not "this is user X", so it must never
+ * reach a code path that would take a subject from the request.
+ */
+export function registerInternalIdentityRoutes(
+  context: IdentityRoutesContext,
+  services: ReturnType<typeof createIdentityRouteServices>,
+) {
+  const { app, options } = context;
+  const { broker } = services;
+
+  app.post("/internal/identity/open-caller-tokens", async (c) => {
+    c.header("cache-control", "no-store");
+    const serviceToken = options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
+    if (!isServiceRequest(c.req.header("authorization"), serviceToken)) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    const parsed = openCallerTokenRequestSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ code: "identity_request_invalid", error: "Project ID is required." }, 400);
+    }
+    try {
+      return c.json(await broker.issueOpenModeCallerToken({ projectId: parsed.data.projectId }));
+    } catch (error) {
+      return identityError(c, error);
+    }
+  });
+}
+
 export function registerSystemIdentityRoutes(context: IdentityRoutesContext) {
   const { app, store, appSecretKey } = context;
   app.get("/system/identity/providers", async (c) => {
@@ -313,32 +362,46 @@ export function registerSystemIdentityRoutes(context: IdentityRoutesContext) {
         422,
       );
     }
+    // The Identity Provider is platform-wide and exclusive, whatever its type:
+    // the caller disables the current one before enabling a replacement.
     if (
-      normalized.type === "internal" &&
       normalized.enabled &&
-      (await store.listIdentityProviderConnections()).some(
-        (provider) => provider.type === "internal" && provider.enabled,
-      )
+      (await store.listIdentityProviderConnections()).some((provider) => provider.enabled)
     ) {
-      return c.json({ error: "Only one Internal Identity Provider can be enabled." }, 409);
+      return c.json({ error: ONE_ENABLED_PROVIDER_ERROR }, 409);
     }
-    const provider = await store.createIdentityProviderConnection(
-      normalized.type === "internal"
-        ? normalized
-        : {
-            ...normalized,
-            clientSecretEncrypted:
-              parsed.data.type === "oidc" && parsed.data.clientSecret
-                ? sealProviderSecret(parsed.data.clientSecret, appSecretKey)
-                : null,
-          },
-    );
-    return c.json({ provider: publicProvider(provider) }, 201);
+    try {
+      const provider = await store.createIdentityProviderConnection(
+        normalized.type === "oidc"
+          ? {
+              ...normalized,
+              clientSecretEncrypted:
+                parsed.data.type === "oidc" && parsed.data.clientSecret
+                  ? sealProviderSecret(parsed.data.clientSecret, appSecretKey)
+                  : null,
+            }
+          : normalized,
+      );
+      return c.json({ provider: publicProvider(provider) }, 201);
+    } catch (error) {
+      // The exclusivity pre-check above races; the unique index is what
+      // actually holds. Without this the violation escapes as an unhandled 500,
+      // because the app registers no onError handler.
+      return c.json(
+        {
+          error: error instanceof Error ? error.message : "Identity Provider could not be created.",
+        },
+        409,
+      );
+    }
   });
 
   app.post("/system/identity/providers/:providerId/preflight", async (c) => {
     const provider = await store.getIdentityProviderConnection(c.req.param("providerId"));
     if (!provider) return c.json({ error: "Identity Provider not found" }, 404);
+    if (provider.type === "open") {
+      return c.json({ ok: true, checks: { noIdentityCheckPerformed: true } });
+    }
     if (provider.type === "internal") {
       return c.json({
         ok: Boolean(context.options.auth),
@@ -368,14 +431,12 @@ export function registerSystemIdentityRoutes(context: IdentityRoutesContext) {
       return c.json({ error: "Internal Realm key is immutable." }, 409);
     }
     if (
-      current.type === "internal" &&
       (parsed.data.enabled ?? current.enabled) &&
       (await store.listIdentityProviderConnections()).some(
-        (provider) =>
-          provider.id !== current.id && provider.type === "internal" && provider.enabled,
+        (provider) => provider.id !== current.id && provider.enabled,
       )
     ) {
-      return c.json({ error: "Only one Internal Identity Provider can be enabled." }, 409);
+      return c.json({ error: ONE_ENABLED_PROVIDER_ERROR }, 409);
     }
     const nextSecret =
       parsed.data.clientSecret === undefined

@@ -8,7 +8,7 @@ import {
   teams,
   users,
 } from "@eveland/db/schema";
-import { createPgliteTestStore } from "@eveland/db/test";
+import { createPgliteTestStore, disableSeededOpenIdentityProvider } from "@eveland/db/test";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createApp } from "./app.js";
 import { createBetterAuthRuntime } from "./auth.js";
@@ -18,7 +18,7 @@ const apiOrigin = "http://localhost:4000";
 const chatOrigin = "http://localhost:3010";
 const appSecretKey = "identity-api-secret-key-00000000";
 
-async function createIdentityApp() {
+async function createIdentityApp({ keepOpenAccess = false } = {}) {
   const database = await createPgliteTestStore();
   onTestFinished(() => database.close());
   const auth = createBetterAuthRuntime({
@@ -48,6 +48,9 @@ async function createIdentityApp() {
     origin: chatOrigin,
     enabled: true,
   });
+  // Most of these tests describe an instance configured for Eveland Internal,
+  // so they start from the seeded open-access Provider being switched off.
+  if (!keepOpenAccess) await disableSeededOpenIdentityProvider(database.store);
   return {
     app: createApp(database.store, {
       auth,
@@ -55,6 +58,7 @@ async function createIdentityApp() {
       appSecretKey,
       identityIssuer: apiOrigin,
       identityAllowedOrigins: [chatOrigin],
+      gatewayServiceToken: "gateway-service-token",
     }),
     store: database.store,
   };
@@ -702,5 +706,139 @@ describe("Eveland Internal Identity routes", () => {
       realm_id: realm.id,
     });
     expect(payload).not.toHaveProperty("project_id");
+  });
+});
+
+describe("Open access Identity Provider", () => {
+  test("declines an identity login instead of pretending one is available", async () => {
+    const { app } = await createIdentityApp({ keepOpenAccess: true });
+
+    const response = await app.request(
+      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_1",
+    );
+
+    // Open access never redirects a caller into a login: non-browser callers
+    // cannot follow one, and the old wording claimed the Provider was merely
+    // "not available in this release", which is not what is happening.
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "identity_login_not_required" });
+  });
+
+  test("refuses to enable a second Provider while open access is on", async () => {
+    const { app } = await createIdentityApp({ keepOpenAccess: true });
+    const cookie = await signIn(app);
+
+    const response = await app.request("/system/identity/providers", {
+      method: "POST",
+      headers: { cookie, origin: webOrigin, "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "internal",
+        displayName: "Eveland Internal",
+        internalRealmKey: "eveland-members",
+        enabled: true,
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: expect.stringContaining("Only one Identity Provider"),
+    });
+  });
+
+  test("accepts a disabled Provider so a switch can be staged before it takes effect", async () => {
+    const { app, store } = await createIdentityApp({ keepOpenAccess: true });
+    const cookie = await signIn(app);
+
+    const created = await app.request("/system/identity/providers", {
+      method: "POST",
+      headers: { cookie, origin: webOrigin, "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "internal",
+        displayName: "Eveland Internal",
+        internalRealmKey: "eveland-members",
+        enabled: false,
+      }),
+    });
+    expect(created.status).toBe(201);
+    const { provider } = (await created.json()) as {
+      provider: { id: string; securityRevision: number };
+    };
+
+    await disableSeededOpenIdentityProvider(store);
+    const enabled = await app.request(`/system/identity/providers/${provider.id}`, {
+      method: "PATCH",
+      headers: { cookie, origin: webOrigin, "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedSecurityRevision: provider.securityRevision,
+        displayName: "Eveland Internal",
+        enabled: true,
+      }),
+    });
+
+    expect(enabled.status).toBe(200);
+    const active = (await store.listIdentityProviderConnections()).filter(
+      (candidate) => candidate.enabled,
+    );
+    expect(active).toEqual([expect.objectContaining({ id: provider.id, type: "internal" })]);
+  });
+});
+
+describe("Internal open-access Caller Token minting", () => {
+  test("mints for the Gateway's service token and stays invisible without it", async () => {
+    const { app, store } = await createIdentityApp({ keepOpenAccess: true });
+    const project = await store.createProject({ name: "gateway-mint", importKind: "zip" });
+
+    const unauthenticated = await app.request("/internal/identity/open-caller-tokens", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: project.id }),
+    });
+    expect(unauthenticated.status).toBe(404);
+
+    const response = await app.request("/internal/identity/open-caller-tokens", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer gateway-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ projectId: project.id }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = (await response.json()) as { token: string; expiresAt: string };
+    const claims = JSON.parse(
+      Buffer.from(body.token.split(".")[1]!, "base64url").toString("utf8"),
+    ) as Record<string, unknown>;
+    expect(claims).toMatchObject({
+      aud: `eveland:project:${project.id}`,
+      principal_type: "user",
+      sub: expect.stringMatching(/^iprn_/),
+    });
+  });
+
+  test("reports open access being switched off as 409, not as an outage", async () => {
+    const { app, store } = await createIdentityApp();
+    const project = await store.createProject({ name: "internal-mode", importKind: "zip" });
+    await store.createIdentityProviderConnection({
+      type: "internal",
+      displayName: "Eveland Internal",
+      internalRealmKey: "members",
+      enabled: true,
+    });
+
+    const response = await app.request("/internal/identity/open-caller-tokens", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer gateway-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ projectId: project.id }),
+    });
+
+    // The Gateway distinguishes the two: 409 means stop injecting and stop
+    // asking, anything else means retry shortly.
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "identity_open_access_inactive" });
   });
 });

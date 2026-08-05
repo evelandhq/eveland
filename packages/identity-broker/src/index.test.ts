@@ -1,5 +1,6 @@
 import { createPublicKey, verify } from "node:crypto";
 import { describe, expect, test } from "vitest";
+import { disableSeededOpenIdentityProvider } from "@eveland/db/test";
 import { createTestStore } from "@eveland/db/vitest";
 
 import { IdentityBrokerError, createIdentityBroker, hashIdentityToken } from "./index.js";
@@ -202,6 +203,7 @@ describe("Identity Broker", () => {
 });
 
 async function configuredIdentity(store: ReturnType<typeof createTestStore>) {
+  await disableSeededOpenIdentityProvider(store);
   const connection = await store.createIdentityProviderConnection({
     type: "internal",
     displayName: "Eveland Internal",
@@ -220,4 +222,117 @@ async function configuredIdentity(store: ReturnType<typeof createTestStore>) {
 
 function decodeJson(value: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
+}
+
+describe("Platform Caller Token minting", () => {
+  test("mints a long-lived shared-Principal token under open access", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "open-mint", importKind: "zip" });
+    const broker = createIdentityBroker({
+      store,
+      issuer: "https://identity.example.com",
+      appSecretKey,
+      now: () => new Date("2029-01-01T00:00:00.000Z"),
+    });
+
+    const first = await broker.issueOpenModeCallerToken({ projectId: project.id });
+    const second = await broker.issueOpenModeCallerToken({ projectId: project.id });
+
+    const claims = decodeClaims(first.token);
+    expect(claims).toMatchObject({
+      aud: `eveland:project:${project.id}`,
+      principal_type: "user",
+      sub: expect.stringMatching(/^iprn_/),
+      realm_id: expect.stringMatching(/^irlm_/),
+    });
+    // Open access carries no identity to revoke, so a short lifetime buys
+    // nothing; the long one is what keeps an Identity outage invisible.
+    expect((claims.exp as number) - (claims.iat as number)).toBe(20 * 60);
+    // Every caller shares one Principal -- a second mint must not fork it.
+    expect(decodeClaims(second.token).sub).toBe(claims.sub);
+    expect(decodeClaims(second.token).realm_id).toBe(claims.realm_id);
+  });
+
+  test("materializes the shared identity for an instance that switched to open access", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "switched", importKind: "zip" });
+    // No seeded Realm: this instance created its open Provider through the UI.
+    await disableSeededOpenIdentityProvider(store);
+    const provider = await store.createIdentityProviderConnection({
+      type: "open",
+      displayName: "Open for all",
+      enabled: true,
+    });
+    const broker = createIdentityBroker({
+      store,
+      issuer: "https://identity.example.com",
+      appSecretKey,
+    });
+
+    const minted = await broker.issueOpenModeCallerToken({ projectId: project.id });
+
+    const realms = await store.listIdentityRealms(provider.id);
+    expect(realms).toEqual([
+      expect.objectContaining({ externalRealmId: "open-shared", enabled: true }),
+    ]);
+    expect(decodeClaims(minted.token).realm_id).toBe(realms[0]!.id);
+  });
+
+  test("refuses anonymous minting once open access is switched off", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "internal-only", importKind: "zip" });
+    await configuredIdentity(store);
+    const broker = createIdentityBroker({
+      store,
+      issuer: "https://identity.example.com",
+      appSecretKey,
+    });
+
+    // The Gateway reads this as "stop injecting", so it must not be reported
+    // as a transient fault it should retry through.
+    await expect(broker.issueOpenModeCallerToken({ projectId: project.id })).rejects.toMatchObject({
+      code: "identity_open_access_inactive",
+      status: 409,
+    });
+  });
+
+  test("mints for the signed-in control-plane user under Eveland Internal", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "internal-mint", importKind: "zip" });
+    const { realm } = await configuredIdentity(store);
+    const broker = createIdentityBroker({
+      store,
+      issuer: "https://identity.example.com",
+      appSecretKey,
+    });
+
+    const minted = await broker.mintPlatformCallerToken({
+      projectId: project.id,
+      controlPlaneUser: {
+        externalSubject: "user_a",
+        displayName: "测试用户",
+        email: "user-a@example.com",
+      },
+    });
+
+    const claims = decodeClaims(minted.token);
+    expect(claims).toMatchObject({
+      realm_id: realm.id,
+      name: "测试用户",
+      email: "user-a@example.com",
+    });
+    // Eveland Internal names a real person, so it keeps the short lifetime.
+    expect((claims.exp as number) - (claims.iat as number)).toBe(60);
+    // The Playground has the user authenticated to the control plane already;
+    // a second long-lived Identity Session row would be state nobody reads.
+    const principal = await store.getIdentityPrincipal(claims.sub as string);
+    expect(principal?.externalSubject).toBe("user_a");
+  });
+});
+
+function decodeClaims(token: string): Record<string, unknown> {
+  return JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString("utf8")) as Record<
+    string,
+    unknown
+  >;
 }

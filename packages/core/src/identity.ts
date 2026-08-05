@@ -1,4 +1,4 @@
-export type IdentityProviderType = "internal" | "oidc";
+export type IdentityProviderType = "internal" | "oidc" | "open";
 
 export type ExternalRealmKind =
   | "internal"
@@ -24,6 +24,28 @@ export type InternalIdentityProviderConfig = {
   enabled: boolean;
 };
 
+/**
+ * Open access. The platform authenticates nobody: there is one shared Realm
+ * instead of a per-caller one, and no external directory is consulted. It
+ * carries no provider configuration beyond a display name for that reason.
+ */
+export type OpenIdentityProviderConfig = {
+  type: "open";
+  displayName: string;
+  enabled: boolean;
+};
+
+/**
+ * The external Realm id and subject of open access's single shared identity.
+ * Open access has no per-caller identity to represent, so every Caller Token
+ * it mints names the same Realm and the same Principal. The migration seed and
+ * the broker's on-demand path both use these, so an instance that switched to
+ * open access through the UI ends up with exactly the same rows as a fresh
+ * install.
+ */
+export const OPEN_SHARED_REALM_KEY = "open-shared";
+export const OPEN_SHARED_SUBJECT = "open-shared";
+
 /** How an OIDC provider resolves a caller's external Realm. */
 export type OidcExternalRealmResolution =
   | "connection"
@@ -34,11 +56,15 @@ export type OidcExternalRealmResolution =
 /**
  * Every resolution mode a persisted Identity Provider Connection can carry.
  * Wider than OidcExternalRealmResolution by `internal_member`, which only the
- * internal provider uses. Persistence contracts reference this name rather
+ * internal provider uses, and `open_shared`, which the open provider uses for
+ * its single shared Realm. Persistence contracts reference this name rather
  * than re-spelling the union, so a new mode cannot be added to the record
  * type while a store's input type silently rejects it.
  */
-export type ExternalRealmResolution = OidcExternalRealmResolution | "internal_member";
+export type ExternalRealmResolution =
+  | OidcExternalRealmResolution
+  | "internal_member"
+  | "open_shared";
 
 export type OidcIdentityProviderConfig = {
   type: "oidc";
@@ -54,7 +80,10 @@ export type OidcIdentityProviderConfig = {
   enabled: boolean;
 };
 
-export type IdentityProviderConfig = InternalIdentityProviderConfig | OidcIdentityProviderConfig;
+export type IdentityProviderConfig =
+  | OpenIdentityProviderConfig
+  | InternalIdentityProviderConfig
+  | OidcIdentityProviderConfig;
 
 export type IdentityProviderConnection = {
   id: string;
@@ -161,6 +190,9 @@ export function normalizeIdentityProviderConnection(
   const displayName = requiredString(input.displayName, "Display name is required.");
   const enabled = input.enabled === true;
 
+  if (type === "open") {
+    return { type, displayName, enabled };
+  }
   if (type === "internal") {
     return {
       type,
@@ -169,7 +201,9 @@ export function normalizeIdentityProviderConnection(
       enabled,
     };
   }
-  if (type !== "oidc") throw new Error("Identity provider type must be internal or oidc.");
+  if (type !== "oidc") {
+    throw new Error("Identity provider type must be open, internal, or oidc.");
+  }
 
   const issuer = normalizeHttpsIssuer(input.issuer);
   const clientId = requiredString(input.clientId, "OIDC Client ID is required.");

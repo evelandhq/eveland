@@ -69,6 +69,7 @@ import type {
   IdentityPrincipal,
   ExternalRealmResolution,
   IdentityProviderConnection,
+  IdentityProviderType,
   IdentityRealm,
   IdentityReturnTarget,
   IdentitySession,
@@ -298,7 +299,7 @@ export interface AgentAuthStore {
 
 export interface IdentityStore {
   createIdentityProviderConnection(input: {
-    type: "internal" | "oidc";
+    type: IdentityProviderType;
     displayName: string;
     internalRealmKey?: string;
     issuer?: string;
