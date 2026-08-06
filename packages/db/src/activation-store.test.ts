@@ -283,6 +283,37 @@ describe("orphan process adoption persistence", () => {
       ),
     ).resolves.toMatchObject({ generation: 2, status: "ready" });
   });
+
+  test("lists the most recently stopped instances first so a bounded sweep reaches new deaths", async () => {
+    const store = createTestStore();
+    const { deployment } = await deploymentFixture(store, "Sweep Order Agent", 41997);
+    const stopTimes = [
+      new Date("2026-07-15T02:10:00.000Z"),
+      new Date("2026-07-15T02:20:00.000Z"),
+      new Date("2026-07-15T02:30:00.000Z"),
+    ];
+    const instanceIds: string[] = [];
+    for (const [index, stoppedAt] of stopTimes.entries()) {
+      const claim = await store.acquireActivationLease({
+        deploymentId: deployment.id,
+        kind: "public_request",
+        ownerId: `req_sweep_${index}`,
+        expiresAt: new Date("2026-07-15T03:00:00.000Z"),
+        now: new Date(`2026-07-15T02:0${index}:00.000Z`),
+      });
+      await store.releaseActivationLease(claim.lease.id, stoppedAt);
+      await store.updateRuntimeInstance(claim.runtimeInstance.id, { status: "stopped" }, stoppedAt);
+      instanceIds.push(claim.runtimeInstance.id);
+    }
+
+    // Dead rows are never pruned, so the reconcile sweep sees a bounded window
+    // of this list. Creation order (deploymentId, generation) is a fixed prefix:
+    // once the window fills with old deaths, a freshly stopped instance is never
+    // reconciled and its observed Sessions wedge forever (#270). Recency order
+    // keeps every new death inside the window.
+    const listed = await store.listRuntimeInstances(["stopped"], 2);
+    expect(listed.map((instance) => instance.id)).toEqual([instanceIds[2], instanceIds[1]]);
+  });
 });
 
 async function deploymentFixture(
