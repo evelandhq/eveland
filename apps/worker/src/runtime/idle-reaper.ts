@@ -35,6 +35,14 @@ export async function reapIdleDeployments(
       await store.updateRuntimeInstance(instance.id, { status: "ready" }, now);
       continue;
     }
+    // Leases are per-Deployment, so a superseded Deployment executing a turn
+    // it picked off the shared per-project queue holds no lease of its own and
+    // looks idle here. Observed Sessions record which process is actually
+    // doing the work; stopping it mid-turn wedges the Session (#270).
+    if (await store.hasRunningSessionsObservedBy(instance.id)) {
+      await store.updateRuntimeInstance(instance.id, { status: "ready" }, now);
+      continue;
+    }
     const runtime = (input.runtimeForKind ?? createRuntimeAdapterForKind)(deployment.runtimeKind);
     // claimIdleRuntimeInstances handed this instance over in "draining"; a
     // restart_deployment job retires live instances of its Deployment as it goes,

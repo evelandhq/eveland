@@ -1,3 +1,4 @@
+import type { AgentEventObservation } from "@evelandhq/core/observability";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { reapIdleDeployments } from "./idle-reaper.js";
@@ -156,6 +157,106 @@ describe("reapIdleDeployments", () => {
       status: "stopped",
     });
     await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "stopped" });
+  });
+
+  test("spares an instance observing a running Session and reaps it once the Session ends", async () => {
+    // The #270 wedge creator: leases are per-Deployment, so an old Deployment
+    // executing a turn it picked off the shared per-project queue holds no
+    // lease of its own and looks idle. Observed Sessions are the ground truth
+    // for "this process is doing work" -- the reaper must read them.
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Observed Turn Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/observed-turn-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:observed-turn",
+      containerName: "fixture-observed-turn",
+      internalPort: 3000,
+      hostPort: 41986,
+      runtimeKind: "docker",
+    });
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_observed_turn",
+      expiresAt: new Date("2026-08-05T09:12:00.000Z"),
+      now: new Date("2026-08-05T09:11:00.000Z"),
+    });
+    await store.updateRuntimeInstance(
+      claim.runtimeInstance.id,
+      {
+        status: "ready",
+        endpointHost: "127.0.0.1",
+        endpointPort: deployment.hostPort,
+      },
+      new Date("2026-08-05T09:11:00.000Z"),
+    );
+    await store.releaseActivationLease(claim.lease.id, new Date("2026-08-05T09:12:00.000Z"));
+    const observation = (overrides: Partial<AgentEventObservation>): AgentEventObservation => ({
+      telemetryEventId: "evt_turn",
+      eventFingerprint: `fingerprint_${overrides.telemetryEventId ?? "evt_turn"}`,
+      deploymentId: deployment.id,
+      eveSessionId: "eve_observed_turn",
+      parentEveSessionId: null,
+      sourceSequence: 1,
+      agent: { id: null, name: "root", nodeId: "root" },
+      channelKind: "http",
+      eventAt: "2026-08-05T09:13:59.000Z",
+      event: { type: "session.started", data: {} },
+      runtimeInstanceId: claim.runtimeInstance.id,
+      ...overrides,
+    });
+    await store.ingestAgentEvent(observation({}));
+    const stopProcess = vi.fn(async () => {});
+    const runtime = {
+      name: "docker",
+      buildRelease: vi.fn(),
+      startProcess: vi.fn(),
+      stopProcess,
+    } as unknown as RuntimeAdapter;
+
+    await expect(
+      reapIdleDeployments(store, {
+        now: new Date("2026-08-05T09:16:29.000Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(0);
+
+    expect(stopProcess).not.toHaveBeenCalled();
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "ready",
+    });
+
+    await store.ingestAgentEvent(
+      observation({
+        telemetryEventId: "evt_completed",
+        sourceSequence: 2,
+        eventAt: "2026-08-05T09:20:00.000Z",
+        event: { type: "session.completed", data: {} },
+      }),
+    );
+    await expect(
+      reapIdleDeployments(store, {
+        now: new Date("2026-08-05T09:21:00.000Z"),
+        idleTtlMs: 60_000,
+        limit: 10,
+        runtimeForKind: () => runtime,
+      }),
+    ).resolves.toBe(1);
+    expect(stopProcess).toHaveBeenCalledWith(deployment.containerName);
   });
 
   test("does not stop a process a restart took over after the idle claim", async () => {
