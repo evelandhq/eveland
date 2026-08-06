@@ -134,8 +134,8 @@ export async function injectSandboxModules(
   );
   if (!backendIsBuilt) {
     throw new Error(
-      `@evelandhq/sandbox-bwrap backend is not built: ${input.backendDistDir} has no index.js. ` +
-        "Run `pnpm --filter @evelandhq/sandbox-bwrap build`, then retry.",
+      `@evelandhq/sandbox-bwrap backend is unusable: ${input.backendDistDir} has no index.js. ` +
+        "The package ships prebuilt, so this means an incomplete install. Run `pnpm install`, then retry.",
     );
   }
 

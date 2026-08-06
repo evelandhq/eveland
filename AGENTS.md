@@ -102,7 +102,6 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
   Eveland services.
 - `packages/session-collector`: standard OTLP projection into Eveland
   Session, usage, and instance-health read models.
-- `packages/sandbox-bwrap`: the systemd runtime's Eve exec sandbox backend.
 - `packages/architecture-tests`: the ratchet suite that enforces this file's
   dependency direction and the workspace-wide structural rules (see
   "Architecture ratchets" below).
@@ -123,7 +122,7 @@ apps -> packages
 session-collector -> core + db
 agent-auth, identity-broker -> core + db
 agent-observer, agent-scheduler -> core
-platform-observability, sandbox-bwrap, architecture-tests -> no Eveland package
+platform-observability, architecture-tests -> no Eveland package
 sdk -> no Eveland package at all
 db -> core
 core -> no other Eveland package

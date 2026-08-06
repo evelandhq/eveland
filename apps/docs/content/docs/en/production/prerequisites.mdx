@@ -23,10 +23,9 @@ Set a per-deployment `EVELAND_MEMORY_MAX` and `EVELAND_CPU_QUOTA` for the host. 
 
 ## Run preflight
 
-Build the platform sandbox backend, then run the standalone check:
+Run the standalone check:
 
 ```bash
-pnpm --filter @evelandhq/sandbox-bwrap build
 pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 ```
 

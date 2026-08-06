@@ -159,20 +159,21 @@ pnpm --filter @evelandhq/api db:migrate
 
 The host worker runs as root from its own checkout at `/opt/eveland` (see
 `infra/systemd/eveland-worker.service`); apply the same tag and
-`pnpm install --frozen-lockfile` there, then rebuild the vendored sandbox
-backend — **mandatory on every upgrade**:
+`pnpm install --frozen-lockfile` there. That is the whole upgrade — there is no
+separate sandbox-backend build step.
 
-```bash
-# worker checkout (/opt/eveland), root-owned → sudo
-pnpm --filter @evelandhq/sandbox-bwrap build
-```
+`@evelandhq/sandbox-bwrap` is the only dependency whose compiled `dist/` is
+vendored into every agent Release, but it now ships prebuilt from npm out of its
+own repository, pinned by the lockfile. Installing the frozen lockfile therefore
+gets the exact backend that tag was tested against.
 
-`@evelandhq/sandbox-bwrap` is the only package whose compiled `dist/` is vendored
-into every agent Release, and `pnpm install` never rebuilds it (no
-`prepare`/`postinstall` hook). A tag checkout refreshes the source but leaves a
-stale `dist/`; preflight only checks the backend is _built_, not current, so the
-stale artifact passes silently and every later Release vendors it. The fix
-reaches an agent only through a **new Release** — rebuild affected agents after.
+> This backend used to be a workspace package that had to be rebuilt by hand on
+> every upgrade. Skipping that step left a stale `dist/` that preflight
+> accepted — it checked only that the backend was _built_, not that it was
+> current — so every later Release silently vendored the old backend. That
+> failure mode no longer exists: there is nothing local to go stale. If you are
+> upgrading from an older release, drop the `pnpm --filter @evelandhq/sandbox-bwrap build`
+> step from your runbook.
 
 Set `EVELAND_RELEASE_CHANNEL=stable` and `EVELAND_REVISION` to the output of
 `git rev-parse --short=12 HEAD` in both the Compose `.env` and
@@ -219,15 +220,15 @@ toolchain (`bash`, `node`, `npm`, `pnpm`, `rg`, GNU `grep`/`find`, `git`, `curl`
 unconditionally, plus `bwrap` unless `EVELAND_BUILD_SANDBOX=none`, the app user
 (`EVELAND_APP_USER`, default `eveland-app`) and the build user
 (`EVELAND_BUILD_USER`, default `eveland-build`) existing, `/workspace` existing
-as a directory, the vendored sandbox backend being built (`pnpm --filter
-@evelandhq/sandbox-bwrap build`), and the app user being able to traverse the
+as a directory, `@evelandhq/sandbox-bwrap` being resolvable (`pnpm install`), and
+the app user being able to traverse the
 data dir. It reports
 every failing check at once instead of stopping at the first — the same
 one-complete-punch-list approach as the sandbox self-check under "Agent exec
-sandbox" below. The vendored-backend check is existence-only — it confirms
-`packages/sandbox-bwrap/dist` is present, not that it was built from the current
-source — so a stale `dist/` after an upgrade passes silently (see "Installing and
-upgrading Eveland").
+sandbox" below. The backend check is a module resolution — the package ships
+prebuilt from npm, so it is either the version the lockfile pins or absent
+entirely; the stale-artifact hole that existed when it was built locally is
+gone.
 `apps/worker/src/integration/preflight-check.ts` runs this same check
 standalone and prints `PREFLIGHT OK` on success; `infra/integration/run.sh`
 runs it against the Lima VM as part of the integration smoke test.
@@ -732,8 +733,8 @@ templates and is **not** pruned automatically — neither by a redeploy nor by a
 else in eveland today. Reclaiming space requires manual deletion of directories
 corresponding to known-dead sessions.
 
-See `packages/sandbox-bwrap/README.md` for the full backend behavior and security
-boundary.
+See [`evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap)'s README
+for the full backend behavior and security boundary.
 
 ## Reverse proxy
 
@@ -896,7 +897,9 @@ Playground reset requests. Apply migrations before rolling API/Gateway/Worker pr
 principal forwarding remains Agent-owned and opt-in on both deployments; do not add a permissive
 `trustedForwarders` predicate as a platform workaround.
 
-The script then runs the `@evelandhq/sandbox-bwrap` contract test as the
-unprivileged `eveland-app` user under deployed-agent systemd constraints
-(`NoNewPrivileges`, `ProtectSystem=strict`). A fully successful run prints both
-`SMOKE OK` and `BWRAP SMOKE OK`.
+The backend's own contract test is no longer part of this script — it belongs to
+`evelandhq/sandbox-bwrap`, which runs it under these same systemd constraints via
+that repository's `infra/smoke.sh`. What this script still proves is the
+integration: an imported project gets a working bwrap sandbox it never declared,
+and a redeploy preserves the durable session workspace. A fully successful run
+prints `SMOKE OK`.

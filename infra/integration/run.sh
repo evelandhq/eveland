@@ -51,7 +51,6 @@ limactl shell "$VM" -- sudo bash -c "
 
   cd /opt/eveland
   corepack pnpm install --frozen-lockfile
-  corepack pnpm --filter @evelandhq/sandbox-bwrap build
 
   # Same reuse problem for the build user: a VM created before EVELAND_BUILD_USER
   # became a required preflight check would never pick it up otherwise.
@@ -97,17 +96,10 @@ limactl shell "$VM" -- sudo bash -c "
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/schedule-scale-zero-e2e.mts
 
-  # Agent-exec sandbox contract test, run under the same constraints as a
-  # deployed eve agent: unprivileged user, NoNewPrivileges, read-only system.
-  install -d -o eveland-app -g eveland-app /var/lib/eveland-app
-  systemd-run --wait --pipe --collect --service-type=exec \
-    --property=User=eveland-app \
-    --property=NoNewPrivileges=yes \
-    --property=ProtectSystem=strict \
-    --property=PrivateTmp=yes \
-    --property=ReadWritePaths=/var/lib/eveland-app \
-    --setenv=TMPDIR=/var/lib/eveland-app \
-    bash -lc 'cd /opt/eveland/packages/sandbox-bwrap && ../../node_modules/.bin/tsx src/integration/bwrap-backend-smoke.ts'
+  # The bwrap backend's own contract test used to run here, when the backend was
+  # a workspace package. It now ships from evelandhq/sandbox-bwrap, which runs it
+  # under these same systemd constraints via that repo's infra/smoke.sh. What
+  # Eveland still owns is the end-to-end proof below.
 
   # End-to-end proof: an imported eve project gets a working bwrap sandbox it
   # never declared, and a redeploy preserves the durable session workspace.

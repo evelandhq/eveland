@@ -12,11 +12,11 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "prepare": "simple-git-hooks",
-    "dev": "pnpm --filter @evelandhq/sandbox-bwrap build && pnpm -r --parallel dev",
+    "dev": "pnpm -r --parallel dev",
     "dev:docs": "pnpm --filter @evelandhq/docs dev",
     "dev:web": "pnpm --filter @evelandhq/web dev",
     "dev:api": "pnpm --filter @evelandhq/api dev",
-    "dev:worker": "pnpm --filter @evelandhq/sandbox-bwrap build && pnpm --filter @evelandhq/worker dev",
+    "dev:worker": "pnpm --filter @evelandhq/worker dev",
     "dev:gateway": "pnpm --filter @evelandhq/gateway dev"
   },
   "devDependencies": {

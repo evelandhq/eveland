@@ -69,9 +69,7 @@ describe("Eveland public website contract", () => {
   test("builds only packages whose build differs from typecheck", () => {
     const workflow = source("../../../.github/workflows/ci.yml");
 
-    expect(workflow).toContain(
-      "pnpm --filter @evelandhq/sandbox-bwrap --filter @evelandhq/docs --filter @evelandhq/web -r build",
-    );
+    expect(workflow).toContain("pnpm --filter @evelandhq/docs --filter @evelandhq/web -r build");
     expect(workflow).not.toContain("run: pnpm -r build");
   });
 

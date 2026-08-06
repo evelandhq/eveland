@@ -96,9 +96,10 @@ describe("Eve compatibility repository contract", () => {
     for (const line of legacyLines.reverse()) {
       expect(workspace).toContain(`    ${line.dependencyName}: npm:eve@${line.verifiedVersion}`);
     }
-    expect(workspace).toContain(
-      `  eve-peer:\n    eve: "${EVE_COMPATIBILITY_POLICY.peerDependencyRange}"`,
-    );
+    // No eve-peer catalog is asserted: sandbox-bwrap was its only consumer and
+    // now lives in its own repository with its own, deliberately wider peer
+    // range. peerDependencyRange still describes the platform's hosting window
+    // and still pins the SDK floor below.
 
     // The SDK's ceiling is deliberately independent of the platform window, but
     // its floor is not: advertising support for a line Eveland can no longer
@@ -153,13 +154,12 @@ describe("Eve compatibility repository contract", () => {
       }
       if (packageJson.peerDependencies?.eve !== undefined) {
         peerConsumers.add(packagePath);
-        // Two contracts, deliberately not one. sandbox-bwrap implements
-        // SandboxBackend and is vendored into every Release, so it tracks
-        // exactly what the platform can host. The published SDK imports four
-        // auth primitives and versions on its own; see eve-sdk-peer.
-        expect(packageJson.peerDependencies.eve, packagePath).toBe(
-          packagePath === "packages/sdk/package.json" ? "catalog:eve-sdk-peer" : "catalog:eve-peer",
-        );
+        // The SDK is the only workspace package that declares an eve peer. It
+        // imports four auth primitives and versions on its own; see
+        // eve-sdk-peer. sandbox-bwrap used to be the second such package,
+        // tracking exactly what the platform could host, but it now ships from
+        // its own repository and sets its own range.
+        expect(packageJson.peerDependencies.eve, packagePath).toBe("catalog:eve-sdk-peer");
       }
     }
 
@@ -168,13 +168,11 @@ describe("Eve compatibility repository contract", () => {
       "packages/agent-auth/package.json",
       "packages/agent-observer/package.json",
       "packages/agent-scheduler/package.json",
-      "packages/sandbox-bwrap/package.json",
       "packages/sdk/package.json",
     ]);
     expect([...legacyMatrixConsumers].sort()).toEqual([
       "packages/agent-observer/package.json",
       "packages/agent-scheduler/package.json",
-      "packages/sandbox-bwrap/package.json",
     ]);
     expect([...standaloneFixtureConsumers].sort()).toEqual([
       "apps/worker/src/integration/fixtures/agent-sandbox-e2e/package.json",
@@ -183,10 +181,7 @@ describe("Eve compatibility repository contract", () => {
       "apps/worker/src/integration/fixtures/observer-e2e/package.json",
       "infra/integration/fixtures/schedule-scale-zero/package.json",
     ]);
-    expect([...peerConsumers].sort()).toEqual([
-      "packages/sandbox-bwrap/package.json",
-      "packages/sdk/package.json",
-    ]);
+    expect([...peerConsumers].sort()).toEqual(["packages/sdk/package.json"]);
   });
 
   test("keeps active documentation references aligned with policy", () => {

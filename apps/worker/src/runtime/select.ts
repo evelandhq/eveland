@@ -5,16 +5,20 @@ import { createSystemdAdapter, resolveSandboxCacheRoot } from "./systemd.js";
 import type { CompleteRuntimeAdapter } from "./types.js";
 
 /**
- * Locates the built @evelandhq/sandbox-bwrap that gets vendored into each release.
+ * Locates @evelandhq/sandbox-bwrap's dist, which gets vendored into each release.
  * Passed to createSystemdAdapter as a provider and invoked inside buildRelease
  * (see systemd.ts) and by the startup preflight's built-backend check
  * (runtime/preflight.ts) -- never at module load -- so constructing any
- * adapter, including the docker default, never touches the filesystem or
- * requires this package to be built. A successful `resolve()` already proves
- * dist/index.js exists (the package's "exports" map points at it, and Node's
- * resolver checks the target file is actually there), so no separate
- * existsSync check is needed; injectSandboxModules (sandbox-inject.ts) remains
- * the validator of the backend's contents.
+ * adapter, including the docker default, never touches the filesystem. A
+ * successful `resolve()` already proves dist/index.js exists (the package's
+ * "exports" map points at it, and Node's resolver checks the target file is
+ * actually there), so no separate existsSync check is needed;
+ * injectSandboxModules (sandbox-inject.ts) remains the validator of the
+ * backend's contents.
+ *
+ * The package ships prebuilt from npm (it lives in its own repository), so
+ * unlike the workspace package it replaced there is no build step to forget --
+ * failure here means the dependency is missing, not unbuilt.
  */
 export function resolveBackendDistDir(): string {
   let entry: string;
@@ -22,7 +26,7 @@ export function resolveBackendDistDir(): string {
     entry = createRequire(import.meta.url).resolve("@evelandhq/sandbox-bwrap");
   } catch (error) {
     throw new Error(
-      "@evelandhq/sandbox-bwrap is not resolvable. Run `pnpm --filter @evelandhq/sandbox-bwrap build` before starting the worker.",
+      "@evelandhq/sandbox-bwrap is not resolvable. Run `pnpm install` before starting the worker.",
       { cause: error },
     );
   }

@@ -415,12 +415,10 @@ describe("collectSystemdPreflightIssues", () => {
   test("converts a backendDistDir() throw into an issue, keeping its message", async () => {
     const deps = makePassingDeps();
     deps.backendDistDir = vi.fn(() => {
-      throw new Error(
-        "@evelandhq/sandbox-bwrap is not resolvable. Run `pnpm --filter @evelandhq/sandbox-bwrap build`.",
-      );
+      throw new Error("@evelandhq/sandbox-bwrap is not resolvable. Run `pnpm install`.");
     });
     const issues = await collectSystemdPreflightIssues(deps);
-    expect(issues.some((issue) => issue.includes("sandbox-bwrap build"))).toBe(true);
+    expect(issues.some((issue) => issue.includes("sandbox-bwrap is not resolvable"))).toBe(true);
   });
 
   test("flags the app user being unable to traverse the data dir", async () => {
