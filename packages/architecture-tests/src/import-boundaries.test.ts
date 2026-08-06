@@ -11,7 +11,6 @@ const PACKAGE_DEPENDENCY_MATRIX: Record<string, string[]> = {
   "@evelandhq/agent-scheduler": ["@evelandhq/core"],
   "@evelandhq/architecture-tests": [],
   "@evelandhq/platform-observability": [],
-  "@evelandhq/sandbox-bwrap": [],
   "@evelandhq/session-collector": ["@evelandhq/core", "@evelandhq/db"],
   "@evelandhq/agent-auth": ["@evelandhq/core", "@evelandhq/db"],
   "@evelandhq/identity-broker": ["@evelandhq/core", "@evelandhq/db"],

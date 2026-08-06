@@ -73,8 +73,10 @@ created by that token, so CI on an automatically opened Release PR may require
 the dedicated token. The repository must also allow GitHub Actions to create
 pull requests.
 
-`@evelandhq/sandbox-bwrap` retains its independent MIT package version and is not
-versioned with the Eveland product.
+`@evelandhq/sandbox-bwrap` is not versioned with the Eveland product. It lives in
+its own repository (`evelandhq/sandbox-bwrap`, Apache-2.0), releases on its own
+line, and is consumed here as a published npm dependency of the Worker. Upgrading
+it is an ordinary dependency bump; nothing in this repository builds it.
 
 ## Release checklist
 

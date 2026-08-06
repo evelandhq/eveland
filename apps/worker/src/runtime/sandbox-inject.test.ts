@@ -237,7 +237,7 @@ describe("injectSandboxModules", () => {
     await mkdir(backendDistDir, { recursive: true });
 
     await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(
-      /sandbox-bwrap build/,
+      /pnpm install/,
     );
   });
 });

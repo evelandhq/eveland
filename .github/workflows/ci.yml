@@ -177,4 +177,4 @@ jobs:
             ${{ runner.os }}-next-docs-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - name: Build
-        run: pnpm --filter @evelandhq/sandbox-bwrap --filter @evelandhq/docs --filter @evelandhq/web -r build
+        run: pnpm --filter @evelandhq/docs --filter @evelandhq/web -r build

@@ -4,8 +4,9 @@
 #   cp infra/systemd/eveland-worker.env.example /etc/eveland/eveland-worker.env  # then edit
 #   systemctl daemon-reload && systemctl enable --now eveland-worker
 # Assumes the repo is checked out at /opt/eveland with dependencies installed
-# (pnpm install) and @evelandhq/sandbox-bwrap built. The worker refuses to start
-# (preflight) if a host prerequisite is missing — see docs/deploy/linux.md.
+# (pnpm install) -- @evelandhq/sandbox-bwrap ships prebuilt from npm, so there is
+# no separate build step. The worker refuses to start (preflight) if a host
+# prerequisite is missing — see docs/deploy/linux.md.
 [Unit]
 Description=eveland worker (systemd runtime)
 Wants=network-online.target

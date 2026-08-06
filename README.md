@@ -15,9 +15,6 @@ repository shape and how to run it.
   browser-safe imports cannot pull in Node-only code.
 - `packages/db`: Drizzle schema and migrations, and the one domain-oriented SQL Store
   shared by production Postgres and PGlite tests.
-- `packages/sandbox-bwrap`: bubblewrap-based Eve `SandboxBackend`. The worker injects it
-  into each project's release at build time — deployed projects never declare a backend
-  (see its [README](packages/sandbox-bwrap/README.md)).
 - `packages/agent-observer`: release-time Eve hook injection with private OpenTelemetry
   providers that never register or mutate a user's global providers.
 - `packages/agent-auth`: Playground authentication registry, OIDC acquisition
@@ -250,8 +247,10 @@ Eveland is a single SemVer-versioned product. API and Gateway `GET /health` repo
 and release `channel`; Web compares its build with the API build in Settings > About.
 Only `vX.Y.Z` tags are stable releases; `main` is the `edge` channel. Release Please
 maintains the release PR, `CHANGELOG.md`, Git tag, and GitHub Release from
-Conventional Commit history. The independently published MIT
-`@evelandhq/sandbox-bwrap` package keeps its own version.
+Conventional Commit history. The bubblewrap sandbox backend
+[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) ships from
+its own repository on its own version line; the worker depends on it from npm and
+vendors its built output into each release.
 
 See [`docs/releases.md`](docs/releases.md) for the release policy, checklist, and
 current artifact boundary, and [`docs/observability.md`](docs/observability.md) for
@@ -278,6 +277,7 @@ bash infra/integration/run.sh
 
 ## License
 
-Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE),
-except for [`@evelandhq/sandbox-bwrap`](packages/sandbox-bwrap), which remains
-licensed under the MIT License.
+Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+The bubblewrap sandbox backend it depends on,
+[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap), is a
+separate project under the Apache License 2.0.

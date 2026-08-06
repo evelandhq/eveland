@@ -4,8 +4,8 @@ name: systemd smoke
 # automated coverage at all -- only the manual Lima harness in
 # infra/integration/run.sh. This is the reduced version of that harness on a
 # plain ubuntu runner (a full systemd VM): preflight, the worker systemd
-# smoke, the bwrap backend contract, the end-to-end sandbox proof, and the
-# gateway e2e against the real systemd runtime. The Lima script remains the
+# smoke, the end-to-end sandbox proof, and the gateway e2e against the real
+# systemd runtime. The Lima script remains the
 # full-fidelity harness (observer/connections/schedule e2e stay there; the
 # schedule e2e carries a known upstream replay flake that would poison a
 # nightly signal).
@@ -57,9 +57,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the sandbox backend
-        run: pnpm --filter @evelandhq/sandbox-bwrap build
-
       - name: Put the sandbox toolchain on the system PATH
         run: |
           # Deployment units run with a plain system PATH, so the toolchain the
@@ -95,17 +92,12 @@ jobs:
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 
-      - name: bwrap backend contract (deployment-shaped unit)
-        run: |
-          sudo install -d -o eveland-app -g eveland-app /var/lib/eveland-app
-          sudo systemd-run --wait --pipe --collect --service-type=exec \
-            --property=User=eveland-app \
-            --property=NoNewPrivileges=yes \
-            --property=ProtectSystem=strict \
-            --property=PrivateTmp=yes \
-            --property=ReadWritePaths=/var/lib/eveland-app \
-            --setenv=TMPDIR=/var/lib/eveland-app \
-            bash -lc "cd $GITHUB_WORKSPACE/packages/sandbox-bwrap && ../../node_modules/.bin/tsx src/integration/bwrap-backend-smoke.ts"
+      # The bwrap backend's own contract test used to run here, when the backend was
+      # a workspace package. It now ships from evelandhq/sandbox-bwrap, which runs it
+      # in its own CI and, under these same systemd constraints, via that repo's
+      # infra/smoke.sh. What Eveland still owns is the integration below: that an
+      # imported project gets a working sandbox it never declared, exercised against
+      # the vendored backend under the real systemd runtime.
 
       - name: Agent sandbox end-to-end
         run: |

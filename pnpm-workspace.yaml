@@ -7,14 +7,17 @@ catalogs:
   eve-matrix:
     eve-oldest: npm:eve@0.28.0
     eve-middle: npm:eve@0.29.5
-  eve-peer:
-    eve: ">=0.28.0 <0.31.0"
   # The published SDK's contract is narrower than the platform's. It imports
-  # four primitives from eve/channels/auth, stable across 0.27-0.30, while
-  # eve-peer tracks what Eveland can actually host and slides every minor.
-  # Tying the SDK to that forced a republish per slide and left consumers on a
-  # newer eve with a spurious peer warning in between. The floor still follows
-  # the window; only the ceiling is independent.
+  # four primitives from eve/channels/auth, stable across 0.27-0.30, while the
+  # policy's peerDependencyRange tracks what Eveland can actually host and
+  # slides every minor. Tying the SDK to that forced a republish per slide and
+  # left consumers on a newer eve with a spurious peer warning in between. The
+  # floor still follows the window; only the ceiling is independent.
+  #
+  # There is no eve-peer catalog: the only package that consumed it was
+  # sandbox-bwrap, which now lives in its own repository and declares its own,
+  # deliberately wider peer range. The platform's hosting window survives as
+  # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
     eve: ">=0.28.0 <1.0.0"
 allowBuilds:
@@ -29,10 +32,17 @@ overrides:
   "react-jsx-parser>@types/react-dom": 19.2.3
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the three-version window. Waive the release-age cooldown
-# only for this explicitly reviewed package.
+# verified minor in the three-version window.
+#
+# The release-age cooldown is waived only for explicitly reviewed packages.
+# `eve` and `@evelandhq/sandbox-bwrap` are excluded by name rather than by
+# version: eve ships often, and sandbox-bwrap is first-party (we own
+# evelandhq/sandbox-bwrap and its CI), so pinning a version here would mean
+# editing this file on every bump. The @ai-sdk and ai entries are pinned
+# because they are third-party and each version is a separate decision.
 minimumReleaseAgeExclude:
   - eve
+  - "@evelandhq/sandbox-bwrap"
   - "@ai-sdk/gateway@4.0.33"
   - "@ai-sdk/provider-utils@5.0.16"
   - ai@7.0.44
