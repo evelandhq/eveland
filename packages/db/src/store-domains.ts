@@ -650,6 +650,14 @@ export interface SessionStore {
     reason: string,
     now?: Date,
   ): Promise<number>;
+  /**
+   * Whether any running Session was last observed executing on this
+   * RuntimeInstance. Activation leases only prove intent to run on a
+   * Deployment; observed Sessions are the ground truth for which process is
+   * actually doing the work (#270), so the idle reaper must consult them
+   * before stopping a process.
+   */
+  hasRunningSessionsObservedBy(runtimeInstanceId: string): Promise<boolean>;
 }
 
 export interface UsageStore {

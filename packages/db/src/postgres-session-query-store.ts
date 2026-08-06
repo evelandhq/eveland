@@ -21,6 +21,7 @@ type PostgresSessionQueryDomain = Pick<
   | "listSessionNodes"
   | "ingestAgentEvent"
   | "listModelUsageEvents"
+  | "hasRunningSessionsObservedBy"
 > &
   Pick<LogStore, "listLogs">;
 
@@ -97,6 +98,21 @@ export function createPostgresSessionQueryStore({
 
     async ingestAgentEvent(observation) {
       return ingestPostgresAgentEvent(database, observation);
+    },
+
+    async hasRunningSessionsObservedBy(runtimeInstanceId) {
+      const [row] = await db
+        .select({ id: sessionNodes.id })
+        .from(sessionNodes)
+        .innerJoin(sessions, eq(sessions.id, sessionNodes.rootSessionId))
+        .where(
+          and(
+            eq(sessionNodes.lastObservedRuntimeInstanceId, runtimeInstanceId),
+            eq(sessions.status, "running"),
+          ),
+        )
+        .limit(1);
+      return row !== undefined;
     },
 
     async listModelUsageEvents(sessionId) {
