@@ -534,6 +534,92 @@ describe("Agent observability ingestion repository", () => {
     }
   });
 
+  test("failing Sessions for the observing instance also fails the owning ScheduleRun and releases its lease", async () => {
+    // The #270 shape: the ScheduleRun's activation lease points at one
+    // Deployment's instance while a previous Deployment's process actually
+    // executes (and observes) the turn. When the observing process dies, the
+    // Session must not leave its ScheduleRun running and its lease pinning the
+    // leased Deployment until the 24 h TTL.
+    const {
+      store,
+      projectId,
+      deploymentId: observedDeploymentId,
+      revisionId,
+    } = await createStore();
+    const importJob = await store.claimNextJob("fixture-import");
+    if (importJob) await store.completeJob(importJob.id);
+    const [recorded] = await store.recordScheduleVersions({
+      projectId,
+      sourceRevisionId: revisionId,
+      definitions: [
+        {
+          key: "daily-stolen-turn",
+          kind: "markdown",
+          cron: "0 2 * * *",
+          sourcePath: "agent/schedules/daily-stolen-turn.md",
+          definitionHash: "stolen-v1",
+        },
+      ],
+    });
+    if (!recorded) throw new Error("Expected schedule fixture.");
+    const leasedDeployment = await store.recordDeployment({
+      projectId,
+      sourceRevisionId: revisionId,
+      imageTag: "fixture:leased",
+      containerName: "fixture-leased",
+      internalPort: 3000,
+      hostPort: 41001,
+      runtimeKind: "docker",
+    });
+    await store.setProjectSchedulerTarget(projectId, leasedDeployment.id);
+    const dispatchedAt = new Date("2026-08-05T09:13:04.000Z");
+    const run = await store.createManualScheduleRun(projectId, recorded.schedule.id, dispatchedAt);
+    await store.claimScheduleRunActivation(run.id);
+    await store.redeemScheduleRunDispatch(run.id, leasedDeployment.id);
+    await store.acquireActivationLease({
+      deploymentId: leasedDeployment.id,
+      kind: "schedule_run",
+      ownerId: run.id,
+      expiresAt: new Date("2026-08-06T09:13:04.000Z"),
+      now: dispatchedAt,
+    });
+    await store.completeScheduleRun(run.id, {
+      status: "succeeded",
+      eveSessionIds: ["eve_stolen_turn"],
+    });
+
+    const observing = await store.acquireActivationLease({
+      deploymentId: observedDeploymentId,
+      kind: "turn",
+      ownerId: "turn_stolen",
+      expiresAt: new Date("2026-08-05T10:13:04.000Z"),
+      now: dispatchedAt,
+    });
+    await store.updateRuntimeInstance(observing.runtimeInstance.id, {
+      status: "ready",
+      endpointHost: "127.0.0.1",
+      endpointPort: 41_051,
+    });
+    await store.ingestAgentEvent(
+      envelope(observedDeploymentId, {
+        eveSessionId: "eve_stolen_turn",
+        runtimeInstanceId: observing.runtimeInstance.id,
+      }),
+    );
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "running" });
+
+    await store.failRunningSessionsForRuntimeInstance(
+      observing.runtimeInstance.id,
+      `RuntimeInstance ${observing.runtimeInstance.id} stopped before its active Sessions reached a terminal boundary.`,
+      new Date("2026-08-05T09:16:35.000Z"),
+    );
+
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "failed" });
+    await expect(
+      store.hasActiveActivationLeases(leasedDeployment.id, new Date("2026-08-05T09:16:36.000Z")),
+    ).resolves.toBe(false);
+  });
+
   test("a placeholder merge folds every usage counter onto the surviving session", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const gatewaySession = await store.createSession({

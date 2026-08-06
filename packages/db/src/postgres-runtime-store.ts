@@ -163,11 +163,20 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
       if (!Number.isInteger(limit) || limit < 1)
         throw new Error("RuntimeInstance list limit must be positive.");
       if (statuses.length === 0) return [];
+      // Recency first: dead rows are never pruned, so a bounded sweep over a
+      // creation-ordered list fills its window with old deaths and never
+      // reaches a freshly stopped instance -- whose observed Sessions then
+      // wedge until an unrelated redeploy (#270). Live statuses have no
+      // stoppedAt and keep the stable creation order.
       const rows = await db
         .select()
         .from(runtimeInstances)
         .where(or(...statuses.map((status) => eq(runtimeInstances.status, status))))
-        .orderBy(asc(runtimeInstances.deploymentId), asc(runtimeInstances.generation))
+        .orderBy(
+          sql`${runtimeInstances.stoppedAt} desc nulls last`,
+          asc(runtimeInstances.deploymentId),
+          asc(runtimeInstances.generation),
+        )
         .limit(limit);
       return rows.map(runtimeInstanceRowToRuntimeInstance);
     },

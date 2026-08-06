@@ -1,7 +1,16 @@
 import { createId } from "@evelandhq/core/ids";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { sessionEventRowToSessionEvent, sessionRowToSession } from "./mappers.js";
-import { modelUsageEvents, projects, sessionBindings, sessionNodes, sessions } from "./schema.js";
+import {
+  activationLeases,
+  modelUsageEvents,
+  projects,
+  scheduleRunSessions,
+  scheduleRuns,
+  sessionBindings,
+  sessionNodes,
+  sessions,
+} from "./schema.js";
 import type { SessionStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 import {
@@ -270,6 +279,49 @@ export function createPostgresSessionStore({
             reason,
             now,
           });
+        }
+        // The ScheduleRun's activation lease may point at a different (live)
+        // RuntimeInstance than the one that was observed executing -- that is
+        // the #270 wedge. Failing only the Session would leave the run
+        // `running` and its lease pinning that Deployment until the 24 h TTL,
+        // so the executions, their runs, and the runs' leases fail here too.
+        const interruptedExecutions = await tx
+          .select({ scheduleRunId: scheduleRunSessions.scheduleRunId })
+          .from(scheduleRunSessions)
+          .where(
+            and(
+              inArray(scheduleRunSessions.sessionId, sessionIds),
+              eq(scheduleRunSessions.status, "running"),
+            ),
+          );
+        const runIds = [
+          ...new Set(interruptedExecutions.map((execution) => execution.scheduleRunId)),
+        ];
+        if (runIds.length > 0) {
+          await tx
+            .update(scheduleRunSessions)
+            .set({ status: "failed", completedAt: now, error: reason })
+            .where(
+              and(
+                inArray(scheduleRunSessions.scheduleRunId, runIds),
+                inArray(scheduleRunSessions.sessionId, sessionIds),
+                eq(scheduleRunSessions.status, "running"),
+              ),
+            );
+          await tx
+            .update(scheduleRuns)
+            .set({ status: "failed", error: reason, completedAt: now, updatedAt: now })
+            .where(and(inArray(scheduleRuns.id, runIds), eq(scheduleRuns.status, "running")));
+          await tx
+            .update(activationLeases)
+            .set({ releasedAt: now })
+            .where(
+              and(
+                eq(activationLeases.kind, "schedule_run"),
+                inArray(activationLeases.ownerId, runIds),
+                isNull(activationLeases.releasedAt),
+              ),
+            );
         }
         await tx
           .update(projects)
