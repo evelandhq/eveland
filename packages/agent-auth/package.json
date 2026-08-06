@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/agent-auth",
+  "name": "@evelandhq/agent-auth",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -16,12 +16,12 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*",
+    "@evelandhq/core": "workspace:*",
     "eve": "catalog:",
     "openid-client": "^6.8.4"
   },
   "devDependencies": {
-    "@eveland/db": "workspace:*",
+    "@evelandhq/db": "workspace:*",
     "vitest": "^4.1.9"
   }
 }

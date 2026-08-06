@@ -1,11 +1,11 @@
-import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import { DEFAULT_TEAM_ID } from "@eveland/db";
+import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
+import { DEFAULT_TEAM_ID } from "@evelandhq/db";
 import {
   resolvePlatformOtlpServiceToken,
   startPlatformObservability,
   startPrivateLogs,
   startPrivateMetrics,
-} from "@eveland/platform-observability";
+} from "@evelandhq/platform-observability";
 
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 

@@ -1,4 +1,4 @@
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 
 const { importGitSource, getGitCommitSha, scanEveSource } = vi.hoisted(() => ({

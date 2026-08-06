@@ -1,4 +1,4 @@
-import type { Store } from "@eveland/db";
+import type { Store } from "@evelandhq/db";
 import { access } from "node:fs/promises";
 
 import { waitForOwnedHttpHealth } from "../../runtime/health.js";

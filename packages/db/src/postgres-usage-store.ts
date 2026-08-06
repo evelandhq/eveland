@@ -7,7 +7,7 @@ import type {
   UsageRange,
   UsageSeriesPoint,
   UsageTotals,
-} from "@eveland/core/contracts";
+} from "@evelandhq/core/contracts";
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { sessionRowToSession } from "./mappers.js";
 import { modelUsageEvents, projects, sessionNodes, sessions } from "./schema.js";

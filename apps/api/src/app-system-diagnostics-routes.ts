@@ -1,5 +1,5 @@
-import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
-import type { InstanceComponentHealth } from "@eveland/core/instance-health";
+import type { SystemConfigurationDiagnostics } from "@evelandhq/core/config-diagnostics";
+import type { InstanceComponentHealth } from "@evelandhq/core/instance-health";
 import type { ApiApp } from "./app-types.js";
 import {
   collectInstanceHealth,

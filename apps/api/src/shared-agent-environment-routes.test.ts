@@ -1,5 +1,5 @@
-import { createTestStore } from "@eveland/db/vitest";
-import { decryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
+import { createTestStore } from "@evelandhq/db/vitest";
+import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 

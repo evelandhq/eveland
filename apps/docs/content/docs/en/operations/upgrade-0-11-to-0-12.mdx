@@ -49,7 +49,7 @@ In the control-plane checkout:
 git fetch --tags origin
 git checkout v0.12.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 git rev-parse --short=12 HEAD
 ```
 
@@ -71,7 +71,7 @@ cd /opt/eveland
 git fetch --tags origin
 git checkout v0.12.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 git rev-parse --short=12 HEAD
 ```
 
@@ -105,7 +105,7 @@ Eveland 0.12 still supports imported Agents on Eve `0.25.x`, `0.26.x`, and `0.27
 
 ## Roll back to 0.11
 
-Stop the Worker, restore both checkouts to `v0.11.0`, reinstall the frozen lockfile, rebuild `@eveland/sandbox-bwrap`, set the 0.11 revision, restart the Compose services, and then restart the Worker.
+Stop the Worker, restore both checkouts to `v0.11.0`, reinstall the frozen lockfile, rebuild `@evelandhq/sandbox-bwrap`, set the 0.11 revision, restart the Compose services, and then restart the Worker.
 
 Do not reverse migrations `0027`–`0030`. Their new tables, indexes, and nullable columns can remain in place while 0.11 ignores them; deleting them would destroy 0.12 Identity configuration and continuation-token routing state needed for a later retry.
 

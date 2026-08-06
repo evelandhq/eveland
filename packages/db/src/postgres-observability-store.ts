@@ -2,7 +2,7 @@ import {
   createDefaultObservabilityPolicy,
   observabilityPolicySchema,
   type ObservabilityPolicy,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 import { eq } from "drizzle-orm";
 import { observabilityDestinationHealth, observabilityPolicies } from "./schema.js";
 import type { ObservabilityStore } from "./store-domains.js";

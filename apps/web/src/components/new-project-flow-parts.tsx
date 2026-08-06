@@ -1,5 +1,5 @@
 import { CheckIcon, CircleIcon, FileArchiveIcon, GitBranchIcon, XIcon } from "lucide-react";
-import type { SourcePreflight } from "@eveland/core/contracts";
+import type { SourcePreflight } from "@evelandhq/core/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";

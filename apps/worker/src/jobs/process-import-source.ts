@@ -1,5 +1,5 @@
-import type { Job } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type { Job } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
 
 // The narrow persistence port this handler actually needs.
 type ImportSourceStore = Pick<

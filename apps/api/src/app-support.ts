@@ -1,24 +1,24 @@
-import { type AgentAuthFailure } from "@eveland/agent-auth";
+import { type AgentAuthFailure } from "@evelandhq/agent-auth";
 import type {
   ActivationLeaseClaim,
   AuthPrincipal,
   RuntimeInstance,
   SessionStatus,
-} from "@eveland/core/contracts";
-import { getEveString, parseEveJsonObject } from "@eveland/core/eve";
-import { assertSafeArchivePath } from "@eveland/core/server/archive";
+} from "@evelandhq/core/contracts";
+import { getEveString, parseEveJsonObject } from "@evelandhq/core/eve";
+import { assertSafeArchivePath } from "@evelandhq/core/server/archive";
 import {
   createEveVersionInfo,
   readDeclaredEveVersion,
   type EveVersionInfo,
-} from "@eveland/core/source";
+} from "@evelandhq/core/source";
 import {
   ProjectSlugConflictError,
   type DeploymentStore,
   type SessionStore,
   type SourceStore,
   type Store,
-} from "@eveland/db";
+} from "@evelandhq/db";
 import type { Context } from "hono";
 import { AuthFlowError } from "./auth.js";
 import { execFile } from "node:child_process";

@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/identity-broker",
+  "name": "@evelandhq/identity-broker",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -13,11 +13,11 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*"
+    "@evelandhq/core": "workspace:*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
-    "@eveland/db": "workspace:*",
+    "@evelandhq/db": "workspace:*",
     "vitest": "^4.1.9"
   }
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/sandbox-bwrap",
+  "name": "@evelandhq/sandbox-bwrap",
   "version": "0.1.0",
   "description": "bubblewrap SandboxBackend for eve agents — real exec sandboxing without Docker or KVM",
   "license": "MIT",

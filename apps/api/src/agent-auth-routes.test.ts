@@ -1,8 +1,8 @@
-import { decodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
-import type { OidcProtocol } from "@eveland/agent-auth/oidc";
-import type { AgentAuthProviderRegistration } from "@eveland/agent-auth";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
-import { createTestStore } from "@eveland/db/vitest";
+import { decodeAgentAuthEnvelope } from "@evelandhq/core/agent-auth";
+import type { OidcProtocol } from "@evelandhq/agent-auth/oidc";
+import type { AgentAuthProviderRegistration } from "@evelandhq/agent-auth";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 

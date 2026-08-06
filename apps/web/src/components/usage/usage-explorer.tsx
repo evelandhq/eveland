@@ -10,7 +10,7 @@ import type {
   UsageAnalytics,
   UsageRange,
   UsageTotals,
-} from "@eveland/core/contracts";
+} from "@evelandhq/core/contracts";
 import {
   AlertTriangleIcon,
   ChartNoAxesColumnIcon,

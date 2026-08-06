@@ -1,12 +1,12 @@
-import type { ExternalDestinationConfig } from "@eveland/core/observability";
-import type { Store } from "@eveland/db";
-import { DEFAULT_TEAM_ID } from "@eveland/db";
+import type { ExternalDestinationConfig } from "@evelandhq/core/observability";
+import type { Store } from "@evelandhq/db";
+import { DEFAULT_TEAM_ID } from "@evelandhq/db";
 import {
   decryptDestinationConfig,
   parseObservabilityPrivateHostAllowlist,
   requestExternalObservabilityDestination,
   type ExternalObservabilityRequestInput,
-} from "@eveland/core/server/observability";
+} from "@evelandhq/core/server/observability";
 
 const probeIntervalMs = 5 * 60 * 1_000;
 const probeTimeoutMs = 5_000;

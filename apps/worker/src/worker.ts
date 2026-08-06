@@ -5,11 +5,11 @@ import {
   workerInstanceId,
 } from "./observability.js";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { formatBuildInfo } from "@eveland/core/build-info";
-import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
-import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import { writeConfigurationSnapshotFile } from "@eveland/core/server/config-diagnostics";
-import { createStoreFromEnv } from "@eveland/db/factory";
+import { formatBuildInfo } from "@evelandhq/core/build-info";
+import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
+import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
+import { writeConfigurationSnapshotFile } from "@evelandhq/core/server/config-diagnostics";
+import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { processNextJob } from "./jobs/process.js";
 import {
   cleanupExpiredSourcePreflights,

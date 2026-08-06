@@ -4,7 +4,7 @@ import {
   type ObservabilitySignal,
   type PublicExternalObservabilityDestination,
   type TelemetryDomain,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 
 export type ObservabilityDestination = PublicExternalObservabilityDestination;
 export type DestinationKind = ExternalDestinationConfigPatch["kind"];

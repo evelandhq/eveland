@@ -26,8 +26,8 @@ description: 安装前准备 Linux 用户、目录、工具、存储、数据库
 先构建平台 Sandbox Backend，再运行独立检查：
 
 ```bash
-pnpm --filter @eveland/sandbox-bwrap build
-pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+pnpm --filter @evelandhq/sandbox-bwrap build
+pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 ```
 
 只有输出 `PREFLIGHT OK` 后才能继续。检查会一次性列出所有缺失项。

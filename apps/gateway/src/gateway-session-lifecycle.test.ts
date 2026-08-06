@@ -1,5 +1,5 @@
-import type { SessionBinding } from "@eveland/core/contracts";
-import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@eveland/core/eve";
+import type { SessionBinding } from "@evelandhq/core/contracts";
+import { PLAYGROUND_MAX_TRANSPORT_BYTES } from "@evelandhq/core/eve";
 import { describe, expect, test, vi } from "vitest";
 import {
   applyGatewaySessionResponse,

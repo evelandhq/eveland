@@ -1,6 +1,6 @@
-import { normalizeGitHttpHost } from "@eveland/core/ids";
-import { toPublicJob } from "@eveland/core/jobs";
-import { type Store } from "@eveland/db";
+import { normalizeGitHttpHost } from "@evelandhq/core/ids";
+import { toPublicJob } from "@evelandhq/core/jobs";
+import { type Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 import { buildDeploySchema, syncSourceSchema } from "./app-schemas.js";
 import { currentUserId } from "./app-support.js";

@@ -1,5 +1,5 @@
-import { agentAuthConfigsEqual, type AgentCredentialContext } from "@eveland/agent-auth";
-import type { AgentAuthStore, ProjectStore, SecretStore } from "@eveland/db";
+import { agentAuthConfigsEqual, type AgentCredentialContext } from "@evelandhq/agent-auth";
+import type { AgentAuthStore, ProjectStore, SecretStore } from "@evelandhq/db";
 import type { AgentAuthService } from "./agent-auth-service.js";
 import { agentAuthCallbackSchema, updateAgentConnectionSchema } from "./app-schemas.js";
 import { currentUserId } from "./app-support.js";

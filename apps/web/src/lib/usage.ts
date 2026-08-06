@@ -1,4 +1,4 @@
-import type { UsageRange, UsageTotals } from "@eveland/core/contracts";
+import type { UsageRange, UsageTotals } from "@evelandhq/core/contracts";
 import type { ModelUsageEvent, SessionTokenUsage } from "./api";
 
 export type TokenUsageSummary = SessionTokenUsage & {

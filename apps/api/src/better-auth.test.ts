@@ -6,8 +6,8 @@ import {
   teamMemberships,
   teams,
   users,
-} from "@eveland/db/schema";
-import { createPgliteTestStore } from "@eveland/db/test";
+} from "@evelandhq/db/schema";
+import { createPgliteTestStore } from "@evelandhq/db/test";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { describe, expect, onTestFinished, test } from "vitest";
 import { createBetterAuthRuntime, invitationHandle, SESSION_COOKIE_NAME } from "./auth.js";

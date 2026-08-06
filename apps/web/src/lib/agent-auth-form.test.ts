@@ -1,4 +1,4 @@
-import type { AgentAuthMethodDescriptor } from "@eveland/core/agent-auth";
+import type { AgentAuthMethodDescriptor } from "@evelandhq/core/agent-auth";
 import { describe, expect, test } from "vitest";
 import { agentAuthValuesFromConfig, serializeAgentAuthConfig } from "./agent-auth-form.js";
 

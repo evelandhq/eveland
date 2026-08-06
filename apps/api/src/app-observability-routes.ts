@@ -2,8 +2,8 @@ import {
   agentCapturePolicySchema,
   externalDestinationConfigPatchSchema,
   type ExternalDestinationConfig,
-} from "@eveland/core/observability";
-import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
+} from "@evelandhq/core/observability";
+import { DEFAULT_TEAM_ID, type Store } from "@evelandhq/db";
 import { z } from "zod";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { createObservabilityPolicyService } from "./observability/policy-service.js";

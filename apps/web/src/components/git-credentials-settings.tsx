@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { KeyRoundIcon, Trash2Icon } from "lucide-react";
-import type { PublicGitCredential } from "@eveland/core/contracts";
+import type { PublicGitCredential } from "@evelandhq/core/contracts";
 import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

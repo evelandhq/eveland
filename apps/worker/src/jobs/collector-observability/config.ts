@@ -6,9 +6,9 @@ import {
   type ObservabilityPolicy,
   type ObservabilitySignal,
   type TelemetryDomain,
-} from "@eveland/core/observability";
-import { decryptDestinationConfig } from "@eveland/core/server/observability";
-import { DEFAULT_TEAM_ID } from "@eveland/db";
+} from "@evelandhq/core/observability";
+import { decryptDestinationConfig } from "@evelandhq/core/server/observability";
+import { DEFAULT_TEAM_ID } from "@evelandhq/db";
 import { stringify } from "yaml";
 
 const builtInCapacityMetricNames = [

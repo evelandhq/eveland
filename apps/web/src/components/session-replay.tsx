@@ -11,7 +11,7 @@ import {
   type TranscriptNode,
   type TranscriptToolCall,
   type TranscriptTurn,
-} from "@eveland/core/transcript";
+} from "@evelandhq/core/transcript";
 import { DateTime } from "@/components/date-time";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {

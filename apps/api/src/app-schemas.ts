@@ -1,12 +1,12 @@
 import {
   ENVIRONMENT_ENTRY_KEY_MESSAGE,
   ENVIRONMENT_ENTRY_KEY_PATTERN,
-} from "@eveland/core/environment-entries";
+} from "@evelandhq/core/environment-entries";
 import {
   inferProjectSlugFromGitUrl,
   PROJECT_SLUG_MAX_LENGTH,
   PROJECT_SLUG_PATTERN,
-} from "@eveland/core/ids";
+} from "@evelandhq/core/ids";
 import { z } from "zod";
 
 export const projectNameSchema = z

@@ -1,6 +1,6 @@
-import type { DeploymentRecord } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
-import { createTestStore } from "@eveland/db/vitest";
+import type { DeploymentRecord } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import type { RuntimeAdapter } from "../../runtime/types.js";
 import { handleArchiveDeploymentJob } from "./archive-deployment.js";

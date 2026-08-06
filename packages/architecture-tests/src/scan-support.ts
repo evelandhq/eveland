@@ -101,16 +101,16 @@ export function listWorkspaces(): Workspace[] {
 }
 
 /**
- * Resolves an `@eveland/<pkg>/<subpath>` specifier through the target
+ * Resolves an `@evelandhq/<pkg>/<subpath>` specifier through the target
  * workspace's exports map to a repo-relative source file, or null. The repo's
  * mandated import style is exactly these subpath imports -- including
  * self-referential ones inside a package -- so a scanner that follows only
  * relative imports is blind to real edges: a browser-safe module reaching
- * node builtins through `@eveland/core/server/...`, or a cycle routed through
+ * node builtins through `@evelandhq/core/server/...`, or a cycle routed through
  * a subpath.
  */
 export function resolveWorkspaceImport(specifier: string): string | null {
-  if (!specifier.startsWith("@eveland/")) return null;
+  if (!specifier.startsWith("@evelandhq/")) return null;
   const [scope, pkg, ...rest] = specifier.split("/");
   const workspace = listWorkspaces().find((candidate) => candidate.name === `${scope}/${pkg}`);
   if (!workspace) return null;

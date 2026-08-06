@@ -1,4 +1,4 @@
-import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
+import { DEFAULT_TEAM_ID, type Store } from "@evelandhq/db";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { renderCollectorConfig } from "./config.js";

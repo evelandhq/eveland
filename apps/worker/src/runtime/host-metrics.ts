@@ -1,6 +1,6 @@
 import { readFile, statfs } from "node:fs/promises";
 import os from "node:os";
-import type { HostMetricSample, PgInstanceConnectionSample } from "@eveland/core/instance-health";
+import type { HostMetricSample, PgInstanceConnectionSample } from "@evelandhq/core/instance-health";
 import { samplePgInstanceConnections } from "./pg-connections.js";
 
 export type CpuTimes = { idle: number; total: number };

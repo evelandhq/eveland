@@ -4,8 +4,8 @@ import type {
   DeploymentRecord,
   RuntimeInstance,
   RuntimeKind,
-} from "@eveland/core/contracts";
-import { RuntimeInstanceDrainingError, type Store } from "@eveland/db";
+} from "@evelandhq/core/contracts";
+import { RuntimeInstanceDrainingError, type Store } from "@evelandhq/db";
 
 // The narrow persistence port every activation-manager entry point shares.
 export type ActivationStore = Pick<

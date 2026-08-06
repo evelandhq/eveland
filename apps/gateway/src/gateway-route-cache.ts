@@ -1,4 +1,4 @@
-import type { ResolvedAgentRoute } from "@eveland/core/contracts";
+import type { ResolvedAgentRoute } from "@evelandhq/core/contracts";
 
 export type GatewayRouteCache = {
   /** Fresh cached value (which may be a negative `null` hit), or `undefined` on miss/expiry. */

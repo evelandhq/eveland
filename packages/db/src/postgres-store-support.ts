@@ -4,10 +4,10 @@ import type {
   ModelUsageEvent,
   SharedAgentEnvironment,
   SharedAgentEnvironmentRecord,
-} from "@eveland/core/contracts";
-import { createId } from "@eveland/core/ids";
-import { decodeJobPayload } from "@eveland/core/jobs";
-import { getNextRunAt } from "@eveland/core/schedules";
+} from "@evelandhq/core/contracts";
+import { createId } from "@evelandhq/core/ids";
+import { decodeJobPayload } from "@evelandhq/core/jobs";
+import { getNextRunAt } from "@evelandhq/core/schedules";
 import type { StoreDatabase } from "./client.js";
 import {
   agentAuthCredentials,

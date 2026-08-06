@@ -1,4 +1,4 @@
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { reapIdleDeployments } from "./idle-reaper.js";
 import { createOrphanProcessReaper } from "./orphan-reaper.js";

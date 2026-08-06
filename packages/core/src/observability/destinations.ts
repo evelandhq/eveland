@@ -3,7 +3,7 @@ import {
   OBSERVABILITY_SIGNALS,
   TELEMETRY_DOMAINS,
   type TelemetryDomain,
-} from "@eveland/core/observability/shared";
+} from "@evelandhq/core/observability/shared";
 
 export const EXTERNAL_DESTINATION_KINDS = ["elastic", "langfuse", "custom_otlp"] as const;
 

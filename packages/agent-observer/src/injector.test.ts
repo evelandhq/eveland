@@ -90,7 +90,7 @@ describe("injectObserverHooks", () => {
     // node_modules is not resolvable: nothing but node builtins may survive.
     expect(runtime).not.toContain('from "eve/hooks"');
     expect(runtime).not.toContain("EVELAND_TELEMETRY_ENABLED");
-    expect(runtime).not.toContain('from "@eveland/');
+    expect(runtime).not.toContain('from "@evelandhq/');
   });
 
   test("shim falls back to the baked runtime when no platform runtime is mounted", async () => {

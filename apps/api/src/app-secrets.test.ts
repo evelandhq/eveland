@@ -3,9 +3,9 @@ import {
   decryptSecretValue,
   encryptSecretValue,
   type EncryptedSecret,
-} from "@eveland/core/server/secrets";
+} from "@evelandhq/core/server/secrets";
 import { createApp } from "./app.js";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 
 describe("api app", () => {
   test("stores secrets without returning secret values", async () => {

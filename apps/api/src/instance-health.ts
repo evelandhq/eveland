@@ -1,10 +1,10 @@
-import type { InstanceHealthStore, ObservabilityStore } from "@eveland/db";
+import type { InstanceHealthStore, ObservabilityStore } from "@evelandhq/db";
 import {
   analyzeHostCapacity,
   summarizeWorkerHealth,
   type InstanceComponentHealth,
   type InstanceHealthReport,
-} from "@eveland/core/instance-health";
+} from "@evelandhq/core/instance-health";
 
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type ComponentObservation = Omit<InstanceComponentHealth, "key" | "label">;

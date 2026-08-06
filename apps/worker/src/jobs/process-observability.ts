@@ -2,14 +2,14 @@ import {
   createAgentRuntimePolicy,
   type AgentRuntimePolicy,
   type ObservabilityPolicy,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 import {
   createAgentTelemetryCredential,
   deriveAgentTelemetrySecret,
-} from "@eveland/core/server/agent-telemetry-credential";
-import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
-import { bundleObserverRuntime, OBSERVER_RUNTIME_CONTRACT } from "@eveland/agent-observer";
-import type { ReleaseRecord } from "@eveland/core/contracts";
+} from "@evelandhq/core/server/agent-telemetry-credential";
+import { DEFAULT_TEAM_ID, type Store } from "@evelandhq/db";
+import { bundleObserverRuntime, OBSERVER_RUNTIME_CONTRACT } from "@evelandhq/agent-observer";
+import type { ReleaseRecord } from "@evelandhq/core/contracts";
 import {
   resolveAgentObservabilityDirs,
   writeAgentObserverRuntime,

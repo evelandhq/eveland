@@ -11,7 +11,7 @@ import type {
   AgentAuthCredential,
   AgentAuthTransaction,
   AgentConnection,
-} from "@eveland/core/contracts";
+} from "@evelandhq/core/contracts";
 import { verifyOidc } from "eve/channels/auth";
 import * as oidc from "openid-client";
 import {

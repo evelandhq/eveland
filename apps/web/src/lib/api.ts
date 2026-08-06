@@ -1,6 +1,6 @@
-export type { EveVersionInfo } from "@eveland/core/eve-compatibility";
+export type { EveVersionInfo } from "@evelandhq/core/eve-compatibility";
 
-import type { IdentityProviderConnection } from "@eveland/core/identity";
+import type { IdentityProviderConnection } from "@evelandhq/core/identity";
 
 // Wire shape of /system/identity/providers; shared here so client-api and
 // server-api both import it without importing each other.
@@ -31,7 +31,7 @@ import type {
   SessionTokenUsage as CoreSessionTokenUsage,
   SourceFileRecord,
   VariantMetric as CoreVariantMetric,
-} from "@eveland/core/contracts";
+} from "@evelandhq/core/contracts";
 
 export type Project = CoreProject;
 export type PublicSecret = CorePublicSecret;

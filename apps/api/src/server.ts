@@ -1,10 +1,10 @@
-import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
+import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
 import { platformObservability } from "./observability.js";
 import { serve } from "@hono/node-server";
-import { formatBuildInfo } from "@eveland/core/build-info";
-import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
+import { formatBuildInfo } from "@evelandhq/core/build-info";
+import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { createApp } from "./app.js";
-import { createStoreFromEnv } from "@eveland/db/factory";
+import { createStoreFromEnv } from "@evelandhq/db/factory";
 import {
   authAccounts,
   authSessions,
@@ -13,7 +13,7 @@ import {
   teamMemberships,
   teams,
   users,
-} from "@eveland/db/schema";
+} from "@evelandhq/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createBetterAuthRuntime } from "./auth.js";
 import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";

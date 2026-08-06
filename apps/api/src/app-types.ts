@@ -1,17 +1,20 @@
-import type { AgentAuthProviderRegistration } from "@eveland/agent-auth";
-import type { OidcAuthorizationCodeProviderOptions, OidcProtocol } from "@eveland/agent-auth/oidc";
-import type { EvelandBuildInfo } from "@eveland/core/build-info";
-import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
-import type { ActivationLeaseClaim, RuntimeInstance } from "@eveland/core/contracts";
-import type { InstanceComponentHealth } from "@eveland/core/instance-health";
-import type { ExternalDestinationConfig } from "@eveland/core/observability";
+import type { AgentAuthProviderRegistration } from "@evelandhq/agent-auth";
+import type {
+  OidcAuthorizationCodeProviderOptions,
+  OidcProtocol,
+} from "@evelandhq/agent-auth/oidc";
+import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
+import type { SystemConfigurationDiagnostics } from "@evelandhq/core/config-diagnostics";
+import type { ActivationLeaseClaim, RuntimeInstance } from "@evelandhq/core/contracts";
+import type { InstanceComponentHealth } from "@evelandhq/core/instance-health";
+import type { ExternalDestinationConfig } from "@evelandhq/core/observability";
 import type {
   ExternalObservabilityRequestInput,
   ExternalObservabilityResponse,
-} from "@eveland/core/server/observability";
+} from "@evelandhq/core/server/observability";
 import type { createBetterAuthRuntime } from "./auth.js";
 import type { PlaygroundProxy } from "./gateway-playground.js";
-import type { AuthPrincipal } from "@eveland/core/contracts";
+import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import type { Hono } from "hono";
 
 export type ApiApp = Hono<{ Variables: { principal: AuthPrincipal } }>;

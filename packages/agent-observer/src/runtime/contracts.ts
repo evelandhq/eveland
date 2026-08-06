@@ -1,4 +1,4 @@
-import type { AgentRuntimePolicy } from "@eveland/core/observability";
+import type { AgentRuntimePolicy } from "@evelandhq/core/observability";
 import type { LogRecordExporter } from "@opentelemetry/sdk-logs";
 import type { PushMetricExporter } from "@opentelemetry/sdk-metrics";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";

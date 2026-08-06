@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { createApp } from "./app.js";
 
 describe("usage analytics API", () => {

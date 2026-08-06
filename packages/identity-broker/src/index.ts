@@ -21,8 +21,8 @@ import {
   type IdentitySigningKey,
   type IdentitySigningKeyStatus,
   type ResolvedExternalIdentity,
-} from "@eveland/core/identity";
-import type { Project } from "@eveland/core/contracts";
+} from "@evelandhq/core/identity";
+import type { Project } from "@evelandhq/core/contracts";
 
 export class IdentityBrokerError extends Error {
   constructor(

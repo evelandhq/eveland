@@ -20,7 +20,7 @@ switch.
 - Follow existing code style: ESM imports with `.js` suffixes, vitest for tests,
   comments only for non-obvious constraints (match the density of
   `apps/worker/src/runtime/systemd.ts`).
-- Run `pnpm --filter @eveland/worker test` (and any other touched package's tests)
+- Run `pnpm --filter @evelandhq/worker test` (and any other touched package's tests)
   before reporting DONE.
 
 ## Task 1: Worker startup preflight for the systemd runtime
@@ -194,7 +194,7 @@ does NOT list `worker`, and does list it with `--profile docker-worker`.
 #   cp infra/systemd/eveland-worker.env.example /etc/eveland/eveland-worker.env  # then edit
 #   systemctl daemon-reload && systemctl enable --now eveland-worker
 # Assumes the repo is checked out at /opt/eveland with dependencies installed
-# (pnpm install) and @eveland/sandbox-bwrap built. The worker refuses to start
+# (pnpm install) and @evelandhq/sandbox-bwrap built. The worker refuses to start
 # (preflight) if a host prerequisite is missing — see docs/deploy/linux.md.
 [Unit]
 Description=eveland worker (systemd runtime)
@@ -208,7 +208,7 @@ Type=exec
 User=root
 WorkingDirectory=/opt/eveland
 EnvironmentFile=/etc/eveland/eveland-worker.env
-ExecStart=/usr/bin/env corepack pnpm --filter @eveland/worker exec tsx src/worker.ts
+ExecStart=/usr/bin/env corepack pnpm --filter @evelandhq/worker exec tsx src/worker.ts
 Restart=on-failure
 RestartSec=5
 
@@ -258,7 +258,7 @@ before the systemd-smoke run, add:
 
 ```bash
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-    corepack pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+    corepack pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 ```
 
 (uses the VM's existing data dir; asserts the real preflight passes on a

@@ -1,4 +1,4 @@
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { ensureDeploymentActive, reconcileRuntimeInstances } from "./activation-manager.js";
 import type { ProcessInspectionCapability, ProcessStartInput, RuntimeAdapter } from "./types.js";

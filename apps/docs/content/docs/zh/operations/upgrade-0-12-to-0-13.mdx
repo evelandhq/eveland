@@ -54,7 +54,7 @@ EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS=86400000
 git fetch --tags origin
 git checkout v0.13.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 git rev-parse --short=12 HEAD
 ```
 
@@ -75,7 +75,7 @@ cd /opt/eveland
 git fetch --tags origin
 git checkout v0.13.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 git rev-parse --short=12 HEAD
 ```
 
@@ -112,7 +112,7 @@ Eveland 0.13 仍接受使用 Eve `0.25.x`、`0.26.x` 与 `0.27.x` 的导入 Agen
 
 不要让 0.12 进程连接已经执行 `0031` 的数据库。0.12 控制面仍然依赖 Realm → Project Grant 表。
 
-回滚时，先停止 Worker 和所有 0.13 控制面 Service，恢复升级前的 Postgres 备份；如果现有备份流程要求数据库与文件系统时间点一致，也要恢复 `EVELAND_DATA_DIR`。随后在两个位置 Checkout `v0.12.0`，重新安装 Frozen Lockfile、构建 `@eveland/sandbox-bwrap`、恢复 0.12 Revision，并先启动 Compose，最后启动 Worker。
+回滚时，先停止 Worker 和所有 0.13 控制面 Service，恢复升级前的 Postgres 备份；如果现有备份流程要求数据库与文件系统时间点一致，也要恢复 `EVELAND_DATA_DIR`。随后在两个位置 Checkout `v0.12.0`，重新安装 Frozen Lockfile、构建 `@evelandhq/sandbox-bwrap`、恢复 0.12 Revision，并先启动 Compose，最后启动 Worker。
 
 数据库恢复会丢弃备份后产生的变更，包括新的 0.13 Session、Job、Environment Import 与 Identity 状态。不要手工重建已删除的 Grant 表，也不要只反向处理 `0032`/`0033`；协调一致的备份恢复才是受支持的回滚边界。
 

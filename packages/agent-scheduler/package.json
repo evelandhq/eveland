@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/agent-scheduler",
+  "name": "@evelandhq/agent-scheduler",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*",
+    "@evelandhq/core": "workspace:*",
     "typescript": "^6.0.3"
   },
   "devDependencies": {

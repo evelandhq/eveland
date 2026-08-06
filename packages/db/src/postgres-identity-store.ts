@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt } from "drizzle-orm";
-import { createId } from "@eveland/core/ids";
+import { createId } from "@evelandhq/core/ids";
 import type {
   ExternalRealmKind,
   IdentityLoginTransaction,
@@ -11,7 +11,7 @@ import type {
   IdentitySession,
   IdentitySigningKey,
   IdentitySigningKeyStatus,
-} from "@eveland/core/identity";
+} from "@evelandhq/core/identity";
 import {
   identityLoginTransactions,
   identityOidcCredentials,

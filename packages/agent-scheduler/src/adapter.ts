@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseScheduleSource } from "@eveland/core/schedules";
-import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@eveland/core/source";
+import { parseScheduleSource } from "@evelandhq/core/schedules";
+import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@evelandhq/core/source";
 import ts from "typescript";
 
 const reservedOriginalSchedule = "__evelandOriginalSchedule";

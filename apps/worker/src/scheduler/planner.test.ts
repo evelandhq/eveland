@@ -1,5 +1,5 @@
-import type { Store } from "@eveland/db";
-import { createTestStore } from "@eveland/db/vitest";
+import type { Store } from "@evelandhq/db";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { planDueSchedules } from "./planner.js";
 

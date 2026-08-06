@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { describeScheduleCron } from "@eveland/core/schedules";
+import { describeScheduleCron } from "@evelandhq/core/schedules";
 import { DateTime } from "@/components/date-time";
 import { getScheduleRuns, getSchedules } from "@/lib/server-api";
 import { RunScheduleAction } from "@/components/run-schedule-action";

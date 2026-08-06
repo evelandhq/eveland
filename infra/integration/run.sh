@@ -51,17 +51,17 @@ limactl shell "$VM" -- sudo bash -c "
 
   cd /opt/eveland
   corepack pnpm install --frozen-lockfile
-  corepack pnpm --filter @eveland/sandbox-bwrap build
+  corepack pnpm --filter @evelandhq/sandbox-bwrap build
 
   # Same reuse problem for the build user: a VM created before EVELAND_BUILD_USER
   # became a required preflight check would never pick it up otherwise.
   id -u eveland-build >/dev/null 2>&1 || useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
 
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-    corepack pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+    corepack pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-    corepack pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
+    corepack pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 
   # Private OTLP vertical slice under the real systemd hardening: a direct
   # private-port turn (including a directory-form subagent) exports standard
@@ -75,7 +75,7 @@ limactl shell "$VM" -- sudo bash -c "
   # restart, a second immutable Release, and secret non-leakage.
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data \
-    corepack pnpm --filter @eveland/worker smoke:connections
+    corepack pnpm --filter @evelandhq/worker smoke:connections
 
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
@@ -114,5 +114,5 @@ limactl shell "$VM" -- sudo bash -c "
   # Runs as root (it drives systemd itself, the same way jobs/process.ts's
   # real build_deploy path does).
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-    corepack pnpm --filter @eveland/worker exec tsx src/integration/agent-sandbox-e2e.ts
+    corepack pnpm --filter @evelandhq/worker exec tsx src/integration/agent-sandbox-e2e.ts
 "

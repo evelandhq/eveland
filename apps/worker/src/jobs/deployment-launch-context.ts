@@ -1,5 +1,5 @@
-import type { ReleaseRecord } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type { ReleaseRecord } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
 import { access, mkdir } from "node:fs/promises";
 
 import { resolveAgentObservabilityDirs } from "../runtime/observability/policy.js";

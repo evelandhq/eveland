@@ -1,4 +1,4 @@
-import { TELEMETRY_DOMAINS } from "@eveland/core/observability";
+import { TELEMETRY_DOMAINS } from "@evelandhq/core/observability";
 import {
   arrayOfRecords,
   attributesFrom,

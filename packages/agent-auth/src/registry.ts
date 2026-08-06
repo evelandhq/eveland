@@ -3,8 +3,8 @@ import {
   type AgentAuthEnvelope,
   type AgentAuthMethodDescriptor,
   type AgentAuthSecretReference,
-} from "@eveland/core/agent-auth";
-import type { AgentConnection } from "@eveland/core/contracts";
+} from "@evelandhq/core/agent-auth";
+import type { AgentConnection } from "@evelandhq/core/contracts";
 
 // Eve 0.29.5's Client `vercelOidc` variant sends this Deployment Protection
 // header alongside Authorization. It is declared in Eve's client/types module

@@ -1,7 +1,7 @@
 import {
   agentEventObservationSchema,
   type AgentEventObservation,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 import {
   anyValue,
   arrayOfRecords,

@@ -1,8 +1,8 @@
-import type { AgentAuthProviderRegistration } from "@eveland/agent-auth";
-import { sealAgentAuthConfig } from "@eveland/agent-auth/sealed-config";
-import type { AuthPrincipal } from "@eveland/core/contracts";
-import { createId } from "@eveland/core/ids";
-import { createTestStore } from "@eveland/db/vitest";
+import type { AgentAuthProviderRegistration } from "@evelandhq/agent-auth";
+import { sealAgentAuthConfig } from "@evelandhq/agent-auth/sealed-config";
+import type { AuthPrincipal } from "@evelandhq/core/contracts";
+import { createId } from "@evelandhq/core/ids";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { Hono } from "hono";
 import { describe, expect, test, vi } from "vitest";
 import { createAgentAuthService } from "./agent-auth-service.js";

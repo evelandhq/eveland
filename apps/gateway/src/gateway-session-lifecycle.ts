@@ -1,10 +1,10 @@
-import type { SessionBinding } from "@eveland/core/contracts";
+import type { SessionBinding } from "@evelandhq/core/contracts";
 import {
   getEveString,
   parseEveJsonObject,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
   type EveSessionRequest,
-} from "@eveland/core/eve";
+} from "@evelandhq/core/eve";
 
 // Upstream response bodies are agent-controlled. The metadata tee reads at
 // most the transport ceiling before treating the response as carrying no
@@ -12,7 +12,7 @@ import {
 // cannot buffer the shared data plane into the ground. (Requests are capped
 // symmetrically in gateway-transport.)
 const MAX_SESSION_METADATA_BYTES = PLAYGROUND_MAX_TRANSPORT_BYTES;
-import { isSessionBindingActive, type SessionBindingIdlePolicy } from "@eveland/core/routing";
+import { isSessionBindingActive, type SessionBindingIdlePolicy } from "@evelandhq/core/routing";
 
 export type GatewaySessionBindingRepository = {
   findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;

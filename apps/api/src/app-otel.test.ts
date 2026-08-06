@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { Root } from "protobufjs";
 import {
   createAgentTelemetryCredential,
   deriveAgentTelemetrySecret,
-} from "@eveland/core/server/agent-telemetry-credential";
-import { resolvePlatformOtlpServiceToken } from "@eveland/platform-observability";
+} from "@evelandhq/core/server/agent-telemetry-credential";
+import { resolvePlatformOtlpServiceToken } from "@evelandhq/platform-observability";
 import { createApp } from "./app.js";
 
 // `createApp` falls back to this key when no APP_SECRET_KEY is configured, so

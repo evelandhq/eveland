@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/architecture-tests",
+  "name": "@evelandhq/architecture-tests",
   "version": "0.0.0",
   "private": true,
   "description": "Workspace-wide architecture ratchets: dependency direction, Store narrowing, import cycles, browser-safe core exports, and configuration coverage.",
@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@eveland/core": "workspace:*",
+    "@evelandhq/core": "workspace:*",
     "@types/node": "^26.0.1",
     "vitest": "^4.1.9"
   }

@@ -1,6 +1,9 @@
 "use client";
 
-import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
+import type {
+  AgentAuthMethodDescriptor,
+  AgentAuthSecretReference,
+} from "@evelandhq/core/agent-auth";
 import type { AgentAuthSecretReferenceOption } from "@/lib/client-api";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";

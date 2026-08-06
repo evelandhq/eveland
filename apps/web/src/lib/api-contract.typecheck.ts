@@ -24,8 +24,8 @@ import type {
   SourceFileRecord,
   TeamInvitation as CoreTeamInvitation,
   TeamMember as CoreTeamMember,
-} from "@eveland/core/contracts";
-import type { EveVersionInfo as CoreEveVersionInfo } from "@eveland/core/eve-compatibility";
+} from "@evelandhq/core/contracts";
+import type { EveVersionInfo as CoreEveVersionInfo } from "@evelandhq/core/eve-compatibility";
 import type {
   EveVersionInfo,
   Job,

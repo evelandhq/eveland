@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import { LockKeyholeIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import type { SharedAgentEnvironment } from "@eveland/core/contracts";
+import type { SharedAgentEnvironment } from "@evelandhq/core/contracts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,

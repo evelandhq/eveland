@@ -1,12 +1,12 @@
 import {
   UnmanagedTelemetryResourceError,
   type ObservabilitySignal,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 import {
   deriveAgentTelemetrySecret,
   verifyAgentTelemetryCredential,
-} from "@eveland/core/server/agent-telemetry-credential";
-import type { Store } from "@eveland/db";
+} from "@evelandhq/core/server/agent-telemetry-credential";
+import type { Store } from "@evelandhq/db";
 import {
   countOtlpSignalItems,
   createOtlpPartialSuccessResponse,
@@ -15,11 +15,11 @@ import {
   encodeOtlpProtobufResponse,
   projectAgentEventItemsFromOtlpLogs,
   projectInstanceTelemetryFromOtlpMetrics,
-} from "@eveland/session-collector";
+} from "@evelandhq/session-collector";
 import {
   resolvePlatformOtlpServiceToken,
   runWithPlatformTracingSuppressed,
-} from "@eveland/platform-observability";
+} from "@evelandhq/platform-observability";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { isServiceRequest } from "./app-support.js";
 

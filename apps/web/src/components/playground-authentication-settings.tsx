@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { Settings2Icon } from "lucide-react";
-import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
+import type {
+  AgentAuthMethodDescriptor,
+  AgentAuthSecretReference,
+} from "@evelandhq/core/agent-auth";
 import { AgentAuthFields } from "@/components/agent-auth-fields";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

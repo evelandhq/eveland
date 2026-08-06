@@ -1,7 +1,7 @@
-import type { EvelandBuildInfo } from "@eveland/core/build-info";
-import type { ConfigurationSnapshot } from "@eveland/core/config-diagnostics";
-import type { DeploymentRecord, ResolvedAgentRoute } from "@eveland/core/contracts";
-import type { EveVersionInfo } from "@eveland/core/source";
+import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
+import type { ConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
+import type { DeploymentRecord, ResolvedAgentRoute } from "@evelandhq/core/contracts";
+import type { EveVersionInfo } from "@evelandhq/core/source";
 import type { GatewaySessionBindingRepository } from "./gateway-session-lifecycle.js";
 
 export type GatewayRepository = GatewaySessionBindingRepository & {

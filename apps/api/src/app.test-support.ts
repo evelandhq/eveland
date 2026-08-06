@@ -11,8 +11,8 @@ import {
   teamMemberships,
   teams,
   users,
-} from "@eveland/db/schema";
-import type { Store } from "@eveland/db";
+} from "@evelandhq/db/schema";
+import type { Store } from "@evelandhq/db";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createBetterAuthRuntime } from "./auth.js";
 

@@ -1,6 +1,6 @@
-import { createDefaultObservabilityPolicy } from "@eveland/core/observability";
-import { DEFAULT_TEAM_ID } from "@eveland/db";
-import { createTestStore } from "@eveland/db/vitest";
+import { createDefaultObservabilityPolicy } from "@evelandhq/core/observability";
+import { DEFAULT_TEAM_ID } from "@evelandhq/db";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

@@ -1,16 +1,16 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
-import { createId } from "@eveland/core/ids";
+import { createId } from "@evelandhq/core/ids";
 import {
   parseStepUsageEvent,
   scheduleExecutionErrorFromEveEvent,
   scheduleExecutionStatusFromEveEvent,
   sessionStatusFromEveEvent,
-} from "@eveland/core/eve";
+} from "@evelandhq/core/eve";
 import {
   UnmanagedTelemetryResourceError,
   type AgentEventObservation,
-} from "@eveland/core/observability";
-import type { SessionTrigger } from "@eveland/core/contracts";
+} from "@evelandhq/core/observability";
+import type { SessionTrigger } from "@evelandhq/core/contracts";
 import type { StoreDatabase } from "./client.js";
 import {
   appendSessionEventRow,

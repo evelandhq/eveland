@@ -54,7 +54,7 @@ In the control-plane checkout:
 git fetch --tags origin
 git checkout v0.13.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 git rev-parse --short=12 HEAD
 ```
 
@@ -75,7 +75,7 @@ cd /opt/eveland
 git fetch --tags origin
 git checkout v0.13.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 git rev-parse --short=12 HEAD
 ```
 
@@ -112,7 +112,7 @@ Eveland 0.13 still accepts imported Agents on Eve `0.25.x`, `0.26.x`, and `0.27.
 
 Do not point 0.12 processes at a database that has applied `0031`. The 0.12 control plane still expects the Realm-to-Project grant table.
 
-To roll back, stop Worker and all 0.13 control-plane services, restore the pre-upgrade Postgres backup, restore `EVELAND_DATA_DIR` if your backup procedure requires a matched database/filesystem point, check out `v0.12.0` in both locations, reinstall the frozen lockfile, rebuild `@eveland/sandbox-bwrap`, restore the 0.12 revision, and restart Compose before Worker.
+To roll back, stop Worker and all 0.13 control-plane services, restore the pre-upgrade Postgres backup, restore `EVELAND_DATA_DIR` if your backup procedure requires a matched database/filesystem point, check out `v0.12.0` in both locations, reinstall the frozen lockfile, rebuild `@evelandhq/sandbox-bwrap`, restore the 0.12 revision, and restart Compose before Worker.
 
 The restore discards database changes made after the backup, including new 0.13 Sessions, Jobs, Environment imports, and Identity state. Do not manually recreate the dropped grant table or partially reverse `0032`/`0033`; a coordinated backup restore is the supported rollback boundary.
 

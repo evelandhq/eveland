@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { UsageTotals } from "@eveland/core/contracts";
+import type { UsageTotals } from "@evelandhq/core/contracts";
 import * as usageHelpers from "./usage";
 
 const { formatTokenCount, formatUsd, groupModelUsageByAgent, summarizeTokenUsage } = usageHelpers;

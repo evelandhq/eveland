@@ -49,7 +49,7 @@ Identity API 与 Browser Chat 必须位于同一个 Schemeful Site，通常是�
 git fetch --tags origin
 git checkout v0.12.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 git rev-parse --short=12 HEAD
 ```
 
@@ -71,7 +71,7 @@ cd /opt/eveland
 git fetch --tags origin
 git checkout v0.12.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 git rev-parse --short=12 HEAD
 ```
 
@@ -105,7 +105,7 @@ Eveland 0.12 仍支持使用 Eve `0.25.x`、`0.26.x` 与 `0.27.x` 的导入 Agen
 
 ## 回滚到 0.11
 
-停止 Worker，将两个 Checkout 都恢复到 `v0.11.0`，重新安装 Frozen Lockfile、构建 `@eveland/sandbox-bwrap`、设置 0.11 Revision，重启 Compose Service，最后启动 Worker。
+停止 Worker，将两个 Checkout 都恢复到 `v0.11.0`，重新安装 Frozen Lockfile、构建 `@evelandhq/sandbox-bwrap`、设置 0.11 Revision，重启 Compose Service，最后启动 Worker。
 
 不要反向执行 `0027`–`0030`。其中新增的 Table、Index 与 Nullable Column 可以保留，0.11 会忽略它们；删除这些结构反而会破坏 0.12 已保存的 Identity 配置与 Continuation Token 路由状态，影响之后再次升级。
 

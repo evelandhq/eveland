@@ -12,7 +12,7 @@ import type {
   IdentityProviderType,
   IdentityRealm,
   IdentityReturnTarget,
-} from "@eveland/core/identity";
+} from "@evelandhq/core/identity";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,

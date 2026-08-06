@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { injectObserverHooks, type ObserverInjectionResult } from "@eveland/agent-observer";
-import { injectSchedulerAdapter, type SchedulerInjectionResult } from "@eveland/agent-scheduler";
+import { injectObserverHooks, type ObserverInjectionResult } from "@evelandhq/agent-observer";
+import { injectSchedulerAdapter, type SchedulerInjectionResult } from "@evelandhq/agent-scheduler";
 import { execa } from "execa";
 import {
   injectWorkflowWorld,

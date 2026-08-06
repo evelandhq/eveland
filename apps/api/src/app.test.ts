@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { createBuildInfo } from "@eveland/core/build-info";
-import { createScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
+import { createBuildInfo } from "@evelandhq/core/build-info";
+import { createScheduleDispatchCredential } from "@evelandhq/core/server/scheduler-dispatch";
 import { createApp } from "./app.js";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 
 import { createScheduleRunFixture } from "./app.test-support.js";
 

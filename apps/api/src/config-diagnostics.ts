@@ -1,11 +1,11 @@
-import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
+import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
 import {
   createConfigurationSnapshot,
   type ConfigurationSnapshot,
   type SystemConfigurationDiagnostics,
   type UnavailableConfigurationSnapshot,
-} from "@eveland/core/config-diagnostics";
-import { readConfigurationSnapshotFile } from "@eveland/core/server/config-diagnostics";
+} from "@evelandhq/core/config-diagnostics";
+import { readConfigurationSnapshotFile } from "@evelandhq/core/server/config-diagnostics";
 
 type Environment = Record<string, string | undefined>;
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;

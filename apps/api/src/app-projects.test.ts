@@ -2,9 +2,9 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { decryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
+import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
 import { createApp } from "./app.js";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 
 import {
   createScheduleRunFixture,

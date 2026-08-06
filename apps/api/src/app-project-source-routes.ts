@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
-import { inferProjectSlugFromGitUrl, normalizeGitHttpHost } from "@eveland/core/ids";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
-import { ProjectSlugConflictError, type Store } from "@eveland/db";
+import { inferProjectSlugFromGitUrl, normalizeGitHttpHost } from "@evelandhq/core/ids";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { ProjectSlugConflictError, type Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 import {
   createGitSourcePreflightSchema,

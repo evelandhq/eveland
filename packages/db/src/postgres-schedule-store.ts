@@ -1,10 +1,10 @@
-import { createId } from "@eveland/core/ids";
-import { getNextRunAt } from "@eveland/core/schedules";
+import { createId } from "@evelandhq/core/ids";
+import { getNextRunAt } from "@evelandhq/core/schedules";
 import {
   EVE_SESSION_BOUNDARY_EVENT_TYPES,
   scheduleExecutionErrorFromEveEvent,
   scheduleExecutionStatusFromEveEvent,
-} from "@eveland/core/eve";
+} from "@evelandhq/core/eve";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   deploymentRowToDeployment,

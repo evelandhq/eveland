@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import type { Store } from "@eveland/db";
+import type { Store } from "@evelandhq/db";
 import { instrumentRuntimeLogStore } from "./runtime-log-store.js";
 
 describe("runtime OTel log projection", () => {

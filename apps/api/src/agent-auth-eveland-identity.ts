@@ -1,5 +1,5 @@
-import type { AgentAuthProviderRegistration, AgentCredentialContext } from "@eveland/agent-auth";
-import { IdentityBrokerError } from "@eveland/identity-broker";
+import type { AgentAuthProviderRegistration, AgentCredentialContext } from "@evelandhq/agent-auth";
+import { IdentityBrokerError } from "@evelandhq/identity-broker";
 
 /**
  * Caller Tokens are audience-bound to one Project, so the cache is keyed by
@@ -12,7 +12,7 @@ type CachedToken = { token: string; refreshAt: number };
 /**
  * The `eveland-identity` Playground authentication method.
  *
- * Lives here rather than in `@eveland/agent-auth` because minting needs the
+ * Lives here rather than in `@evelandhq/agent-auth` because minting needs the
  * Identity Broker, which sits outside that package's core+db import boundary.
  * It is registered as an extension for the same reason the OIDC provider takes
  * its protocol by injection.

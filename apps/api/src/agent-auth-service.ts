@@ -2,19 +2,19 @@ import {
   createAgentAuthRegistry,
   type AgentAuthProviderRegistration,
   type AgentCredentialContext,
-} from "@eveland/agent-auth";
+} from "@evelandhq/agent-auth";
 import {
   createOidcAgentAuthProvider,
   type OidcAuthorizationCodePersistence,
   type OidcAuthorizationCodeProviderOptions,
   type OidcProtocol,
-} from "@eveland/agent-auth/oidc";
-import { openAgentAuthConfig, sealAgentAuthConfig } from "@eveland/agent-auth/sealed-config";
-import type { AgentAuthSecretReference } from "@eveland/core/agent-auth";
-import type { AgentConnection } from "@eveland/core/contracts";
-import { createId } from "@eveland/core/ids";
-import { decryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
-import type { AgentAuthStore, SecretStore } from "@eveland/db";
+} from "@evelandhq/agent-auth/oidc";
+import { openAgentAuthConfig, sealAgentAuthConfig } from "@evelandhq/agent-auth/sealed-config";
+import type { AgentAuthSecretReference } from "@evelandhq/core/agent-auth";
+import type { AgentConnection } from "@evelandhq/core/contracts";
+import { createId } from "@evelandhq/core/ids";
+import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
+import type { AgentAuthStore, SecretStore } from "@evelandhq/db";
 
 export type AgentAuthServiceStore = OidcAuthorizationCodePersistence &
   Pick<

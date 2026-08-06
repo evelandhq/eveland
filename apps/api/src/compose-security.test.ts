@@ -59,8 +59,8 @@ describe("Compose production runtime environment", () => {
 
     // The base file's NODE_ENV=development merges into the production web service,
     // so both steps need an explicit override on the command.
-    expect(web).toContain("NODE_ENV=production pnpm --filter @eveland/web build");
-    expect(web).toContain("NODE_ENV=production pnpm --filter @eveland/web exec next start");
+    expect(web).toContain("NODE_ENV=production pnpm --filter @evelandhq/web build");
+    expect(web).toContain("NODE_ENV=production pnpm --filter @evelandhq/web exec next start");
 
     // Never container-wide: NODE_ENV=production makes `pnpm install` skip the
     // devDependencies the Next build needs (see the overlay header comment).

@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { LATEST_VERIFIED_EVE_VERSION } from "@eveland/core/eve-compatibility";
-import { materializeEveFixtureDirectory } from "@eveland/core/server/eve-fixture";
+import { LATEST_VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
+import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
 import { describe, expect, test } from "vitest";
 
 describe("schedule scale-to-zero integration harness", () => {

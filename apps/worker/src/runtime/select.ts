@@ -5,7 +5,7 @@ import { createSystemdAdapter, resolveSandboxCacheRoot } from "./systemd.js";
 import type { CompleteRuntimeAdapter } from "./types.js";
 
 /**
- * Locates the built @eveland/sandbox-bwrap that gets vendored into each release.
+ * Locates the built @evelandhq/sandbox-bwrap that gets vendored into each release.
  * Passed to createSystemdAdapter as a provider and invoked inside buildRelease
  * (see systemd.ts) and by the startup preflight's built-backend check
  * (runtime/preflight.ts) -- never at module load -- so constructing any
@@ -19,10 +19,10 @@ import type { CompleteRuntimeAdapter } from "./types.js";
 export function resolveBackendDistDir(): string {
   let entry: string;
   try {
-    entry = createRequire(import.meta.url).resolve("@eveland/sandbox-bwrap");
+    entry = createRequire(import.meta.url).resolve("@evelandhq/sandbox-bwrap");
   } catch (error) {
     throw new Error(
-      "@eveland/sandbox-bwrap is not resolvable. Run `pnpm --filter @eveland/sandbox-bwrap build` before starting the worker.",
+      "@evelandhq/sandbox-bwrap is not resolvable. Run `pnpm --filter @evelandhq/sandbox-bwrap build` before starting the worker.",
       { cause: error },
     );
   }

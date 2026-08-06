@@ -3,8 +3,8 @@ import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { projectDiscoveryManifest } from "@eveland/core/discovery";
-import { EVE_COMPATIBILITY_POLICY } from "@eveland/core/eve-compatibility";
+import { projectDiscoveryManifest } from "@evelandhq/core/discovery";
+import { EVE_COMPATIBILITY_POLICY } from "@evelandhq/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -124,7 +124,7 @@ describe("Eve observer hook compatibility matrix", () => {
 
         // The platform's build-time summary projection must understand every
         // matrix version's real manifest -- this is the drift guard for
-        // @eveland/core/discovery against eve's discovery output. The
+        // @evelandhq/core/discovery against eve's discovery output. The
         // projection fails closed on unknown schema versions or missing entity
         // arrays, so a non-null result here also proves the version allowlist
         // and required-field expectations still match what eve writes; every

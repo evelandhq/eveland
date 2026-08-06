@@ -1,4 +1,4 @@
-import type { ProjectImportKind } from "@eveland/core/contracts";
+import type { ProjectImportKind } from "@evelandhq/core/contracts";
 
 export type ProjectSourceKind = "github" | "gitlab" | "git" | "zip";
 

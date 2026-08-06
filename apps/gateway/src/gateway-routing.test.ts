@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { ResolvedAgentRoute } from "@eveland/core/contracts";
+import type { ResolvedAgentRoute } from "@evelandhq/core/contracts";
 import { resolveTarget } from "./gateway-routing.js";
 import type { GatewayRepository } from "./gateway-types.js";
 

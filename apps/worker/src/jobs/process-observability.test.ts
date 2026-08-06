@@ -1,9 +1,9 @@
 import { readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { afterEach, describe, expect, test } from "vitest";
-import { DEFAULT_TEAM_ID } from "@eveland/db";
+import { DEFAULT_TEAM_ID } from "@evelandhq/db";
 import { resolveAgentObservabilityDirs } from "../runtime/observability/policy.js";
 import {
   createDeploymentObservabilityReconciler,
@@ -106,7 +106,7 @@ describe("Deployment observability policy", () => {
     // resolve platform packages from inside the observability mount.
     expect(runtime).toContain("OTLPTraceExporter");
     expect(runtime).not.toContain('from "eve/hooks"');
-    expect(runtime).not.toContain('from "@eveland/');
+    expect(runtime).not.toContain('from "@evelandhq/');
   });
 
   test("flags a release whose baked observer predates the delivery contract", async () => {

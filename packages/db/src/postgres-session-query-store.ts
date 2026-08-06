@@ -1,4 +1,4 @@
-import type { LogRecord } from "@eveland/core/contracts";
+import type { LogRecord } from "@evelandhq/core/contracts";
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import {
   logRowToLog,

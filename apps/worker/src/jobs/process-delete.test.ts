@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { Store } from "@eveland/db";
-import { createTestStore } from "@eveland/db/vitest";
+import type { Store } from "@evelandhq/db";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { processNextJob } from "./process.js";
 import { processSafeName, type RuntimeAdapter } from "../runtime/types.js";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";

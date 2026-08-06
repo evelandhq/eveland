@@ -1,4 +1,4 @@
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 

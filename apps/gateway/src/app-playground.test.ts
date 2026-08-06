@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createGatewayApp } from "./app.js";
-import { AGENT_AUTH_ENVELOPE_HEADER, encodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
+import { AGENT_AUTH_ENVELOPE_HEADER, encodeAgentAuthEnvelope } from "@evelandhq/core/agent-auth";
 import {
   activatedSessionPersistenceFailureFixture,
   affinitySecret,

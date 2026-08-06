@@ -3,7 +3,7 @@ import {
   evelandReleaseChannels,
   type EvelandComponent,
   type EvelandReleaseChannel,
-} from "@eveland/core/build-info";
+} from "@evelandhq/core/build-info";
 
 export function createBuildInfoFromEnv(
   component: EvelandComponent,

@@ -1,8 +1,8 @@
 import {
   BUILT_IN_BATCH_RECEIPT_RETENTION_HOURS,
   BUILT_IN_OBSERVABILITY_RETENTION_DAYS,
-} from "@eveland/core/observability";
-import type { Store } from "@eveland/db";
+} from "@evelandhq/core/observability";
+import type { Store } from "@evelandhq/db";
 
 const dayMs = 24 * 60 * 60 * 1_000;
 

@@ -33,7 +33,7 @@ In the control-plane checkout:
 git fetch --tags origin
 git checkout v0.16.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 git rev-parse --short=12 HEAD
 ```
 
@@ -48,7 +48,7 @@ cd /opt/eveland
 git fetch --tags origin
 git checkout v0.16.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 git rev-parse --short=12 HEAD
 ```
 
@@ -77,7 +77,7 @@ The verified baseline moving to `0.27.12` does not change what a deployed Agent 
 
 ## Roll back to 0.15
 
-Because this release adds no migrations, a source rollback is sufficient: stop the Worker and control-plane services, check out `v0.15.0` in both locations, reinstall the frozen lockfile, rebuild `@eveland/sandbox-bwrap`, restore the previous revision, start Compose, and start the Worker last. The database needs no restore.
+Because this release adds no migrations, a source rollback is sufficient: stop the Worker and control-plane services, check out `v0.15.0` in both locations, reinstall the frozen lockfile, rebuild `@evelandhq/sandbox-bwrap`, restore the previous revision, start Compose, and start the Worker last. The database needs no restore.
 
 The one thing that does not roll back is any Agent you redeployed against Eve 0.27.12 in step 4; those Releases keep the dependency they were built with until you redeploy them again.
 

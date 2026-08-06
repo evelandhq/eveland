@@ -61,13 +61,13 @@ jobs:
       matrix:
         include:
           - name: api
-            command: pnpm --filter @eveland/api test
+            command: pnpm --filter @evelandhq/api test
           - name: worker
-            command: pnpm --filter @eveland/worker test
+            command: pnpm --filter @evelandhq/worker test
           - name: db
-            command: pnpm --filter @eveland/db test
+            command: pnpm --filter @evelandhq/db test
           - name: remaining
-            command: pnpm --filter='!@eveland/api' --filter='!@eveland/worker' --filter='!@eveland/db' -r test
+            command: pnpm --filter='!@evelandhq/api' --filter='!@evelandhq/worker' --filter='!@evelandhq/db' -r test
     services:
       postgres:
         image: postgres:17-alpine
@@ -104,8 +104,8 @@ jobs:
       # database (the path production upgrades take).
       - name: Apply database migrations (twice, verifying idempotent re-run)
         run: |
-          pnpm --filter @eveland/db db:migrate
-          pnpm --filter @eveland/db db:migrate
+          pnpm --filter @evelandhq/db db:migrate
+          pnpm --filter @evelandhq/db db:migrate
         env:
           DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland_test
 
@@ -177,4 +177,4 @@ jobs:
             ${{ runner.os }}-next-docs-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - name: Build
-        run: pnpm --filter @eveland/sandbox-bwrap --filter @eveland/docs --filter @eveland/web -r build
+        run: pnpm --filter @evelandhq/sandbox-bwrap --filter @evelandhq/docs --filter @evelandhq/web -r build

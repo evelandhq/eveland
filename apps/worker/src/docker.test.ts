@@ -31,7 +31,7 @@ vi.mock("execa", () => ({
   execa: vi.fn(async () => ({ all: "" })),
 }));
 
-vi.mock("@eveland/agent-scheduler", () => ({
+vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
     eveVersion: "0.29.5",
     channelPath: "agent/channels/eveland-scheduler.ts",
@@ -58,7 +58,7 @@ test("the root dev script builds the vendored sandbox backend before starting wo
   ) as {
     scripts: Record<string, string>;
   };
-  expect(manifest.scripts.dev).toMatch(/^pnpm --filter @eveland\/sandbox-bwrap build && /);
+  expect(manifest.scripts.dev).toMatch(/^pnpm --filter @evelandhq\/sandbox-bwrap build && /);
 });
 
 test("the Worker dev process restarts when the shared .env changes", async () => {

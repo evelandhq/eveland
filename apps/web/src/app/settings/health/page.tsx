@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AlertTriangleIcon, CheckCircle2Icon, ShieldCheckIcon } from "lucide-react";
-import type { InstanceHealthStatus } from "@eveland/core/instance-health";
+import type { InstanceHealthStatus } from "@evelandhq/core/instance-health";
 import { CapacityTrend } from "@/components/capacity-trend";
 import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

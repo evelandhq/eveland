@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { describeScheduleCron } from "@eveland/core/schedules";
+import { describeScheduleCron } from "@evelandhq/core/schedules";
 import { DateTime } from "@/components/date-time";
 import { SessionReplay } from "@/components/session-replay";
 import { StatusBadge } from "@/components/status-badge";

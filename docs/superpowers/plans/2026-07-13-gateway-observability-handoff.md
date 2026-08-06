@@ -54,7 +54,7 @@ POST /projects/:projectId/playground
 当前代码还存在几个会阻碍后续演进的结构问题：
 
 - `apps/api/src/app.ts` 同时承担控制 API、Playground proxy、Eve protocol client、stream collector 和 usage projector；
-- `apps/worker` 直接依赖 `@eveland/api/store` / `@eveland/api/types`，形成 App -> App 依赖；
+- `apps/worker` 直接依赖 `@evelandhq/api/store` / `@evelandhq/api/types`，形成 App -> App 依赖；
 - 当前 worker 启动新 Deployment 前会停止旧 Deployment，并复用旧 host port，无法同时保留 preview/candidate/production Deployment；
 - 当前 Playground 将 `turn.completed` 当作 terminal，并在一次回复后把平台 Session 标记为 completed；Eve 的真正当前-turn边界是 `session.waiting | session.completed | session.failed`；
 - 当前 `sessions` / `session_events` 模型无法自然表达 root Agent + 多个 subagent session tree。
@@ -95,14 +95,14 @@ packages/
 建议 exports：
 
 ```text
-@eveland/core/contracts
-@eveland/core/eve
-@eveland/core/ids
-@eveland/core/schedules
-@eveland/core/source
-@eveland/core/server/archive
-@eveland/core/server/secrets
-@eveland/core/server/runtime-command
+@evelandhq/core/contracts
+@evelandhq/core/eve
+@evelandhq/core/ids
+@evelandhq/core/schedules
+@evelandhq/core/source
+@evelandhq/core/server/archive
+@evelandhq/core/server/secrets
+@evelandhq/core/server/runtime-command
 ```
 
 依赖方向固定为：
@@ -425,7 +425,7 @@ agent/hooks/__eveland_observer.js
 
 并递归处理每个拥有独立 Agent root 的 directory-form subagent。不要修改 source repository；只修改 prepared release tree。若用户源码已经包含同名保留文件，构建失败并给出 actionable error，不要静默覆盖。
 
-Observer module 必须自包含，只依赖 Node built-ins 和用户项目已经拥有的 `eve/hooks`。部署时不能要求用户 package.json 添加 `@eveland/*` 依赖。
+Observer module 必须自包含，只依赖 Node built-ins 和用户项目已经拥有的 `eve/hooks`。部署时不能要求用户 package.json 添加 `@evelandhq/*` 依赖。
 
 ### 5.2 Required investigation: subagent coverage
 
@@ -467,7 +467,7 @@ Observer module 必须自包含，只依赖 Node built-ins 和用户项目已经
 
 ### 5.4 Envelope schema
 
-`@eveland/core/contracts` 定义 versioned Zod schema。最少包含：
+`@evelandhq/core/contracts` 定义 versioned Zod schema。最少包含：
 
 ```ts
 type ObserverEnvelopeV1 = {
@@ -822,7 +822,7 @@ session_bindings
 - 将 Eve request/event/usage parsing 迁入 `core/eve`；
 - 创建 `packages/db`，迁移 Drizzle schema、migrations、mappers、Postgres Store 和 memory Store；
 - 更新 Drizzle scripts/config；
-- worker 改为依赖 `@eveland/db` / `@eveland/core`，移除 `@eveland/api` 依赖；
+- worker 改为依赖 `@evelandhq/db` / `@evelandhq/core`，移除 `@evelandhq/api` 依赖；
 - 更新所有 tests/imports；
 - 删除无用 exports，不保留 App -> App compatibility shim。
 
@@ -836,7 +836,7 @@ session_bindings
 
 #### Acceptance
 
-- `rg '@eveland/api' apps/worker packages` 无结果；
+- `rg '@evelandhq/api' apps/worker packages` 无结果；
 - `core` 不依赖 `db`；
 - Web 只从 browser-safe core subpaths import；
 - `pnpm test`、`pnpm typecheck`、`pnpm build` 通过。
@@ -1087,7 +1087,7 @@ core/db 边界落地
 ## 15. 2026-07-14 follow-up：本地 Docker exec sandbox
 
 完成 Phase 后发现一处 runtime parity 缺口：systemd Release 会注入
-`@eveland/sandbox-bwrap`，而本地 Docker Release 只注入 observer，导致生产式
+`@evelandhq/sandbox-bwrap`，而本地 Docker Release 只注入 observer，导致生产式
 `eve start` 落到缺少 optional peer 的 `just-bash`，内置 file/bash tools 在第一次
 调用时失败。后续实现将 sandbox injection 移到两个 runtime 都会执行的 Release
 准备路径，并保留以下边界：
@@ -1164,7 +1164,7 @@ Gateway、Worker 看起来像四个独立发布的软件。增量契约收敛为
 - `main` 是带 SHA 的 `edge` build，只有 `vX.Y.Z` tag 是 stable release；Release Please
   维护 Release PR、CHANGELOG、tag 与 GitHub Release；
 - 当前 tag 只保证可复现源码 checkout，不宣称已存在不可变 Eveland OCI/Worker 制品；
-- `@eveland/sandbox-bwrap` 保持独立 MIT package 版本，不跟随产品版本。
+- `@evelandhq/sandbox-bwrap` 保持独立 MIT package 版本，不跟随产品版本。
 
 本节是产品运维版本，不修改前文不可变 Agent Release、preview Deployment、stable route
 与 SessionBinding 的任何语义。

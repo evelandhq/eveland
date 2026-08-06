@@ -1,19 +1,19 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { AGENT_AUTH_ENVELOPE_HEADER, type AgentAuthEnvelope } from "@eveland/core/agent-auth";
-import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
+import { AGENT_AUTH_ENVELOPE_HEADER, type AgentAuthEnvelope } from "@evelandhq/core/agent-auth";
+import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
 import {
   DEFAULT_API_SESSION_IDLE_TTL_MS,
   DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
-} from "@eveland/core/routing";
+} from "@evelandhq/core/routing";
 import {
   classifyEveSessionRequest,
   isEveSessionNamespace,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
-} from "@eveland/core/eve";
-import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
+} from "@evelandhq/core/eve";
+import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { Hono } from "hono";
 
-export type { ResolvedAgentRoute } from "@eveland/core/contracts";
+export type { ResolvedAgentRoute } from "@evelandhq/core/contracts";
 export type {
   GatewayActivationClient,
   GatewayAppOptions,

@@ -12,7 +12,7 @@ function isNodeSpecifier(specifier: string): boolean {
 
 describe("browser-safe core exports", () => {
   test("no non-server core export reaches a node builtin or the server subtree", () => {
-    const core = listWorkspaces().find((workspace) => workspace.name === "@eveland/core")!;
+    const core = listWorkspaces().find((workspace) => workspace.name === "@evelandhq/core")!;
     const exportsMap = core.manifest.exports as Record<string, string>;
     const violations: string[] = [];
 
@@ -28,7 +28,7 @@ describe("browser-safe core exports", () => {
             violations.push(`${subpath} -> ${file} imports ${specifier}`);
             continue;
           }
-          // The walk follows @eveland/core subpath self-imports too (the
+          // The walk follows @evelandhq/core subpath self-imports too (the
           // repo's mandated style), so a browser-safe module cannot reach
           // node code through the package's own exports map unseen.
           const resolved = resolveImport(file, specifier);

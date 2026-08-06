@@ -1,13 +1,13 @@
-import type { SharedAgentEnvironmentRecord } from "@eveland/core/contracts";
-import { resolveSchedulerRuntimeSecret } from "@eveland/core/server/scheduler-dispatch";
+import type { SharedAgentEnvironmentRecord } from "@evelandhq/core/contracts";
+import { resolveSchedulerRuntimeSecret } from "@evelandhq/core/server/scheduler-dispatch";
 import {
   decryptSecretValue,
   maskKnownSecrets,
   mergeRuntimeEnvironment,
   type EncryptedSecret,
-} from "@eveland/core/server/secrets";
-import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@eveland/core/source";
-import type { Store } from "@eveland/db";
+} from "@evelandhq/core/server/secrets";
+import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@evelandhq/core/source";
+import type { Store } from "@evelandhq/db";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";

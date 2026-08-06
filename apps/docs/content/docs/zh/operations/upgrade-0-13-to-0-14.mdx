@@ -103,7 +103,7 @@ Built-in Retention 不再可配置：Capacity Sample 30 天，Session 与 Usage 
 git fetch --tags origin
 git checkout v0.14.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 git rev-parse --short=12 HEAD
 ```
 
@@ -123,7 +123,7 @@ cd /opt/eveland
 git fetch --tags origin
 git checkout v0.14.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 git rev-parse --short=12 HEAD
 ```
 
@@ -164,7 +164,7 @@ Collector 在宿主机 Loopback 上发布 Service 认证的 Platform Receiver `4
 
 不要让 0.13 进程连接已经执行 `0035` 的数据库。0.13 控制面仍然依赖 `observer_event_id`。
 
-回滚时，先停止 Worker 和所有 0.14 控制面 Service，恢复升级前的 Postgres 备份；如果现有备份流程要求数据库与文件系统时间点一致，也要恢复 `EVELAND_DATA_DIR`。随后在两个位置 Checkout `v0.13.0`，重新安装 Frozen Lockfile、构建 `@eveland/sandbox-bwrap`、恢复 0.13 的环境变量与 Revision，用 `--remove-orphans` 启动 Compose 以移除已废弃的 Collector Service，最后启动 Worker。
+回滚时，先停止 Worker 和所有 0.14 控制面 Service，恢复升级前的 Postgres 备份；如果现有备份流程要求数据库与文件系统时间点一致，也要恢复 `EVELAND_DATA_DIR`。随后在两个位置 Checkout `v0.13.0`，重新安装 Frozen Lockfile、构建 `@evelandhq/sandbox-bwrap`、恢复 0.13 的环境变量与 Revision，用 `--remove-orphans` 启动 Compose 以移除已废弃的 Collector Service，最后启动 Worker。
 
 之后需要再次重新部署所有 Agent：0.14 构建出的 Release 带的是私有 OTLP Hook，0.13 无法接收。
 

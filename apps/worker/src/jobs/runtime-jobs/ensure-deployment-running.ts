@@ -1,4 +1,4 @@
-import type { Store } from "@eveland/db";
+import type { Store } from "@evelandhq/db";
 
 import { startRuntimeInstance, type ActivationStore } from "../../runtime/activation-manager.js";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";

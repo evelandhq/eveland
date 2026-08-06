@@ -1,14 +1,14 @@
-import { toPublicJob } from "@eveland/core/jobs";
+import { toPublicJob } from "@evelandhq/core/jobs";
 import {
   DEFAULT_API_SESSION_IDLE_TTL_MS,
   DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
-} from "@eveland/core/routing";
+} from "@evelandhq/core/routing";
 import {
   DeploymentNotFoundError,
   DeploymentNotPromotableError,
   ProjectRouteNotFoundError,
   type Store,
-} from "@eveland/db";
+} from "@evelandhq/db";
 import { publicDeployment } from "./app-public-projections.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { aliasSchema, routeTargetsSchema } from "./app-schemas.js";

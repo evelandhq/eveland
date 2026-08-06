@@ -1,4 +1,4 @@
-import { ENVIRONMENT_ENTRY_KEY_PATTERN } from "@eveland/core/environment-entries";
+import { ENVIRONMENT_ENTRY_KEY_PATTERN } from "@evelandhq/core/environment-entries";
 
 export type DotenvImportEntry = {
   line: number;

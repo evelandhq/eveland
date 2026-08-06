@@ -49,22 +49,22 @@ importers:
 
   apps/api:
     dependencies:
-      '@eveland/agent-auth':
+      '@evelandhq/agent-auth':
         specifier: workspace:*
         version: link:../../packages/agent-auth
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@eveland/db':
+      '@evelandhq/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@eveland/identity-broker':
+      '@evelandhq/identity-broker':
         specifier: workspace:*
         version: link:../../packages/identity-broker
-      '@eveland/platform-observability':
+      '@evelandhq/platform-observability':
         specifier: workspace:*
         version: link:../../packages/platform-observability
-      '@eveland/session-collector':
+      '@evelandhq/session-collector':
         specifier: workspace:*
         version: link:../../packages/session-collector
       '@hono/node-server':
@@ -147,13 +147,13 @@ importers:
 
   apps/gateway:
     dependencies:
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@eveland/db':
+      '@evelandhq/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@eveland/platform-observability':
+      '@evelandhq/platform-observability':
         specifier: workspace:*
         version: link:../../packages/platform-observability
       '@hono/node-server':
@@ -172,7 +172,7 @@ importers:
       '@base-ui/react':
         specifier: ^1.6.0
         version: 1.6.0(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@icons-pack/react-simple-icons':
@@ -302,22 +302,22 @@ importers:
 
   apps/worker:
     dependencies:
-      '@eveland/agent-observer':
+      '@evelandhq/agent-observer':
         specifier: workspace:*
         version: link:../../packages/agent-observer
-      '@eveland/agent-scheduler':
+      '@evelandhq/agent-scheduler':
         specifier: workspace:*
         version: link:../../packages/agent-scheduler
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@eveland/db':
+      '@evelandhq/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@eveland/platform-observability':
+      '@evelandhq/platform-observability':
         specifier: workspace:*
         version: link:../../packages/platform-observability
-      '@eveland/sandbox-bwrap':
+      '@evelandhq/sandbox-bwrap':
         specifier: workspace:*
         version: link:../../packages/sandbox-bwrap
       '@opentelemetry/api':
@@ -351,7 +351,7 @@ importers:
 
   packages/agent-auth:
     dependencies:
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../core
       eve:
@@ -361,7 +361,7 @@ importers:
         specifier: ^6.8.4
         version: 6.8.4
     devDependencies:
-      '@eveland/db':
+      '@evelandhq/db':
         specifier: workspace:*
         version: link:../db
       vitest:
@@ -370,7 +370,7 @@ importers:
 
   packages/agent-observer:
     dependencies:
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../core
       '@opentelemetry/api':
@@ -422,7 +422,7 @@ importers:
 
   packages/agent-scheduler:
     dependencies:
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../core
       typescript:
@@ -444,7 +444,7 @@ importers:
 
   packages/architecture-tests:
     devDependencies:
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../core
       '@types/node':
@@ -475,7 +475,7 @@ importers:
 
   packages/db:
     dependencies:
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../core
       drizzle-orm:
@@ -497,14 +497,14 @@ importers:
 
   packages/identity-broker:
     dependencies:
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
       '@electric-sql/pglite':
         specifier: ^0.5.4
         version: 0.5.4
-      '@eveland/db':
+      '@evelandhq/db':
         specifier: workspace:*
         version: link:../db
       vitest:
@@ -601,7 +601,7 @@ importers:
 
   packages/session-collector:
     dependencies:
-      '@eveland/core':
+      '@evelandhq/core':
         specifier: workspace:*
         version: link:../core
       protobufjs:

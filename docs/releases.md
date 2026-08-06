@@ -19,7 +19,7 @@ Every Eveland component reports one product identity:
 ```
 
 - `version` is the SemVer product version maintained in the root
-  `package.json` and `@eveland/core/build-info`.
+  `package.json` and `@evelandhq/core/build-info`.
 - `revision` is the exact Git commit deployed by the operator.
 - `channel` is `dev`, `edge`, `prerelease`, or `stable`.
 - `component` identifies the reporting process without turning API, Gateway,
@@ -73,7 +73,7 @@ created by that token, so CI on an automatically opened Release PR may require
 the dedicated token. The repository must also allow GitHub Actions to create
 pull requests.
 
-`@eveland/sandbox-bwrap` retains its independent MIT package version and is not
+`@evelandhq/sandbox-bwrap` retains its independent MIT package version and is not
 versioned with the Eveland product.
 
 ## Release checklist

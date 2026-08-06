@@ -46,7 +46,7 @@ services:
     restart: unless-stopped
     network_mode: host
     ports: !override []
-    command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && cd apps/api && NODE_ENV=production pnpm exec tsx --import=@eveland/platform-observability/register --env-file=../../.env src/server.ts"
+    command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && cd apps/api && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
     environment:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
     network_mode: host
     ports: !override []
-    command: sh -lc "corepack enable && pnpm install && cd apps/gateway && NODE_ENV=production pnpm exec tsx --import=@eveland/platform-observability/register --env-file=../../.env src/server.ts"
+    command: sh -lc "corepack enable && pnpm install && cd apps/gateway && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
     environment:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
@@ -97,7 +97,7 @@ services:
     restart: unless-stopped
     network_mode: host
     ports: !override []
-    command: sh -lc "corepack enable && pnpm install && NODE_ENV=production pnpm --filter @eveland/web build && NODE_ENV=production pnpm --filter @eveland/web exec next start --port 3000"
+    command: sh -lc "corepack enable && pnpm install && NODE_ENV=production pnpm --filter @evelandhq/web build && NODE_ENV=production pnpm --filter @evelandhq/web exec next start --port 3000"
     environment:
       CI: "true"
       API_URL: http://localhost:4000

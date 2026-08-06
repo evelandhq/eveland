@@ -17,7 +17,7 @@ function findCycleGroups(files: string[]): string[][] {
   for (const file of files) {
     const targets: string[] = [];
     for (const specifier of importSpecifiers(readSource(file))) {
-      // resolveImport also follows @eveland/* subpath (self-)imports, so a
+      // resolveImport also follows @evelandhq/* subpath (self-)imports, so a
       // cycle routed through the package's own exports map is visible.
       const resolved = resolveImport(file, specifier);
       if (resolved && fileSet.has(resolved)) targets.push(resolved);

@@ -1,5 +1,5 @@
-import type { RuntimeKind } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type { RuntimeKind } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
 import { createRuntimeAdapterForKind } from "./select.js";
 import type { RuntimeAdapter } from "./types.js";
 

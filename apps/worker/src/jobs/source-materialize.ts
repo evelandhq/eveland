@@ -1,4 +1,4 @@
-import { decryptSecretValue } from "@eveland/core/server/secrets";
+import { decryptSecretValue } from "@evelandhq/core/server/secrets";
 
 import { getGitCommitSha, importGitSource } from "../source/importer.js";
 import { devSecretKey, parseEncryptedSecret } from "./process-support.js";

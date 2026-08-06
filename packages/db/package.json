@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/db",
+  "name": "@evelandhq/db",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -21,7 +21,7 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*",
+    "@evelandhq/core": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9"
   },

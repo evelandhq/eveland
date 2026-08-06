@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
+import { AGENT_RUNTIME_POLICY_PATH } from "@evelandhq/core/observability";
 import { createPolicyManagedAgentTelemetry } from "./policy-runtime.js";
 import { modelCallCapture } from "./runtime/model-capture.js";
 import type { AgentTelemetryEvent, AgentTelemetryHookContext } from "./runtime.js";

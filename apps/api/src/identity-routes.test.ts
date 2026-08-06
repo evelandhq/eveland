@@ -7,8 +7,8 @@ import {
   teamMemberships,
   teams,
   users,
-} from "@eveland/db/schema";
-import { createPgliteTestStore, disableSeededOpenIdentityProvider } from "@eveland/db/test";
+} from "@evelandhq/db/schema";
+import { createPgliteTestStore, disableSeededOpenIdentityProvider } from "@evelandhq/db/test";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createApp } from "./app.js";
 import { createBetterAuthRuntime } from "./auth.js";

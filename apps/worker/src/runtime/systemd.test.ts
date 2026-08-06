@@ -32,7 +32,7 @@ vi.mock("execa", () => ({
   execa: vi.fn().mockResolvedValue({ all: "", stdout: "", stderr: "" }),
 }));
 
-vi.mock("@eveland/agent-scheduler", () => ({
+vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
     eveVersion: "0.29.5",
     channelPath: "agent/channels/eveland-scheduler.ts",
@@ -472,7 +472,7 @@ describe("createSystemdAdapter backendDistDir laziness", () => {
 
   test("invokes the backendDistDir provider inside buildRelease, surfacing its error", async () => {
     const backendDistDir = vi.fn(() => {
-      throw new Error("@eveland/sandbox-bwrap is not resolvable.");
+      throw new Error("@evelandhq/sandbox-bwrap is not resolvable.");
     });
     const adapter = createSystemdAdapter({
       ...baseAdapterConfig,
@@ -488,7 +488,7 @@ describe("createSystemdAdapter backendDistDir laziness", () => {
         buildDir: "/data/builds/proj_123/rel_789",
         commandContext: { hasLockfile: true },
       }),
-    ).rejects.toThrow("@eveland/sandbox-bwrap is not resolvable.");
+    ).rejects.toThrow("@evelandhq/sandbox-bwrap is not resolvable.");
     expect(backendDistDir).toHaveBeenCalledTimes(1);
   });
 });

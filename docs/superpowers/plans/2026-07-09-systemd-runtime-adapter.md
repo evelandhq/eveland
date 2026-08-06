@@ -11,14 +11,14 @@
 ## Global Constraints
 
 - Node 24, ESM everywhere: `"type": "module"`, relative imports use `.js` suffixes (e.g. `./types.js`).
-- Test runner is vitest; run with `pnpm --filter @eveland/worker test` (all) or `pnpm --filter @eveland/worker exec vitest run <path>` (one file).
-- Typecheck with `pnpm --filter @eveland/worker typecheck`.
+- Test runner is vitest; run with `pnpm --filter @evelandhq/worker test` (all) or `pnpm --filter @evelandhq/worker exec vitest run <path>` (one file).
+- Typecheck with `pnpm --filter @evelandhq/worker typecheck`.
 - No new runtime dependencies. `execa` is already a dependency.
 - Code style: pure arg-builder functions with unit tests + thin execa wrappers, mirroring `apps/worker/src/runtime/docker.ts` and `apps/worker/src/docker.test.ts`.
 - The systemd adapter is Linux-only and assumes the worker process runs as **root** on the deploy host (v1; documented in Task 6).
 - Deployments run as a fixed service user (default `eveland-app`, override via `EVELAND_APP_USER`). **Deviation from earlier design sketch:** `DynamicUser=yes` is deferred — the dynamic UID is unknown before unit start, which makes giving it a writable release dir (needed because eve's default local workflow world writes `.workflow-data/` into the cwd) awkward. A fixed user + `ProtectSystem=strict` + `ReadWritePaths=<releaseDir>` gets equivalent practical hardening for a single-tenant internal host.
 - Secrets are injected via a root-owned `0600` EnvironmentFile, not `LoadCredential`. **Deviation from earlier design sketch:** eve apps read secrets from `process.env`, so env-file injection is the drop-in parity with docker `--env`; `LoadCredential` would require app-side changes.
-- `@eveland/sandbox-bwrap` (eve SandboxBackend) is **out of scope** — it is Plan 2, written after this plan is executed and the Lima environment exists.
+- `@evelandhq/sandbox-bwrap` (eve SandboxBackend) is **out of scope** — it is Plan 2, written after this plan is executed and the Lima environment exists.
 - Env vars introduced: `EVELAND_RUNTIME` (`docker` default | `systemd`), `EVELAND_APP_USER` (default `eveland-app`), `EVELAND_MEMORY_MAX` (default `2G`), `EVELAND_CPU_QUOTA` (default `200%`), `EVELAND_BUILD_SANDBOX` (`bwrap` default | `none`).
 
 ---
@@ -33,7 +33,7 @@
 
 **Interfaces:**
 
-- Consumes: existing `dockerBuild`, `dockerRun`, `dockerStopAndRemove`, `writeGeneratedDockerfile` from `docker.ts`; `inferEveRuntimeCommand` from `@eveland/shared/runtime`.
+- Consumes: existing `dockerBuild`, `dockerRun`, `dockerStopAndRemove`, `writeGeneratedDockerfile` from `docker.ts`; `inferEveRuntimeCommand` from `@evelandhq/shared/runtime`.
 - Produces (later tasks rely on these exact shapes):
 
 ```ts
@@ -117,7 +117,7 @@ describe("createDockerAdapter", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/worker exec vitest run src/docker.test.ts`
+Run: `pnpm --filter @evelandhq/worker exec vitest run src/docker.test.ts`
 Expected: FAIL — `processSafeName`, `buildDockerStartCommand`, `createDockerAdapter` are not exported.
 
 - [ ] **Step 3: Create `apps/worker/src/runtime/types.ts`**
@@ -172,7 +172,7 @@ export function processSafeName(value: string): string {
 Add these imports at the top (keep existing ones):
 
 ```ts
-import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
+import { inferEveRuntimeCommand } from "@evelandhq/shared/runtime";
 import {
   processSafeName,
   type ProcessStartInput,
@@ -237,7 +237,7 @@ export function createDockerAdapter(config: DockerAdapterConfig): RuntimeAdapter
 
 - [ ] **Step 5: Run tests and typecheck**
 
-Run: `pnpm --filter @eveland/worker exec vitest run src/docker.test.ts && pnpm --filter @eveland/worker typecheck`
+Run: `pnpm --filter @evelandhq/worker exec vitest run src/docker.test.ts && pnpm --filter @evelandhq/worker typecheck`
 Expected: PASS (the full-suite process tests are untouched so far).
 
 - [ ] **Step 6: Commit**
@@ -313,7 +313,7 @@ describe("waitForHttpHealth", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/worker exec vitest run src/runtime/health.test.ts`
+Run: `pnpm --filter @evelandhq/worker exec vitest run src/runtime/health.test.ts`
 Expected: FAIL — `./health.js` does not exist.
 
 - [ ] **Step 3: Create `apps/worker/src/runtime/health.ts`**
@@ -354,7 +354,7 @@ function sleep(ms: number): Promise<void> {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter @eveland/worker exec vitest run src/runtime/health.test.ts`
+Run: `pnpm --filter @evelandhq/worker exec vitest run src/runtime/health.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -403,7 +403,7 @@ Update any assertions that referenced `buildImage` / `runContainer` / `stopConta
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/worker exec vitest run src/jobs/process.test.ts`
+Run: `pnpm --filter @evelandhq/worker exec vitest run src/jobs/process.test.ts`
 Expected: FAIL — `process.ts` still expects `buildImage`/`runContainer`/`stopContainer`.
 
 - [ ] **Step 3: Rewrite the runtime handling in `apps/worker/src/jobs/process.ts`**
@@ -541,7 +541,7 @@ async function fileExists(filePath: string): Promise<boolean> {
 
 - [ ] **Step 4: Run the full worker suite and typecheck**
 
-Run: `pnpm --filter @eveland/worker test && pnpm --filter @eveland/worker typecheck`
+Run: `pnpm --filter @evelandhq/worker test && pnpm --filter @evelandhq/worker typecheck`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -562,7 +562,7 @@ git commit -m "refactor(worker): deploy jobs drive the release-shaped runtime ad
 
 **Interfaces:**
 
-- Consumes: `RuntimeCommandContext` from `./types.js`; `inferEveRuntimeCommand` from `@eveland/shared/runtime`.
+- Consumes: `RuntimeCommandContext` from `./types.js`; `inferEveRuntimeCommand` from `@evelandhq/shared/runtime`.
 - Produces (Task 5's adapter calls these):
 
 ```ts
@@ -719,13 +719,13 @@ describe("buildEnvFileContent", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/worker exec vitest run src/runtime/systemd.test.ts`
+Run: `pnpm --filter @evelandhq/worker exec vitest run src/runtime/systemd.test.ts`
 Expected: FAIL — `./systemd.js` does not exist.
 
 - [ ] **Step 3: Create `apps/worker/src/runtime/systemd.ts` with the pure builders**
 
 ```ts
-import { inferEveRuntimeCommand } from "@eveland/shared/runtime";
+import { inferEveRuntimeCommand } from "@evelandhq/shared/runtime";
 import type { RuntimeCommandContext } from "./types.js";
 
 export type SystemdStartInput = {
@@ -826,7 +826,7 @@ export function buildEnvFileContent(env: Record<string, string>): string {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter @eveland/worker exec vitest run src/runtime/systemd.test.ts`
+Run: `pnpm --filter @evelandhq/worker exec vitest run src/runtime/systemd.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -893,7 +893,7 @@ describe("createRuntimeAdapterFromEnv", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/worker exec vitest run src/runtime/select.test.ts`
+Run: `pnpm --filter @evelandhq/worker exec vitest run src/runtime/select.test.ts`
 Expected: FAIL — `./select.js` does not exist.
 
 - [ ] **Step 3: Append `createSystemdAdapter` to `apps/worker/src/runtime/systemd.ts`**
@@ -1028,7 +1028,7 @@ const runtime = options.runtime ?? createRuntimeAdapterFromEnv();
 
 - [ ] **Step 6: Run the full worker suite and typecheck**
 
-Run: `pnpm --filter @eveland/worker test && pnpm --filter @eveland/worker typecheck`
+Run: `pnpm --filter @evelandhq/worker test && pnpm --filter @evelandhq/worker typecheck`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -1051,7 +1051,7 @@ git commit -m "feat(worker): systemd adapter and EVELAND_RUNTIME selection"
 
 **Interfaces:**
 
-- Consumes: the full worker path (`processNextJob` with `EVELAND_RUNTIME=systemd`), `createMemoryStore` from `@eveland/api/store`.
+- Consumes: the full worker path (`processNextJob` with `EVELAND_RUNTIME=systemd`), `createMemoryStore` from `@evelandhq/api/store`.
 - Produces: a repeatable `bash infra/integration/run.sh` that provisions the VM and exits 0 printing `SMOKE OK`.
 
 - [ ] **Step 1: Create `infra/lima/eveland.yaml`**
@@ -1089,7 +1089,7 @@ provision:
 This is a script, not a vitest file (vitest only picks up `*.test.ts`). It deploys a plain-node fixture through the real job pipeline with the real systemd adapter, asserts the health path, then cleans up the unit.
 
 ```ts
-import { createMemoryStore } from "@eveland/api/store";
+import { createMemoryStore } from "@evelandhq/api/store";
 import { execa } from "execa";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -1172,17 +1172,17 @@ limactl shell "$VM" -- sudo bash -c "
   cd /opt/eveland
   corepack pnpm install --frozen-lockfile
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-    corepack pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
+    corepack pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 "
 ```
 
 Then: `chmod +x infra/integration/run.sh`
 
-Note: `tsx` must be runnable — it is available transitively via the workspace root; if `pnpm --filter @eveland/worker exec tsx` reports it missing, add `tsx` to `apps/worker` devDependencies (it is already used by the `dev` script, so it should resolve from the workspace).
+Note: `tsx` must be runnable — it is available transitively via the workspace root; if `pnpm --filter @evelandhq/worker exec tsx` reports it missing, add `tsx` to `apps/worker` devDependencies (it is already used by the `dev` script, so it should resolve from the workspace).
 
 - [ ] **Step 4: Run the smoke test to verify it fails cleanly on macOS**
 
-Run: `EVELAND_RUNTIME=systemd pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts`
+Run: `EVELAND_RUNTIME=systemd pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts`
 Expected: FAIL on macOS at the build/systemd-run step (no bwrap/systemd) — confirms the script wiring executes past the store setup. (Skip if pnpm exec cannot find tsx; fix per note above first.)
 
 - [ ] **Step 5: Run the integration test in the VM**
@@ -1248,7 +1248,7 @@ stalls every run silently.
 - Deployments share one service user; per-deployment `DynamicUser` isolation is
   a follow-up.
 - The eve sandbox backend inside deployed agents is addressed separately
-  (`@eveland/sandbox-bwrap`, Plan 2).
+  (`@evelandhq/sandbox-bwrap`, Plan 2).
 ```
 
 - [ ] **Step 7: Commit**
@@ -1262,6 +1262,6 @@ git commit -m "feat(infra): Lima VM integration test and Linux deploy docs for t
 
 ## Self-Review
 
-- **Spec coverage:** RuntimeAdapter reshape (Tasks 1, 3), host builds under bwrap (Tasks 4, 5), systemd-run transient units (Tasks 4, 5), secrets via env file (Tasks 4, 5; LoadCredential deviation documented in Global Constraints), `/eve/v1/health` (Task 2), docker fallback as default (Tasks 1, 5), Lima verification (Task 6). StateDirectory deviation documented in Global Constraints. `@eveland/sandbox-bwrap` explicitly deferred to Plan 2.
+- **Spec coverage:** RuntimeAdapter reshape (Tasks 1, 3), host builds under bwrap (Tasks 4, 5), systemd-run transient units (Tasks 4, 5), secrets via env file (Tasks 4, 5; LoadCredential deviation documented in Global Constraints), `/eve/v1/health` (Task 2), docker fallback as default (Tasks 1, 5), Lima verification (Task 6). StateDirectory deviation documented in Global Constraints. `@evelandhq/sandbox-bwrap` explicitly deferred to Plan 2.
 - **Placeholder scan:** all steps carry complete code, exact paths, exact commands.
 - **Type consistency:** `RuntimeCommandContext { isEveProject, hasLockfile, scripts }`, `ReleaseBuildResult { releaseRef, log }`, `ProcessStartResult { internalPort, log }` used identically across Tasks 1–6; `processSafeName` defined in Task 1, consumed in Tasks 1 and 3.
