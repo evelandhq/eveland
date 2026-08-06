@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
-import { createId } from "@eveland/core/ids";
-import { HEAVY_JOB_TYPES } from "@eveland/core/jobs";
-import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
+import { createId } from "@evelandhq/core/ids";
+import { HEAVY_JOB_TYPES } from "@evelandhq/core/jobs";
+import type { HostMetricSample, WorkerHeartbeat } from "@evelandhq/core/instance-health";
 import { hostMetricSamples, jobs, runtimeInstances, workerHeartbeats } from "./schema.js";
 import type { InstanceHealthStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";

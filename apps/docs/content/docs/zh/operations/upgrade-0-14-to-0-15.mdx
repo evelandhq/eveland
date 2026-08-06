@@ -86,7 +86,7 @@ command -v ss && command -v ps
 git fetch --tags origin
 git checkout v0.15.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 git rev-parse --short=12 HEAD
 ```
 
@@ -110,7 +110,7 @@ cd /opt/eveland
 git fetch --tags origin
 git checkout v0.15.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 git rev-parse --short=12 HEAD
 ```
 
@@ -158,7 +158,7 @@ sudo journalctl -u eveland-worker -n 100 --no-pager
 
 **恢复升级前的数据库备份是唯一受支持的回滚方式。** 不要让 0.14 进程连接已经应用了 `0037` 与 `0039` 的数据库：0.14 在 Session 合并时直接改写事件归属而不重新编号，会违反 `(session_id, index)` 唯一索引；它的激活写入 `endpointPort = deployments.host_port`，可能与运行在重新分配端口上的 live 实例冲突。
 
-回滚步骤：停止 Worker 与全部 0.15 控制面服务，恢复升级前的 Postgres 备份，如果备份流程要求数据库与文件系统时间点匹配则同时恢复 `EVELAND_DATA_DIR`，在两个位置 Checkout `v0.14.0`，重新安装 frozen lockfile，重新构建 `@eveland/sandbox-bwrap`，恢复此前的 Revision，然后启动 Compose，最后启动 Worker。
+回滚步骤：停止 Worker 与全部 0.15 控制面服务，恢复升级前的 Postgres 备份，如果备份流程要求数据库与文件系统时间点匹配则同时恢复 `EVELAND_DATA_DIR`，在两个位置 Checkout `v0.14.0`，重新安装 frozen lockfile，重新构建 `@evelandhq/sandbox-bwrap`，恢复此前的 Revision，然后启动 Compose，最后启动 Worker。
 
 恢复会丢弃备份之后的所有数据库变更，包括新的 Session、Job 与 Route 变更。它同时会恢复 0.15 之前的端口分配，因此启动 Worker 前请确认没有 0.15 的遗留进程仍占着端口：
 

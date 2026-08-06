@@ -1,4 +1,4 @@
-import type { AgentEventObservation } from "@eveland/core/observability";
+import type { AgentEventObservation } from "@evelandhq/core/observability";
 import { sql } from "drizzle-orm";
 import { afterAll, describe, expect, test } from "vitest";
 import { createDatabase } from "./client.js";

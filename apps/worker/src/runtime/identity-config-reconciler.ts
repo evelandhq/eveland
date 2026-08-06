@@ -1,5 +1,5 @@
-import type { Job } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type { Job } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";

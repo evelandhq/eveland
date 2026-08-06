@@ -1,4 +1,7 @@
-import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
+import type {
+  AgentAuthMethodDescriptor,
+  AgentAuthSecretReference,
+} from "@evelandhq/core/agent-auth";
 
 export function serializeAgentAuthConfig(
   descriptor: AgentAuthMethodDescriptor,

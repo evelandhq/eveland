@@ -1,4 +1,4 @@
-import { createId } from "@eveland/core/ids";
+import { createId } from "@evelandhq/core/ids";
 import { and, desc, eq } from "drizzle-orm";
 import { secretRowToPublicSecret, secretRowToSecretRecord } from "./mappers.js";
 import type { SecretStore } from "./store-domains.js";

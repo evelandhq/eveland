@@ -53,7 +53,7 @@ stoppable, not to make mixed hosts a supported topology.
 
 **schema.ts:** add to the `deployments` table: `runtimeKind: text("runtime_kind").notNull(),` (no default — see Global Constraints).
 
-**Migration:** run `pnpm --filter @eveland/api db:generate` after the schema edit, then
+**Migration:** run `pnpm --filter @evelandhq/api db:generate` after the schema edit, then
 hand-edit the generated SQL so it is safe on a non-empty table:
 
 ```sql
@@ -85,8 +85,8 @@ release mapper if none exists).
 `getRelease`/`getSourceRevision` return the record by id and null when absent. Update
 every existing `recordDeployment` call site in tests to pass a `runtimeKind`.
 
-Compile check: `pnpm --filter @eveland/api test` and
-`pnpm --filter @eveland/api exec tsc --noEmit` (worker still fails to compile until
+Compile check: `pnpm --filter @evelandhq/api test` and
+`pnpm --filter @evelandhq/api exec tsc --noEmit` (worker still fails to compile until
 Task 3 updates its `recordDeployment` call — verify only the api package here, and
 note the expected worker breakage in your report so the controller knows it is
 planned).
@@ -122,7 +122,7 @@ untouched except for imports.
 returns an adapter whose `.name` matches, and that `createRuntimeAdapterFromEnv` still
 rejects unknown kinds.
 
-Run `pnpm --filter @eveland/worker exec vitest run src/runtime/select.test.ts` (the
+Run `pnpm --filter @evelandhq/worker exec vitest run src/runtime/select.test.ts` (the
 full worker suite may still fail to compile on the Task 1 interface change — that is
 Task 3's job; run the focused file and `tsc --noEmit` scoped reporting only select.ts
 status, and note remaining breakage in your report).
@@ -164,7 +164,7 @@ to receive the old containerName, while the active runtime's `stopProcess` is no
 called for it.
 
 After this task the worker package must compile again: run the full
-`pnpm --filter @eveland/worker test` and `tsc --noEmit`.
+`pnpm --filter @evelandhq/worker test` and `tsc --noEmit`.
 
 ## Task 4: restart_deployment actually restarts
 
@@ -287,9 +287,9 @@ deployments now record their `runtimeKind`, so stops/restarts/deletes always use
 adapter that created the process — the drain-first guidance still stands for hosts
 being migrated, and old rows are backfilled as `docker` by the migration. Document
 that project deletion is now asynchronous (a `delete_project` job) and stops the
-running process first. Mention `pnpm --filter @eveland/api db:generate`/`db:push` as
+running process first. Mention `pnpm --filter @evelandhq/api db:generate`/`db:push` as
 the migration mechanism for existing installs.
 
 **Verification:** `bash -n infra/integration/run.sh` still passes (file untouched but
 it invokes the smoke); the smoke script itself compiles
-(`pnpm --filter @eveland/worker exec tsc --noEmit`).
+(`pnpm --filter @evelandhq/worker exec tsc --noEmit`).

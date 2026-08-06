@@ -1,7 +1,7 @@
-import type { DeploymentStatus } from "@eveland/core/contracts";
-import { claimDeploymentKey, createId } from "@eveland/core/ids";
-import { isSessionBindingActive, validateRouteTargets } from "@eveland/core/routing";
-import { createEveVersionInfo, readDeclaredEveVersion } from "@eveland/core/source";
+import type { DeploymentStatus } from "@evelandhq/core/contracts";
+import { claimDeploymentKey, createId } from "@evelandhq/core/ids";
+import { isSessionBindingActive, validateRouteTargets } from "@evelandhq/core/routing";
+import { createEveVersionInfo, readDeclaredEveVersion } from "@evelandhq/core/source";
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import {
   agentRouteRowToAgentRoute,

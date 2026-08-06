@@ -1,5 +1,5 @@
-import type { AgentEventObservation } from "@eveland/core/observability";
-import type { DeploymentRecord } from "@eveland/core/contracts";
+import type { AgentEventObservation } from "@evelandhq/core/observability";
+import type { DeploymentRecord } from "@evelandhq/core/contracts";
 import { describe, expect, test } from "vitest";
 import { createTestStore } from "./vitest-store.js";
 

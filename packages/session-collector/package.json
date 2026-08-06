@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/session-collector",
+  "name": "@evelandhq/session-collector",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*",
+    "@evelandhq/core": "workspace:*",
     "protobufjs": "^7.6.5"
   },
   "devDependencies": {

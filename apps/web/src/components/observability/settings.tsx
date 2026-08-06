@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { AgentCapturePolicy, PublicObservabilityPolicy } from "@eveland/core/observability";
+import type { AgentCapturePolicy, PublicObservabilityPolicy } from "@evelandhq/core/observability";
 import {
   createObservabilityDestination,
   deleteObservabilityDestination,

@@ -1,4 +1,4 @@
-import type { AgentCatalogRecord } from "@eveland/core/catalog";
+import type { AgentCatalogRecord } from "@evelandhq/core/catalog";
 import { and, asc, eq, gt, isNull } from "drizzle-orm";
 import {
   agentRoutes,

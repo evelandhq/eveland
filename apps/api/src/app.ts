@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { AuthPrincipal } from "@eveland/core/contracts";
-import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import { assertValidSecretKey } from "@eveland/core/server/secrets";
-import type { Store } from "@eveland/db";
+import type { AuthPrincipal } from "@evelandhq/core/contracts";
+import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
+import { assertValidSecretKey } from "@evelandhq/core/server/secrets";
+import type { Store } from "@evelandhq/db";
 import { proxyGatewayPlayground } from "./gateway-playground.js";
 import { registerInternalRoutes } from "./app-internal-routes.js";
 import {

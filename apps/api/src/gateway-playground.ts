@@ -1,5 +1,5 @@
-import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
-import { AGENT_AUTH_ENVELOPE_HEADER } from "@eveland/core/agent-auth";
+import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
+import { AGENT_AUTH_ENVELOPE_HEADER } from "@evelandhq/core/agent-auth";
 
 export type PlaygroundProxyInput = {
   projectId: string;

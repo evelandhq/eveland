@@ -5,16 +5,16 @@ import { importSpecifiers, listSourceFiles, listWorkspaces, readSource } from ".
 // The matrix is TOTAL over packages/: a workspace missing here fails the
 // suite, so a new package is born constrained instead of unratcheted.
 const PACKAGE_DEPENDENCY_MATRIX: Record<string, string[]> = {
-  "@eveland/core": [],
-  "@eveland/db": ["@eveland/core"],
-  "@eveland/agent-observer": ["@eveland/core"],
-  "@eveland/agent-scheduler": ["@eveland/core"],
-  "@eveland/architecture-tests": [],
-  "@eveland/platform-observability": [],
-  "@eveland/sandbox-bwrap": [],
-  "@eveland/session-collector": ["@eveland/core", "@eveland/db"],
-  "@eveland/agent-auth": ["@eveland/core", "@eveland/db"],
-  "@eveland/identity-broker": ["@eveland/core", "@eveland/db"],
+  "@evelandhq/core": [],
+  "@evelandhq/db": ["@evelandhq/core"],
+  "@evelandhq/agent-observer": ["@evelandhq/core"],
+  "@evelandhq/agent-scheduler": ["@evelandhq/core"],
+  "@evelandhq/architecture-tests": [],
+  "@evelandhq/platform-observability": [],
+  "@evelandhq/sandbox-bwrap": [],
+  "@evelandhq/session-collector": ["@evelandhq/core", "@evelandhq/db"],
+  "@evelandhq/agent-auth": ["@evelandhq/core", "@evelandhq/db"],
+  "@evelandhq/identity-broker": ["@evelandhq/core", "@evelandhq/db"],
   eveland: [],
 };
 
@@ -73,7 +73,7 @@ describe("workspace import boundaries", () => {
     for (const workspace of workspaces) {
       for (const file of listSourceFiles(`${workspace.directory}/src`)) {
         for (const specifier of importSpecifiers(readSource(file))) {
-          if (/^@eveland\/[^/]+\/src\//.test(specifier)) {
+          if (/^@evelandhq\/[^/]+\/src\//.test(specifier)) {
             violations.push(`${file} deep-imports ${specifier}`);
           }
           if (specifier.startsWith(".")) {
@@ -89,13 +89,13 @@ describe("workspace import boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  test("every @eveland import is a declared dependency, and declared package edges follow the matrix", () => {
+  test("every @evelandhq import is a declared dependency, and declared package edges follow the matrix", () => {
     const violations: string[] = [];
     for (const workspace of workspaces) {
       const declared = declaredWorkspaceDependencies(workspace.manifest);
       for (const file of listSourceFiles(`${workspace.directory}/src`)) {
         for (const specifier of importSpecifiers(readSource(file))) {
-          if (!specifier.startsWith("@eveland/")) continue;
+          if (!specifier.startsWith("@evelandhq/")) continue;
           const packageName = specifier.split("/").slice(0, 2).join("/");
           if (packageName === workspace.name) continue;
           if (!declared.has(packageName)) {
@@ -111,7 +111,7 @@ describe("workspace import boundaries", () => {
       }
       if (allowed) {
         for (const dependency of declaredWorkspaceDependencies(workspace.manifest)) {
-          if (dependency.startsWith("@eveland/") && !allowed.includes(dependency)) {
+          if (dependency.startsWith("@evelandhq/") && !allowed.includes(dependency)) {
             violations.push(
               `${workspace.name} declares ${dependency}, outside its allowed dependency direction`,
             );
@@ -123,7 +123,7 @@ describe("workspace import boundaries", () => {
   });
 
   test("core exposes explicit browser-safe and Node-only subpaths without a root barrel", () => {
-    const core = workspaces.find((workspace) => workspace.name === "@eveland/core");
+    const core = workspaces.find((workspace) => workspace.name === "@evelandhq/core");
     expect(core).toBeDefined();
     expect(core!.manifest.exports).toMatchObject({
       "./contracts": "./src/contracts.ts",
@@ -139,7 +139,7 @@ describe("workspace import boundaries", () => {
   });
 
   test("db owns the store, store factory, and schema entrypoints", () => {
-    const db = workspaces.find((workspace) => workspace.name === "@eveland/db");
+    const db = workspaces.find((workspace) => workspace.name === "@evelandhq/db");
     expect(db).toBeDefined();
     expect(db!.manifest.exports).toMatchObject({
       ".": "./src/store.ts",

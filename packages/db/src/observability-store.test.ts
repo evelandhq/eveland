@@ -1,4 +1,4 @@
-import { createDefaultObservabilityPolicy } from "@eveland/core/observability";
+import { createDefaultObservabilityPolicy } from "@evelandhq/core/observability";
 import { describe, expect, test } from "vitest";
 import { DEFAULT_TEAM_ID } from "./store.js";
 import { createTestStore } from "./vitest-store.js";

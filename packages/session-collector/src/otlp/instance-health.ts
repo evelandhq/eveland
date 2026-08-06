@@ -2,7 +2,7 @@ import type {
   HostMetricSample,
   PgInstanceConnectionSample,
   WorkerHeartbeat,
-} from "@eveland/core/instance-health";
+} from "@evelandhq/core/instance-health";
 import {
   arrayOfRecords,
   attributesFrom,

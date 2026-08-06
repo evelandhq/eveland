@@ -1,8 +1,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { ProjectImportKind, ScheduleRecord } from "@eveland/core/contracts";
-import { getNextRunAt } from "@eveland/core/schedules";
-import { inspectEveProject, type SourceFile } from "@eveland/core/source";
+import type { ProjectImportKind, ScheduleRecord } from "@evelandhq/core/contracts";
+import { getNextRunAt } from "@evelandhq/core/schedules";
+import { inspectEveProject, type SourceFile } from "@evelandhq/core/source";
 
 const ignoredDirectories = new Set([
   ".git",

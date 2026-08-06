@@ -1,4 +1,4 @@
-import { createId } from "@eveland/core/ids";
+import { createId } from "@evelandhq/core/ids";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { sessionEventRowToSessionEvent, sessionRowToSession } from "./mappers.js";
 import { modelUsageEvents, projects, sessionBindings, sessionNodes, sessions } from "./schema.js";

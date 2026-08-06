@@ -3,13 +3,13 @@
 // injection, image build, and the deployment-permission TypeScript probe.
 //
 // Run from the repository root:
-//   pnpm --filter @eveland/worker smoke:docker-sandbox
+//   pnpm --filter @evelandhq/worker smoke:docker-sandbox
 
 import assert from "node:assert/strict";
 import { glob, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { materializeEveFixtureDirectory } from "@eveland/core/server/eve-fixture";
+import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
 import { allocateAvailableHostPort } from "../jobs/process.js";
 import { createDockerAdapter } from "../runtime/docker.js";
 import { waitForHttpHealth } from "../runtime/health.js";

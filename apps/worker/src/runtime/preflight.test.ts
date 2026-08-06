@@ -416,7 +416,7 @@ describe("collectSystemdPreflightIssues", () => {
     const deps = makePassingDeps();
     deps.backendDistDir = vi.fn(() => {
       throw new Error(
-        "@eveland/sandbox-bwrap is not resolvable. Run `pnpm --filter @eveland/sandbox-bwrap build`.",
+        "@evelandhq/sandbox-bwrap is not resolvable. Run `pnpm --filter @evelandhq/sandbox-bwrap build`.",
       );
     });
     const issues = await collectSystemdPreflightIssues(deps);

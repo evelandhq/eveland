@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { decodeAgentAuthEnvelope, type AgentAuthEnvelope } from "@eveland/core/agent-auth";
-import type { ResolvedAgentRoute, SessionBinding } from "@eveland/core/contracts";
-import { selectWeightedTarget } from "@eveland/core/routing";
+import { decodeAgentAuthEnvelope, type AgentAuthEnvelope } from "@evelandhq/core/agent-auth";
+import type { ResolvedAgentRoute, SessionBinding } from "@evelandhq/core/contracts";
+import { selectWeightedTarget } from "@evelandhq/core/routing";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import type { GatewayRepository } from "./gateway-types.js";
 

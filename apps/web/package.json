@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/web",
+  "name": "@evelandhq/web",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
-    "@eveland/core": "workspace:*",
+    "@evelandhq/core": "workspace:*",
     "@icons-pack/react-simple-icons": "^13.13.0",
     "@pierre/diffs": "1.2.12",
     "@pierre/trees": "1.0.0-beta.6",

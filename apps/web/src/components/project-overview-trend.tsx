@@ -1,6 +1,6 @@
 "use client";
 
-import type { UsageSeriesPoint } from "@eveland/core/contracts";
+import type { UsageSeriesPoint } from "@evelandhq/core/contracts";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { useDisplayTimezone } from "@/components/time-zone-provider";
 import {

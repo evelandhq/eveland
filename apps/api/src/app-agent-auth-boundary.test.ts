@@ -1,5 +1,5 @@
-import type { AuthPrincipal } from "@eveland/core/contracts";
-import { createTestStore } from "@eveland/db/vitest";
+import type { AuthPrincipal } from "@evelandhq/core/contracts";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { Hono } from "hono";
 import { describe, expect, test } from "vitest";
 import { createAgentAuthService } from "./agent-auth-service.js";

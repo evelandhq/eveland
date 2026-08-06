@@ -109,7 +109,7 @@ LoggerProvider 和 MeterProvider 标记 `runtime` 与 `capacity` domain，避免
 信号来源混为一个 Resource。
 
 API 和 Gateway 都是纯 ESM HTTP 服务。它们的启动命令必须在应用入口之前预加载
-`@eveland/platform-observability/register`，注册 OpenTelemetry ESM module hook；
+`@evelandhq/platform-observability/register`，注册 OpenTelemetry ESM module hook；
 否则 Node 会先完成 `node:http` 等静态依赖的模块链接，HTTP instrumentation 无法
 生成 server span 和 `http.server.request.duration`。启动器在支持的 Node 版本上
 使用同步的 `module.registerHooks()` 路径，并为较早的 Node 24 小版本保留异步 hook

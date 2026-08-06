@@ -2,7 +2,7 @@ import { request as httpRequest } from "node:http";
 import { serve } from "@hono/node-server";
 import { describe, expect, test, vi } from "vitest";
 import { createGatewayApp } from "./app.js";
-import { affinityBucketForRoute } from "@eveland/core/routing";
+import { affinityBucketForRoute } from "@evelandhq/core/routing";
 import {
   activatedSessionPersistenceFailureFixture,
   affinitySecret,

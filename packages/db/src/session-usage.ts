@@ -1,4 +1,4 @@
-import type { Session, SessionTokenUsage } from "@eveland/core/contracts";
+import type { Session, SessionTokenUsage } from "@evelandhq/core/contracts";
 
 export function summarizeSessionUsage(sessions: Session[]): SessionTokenUsage {
   const usage: SessionTokenUsage = {

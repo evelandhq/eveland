@@ -1,10 +1,10 @@
 import { platformObservability } from "./observability.js";
 import { serve } from "@hono/node-server";
-import { formatBuildInfo } from "@eveland/core/build-info";
-import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
-import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
-import { resolveSecretWithDevFallback } from "@eveland/core/server/dev-secrets";
-import { createStoreFromEnv } from "@eveland/db/factory";
+import { formatBuildInfo } from "@evelandhq/core/build-info";
+import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
+import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
+import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
+import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { createGatewayApp } from "./app.js";
 import { createApiActivationClient } from "./activation-client.js";
 import { createApiIdentityClient } from "./identity-client.js";

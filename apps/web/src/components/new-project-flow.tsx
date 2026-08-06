@@ -25,8 +25,8 @@ import {
   normalizeGitHttpHost,
   PROJECT_SLUG_MAX_LENGTH,
   PROJECT_SLUG_PATTERN,
-} from "@eveland/core/ids";
-import type { PublicGitCredential, SourcePreflight } from "@eveland/core/contracts";
+} from "@evelandhq/core/ids";
+import type { PublicGitCredential, SourcePreflight } from "@evelandhq/core/contracts";
 import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

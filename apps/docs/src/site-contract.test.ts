@@ -15,7 +15,7 @@ describe("Eveland public website contract", () => {
   test("is an independent Next.js application in the monorepo", () => {
     const packageJson = source("../package.json");
 
-    expect(packageJson).toContain('"name": "@eveland/docs"');
+    expect(packageJson).toContain('"name": "@evelandhq/docs"');
     expect(packageJson).toContain('"build": "next build"');
     expect(source("../next.config.mjs")).toContain("createMDX");
   });
@@ -45,7 +45,7 @@ describe("Eveland public website contract", () => {
 
     expect(workflow).toContain("branches: [main]");
     expect(workflow).toContain("- apps/docs/**");
-    expect(workflow).toContain("pnpm --filter @eveland/docs build:cloudflare");
+    expect(workflow).toContain("pnpm --filter @evelandhq/docs build:cloudflare");
     expect(workflow).toContain("cloudflare/wrangler-action@v3");
     expect(workflow).toContain("CLOUDFLARE_API_TOKEN");
     expect(workflow).toContain("CLOUDFLARE_ACCOUNT_ID");
@@ -58,19 +58,19 @@ describe("Eveland public website contract", () => {
 
     expect(workflow).toContain("strategy:");
     expect(workflow).toContain("fail-fast: false");
-    expect(workflow).toContain("command: pnpm --filter @eveland/api test");
-    expect(workflow).toContain("command: pnpm --filter @eveland/worker test");
-    expect(workflow).toContain("command: pnpm --filter @eveland/db test");
-    expect(workflow).toContain("--filter='!@eveland/api'");
-    expect(workflow).toContain("--filter='!@eveland/worker'");
-    expect(workflow).toContain("--filter='!@eveland/db'");
+    expect(workflow).toContain("command: pnpm --filter @evelandhq/api test");
+    expect(workflow).toContain("command: pnpm --filter @evelandhq/worker test");
+    expect(workflow).toContain("command: pnpm --filter @evelandhq/db test");
+    expect(workflow).toContain("--filter='!@evelandhq/api'");
+    expect(workflow).toContain("--filter='!@evelandhq/worker'");
+    expect(workflow).toContain("--filter='!@evelandhq/db'");
   });
 
   test("builds only packages whose build differs from typecheck", () => {
     const workflow = source("../../../.github/workflows/ci.yml");
 
     expect(workflow).toContain(
-      "pnpm --filter @eveland/sandbox-bwrap --filter @eveland/docs --filter @eveland/web -r build",
+      "pnpm --filter @evelandhq/sandbox-bwrap --filter @evelandhq/docs --filter @evelandhq/web -r build",
     );
     expect(workflow).not.toContain("run: pnpm -r build");
   });

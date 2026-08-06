@@ -1,5 +1,5 @@
-import { encryptSecretValue } from "@eveland/core/server/secrets";
-import { createTestStore } from "@eveland/db/vitest";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 
 import { composeBuildVariables } from "./process-support.js";

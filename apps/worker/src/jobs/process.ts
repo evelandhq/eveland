@@ -1,5 +1,5 @@
-import type { Job } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type { Job } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
 import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 
 import { dispatchJob, settleJobFailure } from "./job-registry.js";

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createId } from "@eveland/core/ids";
+import { createId } from "@evelandhq/core/ids";
 import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { modelUsageEvents, otlpBatches, sessionEvents, sessionNodes, sessions } from "./schema.js";
 import type { ObservabilityStore } from "./store-domains.js";

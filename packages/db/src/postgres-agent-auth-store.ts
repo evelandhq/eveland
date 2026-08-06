@@ -1,4 +1,4 @@
-import { createId } from "@eveland/core/ids";
+import { createId } from "@evelandhq/core/ids";
 import { and, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   agentAuthCredentialRowToAgentAuthCredential,

@@ -1,4 +1,4 @@
-import type { PgInstanceConnectionSample } from "@eveland/core/instance-health";
+import type { PgInstanceConnectionSample } from "@evelandhq/core/instance-health";
 import { sql } from "drizzle-orm";
 import {
   bigint,

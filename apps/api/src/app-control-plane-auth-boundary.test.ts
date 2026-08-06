@@ -1,4 +1,4 @@
-import type { AuthPrincipal } from "@eveland/core/contracts";
+import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import { Hono } from "hono";
 import { expect, test, vi } from "vitest";
 import { registerControlPlaneAuthBoundary } from "./app-control-plane-auth-boundary.js";

@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { describe, expect, test, vi } from "vitest";
-import { createBuildInfo } from "@eveland/core/build-info";
-import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
+import { createBuildInfo } from "@evelandhq/core/build-info";
+import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
 import { createGatewayApp, type GatewayRepository } from "./app.js";
 import {
   affinitySecret,

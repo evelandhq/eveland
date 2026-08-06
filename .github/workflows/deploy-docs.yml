@@ -42,7 +42,7 @@ jobs:
             ${{ runner.os }}-next-docs-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - name: Build Cloudflare Worker
-        run: pnpm --filter @eveland/docs build:cloudflare
+        run: pnpm --filter @evelandhq/docs build:cloudflare
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3

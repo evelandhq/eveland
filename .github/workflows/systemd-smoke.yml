@@ -58,7 +58,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the sandbox backend
-        run: pnpm --filter @eveland/sandbox-bwrap build
+        run: pnpm --filter @evelandhq/sandbox-bwrap build
 
       - name: Put the sandbox toolchain on the system PATH
         run: |
@@ -87,13 +87,13 @@ jobs:
         run: |
           sudo -E env "PATH=$PATH" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-            pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+            pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 
       - name: Worker systemd smoke
         run: |
           sudo -E env "PATH=$PATH" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-            pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
+            pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 
       - name: bwrap backend contract (deployment-shaped unit)
         run: |
@@ -111,7 +111,7 @@ jobs:
         run: |
           sudo -E env "PATH=$PATH" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-            pnpm --filter @eveland/worker exec tsx src/integration/agent-sandbox-e2e.ts
+            pnpm --filter @evelandhq/worker exec tsx src/integration/agent-sandbox-e2e.ts
 
       - name: Gateway e2e against the systemd runtime
         run: |

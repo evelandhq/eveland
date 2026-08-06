@@ -368,7 +368,7 @@ export type SystemdAdapterConfig = {
   /** Root directory holding every project's durable eve sandbox session cache. */
   sandboxCacheDir: string;
   /**
-   * Resolves the directory holding the built @eveland/sandbox-bwrap (its
+   * Resolves the directory holding the built @evelandhq/sandbox-bwrap (its
    * dist/), vendored into each release. A provider rather than a resolved
    * string so constructing the adapter never touches the filesystem --
    * it's invoked only inside `buildRelease`, at the point the backend is

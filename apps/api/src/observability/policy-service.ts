@@ -1,4 +1,4 @@
-import { createId } from "@eveland/core/ids";
+import { createId } from "@evelandhq/core/ids";
 import {
   mergeExternalDestinationConfig,
   toPublicExternalDestinationConfig,
@@ -8,14 +8,14 @@ import {
   type ExternalObservabilityDestination,
   type ObservabilityPolicy,
   type PublicExternalDestinationConfig,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 import {
   decryptDestinationConfig,
   encryptDestinationConfig,
   parseObservabilityPrivateHostAllowlist,
   validateExternalObservabilityDestination,
-} from "@eveland/core/server/observability";
-import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
+} from "@evelandhq/core/server/observability";
+import { DEFAULT_TEAM_ID, type Store } from "@evelandhq/db";
 import type { AppOptions } from "../app-types.js";
 
 export function createObservabilityPolicyService(input: {

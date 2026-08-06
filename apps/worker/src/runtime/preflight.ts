@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { assertValidSecretKey } from "@eveland/core/server/secrets";
+import { assertValidSecretKey } from "@evelandhq/core/server/secrets";
 import { access, mkdir as fsMkdir, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";

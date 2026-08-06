@@ -1,6 +1,6 @@
-import { createId } from "@eveland/core/ids";
-import { HEAVY_JOB_TYPES, decodeJobPayload } from "@eveland/core/jobs";
-import type { Job, JobType } from "@eveland/core/contracts";
+import { createId } from "@evelandhq/core/ids";
+import { HEAVY_JOB_TYPES, decodeJobPayload } from "@evelandhq/core/jobs";
+import type { Job, JobType } from "@evelandhq/core/contracts";
 import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import {
   InvalidJobRecordError,

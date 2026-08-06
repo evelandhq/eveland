@@ -1,7 +1,7 @@
 import { createPublicKey, verify } from "node:crypto";
 import { describe, expect, test } from "vitest";
-import { disableSeededOpenIdentityProvider } from "@eveland/db/test";
-import { createTestStore } from "@eveland/db/vitest";
+import { disableSeededOpenIdentityProvider } from "@evelandhq/db/test";
+import { createTestStore } from "@evelandhq/db/vitest";
 
 import { IdentityBrokerError, createIdentityBroker, hashIdentityToken } from "./index.js";
 

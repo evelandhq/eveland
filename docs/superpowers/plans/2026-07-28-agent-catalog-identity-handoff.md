@@ -360,7 +360,7 @@ Source scan 仍然只做 capability 检测，不扫描 auth helper。
 ### 4.2 修改
 
 - 将 `GET /identity/agents` 移为 `GET /agent-catalog`。
-- Catalog contract 不应继续放在 `@eveland/core/identity`；移到合适的 browser-safe catalog/contracts
+- Catalog contract 不应继续放在 `@evelandhq/core/identity`；移到合适的 browser-safe catalog/contracts
   模块。
 - 将 `listIdentityRealmAgentCatalog(realmId)` 改成与 Identity/Realm 无关的 Catalog query。
 - SQL 不再 join `identityRealmProjectGrants`。
@@ -540,10 +540,10 @@ EveChats：
 
 ```bash
 # Eveland focused tests
-pnpm --filter @eveland/core exec vitest run src/source.test.ts
-pnpm --filter @eveland/api exec vitest run src/identity-routes.test.ts
-pnpm --filter @eveland/identity-broker test
-pnpm --filter @eveland/db test
+pnpm --filter @evelandhq/core exec vitest run src/source.test.ts
+pnpm --filter @evelandhq/api exec vitest run src/identity-routes.test.ts
+pnpm --filter @evelandhq/identity-broker test
+pnpm --filter @evelandhq/db test
 
 # Eveland baseline
 pnpm test
@@ -624,7 +624,7 @@ EveChats: pnpm test      passed (194 tests)
 EveChats: pnpm typecheck passed
 EveChats: pnpm build     passed
 Both worktrees: git diff --check passed
-Real Postgres: pnpm --filter @eveland/api db:migrate passed
+Real Postgres: pnpm --filter @evelandhq/api db:migrate passed
 ```
 
 真实浏览器闭环使用 `proj_UhibPXW1QG`（`eveland-identity-e2e-inline`）完成：

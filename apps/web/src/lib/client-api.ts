@@ -6,15 +6,18 @@ import type {
   SharedAgentEnvironment,
   TeamInvitation,
   TeamMember,
-} from "@eveland/core/contracts";
-import type { AgentAuthMethodDescriptor, AgentAuthSecretReference } from "@eveland/core/agent-auth";
-import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity";
+} from "@evelandhq/core/contracts";
+import type {
+  AgentAuthMethodDescriptor,
+  AgentAuthSecretReference,
+} from "@evelandhq/core/agent-auth";
+import type { IdentityRealm, IdentityReturnTarget } from "@evelandhq/core/identity";
 import type { PublicIdentityProvider } from "./api";
 import type {
   AgentCapturePolicy,
   ExternalDestinationConfigPatch,
   PublicObservabilityPolicy,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 
 import { apiRequest, type ApiRequestOptions } from "./api-transport";
 

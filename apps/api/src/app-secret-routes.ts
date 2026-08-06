@@ -1,7 +1,7 @@
-import type { Job, SharedAgentEnvironmentRecord } from "@eveland/core/contracts";
-import { toPublicJob } from "@eveland/core/jobs";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
-import type { Store } from "@eveland/db";
+import type { Job, SharedAgentEnvironmentRecord } from "@evelandhq/core/contracts";
+import { toPublicJob } from "@evelandhq/core/jobs";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import type { Store } from "@evelandhq/db";
 import {
   batchSecretSchema,
   secretSchema,

@@ -1,5 +1,5 @@
 import net from "node:net";
-import type { Store } from "@eveland/db";
+import type { Store } from "@evelandhq/db";
 
 export async function isTcpPortAvailable(host: string, port: number): Promise<boolean> {
   return new Promise((resolve, reject) => {

@@ -26,8 +26,8 @@ Set a per-deployment `EVELAND_MEMORY_MAX` and `EVELAND_CPU_QUOTA` for the host. 
 Build the platform sandbox backend, then run the standalone check:
 
 ```bash
-pnpm --filter @eveland/sandbox-bwrap build
-pnpm --filter @eveland/worker exec tsx src/integration/preflight-check.ts
+pnpm --filter @evelandhq/sandbox-bwrap build
+pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 ```
 
 Do not continue until it reports `PREFLIGHT OK`. It returns the complete missing-prerequisite list in one pass.

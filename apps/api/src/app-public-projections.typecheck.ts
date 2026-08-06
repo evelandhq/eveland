@@ -7,7 +7,7 @@ import type {
   ReleaseRecord,
   Session,
   SourceRevision,
-} from "@eveland/core/contracts";
+} from "@evelandhq/core/contracts";
 
 import type {
   publicDeployment,

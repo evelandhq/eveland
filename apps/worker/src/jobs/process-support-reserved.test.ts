@@ -1,4 +1,4 @@
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 
 import { RESERVED_RUNTIME_ENVIRONMENT_KEYS } from "../runtime/reserved-environment.js";

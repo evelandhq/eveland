@@ -2,8 +2,8 @@ import {
   createDefaultObservabilityPolicy,
   type ExternalDestinationConfig,
   type ObservabilityPolicy,
-} from "@eveland/core/observability";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
+} from "@evelandhq/core/observability";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import { describe, expect, test, vi } from "vitest";
 import {
   createExternalDestinationHealthReconciler,

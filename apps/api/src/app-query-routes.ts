@@ -1,5 +1,5 @@
-import type { LogRecord, UsageAnalytics } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type { LogRecord, UsageAnalytics } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 import {
   publicDeployment,

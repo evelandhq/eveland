@@ -1,4 +1,4 @@
-import { configurationDefinitions } from "@eveland/core/config-diagnostics";
+import { configurationDefinitions } from "@evelandhq/core/config-diagnostics";
 import { describe, expect, test } from "vitest";
 import { listSourceFiles, listWorkspaces, readSource } from "./scan-support.js";
 

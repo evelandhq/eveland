@@ -112,7 +112,7 @@ describe("createRuntimeAdapterFromEnv", () => {
 
   // These two only pin that construction does not throw. backendDistDir resolution
   // is deferred to buildRelease (see select.ts), so constructing the systemd adapter
-  // never touches the filesystem, regardless of whether @eveland/sandbox-bwrap is
+  // never touches the filesystem, regardless of whether @evelandhq/sandbox-bwrap is
   // built. The path assertions live in systemd.test.ts, where buildSystemdRunArgs,
   // resolveProjectSandboxCacheDir, and resolveSandboxCacheRoot are pure and don't
   // need the real package resolved.

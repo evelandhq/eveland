@@ -68,7 +68,7 @@ import {
   PLAYGROUND_MAX_FILE_BYTES,
   PLAYGROUND_MAX_FILES,
   PLAYGROUND_MAX_TOTAL_FILE_BYTES,
-} from "@eveland/core/eve";
+} from "@evelandhq/core/eve";
 import { resetPlaygroundOnPageLeave } from "@/lib/client-api";
 import {
   cancelPlaygroundTurn,

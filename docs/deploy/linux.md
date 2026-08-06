@@ -154,7 +154,7 @@ release, install the frozen lockfile, and apply database migrations:
 git fetch --tags origin
 git checkout v0.1.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 ```
 
 The host worker runs as root from its own checkout at `/opt/eveland` (see
@@ -164,10 +164,10 @@ backend — **mandatory on every upgrade**:
 
 ```bash
 # worker checkout (/opt/eveland), root-owned → sudo
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 ```
 
-`@eveland/sandbox-bwrap` is the only package whose compiled `dist/` is vendored
+`@evelandhq/sandbox-bwrap` is the only package whose compiled `dist/` is vendored
 into every agent Release, and `pnpm install` never rebuilds it (no
 `prepare`/`postinstall` hook). A tag checkout refreshes the source but leaves a
 stale `dist/`; preflight only checks the backend is _built_, not current, so the
@@ -220,7 +220,7 @@ unconditionally, plus `bwrap` unless `EVELAND_BUILD_SANDBOX=none`, the app user
 (`EVELAND_APP_USER`, default `eveland-app`) and the build user
 (`EVELAND_BUILD_USER`, default `eveland-build`) existing, `/workspace` existing
 as a directory, the vendored sandbox backend being built (`pnpm --filter
-@eveland/sandbox-bwrap build`), and the app user being able to traverse the
+@evelandhq/sandbox-bwrap build`), and the app user being able to traverse the
 data dir. It reports
 every failing check at once instead of stopping at the first — the same
 one-complete-punch-list approach as the sandbox self-check under "Agent exec
@@ -610,7 +610,7 @@ a real exec sandbox themselves: for every deployed project (all of which are eve
 the import gate rejects anything else), Eveland's shared release-preparation step generates a sandbox
 module — `agent/sandbox.js` for a flat agent, or `agent/sandbox/sandbox.js` when the agent
 has a sandbox folder, with one more for every subagent directory however deeply nested —
-into the release directory, and vendors this build's `@eveland/sandbox-bwrap`
+into the release directory, and vendors this build's `@evelandhq/sandbox-bwrap`
 to `<releaseDir>/.eveland/sandbox-bwrap/`. The generated module reads
 `EVELAND_SANDBOX_CACHE_DIR` from the environment and passes it to the backend as
 `cacheDir`. The runtime also supplies an internal `EVELAND_SANDBOX_TEMPLATE_REVISION`
@@ -719,7 +719,7 @@ Sandbox workspaces do **not** live under the release directory. They live under
 project, because eve 0.22.0 keys session sandboxes per durable session rather than per
 deployment — a redeploy no longer discards a session's `/workspace` state. Since
 eveland gives every release a fresh release directory, deriving the cache from the
-release (as an unconfigured `@eveland/sandbox-bwrap` normally would) would have silently
+release (as an unconfigured `@evelandhq/sandbox-bwrap` normally would) would have silently
 destroyed every session's workspace on the next redeploy. The systemd unit is granted
 this directory read-write via a second `ReadWritePaths=` property (alongside the one for
 the release directory itself). A Docker Deployment gets the Docker-host view of the
@@ -896,7 +896,7 @@ Playground reset requests. Apply migrations before rolling API/Gateway/Worker pr
 principal forwarding remains Agent-owned and opt-in on both deployments; do not add a permissive
 `trustedForwarders` predicate as a platform workaround.
 
-The script then runs the `@eveland/sandbox-bwrap` contract test as the
+The script then runs the `@evelandhq/sandbox-bwrap` contract test as the
 unprivileged `eveland-app` user under deployed-agent systemd constraints
 (`NoNewPrivileges`, `ProtectSystem=strict`). A fully successful run prints both
 `SMOKE OK` and `BWRAP SMOKE OK`.

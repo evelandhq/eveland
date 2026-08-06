@@ -1,16 +1,16 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import type { EvelandBuildInfo } from "@eveland/core/build-info";
-import type { InstanceHealthReport } from "@eveland/core/instance-health";
-import type { SystemConfigurationDiagnostics } from "@eveland/core/config-diagnostics";
-import type { PublicObservabilityPolicy } from "@eveland/core/observability";
+import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
+import type { InstanceHealthReport } from "@evelandhq/core/instance-health";
+import type { SystemConfigurationDiagnostics } from "@evelandhq/core/config-diagnostics";
+import type { PublicObservabilityPolicy } from "@evelandhq/core/observability";
 import type {
   PublicGitCredential,
   SharedAgentEnvironment,
   UsageAnalytics,
   UsageRange,
-} from "@eveland/core/contracts";
-import type { IdentityRealm, IdentityReturnTarget } from "@eveland/core/identity";
+} from "@evelandhq/core/contracts";
+import type { IdentityRealm, IdentityReturnTarget } from "@evelandhq/core/identity";
 import type {
   AgentEndpoints,
   DeploymentOverview,
@@ -34,7 +34,7 @@ import type {
   AuthPrincipal as CurrentMember,
   TeamInvitation as Invitation,
   TeamMember as Member,
-} from "@eveland/core/contracts";
+} from "@evelandhq/core/contracts";
 
 const apiBaseUrl =
   process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";

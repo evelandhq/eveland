@@ -4,7 +4,7 @@
 
 **Goal:** eveland deploys any imported eve project onto the systemd runtime with a working bubblewrap exec sandbox, without the project ever declaring one — and a deploy fails loudly when the sandbox does not work on that host.
 
-**Architecture:** Three moves. (1) `@eveland/sandbox-bwrap` upgrades to eve 0.22.x: `dispose()` → `shutdown()` with live-process tracking, and the sandbox cache moves out of the release directory to a stable per-project path so a redeploy no longer discards durable `/workspace` state. (2) The worker's systemd `buildRelease` injects a generated `agent/sandbox.js` (plus one per subagent) into the release directory and vendors the built backend beside it, ignoring any authored sandbox module. (3) Because eve prewarms sandboxes lazily — verified: neither `eve build` nor `eve start` calls `prewarm`, and `/eve/v1/health` returns 200 with a completely broken backend — the build runs a sandbox self-check under the deployment's own systemd hardening, so a host that cannot run bwrap fails the deploy instead of failing the first user turn.
+**Architecture:** Three moves. (1) `@evelandhq/sandbox-bwrap` upgrades to eve 0.22.x: `dispose()` → `shutdown()` with live-process tracking, and the sandbox cache moves out of the release directory to a stable per-project path so a redeploy no longer discards durable `/workspace` state. (2) The worker's systemd `buildRelease` injects a generated `agent/sandbox.js` (plus one per subagent) into the release directory and vendors the built backend beside it, ignoring any authored sandbox module. (3) Because eve prewarms sandboxes lazily — verified: neither `eve build` nor `eve start` calls `prewarm`, and `/eve/v1/health` returns 200 with a completely broken backend — the build runs a sandbox self-check under the deployment's own systemd hardening, so a host that cannot run bwrap fails the deploy instead of failing the first user turn.
 
 **Tech Stack:** TypeScript (strict, NodeNext, ESM), Node ≥24 builtins, eve `>=0.20.0 <0.23.0` (dev/peer), vitest ^4, execa (worker), bubblewrap, Lima VM `eveland-test`.
 
@@ -13,7 +13,7 @@
 - **Follow eve's latest version. No back-compat branches for eve < 0.20.** (`>=0.20.0 <0.23.0`.) eve 0.x caret ranges pin the _minor_ — `^0.17.1` excludes 0.22, so peer/dev ranges must be written explicitly.
 - Agent projects must never need to know a sandbox backend exists. The generated module is written into the **release directory**, never into the user's source tree.
 - An authored sandbox (`agent/sandbox.ts` or `agent/sandbox/`) is **ignored and replaced**. This is a deliberate decision (2026-07-09) and it drops that module's `bootstrap()`, `onSession()`, and `agent/sandbox/workspace/` seed tree. Every override MUST emit a loud line into the build log.
-- `@eveland/sandbox-bwrap` keeps **zero runtime dependencies** (Node builtins only). ESM, `.js` extensions on relative imports, strict NodeNext.
+- `@evelandhq/sandbox-bwrap` keeps **zero runtime dependencies** (Node builtins only). ESM, `.js` extensions on relative imports, strict NodeNext.
 - Injection applies to the **systemd runtime only**. The docker adapter builds from the user's source tree via a generated Dockerfile and must not be touched.
 - Security invariants from Plan 2 hold unchanged: every bwrap invocation carries `--clearenv`; tmpfs hides precede the `/workspace` bind; host-side writes/removes are realpath-contained.
 - Tests: vitest, colocated `*.test.ts`, explicit imports. Unit tests must pass on macOS with no bwrap (execution stays behind the injectable `ProcessRunner`).
@@ -52,7 +52,7 @@ Established by direct experiment on 2026-07-09 against eve 0.22.1. Anything here
 
 ---
 
-### Task 1: Upgrade `@eveland/sandbox-bwrap` to eve 0.22 (`shutdown()`)
+### Task 1: Upgrade `@evelandhq/sandbox-bwrap` to eve 0.22 (`shutdown()`)
 
 **Files:**
 
@@ -86,7 +86,7 @@ Expected: succeeds, lockfile updates to eve 0.22.1. Commit the lockfile with thi
 
 - [ ] **Step 2: Run the suite to see the break**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap typecheck`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap typecheck`
 Expected: FAIL with exactly `src/backend.ts(…): error TS2322 … Property 'shutdown' is missing in type … but required in type 'SandboxBackendHandle'`. If you see other errors, stop and report — fact 1 says there should be only this one.
 
 - [ ] **Step 3: Write the failing tests**
@@ -203,7 +203,7 @@ test("the handle exposes shutdown and no longer exposes dispose", async () => {
 
 - [ ] **Step 4: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: the new tests FAIL (`session.killAll is not a function`, `handle.shutdown is not a function`).
 
 - [ ] **Step 5: Track live processes in the session**
@@ -277,7 +277,7 @@ Note for the implementer: `prewarm`'s bootstrap session is also a `BwrapSession`
 
 - [ ] **Step 7: Run tests, typecheck, build**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test && pnpm --filter @eveland/sandbox-bwrap typecheck && pnpm --filter @eveland/sandbox-bwrap build`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test && pnpm --filter @evelandhq/sandbox-bwrap typecheck && pnpm --filter @evelandhq/sandbox-bwrap build`
 Expected: all PASS. Then `pnpm -r test && pnpm -r typecheck` — no regressions.
 
 - [ ] **Step 8: Commit**
@@ -401,7 +401,7 @@ test("session state survives a change of appRoot when cacheDir is pinned", async
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: FAIL (extra argument not accepted / `cacheDir` undefined).
 
 - [ ] **Step 3: Implement**
@@ -468,7 +468,7 @@ const hidePaths = [resolveBwrapCacheRoot(appRoot, options.cacheDir), ...options.
 
 - [ ] **Step 4: Run tests, typecheck**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test && pnpm --filter @eveland/sandbox-bwrap typecheck`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test && pnpm --filter @evelandhq/sandbox-bwrap typecheck`
 Expected: all PASS.
 
 - [ ] **Step 5: Commit**
@@ -486,7 +486,7 @@ git commit -m "feat(sandbox-bwrap): pin the sandbox cache outside the release di
 
 - Create: `apps/worker/src/runtime/sandbox-inject.ts`
 - Test: `apps/worker/src/runtime/sandbox-inject.test.ts`
-- Modify: `apps/worker/package.json` (add `"@eveland/sandbox-bwrap": "workspace:*"`)
+- Modify: `apps/worker/package.json` (add `"@evelandhq/sandbox-bwrap": "workspace:*"`)
 
 **Interfaces:**
 
@@ -496,7 +496,7 @@ git commit -m "feat(sandbox-bwrap): pin the sandbox cache outside the release di
 ```ts
 export type SandboxInjectionInput = {
   releaseDir: string;
-  /** Directory holding the built @eveland/sandbox-bwrap (its dist/). */
+  /** Directory holding the built @evelandhq/sandbox-bwrap (its dist/). */
   backendDistDir: string;
 };
 export type SandboxInjectionResult = {
@@ -646,7 +646,7 @@ describe("injectSandboxModules", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/worker test -- sandbox-inject`
+Run: `pnpm --filter @evelandhq/worker test -- sandbox-inject`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `sandbox-inject.ts`**
@@ -760,12 +760,12 @@ Implementation note: `path.posix.relative("agent", "")` yields `".."`, and `path
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter @eveland/worker test -- sandbox-inject && pnpm --filter @eveland/worker typecheck`
+Run: `pnpm --filter @evelandhq/worker test -- sandbox-inject && pnpm --filter @evelandhq/worker typecheck`
 Expected: PASS.
 
 - [ ] **Step 5: Add the workspace dependency**
 
-In `apps/worker/package.json`, add to `dependencies`: `"@eveland/sandbox-bwrap": "workspace:*"`.
+In `apps/worker/package.json`, add to `dependencies`: `"@evelandhq/sandbox-bwrap": "workspace:*"`.
 Run: `pnpm install` from the repo root.
 
 - [ ] **Step 6: Commit**
@@ -792,7 +792,7 @@ git commit -m "feat(worker): generate the eve sandbox module at build time"
 
 Rules:
 
-- `resolveBackendDistDir()` resolves the built package: `path.dirname(createRequire(import.meta.url).resolve("@eveland/sandbox-bwrap"))`. If it throws or the directory is missing, `buildRelease` must fail with an actionable message telling the operator to run `pnpm --filter @eveland/sandbox-bwrap build`.
+- `resolveBackendDistDir()` resolves the built package: `path.dirname(createRequire(import.meta.url).resolve("@evelandhq/sandbox-bwrap"))`. If it throws or the directory is missing, `buildRelease` must fail with an actionable message telling the operator to run `pnpm --filter @evelandhq/sandbox-bwrap build`.
 - Injection runs **after** `cp -a` and **before** the build command, so `npx eve build` compiles the generated module. `npm ci` only clears `node_modules`, so `.eveland/` survives.
 - Each project gets `sandboxCacheDir/<projectId>`; the directory is created and `chown`ed to the service user at build time (the app runs unprivileged and cannot create it under `ProtectSystem=strict`).
 - `buildSystemdRunArgs` emits a second `--property=ReadWritePaths=` for the project's cache dir (systemd list-type settings append across repeated assignments), and `--property=Environment=EVELAND_SANDBOX_CACHE_DIR=<dir>`.
@@ -854,7 +854,7 @@ test("EVELAND_SANDBOX_CACHE_DIR overrides the derived path", () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `pnpm --filter @eveland/worker test`
+Run: `pnpm --filter @evelandhq/worker test`
 Expected: FAIL — `sandboxCacheDir` is not accepted.
 
 - [ ] **Step 3: Implement**
@@ -914,21 +914,21 @@ with, at module scope:
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 
-/** Locates the built @eveland/sandbox-bwrap that gets vendored into each release. */
+/** Locates the built @evelandhq/sandbox-bwrap that gets vendored into each release. */
 function resolveBackendDistDir(): string {
   let entry: string;
   try {
-    entry = createRequire(import.meta.url).resolve("@eveland/sandbox-bwrap");
+    entry = createRequire(import.meta.url).resolve("@evelandhq/sandbox-bwrap");
   } catch (error) {
     throw new Error(
-      "@eveland/sandbox-bwrap is not resolvable. Run `pnpm --filter @eveland/sandbox-bwrap build` before starting the worker.",
+      "@evelandhq/sandbox-bwrap is not resolvable. Run `pnpm --filter @evelandhq/sandbox-bwrap build` before starting the worker.",
       { cause: error },
     );
   }
   const distDir = path.dirname(entry);
   if (!existsSync(distDir)) {
     throw new Error(
-      `@eveland/sandbox-bwrap dist directory is missing at ${distDir}. Run \`pnpm --filter @eveland/sandbox-bwrap build\`.`,
+      `@evelandhq/sandbox-bwrap dist directory is missing at ${distDir}. Run \`pnpm --filter @evelandhq/sandbox-bwrap build\`.`,
     );
   }
   return distDir;
@@ -1125,7 +1125,7 @@ describe("verifySandbox", () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `pnpm --filter @eveland/worker test -- sandbox-verify`
+Run: `pnpm --filter @evelandhq/worker test -- sandbox-verify`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `sandbox-verify.ts`** exactly per the Interfaces block above. The script text is a template string; write it to `<releaseDir>/.eveland/verify-sandbox.mjs` (creating `.eveland/` if needed) before invoking systemd-run.
@@ -1178,14 +1178,14 @@ The e2e script must, using the real store + `processNextJob` pipeline with `EVEL
 `infra/integration/run.sh` must additionally, before running the smokes:
 
 ```bash
-corepack pnpm --filter @eveland/sandbox-bwrap build
+corepack pnpm --filter @evelandhq/sandbox-bwrap build
 ```
 
 and after the existing two smokes, run the new e2e as root (it drives systemd itself):
 
 ```bash
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-    corepack pnpm --filter @eveland/worker exec tsx src/integration/agent-sandbox-e2e.ts
+    corepack pnpm --filter @evelandhq/worker exec tsx src/integration/agent-sandbox-e2e.ts
 ```
 
 - [ ] **Step 1: Update the backend smoke for `shutdown()`**

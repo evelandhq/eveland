@@ -1,9 +1,9 @@
 import {
   deriveAgentTelemetrySecret,
   verifyAgentTelemetryCredential,
-} from "@eveland/core/server/agent-telemetry-credential";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
-import { createTestStore } from "@eveland/db/vitest";
+} from "@evelandhq/core/server/agent-telemetry-credential";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

@@ -2,7 +2,7 @@ import {
   ENVIRONMENT_ENTRY_KEY_MESSAGE,
   isValidEnvironmentEntryKey,
   normalizeEnvironmentEntryKey,
-} from "@eveland/core/environment-entries";
+} from "@evelandhq/core/environment-entries";
 
 export type ProjectEnvironmentEntryDraft = {
   key: string;

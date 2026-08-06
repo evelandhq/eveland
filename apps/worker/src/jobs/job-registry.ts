@@ -1,5 +1,5 @@
-import type { Job, JobType } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type { Job, JobType } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
 import { handleBuildDeployJob } from "./process-build-deploy.js";
 import { handleImportSourceJob } from "./process-import-source.js";
 import { handleArchiveDeploymentJob } from "./runtime-jobs/archive-deployment.js";

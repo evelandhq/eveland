@@ -1,6 +1,6 @@
-import type { ObservabilitySignal, TelemetryDomain } from "@eveland/core/observability";
-import { verifyAgentTelemetryCredential } from "@eveland/core/server/agent-telemetry-credential";
-import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
+import type { ObservabilitySignal, TelemetryDomain } from "@evelandhq/core/observability";
+import { verifyAgentTelemetryCredential } from "@evelandhq/core/server/agent-telemetry-credential";
+import { DEFAULT_TEAM_ID, type Store } from "@evelandhq/db";
 
 const signalFields = {
   traces: "resourceSpans",

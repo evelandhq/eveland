@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 
 describe("api app", () => {
   test("leaves token usage projection to the observer collector", async () => {

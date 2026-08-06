@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createApp } from "./app.js";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 
 describe("api app", () => {
   test("syncs the latest git source with deployment and promotion chained", async () => {

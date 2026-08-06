@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { EVE_COMPATIBILITY_POLICY } from "@eveland/core/eve-compatibility";
+import { EVE_COMPATIBILITY_POLICY } from "@evelandhq/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 import { injectSchedulerAdapter } from "./adapter.js";
 

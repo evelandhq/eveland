@@ -1,4 +1,4 @@
-import { claimProjectSlug, createId, slugifyProjectName } from "@eveland/core/ids";
+import { claimProjectSlug, createId, slugifyProjectName } from "@evelandhq/core/ids";
 import { and, asc, desc, eq, getTableColumns, inArray, lte, or, sql } from "drizzle-orm";
 import {
   gitCredentialRowToPublic,

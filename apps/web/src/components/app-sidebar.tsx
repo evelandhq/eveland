@@ -11,7 +11,7 @@ import {
   SettingsIcon,
   SproutIcon,
 } from "lucide-react";
-import { EVELAND_VERSION } from "@eveland/core/build-info";
+import { EVELAND_VERSION } from "@evelandhq/core/build-info";
 import { ProjectNav } from "@/components/project-nav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {

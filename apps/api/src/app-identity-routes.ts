@@ -3,14 +3,14 @@ import { getCookie, setCookie } from "hono/cookie";
 import {
   normalizeIdentityProviderConnection,
   type IdentityProviderConnection,
-} from "@eveland/core/identity";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
+} from "@evelandhq/core/identity";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import {
   IdentityBrokerError,
   createIdentityBroker,
   hashIdentityToken,
-} from "@eveland/identity-broker";
-import type { Store } from "@eveland/db";
+} from "@evelandhq/identity-broker";
+import type { Store } from "@evelandhq/db";
 import type { AppOptions, ApiApp } from "./app-types.js";
 import { isServiceRequest, publicGatewayUrl } from "./app-support.js";
 import {

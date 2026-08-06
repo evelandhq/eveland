@@ -4,7 +4,7 @@ import {
   type ExternalDestinationHealth,
   type ExternalObservabilityDestination,
   type PublicExternalDestinationConfig,
-} from "@eveland/core/observability/destinations";
+} from "@evelandhq/core/observability/destinations";
 
 export const BUILT_IN_OBSERVABILITY_RETENTION_DAYS = {
   sessions: 90,

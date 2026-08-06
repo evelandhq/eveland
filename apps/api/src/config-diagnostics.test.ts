@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
-import { writeConfigurationSnapshotFile } from "@eveland/core/server/config-diagnostics";
+import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
+import { writeConfigurationSnapshotFile } from "@evelandhq/core/server/config-diagnostics";
 import { collectSystemConfigurationDiagnostics } from "./config-diagnostics.js";
 
 const tempDirectories: string[] = [];

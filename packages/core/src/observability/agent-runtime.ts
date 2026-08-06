@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   observabilityPolicySchema,
   type ObservabilityPolicy,
-} from "@eveland/core/observability/policy";
+} from "@evelandhq/core/observability/policy";
 
 export const AGENT_RUNTIME_POLICY_PATH = "/run/eveland/observability/agent-policy.json";
 

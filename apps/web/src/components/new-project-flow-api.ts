@@ -1,4 +1,4 @@
-import { slugifyProjectName } from "@eveland/core/ids";
+import { slugifyProjectName } from "@evelandhq/core/ids";
 
 import { apiFetch, apiRequest, decodeApiError } from "@/lib/api-transport";
 

@@ -1,14 +1,14 @@
-import type { AgentAuthProviderRegistration, AgentCredentialContext } from "@eveland/agent-auth";
-import { encodeAgentAuthEnvelope } from "@eveland/core/agent-auth";
+import type { AgentAuthProviderRegistration, AgentCredentialContext } from "@evelandhq/agent-auth";
+import { encodeAgentAuthEnvelope } from "@evelandhq/core/agent-auth";
 import {
   classifyEveSessionRequest,
   getEveString,
   isEveRecord,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
   validatePlaygroundTurn,
-} from "@eveland/core/eve";
-import { unsupportedEveVersionMessage } from "@eveland/core/source";
-import type { ProjectStore, RoutingStore, SessionStore } from "@eveland/db";
+} from "@evelandhq/core/eve";
+import { unsupportedEveVersionMessage } from "@evelandhq/core/source";
+import type { ProjectStore, RoutingStore, SessionStore } from "@evelandhq/db";
 import type { AgentAuthService } from "./agent-auth-service.js";
 import {
   agentAuthFailureStatus,

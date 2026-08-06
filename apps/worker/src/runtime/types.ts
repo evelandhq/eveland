@@ -1,5 +1,5 @@
 import type { WorkflowWorldBuildConfig } from "./workflow-world.js";
-import type { SchedulerDefinition } from "@eveland/agent-scheduler";
+import type { SchedulerDefinition } from "@evelandhq/agent-scheduler";
 
 export type RuntimeCommandContext =
   | { packageManager: "pnpm"; hasLockfile: true }

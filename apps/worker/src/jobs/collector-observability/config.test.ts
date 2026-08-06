@@ -1,8 +1,8 @@
 import {
   createDefaultObservabilityPolicy,
   type ObservabilityPolicy,
-} from "@eveland/core/observability";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
+} from "@evelandhq/core/observability";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";

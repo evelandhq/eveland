@@ -1,5 +1,5 @@
-import type { DeploymentRecord } from "@eveland/core/contracts";
-import { createTestStore } from "@eveland/db/vitest";
+import type { DeploymentRecord } from "@evelandhq/core/contracts";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 import { sweepReleaseRetention } from "./release-reaper.js";
 

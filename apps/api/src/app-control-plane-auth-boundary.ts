@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import type { AuthPrincipal } from "@eveland/core/contracts";
+import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import type { createBetterAuthRuntime } from "./auth.js";
 import type { ApiApp } from "./app-types.js";
 import { acceptInvitationSchema } from "./app-schemas.js";

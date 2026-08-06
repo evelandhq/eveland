@@ -1,4 +1,4 @@
-import type { ObservabilitySignal } from "@eveland/core/observability";
+import type { ObservabilitySignal } from "@evelandhq/core/observability";
 import { arrayOfRecords, metricDataPoints } from "./values.js";
 
 export function countOtlpSignalItems(

@@ -1,7 +1,7 @@
 "use client";
 
 import { SaveIcon } from "lucide-react";
-import type { AgentCapturePolicy } from "@eveland/core/observability";
+import type { AgentCapturePolicy } from "@evelandhq/core/observability";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {

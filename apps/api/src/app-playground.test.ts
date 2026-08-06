@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createApp } from "./app.js";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 
 describe("api app", () => {
   test("forwards a canonical Playground session request when the current Deployment is dormant", async () => {

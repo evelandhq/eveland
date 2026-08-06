@@ -1,6 +1,6 @@
-import { createEveVersionInfo, unsupportedEveVersionMessage } from "@eveland/core/source";
-import type { EveSessionRequest } from "@eveland/core/eve";
-import type { ResolvedAgentRoute, SessionBinding } from "@eveland/core/contracts";
+import { createEveVersionInfo, unsupportedEveVersionMessage } from "@evelandhq/core/source";
+import type { EveSessionRequest } from "@evelandhq/core/eve";
+import type { ResolvedAgentRoute, SessionBinding } from "@evelandhq/core/contracts";
 import type { GatewayActivationClient, GatewayRepository } from "./gateway-types.js";
 import {
   applyGatewaySessionResponse,

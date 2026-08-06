@@ -17,7 +17,7 @@ export type { ProcessRunner, SpawnedProcess } from "./process.js";
  * ```ts
  * // agent/sandbox.ts
  * import { defineSandbox, defaultBackend } from "eve/sandbox";
- * import { bwrap, isBwrapAvailable } from "@eveland/sandbox-bwrap";
+ * import { bwrap, isBwrapAvailable } from "@evelandhq/sandbox-bwrap";
  *
  * export default defineSandbox({
  *   backend: () => (isBwrapAvailable() ? bwrap() : defaultBackend()),

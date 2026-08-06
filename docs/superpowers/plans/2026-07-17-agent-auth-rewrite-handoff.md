@@ -138,7 +138,7 @@ packages/db
   memory and Postgres behavior
 ```
 
-通用 OIDC 可以先作为 `@eveland/agent-auth/oidc` subpath。只有当依赖或发布边界确实需要时，才拆成
+通用 OIDC 可以先作为 `@evelandhq/agent-auth/oidc` subpath。只有当依赖或发布边界确实需要时，才拆成
 独立 generic package；不要为了形式对称提前增加包。
 
 Provider registration 的 `method` 是扩展拥有的不透明字符串。core、DB、Gateway 和 Web 不得按
@@ -312,7 +312,7 @@ security-key 配置完成，不保存长期 write token。
 
 删除并禁止以下做法：
 
-- 在 `@eveland/core/source` 搜索 `jinshujuOidc(...)`；
+- 在 `@evelandhq/core/source` 搜索 `jinshujuOidc(...)`；
 - 根据 import 名、函数名或字符串自动选择 Agent Connection；
 - 根据通用 401 / `WWW-Authenticate` 自动猜 OIDC；
 - 在 Sync 时修改用户选择的 Connection；
@@ -357,7 +357,7 @@ security-key 配置完成，不保存长期 write token。
   -旧 migration snapshot；
 - 已被后续决策覆盖的实施计划和文档段落。
 
-新实现应从最新 schema 重新运行 `pnpm --filter @eveland/db db:generate`，不得复制未合并 branch 的
+新实现应从最新 schema 重新运行 `pnpm --filter @evelandhq/db db:generate`，不得复制未合并 branch 的
 migration 编号或 snapshot。
 
 ## 10.3 当前 main 实施进度（Eve 0.24.6）
@@ -504,7 +504,7 @@ Generic OIDC 使用进程内 mock IdP 覆盖协议矩阵，并至少对一个真
 pnpm test
 pnpm typecheck
 pnpm build
-pnpm --filter @eveland/web build   # Web/Next/browser boundary 变更时
+pnpm --filter @evelandhq/web build   # Web/Next/browser boundary 变更时
 git diff --check
 git status --short
 ```

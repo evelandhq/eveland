@@ -1,8 +1,8 @@
-# @eveland/sandbox-bwrap (eve SandboxBackend) Implementation Plan
+# @evelandhq/sandbox-bwrap (eve SandboxBackend) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A publishable npm package `@eveland/sandbox-bwrap` implementing eve's public `SandboxBackend` interface on bubblewrap, so eve agents deployed on eveland's systemd runtime (Plan 1) get a working, isolated exec sandbox instead of the broken/degraded default chain.
+**Goal:** A publishable npm package `@evelandhq/sandbox-bwrap` implementing eve's public `SandboxBackend` interface on bubblewrap, so eve agents deployed on eveland's systemd runtime (Plan 1) get a working, isolated exec sandbox instead of the broken/degraded default chain.
 
 **Architecture:** Directory-backed templates and sessions under `<appRoot>/.eve/sandbox-cache/bwrap/` (eve's local-backend cache convention). `prewarm` captures a template directory by running the authored `bootstrap` inside bwrap and writing seed files; `create` clones the template into a per-session workspace directory that persists across reconnects. Every `run`/`spawn` is one transient `bwrap` invocation: read-only host rootfs, the session directory bound read-write at `/workspace`, `/tmp` tmpfs, the sandbox cache root hidden via tmpfs, environment fully cleared and rebuilt from an explicit whitelist, and coarse network policy (`allow-all` shares the host netns, `deny-all` = `--unshare-net`). File I/O methods operate host-side on the session directory (no subprocess). All process execution goes through an injectable `ProcessRunner` so unit tests run on macOS without bwrap; the real-bwrap contract test runs in the Lima VM under the same systemd constraints as a deployed agent.
 
@@ -92,7 +92,7 @@ File structure (all under `packages/sandbox-bwrap/`):
 
 ```json
 {
-  "name": "@eveland/sandbox-bwrap",
+  "name": "@evelandhq/sandbox-bwrap",
   "version": "0.1.0",
   "description": "bubblewrap SandboxBackend for eve agents — real exec sandboxing without Docker or KVM",
   "type": "module",
@@ -205,7 +205,7 @@ describe("createBwrapOptionsHash", () => {
 
 - [ ] **Step 4: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: FAIL — cannot resolve `./options.js`.
 
 - [ ] **Step 5: Implement options**
@@ -330,7 +330,7 @@ describe("workspace paths", () => {
 
 - [ ] **Step 7: Run tests to verify the new file fails**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: options tests PASS, paths tests FAIL (module not found).
 
 - [ ] **Step 8: Implement paths**
@@ -396,7 +396,7 @@ export function isWithinWorkspace(hostPath: string, workspaceDir: string): boole
 
 - [ ] **Step 9: Run tests and typecheck**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test && pnpm --filter @eveland/sandbox-bwrap typecheck`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test && pnpm --filter @evelandhq/sandbox-bwrap typecheck`
 Expected: all PASS, typecheck clean.
 
 - [ ] **Step 10: Commit**
@@ -519,7 +519,7 @@ describe("buildBwrapExecArgs", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: FAIL — `./args.js` not found.
 
 - [ ] **Step 3: Implement the argv builder**
@@ -578,7 +578,7 @@ export function buildBwrapExecArgs(input: BwrapExecInput): string[] {
 
 - [ ] **Step 4: Run tests to verify args pass**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: args tests PASS.
 
 - [ ] **Step 5: Write failing tests for the process runner**
@@ -649,7 +649,7 @@ describe("isBwrapAvailable", () => {
 
 - [ ] **Step 6: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: FAIL — `./process.js` not found.
 
 - [ ] **Step 7: Implement the process runner**
@@ -741,7 +741,7 @@ export function createNodeProcessRunner(): ProcessRunner {
 
 - [ ] **Step 8: Run tests and typecheck**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test && pnpm --filter @eveland/sandbox-bwrap typecheck`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test && pnpm --filter @evelandhq/sandbox-bwrap typecheck`
 Expected: all PASS. If the missing-executable test hangs instead of rejecting, the `error` event handler is not wired to the exit promise — fix, don't skip.
 
 - [ ] **Step 9: Commit**
@@ -957,7 +957,7 @@ describe("file I/O", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: FAIL — `./session.js` not found.
 
 - [ ] **Step 3: Implement the session**
@@ -1155,7 +1155,7 @@ Implementation notes for this step:
 
 - [ ] **Step 4: Run tests and typecheck**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test && pnpm --filter @eveland/sandbox-bwrap typecheck`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test && pnpm --filter @evelandhq/sandbox-bwrap typecheck`
 Expected: all PASS, typecheck clean (this is also the type-level proof our session satisfies eve's public interface).
 
 - [ ] **Step 5: Commit**
@@ -1325,7 +1325,7 @@ Note: `bwrap()` uses the real runner; constructing it must NOT probe for bwrap (
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test`
 Expected: FAIL — `./backend.js` / `./index.js` not found.
 
 - [ ] **Step 3: Implement the backend**
@@ -1496,7 +1496,7 @@ export type { ProcessRunner, SpawnedProcess } from "./process.js";
  * ```ts
  * // agent/sandbox.ts
  * import { defineSandbox, defaultBackend } from "eve/sandbox";
- * import { bwrap, isBwrapAvailable } from "@eveland/sandbox-bwrap";
+ * import { bwrap, isBwrapAvailable } from "@evelandhq/sandbox-bwrap";
  *
  * export default defineSandbox({
  *   backend: () => (isBwrapAvailable() ? bwrap() : defaultBackend()),
@@ -1510,7 +1510,7 @@ export function bwrap(options?: BwrapSandboxCreateOptions): SandboxBackend {
 
 - [ ] **Step 4: Run tests, typecheck, and build**
 
-Run: `pnpm --filter @eveland/sandbox-bwrap test && pnpm --filter @eveland/sandbox-bwrap typecheck && pnpm --filter @eveland/sandbox-bwrap build`
+Run: `pnpm --filter @evelandhq/sandbox-bwrap test && pnpm --filter @evelandhq/sandbox-bwrap typecheck && pnpm --filter @evelandhq/sandbox-bwrap build`
 Expected: all PASS; `packages/sandbox-bwrap/dist/index.js` and `dist/index.d.ts` exist (dist is gitignored).
 
 - [ ] **Step 5: Run the whole workspace suite**
@@ -1704,7 +1704,7 @@ limactl shell "$VM" -- sudo bash -c "
   cd /opt/eveland
   corepack pnpm install --frozen-lockfile
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
-    corepack pnpm --filter @eveland/worker exec tsx src/integration/systemd-smoke.ts
+    corepack pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 
   # Agent-exec sandbox contract test, run under the same constraints as a
   # deployed eve agent: unprivileged user, NoNewPrivileges, read-only system.
@@ -1756,7 +1756,7 @@ The user explicitly required: after Plan 2 completes, update documentation so ot
 `packages/sandbox-bwrap/README.md`:
 
 ````markdown
-# @eveland/sandbox-bwrap
+# @evelandhq/sandbox-bwrap
 
 A [bubblewrap](https://github.com/containers/bubblewrap)-based `SandboxBackend` for
 [eve](https://www.npmjs.com/package/eve) agents. It gives agent-executed code a real
@@ -1777,7 +1777,7 @@ namespaces.
 ```ts
 // agent/sandbox.ts
 import { defineSandbox, defaultBackend } from "eve/sandbox";
-import { bwrap, isBwrapAvailable } from "@eveland/sandbox-bwrap";
+import { bwrap, isBwrapAvailable } from "@evelandhq/sandbox-bwrap";
 
 export default defineSandbox({
   // bwrap on the Linux deploy host; eve's default chain everywhere else (dev laptops).
@@ -1838,7 +1838,7 @@ export default defineSandbox({
 
 ## Testing
 
-- `pnpm --filter @eveland/sandbox-bwrap test` — unit tests, run anywhere (process
+- `pnpm --filter @evelandhq/sandbox-bwrap test` — unit tests, run anywhere (process
   execution is injectable; no bwrap needed).
 - `bash infra/integration/run.sh` — full contract test against real bwrap inside the
   Lima VM, executed as an unprivileged user under deployed-agent systemd constraints.
@@ -1860,7 +1860,7 @@ exec sandbox opt in to the bubblewrap backend in their `agent/sandbox.ts`:
 
 ```ts
 import { defineSandbox, defaultBackend } from "eve/sandbox";
-import { bwrap, isBwrapAvailable } from "@eveland/sandbox-bwrap";
+import { bwrap, isBwrapAvailable } from "@evelandhq/sandbox-bwrap";
 
 export default defineSandbox({
   backend: () => (isBwrapAvailable() ? bwrap() : defaultBackend()),
@@ -1880,20 +1880,20 @@ Edit 2 — in "Known limits (v1)", replace the line:
 
 ```markdown
 - The eve sandbox backend inside deployed agents is addressed separately
-  (`@eveland/sandbox-bwrap`, Plan 2).
+  (`@evelandhq/sandbox-bwrap`, Plan 2).
 ```
 
 with:
 
 ```markdown
 - Deployed agents use eve's default sandbox chain unless the project opts in to
-  `@eveland/sandbox-bwrap` (see "Agent exec sandbox" above).
+  `@evelandhq/sandbox-bwrap` (see "Agent exec sandbox" above).
 ```
 
 Edit 3 — in the "Verifying the setup" section, after the paragraph describing what the smoke test does, add:
 
 ```markdown
-The same script then runs the `@eveland/sandbox-bwrap` contract test as the
+The same script then runs the `@evelandhq/sandbox-bwrap` contract test as the
 unprivileged `eveland-app` user under deployed-agent systemd constraints
 (`NoNewPrivileges`, `ProtectSystem=strict`). A fully successful run prints both
 `SMOKE OK` and `BWRAP SMOKE OK`.

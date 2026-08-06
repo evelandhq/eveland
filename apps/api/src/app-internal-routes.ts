@@ -1,11 +1,11 @@
-import type { EvelandBuildInfo } from "@eveland/core/build-info";
-import type { ActivationLeaseClaim } from "@eveland/core/contracts";
+import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
+import type { ActivationLeaseClaim } from "@evelandhq/core/contracts";
 import {
   resolveSchedulerDispatchSecret,
   resolveSchedulerRuntimeSecret,
   verifyScheduleDispatchCredential,
-} from "@eveland/core/server/scheduler-dispatch";
-import type { Store } from "@eveland/db";
+} from "@evelandhq/core/server/scheduler-dispatch";
+import type { Store } from "@evelandhq/db";
 import { runtimeActivationSchema, schedulerDispatchSchema } from "./app-schemas.js";
 import { isServiceRequest, safeSecretEqual, waitForRuntimeActivation } from "./app-support.js";
 import type { ApiApp, AppOptions } from "./app-types.js";

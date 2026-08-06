@@ -2,7 +2,7 @@ import { access, mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
+import { AGENT_RUNTIME_POLICY_PATH } from "@evelandhq/core/observability";
 
 const observerFileName = "eveland-observer.js";
 const runtimeRelativePath = ".eveland/observability/runtime.mjs";

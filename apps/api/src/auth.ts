@@ -3,8 +3,13 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { admin, organization } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements, memberAc } from "better-auth/plugins/organization/access";
-import { createId } from "@eveland/core/ids";
-import type { AuthPrincipal, TeamInvitation, TeamMember, TeamRole } from "@eveland/core/contracts";
+import { createId } from "@evelandhq/core/ids";
+import type {
+  AuthPrincipal,
+  TeamInvitation,
+  TeamMember,
+  TeamRole,
+} from "@evelandhq/core/contracts";
 
 export const SESSION_COOKIE_NAME = "eveland_session";
 const INVITATION_DURATION_MS = 7 * 24 * 60 * 60 * 1_000;

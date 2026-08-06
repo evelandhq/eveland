@@ -1,9 +1,9 @@
-import { OBSERVER_RUNTIME_CONTRACT } from "@eveland/agent-observer";
-import type { Job } from "@eveland/core/contracts";
-import { projectDiscoveryManifest } from "@eveland/core/discovery";
-import { createId } from "@eveland/core/ids";
-import { maskKnownSecrets } from "@eveland/core/server/secrets";
-import type { Store } from "@eveland/db";
+import { OBSERVER_RUNTIME_CONTRACT } from "@evelandhq/agent-observer";
+import type { Job } from "@evelandhq/core/contracts";
+import { projectDiscoveryManifest } from "@evelandhq/core/discovery";
+import { createId } from "@evelandhq/core/ids";
+import { maskKnownSecrets } from "@evelandhq/core/server/secrets";
+import type { Store } from "@evelandhq/db";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { waitForOwnedHttpHealth } from "../runtime/health.js";

@@ -1,4 +1,4 @@
-import { agentRuntimePolicySchema } from "@eveland/core/observability";
+import { agentRuntimePolicySchema } from "@evelandhq/core/observability";
 import {
   createPrivateAgentTelemetryRuntime,
   type AgentTelemetryEvent,

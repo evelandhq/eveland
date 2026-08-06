@@ -1,4 +1,4 @@
-import { type Store } from "@eveland/db";
+import { type Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 import { updateProjectMetadataSchema } from "./app-schemas.js";
 import { resolveProjectEveVersion, type EveVersionStore } from "./app-support.js";

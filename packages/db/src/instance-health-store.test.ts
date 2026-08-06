@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { HostMetricSample, WorkerHeartbeat } from "@eveland/core/instance-health";
+import type { HostMetricSample, WorkerHeartbeat } from "@evelandhq/core/instance-health";
 import { createTestStore } from "./vitest-store.js";
 
 function heartbeat(overrides: Partial<WorkerHeartbeat> = {}): WorkerHeartbeat {

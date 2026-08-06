@@ -1,4 +1,4 @@
-# @eveland/sandbox-bwrap
+# @evelandhq/sandbox-bwrap
 
 A [bubblewrap](https://github.com/containers/bubblewrap)-based `SandboxBackend` for
 [eve](https://www.npmjs.com/package/eve) agents. It gives agent-executed code a real
@@ -39,7 +39,7 @@ own `agent/sandbox.ts`) still works the manual way:
 ```ts
 // agent/sandbox.ts
 import { defineSandbox, defaultBackend } from "eve/sandbox";
-import { bwrap, isBwrapAvailable } from "@eveland/sandbox-bwrap";
+import { bwrap, isBwrapAvailable } from "@evelandhq/sandbox-bwrap";
 
 export default defineSandbox({
   // bwrap on the Linux deploy host; eve's default chain everywhere else (dev laptops).
@@ -185,9 +185,9 @@ production topology uses the unprivileged systemd path below.
 
 ## Testing
 
-- `pnpm --filter @eveland/sandbox-bwrap test` — unit tests, run anywhere (process
+- `pnpm --filter @evelandhq/sandbox-bwrap test` — unit tests, run anywhere (process
   execution is injectable; no bwrap needed).
-- `pnpm --filter @eveland/worker smoke:docker-sandbox` — local Docker end to end:
+- `pnpm --filter @evelandhq/worker smoke:docker-sandbox` — local Docker end to end:
   builds the fixture Release, runs the image self-check, starts the Agent, and drives
   an HTTP turn whose `bash` tool writes and executes TypeScript in the durable cache.
 - `bash infra/integration/run.sh` — full contract test against real bwrap. The

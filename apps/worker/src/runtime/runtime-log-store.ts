@@ -1,4 +1,4 @@
-import type { Store } from "@eveland/db";
+import type { Store } from "@evelandhq/db";
 
 type RuntimeLogEmitter = {
   emitLog(input: {

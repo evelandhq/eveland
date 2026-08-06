@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, open, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import { OBSERVER_RUNTIME_FILE_NAME } from "@eveland/agent-observer";
+import { OBSERVER_RUNTIME_FILE_NAME } from "@evelandhq/agent-observer";
 import {
   AGENT_RUNTIME_POLICY_PATH,
   agentRuntimePolicySchema,
   type AgentRuntimePolicy,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 import { processSafeName } from "../types.js";
 
 export const AGENT_OBSERVABILITY_MOUNT_DIR = path.posix.dirname(AGENT_RUNTIME_POLICY_PATH);

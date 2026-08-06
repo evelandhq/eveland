@@ -1,5 +1,5 @@
-import type { Store } from "@eveland/db";
-import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
+import type { Store } from "@evelandhq/db";
+import type { SessionBindingIdlePolicy } from "@evelandhq/core/routing";
 
 export async function sweepReleaseRetention(
   store: Store,

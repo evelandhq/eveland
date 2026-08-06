@@ -1,4 +1,4 @@
-import { createId } from "@eveland/core/ids";
+import { createId } from "@evelandhq/core/ids";
 import { and, asc, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import {
   activationLeaseRowToActivationLease,

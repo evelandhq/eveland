@@ -1,18 +1,18 @@
 import {
   externalDestinationDomains,
   type ExternalDestinationConfig,
-} from "@eveland/core/observability";
-import { deriveAgentTelemetrySecret } from "@eveland/core/server/agent-telemetry-credential";
+} from "@evelandhq/core/observability";
+import { deriveAgentTelemetrySecret } from "@evelandhq/core/server/agent-telemetry-credential";
 import {
   decryptDestinationConfig,
   parseObservabilityPrivateHostAllowlist,
   requestExternalObservabilityDestination,
-} from "@eveland/core/server/observability";
-import { DEFAULT_TEAM_ID, type Store } from "@eveland/db";
+} from "@evelandhq/core/server/observability";
+import { DEFAULT_TEAM_ID, type Store } from "@evelandhq/db";
 import {
   resolvePlatformOtlpServiceToken,
   runWithPlatformTracingSuppressed,
-} from "@eveland/platform-observability";
+} from "@evelandhq/platform-observability";
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { isServiceRequest } from "./app-support.js";
 import { prepareExternalOtlpJson } from "./observability/egress.js";

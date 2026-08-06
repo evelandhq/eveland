@@ -1,5 +1,5 @@
-import type { DeploymentStatus } from "@eveland/core/contracts";
-import type { Store } from "@eveland/db";
+import type { DeploymentStatus } from "@evelandhq/core/contracts";
+import type { Store } from "@evelandhq/db";
 
 /**
  * Runtime jobs own only process-lifecycle statuses. Draining and archived are

@@ -51,17 +51,17 @@ import type {
   SourceRevision,
   UsageAnalytics,
   UsageRange,
-} from "@eveland/core/contracts";
-import type { ModelStepUsage } from "@eveland/core/eve";
-import type { AgentCatalogRecord } from "@eveland/core/catalog";
-import type { AgentEventObservation } from "@eveland/core/observability";
-import type { EveVersionInfo } from "@eveland/core/source";
-import type { SessionBindingIdlePolicy } from "@eveland/core/routing";
+} from "@evelandhq/core/contracts";
+import type { ModelStepUsage } from "@evelandhq/core/eve";
+import type { AgentCatalogRecord } from "@evelandhq/core/catalog";
+import type { AgentEventObservation } from "@evelandhq/core/observability";
+import type { EveVersionInfo } from "@evelandhq/core/source";
+import type { SessionBindingIdlePolicy } from "@evelandhq/core/routing";
 import type {
   HostMetricSample,
   InstanceWorkload,
   WorkerHeartbeat,
-} from "@eveland/core/instance-health";
+} from "@evelandhq/core/instance-health";
 import type {
   ExternalRealmKind,
   IdentityLoginTransaction,
@@ -75,14 +75,14 @@ import type {
   IdentitySession,
   IdentitySigningKey,
   IdentitySigningKeyStatus,
-} from "@eveland/core/identity";
+} from "@evelandhq/core/identity";
 import type {
   AgentCapturePolicy,
   ExternalObservabilityDestination,
   ExternalDestinationHealth,
   ObservabilitySignal,
   ObservabilityPolicy,
-} from "@eveland/core/observability";
+} from "@evelandhq/core/observability";
 
 export type DeploymentRetention = {
   deployment: DeploymentRecord;

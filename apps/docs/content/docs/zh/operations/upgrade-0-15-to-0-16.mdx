@@ -33,7 +33,7 @@ sudo systemctl stop eveland-worker
 git fetch --tags origin
 git checkout v0.16.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 git rev-parse --short=12 HEAD
 ```
 
@@ -48,7 +48,7 @@ cd /opt/eveland
 git fetch --tags origin
 git checkout v0.16.0
 pnpm install --frozen-lockfile
-pnpm --filter @eveland/sandbox-bwrap build
+pnpm --filter @evelandhq/sandbox-bwrap build
 git rev-parse --short=12 HEAD
 ```
 
@@ -77,7 +77,7 @@ sudo journalctl -u eveland-worker -n 100 --no-pager
 
 ## 回滚到 0.15
 
-由于本次发布没有 Migration，源码回滚就足够：停止 Worker 与控制面服务，在两个位置 Checkout `v0.15.0`，重新安装 frozen lockfile，重新构建 `@eveland/sandbox-bwrap`，恢复此前的 Revision，启动 Compose，最后启动 Worker。数据库无需恢复。
+由于本次发布没有 Migration，源码回滚就足够：停止 Worker 与控制面服务，在两个位置 Checkout `v0.15.0`，重新安装 frozen lockfile，重新构建 `@evelandhq/sandbox-bwrap`，恢复此前的 Revision，启动 Compose，最后启动 Worker。数据库无需恢复。
 
 唯一无法随之回滚的是你在第 4 步中针对 Eve 0.27.12 重新部署过的 Agent：那些 Release 会保持构建时的依赖，直到你再次重新部署。
 

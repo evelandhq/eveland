@@ -50,7 +50,7 @@ The main entrypoints are composers rather than homes for every implementation:
 - Database contracts live in `packages/db/src/store-domains.ts`. Add behavior
   to the matching `postgres-*-store.ts` domain module; `postgres-store.ts`
   composes the public Store. Vitest uses the same Store through the PGlite
-  helper exported by `@eveland/db/vitest`.
+  helper exported by `@evelandhq/db/vitest`.
 - API route families live in `apps/api/src/app-*-routes.ts`, request schemas in
   `app-schemas.ts`, and reusable protocol/request helpers in `app-support.ts`.
   `app.ts` owns cross-cutting auth services, middleware, and composition.
@@ -79,7 +79,7 @@ manifests. Matrix packages use stable positional aliases (`eve-oldest`,
 `eve-middle`, and `eve`) so sliding the supported minor window does not rename
 consumer dependencies. Standalone integration fixtures keep the `catalog:`
 marker in source and are materialized into temporary directories through
-`@eveland/core/server/eve-fixture` before import, so an Eve patch upgrade does
+`@evelandhq/core/server/eve-fixture` before import, so an Eve patch upgrade does
 not require editing every fixture.
 
 ## Local development
@@ -89,7 +89,7 @@ corepack enable
 pnpm install --frozen-lockfile
 cp .env.example .env                  # set BETTER_AUTH_SECRET and EVELAND_ADMIN_PASSWORD
 docker compose up -d postgres otel-collector # database and platform OTLP receiver
-pnpm --filter @eveland/api db:migrate  # required on first run and after schema changes
+pnpm --filter @evelandhq/api db:migrate  # required on first run and after schema changes
 pnpm dev                               # start API, Gateway, web, worker, and docs
 ```
 
@@ -152,8 +152,8 @@ docker compose up
 runtime locally with:
 
 ```bash
-pnpm --filter @eveland/docs build:cloudflare
-pnpm --filter @eveland/docs preview:cloudflare
+pnpm --filter @evelandhq/docs build:cloudflare
+pnpm --filter @evelandhq/docs preview:cloudflare
 ```
 
 The `Deploy docs` GitHub Actions workflow deploys after a push to `main` only
@@ -251,7 +251,7 @@ and release `channel`; Web compares its build with the API build in Settings > A
 Only `vX.Y.Z` tags are stable releases; `main` is the `edge` channel. Release Please
 maintains the release PR, `CHANGELOG.md`, Git tag, and GitHub Release from
 Conventional Commit history. The independently published MIT
-`@eveland/sandbox-bwrap` package keeps its own version.
+`@evelandhq/sandbox-bwrap` package keeps its own version.
 
 See [`docs/releases.md`](docs/releases.md) for the release policy, checklist, and
 current artifact boundary, and [`docs/observability.md`](docs/observability.md) for
@@ -267,10 +267,10 @@ pnpm lint       # oxlint; `pnpm lint:fix` applies safe fixes
 pnpm fmt:check  # oxfmt; `pnpm fmt` rewrites in place (a pre-commit hook formats staged files)
 # Requires a running local Docker engine; builds a fixture, starts the Agent,
 # and proves a real HTTP turn can execute TypeScript through the bash tool.
-pnpm --filter @eveland/worker smoke:docker-sandbox
+pnpm --filter @evelandhq/worker smoke:docker-sandbox
 # Requires Docker and openssl; verifies authenticated OpenAPI/MCP Connections,
 # a directory-form subagent, restart, a second Release, and secret non-leakage.
-EVELAND_RUNTIME=docker pnpm --filter @eveland/worker smoke:connections
+EVELAND_RUNTIME=docker pnpm --filter @evelandhq/worker smoke:connections
 # Requires Lima. Exercises the complete systemd/bwrap topology, including a
 # dormant cron wake, Managed Connections, OTLP usage, idle stop, and continuation wake.
 bash infra/integration/run.sh
@@ -279,5 +279,5 @@ bash infra/integration/run.sh
 ## License
 
 Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE),
-except for [`@eveland/sandbox-bwrap`](packages/sandbox-bwrap), which remains
+except for [`@evelandhq/sandbox-bwrap`](packages/sandbox-bwrap), which remains
 licensed under the MIT License.

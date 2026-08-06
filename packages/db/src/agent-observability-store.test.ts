@@ -1,4 +1,4 @@
-import type { AgentEventObservation } from "@eveland/core/observability";
+import type { AgentEventObservation } from "@evelandhq/core/observability";
 import { describe, expect, test } from "vitest";
 import { createTestStore } from "./vitest-store.js";
 

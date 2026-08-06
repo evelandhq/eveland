@@ -1,4 +1,4 @@
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { composeDeploymentEnv } from "./process-support.js";

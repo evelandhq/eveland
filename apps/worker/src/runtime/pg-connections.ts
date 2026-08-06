@@ -1,4 +1,4 @@
-import type { PgInstanceConnectionSample } from "@eveland/core/instance-health";
+import type { PgInstanceConnectionSample } from "@evelandhq/core/instance-health";
 import postgres from "postgres";
 import { resolveBootstrapPostgresUrl } from "./workflow-world-bootstrap.js";
 

@@ -1,9 +1,9 @@
-import { createPgliteTestStore } from "@eveland/db/test";
+import { createPgliteTestStore } from "@evelandhq/db/test";
 import {
   LATEST_VERIFIED_EVE_VERSION,
   OLDEST_VERIFIED_EVE_VERSION,
-} from "@eveland/core/eve-compatibility";
-import { AGENT_RUNTIME_POLICY_PATH } from "@eveland/core/observability";
+} from "@evelandhq/core/eve-compatibility";
+import { AGENT_RUNTIME_POLICY_PATH } from "@evelandhq/core/observability";
 import { execa } from "execa";
 import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import net from "node:net";

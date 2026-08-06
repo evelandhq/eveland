@@ -1,8 +1,8 @@
 import { Fragment } from "react";
 import { ShieldCheckIcon, TriangleAlertIcon } from "lucide-react";
-import { isSameBuild } from "@eveland/core/build-info";
-import { createConfigurationSnapshot } from "@eveland/core/config-diagnostics";
-import { createBuildInfoFromEnv } from "@eveland/core/server/build-info";
+import { isSameBuild } from "@evelandhq/core/build-info";
+import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
+import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

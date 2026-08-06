@@ -1,5 +1,5 @@
 {
-  "name": "@eveland/agent-observer",
+  "name": "@evelandhq/agent-observer",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@eveland/core": "workspace:*",
+    "@evelandhq/core": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/api-logs": "^0.221.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.221.0",

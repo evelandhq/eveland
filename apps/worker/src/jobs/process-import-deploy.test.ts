@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { JobLeaseLostError, processNextJob } from "./process.js";
 import { dispatchJob } from "./job-registry.js";
 import { type RuntimeAdapter } from "../runtime/types.js";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
-import type { DeploymentRecord } from "@eveland/core/contracts";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import type { DeploymentRecord } from "@evelandhq/core/contracts";
 import { createFixtureEveProject } from "./process.test-support.js";
 import { execa } from "execa";
 

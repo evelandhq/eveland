@@ -53,7 +53,7 @@ services:
     working_dir: /workspace
     # unzip (Info-ZIP): zip-upload extraction shells out to `unzip -Z1`; node:24-alpine only ships
     # BusyBox unzip, which lacks -Z. The apk `unzip` is Info-ZIP and shadows the BusyBox applet.
-    command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && pnpm --filter @eveland/api dev"
+    command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && pnpm --filter @evelandhq/api dev"
     depends_on:
       - gateway
       - postgres
@@ -96,7 +96,7 @@ services:
   gateway:
     image: node:24-alpine
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install && pnpm --filter @eveland/gateway dev"
+    command: sh -lc "corepack enable && pnpm install && pnpm --filter @evelandhq/gateway dev"
     depends_on:
       - postgres
     environment:
@@ -129,7 +129,7 @@ services:
   web:
     image: node:24-alpine
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install && pnpm --filter @eveland/web dev"
+    command: sh -lc "corepack enable && pnpm install && pnpm --filter @evelandhq/web dev"
     depends_on:
       - api
     environment:
@@ -150,7 +150,7 @@ services:
     working_dir: /workspace
     # git: import_source shells out to `git clone`. docker-cli: build_deploy shells out to
     # `docker build`/`docker run` via the mounted docker.sock. node:24-alpine ships neither.
-    command: sh -lc "apk add --no-cache git docker-cli && corepack enable && pnpm install && pnpm --filter @eveland/worker dev"
+    command: sh -lc "apk add --no-cache git docker-cli && corepack enable && pnpm install && pnpm --filter @evelandhq/worker dev"
     depends_on:
       - api
       - postgres

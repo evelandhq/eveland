@@ -1,4 +1,4 @@
-import { ENVIRONMENT_ENTRY_KEY_PATTERN } from "@eveland/core/environment-entries";
+import { ENVIRONMENT_ENTRY_KEY_PATTERN } from "@evelandhq/core/environment-entries";
 import type { Job, Project } from "./api";
 
 export type NewProjectProgress = {

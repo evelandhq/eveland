@@ -1,4 +1,4 @@
-import { createDatabase } from "@eveland/db/client";
+import { createDatabase } from "@evelandhq/db/client";
 import {
   authAccounts,
   authSessions,
@@ -7,7 +7,7 @@ import {
   teamMemberships,
   teams,
   users,
-} from "@eveland/db/schema";
+} from "@evelandhq/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { afterAll, describe, expect, test } from "vitest";
 import { createBetterAuthRuntime } from "./auth.js";

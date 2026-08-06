@@ -4,7 +4,7 @@ import type {
   Session,
   SourceRevision,
   TeamInvitation,
-} from "@eveland/core/contracts";
+} from "@evelandhq/core/contracts";
 import { invitationHandle } from "./auth.js";
 
 // Control-plane responses cross the browser boundary. Strip runtime

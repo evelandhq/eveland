@@ -1,4 +1,4 @@
-import { isValidEnvironmentEntryKey } from "@eveland/core/environment-entries";
+import { isValidEnvironmentEntryKey } from "@evelandhq/core/environment-entries";
 
 export type SharedAgentEnvironmentDraft = {
   entries: Array<{

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createTestStore } from "@eveland/db/vitest";
+import { createTestStore } from "@evelandhq/db/vitest";
 import {
   allocateAvailableHostPort,
   invalidateGatewayRouteCache,
@@ -18,7 +18,7 @@ import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { verifyScheduleDispatchCredential } from "@eveland/core/server/scheduler-dispatch";
+import { verifyScheduleDispatchCredential } from "@evelandhq/core/server/scheduler-dispatch";
 import { createFixtureEveProject } from "./process.test-support.js";
 import {
   BasicTracerProvider,

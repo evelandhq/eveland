@@ -1,4 +1,4 @@
-import type { JobType } from "@eveland/core/contracts";
+import type { JobType } from "@evelandhq/core/contracts";
 import type { JobStore } from "./store-domains.js";
 
 function assertTypedEnqueue(store: JobStore): void {
@@ -15,10 +15,10 @@ function assertTypedEnqueue(store: JobStore): void {
   store.enqueueJob("proj_1", "build_deploy", { deploymentId: "dep_1" });
 
   store.listProjectJobs("proj_1").then((jobs) => {
-    jobs satisfies import("@eveland/core/contracts").Job[];
+    jobs satisfies import("@evelandhq/core/contracts").Job[];
   });
   store.listProjectJobs("proj_1", { type: "trigger_schedule" }).then((jobs) => {
-    jobs satisfies import("@eveland/core/contracts").Job<"trigger_schedule">[];
+    jobs satisfies import("@evelandhq/core/contracts").Job<"trigger_schedule">[];
   });
   // @ts-expect-error A narrowed result requires the matching runtime filter.
   store.listProjectJobs<"trigger_schedule">("proj_1");

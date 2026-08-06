@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
-import type { Store } from "@eveland/db";
-import { createTestStore } from "@eveland/db/vitest";
+import type { Store } from "@evelandhq/db";
+import { createTestStore } from "@evelandhq/db/vitest";
 import { processNextJob } from "./process.js";
 import { type RuntimeAdapter } from "../runtime/types.js";
 import { deriveProjectWorkflowUrl } from "../runtime/workflow-world-bootstrap.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { encryptSecretValue } from "@eveland/core/server/secrets";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import { createFixtureEveProject } from "./process.test-support.js";
 
 describe("processNextJob", () => {

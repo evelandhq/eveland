@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ObservabilitySignal } from "@eveland/core/observability";
+import type { ObservabilitySignal } from "@evelandhq/core/observability";
 import protobufjs from "protobufjs";
 import type { Type } from "protobufjs";
 

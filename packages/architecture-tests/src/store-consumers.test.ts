@@ -33,7 +33,7 @@ const FULL_STORE_ALLOWLIST: string[] = [
   "apps/worker/src/scheduler/planner.ts",
 ];
 
-const IMPORT_FROM_DB = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*["']@eveland\/db["']/g;
+const IMPORT_FROM_DB = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*["']@evelandhq\/db["']/g;
 
 /** Local names the full Store is bound to, including `Store as Alias`. */
 function importedStoreNames(source: string): string[] {
@@ -72,7 +72,7 @@ describe("full-Store consumers", () => {
   test("only allowlisted production modules take the full Store", () => {
     const consumers: string[] = [];
     for (const workspace of listWorkspaces()) {
-      if (workspace.name === "@eveland/db") continue;
+      if (workspace.name === "@evelandhq/db") continue;
       for (const file of listSourceFiles(`${workspace.directory}/src`)) {
         if (consumesFullStore(readSource(file))) consumers.push(file);
       }

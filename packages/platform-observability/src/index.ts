@@ -24,7 +24,7 @@ import {
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { BatchSpanProcessor, type SpanExporter } from "@opentelemetry/sdk-trace-base";
 
-const instrumentationName = "@eveland/platform-observability";
+const instrumentationName = "@evelandhq/platform-observability";
 const developmentOtlpServiceToken = "eveland-dev-otlp-service-token";
 
 type EmitLogInput = {

@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
-import { DEFAULT_TEAM_ID } from "@eveland/db";
-import { createTestStore } from "@eveland/db/vitest";
-import { decryptSecretValue, type EncryptedSecret } from "@eveland/core/server/secrets";
+import { DEFAULT_TEAM_ID } from "@evelandhq/db";
+import { createTestStore } from "@evelandhq/db/vitest";
+import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
 import { createApp } from "./app.js";
 
 const appSecretKey = "0123456789abcdef0123456789abcdef";

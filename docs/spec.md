@@ -1161,7 +1161,7 @@ worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置�
 Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
 必须连接到可执行的隔离 Sandbox，而不能在生产式 `eve start` 下静默退化为缺少
 optional peer 的 `just-bash`。平台在 Docker 与 systemd 的 Release 副本中注入
-`@eveland/sandbox-bwrap`，并将每个 Project 的 durable Session workspace 保存在
+`@evelandhq/sandbox-bwrap`，并将每个 Project 的 durable Session workspace 保存在
 Release 目录之外；redeploy 或 restart 不得丢失同一 Eve Session 的 `/workspace`。
 Release 准备可以替换用户编写的 Sandbox backend、`bootstrap()` 与 `onSession()`，
 但必须保留 `agent/sandbox/workspace/**`；这些 authored seeds 继续由 Eve 编译并在

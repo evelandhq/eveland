@@ -2,8 +2,8 @@ import {
   createScheduleDispatchCredential,
   resolveSchedulerDispatchSecret,
   resolveSchedulerRuntimeSecret,
-} from "@eveland/core/server/scheduler-dispatch";
-import type { Store } from "@eveland/db";
+} from "@evelandhq/core/server/scheduler-dispatch";
+import type { Store } from "@evelandhq/db";
 
 import { ensureDeploymentActive, type ActivationStore } from "../../runtime/activation-manager.js";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";

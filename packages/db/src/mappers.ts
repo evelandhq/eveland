@@ -34,8 +34,8 @@ import type {
   AgentConnection,
   AgentAuthCredential,
   AgentAuthTransaction,
-} from "@eveland/core/contracts";
-import { decodeJobPayload, isJobStatus, isJobType } from "@eveland/core/jobs";
+} from "@evelandhq/core/contracts";
+import { decodeJobPayload, isJobStatus, isJobType } from "@evelandhq/core/jobs";
 
 export class InvalidJobRecordError extends Error {
   constructor(message: string, options?: ErrorOptions) {

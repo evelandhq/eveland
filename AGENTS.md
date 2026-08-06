@@ -136,8 +136,8 @@ This direction is enforced, not aspirational: the matrix in
 can depend on anything.
 
 Do not add a `packages/core` root barrel. Import its explicit exports such as
-`@eveland/core/contracts`, `@eveland/core/eve`, and
-`@eveland/core/server/archive`. Shared app behavior belongs in a package, not in
+`@evelandhq/core/contracts`, `@evelandhq/core/eve`, and
+`@evelandhq/core/server/archive`. Shared app behavior belongs in a package, not in
 an app-to-app import.
 
 ### Architecture ratchets
@@ -285,7 +285,7 @@ Native apps with only Postgres in Compose:
 
 ```bash
 docker compose up -d postgres
-pnpm --filter @eveland/api db:migrate
+pnpm --filter @evelandhq/api db:migrate
 pnpm dev
 ```
 
@@ -313,9 +313,9 @@ healthy. When a Compose worker controls the host Docker daemon,
   `postgres-*-store.ts` domain implementation. Exercise it through the PGlite
   Store tests and real Postgres where multi-connection or driver behavior matters. Keep
   composer files free of domain behavior. Generate a new Drizzle migration
-  with `pnpm --filter @eveland/db db:generate`; do not rewrite an
+  with `pnpm --filter @evelandhq/db db:generate`; do not rewrite an
   already-shipped migration. Apply migrations with
-  `pnpm --filter @eveland/api db:migrate`; `db:push` is only for disposable
+  `pnpm --filter @evelandhq/api db:migrate`; `db:push` is only for disposable
   local databases.
 - Contract or ID changes: put shared shapes and rules in the appropriate
   `packages/core` subpath and update every producer and consumer. Preserve the
@@ -359,7 +359,7 @@ Start focused, then run the broadest checks justified by the change.
 
 ```bash
 # Example focused test
-pnpm --filter @eveland/worker exec vitest run src/runtime/select.test.ts
+pnpm --filter @evelandhq/worker exec vitest run src/runtime/select.test.ts
 
 # Repository baseline for code changes
 pnpm test
@@ -375,9 +375,9 @@ git status --short
 
 Additional expectations:
 
-- Run `pnpm --filter @eveland/web build` for web, Next configuration, or
+- Run `pnpm --filter @evelandhq/web build` for web, Next configuration, or
   browser/server-boundary changes.
-- Run `pnpm --filter @eveland/docs build` for public-site, Fumadocs, MDX,
+- Run `pnpm --filter @evelandhq/docs build` for public-site, Fumadocs, MDX,
   search, sitemap, or localization changes.
 - Validate the merged Compose configuration after Compose/env changes.
 - Run `bash -n infra/integration/run.sh` after editing the integration harness.

@@ -1,4 +1,4 @@
-import type { Store } from "@eveland/db";
+import type { Store } from "@evelandhq/db";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 

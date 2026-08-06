@@ -1,4 +1,4 @@
-import type { Store } from "@eveland/db";
+import type { Store } from "@evelandhq/db";
 
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import { dropProjectWorkflowWorld } from "../../runtime/workflow-world-bootstrap.js";

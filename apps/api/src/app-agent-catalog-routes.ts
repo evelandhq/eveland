@@ -1,5 +1,5 @@
-import type { Store } from "@eveland/db";
-import type { AgentCatalogResponse } from "@eveland/core/catalog";
+import type { Store } from "@evelandhq/db";
+import type { AgentCatalogResponse } from "@evelandhq/core/catalog";
 import type { AppOptions, ApiApp } from "./app-types.js";
 import { publicGatewayUrl } from "./app-support.js";
 

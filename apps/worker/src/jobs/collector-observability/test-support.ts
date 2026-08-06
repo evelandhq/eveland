@@ -1,4 +1,4 @@
-import { encryptSecretValue } from "@eveland/core/server/secrets";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 
 export const collectorAppSecretKey = "eveland-dev-secret-key-000000000";
 
