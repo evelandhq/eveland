@@ -35,6 +35,34 @@ describe("sweepWorkflowStreamRetention", () => {
     );
   });
 
+  test("skips the shared platform-world database even when its name carries the prefix", async () => {
+    const listWorkflowDatabases = vi.fn(async () => [
+      "eveland_wf_a_111111",
+      "eveland_wf_platform_world",
+    ]);
+    const pruneTerminalStreamChunks = vi.fn(async () => 3);
+
+    await expect(
+      sweepWorkflowStreamRetention(
+        {
+          WORKFLOW_POSTGRES_URL: "postgres://world:secret@db:5432/eveland",
+          EVELAND_WORKFLOW_WORLD_URL: "postgres://world:secret@db:5432/eveland_wf_platform_world",
+        },
+        {},
+        { listWorkflowDatabases, pruneTerminalStreamChunks },
+      ),
+    ).resolves.toBe(3);
+
+    // The shared database has a different schema (partitioned chunks) and its
+    // retention is the platform world's own concern; sweeping it here would
+    // log a failure every tick.
+    expect(pruneTerminalStreamChunks).toHaveBeenCalledTimes(1);
+    expect(pruneTerminalStreamChunks).toHaveBeenCalledWith(
+      "postgres://world:secret@db:5432/eveland_wf_a_111111",
+      expect.anything(),
+    );
+  });
+
   test("connects through the worker-reachable bootstrap URL when one is configured", async () => {
     const listWorkflowDatabases = vi.fn(async () => ["eveland_wf_a_111111"]);
     const pruneTerminalStreamChunks = vi.fn(async () => 0);
