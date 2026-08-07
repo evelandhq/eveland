@@ -527,11 +527,6 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "off",
   ),
   entry(
-    "EVELAND_WORKFLOW_WORLD_TARBALL",
-    ["worker"],
-    "Absolute path to a packed @evelandhq/workflow-world tarball to install instead of resolving it from the registry. For pre-publication validation and air-gapped installs.",
-  ),
-  entry(
     "EVELAND_WORKFLOW_RUNNER",
     ["worker"],
     'Whether deployments on the platform world run their own queue runner ("embedded") or leave claiming to the dispatcher ("external").',
