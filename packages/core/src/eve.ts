@@ -170,6 +170,23 @@ export function isEveSessionNamespace(pathname: string): boolean {
   return pathname === "/eve/v1/session" || pathname.startsWith("/eve/v1/session/");
 }
 
+/**
+ * The Workflow runtime's queue endpoints, mounted by eve inside every Agent.
+ *
+ * `@workflow/utils` fixes the base path at `/.well-known/workflow/v1`, and eve
+ * serves `flow` and `step` under it. The handler authenticates nothing beyond
+ * the presence of three `x-vqs-*` headers, because it is designed to be reached
+ * only by a queue runner on the same host — over loopback from an in-process
+ * runner, or from the platform dispatcher on the deployment's own port. Neither
+ * legitimate caller goes through the public Gateway, so the Gateway refuses the
+ * whole namespace.
+ */
+export function isWorkflowQueueNamespace(pathname: string): boolean {
+  return (
+    pathname === "/.well-known/workflow/v1" || pathname.startsWith("/.well-known/workflow/v1/")
+  );
+}
+
 export function parseStepUsageEvent(type: string, payload: unknown): ModelStepUsage | null {
   if (type !== "step.completed" || !isEveRecord(payload)) {
     return null;

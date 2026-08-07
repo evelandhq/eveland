@@ -174,7 +174,41 @@ describe("Gateway", () => {
       }),
     ]);
     await expect(continuation.text()).resolves.toBe("proxied:/eve/v1/session/eve_bound");
-    await expect(workflow.text()).resolves.toBe("proxied:/.well-known/workflow/v1/flow");
+    // This assertion used to expect the request to be proxied. eve's Workflow
+    // queue handler authenticates nothing beyond three `x-vqs-*` headers, so
+    // proxying it meant anyone who could reach a project's public hostname could
+    // drive that project's workflow and step invocations.
+    expect(workflow.status).toBe(404);
+  });
+
+  test("refuses the Workflow step route without ever reaching the Agent", async () => {
+    let upstreamHits = 0;
+    const upstream = await startUpstream((_request, response) => {
+      upstreamHits += 1;
+      response.end("should not be reached");
+    });
+    const repo = repository([route({ hostPort: upstream.port })]);
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
+
+    for (const path of ["/.well-known/workflow/v1/flow", "/.well-known/workflow/v1/step"]) {
+      const response = await app.request(`http://p-alpha.agent.localhost${path}`, {
+        method: "POST",
+        headers: {
+          host: "p-alpha.agent.localhost:4080",
+          // The headers eve's handler looks for: refusing before they are even
+          // read is the point.
+          "x-vqs-queue-name": "__wkf_workflow_greet",
+          "x-vqs-message-id": "msg_forged",
+          "x-vqs-message-attempt": "1",
+        },
+        body: JSON.stringify({ runId: "wrun_forged" }),
+      });
+      expect(response.status, path).toBe(404);
+    }
+    expect(upstreamHits).toBe(0);
   });
 
   test("returns 410 instead of routing an expired public API SessionBinding", async () => {
