@@ -4,6 +4,30 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.27.0](https://github.com/evelandhq/eveland/compare/v0.26.0...v0.27.0) (2026-08-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sandbox:** consume @evelandhq/sandbox-bwrap from npm instead of the workspace ([#277](https://github.com/evelandhq/eveland/issues/277))
+* **workspace:** rename package scope @eveland to @evelandhq ([#273](https://github.com/evelandhq/eveland/issues/273))
+
+### Features
+
+* **sandbox:** consume @evelandhq/sandbox-bwrap from npm instead of the workspace ([#277](https://github.com/evelandhq/eveland/issues/277)) ([b7fccad](https://github.com/evelandhq/eveland/commit/b7fccad7fd95d886b4779b720e1adfb57d46c3ec))
+* track eve 0.30.8 ([#279](https://github.com/evelandhq/eveland/issues/279)) ([0962fe9](https://github.com/evelandhq/eveland/commit/0962fe97b7738a8cb9e4e63828033ef1ba8938ff))
+
+
+### Bug Fixes
+
+* **db:** reconcile freshly dead RuntimeInstances and fail their ScheduleRuns ([#270](https://github.com/evelandhq/eveland/issues/270)) ([#275](https://github.com/evelandhq/eveland/issues/275)) ([e060409](https://github.com/evelandhq/eveland/commit/e060409828fc55b702c91355e49e002e740a048d))
+* **worker:** spare RuntimeInstances observing a running Session from the idle reaper ([#270](https://github.com/evelandhq/eveland/issues/270)) ([#276](https://github.com/evelandhq/eveland/issues/276)) ([c3ffc12](https://github.com/evelandhq/eveland/commit/c3ffc12147885092376b7036fb847eeb0c2d1b13))
+
+
+### Code Refactoring
+
+* **workspace:** rename package scope [@eveland](https://github.com/eveland) to [@evelandhq](https://github.com/evelandhq) ([#273](https://github.com/evelandhq/eveland/issues/273)) ([395b9ca](https://github.com/evelandhq/eveland/commit/395b9caee97f823a1c461a17f7eab1893c9aafda))
+
 ## [0.26.0](https://github.com/evelandhq/eveland/compare/v0.25.0...v0.26.0) (2026-08-05)
 
 
