@@ -42,7 +42,7 @@ export type PlaygroundAttachmentLimits = {
 };
 
 export type EveSessionRequest = {
-  kind: "initial" | "continuation" | "cancel" | "reset" | "stream";
+  kind: "initial" | "continuation" | "cancel" | "reset" | "stream" | "clear" | "compact";
   sessionId: string | null;
 };
 
@@ -139,13 +139,19 @@ export function classifyEveSessionRequest(
   if (method === "POST" && pathname === "/eve/v1/session") {
     return { kind: "initial", sessionId: null };
   }
+  // Eve 0.29/0.30 generation: reset addresses the session through a
+  // continuation token in the body, not the path. Eve 0.31 removed this route;
+  // it stays classified while the compatibility window contains 0.29/0.30.
   if (method === "POST" && pathname === "/eve/v1/session/reset") {
     return { kind: "reset", sessionId: null };
   }
 
-  const match = /^\/eve\/v1\/session\/([^/]+)(?:\/(cancel|stream))?$/.exec(pathname);
+  const match = /^\/eve\/v1\/session\/([^/]+)(?:\/(cancel|stream|clear|compact|reset))?$/.exec(
+    pathname,
+  );
   if (!match?.[1]) return null;
-  const suffix = match[2] ?? null;
+  // The alternation above is the source of truth for this cast.
+  const suffix = (match[2] ?? null) as "cancel" | "stream" | "clear" | "compact" | "reset" | null;
   if ((suffix === "stream" && method !== "GET") || (suffix !== "stream" && method !== "POST")) {
     return null;
   }
@@ -157,10 +163,7 @@ export function classifyEveSessionRequest(
     return null;
   }
 
-  return {
-    kind: suffix === "cancel" ? "cancel" : suffix === "stream" ? "stream" : "continuation",
-    sessionId,
-  };
+  return { kind: suffix === null ? "continuation" : suffix, sessionId };
 }
 
 export function isEveSessionNamespace(pathname: string): boolean {

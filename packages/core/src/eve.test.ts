@@ -106,6 +106,19 @@ describe("Eve session request classification", () => {
       kind: "stream",
       sessionId: "eve_1",
     });
+    // Eve 0.31 moved clear/compact/reset onto ID-addressed control routes.
+    expect(classify("POST", "/eve/v1/session/eve_1/clear")).toEqual({
+      kind: "clear",
+      sessionId: "eve_1",
+    });
+    expect(classify("POST", "/eve/v1/session/eve_1/compact")).toEqual({
+      kind: "compact",
+      sessionId: "eve_1",
+    });
+    expect(classify("POST", "/eve/v1/session/eve_1/reset")).toEqual({
+      kind: "reset",
+      sessionId: "eve_1",
+    });
   });
 
   test("rejects non-canonical methods, suffixes, queries, and malformed session identities", () => {
@@ -115,6 +128,9 @@ describe("Eve session request classification", () => {
 
     expect(classify("GET", "/eve/v1/session")).toBeNull();
     expect(classify("POST", "/eve/v1/session/eve_1/stream")).toBeNull();
+    expect(classify("GET", "/eve/v1/session/eve_1/clear")).toBeNull();
+    expect(classify("GET", "/eve/v1/session/eve_1/compact")).toBeNull();
+    expect(classify("GET", "/eve/v1/session/eve_1/reset")).toBeNull();
     expect(classify("GET", "/eve/v1/session/eve_1/stream?startIndex=1")).toBeNull();
     expect(classify("POST", "/eve/v1/session/eve_1/unknown")).toBeNull();
     expect(classify("POST", "/eve/v1/session/%E0%A4%A")).toBeNull();

@@ -54,6 +54,8 @@ export function registerCanonicalPlaygroundRoute(input: {
     const isCancel = eveRequest.kind === "cancel";
     const isStream = eveRequest.kind === "stream";
     const isReset = eveRequest.kind === "reset";
+    const isSessionControl =
+      isCancel || isReset || eveRequest.kind === "clear" || eveRequest.kind === "compact";
 
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
@@ -92,10 +94,13 @@ export function registerCanonicalPlaygroundRoute(input: {
 
     let body: Uint8Array | null = null;
     let resetContinuationToken: string | null = null;
-    if (isInitial || isContinuation || isCancel || isReset) {
+    if (isInitial || isContinuation || isSessionControl) {
       try {
         body = await readLimitedPlaygroundBody(c.req.raw, PLAYGROUND_MAX_TRANSPORT_BYTES);
-        if (isReset) {
+        if (isReset && !pathSessionId) {
+          // Eve 0.29/0.30 generation: reset addresses the session through a
+          // continuation token in the body. Eve 0.31 resets carry the session
+          // in the path and need no token.
           const resetBody = parsePlaygroundBody(body);
           resetContinuationToken = isEveRecord(resetBody)
             ? getEveString(resetBody, "continuationToken")
@@ -103,7 +108,7 @@ export function registerCanonicalPlaygroundRoute(input: {
           if (!resetContinuationToken) {
             throw new Error("Playground reset requires a continuationToken.");
           }
-        } else if (!isCancel) {
+        } else if (isInitial || isContinuation) {
           validatePlaygroundTurn(parsePlaygroundBody(body));
         }
       } catch (error) {
@@ -154,15 +159,33 @@ export function registerCanonicalPlaygroundRoute(input: {
       }
     };
 
+    // An Eve 0.29/0.30 deployment has no ID-addressed reset route; the stored
+    // continuation token is both the proof of that generation and the value its
+    // tokenless reset needs. Translating here lets the 0.31-shaped Playground
+    // client reset sessions on every supported deployment.
+    const legacyResetToken =
+      isReset && pathSessionId ? (platformSession?.continuationToken ?? null) : null;
+    const proxyPath = legacyResetToken
+      ? `/eve/v1/session/reset${requestUrl.search}`
+      : `${evePath}${requestUrl.search}`;
+    let proxyBody = body;
+    let proxyHeaders = c.req.raw.headers;
+    if (legacyResetToken) {
+      proxyBody = new TextEncoder().encode(JSON.stringify({ continuationToken: legacyResetToken }));
+      proxyHeaders = new Headers(c.req.raw.headers);
+      proxyHeaders.set("content-type", "application/json");
+      proxyHeaders.delete("content-length");
+    }
+
     let upstream: Response;
     try {
       const proxy = (envelope: string) =>
         playgroundProxy({
           projectId,
-          path: `${evePath}${requestUrl.search}`,
+          path: proxyPath,
           method: c.req.method,
-          headers: c.req.raw.headers,
-          body,
+          headers: proxyHeaders,
+          body: proxyBody,
           signal: c.req.raw.signal,
           agentAuthEnvelope: envelope,
         });

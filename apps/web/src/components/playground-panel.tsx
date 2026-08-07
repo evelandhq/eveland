@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FileUIPart } from "ai";
-import { Client } from "eve/client";
+import { Client, type ClientSessionState } from "eve/client";
 import { useEveAgent } from "eve/react";
 import type {
   EveAuthorizationPart,
@@ -97,11 +97,11 @@ type PlaygroundPanelProps = {
 };
 
 export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps) {
-  const [session] = useState(() =>
-    new Client({
-      host: `/api/eveland/projects/${projectId}/playground`,
-      preserveCompletedSessions: true,
-    }).session(),
+  // The hook owns the session (created on the first turn); the standalone
+  // Client only mints I/O-free `sessions.attach` handles for control
+  // operations (cooperative cancel, reset) on the hook's current session ID.
+  const [client] = useState(
+    () => new Client({ host: `/api/eveland/projects/${projectId}/playground` }),
   );
   const pendingRouteAuthTurn = useRef<PendingPlaygroundMessage | null>(null);
   const leaveResetSent = useRef(false);
@@ -109,7 +109,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   const [isResetting, setIsResetting] = useState(false);
   const resumedPendingTurn = useRef(false);
   const agent = useEveAgent({
-    session,
+    host: `/api/eveland/projects/${projectId}/playground`,
     onError: (sendError) => {
       handleRouteAuthError({
         error: sendError,
@@ -120,6 +120,11 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
       });
     },
   });
+  const sessionHandle = agent.session ? client.sessions.attach(agent.session.sessionId) : null;
+  const sessionStateRef = useRef<ClientSessionState | undefined>(undefined);
+  useEffect(() => {
+    sessionStateRef.current = agent.session;
+  }, [agent.session]);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const versionError = eveVersion.supported
     ? null
@@ -136,7 +141,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   async function sendMessageWithRouteAuth(message: PendingPlaygroundMessage) {
     pendingRouteAuthTurn.current = message;
     try {
-      await agent.send({ message });
+      await agent.send(message);
     } finally {
       pendingRouteAuthTurn.current = null;
     }
@@ -157,7 +162,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
       if (leaveResetSent.current) return;
       leaveResetSent.current = resetPlaygroundOnPageLeave({
         projectId,
-        sessionState: session.state,
+        sessionState: sessionStateRef.current,
       });
     };
     const handlePageHide = (event: PageTransitionEvent) => {
@@ -168,7 +173,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
       window.removeEventListener("pagehide", handlePageHide);
       resetOnLeave();
     };
-  }, [projectId, session]);
+  }, [projectId]);
 
   return (
     <div className="flex h-[calc(100svh-8.5rem)] min-h-[36rem] flex-col overflow-hidden">
@@ -182,10 +187,14 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               setComposerError(null);
               setIsResetting(true);
               try {
-                await resetPlaygroundConversation({
-                  session,
-                  clear: agent.reset,
-                });
+                if (sessionHandle) {
+                  await resetPlaygroundConversation({
+                    session: sessionHandle,
+                    clear: agent.reset,
+                  });
+                } else {
+                  agent.reset();
+                }
                 leaveResetSent.current = false;
               } catch (resetError) {
                 setComposerError(toErrorMessage(resetError));
@@ -218,7 +227,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
                 onInputResponse={async (response) => {
                   setComposerError(null);
                   try {
-                    await agent.send({ inputResponses: [response] });
+                    await agent.respond([response]);
                   } catch (responseError) {
                     setComposerError(toErrorMessage(responseError));
                   }
@@ -310,9 +319,15 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               disabled={!eveVersion.supported}
               onStop={() => {
                 setComposerError(null);
-                void cancelPlaygroundTurn(session).catch((cancelError) => {
-                  setComposerError(toErrorMessage(cancelError));
-                });
+                // Before the first turn's response names the session there is
+                // nothing server-side to cancel cooperatively; abort locally.
+                if (sessionHandle) {
+                  void cancelPlaygroundTurn(sessionHandle).catch((cancelError) => {
+                    setComposerError(toErrorMessage(cancelError));
+                  });
+                } else {
+                  agent.stop();
+                }
               }}
               status={agent.status}
             />

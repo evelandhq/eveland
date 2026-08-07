@@ -337,7 +337,6 @@ async function startSession(
   message: string,
 ): Promise<{
   sessionId: string;
-  continuationToken: string;
   nextIndex: number;
   events: SessionEvent[];
 }> {
@@ -362,7 +361,7 @@ async function readUntilWaiting(
   port: number,
   sessionId: string,
   startIndex: number,
-): Promise<{ continuationToken: string; nextIndex: number; events: SessionEvent[] }> {
+): Promise<{ nextIndex: number; events: SessionEvent[] }> {
   const response = await fetch(
     `http://127.0.0.1:${port}/eve/v1/session/${encodeURIComponent(sessionId)}/stream?startIndex=${startIndex}`,
     { signal: AbortSignal.timeout(60_000) },
@@ -372,9 +371,9 @@ async function readUntilWaiting(
   const decoder = new TextDecoder();
   const events: SessionEvent[] = [];
   let buffer = "";
-  let continuationToken: string | null = null;
+  let waiting = false;
   try {
-    while (continuationToken === null) {
+    while (!waiting) {
       const chunk = await reader.read();
       if (chunk.done) break;
       buffer += decoder.decode(chunk.value, { stream: true });
@@ -388,11 +387,7 @@ async function readUntilWaiting(
         if (event.type === "turn.failed" || event.type === "session.failed") {
           throw new Error(`managed Connection turn failed: ${line}`);
         }
-        if (event.type === "session.waiting") {
-          const data = event.data as { continuationToken?: unknown } | undefined;
-          if (typeof data?.continuationToken === "string")
-            continuationToken = data.continuationToken;
-        }
+        if (event.type === "session.waiting") waiting = true;
       }
     }
   } catch (error) {
@@ -402,14 +397,14 @@ async function readUntilWaiting(
   }
   await reader.cancel().catch(() => undefined);
   assert.ok(
-    continuationToken,
+    waiting,
     `session ${sessionId} never reached session.waiting: ${JSON.stringify(events)}`,
   );
   assert.ok(
     events.some((event) => event.type === "turn.completed"),
     `session ${sessionId} never completed its turn`,
   );
-  return { continuationToken, nextIndex: startIndex + events.length, events };
+  return { nextIndex: startIndex + events.length, events };
 }
 
 async function startConnectionServer(
