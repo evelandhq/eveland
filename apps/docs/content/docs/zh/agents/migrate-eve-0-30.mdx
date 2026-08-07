@@ -69,6 +69,6 @@ export default eveChannel({ auth: [none()] });
 
 ## 第三步 —— 部署
 
-刷新 Lockfile，让构建真正解析到 `0.30.6`，然后重新部署。`^0.30.0` 这类 Range 只是允许它，并不会自动改变实际安装的版本。
+刷新 Lockfile，让构建真正解析到 `0.30.8`，然后重新部署。`^0.30.0` 这类 Range 只是允许它，并不会自动改变实际安装的版本。
 
 部署后发一条 Playground 消息：拿到已验证的调用方 Principal 说明迁移成功；仍是裸 401 说明 `auth` 数组里还没有任何一个 AuthFn 放行 Eveland 的 Playground 请求。

@@ -3,7 +3,7 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.28.x`、`0.29.x` 与 `0.30.x`，验证版本为 `0.28.0`、`0.29.5` 与 `0.30.6`。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.28.x`、`0.29.x` 与 `0.30.x`，验证版本为 `0.28.0`、`0.29.5` 与 `0.30.8`。
 
 UI 仅将最新支持线 `0.30.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
@@ -13,7 +13,7 @@ UI 仅将最新支持线 `0.30.x` 标为绿色。较旧但仍受支持的版本�
 
 Eve 0.30.5 还重命名了 Durable Cancellation Hook。`sessionCancelHookToken(sessionId)` 原本产生 `{sessionId}:cancel`，现在稳定的命令收件箱是 `eve:session:{sessionId}:inbox`，并由它转发一个私有的按 Turn 的 Hook。手工 resume 旧 token 来取消 Turn 的 Agent 代码在升级后会**静默失效**。走 HTTP `POST /eve/v1/session/:id/cancel` 的不受影响——该 Route 与响应 Schema 均未变，Eveland 自己用的就是它。
 
-对于当前最新支持线，即使 `^0.30.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.30.6`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
+对于当前最新支持线，即使 `^0.30.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.30.8`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
 
 仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；进入时会有意识地移除较旧 Minor。
 
