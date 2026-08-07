@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.29.0](https://github.com/evelandhq/eveland/compare/v0.28.0...v0.29.0) (2026-08-07)
+
+
+### Features
+
+* **api:** accept workflow_step activation leases ([#283](https://github.com/evelandhq/eveland/issues/283)) ([76230f5](https://github.com/evelandhq/eveland/commit/76230f52ef81b40a448da7f20c6271bc98ed492b))
+* **worker:** consume @evelandhq/workflow-world from npm, opt-in per project ([#285](https://github.com/evelandhq/eveland/issues/285)) ([a48a4a4](https://github.com/evelandhq/eveland/commit/a48a4a4a5835ba82e4606765314fb8fc01df915f))
+* **worker:** protect deployments holding non-terminal workflow runs from archival ([#284](https://github.com/evelandhq/eveland/issues/284)) ([d043fb5](https://github.com/evelandhq/eveland/commit/d043fb5a3e33afa1a6b331e6aef171204cfbad6c))
+
+
+### Bug Fixes
+
+* **gateway:** refuse the Agent Workflow queue namespace from public traffic ([#266](https://github.com/evelandhq/eveland/issues/266)) ([59caeb2](https://github.com/evelandhq/eveland/commit/59caeb2bf321ac46e015fbed0ba3ede32250b3c1))
+
 ## [0.28.0](https://github.com/evelandhq/eveland/compare/v0.27.0...v0.28.0) (2026-08-07)
 
 
