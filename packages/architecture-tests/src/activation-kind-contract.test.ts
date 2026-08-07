@@ -16,8 +16,9 @@ import { readSource } from "./scan-support.js";
  * the places agree for each kind that is requested over the internal API.
  *
  * The fourth place for `workflow_step` is `@evelandhq/workflow-world`'s
- * dispatcher. Its literal joins this suite once the worker depends on the
- * package; until then `sentFrom` records where the request comes from.
+ * dispatcher, which ships as an npm package rather than a repo path — its
+ * literal is asserted in eve-workflow-world-contract.test.ts against the
+ * installed copy; `sentFrom` records where the request comes from.
  */
 const REQUESTED_KINDS: Array<{ kind: string; sentFrom: string; literalSource?: string }> = [
   { kind: "workflow_step", sentFrom: "@evelandhq/workflow-world dispatcher.ts" },

@@ -1,4 +1,8 @@
-export type EvelandComponent = "web" | "api" | "gateway" | "worker";
+// Re-exported rather than redeclared: this file used to carry its own copy of
+// the union, which then silently drifted from the canonical list in
+// build-info.ts when a new component was added.
+export type { EvelandComponent } from "./build-info.js";
+import type { EvelandComponent } from "./build-info.js";
 
 export type ConfigurationEntry = {
   name: string;
@@ -504,18 +508,53 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   },
   {
     name: "EVELAND_WORKFLOW_WORLD_URL",
-    components: ["worker"],
+    components: ["worker", "workflow-dispatcher"],
     sensitivity: "url",
     purpose:
       "Shared Postgres database backing @evelandhq/workflow-world; unset keeps projects on the per-project world-postgres databases.",
   },
   {
     name: "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
-    components: ["worker"],
+    components: ["worker", "workflow-dispatcher"],
     sensitivity: "url",
     purpose:
       "Host-reachable URL for the shared workflow database. Set when deployments reach Postgres by a different name than the platform does (e.g. host.docker.internal under Docker Desktop); defaults to EVELAND_WORKFLOW_WORLD_URL.",
   },
+  entry(
+    "EVELAND_WORKFLOW_WORLD_ROLLOUT",
+    ["worker"],
+    'Which projects build against @evelandhq/workflow-world: "off", "all", or a comma-separated list of project ids.',
+    "off",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_WORLD_TARBALL",
+    ["worker"],
+    "Absolute path to a packed @evelandhq/workflow-world tarball to install instead of resolving it from the registry. For pre-publication validation and air-gapped installs.",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_RUNNER",
+    ["worker"],
+    'Whether deployments on the platform world run their own queue runner ("embedded") or leave claiming to the dispatcher ("external").',
+    "embedded",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_ACTIVATION_API_URL",
+    ["workflow-dispatcher"],
+    "Control API base URL the dispatcher activates deployments through, exactly as the Gateway's cold start does.",
+  ),
+  {
+    name: "WORKFLOW_DISPATCHER_ACTIVATION_TOKEN",
+    components: ["workflow-dispatcher"],
+    sensitivity: "secret",
+    purpose:
+      "Bearer token for the control API's /internal/runtime/activations routes. Never handed to deployments — dispatch to the executor authenticates with the runtime secret instead.",
+  },
+  entry(
+    "WORKFLOW_DISPATCHER_CONCURRENCY",
+    ["workflow-dispatcher"],
+    "Maximum workflow jobs the dispatcher claims at once across all projects. Further tuning knobs (poll interval, pool size, per-tenant in-flight cap, lease renew interval) are documented in the @evelandhq/workflow-world README under the same WORKFLOW_DISPATCHER_* prefix.",
+    "50",
+  ),
   {
     name: "EVELAND_RUNTIME",
     components: ["worker"],

@@ -9,7 +9,7 @@ import path from "node:path";
 import { waitForOwnedHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
-import { PLATFORM_WORKFLOW_WORLD } from "../runtime/workflow-world.js";
+import { resolveWorkflowWorldChoice } from "../runtime/workflow-world.js";
 import {
   createDeploymentStartInput,
   ensureDeploymentLaunchSandbox,
@@ -127,7 +127,12 @@ export async function handleBuildDeployJob(
       commandContext: launchPrerequisites.commandContext,
       buildVariables,
       ...(options.signal ? { signal: options.signal } : {}),
-      ...(workflowPostgresUrl ? { workflowWorld: PLATFORM_WORKFLOW_WORLD } : {}),
+      // Which world gets baked in is a per-project, build-time decision — that
+      // is what lets deployments on the old and new worlds coexist, and what
+      // makes rollback a rebuild rather than a data migration.
+      ...(workflowPostgresUrl
+        ? { workflowWorld: resolveWorkflowWorldChoice(process.env, project.id) }
+        : {}),
     });
   } catch (error) {
     await rm(buildDir, { recursive: true, force: true });

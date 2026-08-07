@@ -43,6 +43,7 @@ overrides:
 minimumReleaseAgeExclude:
   - eve
   - "@evelandhq/sandbox-bwrap"
+  - "@evelandhq/workflow-world"
   - "@ai-sdk/gateway@4.0.33"
   - "@ai-sdk/provider-utils@5.0.16"
   - ai@7.0.44

@@ -20,3 +20,5 @@ coverage/
 .claude/worktrees/
 docker-compose.override.yml
 next-env.d.ts
+# Local end-to-end run state (see apps/worker/src/integration/workflow-wake-e2e.ts).
+.eveland-e2e-data/

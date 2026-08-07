@@ -180,6 +180,7 @@ describe("Eve compatibility repository contract", () => {
       "apps/worker/src/integration/fixtures/identity-e2e/package.json",
       "apps/worker/src/integration/fixtures/observer-e2e/package.json",
       "infra/integration/fixtures/schedule-scale-zero/package.json",
+      "infra/integration/fixtures/workflow-wake/package.json",
     ]);
     expect([...peerConsumers].sort()).toEqual(["packages/sdk/package.json"]);
   });
