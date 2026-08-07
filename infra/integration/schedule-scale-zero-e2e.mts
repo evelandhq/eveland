@@ -146,13 +146,8 @@ async function main(): Promise<void> {
     });
     const initialBody = await initial.text();
     assert.ok(initial.ok, `initial public turn failed (${initial.status}): ${initialBody}`);
-    const initialResult = sessionResult(initialBody, initial.headers);
-    const initialSessionId = initialResult.sessionId;
+    const initialSessionId = sessionResult(initialBody, initial.headers).sessionId;
     assert.ok(initialSessionId, `initial public turn returned no Session ID: ${initialBody}`);
-    assert.ok(
-      initialResult.continuationToken,
-      `initial public turn returned no continuation token: ${initialBody}`,
-    );
     await consumeTurn(
       gateway,
       `${publicOrigin}/eve/v1/session/${encodeURIComponent(initialSessionId)}/stream?startIndex=0`,
@@ -221,7 +216,6 @@ async function main(): Promise<void> {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          continuationToken: initialResult.continuationToken,
           message: "Continue after the idle shutdown.",
         }),
       },
@@ -385,20 +379,15 @@ async function waitPastNextMinute(): Promise<void> {
   await delay(waitMs);
 }
 
-function sessionResult(
-  body: string,
-  headers: Headers,
-): { sessionId: string | null; continuationToken: string | null } {
+function sessionResult(body: string, headers: Headers): { sessionId: string | null } {
   try {
-    const parsed = JSON.parse(body) as { sessionId?: unknown; continuationToken?: unknown };
+    const parsed = JSON.parse(body) as { sessionId?: unknown };
     return {
       sessionId:
         typeof parsed.sessionId === "string" ? parsed.sessionId : headers.get("x-eve-session-id"),
-      continuationToken:
-        typeof parsed.continuationToken === "string" ? parsed.continuationToken : null,
     };
   } catch {
     // Fall through to the canonical response header.
   }
-  return { sessionId: headers.get("x-eve-session-id"), continuationToken: null };
+  return { sessionId: headers.get("x-eve-session-id") };
 }

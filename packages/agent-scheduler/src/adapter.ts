@@ -1,9 +1,21 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { eveMinorFromDependency } from "@evelandhq/core/eve-compatibility";
 import { parseScheduleSource } from "@evelandhq/core/schedules";
 import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@evelandhq/core/source";
 import ts from "typescript";
+
+/**
+ * Eve 0.31 replaced the continuation-token channel operations (`send` with a
+ * `continuationToken`, cross-channel `receive`) with fixed-session addressing
+ * (`from(address).send`, `to(channel, target).send`). The generated dispatch
+ * Channel is injected runtime code, so it must speak the generation of the
+ * Release's own Eve dependency.
+ */
+function usesFixedSessionGeneration(eveVersion: string): boolean {
+  return (eveMinorFromDependency(eveVersion) ?? 0) >= 31;
+}
 
 const reservedOriginalSchedule = "__evelandOriginalSchedule";
 const reservedOriginalMarkdown = "__evelandOriginalMarkdown";
@@ -103,7 +115,10 @@ export async function injectSchedulerAdapter(input: {
   }
 
   await mkdir(path.dirname(channelPath), { recursive: true });
-  await writeFile(channelPath, generateSchedulerChannel(definitions));
+  await writeFile(
+    channelPath,
+    generateSchedulerChannel(definitions, usesFixedSessionGeneration(eveVersion)),
+  );
   return { eveVersion, channelPath: reservedChannelPath, definitions };
 }
 
@@ -199,65 +214,13 @@ function transformModuleSchedule(
   return { code, cron, kind: hasMarkdown ? "markdown" : "handler" };
 }
 
-function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
-  const imports = definitions.map((definition, index) => {
-    const exportName = definition.sourcePath.endsWith(".md")
-      ? reservedOriginalMarkdown
-      : reservedOriginalSchedule;
-    return `import { ${exportName} as schedule${index} } from ${JSON.stringify(moduleSpecifierFromChannel(definition.modulePath))};`;
-  });
-  const entries = definitions.map((definition, index) => {
-    const markdown = definition.sourcePath.endsWith(".md")
-      ? `schedule${index}`
-      : `schedule${index}.markdown`;
-    const value =
-      definition.kind === "markdown"
-        ? `{ kind: "markdown", markdown: ${markdown} }`
-        : `{ kind: "handler", definition: schedule${index} }`;
-    return `  ${JSON.stringify(definition.key)}: ${value},`;
-  });
-
-  return `${imports.length > 0 ? `${imports.join("\n")}\n` : ""}import { defineChannel, POST } from "eve/channels";
-
-const scheduleAppAuth = {
-  attributes: {},
-  authenticator: "app",
-  principalId: "eve:app",
-  principalType: "runtime",
-} as const;
-
-const dispatchTable = {
-${entries.join("\n")}
-} as const;
-
-export default defineChannel({
-  kindHint: "schedule",
-  routes: [
-    POST("/eveland/scheduler/:scheduleRunId", async (request, { params, receive, send }) => {
-      const runtimeSecret = process.env.EVELAND_SCHEDULER_RUNTIME_SECRET;
-      const suppliedRuntimeSecret = request.headers.get("x-eveland-runtime-secret");
-      if (!runtimeSecret || !suppliedRuntimeSecret || !(await safeEqual(runtimeSecret, suppliedRuntimeSecret))) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-
-      const credential = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "");
-      const body = await request.json().catch(() => null) as { scheduleKey?: string } | null;
-      const scheduleKey = body?.scheduleKey;
-      const entry = typeof scheduleKey === "string" ? dispatchTable[scheduleKey as keyof typeof dispatchTable] : undefined;
-      if (!credential || !entry) return new Response("Not found", { status: 404 });
-
-      const redeemUrl = process.env.EVELAND_SCHEDULER_REDEEM_URL;
-      if (!redeemUrl) return new Response("Scheduler unavailable", { status: 503 });
-      const redeemed = await reportDispatch(redeemUrl, runtimeSecret, {
-        phase: "claim",
-        credential,
-        scheduleRunId: params.scheduleRunId,
-        scheduleKey,
-      });
-      if (!redeemed.ok) return new Response("Dispatch rejected", { status: redeemed.status });
-
-      try {
-        const sessionIds: string[] = [];
+// Dispatch bodies for the two Eve channel API generations. Both collect every
+// Session the authored handler started, surface the first rejection as the
+// dispatch failure, and hold the response until all handler work settles.
+//
+// Eve 0.29/0.30: the route's own `send` starts a session addressed by a
+// continuation token, and cross-channel work goes through `receive`.
+const continuationDispatchBlock = `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
           const session = await send(entry.markdown, {
             auth: scheduleAppAuth,
@@ -289,7 +252,115 @@ export default defineChannel({
             (result): result is PromiseRejectedResult => result.status === "rejected",
           );
           if (rejected) throw rejected.reason instanceof Error ? rejected.reason : new Error(String(rejected.reason));
-        }
+        }`;
+
+// Eve 0.31: `from(address)` owns session creation on this channel, and the
+// authored handler receives `to(channel, target)` whose `.send` is wrapped so
+// every started Session is collected.
+const fixedSessionDispatchBlock = `        const sessionIds: string[] = [];
+        if (entry.kind === "markdown") {
+          const session = await from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
+            auth: scheduleAppAuth,
+            mode: "task",
+            title: \`Schedule · \${scheduleKey}\`,
+          });
+          sessionIds.push(session.id);
+        } else {
+          const waitUntilTasks: Promise<unknown>[] = [];
+          const sendTasks: Promise<{ id: string }>[] = [];
+          const wrappedTo: typeof to = (channel, target) => {
+            const handle = to(channel, target);
+            return {
+              send(message, options) {
+                const task = handle.send(message, options);
+                sendTasks.push(task);
+                return task;
+              },
+            };
+          };
+          const [runResult] = await Promise.allSettled([entry.definition.run({
+            appAuth: scheduleAppAuth,
+            to: wrappedTo,
+            waitUntil(task: Promise<unknown>) { waitUntilTasks.push(task); },
+          })]);
+          const settled = await Promise.allSettled([...waitUntilTasks, ...sendTasks]);
+          for (const result of settled) {
+            if (result.status === "fulfilled" && isSession(result.value) && !sessionIds.includes(result.value.id)) {
+              sessionIds.push(result.value.id);
+            }
+          }
+          const rejected = [runResult, ...settled].find(
+            (result): result is PromiseRejectedResult => result.status === "rejected",
+          );
+          if (rejected) throw rejected.reason instanceof Error ? rejected.reason : new Error(String(rejected.reason));
+        }`;
+
+function generateSchedulerChannel(
+  definitions: SchedulerDefinition[],
+  fixedSessionGeneration: boolean,
+): string {
+  const imports = definitions.map((definition, index) => {
+    const exportName = definition.sourcePath.endsWith(".md")
+      ? reservedOriginalMarkdown
+      : reservedOriginalSchedule;
+    return `import { ${exportName} as schedule${index} } from ${JSON.stringify(moduleSpecifierFromChannel(definition.modulePath))};`;
+  });
+  const entries = definitions.map((definition, index) => {
+    const markdown = definition.sourcePath.endsWith(".md")
+      ? `schedule${index}`
+      : `schedule${index}.markdown`;
+    const value =
+      definition.kind === "markdown"
+        ? `{ kind: "markdown", markdown: ${markdown} }`
+        : `{ kind: "handler", definition: schedule${index} }`;
+    return `  ${JSON.stringify(definition.key)}: ${value},`;
+  });
+  const routeArgs = fixedSessionGeneration ? "{ params, from, to }" : "{ params, receive, send }";
+  const dispatchBlock = fixedSessionGeneration
+    ? fixedSessionDispatchBlock
+    : continuationDispatchBlock;
+
+  return `${imports.length > 0 ? `${imports.join("\n")}\n` : ""}import { defineChannel, POST } from "eve/channels";
+
+const scheduleAppAuth = {
+  attributes: {},
+  authenticator: "app",
+  principalId: "eve:app",
+  principalType: "runtime",
+} as const;
+
+const dispatchTable = {
+${entries.join("\n")}
+} as const;
+
+export default defineChannel({
+  kindHint: "schedule",
+  routes: [
+    POST("/eveland/scheduler/:scheduleRunId", async (request, ${routeArgs}) => {
+      const runtimeSecret = process.env.EVELAND_SCHEDULER_RUNTIME_SECRET;
+      const suppliedRuntimeSecret = request.headers.get("x-eveland-runtime-secret");
+      if (!runtimeSecret || !suppliedRuntimeSecret || !(await safeEqual(runtimeSecret, suppliedRuntimeSecret))) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+
+      const credential = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "");
+      const body = await request.json().catch(() => null) as { scheduleKey?: string } | null;
+      const scheduleKey = body?.scheduleKey;
+      const entry = typeof scheduleKey === "string" ? dispatchTable[scheduleKey as keyof typeof dispatchTable] : undefined;
+      if (!credential || !entry) return new Response("Not found", { status: 404 });
+
+      const redeemUrl = process.env.EVELAND_SCHEDULER_REDEEM_URL;
+      if (!redeemUrl) return new Response("Scheduler unavailable", { status: 503 });
+      const redeemed = await reportDispatch(redeemUrl, runtimeSecret, {
+        phase: "claim",
+        credential,
+        scheduleRunId: params.scheduleRunId,
+        scheduleKey,
+      });
+      if (!redeemed.ok) return new Response("Dispatch rejected", { status: redeemed.status });
+
+      try {
+${dispatchBlock}
 
         const completed = await reportDispatch(redeemUrl, runtimeSecret, {
           phase: "complete",

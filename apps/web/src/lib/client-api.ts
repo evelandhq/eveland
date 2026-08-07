@@ -417,20 +417,24 @@ export async function upsertIdentityReturnTarget(input: {
 
 export function resetPlaygroundOnPageLeave(input: {
   projectId: string;
-  sessionState: {
-    continuationToken?: string;
-  };
+  sessionState:
+    | {
+        sessionId?: string;
+      }
+    | null
+    | undefined;
   fetcher?: typeof fetch;
 }): boolean {
-  const continuationToken = input.sessionState.continuationToken;
-  if (!continuationToken) return false;
+  const sessionId = input.sessionState?.sessionId;
+  if (!sessionId) return false;
   const fetcher = input.fetcher ?? fetch;
+  // Eve 0.31 ID-addressed reset. For a 0.29/0.30 deployment the API's
+  // canonical Playground route translates this into that generation's
+  // continuation-token reset using the token it stored on the Session.
   void fetcher(
-    `/api/eveland/projects/${encodeURIComponent(input.projectId)}/playground/eve/v1/session/reset`,
+    `/api/eveland/projects/${encodeURIComponent(input.projectId)}/playground/eve/v1/session/${encodeURIComponent(sessionId)}/reset`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ continuationToken }),
       credentials: "same-origin",
       keepalive: true,
     },

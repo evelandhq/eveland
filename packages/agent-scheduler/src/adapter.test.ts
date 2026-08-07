@@ -19,11 +19,11 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
 describe("injectSchedulerAdapter", () => {
   test("fails closed outside the latest three verified Eve minors", async () => {
     for (const eveVersion of [
-      "0.26.2",
       "0.27.13",
-      "0.31.0",
-      "~0.31.0",
-      ">=0.28.0",
+      "0.28.0",
+      "0.32.0",
+      "~0.32.0",
+      ">=0.29.0",
       "*",
       "latest",
     ]) {
@@ -31,7 +31,7 @@ describe("injectSchedulerAdapter", () => {
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
         new RegExp(
-          `supports Eve 0\\.28\\.x, 0\\.29\\.x, or 0\\.30\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+          `supports Eve 0\\.29\\.x, 0\\.30\\.x, or 0\\.31\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
         ),
       );
     }
@@ -39,12 +39,6 @@ describe("injectSchedulerAdapter", () => {
 
   test("accepts every dependency form that stays inside a verified Eve minor", async () => {
     for (const eveVersion of [
-      "0.28.0",
-      "~0.28.0",
-      "^0.28.0",
-      "0.28",
-      "0.28.x",
-      "0.28.*",
       "0.29.0",
       "0.29.5",
       "~0.29.0",
@@ -59,6 +53,12 @@ describe("injectSchedulerAdapter", () => {
       "0.30",
       "0.30.x",
       "0.30.*",
+      "0.31.0",
+      "~0.31.0",
+      "^0.31.0",
+      "0.31",
+      "0.31.x",
+      "0.31.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -159,6 +159,39 @@ Produce the daily report.
     expect(channel).toContain("function describeScheduleFailure");
     expect(channel).not.toContain("test-secret");
     expect(channel).not.toContain("eve/dist/src/internal");
+    // Eve 0.29/0.30 speak the continuation-token generation.
+    expect(channel).toContain("{ params, receive, send }");
+    expect(channel).toContain("continuationToken: `eveland-schedule:${params.scheduleRunId}`");
+    expect(channel).toContain("receive: wrappedReceive");
+  });
+
+  test("generates the fixed-session dispatch Channel for an Eve 0.31 Release", async () => {
+    const releaseDir = await fixture({
+      eveVersion: "0.31.0",
+      files: {
+        "agent/schedules/report.md": `---
+cron: "30 5 * * *"
+---
+Produce the daily report.
+`,
+        "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
+      },
+    });
+
+    await injectSchedulerAdapter({ releaseDir });
+    const channel = await readFile(
+      path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
+      "utf8",
+    );
+
+    expect(channel).toContain("{ params, from, to }");
+    expect(channel).toContain("await from(`eveland-schedule:${params.scheduleRunId}`).send(");
+    expect(channel).toContain("to: wrappedTo");
+    expect(channel).toContain(
+      "const [runResult] = await Promise.allSettled([entry.definition.run(",
+    );
+    expect(channel).not.toContain("continuationToken");
+    expect(channel).not.toContain("receive");
   });
 
   test.each(["ts", "mts", "cts", "js", "mjs", "cjs"])(

@@ -3,18 +3,14 @@ import sink from "../channels/sink";
 
 export default defineSchedule({
   cron: "* * * * *",
-  async run({ appAuth, receive, waitUntil }) {
+  async run({ appAuth, to, waitUntil }) {
     waitUntil(
       Promise.all([
-        receive(sink, {
+        to(sink, { address: "scale-zero-one" }).send("Run scheduled fixture session one.", {
           auth: appAuth,
-          message: "Run scheduled fixture session one.",
-          target: { continuationToken: "scale-zero-one" },
         }),
-        receive(sink, {
+        to(sink, { address: "scale-zero-two" }).send("Run scheduled fixture session two.", {
           auth: appAuth,
-          message: "Run scheduled fixture session two.",
-          target: { continuationToken: "scale-zero-two" },
         }),
       ]),
     );

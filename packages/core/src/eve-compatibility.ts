@@ -1,22 +1,22 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.28.x",
-      verifiedVersion: "0.28.0",
-      dependencyName: "eve-oldest",
-    },
-    {
       range: "0.29.x",
       verifiedVersion: "0.29.5",
-      dependencyName: "eve-middle",
+      dependencyName: "eve-oldest",
     },
     {
       range: "0.30.x",
       verifiedVersion: "0.30.8",
+      dependencyName: "eve-middle",
+    },
+    {
+      range: "0.31.x",
+      verifiedVersion: "0.31.0",
       dependencyName: "eve",
     },
   ],
-  peerDependencyRange: ">=0.28.0 <0.31.0",
+  peerDependencyRange: ">=0.29.0 <0.32.0",
 } as const;
 
 export type SupportedEveVersionRange =
@@ -55,6 +55,18 @@ export function isSupportedEveDependency(specifier: string | null): boolean {
     return false;
   }
   return SUPPORTED_EVE_VERSION_RANGES.includes(`${minor}.x` as SupportedEveVersionRange);
+}
+
+/**
+ * The minor line a single-minor Eve dependency specifier names (31 for
+ * "~0.31.2"), or null for missing, wildcard, or cross-minor specifiers.
+ * Callers that need generation-specific behavior (the Eve 0.30→0.31 session
+ * API split) branch on this after the specifier passed
+ * {@link isSupportedEveDependency}.
+ */
+export function eveMinorFromDependency(specifier: string | null): number | null {
+  const match = specifier?.trim().match(/^[~^]?0\.(\d+)(?:\.(?:\d+|[x*]))?$/);
+  return match?.[1] === undefined ? null : Number(match[1]);
 }
 
 export function unsupportedEveVersionMessage(specifier: string | null): string {

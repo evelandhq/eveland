@@ -128,7 +128,14 @@ export async function applyGatewaySessionResponse(input: {
   provenance: GatewaySessionProvenance;
 }): Promise<void> {
   const { request, upstream } = input;
-  if (!request || !upstream.ok || request.kind === "cancel" || request.kind === "stream") {
+  if (
+    !request ||
+    !upstream.ok ||
+    request.kind === "cancel" ||
+    request.kind === "stream" ||
+    request.kind === "clear" ||
+    request.kind === "compact"
+  ) {
     return;
   }
 

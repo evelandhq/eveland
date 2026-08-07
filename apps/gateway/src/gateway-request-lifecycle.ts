@@ -63,7 +63,8 @@ export function isAbortError(error: unknown): boolean {
  * Enforce the declared-length limit and buffer the body the session-routing
  * layer must inspect (initial/reset continuation-token lookup). Other request
  * kinds stay unread here (`body: undefined`) and stream into the proxy step's
- * own limited read.
+ * own limited read. An Eve 0.31 ID-addressed reset carries the session in the
+ * path, so only the tokenless-generation reset (no sessionId) needs its body.
  */
 export async function readRoutingBody(input: {
   request: Request;
@@ -77,7 +78,10 @@ export async function readRoutingBody(input: {
       response: Response.json({ error: "Request body too large" }, { status: 413 }),
     };
   }
-  if (input.eveRequest?.kind !== "initial" && input.eveRequest?.kind !== "reset") {
+  const sniffsContinuationToken =
+    input.eveRequest?.kind === "initial" ||
+    (input.eveRequest?.kind === "reset" && input.eveRequest.sessionId === null);
+  if (!sniffsContinuationToken) {
     return { ok: true, body: undefined };
   }
   try {

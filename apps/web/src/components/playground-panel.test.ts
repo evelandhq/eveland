@@ -91,7 +91,7 @@ describe("Playground message composition", () => {
     expect(
       resetPlaygroundOnPageLeave({
         projectId: "proj_1",
-        sessionState: { streamIndex: 0 },
+        sessionState: undefined,
         fetcher,
       }),
     ).toBe(false);
@@ -101,19 +101,16 @@ describe("Playground message composition", () => {
       resetPlaygroundOnPageLeave({
         projectId: "proj_1",
         sessionState: {
-          sessionId: "eve_1",
-          continuationToken: "continue_1",
+          sessionId: "eve/1",
           streamIndex: 3,
         },
         fetcher,
       }),
     ).toBe(true);
     expect(fetcher).toHaveBeenCalledWith(
-      "/api/eveland/projects/proj_1/playground/eve/v1/session/reset",
+      "/api/eveland/projects/proj_1/playground/eve/v1/session/eve%2F1/reset",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ continuationToken: "continue_1" }),
         credentials: "same-origin",
         keepalive: true,
       },
