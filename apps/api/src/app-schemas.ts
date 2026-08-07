@@ -332,7 +332,9 @@ export const schedulerDispatchSchema = z.discriminatedUnion("phase", [
 
 export const runtimeActivationSchema = z.object({
   deploymentId: z.string().min(1),
-  kind: z.enum(["public_request", "stream", "turn"]),
+  // Narrower than ActivationLeaseKind on purpose: schedule_run leases are
+  // taken in-process by the worker, never over this API.
+  kind: z.enum(["public_request", "stream", "turn", "workflow_step"]),
   ownerId: z.string().min(1).max(256),
 });
 
