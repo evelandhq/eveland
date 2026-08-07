@@ -19,9 +19,11 @@
     "@evelandhq/db": "workspace:*",
     "@evelandhq/platform-observability": "workspace:*",
     "@evelandhq/sandbox-bwrap": "^0.1.0",
+    "@evelandhq/workflow-world": "^0.2.0",
     "@opentelemetry/api": "^1.9.1",
     "@workflow/world-postgres": "5.0.0-beta.25",
     "execa": "^9.6.1",
+    "pg": "8.20.0",
     "postgres": "^3.4.9",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
@@ -29,6 +31,7 @@
   "devDependencies": {
     "@opentelemetry/sdk-metrics": "^2.10.0",
     "@opentelemetry/sdk-trace-base": "^2.10.0",
+    "@types/pg": "^8.11.10",
     "vitest": "^4.1.9"
   }
 }

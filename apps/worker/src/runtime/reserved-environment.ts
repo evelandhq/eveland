@@ -24,6 +24,11 @@ export const RESERVED_RUNTIME_ENVIRONMENT_KEYS: readonly string[] = [
   "EVELAND_PROJECT_ID",
   "EVELAND_SCHEDULER_REDEEM_URL",
   "EVELAND_SCHEDULER_RUNTIME_SECRET",
+  // Tenancy and topology for the platform workflow world. A project that could
+  // set these could scope its world at another tenant's data, or hand the
+  // runner a database nothing provisions.
+  "EVELAND_WORKFLOW_RUNNER",
+  "EVELAND_WORKFLOW_WORLD_URL",
   // Reserved at runtime only in production, but reserved for every build
   // regardless: `npm ci` and `pnpm install --frozen-lockfile` both omit
   // devDependencies when NODE_ENV=production is in the environment, so an entry

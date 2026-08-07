@@ -18,6 +18,12 @@ export type ProcessJobOptions = {
     worldUrl: string | undefined,
     projectId: string,
   ) => Promise<Set<string>>;
+  /** Shared database backing `@evelandhq/workflow-world`; overrides EVELAND_WORKFLOW_WORLD_URL. */
+  evelandWorkflowWorldUrl?: string;
+  /** Creates the project's partitions in the shared workflow database. */
+  ensureEvelandWorkflowTenant?: (worldUrl: string, projectId: string) => Promise<void>;
+  /** Drops them again when the project is deleted. */
+  dropEvelandWorkflowTenant?: (worldUrl: string, projectId: string) => Promise<void>;
   nodeEnv?: string;
   dataDir?: string;
   schedulerDispatchSecret?: string;

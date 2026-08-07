@@ -320,6 +320,9 @@ importers:
       '@evelandhq/sandbox-bwrap':
         specifier: ^0.1.0
         version: 0.1.0(eve@0.31.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.44(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0))
+      '@evelandhq/workflow-world':
+        specifier: ^0.2.0
+        version: 0.2.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -329,6 +332,9 @@ importers:
       execa:
         specifier: ^9.6.1
         version: 9.6.1
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -345,9 +351,27 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: ^2.10.0
         version: 2.10.0(@opentelemetry/api@1.9.1)
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
+
+  apps/workflow-dispatcher:
+    dependencies:
+      '@evelandhq/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@evelandhq/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@evelandhq/platform-observability':
+        specifier: workspace:*
+        version: link:../../packages/platform-observability
+      '@evelandhq/workflow-world':
+        specifier: ^0.2.0
+        version: 0.2.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
 
   packages/agent-auth:
     dependencies:
@@ -2028,6 +2052,11 @@ packages:
     engines: {node: '>=24.0.0'}
     peerDependencies:
       eve: '>=0.27.0 <1.0.0'
+
+  '@evelandhq/workflow-world@0.2.0':
+    resolution: {integrity: sha512-q3DnW+OdLsAwubzk4qyu15JoAiO+uJs5EL8+ldX3pOOBlT/774N44ARM5nKnjmNla4pxYbNbUeo280HJeKX7Ig==}
+    engines: {node: '>=24.0.0'}
+    hasBin: true
 
   '@exodus/bytes@1.15.1':
     resolution: {integrity: sha512-S6mL0yNB/Abt9Ei4tq8gDhcczc4S3+vQ4ra7vxnAf+YHC02srtqxKKZghx2Dq6p0e66THKwR6r8N6P95wEty7Q==}
@@ -4211,14 +4240,28 @@ packages:
   '@workflow/errors@5.0.0-beta.10':
     resolution: {integrity: sha512-l/6+Ukys3FBVjbND3Vs+PDgCYgM9LjFnEPQmD7mTLWkgBg9nvlb8Th09MKhDRo2rBX86VT2lcpXtEThubjasuQ==}
 
+  '@workflow/errors@5.0.0-beta.15':
+    resolution: {integrity: sha512-dLZRBPHEXJdK33y6SPMwcaMpEysvtCnE8kfmm4QKaGQIRMPHDh6KnCbxUwvN37MjOPrVtkpm09WxnJYEWrFOmA==}
+
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
 
   '@workflow/utils@5.0.0-beta.6':
     resolution: {integrity: sha512-YMZqvtRMzlmWkgshURp4ilvcY8VMrNxwXxDEXQ/gkppKWhJ1xdJBpq3plZLf8LWS7JHXd32Wqll/UvQeARu93Q==}
 
+  '@workflow/utils@5.0.0-beta.8':
+    resolution: {integrity: sha512-dDiQ/LT05g9HyOicqWNNX/Gw/fmO7Ma2kZ+ddUXXpm/EFTMRS9eiI69suSe1+1NnhMzdV6ObI8wrO5lvQqPIbg==}
+
   '@workflow/world-local@5.0.0-beta.27':
     resolution: {integrity: sha512-qDNZKLl4jE3c2r/M3kqu7svBLPS76G3peuLSgML2Gk2dwxLqNUjTWg8eVYuEq6JNocSOlo50qFkVmJATms0gbw==}
+    peerDependencies:
+      '@opentelemetry/api': '1'
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
+
+  '@workflow/world-local@5.0.0-beta.33':
+    resolution: {integrity: sha512-78/rFCkhjO04azGEjUL0l8s2ou3P51SkN1XOhyyukR2wvlVIO36zdZB9DPuKQ5KEZkApS2+rwxspuzEVQnlmTw==}
     peerDependencies:
       '@opentelemetry/api': '1'
     peerDependenciesMeta:
@@ -4231,6 +4274,9 @@ packages:
 
   '@workflow/world@5.0.0-beta.19':
     resolution: {integrity: sha512-L2D3ceE7VpV6Xncrhf4OHRLQpinHEwTOPSByYnrQZKfPjrrPjzLqk+5BAEfDwSagCWTJy5TEyBj/eTCn+8ANaw==}
+
+  '@workflow/world@5.0.0-beta.24':
+    resolution: {integrity: sha512-jt7KgonNywQgbq666vUrZyeqICL30+0mJc5u9qQzFTFnB7e9KLeehR3s1pnf/tr+SKTbaZh5lM6xUEYt14ib5g==}
 
   '@xyflow/react@12.11.2':
     resolution: {integrity: sha512-eLAlDWJfWnQEhJwGMjlWdAXO9eYllKpliUmPQlAmOLxz6mExXuzMVDUKLMquixgkrtmMFFtug3jGKmYYld12cA==}
@@ -9378,6 +9424,51 @@ snapshots:
     dependencies:
       eve: 0.31.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.44(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
 
+  '@evelandhq/workflow-world@0.2.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
+    dependencies:
+      '@workflow/errors': 5.0.0-beta.15
+      '@workflow/utils': 5.0.0-beta.8
+      '@workflow/world': 5.0.0-beta.24
+      '@workflow/world-local': 5.0.0-beta.33(@opentelemetry/api@1.9.1)
+      cbor-x: 1.6.0
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9)
+      graphile-worker: 0.16.6(typescript@6.0.3)
+      pg: 8.20.0
+      ulid: 3.0.2
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg-native
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+      - supports-color
+      - typescript
+
   '@exodus/bytes@1.15.1(@noble/hashes@2.2.0)':
     optionalDependencies:
       '@noble/hashes': 2.2.0
@@ -11439,9 +11530,18 @@ snapshots:
       '@workflow/utils': 5.0.0-beta.6
       ms: 2.1.3
 
+  '@workflow/errors@5.0.0-beta.15':
+    dependencies:
+      '@workflow/utils': 5.0.0-beta.8
+      ms: 2.1.3
+
   '@workflow/serde@4.1.0': {}
 
   '@workflow/utils@5.0.0-beta.6':
+    dependencies:
+      ms: 2.1.3
+
+  '@workflow/utils@5.0.0-beta.8':
     dependencies:
       ms: 2.1.3
 
@@ -11451,6 +11551,19 @@ snapshots:
       '@workflow/errors': 5.0.0-beta.10
       '@workflow/utils': 5.0.0-beta.6
       '@workflow/world': 5.0.0-beta.19
+      async-sema: 3.1.1
+      ulid: 3.0.2
+      undici: 7.28.0
+      zod: 4.3.6
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.1
+
+  '@workflow/world-local@5.0.0-beta.33(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@vercel/queue': 0.4.0(@opentelemetry/api@1.9.1)
+      '@workflow/errors': 5.0.0-beta.15
+      '@workflow/utils': 5.0.0-beta.8
+      '@workflow/world': 5.0.0-beta.24
       async-sema: 3.1.1
       ulid: 3.0.2
       undici: 7.28.0
@@ -11506,6 +11619,11 @@ snapshots:
       - typescript
 
   '@workflow/world@5.0.0-beta.19':
+    dependencies:
+      ulid: 3.0.2
+      zod: 4.3.6
+
+  '@workflow/world@5.0.0-beta.24':
     dependencies:
       ulid: 3.0.2
       zod: 4.3.6

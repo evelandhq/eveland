@@ -16,7 +16,17 @@ import {
   type RuntimeAdapter,
   type RuntimeCommandContext,
 } from "../runtime/types.js";
+import { ensureEvelandWorkflowTenant } from "../runtime/eveland-workflow-world-bootstrap.js";
+import {
+  resolveWorkflowWorldDeploymentUrl,
+  resolveWorkflowWorldPlatformUrl,
+} from "../runtime/eveland-workflow-world-url.js";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
+import {
+  EVELAND_WORKFLOW_WORLD,
+  resolveWorkflowRunnerMode,
+  resolveWorkflowWorldChoice,
+} from "../runtime/workflow-world.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
 
 import type { ProcessJobOptions, ScheduleDispatchInput } from "./process-types.js";
@@ -207,15 +217,47 @@ export async function composeDeploymentEnv(
   const nodeEnv = options.nodeEnv ?? workerEnv.NODE_ENV;
   const isProduction = nodeEnv === "production";
   const workflowPostgresUrl = options.workflowPostgresUrl ?? workerEnv.WORKFLOW_POSTGRES_URL;
-  // Each project gets its own physical workflow database derived from the
-  // platform base URL. A single shared database let any runtime claim any
-  // project's queued turns and re-enqueue every project's active runs on
+  const evelandWorld = resolveWorkflowWorldChoice(workerEnv, projectId);
+  const usesEvelandWorld = evelandWorld.packageName === EVELAND_WORKFLOW_WORLD.packageName;
+  // Legacy world: each project gets its own physical workflow database derived
+  // from the platform base URL. A single shared database let any runtime claim
+  // any project's queued turns and re-enqueue every project's active runs on
   // startup, so the database is created and bootstrapped here, before any
   // process starts with its URL.
+  //
+  // The platform world closes both doors with a tenant column instead, so a
+  // project on it gets no per-project database — provisioning one would leave an
+  // empty database behind for every project on the new world.
   const ensureWorld = options.ensureProjectWorkflowWorld ?? ensureProjectWorkflowWorld;
-  const projectWorkflowUrl = workflowPostgresUrl
-    ? await ensureWorld({ ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl }, projectId)
-    : undefined;
+  const projectWorkflowUrl =
+    workflowPostgresUrl && !usesEvelandWorld
+      ? await ensureWorld({ ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl }, projectId)
+      : undefined;
+  // The platform world's equivalent: migrations plus this tenant's partitions.
+  // Partitions must exist before the first write — there is deliberately no
+  // DEFAULT partition, so an unprovisioned tenant fails loudly rather than
+  // having its rows land somewhere unreclaimable.
+  //
+  // Deliberately NOT gated on the rollout flag. The flag chooses what the *next
+  // build* bakes in, but this function runs on every launch, and a deployment's
+  // world is fixed at build time. Gating here meant that turning the flag off
+  // stopped injecting the world URL for a bundle that still imports the
+  // multi-tenant world — which then fell back to the legacy single-tenant
+  // database, one with no tenant_id column and no partitions. Injecting
+  // whenever the platform has a world configured keeps an already-built
+  // deployment pointed at the right database until it is rebuilt, which is what
+  // makes the documented rollback ("flag off, then rebuild") actually safe.
+  // Injected into the deployment: the container's view of the database.
+  const evelandWorldUrl =
+    options.evelandWorkflowWorldUrl ?? resolveWorkflowWorldDeploymentUrl(workerEnv);
+  // Used from this process: the host's view. On Docker Desktop the injected
+  // URL names `host.docker.internal`, which does not resolve on the host.
+  const evelandWorldPlatformUrl =
+    options.evelandWorkflowWorldUrl ?? resolveWorkflowWorldPlatformUrl(workerEnv);
+  if (evelandWorldPlatformUrl) {
+    const ensureTenant = options.ensureEvelandWorkflowTenant ?? ensureEvelandWorkflowTenant;
+    await ensureTenant(evelandWorldPlatformUrl, projectId);
+  }
   const schedulerRuntimeSecret =
     options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(workerEnv);
   const schedulerRedeemUrl = options.schedulerRedeemUrl ?? workerEnv.EVELAND_SCHEDULER_REDEEM_URL;
@@ -239,6 +281,15 @@ export async function composeDeploymentEnv(
   // an uninitialized or tenant-controlled database.
   const reserved = {
     EVELAND_PROJECT_ID: projectId,
+    // Only injected when the platform has the shared world configured. A
+    // project that could set these could scope its world at another tenant's
+    // data, or hand the runner a database nothing provisions.
+    ...(evelandWorldUrl
+      ? {
+          EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
+          EVELAND_WORKFLOW_RUNNER: resolveWorkflowRunnerMode(workerEnv),
+        }
+      : {}),
     ...(identityIssuer ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") } : {}),
     ...(identityJwksUrl ? { EVELAND_IDENTITY_JWKS_URL: identityJwksUrl } : {}),
     // The pool size is reserved alongside the URL: connection capacity on the
@@ -265,6 +316,9 @@ export async function composeDeploymentEnv(
     ...Object.values(sharedEnvironment),
     ...(workflowPostgresUrl ? [workflowPostgresUrl] : []),
     ...(projectWorkflowUrl ? [projectWorkflowUrl] : []),
+    // Carries credentials like the other two connection strings, so it is
+    // masked out of build and runtime logs the same way.
+    ...(evelandWorldUrl ? [evelandWorldUrl] : []),
     ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),
   ];
   return { env, secretValues };

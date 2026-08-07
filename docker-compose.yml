@@ -126,6 +126,33 @@ services:
       # sources, runtime state, and encrypted secret material from the public proxy.
       - eveland-gateway-data-mask:/workspace/.eveland-data
 
+  workflow-dispatcher:
+    image: node:24-alpine
+    working_dir: /workspace
+    command: sh -lc "corepack enable && pnpm install && pnpm --filter @evelandhq/workflow-dispatcher dev"
+    depends_on:
+      - postgres
+      - api
+    environment:
+      CI: "true"
+      # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
+      NODE_ENV: development
+      # Shares the platform database in dev; production gives the workflow world
+      # its own so the two schemas never mix.
+      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@postgres:5432/eveland
+      WORKFLOW_DISPATCHER_ACTIVATION_API_URL: http://api:4000
+      WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
+      EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-scheduler-runtime-secret}
+      EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
+      EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
+      EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
+      EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
+    volumes:
+      - .:/workspace
+      # No deployment files are ever read here: the dispatcher only talks to
+      # Postgres and to deployment HTTP endpoints, and must never load tenant code.
+      - eveland-workflow-dispatcher-data-mask:/workspace/.eveland-data
+
   web:
     image: node:24-alpine
     working_dir: /workspace
@@ -211,4 +238,5 @@ services:
 volumes:
   eveland-postgres:
   eveland-otel-collector:
+  eveland-workflow-dispatcher-data-mask:
   eveland-gateway-data-mask:
