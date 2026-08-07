@@ -349,6 +349,51 @@ describe("routing repository", () => {
     });
   });
 
+  test("protects a stopped deployment that still owns a non-terminal workflow run", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Sleeping Run Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/sleeping-run",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployments: DeploymentRecord[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const deployment = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `sleeping-v${index}`,
+        containerName: `sleeping-v${index}`,
+        internalPort: 3000,
+        hostPort: 41140 + index,
+        runtimeKind: "docker",
+      });
+      await store.updateDeploymentStatus(deployment.id, "stopped");
+      deployments.push(deployment);
+    }
+
+    // Retention keeps the newest three, so the first-created deployment here
+    // is outside keep-3 and would otherwise be archivable. A sleeping run
+    // holds no session, lease or route — the injected set is its only
+    // protection.
+    const policy = await store.getDeploymentRetention(project.id, 3, {
+      deploymentsWithActiveWorkflowRuns: new Set([deployments[0]!.id]),
+    });
+
+    expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({
+      protected: true,
+      reasons: ["active_workflow_run"],
+    });
+    expect(policy.find((entry) => entry.deployment.id === deployments[1]!.id)).toMatchObject({
+      protected: false,
+      reasons: [],
+    });
+  });
+
   test("refreshes SessionBinding activity without changing its continuation token", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Binding Touch Agent", importKind: "zip" });

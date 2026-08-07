@@ -13,6 +13,11 @@ export type ProcessJobOptions = {
     projectId: string,
   ) => Promise<string | undefined>;
   dropProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<void>;
+  /** Deployments of a project that still own a non-terminal workflow run. */
+  listDeploymentsWithActiveWorkflowRuns?: (
+    worldUrl: string | undefined,
+    projectId: string,
+  ) => Promise<Set<string>>;
   nodeEnv?: string;
   dataDir?: string;
   schedulerDispatchSecret?: string;

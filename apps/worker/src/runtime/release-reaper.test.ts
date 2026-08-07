@@ -1,6 +1,6 @@
 import type { DeploymentRecord } from "@evelandhq/core/contracts";
 import { createTestStore } from "@evelandhq/db/vitest";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { sweepReleaseRetention } from "./release-reaper.js";
 
 describe("sweepReleaseRetention", () => {
@@ -190,5 +190,66 @@ describe("sweepReleaseRetention", () => {
         apiIdleTtlMs: 604_800_000,
       }),
     ).resolves.toBe(1);
+  });
+
+  test("does not enqueue archive work for a deployment holding a non-terminal workflow run", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Sleeping Run Sweep Agent",
+      importKind: "zip",
+    });
+    const importJob = await store.claimNextJob("sleeping-run-sweep-fixture");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/sleeping-run-sweep",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployments: DeploymentRecord[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const deployment = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `sleeping-run-sweep:${index}`,
+        containerName: `sleeping-run-sweep-${index}`,
+        internalPort: 3000,
+        hostPort: 41860 + index,
+        runtimeKind: "systemd",
+      });
+      await store.updateDeploymentStatus(deployment.id, "stopped");
+      deployments.push(deployment);
+    }
+
+    // Without this protection the sweep would enqueue an archive job the
+    // archive handler then refuses, re-enqueueing forever — the flapping the
+    // shared visibility of active_workflow_run exists to prevent.
+    const listRuns = vi.fn(async (_worldUrl: string | undefined, projectId: string) => {
+      expect(projectId).toBe(project.id);
+      return new Set([deployments[0]!.id]);
+    });
+
+    await expect(
+      sweepReleaseRetention(store, {
+        keepRecent: 3,
+        limit: 25,
+        listDeploymentsWithActiveWorkflowRuns: listRuns,
+        evelandWorkflowWorldUrl: "postgres://world@host:5432/eveland_workflow",
+      }),
+    ).resolves.toBe(1);
+    expect(listRuns).toHaveBeenCalledWith(
+      "postgres://world@host:5432/eveland_workflow",
+      project.id,
+    );
+
+    const archiveJobs = await store.listProjectJobs(project.id, {
+      type: "archive_deployment",
+      limit: 10,
+    });
+    expect(archiveJobs).toHaveLength(1);
+    expect(archiveJobs[0]!.payload.deploymentId).toBe(deployments[1]!.id);
   });
 });

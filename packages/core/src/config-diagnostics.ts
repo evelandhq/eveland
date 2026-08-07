@@ -503,6 +503,20 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     fallback: (env) => resolveWorkflowBootstrapUrl(env),
   },
   {
+    name: "EVELAND_WORKFLOW_WORLD_URL",
+    components: ["worker"],
+    sensitivity: "url",
+    purpose:
+      "Shared Postgres database backing @evelandhq/workflow-world; unset keeps projects on the per-project world-postgres databases.",
+  },
+  {
+    name: "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
+    components: ["worker"],
+    sensitivity: "url",
+    purpose:
+      "Host-reachable URL for the shared workflow database. Set when deployments reach Postgres by a different name than the platform does (e.g. host.docker.internal under Docker Desktop); defaults to EVELAND_WORKFLOW_WORLD_URL.",
+  },
+  {
     name: "EVELAND_RUNTIME",
     components: ["worker"],
     purpose: "Selects the Docker or systemd Deployment runtime.",

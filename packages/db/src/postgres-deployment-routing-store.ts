@@ -637,6 +637,7 @@ export function createPostgresDeploymentRoutingStore({
 
     async getDeploymentRetention(projectId, keepRecent = 3, options = {}) {
       const now = options.now ?? new Date();
+      const workflowRuns = options.deploymentsWithActiveWorkflowRuns;
       const deploymentList = await domain.listDeployments(projectId);
       const routes = await domain.listProjectRoutes(projectId);
       const targeted = new Set(
@@ -689,12 +690,20 @@ export function createPostgresDeploymentRoutingStore({
       );
       return deploymentList.map((deployment) => {
         const reasons: Array<
-          "route_target" | "active_session" | "active_request" | "recent_artifact"
+          | "route_target"
+          | "active_session"
+          | "active_request"
+          | "recent_artifact"
+          | "active_workflow_run"
         > = [];
         if (targeted.has(deployment.id)) reasons.push("route_target");
         if (active.has(deployment.id)) reasons.push("active_session");
         if (activeRequests.has(deployment.id)) reasons.push("active_request");
         if (recent.has(deployment.id)) reasons.push("recent_artifact");
+        // A sleeping run holds no session, no lease and no route, so every
+        // other reason above misses it. Its deployment is nonetheless the only
+        // one that can resume it.
+        if (workflowRuns?.has(deployment.id)) reasons.push("active_workflow_run");
         return { deployment, protected: reasons.length > 0, reasons };
       });
     },
