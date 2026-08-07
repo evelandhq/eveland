@@ -1,4 +1,4 @@
-import { access, copyFile, readdir, rename, writeFile } from "node:fs/promises";
+import { access, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PNPM_RELEASE_AGE_CONFIG } from "./package-manager.js";
 
@@ -27,21 +27,7 @@ export const EVELAND_WORKFLOW_WORLD = {
 export type WorkflowWorldBuildConfig = {
   packageName: string;
   packageVersion: string;
-  /**
-   * Absolute host path to a packed tarball to install instead of resolving the
-   * version from the registry.
-   *
-   * Needed whenever the registry cannot serve the package: on an air-gapped
-   * install, or when validating a change to the world itself against real
-   * deployments before publishing it. The tarball is copied into the Release
-   * directory (which is the build context) and installed by relative path, so
-   * the build never reaches the network for it.
-   */
-  packageTarball?: string;
 };
-
-/** Name the tarball takes inside the Release directory. */
-export const WORKFLOW_WORLD_TARBALL_FILENAME = ".eveland-workflow-world.tgz";
 
 /**
  * Which world a project's *next* build bakes in.
@@ -60,18 +46,14 @@ export function resolveWorkflowWorldChoice(
   env: NodeJS.ProcessEnv,
   projectId: string,
 ): WorkflowWorldBuildConfig {
-  const tarball = env.EVELAND_WORKFLOW_WORLD_TARBALL?.trim();
-  const world = tarball
-    ? { ...EVELAND_WORKFLOW_WORLD, packageTarball: tarball }
-    : EVELAND_WORKFLOW_WORLD;
   const rollout = (env.EVELAND_WORKFLOW_WORLD_ROLLOUT ?? "off").trim();
   if (rollout === "" || rollout === "off") return PLATFORM_WORKFLOW_WORLD;
-  if (rollout === "all") return world;
+  if (rollout === "all") return EVELAND_WORKFLOW_WORLD;
   const allowed = rollout
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  return allowed.includes(projectId) ? world : PLATFORM_WORKFLOW_WORLD;
+  return allowed.includes(projectId) ? EVELAND_WORKFLOW_WORLD : PLATFORM_WORKFLOW_WORLD;
 }
 
 /**
@@ -94,19 +76,11 @@ export type WorkflowWorldInjectionResult = {
 const agentConfigPattern = /^agent\.(?:cts|mts|cjs|mjs|ts|js)$/;
 const defaultEveAgentModel = "anthropic/claude-sonnet-5";
 
-export function resolveWorkflowWorldPackageSpec(config: WorkflowWorldBuildConfig): string {
-  // A relative path, because the install runs with the Release directory as its
-  // working directory in both runtimes.
-  return config.packageTarball
-    ? `./${WORKFLOW_WORLD_TARBALL_FILENAME}`
-    : `${config.packageName}@${config.packageVersion}`;
-}
-
 export function buildWorkflowWorldInstallCommand(
   config: WorkflowWorldBuildConfig,
   packageManager: "npm" | "pnpm",
 ): string {
-  const packageSpec = resolveWorkflowWorldPackageSpec(config);
+  const packageSpec = `${config.packageName}@${config.packageVersion}`;
   if (packageManager === "pnpm") {
     return (
       'manifest_backup="$(mktemp)"' +
@@ -156,12 +130,6 @@ export async function injectWorkflowWorld(input: {
   }
 
   await writeFile(generatedConfigPath, source, "utf8");
-  if (input.config.packageTarball) {
-    await copyFile(
-      input.config.packageTarball,
-      path.join(releaseDir, WORKFLOW_WORLD_TARBALL_FILENAME),
-    );
-  }
   return {
     agentConfigPath: path.relative(releaseDir, generatedConfigPath),
     ...(authoredConfigPath ? { authoredConfigPath } : {}),
