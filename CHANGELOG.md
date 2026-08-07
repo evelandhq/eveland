@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.28.0](https://github.com/evelandhq/eveland/compare/v0.27.0...v0.28.0) (2026-08-07)
+
+
+### Features
+
+* track eve 0.31.0 and slide the support window to 0.29–0.31 ([#280](https://github.com/evelandhq/eveland/issues/280)) ([354b448](https://github.com/evelandhq/eveland/commit/354b448226d43384b1e2d4d9de752008832549cd))
+
 ## [0.27.0](https://github.com/evelandhq/eveland/compare/v0.26.0...v0.27.0) (2026-08-07)
 
 
