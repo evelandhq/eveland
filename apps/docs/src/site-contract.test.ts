@@ -206,6 +206,7 @@ describe("Eveland public website contract", () => {
     expect(docsStyles).toContain("--fd-sidebar-width: 18.75rem");
     expect(docsStyles).toContain("#nd-page > h1");
     expect(docsStyles).toContain("#nd-toc");
+    expect(docsStyles).toMatch(/\.docs-shell \.prose figure:has\(pre\) pre \{[^}]*border: 0;/s);
     expect(docsStyles).toContain("#nd-subnav [data-search]");
     expect(docsStyles).toContain("[data-toc-popover]");
     expect(docsStyles).toContain('button[aria-label="Open Sidebar"]::after');
