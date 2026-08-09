@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --maxWorkers=2 --testTimeout=30000",
     "smoke:connections": "tsx src/integration/connections-e2e.ts",
-    "smoke:docker-sandbox": "tsx src/integration/docker-sandbox-smoke.ts"
+    "smoke:docker-sandbox": "tsx src/integration/docker-sandbox-smoke.ts",
+    "smoke:workflow-wake": "tsx src/integration/workflow-wake-e2e.ts"
   },
   "dependencies": {
     "@evelandhq/agent-observer": "workspace:*",
@@ -19,7 +20,7 @@
     "@evelandhq/db": "workspace:*",
     "@evelandhq/platform-observability": "workspace:*",
     "@evelandhq/sandbox-bwrap": "^0.1.0",
-    "@evelandhq/workflow-world": "^0.3.0",
+    "@evelandhq/workflow-world": "^0.4.0",
     "@opentelemetry/api": "^1.9.1",
     "@workflow/world-postgres": "5.0.0-beta.25",
     "execa": "^9.6.1",
