@@ -4,6 +4,22 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.30.0](https://github.com/evelandhq/eveland/compare/v0.29.0...v0.30.0) (2026-08-09)
+
+
+### Features
+
+* **docs:** adopt Eve documentation styling ([#289](https://github.com/evelandhq/eveland/issues/289)) ([daf215e](https://github.com/evelandhq/eveland/commit/daf215ea3cd017dc43b2d8842596834581addac7))
+* track eve 0.31.3 and @evelandhq/workflow-world 0.3.0 ([#287](https://github.com/evelandhq/eveland/issues/287)) ([609354a](https://github.com/evelandhq/eveland/commit/609354a43e30f41ff83458f055b4a3ac1bfef37e))
+
+
+### Bug Fixes
+
+* consume namespaced workflow boot recovery ([8109556](https://github.com/evelandhq/eveland/commit/8109556eb339e9bdf9ceadae0b2cd718c5dcf585))
+* **docs:** remove nested code block border ([#290](https://github.com/evelandhq/eveland/issues/290)) ([aad0ad8](https://github.com/evelandhq/eveland/commit/aad0ad872677e2bf46732c869cf6aed2cf15c387))
+* gate workflow recovery on API readiness ([0ba7389](https://github.com/evelandhq/eveland/commit/0ba7389030b6bbe7bde177fe0ab4b9a764c8b9df))
+* **gateway:** end idle session streams cleanly and heartbeat through proxies ([#293](https://github.com/evelandhq/eveland/issues/293)) ([9e532cf](https://github.com/evelandhq/eveland/commit/9e532cf0c0d4c7095b7220fe05f73646ca6febfb))
+
 ## [0.29.0](https://github.com/evelandhq/eveland/compare/v0.28.0...v0.29.0) (2026-08-07)
 
 
