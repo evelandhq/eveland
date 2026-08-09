@@ -3,7 +3,7 @@ title: Eve compatibility
 description: Understand Eveland's verified Eve version window and fail-closed policy.
 ---
 
-Until Eve publishes a stable compatibility contract, Eveland supports a sliding window of the latest three fully verified Eve minor lines. The current checked-in product contract supports `0.29.x`, `0.30.x`, and `0.31.x`, verified at `0.29.5`, `0.30.8`, and `0.31.0`.
+Until Eve publishes a stable compatibility contract, Eveland supports a sliding window of the latest three fully verified Eve minor lines. The current checked-in product contract supports `0.29.x`, `0.30.x`, and `0.31.x`, verified at `0.29.5`, `0.30.8`, and `0.31.3`.
 
 The UI marks only the latest supported line, `0.31.x`, in green. Older supported lines stay operational but appear in red with an upgrade reminder; unsupported versions also appear in red and remain blocked.
 
@@ -15,7 +15,7 @@ Eve 0.30.5 also renames the durable cancellation hook. `sessionCancelHookToken(s
 
 **Eve 0.31 removes the continuation-token session APIs.** Sessions are addressed only by their fixed ID: TypeScript clients use `client.sessions.create(input)` and `client.sessions.attach(sessionId)` instead of the removed `client.session()`; channel routes receive `from(address)`, `to(channel, target)`, and `attachSession(sessionId)` instead of `receive`/`send`; schedule handlers receive `to(channel, target).send(message, { auth })` instead of `receive(channel, { message, target, auth })`. Clear, compact, and reset move to `POST /eve/v1/session/:sessionId/{clear,compact,reset}`, and request or response bodies no longer carry continuation tokens. Accepted asynchronous work answers HTTP `202`; follow-ups on an inactive session answer HTTP `409` with `code: "session_not_active"`. Eveland's gateway, Playground, and injected scheduler adapter speak the correct generation per deployment, so `0.29.x`/`0.30.x` Agents keep working unchanged — but Agent code migrating to `0.31.x` must adopt the new surfaces itself.
 
-For the current latest line, Agent projects should refresh their lockfile and redeploy to receive `0.31.0`, even when a range such as `^0.31.0` already permits it. Custom NDJSON consumers must ignore blank lines. Relay or proxy code may use reconnect opt-out when it owns recovery; ordinary Agent clients should keep the default live follow. Only enable remote principal forwarding after both deployments are upgraded and the receiver can name the exact trusted forwarder.
+For the current latest line, Agent projects should refresh their lockfile and redeploy to receive `0.31.3`, even when a range such as `^0.31.0` already permits it. Custom NDJSON consumers must ignore blank lines. Relay or proxy code may use reconnect opt-out when it owns recovery; ordinary Agent clients should keep the default live follow. Only enable remote principal forwarding after both deployments are upgraded and the receiver can name the exact trusted forwarder.
 
 An npm publication alone does not widen the window. A new minor enters only after changelog and source review plus the complete compatibility matrix. When it enters, the older supported minor leaves the window deliberately.
 

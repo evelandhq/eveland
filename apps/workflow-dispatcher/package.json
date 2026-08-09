@@ -14,6 +14,6 @@
     "@evelandhq/core": "workspace:*",
     "@evelandhq/db": "workspace:*",
     "@evelandhq/platform-observability": "workspace:*",
-    "@evelandhq/workflow-world": "^0.2.0"
+    "@evelandhq/workflow-world": "^0.3.0"
   }
 }
