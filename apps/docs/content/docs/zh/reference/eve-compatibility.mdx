@@ -3,7 +3,7 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.29.x`、`0.30.x` 与 `0.31.x`，验证版本为 `0.29.5`、`0.30.8` 与 `0.31.0`。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.29.x`、`0.30.x` 与 `0.31.x`，验证版本为 `0.29.5`、`0.30.8` 与 `0.31.3`。
 
 UI 仅将最新支持线 `0.31.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
@@ -15,7 +15,7 @@ Eve 0.30.5 还重命名了 Durable Cancellation Hook。`sessionCancelHookToken(s
 
 **Eve 0.31 移除了 Continuation-token Session API。** Session 只按固定 ID 寻址：TypeScript Client 改用 `client.sessions.create(input)` 与 `client.sessions.attach(sessionId)`，移除了 `client.session()`；Channel Route 拿到的是 `from(address)`、`to(channel, target)` 与 `attachSession(sessionId)`，不再有 `receive`/`send`；Schedule Handler 用 `to(channel, target).send(message, { auth })` 取代 `receive(channel, { message, target, auth })`。Clear、Compact 与 Reset 移到 `POST /eve/v1/session/:sessionId/{clear,compact,reset}`，请求与响应 Body 都不再携带 Continuation Token。已接受的异步操作回答 HTTP `202`；对非活跃 Session 的后续请求回答 HTTP `409` 与 `code: "session_not_active"`。Eveland 的 Gateway、Playground 与注入的 Scheduler Adapter 会按 Deployment 的 Eve 版本讲对应代际的协议，`0.29.x`/`0.30.x` Agent 无需改动——但迁移到 `0.31.x` 的 Agent 代码必须自行采用新 Surface。
 
-对于当前最新支持线，即使 `^0.31.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.31.0`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
+对于当前最新支持线，即使 `^0.31.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.31.3`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
 
 仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；进入时会有意识地移除较旧 Minor。
 

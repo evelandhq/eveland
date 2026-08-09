@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.31.0
+  eve: 0.31.3
 catalogs:
   eve-matrix:
     eve-oldest: npm:eve@0.29.5
