@@ -1145,6 +1145,9 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile 不得被修改。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
+外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Control API 的
+公开 `/health` 成功，不能用 Graphile job 的首次失败承担并行进程启动顺序；健康门打开后
+的 activation、executor dispatch 与重试语义仍由 dispatcher 持有。
 
 workflow 隔离按 Project 物理分库：`WORKFLOW_POSTGRES_URL` 是 base URL，worker 在任何
 进程启动路径（deploy、restart、activation、schedule）之前为该 Project 派生并确保
