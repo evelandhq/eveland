@@ -1,16 +1,640 @@
+/* Eve/Geistdocs-inspired documentation shell. The typeface intentionally
+   stays on Tailwind's system stack instead of loading Geist. */
+.docs-shell {
+  --eve-docs-background: oklch(0.984 0 0);
+  --eve-docs-surface: oklch(1 0 0);
+  --eve-docs-gray-100: oklch(0.961 0 0);
+  --eve-docs-gray-200: oklch(0.94 0 0);
+  --eve-docs-gray-300: oklch(0.925 0 0);
+  --eve-docs-gray-700: oklch(0.65 0 0);
+  --eve-docs-gray-800: oklch(0.59 0 0);
+  --eve-docs-gray-900: oklch(0.42 0 0);
+  --eve-docs-gray-1000: oklch(0.205 0 0);
+  --eve-docs-border: oklch(0 0 0 / 0.08);
+  --eve-docs-focus: oklch(0.576 0.251 258.23);
+  --fd-layout-width: 90.5rem;
+  --fd-page-width: 100%;
+  --fd-sidebar-width: 18.75rem;
+  --fd-toc-width: 16.75rem;
+  --fd-primary: var(--eve-docs-gray-1000);
+  --fd-background: var(--eve-docs-background);
+  --fd-foreground: var(--eve-docs-gray-1000);
+  --fd-muted: var(--eve-docs-gray-100);
+  --fd-muted-foreground: var(--eve-docs-gray-800);
+  --fd-card: var(--eve-docs-background);
+  --fd-card-foreground: var(--eve-docs-gray-1000);
+  --fd-accent: var(--eve-docs-gray-100);
+  --fd-accent-foreground: var(--eve-docs-gray-1000);
+  --fd-border: var(--eve-docs-border);
+  min-height: 100svh;
+  background: var(--eve-docs-background);
+  color: var(--eve-docs-gray-1000);
+}
+
+.dark .docs-shell {
+  --eve-docs-background: oklch(0.027 0 0);
+  --eve-docs-surface: oklch(0 0 0);
+  --eve-docs-gray-100: oklch(0.218 0 0);
+  --eve-docs-gray-200: oklch(0.239 0 0);
+  --eve-docs-gray-300: oklch(0.281 0 0);
+  --eve-docs-gray-700: oklch(0.65 0 0);
+  --eve-docs-gray-800: oklch(0.59 0 0);
+  --eve-docs-gray-900: oklch(0.706 0 0);
+  --eve-docs-gray-1000: oklch(0.946 0 0);
+  --eve-docs-border: oklch(1 0 0 / 0.14);
+  --eve-docs-focus: oklch(0.717 0.165 250.79);
+}
+
+.docs-shell,
+.docs-shell #nd-docs-layout,
+.docs-shell #nd-page {
+  background: var(--eve-docs-background);
+}
+
+.eve-docs-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  height: 4rem;
+  justify-content: center;
+  background: var(--eve-docs-background);
+  transition: box-shadow 160ms ease;
+}
+
+.eve-docs-header[data-scrolled] {
+  box-shadow: 0 1px 0 var(--eve-docs-border);
+}
+
+.eve-docs-header-inner {
+  display: flex;
+  width: min(100%, 90.5rem);
+  padding: 0 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.eve-docs-header-brand,
+.eve-docs-header-nav,
+.eve-docs-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.eve-docs-header-brand {
+  width: 16rem;
+  gap: 0.75rem;
+}
+
+.eve-docs-header-brand > span {
+  color: var(--eve-docs-gray-300);
+  font-size: 1.25rem;
+}
+
+.eve-docs-header-brand > strong {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.eve-docs-header .brand {
+  gap: 0.5rem;
+  color: var(--eve-docs-gray-1000);
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.eve-docs-header .brand-mark {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.eve-docs-header-nav {
+  flex: 1;
+  gap: 1.75rem;
+  font-size: 0.875rem;
+}
+
+.eve-docs-header-nav a {
+  color: var(--eve-docs-gray-900);
+  transition: color 120ms ease;
+}
+
+.eve-docs-header-nav a:hover,
+.eve-docs-header-nav a[aria-current="page"] {
+  color: var(--eve-docs-gray-1000);
+}
+
+.eve-docs-header-actions {
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.eve-docs-search {
+  width: 9.375rem;
+  height: 2rem;
+  padding: 0 0.375rem 0 0.75rem;
+  gap: 0.5rem;
+  border: 1px solid var(--eve-docs-border);
+  border-radius: 0.375rem;
+  background: var(--eve-docs-surface);
+  color: var(--eve-docs-gray-900);
+  box-shadow: none;
+  font-size: 0.875rem;
+}
+
+.eve-docs-search kbd {
+  min-width: 1.25rem;
+  padding: 0 0.25rem;
+  border-color: var(--eve-docs-border);
+  border-radius: 0.25rem;
+  background: var(--eve-docs-background);
+  font-size: 0.6875rem;
+  line-height: 1.125rem;
+}
+
+.eve-docs-search-compact {
+  display: none;
+}
+
+.eve-docs-language,
+.eve-docs-github {
+  display: inline-flex;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--eve-docs-border);
+  border-radius: 0.375rem;
+  background: var(--eve-docs-surface);
+  color: var(--eve-docs-gray-1000);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  transition: background 120ms ease;
+}
+
+.eve-docs-language {
+  padding: 0 0.75rem;
+}
+
+.eve-docs-github {
+  width: 2rem;
+  border-color: transparent;
+  background: transparent;
+}
+
+.eve-docs-github svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.eve-docs-language:hover,
+.eve-docs-github:hover,
+.eve-docs-search:hover {
+  background: var(--eve-docs-gray-100);
+}
+
+.eve-docs-header :focus-visible,
+.docs-shell #nd-docs-layout :focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--eve-docs-background),
+    0 0 0 4px var(--eve-docs-focus);
+}
+
+.eve-docs-container {
+  width: 100%;
+  max-width: 90.5rem;
+  min-height: calc(100dvh - 4rem);
+  margin: 0 auto;
+}
+
+#nd-docs-layout.eve-docs-container {
+  --fd-docs-height: 100dvh;
+  --fd-layout-width: 90.5rem;
+  --fd-sidebar-width: 18.75rem !important;
+  --fd-toc-width: 0rem !important;
+}
+
+/* Sidebar: 300px, borderless, and flush with the same gray canvas as Eve. */
+.docs-shell #nd-sidebar {
+  border: 0;
+  background: var(--eve-docs-background);
+  color: var(--eve-docs-gray-900);
+}
+
+.docs-shell #nd-sidebar > div:first-child,
+.docs-shell #nd-sidebar > div:last-child:not(:first-child) {
+  display: none;
+}
+
+.docs-shell #nd-sidebar [data-radix-scroll-area-viewport] {
+  padding: 3.5rem 0.75rem 1rem;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 1rem,
+    black calc(100% - 1rem),
+    transparent
+  );
+}
+
+.docs-shell #nd-sidebar nav p {
+  min-height: auto;
+  margin: 0.875rem 0 0.25rem;
+  padding: 0 0.625rem;
+  color: var(--eve-docs-gray-900);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.docs-shell #nd-sidebar [data-state] > button {
+  display: none;
+}
+
+.docs-shell #nd-sidebar [data-state] > div::before {
+  display: none;
+}
+
+.docs-shell #nd-sidebar a,
+.docs-shell #nd-sidebar [data-state] a {
+  min-height: 2.25rem;
+  padding: 0.5rem 0.625rem !important;
+  border-radius: 0.375rem;
+  color: var(--eve-docs-gray-900);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+}
+
+.docs-shell #nd-sidebar a:hover {
+  background: color-mix(in oklab, var(--eve-docs-gray-100) 70%, transparent);
+  color: var(--eve-docs-gray-1000);
+}
+
+.docs-shell #nd-sidebar a[data-active="true"] {
+  background: var(--eve-docs-gray-200);
+  color: var(--eve-docs-gray-1000);
+  font-weight: 500;
+}
+
+.docs-shell #nd-sidebar a[data-active="true"]::before {
+  display: none;
+}
+
+/* Main document column: matches Eve's 880px track and 32px inner gutter. */
+.docs-shell #nd-page {
+  max-width: 56.25rem;
+  padding: 3.5rem 2rem 1.5rem;
+  gap: 1rem;
+  color: var(--eve-docs-gray-1000);
+}
+
+.docs-shell #nd-page > h1 {
+  margin: 0;
+  color: var(--eve-docs-gray-1000);
+  font-size: 2.5rem;
+  font-weight: 450;
+  letter-spacing: -0.05em;
+  line-height: 3rem;
+  text-wrap: balance;
+}
+
+.docs-shell #nd-page > p.text-fd-muted-foreground {
+  margin: 0 0 2rem;
+  color: var(--eve-docs-gray-800);
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+
+.docs-shell .prose {
+  --tw-prose-body: var(--eve-docs-gray-1000);
+  --tw-prose-headings: var(--eve-docs-gray-1000);
+  --tw-prose-links: var(--eve-docs-gray-1000);
+  --tw-prose-bold: var(--eve-docs-gray-1000);
+  --tw-prose-counters: var(--eve-docs-gray-800);
+  --tw-prose-bullets: var(--eve-docs-gray-700);
+  --tw-prose-hr: var(--eve-docs-border);
+  --tw-prose-quotes: var(--eve-docs-gray-1000);
+  --tw-prose-quote-borders: var(--eve-docs-border);
+  color: var(--eve-docs-gray-1000);
+  font-size: 1rem;
+  line-height: 1.75rem;
+}
+
+.docs-shell .prose h2 {
+  margin: 3rem 0 1.5rem;
+  color: var(--eve-docs-gray-1000);
+  font-size: 1.5rem;
+  font-weight: 450;
+  letter-spacing: -0.04em;
+  line-height: 2rem;
+}
+
+.docs-shell .prose h3 {
+  margin: 2.5rem 0 1rem;
+  color: var(--eve-docs-gray-1000);
+  font-size: 1.25rem;
+  font-weight: 450;
+  letter-spacing: -0.02em;
+  line-height: 1.625rem;
+}
+
+.docs-shell .prose h4 {
+  color: var(--eve-docs-gray-1000);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.5rem;
+}
+
+.docs-shell .prose p,
+.docs-shell .prose ul,
+.docs-shell .prose ol {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.docs-shell .prose strong {
+  color: var(--eve-docs-gray-1000);
+  font-weight: 600;
+}
+
+.docs-shell .prose :where(p, li) > a {
+  color: var(--eve-docs-gray-1000);
+  text-decoration: underline;
+  text-decoration-color: var(--eve-docs-gray-700);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  transition: text-decoration-color 100ms ease;
+}
+
+.docs-shell .prose :where(p, li) > a:hover {
+  text-decoration-color: var(--eve-docs-gray-1000);
+}
+
+.docs-shell .prose :not(pre) > code {
+  padding: 0.1875rem;
+  border: 0;
+  border-radius: 0.3125rem;
+  background: var(--eve-docs-gray-100);
+  color: var(--eve-docs-gray-1000);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.docs-shell .prose :not(pre) > code::before,
+.docs-shell .prose :not(pre) > code::after {
+  content: none;
+}
+
+.docs-shell .prose pre,
+.docs-shell .prose figure:has(pre) {
+  border: 1px solid var(--eve-docs-border);
+  border-radius: 0.375rem;
+  background: var(--eve-docs-surface);
+  box-shadow: none;
+}
+
+.docs-shell .prose pre {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  color: var(--eve-docs-gray-1000);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.docs-shell .prose blockquote,
+.docs-shell .prose table,
+.docs-shell .prose [role="alert"] {
+  border-color: var(--eve-docs-border);
+  border-radius: 0.375rem;
+  background: var(--eve-docs-surface);
+  box-shadow: none;
+}
+
+.docs-shell .prose hr {
+  border-color: var(--eve-docs-border);
+}
+
+/* Right-hand table of contents. */
+.docs-shell #nd-toc {
+  width: 16.75rem;
+  padding: 3.5rem 1rem 0.5rem 1.5rem;
+  color: var(--eve-docs-gray-1000);
+}
+
+.docs-shell #nd-toc > h3 {
+  gap: 0;
+  color: var(--eve-docs-gray-1000);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+
+.docs-shell #nd-toc > h3 svg {
+  display: none;
+}
+
+.docs-shell #nd-toc a {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+  color: var(--eve-docs-gray-900);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  text-decoration: none;
+}
+
+.docs-shell #nd-toc a:hover,
+.docs-shell #nd-toc a[data-active="true"] {
+  color: var(--eve-docs-gray-1000);
+}
+
+.docs-shell #nd-toc [class*="border-s"] {
+  border-color: var(--eve-docs-border);
+}
+
+/* Fumadocs' mobile subnav becomes the compact docs bar under the main navbar. */
+.docs-shell #nd-subnav {
+  top: 4rem;
+  height: 3.375rem;
+  border-color: var(--eve-docs-border);
+  background: color-mix(in oklab, var(--eve-docs-background) 92%, transparent);
+  color: var(--eve-docs-gray-1000);
+}
+
+@media (min-width: 75rem) {
+  #nd-docs-layout.eve-docs-container {
+    --fd-toc-width: 16.75rem !important;
+  }
+}
+
+@media (max-width: 60rem) {
+  #nd-docs-layout.eve-docs-container {
+    --fd-sidebar-width: 0rem !important;
+    --fd-header-height: 3.375rem !important;
+    --fd-toc-popover-height: 0rem !important;
+  }
+
+  .docs-shell #nd-docs-layout [data-sidebar-placeholder] {
+    display: none !important;
+  }
+
+  .docs-shell #nd-subnav {
+    display: flex !important;
+    padding: 0 1rem;
+  }
+
+  .docs-shell #nd-subnav > a,
+  .docs-shell #nd-subnav > div,
+  .docs-shell #nd-subnav [data-search] {
+    display: none;
+  }
+
+  .docs-shell #nd-subnav button:is([aria-label="Open Sidebar"], [aria-label="打开侧边栏"]) {
+    display: inline-flex;
+    width: auto;
+    height: 3.375rem;
+    margin-right: auto;
+    padding: 0 0.5rem;
+    align-items: center;
+    gap: 0.75rem;
+    border-radius: 0.375rem;
+    color: var(--eve-docs-gray-1000);
+    font-size: 1rem;
+    font-weight: 400;
+  }
+
+  .docs-shell #nd-subnav button[aria-label="Open Sidebar"]::after {
+    content: "Menu";
+  }
+
+  .docs-shell #nd-subnav button[aria-label="打开侧边栏"]::after {
+    content: "菜单";
+  }
+
+  .docs-shell [data-toc-popover] {
+    z-index: 31;
+    height: 0 !important;
+    pointer-events: none;
+    transform: translateY(-3.375rem);
+  }
+
+  .docs-shell [data-toc-popover] > header {
+    width: 3.375rem;
+    height: 3.375rem;
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    pointer-events: auto;
+  }
+
+  .docs-shell [data-toc-popover] > header > button {
+    width: 3.375rem;
+    height: 3.375rem;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+    color: var(--eve-docs-gray-900);
+    font-size: 0;
+  }
+
+  .docs-shell [data-toc-popover] > header > button > svg {
+    display: none;
+  }
+
+  .docs-shell [data-toc-popover] > header > button > svg:first-child {
+    display: block;
+  }
+
+  .docs-shell #nd-page {
+    max-width: 56.25rem;
+    padding-top: 2rem;
+  }
+}
+
+@media (min-width: 60.0625rem) {
+  .docs-shell #nd-subnav {
+    display: none !important;
+  }
+}
+
+@media (max-width: 47.9375rem) {
+  .eve-docs-header-inner {
+    padding: 0 1rem;
+    gap: 0.75rem;
+  }
+
+  .eve-docs-header-brand {
+    width: auto;
+    flex: 1;
+  }
+
+  .eve-docs-header-brand > span,
+  .eve-docs-header-brand > strong,
+  .eve-docs-header-nav,
+  .eve-docs-search,
+  .eve-docs-language {
+    display: none;
+  }
+
+  .eve-docs-search-compact {
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--eve-docs-border);
+    border-radius: 0.375rem;
+    background: var(--eve-docs-surface);
+  }
+
+  .docs-shell #nd-page {
+    padding: 1.5rem 1.5rem 2rem;
+  }
+
+  .docs-shell #nd-page > h1 {
+    font-size: 2rem;
+    letter-spacing: -0.04em;
+    line-height: 2.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eve-docs-header,
+  .eve-docs-header-nav a,
+  .eve-docs-language,
+  .eve-docs-github,
+  .eve-docs-search,
+  .docs-shell #nd-sidebar a {
+    transition: none;
+  }
+}
+
 /* Documentation diagrams */
 .runtime-topology {
   display: flex;
   width: 100%;
-  margin: 34px 0;
-  padding: clamp(24px, 4vw, 48px);
+  margin: 2rem 0;
+  padding: clamp(1.5rem, 4vw, 3rem);
   flex-direction: column;
   align-items: center;
   overflow: hidden;
-  border: 1px solid #242424;
-  border-radius: 14px;
-  background: #111;
-  color: #fff;
+  border: 1px solid var(--eve-docs-border);
+  border-radius: 0.375rem;
+  background: var(--eve-docs-gray-1000);
+  color: var(--eve-docs-surface);
 }
 
 .topology-row {
@@ -18,97 +642,50 @@
   width: 100%;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 20px;
+  gap: 1.25rem;
 }
 
 .topology-group {
   display: flex;
-  width: min(100%, 420px);
-  padding: 20px;
+  width: min(100%, 26.25rem);
+  padding: 1.25rem;
   flex-direction: column;
   align-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid color-mix(in oklab, var(--eve-docs-surface) 16%, transparent);
   text-align: center;
 }
 
 .topology-group span,
 .topology-group small,
 .topology-bridge {
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in oklab, var(--eve-docs-surface) 52%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .topology-group strong {
-  margin: 5px 0;
-  font-size: 15px;
+  margin: 0.3125rem 0;
+  font-size: 0.9375rem;
 }
 
 .topology-public,
 .topology-host {
-  border-color: rgba(255, 92, 53, 0.68);
+  border-color: color-mix(in oklab, var(--eve-docs-surface) 44%, transparent);
 }
 
 .topology-agents {
-  width: min(100%, 620px);
+  width: min(100%, 38.75rem);
 }
 
 .topology-arrow,
 .topology-bridge {
-  color: #ff967d;
+  color: color-mix(in oklab, var(--eve-docs-surface) 72%, transparent);
 }
 
 .topology-arrow {
-  padding: 8px;
+  padding: 0.5rem;
 }
 
 .topology-bridge {
   text-align: center;
-}
-
-/* Fumadocs harmonization */
-.docs-shell,
-.docs-shell #nd-docs-layout {
-  min-height: 100svh;
-  background: var(--paper);
-}
-
-#nd-docs-layout {
-  --fd-layout-width: 96rem;
-}
-
-#nd-docs-layout .brand {
-  color: var(--ink);
-}
-
-#nd-docs-layout .brand-mark {
-  width: 23px;
-  height: 23px;
-}
-
-#nd-docs-layout header {
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(14px);
-}
-
-#nd-docs-layout aside {
-  background: #fff;
-}
-
-.prose h1 {
-  font-weight: 520;
-  letter-spacing: -0.055em;
-}
-
-.prose h2,
-.prose h3 {
-  letter-spacing: -0.035em;
-}
-
-.prose code {
-  font-size: 0.88em;
-}
-
-.prose pre {
-  border-radius: 12px;
 }

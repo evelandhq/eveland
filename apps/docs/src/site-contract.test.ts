@@ -188,25 +188,29 @@ describe("Eveland public website contract", () => {
     expect(config).toContain('destination: "/zh/docs/operations/runtime"');
   });
 
-  test("uses the light editorial visual system across the homepage and docs", () => {
-    const page = source("./app/[lang]/page.tsx");
-    const stage = source("./components/runtime-stage.tsx");
+  test("mirrors the Eve documentation shell with the system font stack", () => {
     const globalStyles = source("./app/global.css");
-    const styles = [
-      globalStyles,
-      source("./app/marketing.css"),
-      source("./app/documentation.css"),
-      source("./app/responsive.css"),
-    ].join("\n");
+    const docsStyles = source("./app/documentation.css");
+    const docsLayout = source("./app/[lang]/docs/layout.tsx");
+    const docsHeader = source("./components/docs-header.tsx");
 
-    expect(page).toContain("<RuntimeStage");
-    expect(existsSync(path("./components/runtime-stage.tsx"))).toBe(true);
-    expect(stage).toContain('className="runtime-stage"');
-    expect(stage).toContain('className="topology-plane"');
-    expect(stage).toContain('className="topology-runtime"');
-    expect(styles).toContain("--accent: #ff5c35");
-    expect(styles).toContain("--fd-background: #ffffff");
-    expect(styles).toContain(".docs-shell");
+    expect(docsLayout).toContain("<DocsHeader");
+    expect(docsLayout).toContain('className: "eve-docs-container"');
+    expect(docsLayout).toContain('"--fd-docs-row-1": "4rem"');
+    expect(docsHeader).toContain('className="eve-docs-header"');
+    expect(docsHeader).toContain("FullSearchTrigger");
+    expect(docsHeader).not.toContain('import { Github } from "lucide-react"');
+    expect(docsHeader).toContain('viewBox="0 0 24 24"');
+    expect(docsStyles).toContain("--eve-docs-background: oklch(0.984 0 0)");
+    expect(docsStyles).toContain("--fd-layout-width: 90.5rem");
+    expect(docsStyles).toContain("--fd-sidebar-width: 18.75rem");
+    expect(docsStyles).toContain("#nd-page > h1");
+    expect(docsStyles).toContain("#nd-toc");
+    expect(docsStyles).toContain("#nd-subnav [data-search]");
+    expect(docsStyles).toContain("[data-toc-popover]");
+    expect(docsStyles).toContain('button[aria-label="Open Sidebar"]::after');
+    expect(docsStyles).toContain('button[aria-label="打开侧边栏"]::after');
+    expect(globalStyles).toContain('-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto');
     expect(globalStyles).toContain('@import "./documentation.css"');
   });
 
