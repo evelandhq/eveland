@@ -321,8 +321,8 @@ importers:
         specifier: ^0.1.0
         version: 0.1.0(eve@0.31.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.44(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0))
       '@evelandhq/workflow-world':
-        specifier: ^0.3.0
-        version: 0.3.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: ^0.4.0
+        version: 0.4.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -370,8 +370,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/platform-observability
       '@evelandhq/workflow-world':
-        specifier: ^0.3.0
-        version: 0.3.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: ^0.4.0
+        version: 0.4.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
 
   packages/agent-auth:
     dependencies:
@@ -2053,8 +2053,8 @@ packages:
     peerDependencies:
       eve: '>=0.27.0 <1.0.0'
 
-  '@evelandhq/workflow-world@0.3.0':
-    resolution: {integrity: sha512-07gno+K2rDGCofJPTxpp6RnZ4gZG4SWCuRebRu5XBJzARgzdzu3NSh7RRpp4X8Bu4pmro1GtC3LpeT+4E7d1qg==}
+  '@evelandhq/workflow-world@0.4.0':
+    resolution: {integrity: sha512-RBCJBi75tOZ2ObZpdSqqpegGawB7xT+i+jYHLSzaR+3RA/5nFvu5oeQLnuhmzZqksq0gpEJupnPnTtT5idty+g==}
     engines: {node: '>=24.0.0'}
     hasBin: true
 
@@ -9435,7 +9435,7 @@ snapshots:
     dependencies:
       eve: 0.31.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.44(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
 
-  '@evelandhq/workflow-world@0.3.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
+  '@evelandhq/workflow-world@0.4.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
     dependencies:
       '@workflow/errors': 5.0.0-beta.16
       '@workflow/utils': 5.0.0-beta.8
