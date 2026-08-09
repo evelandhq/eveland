@@ -41,6 +41,11 @@ export type GatewayAppOptions = {
   routeCacheMaxEntries?: number;
   /** Socket idle timeout for public upstream proxying; streaming resets it. */
   upstreamTimeoutMs?: number;
+  /**
+   * Idle-heartbeat interval for eve NDJSON session streams; blank-line
+   * heartbeats keep intermediaries from reaping silent streams. 0 disables.
+   */
+  streamHeartbeatMs?: number;
   maxRequestBodyBytes?: number;
   affinityCookieSecure?: boolean;
   activationClient?: GatewayActivationClient;

@@ -59,6 +59,8 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   });
   const maxRequestBodyBytes = options.maxRequestBodyBytes ?? 10_485_760;
   const now = options.now ?? (() => new Date());
+  const streamHeartbeatMs =
+    options.streamHeartbeatMs ?? Number(process.env.EVELAND_GATEWAY_STREAM_HEARTBEAT_MS ?? 15_000);
   const sessionIdlePolicy = {
     playgroundIdleTtlMs:
       options.playgroundSessionIdleTtlMs ??
@@ -141,6 +143,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       policy: {
         bodyLimitBytes: PLAYGROUND_MAX_TRANSPORT_BYTES,
         timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
+        streamHeartbeatMs,
         buildHeaders: (endpointPort) =>
           buildInternalPlaygroundHeaders(
             context.req.raw.headers,
@@ -244,6 +247,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
         timeoutMs:
           options.upstreamTimeoutMs ??
           Number(process.env.EVELAND_GATEWAY_UPSTREAM_TIMEOUT_MS ?? 120_000),
+        streamHeartbeatMs,
         buildHeaders: () =>
           buildUpstreamHeaders(
             context.req.raw.headers,

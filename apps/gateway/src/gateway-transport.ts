@@ -23,10 +23,21 @@ export function proxyToDeployment(input: {
   headers: Headers;
   body: Uint8Array | null;
   timeoutMs?: number;
+  /**
+   * How an idle timeout surfaces once the response is streaming: "abort"
+   * errors the body (default); "end" closes it as a normal end of stream, so
+   * every proxy hop and the client observe a clean chunked terminator.
+   * Session streams use "end" -- silence between turns is legitimate there,
+   * and an abort that an intermediary fails to propagate leaves the client
+   * holding a dead connection. Before response headers arrive both modes
+   * fail the request.
+   */
+  idleTimeoutMode?: "abort" | "end";
   signal?: AbortSignal;
 }): Promise<Response> {
   return new Promise((resolve, reject) => {
     let responseStarted = false;
+    const idleEnd = { requested: false };
     const request = http.request(
       {
         hostname: "127.0.0.1",
@@ -45,7 +56,7 @@ export function proxyToDeployment(input: {
             headers.append(name, value);
         }
         resolve(
-          new Response(proxyResponseBody(response, request), {
+          new Response(proxyResponseBody(response, request, idleEnd), {
             status: response.statusCode ?? 502,
             statusText: response.statusMessage,
             headers,
@@ -63,9 +74,14 @@ export function proxyToDeployment(input: {
     if (input.signal?.aborted) abort();
     else input.signal?.addEventListener("abort", abort, { once: true });
     if (input.timeoutMs)
-      request.setTimeout(input.timeoutMs, () =>
-        request.destroy(new Error("Upstream request timed out.")),
-      );
+      request.setTimeout(input.timeoutMs, () => {
+        if (input.idleTimeoutMode === "end" && responseStarted) {
+          idleEnd.requested = true;
+          request.destroy();
+        } else {
+          request.destroy(new Error("Upstream request timed out."));
+        }
+      });
     request.end(input.body ?? undefined);
   });
 }
@@ -106,6 +122,7 @@ export async function readLimitedBody(
 function proxyResponseBody(
   response: http.IncomingMessage,
   request: http.ClientRequest,
+  idleEnd: { requested: boolean },
 ): ReadableStream<Uint8Array> {
   const body = Readable.toWeb(response) as ReadableStream<Uint8Array>;
   const reader = body.getReader();
@@ -116,12 +133,57 @@ function proxyResponseBody(
         if (chunk.done) controller.close();
         else controller.enqueue(chunk.value);
       } catch (error) {
-        controller.error(error);
+        if (idleEnd.requested) controller.close();
+        else controller.error(error);
       }
     },
     async cancel(reason) {
       response.destroy();
       request.destroy();
+      await reader.cancel(reason).catch(() => undefined);
+    },
+  });
+}
+
+const HEARTBEAT_CHUNK = new TextEncoder().encode("\n");
+
+/**
+ * Re-emit `source` unchanged, inserting a bare newline whenever `heartbeatMs`
+ * elapses without an upstream chunk. NDJSON consumers skip blank lines, so
+ * the heartbeat is invisible to eve clients while keeping intermediaries
+ * (undici body timeouts, reverse-proxy read timeouts) from reaping a silent
+ * but healthy session stream. Pull-based: buffers at most one upstream read.
+ */
+export function withNdjsonIdleHeartbeat(
+  source: ReadableStream<Uint8Array>,
+  heartbeatMs: number,
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let pending: Promise<ReadableStreamReadResult<Uint8Array>> | null = null;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      pending ??= reader.read();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const heartbeat = new Promise<"heartbeat">((resolve) => {
+        timer = setTimeout(() => resolve("heartbeat"), heartbeatMs);
+      });
+      try {
+        const winner = await Promise.race([pending, heartbeat]);
+        if (winner === "heartbeat") {
+          controller.enqueue(HEARTBEAT_CHUNK);
+          return;
+        }
+        pending = null;
+        if (winner.done) controller.close();
+        else controller.enqueue(winner.value);
+      } catch (error) {
+        pending = null;
+        controller.error(error);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    async cancel(reason) {
       await reader.cancel(reason).catch(() => undefined);
     },
   });

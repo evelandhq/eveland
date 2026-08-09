@@ -13,7 +13,11 @@ import {
   resolveTarget,
   routeExperimentId,
 } from "./gateway-routing.js";
-import { proxyToDeployment, readLimitedBody } from "./gateway-transport.js";
+import {
+  proxyToDeployment,
+  readLimitedBody,
+  withNdjsonIdleHeartbeat,
+} from "./gateway-transport.js";
 
 // The request lifecycle shared by the public catch-all and the privileged
 // Playground proxy: buffer the routing body, resolve the target, gate the Eve
@@ -107,6 +111,12 @@ export type GatewayUpstreamPolicy = {
   bodyLimitBytes: number;
   /** Socket idle timeout for the upstream hop, resolved by the caller. */
   timeoutMs: number;
+  /**
+   * Idle-heartbeat interval for eve NDJSON session streams; 0 (or absent)
+   * disables injection. Blank-line heartbeats keep intermediaries from
+   * reaping a silent stream without resetting the upstream idle timeout.
+   */
+  streamHeartbeatMs?: number;
   buildHeaders: (endpointPort: number) => Headers;
   /** Success-path response decoration (e.g. the affinity cookie). */
   decorateResponseHeaders?: (headers: Headers) => void;
@@ -129,6 +139,7 @@ export async function executeGatewaySessionProxy(input: {
 }): Promise<Response> {
   const { repository, activationClient, route, eveRequest, binding } = input;
   const signal = input.request.signal;
+  const streamRequest = activationKind(eveRequest) === "stream";
 
   const target = await resolveTarget(
     repository,
@@ -177,6 +188,7 @@ export async function executeGatewaySessionProxy(input: {
       body,
       signal,
       timeoutMs: input.policy.timeoutMs,
+      idleTimeoutMode: streamRequest ? "end" : "abort",
     });
   } catch (error) {
     if (activation && activationClient)
@@ -209,7 +221,15 @@ export async function executeGatewaySessionProxy(input: {
 
   const responseHeaders = new Headers(upstream.headers);
   input.policy.decorateResponseHeaders?.(responseHeaders);
-  const response = new Response(upstream.body, {
+  const heartbeatMs = input.policy.streamHeartbeatMs ?? 0;
+  const responseBody =
+    streamRequest &&
+    heartbeatMs > 0 &&
+    upstream.body !== null &&
+    upstream.headers.get("x-eve-stream-format") === "ndjson"
+      ? withNdjsonIdleHeartbeat(upstream.body, heartbeatMs)
+      : upstream.body;
+  const response = new Response(responseBody, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers: responseHeaders,

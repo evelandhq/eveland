@@ -412,6 +412,12 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "Timeout for privileged Playground requests proxied to a Deployment.",
     "120000",
   ),
+  entry(
+    "EVELAND_GATEWAY_STREAM_HEARTBEAT_MS",
+    ["gateway"],
+    "Idle-heartbeat interval for eve NDJSON session streams; 0 disables.",
+    "15000",
+  ),
   urlEntry(
     "EVELAND_API_INTERNAL_URL",
     ["gateway"],
