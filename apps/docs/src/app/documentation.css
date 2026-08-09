@@ -403,6 +403,11 @@
   box-shadow: none;
 }
 
+.docs-shell .prose figure:has(pre) pre {
+  border: 0;
+  border-radius: 0;
+}
+
 .docs-shell .prose pre {
   padding-top: 0.75rem;
   padding-bottom: 0.75rem;
