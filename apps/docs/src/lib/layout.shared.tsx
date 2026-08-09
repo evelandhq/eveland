@@ -47,17 +47,7 @@ export function baseOptions(lang: Language): BaseLayoutProps {
       title: <Brand lang={lang} linked={false} />,
       url: localizedHref(lang),
     },
-    links: [
-      {
-        text: lang === "zh" ? "首页" : "Home",
-        url: localizedHref(lang),
-      },
-      {
-        text: "GitHub",
-        url: "https://github.com/evelandhq/eveland",
-        external: true,
-      },
-    ],
+    links: [],
     githubUrl: "https://github.com/evelandhq/eveland",
     i18n: true,
   };
