@@ -43,6 +43,16 @@ Observed verification:
    `/start-wake` route returned a real session id when driven with a two-second
    durable sleep.
 
+## Startup ordering follow-up
+
+A later manual restart proved the namespace fix separately from the startup
+race: recovered jobs initially logged `fetch failed`, then completed successfully
+on attempt 2 after the API began listening. Eveland now probes the configured API
+`/health` endpoint before starting the dispatcher service, so boot recovery cannot
+claim jobs during that gap. The launcher retries connection failures and unhealthy
+responses without consuming a Graphile attempt; the package still owns normal
+dispatch retries after the health gate opens.
+
 The full scale-to-zero platform E2E still needs an isolated stack running this
 worktree. The already-running native stack belongs to the separate
 `/Users/michael/work/eveland` checkout and still runs its older worker and
@@ -442,7 +452,3 @@ have zero dead letters.
    per-Deployment registration?
 2. What is the supported upgrade behavior for active pre-migration rows with a
    null namespace?
-3. Should startup activation connection failures receive readiness gating or
-   richer `fetch` cause logging in a separate patch?
-   Do not let question 3 delay the upstream correctness fix and its direct
-   real-handler recovery test.

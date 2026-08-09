@@ -100,6 +100,9 @@ Open the control panel at `http://localhost:3000` and the public documentation s
 - All four processes are required: the web form posts to the API, Playground/public
   Agent traffic goes through Gateway, and imports, builds, and deploys are executed by
   the worker's job polling — without it, projects stay pending after upload.
+- The workflow dispatcher waits for the API health endpoint before claiming durable
+  jobs, so parallel `pnpm dev` startup does not spend a Graphile retry while the API is
+  still binding its port.
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
   `pnpm dev:docs` in separate terminals when isolated logs are more useful.
 - Public development endpoints use `http://<projectSlug>.agent.localhost:4080`;
