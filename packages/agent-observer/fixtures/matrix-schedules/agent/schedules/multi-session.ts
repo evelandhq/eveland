@@ -2,10 +2,12 @@ import { defineSchedule } from "eve/schedules";
 
 import sink from "../channels/sink";
 
-// Runs under every Eve line in the compatibility matrix. Eve 0.29/0.30 pass
+// Runs under every Eve line in the compatibility matrix. Eve 0.29/0.30 passed
 // `receive(channel, { auth, message, target })`; Eve 0.31 passes
-// `to(channel, target).send(message, { auth })`. The structural cast keeps one
-// source compiling under both type generations.
+// `to(channel, target).send(message, { auth })`. Every line in the window is
+// now 0.31+, so only the `to` branch runs; the structural cast is kept so the
+// fixture still compiles unchanged if a future window ever spans two type
+// generations again.
 type ScheduleOps = {
   receive?: (
     channel: typeof sink,

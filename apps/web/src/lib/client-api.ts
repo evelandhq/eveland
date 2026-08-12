@@ -428,9 +428,10 @@ export function resetPlaygroundOnPageLeave(input: {
   const sessionId = input.sessionState?.sessionId;
   if (!sessionId) return false;
   const fetcher = input.fetcher ?? fetch;
-  // Eve 0.31 ID-addressed reset. For a 0.29/0.30 deployment the API's
-  // canonical Playground route translates this into that generation's
-  // continuation-token reset using the token it stored on the Session.
+  // Eve 0.31 ID-addressed reset, which every supported Eve line speaks. For a
+  // Session created by a pre-0.31 Deployment the API's canonical Playground
+  // route still translates this into that generation's continuation-token
+  // reset using the token it stored on the Session.
   void fetcher(
     `/api/eveland/projects/${encodeURIComponent(input.projectId)}/playground/eve/v1/session/${encodeURIComponent(sessionId)}/reset`,
     {

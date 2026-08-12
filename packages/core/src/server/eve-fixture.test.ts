@@ -37,31 +37,31 @@ describe("Eve integration fixture materialization", () => {
       2,
     )}\n`;
 
-    expect(materialize(source, "0.29.999")).toBe(
-      source.replace('"eve": "catalog:"', '"eve": "0.29.999"'),
+    expect(materialize(source, "0.31.999")).toBe(
+      source.replace('"eve": "catalog:"', '"eve": "0.31.999"'),
     );
   });
 
   test("is stable when the fixture is already materialized", async () => {
     const materialize = await materializer();
     const source = `${JSON.stringify(
-      { name: "fixture", dependencies: { eve: "0.29.999" } },
+      { name: "fixture", dependencies: { eve: "0.31.999" } },
       null,
       2,
     )}\n`;
 
-    expect(materialize(source, "0.29.999")).toBe(source);
+    expect(materialize(source, "0.31.999")).toBe(source);
   });
 
   test("rejects an unmanaged Eve dependency instead of overwriting it", async () => {
     const materialize = await materializer();
     const source = `${JSON.stringify(
-      { name: "fixture", dependencies: { eve: "^0.29.0" } },
+      { name: "fixture", dependencies: { eve: "^0.31.0" } },
       null,
       2,
     )}\n`;
 
-    expect(() => materialize(source, "0.29.999")).toThrow(/must declare the Eve catalog marker/);
+    expect(() => materialize(source, "0.31.999")).toThrow(/must declare the Eve catalog marker/);
   });
 
   test("copies a fixture and materializes only its Eve dependency", async () => {
@@ -78,11 +78,11 @@ describe("Eve integration fixture materialization", () => {
 
     try {
       await expect(
-        materializeDirectory(sourceDirectory, destinationDirectory, "0.29.999"),
+        materializeDirectory(sourceDirectory, destinationDirectory, "0.31.999"),
       ).resolves.toBe(destinationDirectory);
       await expect(
         readFile(path.join(destinationDirectory, "package.json"), "utf8"),
-      ).resolves.toContain('"eve": "0.29.999"');
+      ).resolves.toContain('"eve": "0.31.999"');
       await expect(
         readFile(path.join(destinationDirectory, "agent", "agent.ts"), "utf8"),
       ).resolves.toBe("export default {};\n");

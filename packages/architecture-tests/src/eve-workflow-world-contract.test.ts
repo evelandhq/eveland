@@ -89,14 +89,24 @@ function walkJsFiles(root: string): string[] {
 }
 
 /**
- * eve compiles `if (world.specVersion !== N) throw` per release rather than
- * comparing against an imported constant, so the number is read back out of
- * the shipped bundle.
+ * eve compiles its World spec-version gate per release rather than comparing
+ * against an imported constant, so the accepted range is read back out of the
+ * shipped bundle. Two forms exist: through 0.32 the gate pins a single version
+ * (`specVersion !== 5`), and from 0.33 it accepts a range (`>= 5 && <= 6`)
+ * because world-vercel opts into a spec above the default and an equality
+ * check would make the runtime refuse the adapter shipped alongside it.
+ *
+ * The thrown message is parsed rather than the comparison itself: the message
+ * is authored text that names both bounds, while the operator sequence is
+ * minifier output that already changed shape once.
  */
-function findEnforcedSpecVersion(eveDistDir: string): number | undefined {
+function findEnforcedSpecVersions(eveDistDir: string): { min: number; max: number } | undefined {
   for (const file of walkJsFiles(eveDistDir)) {
-    const match = /specVersion\s*!==\s*(\d+)/.exec(readFileSync(file, "utf8"));
-    if (match) return Number(match[1]);
+    const source = readFileSync(file, "utf8");
+    const range = /spec version (\d+) through (\d+)/.exec(source);
+    if (range) return { min: Number(range[1]), max: Number(range[2]) };
+    const exact = /matching spec version (\d+)/.exec(source);
+    if (exact) return { min: Number(exact[1]), max: Number(exact[1]) };
   }
   return undefined;
 }
@@ -155,17 +165,18 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
         expect(versionLine(declared!)).toEqual(versionLine(eveWorkflowCore!));
       });
 
-      test("the world's specVersion equals the literal this eve release enforces", () => {
-        const enforced = findEnforcedSpecVersion(path.join(eveRoot, "dist"));
+      test("the world's specVersion falls inside the range this eve release enforces", () => {
+        const enforced = findEnforcedSpecVersions(path.join(eveRoot, "dist"));
         expect(
           enforced,
           `could not find eve ${eveManifest.version}'s spec-version guard`,
-        ).toBeTypeOf("number");
+        ).toBeDefined();
 
         const { SPEC_VERSION_CURRENT } = require(
           require.resolve("@workflow/world", { paths: [worldRoot] }),
         ) as { SPEC_VERSION_CURRENT: number };
-        expect(SPEC_VERSION_CURRENT).toBe(enforced);
+        expect(SPEC_VERSION_CURRENT).toBeGreaterThanOrEqual(enforced!.min);
+        expect(SPEC_VERSION_CURRENT).toBeLessThanOrEqual(enforced!.max);
       });
     });
   }

@@ -18,20 +18,12 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
 );
 describe("injectSchedulerAdapter", () => {
   test("fails closed outside the latest three verified Eve minors", async () => {
-    for (const eveVersion of [
-      "0.27.13",
-      "0.28.0",
-      "0.32.0",
-      "~0.32.0",
-      ">=0.29.0",
-      "*",
-      "latest",
-    ]) {
+    for (const eveVersion of ["0.29.5", "0.30.8", "0.34.0", "~0.34.0", ">=0.31.0", "*", "latest"]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
         new RegExp(
-          `supports Eve 0\\.29\\.x, 0\\.30\\.x, or 0\\.31\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+          `supports Eve 0\\.31\\.x, 0\\.32\\.x, or 0\\.33\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
         ),
       );
     }
@@ -39,26 +31,26 @@ describe("injectSchedulerAdapter", () => {
 
   test("accepts every dependency form that stays inside a verified Eve minor", async () => {
     for (const eveVersion of [
-      "0.29.0",
-      "0.29.5",
-      "~0.29.0",
-      "^0.29.0",
-      "0.29",
-      "0.29.x",
-      "0.29.*",
-      "0.30.0",
-      "0.30.6",
-      "~0.30.2",
-      "^0.30.0",
-      "0.30",
-      "0.30.x",
-      "0.30.*",
       "0.31.0",
+      "0.31.5",
       "~0.31.0",
       "^0.31.0",
       "0.31",
       "0.31.x",
       "0.31.*",
+      "0.32.0",
+      "0.32.6",
+      "~0.32.2",
+      "^0.32.0",
+      "0.32",
+      "0.32.x",
+      "0.32.*",
+      "0.33.0",
+      "~0.33.0",
+      "^0.33.0",
+      "0.33",
+      "0.33.x",
+      "0.33.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -70,7 +62,7 @@ describe("injectSchedulerAdapter", () => {
 
   test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.29.5",
+      eveVersion: "0.31.5",
       files: {
         "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
 import { helper } from "../../lib/helper";
@@ -134,7 +126,7 @@ Produce the daily report.
 
   test("generates a closed authenticated dispatch Channel without embedding secrets", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.29.5",
+      eveVersion: "0.31.5",
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
       },
@@ -159,15 +151,15 @@ Produce the daily report.
     expect(channel).toContain("function describeScheduleFailure");
     expect(channel).not.toContain("test-secret");
     expect(channel).not.toContain("eve/dist/src/internal");
-    // Eve 0.29/0.30 speak the continuation-token generation.
-    expect(channel).toContain("{ params, receive, send }");
-    expect(channel).toContain("continuationToken: `eveland-schedule:${params.scheduleRunId}`");
-    expect(channel).toContain("receive: wrappedReceive");
+    // Every minor in the supported window speaks fixed-session addressing; the
+    // continuation-token generation went out of the window with Eve 0.30.
+    expect(channel).toContain("{ params, from, to }");
+    expect(channel).not.toContain("continuationToken");
   });
 
-  test("generates the fixed-session dispatch Channel for an Eve 0.31 Release", async () => {
+  test("generates the fixed-session dispatch Channel", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.31.0",
+      eveVersion: "0.33.0",
       files: {
         "agent/schedules/report.md": `---
 cron: "30 5 * * *"
@@ -194,12 +186,39 @@ Produce the daily report.
     expect(channel).not.toContain("receive");
   });
 
+  test("asks for the queued turn policy only on the Eve line that has one", async () => {
+    // Eve 0.33 made "steer" the default send policy, which cancels a turn
+    // already running on the target session. A schedule is a background actor
+    // and must never preempt a turn a human is waiting on. Older lines have no
+    // `turnPolicy` option at all and would reject it as an excess property when
+    // the Agent is built, so the option is emitted only from 0.33 up.
+    const files = {
+      "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
+    };
+    const readChannel = async (eveVersion: string) => {
+      const releaseDir = await fixture({ eveVersion, files });
+      await injectSchedulerAdapter({ releaseDir });
+      return readFile(path.join(releaseDir, "agent/channels/eveland-scheduler.ts"), "utf8");
+    };
+
+    for (const eveVersion of ["0.31.3", "0.32.0"]) {
+      expect(await readChannel(eveVersion), eveVersion).not.toContain("turnPolicy");
+    }
+
+    const current = await readChannel("0.33.2");
+    // Both send sites: the markdown dispatch and the wrapper around the
+    // authored handler's own `to(...).send`, where the author still wins
+    // because their options are spread last.
+    expect(current).toContain('turnPolicy: "queue",\n            mode: "task"');
+    expect(current).toContain('handle.send(message, { turnPolicy: "queue", ...options })');
+  });
+
   test.each(["ts", "mts", "cts", "js", "mjs", "cjs"])(
     "transforms an authored .%s module schedule with the TypeScript AST",
     async (extension) => {
       const sourcePath = `agent/schedules/nested/direct.${extension}`;
       const releaseDir = await fixture({
-        eveVersion: "0.29.5",
+        eveVersion: "0.31.5",
         files: { [sourcePath]: `export default { cron: "0 6 * * *", async run() {} };` },
       });
 
@@ -216,7 +235,7 @@ Produce the daily report.
 
   test("rejects reserved authored identifiers and the reserved Channel path", async () => {
     const identifierCollision = await fixture({
-      eveVersion: "0.29.5",
+      eveVersion: "0.31.5",
       files: {
         "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
       },
@@ -226,7 +245,7 @@ Produce the daily report.
     );
 
     const channelCollision = await fixture({
-      eveVersion: "0.29.5",
+      eveVersion: "0.31.5",
       files: {
         "agent/schedules/ok.ts": `export default { cron: "* * * * *", async run() {} };`,
         "agent/channels/eveland-scheduler.ts": `export default {};`,
@@ -237,7 +256,7 @@ Produce the daily report.
     );
 
     const defaultReExport = await fixture({
-      eveVersion: "0.29.5",
+      eveVersion: "0.31.5",
       files: {
         "agent/lib/shared.ts": `export default { cron: "0 7 * * *", async run() {} };`,
         "agent/schedules/re-export.ts": `export { default } from "../lib/shared";`,

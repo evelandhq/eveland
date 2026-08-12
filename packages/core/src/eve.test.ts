@@ -106,7 +106,7 @@ describe("Eve session request classification", () => {
       kind: "stream",
       sessionId: "eve_1",
     });
-    // Eve 0.31 moved clear/compact/reset onto ID-addressed control routes.
+    // Eve 0.33 moved clear/compact/reset onto ID-addressed control routes.
     expect(classify("POST", "/eve/v1/session/eve_1/clear")).toEqual({
       kind: "clear",
       sessionId: "eve_1",

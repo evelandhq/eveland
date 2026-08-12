@@ -26,20 +26,20 @@ describe("source preflight store", () => {
       store.completeSourcePreflight(preflight.id, 0, {
         sourcePath: "/data/preflights/pre_1/source",
         commitSha: "abc123",
-        summary: { eveVersion: "0.29.5", layout: "single-agent" },
+        summary: { eveVersion: "0.31.5", layout: "single-agent" },
       }),
     ).resolves.toBe(false);
     await expect(
       store.completeSourcePreflight(preflight.id, claimed!.attempts, {
         sourcePath: "/data/preflights/pre_1/source",
         commitSha: "abc123",
-        summary: { eveVersion: "0.29.5", layout: "single-agent" },
+        summary: { eveVersion: "0.31.5", layout: "single-agent" },
       }),
     ).resolves.toBe(true);
 
     await expect(store.getSourcePreflight(preflight.id, "user_a")).resolves.toMatchObject({
       status: "completed",
-      summary: { eveVersion: "0.29.5", layout: "single-agent" },
+      summary: { eveVersion: "0.31.5", layout: "single-agent" },
     });
   });
 
@@ -55,7 +55,7 @@ describe("source preflight store", () => {
     await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
       sourcePath: "/data/uploads/zip-1/source",
       commitSha: null,
-      summary: { eveVersion: "0.29.5" },
+      summary: { eveVersion: "0.31.5" },
     });
 
     const result = await store.createProjectFromSourcePreflight({

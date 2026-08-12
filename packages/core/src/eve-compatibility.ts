@@ -1,22 +1,22 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.29.x",
-      verifiedVersion: "0.29.5",
+      range: "0.31.x",
+      verifiedVersion: "0.31.3",
       dependencyName: "eve-oldest",
     },
     {
-      range: "0.30.x",
-      verifiedVersion: "0.30.8",
+      range: "0.32.x",
+      verifiedVersion: "0.32.0",
       dependencyName: "eve-middle",
     },
     {
-      range: "0.31.x",
-      verifiedVersion: "0.31.3",
+      range: "0.33.x",
+      verifiedVersion: "0.33.2",
       dependencyName: "eve",
     },
   ],
-  peerDependencyRange: ">=0.29.0 <0.32.0",
+  peerDependencyRange: ">=0.31.0 <0.34.0",
 } as const;
 
 export type SupportedEveVersionRange =

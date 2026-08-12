@@ -74,6 +74,12 @@ export function mapAgentTelemetryLifecycle(input: {
 
   switch (eventType) {
     case "session.started": {
+      // Eve <=0.32 reported the configured model in the session's runtime
+      // identity. Eve 0.33 removed it, because a dynamic-model agent has no
+      // configured model to report, and moved the id onto `step.started`
+      // instead — the point at which a concrete model is actually selected.
+      // Both sources are read so the span name and `gen_ai.request.model`
+      // survive across the whole supported window.
       const runtime = asRecord(data.runtime);
       const modelId = asString(runtime?.modelId);
       if (modelId) state.sessionModels.set(sessionId, modelId);
@@ -122,7 +128,10 @@ export function mapAgentTelemetryLifecycle(input: {
       if (!turnId || stepIndex === undefined || !stepKey || state.steps.has(stepKey)) {
         return turnKey ? state.turns.get(turnKey) : undefined;
       }
-      const modelId = state.sessionModels.get(sessionId);
+      // Eve 0.33+ carries the selected model here; see `session.started`.
+      const stepModelId = asString(data.modelId);
+      if (stepModelId) state.sessionModels.set(sessionId, stepModelId);
+      const modelId = stepModelId ?? state.sessionModels.get(sessionId);
       const span = tracer.startSpan(
         modelId ? `chat ${modelId}` : "chat",
         {

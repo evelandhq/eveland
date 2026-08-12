@@ -345,6 +345,12 @@ export async function ingestPostgresAgentEvent(
       ? sessionStatusFromEveEvent(type, node.status)
       : null;
     const runtime = type === "session.started" ? recordValue(recordValue(payload)?.runtime) : null;
+    // Eve <=0.32 put the configured model in the session's runtime identity;
+    // 0.33 moved it to `step.started`, where a concrete model is selected.
+    // Read both so `modelId` is populated across the supported window.
+    const configuredModelId =
+      stringValue(runtime?.modelId) ??
+      (type === "step.started" ? stringValue(recordValue(payload)?.modelId) : null);
     const [updatedNode] = await tx
       .update(sessionNodes)
       .set({
@@ -352,7 +358,7 @@ export async function ingestPostgresAgentEvent(
         resolutionStatus: "observed",
         agentId: stringValue(runtime?.agentId) ?? node.agentId,
         agentName: stringValue(runtime?.agentName) ?? node.agentName,
-        modelId: stringValue(runtime?.modelId) ?? node.modelId,
+        modelId: configuredModelId ?? node.modelId,
         observedModelId: observation.observedModel?.modelId ?? node.observedModelId,
         eveVersion: stringValue(runtime?.eveVersion) ?? node.eveVersion,
         updatedAt: new Date(),

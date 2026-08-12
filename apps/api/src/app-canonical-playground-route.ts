@@ -159,10 +159,11 @@ export function registerCanonicalPlaygroundRoute(input: {
       }
     };
 
-    // An Eve 0.29/0.30 deployment has no ID-addressed reset route; the stored
+    // A pre-0.31 Deployment had no ID-addressed reset route; the stored
     // continuation token is both the proof of that generation and the value its
-    // tokenless reset needs. Translating here lets the 0.31-shaped Playground
-    // client reset sessions on every supported deployment.
+    // tokenless reset needs. Every supported Eve line is now 0.31+, so this
+    // only fires for Sessions a since-upgraded Deployment created. Retire it
+    // with the `continuation_token` columns once those Sessions run out.
     const legacyResetToken =
       isReset && pathSessionId ? (platformSession?.continuationToken ?? null) : null;
     const proxyPath = legacyResetToken

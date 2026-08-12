@@ -7,14 +7,13 @@ import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@evelandh
 import ts from "typescript";
 
 /**
- * Eve 0.31 replaced the continuation-token channel operations (`send` with a
- * `continuationToken`, cross-channel `receive`) with fixed-session addressing
- * (`from(address).send`, `to(channel, target).send`). The generated dispatch
- * Channel is injected runtime code, so it must speak the generation of the
- * Release's own Eve dependency.
+ * Eve 0.33 added `turnPolicy` to the send options and made `"steer"` the
+ * default, so the generated dispatch must ask for `"queue"` to keep a schedule
+ * from cancelling a turn already running on the target session. Older lines
+ * have no such option and reject it as an excess property at Agent build time.
  */
-function usesFixedSessionGeneration(eveVersion: string): boolean {
-  return (eveMinorFromDependency(eveVersion) ?? 0) >= 31;
+function usesExplicitTurnPolicy(eveVersion: string): boolean {
+  return (eveMinorFromDependency(eveVersion) ?? 0) >= 33;
 }
 
 const reservedOriginalSchedule = "__evelandOriginalSchedule";
@@ -117,7 +116,7 @@ export async function injectSchedulerAdapter(input: {
   await mkdir(path.dirname(channelPath), { recursive: true });
   await writeFile(
     channelPath,
-    generateSchedulerChannel(definitions, usesFixedSessionGeneration(eveVersion)),
+    generateSchedulerChannel(definitions, usesExplicitTurnPolicy(eveVersion)),
   );
   return { eveVersion, channelPath: reservedChannelPath, definitions };
 }
@@ -214,53 +213,29 @@ function transformModuleSchedule(
   return { code, cron, kind: hasMarkdown ? "markdown" : "handler" };
 }
 
-// Dispatch bodies for the two Eve channel API generations. Both collect every
-// Session the authored handler started, surface the first rejection as the
-// dispatch failure, and hold the response until all handler work settles.
+// The dispatch body collects every Session the authored handler started,
+// surfaces the first rejection as the dispatch failure, and holds the response
+// until all handler work settles. `from(address)` owns session creation on this
+// channel, and the authored handler receives `to(channel, target)` whose
+// `.send` is wrapped so every started Session is collected. (Eve 0.31 replaced
+// the continuation-token operations this used to branch on; every minor in the
+// supported window now speaks fixed-session addressing.)
 //
-// Eve 0.29/0.30: the route's own `send` starts a session addressed by a
-// continuation token, and cross-channel work goes through `receive`.
-const continuationDispatchBlock = `        const sessionIds: string[] = [];
-        if (entry.kind === "markdown") {
-          const session = await send(entry.markdown, {
-            auth: scheduleAppAuth,
-            continuationToken: \`eveland-schedule:\${params.scheduleRunId}\`,
-            mode: "task",
-            title: \`Schedule · \${scheduleKey}\`,
-          });
-          sessionIds.push(session.id);
-        } else {
-          const waitUntilTasks: Promise<unknown>[] = [];
-          const receiveTasks: Promise<{ id: string }>[] = [];
-          const wrappedReceive: typeof receive = (channel, options) => {
-            const task = receive(channel, options);
-            receiveTasks.push(task);
-            return task;
-          };
-          const [runResult] = await Promise.allSettled([entry.definition.run({
-            appAuth: scheduleAppAuth,
-            receive: wrappedReceive,
-            waitUntil(task: Promise<unknown>) { waitUntilTasks.push(task); },
-          })]);
-          const settled = await Promise.allSettled([...waitUntilTasks, ...receiveTasks]);
-          for (const result of settled) {
-            if (result.status === "fulfilled" && isSession(result.value) && !sessionIds.includes(result.value.id)) {
-              sessionIds.push(result.value.id);
-            }
-          }
-          const rejected = [runResult, ...settled].find(
-            (result): result is PromiseRejectedResult => result.status === "rejected",
-          );
-          if (rejected) throw rejected.reason instanceof Error ? rejected.reason : new Error(String(rejected.reason));
-        }`;
-
-// Eve 0.31: `from(address)` owns session creation on this channel, and the
-// authored handler receives `to(channel, target)` whose `.send` is wrapped so
-// every started Session is collected.
-const fixedSessionDispatchBlock = `        const sessionIds: string[] = [];
+// `queuedTurnPolicy` is empty before Eve 0.33. Eve 0.33 changed the default
+// send policy to `"steer"`, which cancels and replaces a turn that is already
+// running on the target session. A schedule is a background actor, so it must
+// never preempt a turn a human is waiting on; the generated dispatch asks for
+// the pre-0.33 wait-for-completion behavior explicitly. The option is omitted
+// on older lines because it does not exist in their `SessionSendOptions` and
+// would fail the excess-property check when the Agent is built. An authored
+// handler still wins: its own options are spread last.
+function fixedSessionDispatchBlock(explicitTurnPolicy: boolean): string {
+  const literalTurnPolicy = explicitTurnPolicy ? `\n            turnPolicy: "queue",` : "";
+  const spreadTurnPolicy = explicitTurnPolicy ? `turnPolicy: "queue", ` : "";
+  return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
           const session = await from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
-            auth: scheduleAppAuth,
+            auth: scheduleAppAuth,${literalTurnPolicy}
             mode: "task",
             title: \`Schedule · \${scheduleKey}\`,
           });
@@ -272,7 +247,7 @@ const fixedSessionDispatchBlock = `        const sessionIds: string[] = [];
             const handle = to(channel, target);
             return {
               send(message, options) {
-                const task = handle.send(message, options);
+                const task = handle.send(message, { ${spreadTurnPolicy}...options });
                 sendTasks.push(task);
                 return task;
               },
@@ -294,10 +269,11 @@ const fixedSessionDispatchBlock = `        const sessionIds: string[] = [];
           );
           if (rejected) throw rejected.reason instanceof Error ? rejected.reason : new Error(String(rejected.reason));
         }`;
+}
 
 function generateSchedulerChannel(
   definitions: SchedulerDefinition[],
-  fixedSessionGeneration: boolean,
+  explicitTurnPolicy: boolean,
 ): string {
   const imports = definitions.map((definition, index) => {
     const exportName = definition.sourcePath.endsWith(".md")
@@ -315,10 +291,8 @@ function generateSchedulerChannel(
         : `{ kind: "handler", definition: schedule${index} }`;
     return `  ${JSON.stringify(definition.key)}: ${value},`;
   });
-  const routeArgs = fixedSessionGeneration ? "{ params, from, to }" : "{ params, receive, send }";
-  const dispatchBlock = fixedSessionGeneration
-    ? fixedSessionDispatchBlock
-    : continuationDispatchBlock;
+  const routeArgs = "{ params, from, to }";
+  const dispatchBlock = fixedSessionDispatchBlock(explicitTurnPolicy);
 
   return `${imports.length > 0 ? `${imports.join("\n")}\n` : ""}import { defineChannel, POST } from "eve/channels";
 

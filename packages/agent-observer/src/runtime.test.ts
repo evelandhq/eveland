@@ -415,6 +415,50 @@ describe("private Agent telemetry runtime", () => {
     expect(metrics.getMetrics()).toEqual([]);
   });
 
+  test("names the model span from step.started when the session identity carries no model", async () => {
+    // Eve <=0.32 reported the configured model on `session.started`'s runtime
+    // identity. Eve 0.33 removed it -- a dynamic-model Agent has no configured
+    // model to report -- and moved the id onto `step.started`, where a concrete
+    // model has actually been selected. Reading only the old source leaves the
+    // span named a bare "chat" with no `gen_ai.request.model`.
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy(),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture(
+      { type: "session.started", data: { runtime: { agentName: "reporter" } } },
+      context,
+    );
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0, modelId: "openai/gpt-5" } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "step.completed",
+        data: { turnId: "turn_1", stepIndex: 0, finishReason: "stop" },
+      },
+      context,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
+    await runtime.forceFlush();
+
+    const modelSpan = traces
+      .getFinishedSpans()
+      .find((span) => span.attributes["gen_ai.operation.name"] === "chat");
+    expect(modelSpan?.name).toBe("chat openai/gpt-5");
+    expect(modelSpan?.attributes["gen_ai.request.model"]).toBe("openai/gpt-5");
+  });
+
   test("does not synthesize a model, provider, or usage when Eve does not report them", async () => {
     const traces = new InMemorySpanExporter();
     const logs = new InMemoryLogRecordExporter();

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-export async function createFixtureEveProject(eveVersion = "0.29.5"): Promise<string> {
+export async function createFixtureEveProject(eveVersion = "0.31.5"): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-eve-"));
   await mkdir(path.join(root, "agent", "schedules"), { recursive: true });
   await writeFile(
