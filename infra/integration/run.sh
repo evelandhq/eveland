@@ -6,21 +6,32 @@ cd "$(dirname "$0")/../.."
 REPO_DIR="$(pwd)"
 VM=eveland-test
 
+# `limactl list | grep -q` is not safe here: `grep -q` exits on its first match,
+# and when another instance sorts after ours limactl can still be writing, take
+# SIGPIPE, and fail the pipeline under `pipefail`. The existence check then says
+# "no such VM", the script tries to create one that already exists, and limactl
+# exits fatal before any test runs. Capture the list first so only grep's own
+# status decides.
+vm_exists() {
+  local names
+  names="$(limactl list --format '{{.Name}}')"
+  grep -qx "$VM" <<<"$names"
+}
+
 # The guest runs imported project code and build scripts, so it must never see
 # host secrets: infra/lima/eveland.yaml mounts no host filesystem, and the
 # source tree is streamed in as an archive of tracked/non-ignored files only,
 # so .env, .git, and other ignored host state stay on the host. Guests created
 # by an older config still carry the host home mount; recreate those.
-if limactl list --format '{{.Name}}' | grep -qx "$VM" &&
-  grep -q 'location: "~"' "$HOME/.lima/$VM/lima.yaml"; then
+if vm_exists && grep -q 'location: "~"' "$HOME/.lima/$VM/lima.yaml"; then
   echo "Recreating $VM: it was created with a host home mount." >&2
   limactl delete -f "$VM"
 fi
 
-if ! limactl list --format '{{.Name}}' | grep -qx "$VM"; then
-  limactl start --name "$VM" infra/lima/eveland.yaml --tty=false
-else
+if vm_exists; then
   limactl start "$VM" || true
+else
+  limactl start --name "$VM" infra/lima/eveland.yaml --tty=false
 fi
 
 # Refresh /opt/eveland from the worktree, keeping the guest-installed

@@ -499,7 +499,7 @@ describe("evelandIdentity", () => {
       fetch: fixture.fetch,
     });
 
-    // The fallback is httpBasic rather than localDev: from Eve 0.30, localDev()
+    // The fallback is httpBasic rather than localDev: from Eve 0.32, localDev()
     // admits nothing unless the process is `eve dev`, so it could no longer
     // show that the walk continued. What matters here is that a credential
     // this AuthFn does not recognize reaches the next one and authenticates

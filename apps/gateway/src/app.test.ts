@@ -169,8 +169,8 @@ describe("Gateway", () => {
     });
     repo.getDeploymentEveVersion = vi.fn(async () => ({
       version: "0.22.6",
-      expected: "0.29.x, 0.30.x, or 0.31.x" as const,
-      supportedRanges: ["0.29.x", "0.30.x", "0.31.x"] as const,
+      expected: "0.31.x, 0.32.x, or 0.33.x" as const,
+      supportedRanges: ["0.31.x", "0.32.x", "0.33.x"] as const,
       supported: false,
       sourceRevisionId: "src_old",
     }));
@@ -201,11 +201,11 @@ describe("Gateway", () => {
       await expect(response.json()).resolves.toEqual({
         error: "Unsupported Eve version",
         detail:
-          'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.29.x, 0.30.x, or 0.31.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+          'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.31.x, 0.32.x, or 0.33.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
         eveVersion: {
           version: "0.22.6",
-          expected: "0.29.x, 0.30.x, or 0.31.x",
-          supportedRanges: ["0.29.x", "0.30.x", "0.31.x"],
+          expected: "0.31.x, 0.32.x, or 0.33.x",
+          supportedRanges: ["0.31.x", "0.32.x", "0.33.x"],
           supported: false,
           sourceRevisionId: "src_old",
         },
@@ -503,12 +503,12 @@ describe("Gateway", () => {
     });
     const headers = (await response.json()) as Record<string, string>;
 
-    // Agents on Eve 0.29 authorize on the request Host through localDev(),
-    // so a caller that could make the Agent see a loopback name would
-    // authenticate itself. Eve 0.30+ stopped reading Host, but 0.29 is still
-    // inside the supported window, and this is the Gateway's invariant
-    // either way -- the Playground reaches an Agent over loopback deliberately,
-    // and public traffic must never be able to imitate it.
+    // Eve 0.32 stopped reading the request Host in localDev(), so no Agent in
+    // the supported window still authorizes on a loopback name -- the original
+    // Host-spoof bypass is closed upstream. This stays as defense in depth
+    // because it is the Gateway's invariant either way: the Playground reaches
+    // an Agent over loopback deliberately, and public traffic must never be
+    // able to imitate it.
     const loopback = /^(localhost|127\.|\[::1\])/;
     expect(headers.host).toBe("p-alpha.agents.example.com");
     expect(headers.host).not.toMatch(loopback);
