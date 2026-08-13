@@ -48,6 +48,8 @@ const FIXTURE_SOURCE_PATH = fileURLToPath(new URL("./fixtures/agent-sandbox-e2e"
 const TEMPLATE_KEY = "e2e-template";
 const SESSION_KEY = "e2e-durable-session";
 const MARKER_CONTENT = "eveland-e2e-marker: durable-session-workspace-survives-redeploy\n";
+// Matches the fixture directory agent/skills/<name> the deployed Agent ships.
+const SKILL_NAME = "sandbox-probe";
 const INITIAL_SEED_CONTENT = "eveland-seed-preserved";
 const UPDATED_SEED_CONTENT = "eveland-seed-updated-after-sync";
 const SHARED_ENVIRONMENT_KEY = "EVELAND_E2E_SHARED_ENVIRONMENT";
@@ -238,7 +240,7 @@ async function runHttpTurnOnce(input: {
 }): Promise<HttpTurnOutcome> {
   const markerName = "http-turn-marker.txt";
   const message =
-    `Use the sandbox-probe skill, then use the bash tool to run the command ` +
+    `Use the ${SKILL_NAME} skill, then use the bash tool to run the command ` +
     `\`test "$(cat eveland-seed.txt)" = ${JSON.stringify(input.expectedSeedContent)} && ` +
     `echo http-turn-ran > ${markerName}\`.`;
 
@@ -296,7 +298,13 @@ async function runHttpTurnOnce(input: {
         try {
           const event = JSON.parse(line) as {
             type?: unknown;
-            data?: { actions?: Array<{ kind?: unknown; toolName?: unknown }> };
+            data?: {
+              actions?: Array<{
+                kind?: unknown;
+                toolName?: unknown;
+                input?: { skill?: unknown };
+              }>;
+            };
           };
           // This is a conversational (not task-mode) session: it never emits
           // `session.completed` after a turn, only `turn.completed` followed
@@ -306,10 +314,17 @@ async function runHttpTurnOnce(input: {
           if (event.type === "turn.completed" || event.type === "session.completed")
             sawCompletion = true;
           if (event.type === "turn.failed") sawFailure = true;
+          // Eve 0.34 promoted framework skill loads to their own `load-skill`
+          // action kind, which names the skill in `input.skill` and carries no
+          // `toolName`; 0.32 and 0.33 model the same load as an ordinary
+          // `tool-call` named `load_skill`. Both generations are in the
+          // supported window, so accept either shape.
           if (
             event.type === "actions.requested" &&
             event.data?.actions?.some(
-              (action) => action.kind === "tool-call" && action.toolName === "load_skill",
+              (action) =>
+                (action.kind === "load-skill" && action.input?.skill === SKILL_NAME) ||
+                (action.kind === "tool-call" && action.toolName === "load_skill"),
             )
           ) {
             sawSkillLoad = true;
@@ -336,7 +351,7 @@ async function runHttpTurnOnce(input: {
     if (!sawSkillLoad) {
       return {
         kind: "fatal",
-        detail: `turn.completed observed without a load_skill action for sandbox-probe:\n${raw}`,
+        detail: `turn.completed observed without a skill load for ${SKILL_NAME}:\n${raw}`,
       };
     }
 
