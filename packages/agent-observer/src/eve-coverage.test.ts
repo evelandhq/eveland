@@ -28,20 +28,27 @@ describe("Eve observer hook compatibility matrix", () => {
 
   test.each(compatibilityMatrix)(
     "Eve $version leaves global AI SDK telemetry integrations reachable for model capture",
-    async ({ packageName }) => {
+    async ({ packageName, version }) => {
       // model-capture.ts registers on globalThis.AI_SDK_TELEMETRY_INTEGRATIONS,
-      // which the AI SDK only consults when a call passes no per-call
-      // `integrations`. Eve passes them solely when authored instrumentation
-      // defines AI SDK hooks; every other call must keep `integrations`
-      // undefined. If either pinned expression changes shape in a new Eve
-      // line, re-verify model-capture.ts against it before bumping the matrix.
+      // which the AI SDK consults only when a call passes no per-call
+      // `integrations`: a per-call list REPLACES the global registrations
+      // rather than adding to them. Two generations sit in the window. Through
+      // 0.33 Eve passed a per-call list solely when authored instrumentation
+      // defined AI SDK hooks, so every other call left `integrations` undefined
+      // and the global registration was reached. From 0.34 Eve spreads the
+      // global registrations into the per-call list itself, which additionally
+      // closes the gap on the calls that did pass one. If either pinned
+      // expression changes shape in a new Eve line, re-verify model-capture.ts
+      // against it before bumping the matrix.
       const evePackageDir = await realpath(evePackage(packageName));
       const toolLoop = await readFile(
         path.join(evePackageDir, "dist/src/harness/tool-loop.js"),
         "utf8",
       );
       expect(toolLoop).toContain(
-        "integrations:r===void 0?void 0:e===void 0?[r]:[r,createOtelIntegration()]",
+        Number(version.split(".")[1]) >= 34
+          ? "integrations:r===void 0?void 0:[r,...getRegisteredTelemetryIntegrations()]"
+          : "integrations:r===void 0?void 0:e===void 0?[r]:[r,createOtelIntegration()]",
       );
 
       const aiDist = await readFile(path.join(evePackageDir, "../ai/dist/index.js"), "utf8");

@@ -490,7 +490,7 @@ Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使�
 
 - 拉取或解压源码
 - 检查是否为合法 Eve 项目
-- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.31.x、0.32.x 或 0.33.x
+- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.32.x、0.33.x 或 0.34.x
 - 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
   `capabilities.eveChat`
 - 创建 Source Revision
@@ -526,9 +526,9 @@ Project 页面展示最近 Git import job 的 queued/running/failed 状态，在
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 
 Eveland 在 Eve 达到稳定产品兼容承诺前，支持“最新一个已经完成验证的 minor 与其前两个
-minor”的三版本滑动窗口；当前窗口是 0.31.x、0.32.x 与 0.33.x。允许精确的 0.31/0.32/0.33
-patch、锚定在对应 minor patch 上的 `~`/`^` range，以及 `0.31` / `0.31.x` / `0.31.*`、
-`0.32` / `0.32.x` / `0.32.*`、`0.33` / `0.33.x` / `0.33.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
+minor”的三版本滑动窗口；当前窗口是 0.32.x、0.33.x 与 0.34.x。允许精确的 0.32/0.33/0.34
+patch、锚定在对应 minor patch 上的 `~`/`^` range，以及 `0.32` / `0.32.x` / `0.32.*`、
+`0.33` / `0.33.x` / `0.33.*`、`0.34` / `0.34.x` / `0.34.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
 Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、reset 和 stream 请求，不能通过已有的
@@ -536,7 +536,7 @@ Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、res
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
 无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
-UI 仅将当前最新支持线 0.33.x 标为绿色；仍受支持但较旧的 0.31.x/0.32.x 使用红色状态与
+UI 仅将当前最新支持线 0.34.x 标为绿色；仍受支持但较旧的 0.32.x/0.33.x 使用红色状态与
 “尽快升级”提醒，但不阻断运行。窗口外或无法识别的版本同样使用红色状态，并继续阻断操作。
 
 用户随后确认自动猜测的项目名称并点击 `Deploy`。Project 与初始 import job 在同一数据库
@@ -622,7 +622,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 
 - `local-dev`：不发送 credential，并且用 loopback Host 调用 Agent。**它对当前窗口内的
   任何 Agent 都不再构成认证**——`localDev()` 从 Eve 0.30 起只看进程是否 `eve dev`，
-  而 Agent 在 Eveland 上以 `eve start` 运行，因此不放行任何请求。窗口下限已是 0.31，
+  而 Agent 在 Eveland 上以 `eve start` 运行，因此不放行任何请求。窗口下限已是 0.32，
   该方法只剩历史含义；这类项目必须改用 `eveland-identity` 或 Agent 自有的 AuthFn。
   Gateway“绝不为公网流量把 Host 改写成 loopback”的不变量与本条无关，且必须保留；
 - `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
@@ -707,7 +707,7 @@ Playground 中可查看当前 Session 的：
 - HITL：确认/拒绝、选项、自由文本和外部授权提示
 - 当前 turn 的图片、PDF、文本和代码附件
 
-Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.31.x、0.32.x 与 0.33.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
+Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.32.x、0.33.x 与 0.34.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
 Eve 0.27.7+ Client 可以通过 `follow: false` 做有界 Catch-up Read：请求使用
 `includeTailIndex=1`，Agent 返回 `x-eve-stream-tail-index`。Web rewrite、API Playground proxy、
 内部与公开 Gateway 必须原样保留该 query、响应 header 与 NDJSON body；只有 Client 与目标 Agent
