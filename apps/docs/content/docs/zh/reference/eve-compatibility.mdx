@@ -3,21 +3,23 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.31.x`、`0.32.x` 与 `0.33.x`，验证版本为 `0.31.3`、`0.32.0` 与 `0.33.2`。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.32.x`、`0.33.x` 与 `0.34.x`，验证版本为 `0.32.0`、`0.33.3` 与 `0.34.0`。
 
-UI 仅将最新支持线 `0.33.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
+UI 仅将最新支持线 `0.34.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
 窗口此前依赖 Eve 0.27 的能力现在都是基线：通过 `POST /eve/v1/session/reset` 的 Durable Session Reset、通过 `session.stream({ follow: false })` 与 `x-eve-stream-tail-index` Header 的有界 Catch-up Read、符合标准的 Route Auth Challenge，以及默认关闭的 Remote Principal Forwarding。Eveland 在公开路径与 Playground 路径都原样保留这些 Query、Header 与无缓冲 NDJSON Body，且从不替 Agent 开启信任、重写 Principal 或转发 Credential。Eve 0.27.3 及以后要求 AI SDK `ai@^7.0.34`，若项目单独钉死了更旧的 AI SDK，应一并升级。
 
 Eve 0.30 的行为同样已成为窗口基线：`localDev()` 改为看进程而非请求 Host，在 `eve start` 下不再放行任何请求——Eveland 上的 Agent 必须改用 `evelandIdentity()`、`httpBasic()` 或 OIDC，需要改什么见[将 Agent 迁移到 Eve 0.30](/docs/agents/migrate-eve-0-30)。Durable Cancellation Hook 现在是命令收件箱 `eve:session:{sessionId}:inbox`；手工 resume 旧 `{sessionId}:cancel` token 的 Agent 代码会**静默失效**。走 HTTP `POST /eve/v1/session/:id/cancel` 的不受影响——该 Route 与响应 Schema 均未变，Eveland 自己用的就是它。
 
-Eve 0.31 的固定 Session 寻址是整个窗口的基线：Session 只按 ID 寻址，TypeScript Client 用 `client.sessions.create(input)` 与 `client.sessions.attach(sessionId)`，Channel Route 拿到 `from(address)`、`to(channel, target)` 与 `attachSession(sessionId)`，Schedule Handler 用 `to(channel, target).send(message, { auth })`。Clear、Compact 与 Reset 位于 `POST /eve/v1/session/:sessionId/{clear,compact,reset}`。已接受的异步操作回答 HTTP `202`；对非活跃 Session 的后续请求回答 HTTP `409` 与 `code: "session_not_active"`。
+Eve 0.31 的行为同样已成为窗口基线：Session 只按固定 ID 寻址——Session 只按 ID 寻址，TypeScript Client 用 `client.sessions.create(input)` 与 `client.sessions.attach(sessionId)`，Channel Route 拿到 `from(address)`、`to(channel, target)` 与 `attachSession(sessionId)`，Schedule Handler 用 `to(channel, target).send(message, { auth })`。Clear、Compact 与 Reset 位于 `POST /eve/v1/session/:sessionId/{clear,compact,reset}`。已接受的异步操作回答 HTTP `202`；对非活跃 Session 的后续请求回答 HTTP `409` 与 `code: "session_not_active"`。
 
-**Eve 0.32 要求自定义 Sandbox Backend Handle 实现 `stop()`。** 只实现了 `captureState()` 与 `shutdown()` 的 Backend 在旧类型下仍能编译，但当 Hook、Tool 或 Channel Callback 第一次调用 `ctx.getSandbox().stop()` 时会在运行期抛错。与 `shutdown()` 不同，`stop()` 必须保留 Durable Session，让之后的 Callback 能重新打开它。Eveland 自己的 `@evelandhq/sandbox-bwrap` 从 `0.1.1` 起已实现。Eve 0.32 还把 Tool Approval 的否定响应从 `deny` 改名为 `cancel`，并把交互式 Connection 授权回调绑定到具体的 Attempt（`/eve/v1/connections/:name/callback/:attemptId/:token`）。
+Eve 0.32 的 Sandbox 契约是整个窗口的基线：自定义 Sandbox Backend Handle 必须实现 `stop()`。只实现了 `captureState()` 与 `shutdown()` 的 Backend 在旧类型下仍能编译，但当 Hook、Tool 或 Channel Callback 第一次调用 `ctx.getSandbox().stop()` 时会在运行期抛错。与 `shutdown()` 不同，`stop()` 必须保留 Durable Session，让之后的 Callback 能重新打开它。Eveland 自己的 `@evelandhq/sandbox-bwrap` 从 `0.1.1` 起已实现。Eve 0.32 还把 Tool Approval 的否定响应从 `deny` 改名为 `cancel`，并把交互式 Connection 授权回调绑定到具体的 Attempt（`/eve/v1/connections/:name/callback/:attemptId/:token`）。
 
 **Eve 0.33 把 Channel 消息发送的默认策略改成了 `turnPolicy: "steer"`。** 在有 Turn 正在运行时到达的消息，现在会取消并替换该 Turn，而不再等它跑完。在 Channel 上或单次发送上设置 `turnPolicy: "queue"` 可保持原有行为——Eveland 注入的 Scheduler Adapter 正是这么做的，因此 Schedule 不会抢占用户正在等待的 Turn。Eve 0.33 还移除了 Dynamic Model 与 Dynamic Subagent 的编译期 fallback：`defineDynamic` 只接受 `events`，Dynamic Model Handler 必须返回具体选择，Dynamic Subagent 必须指定静态 Model。配置的 Model id 也从 `session.started` 的 Runtime Identity 移到了每个 `step.started` 事件上。
 
-对于当前最新支持线，即使 `^0.33.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.33.2`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
+**Eve 0.34 默认会把 Human-in-the-loop 提问贴进 GitHub 讨论串。** 使用 `githubChannel` 的 Agent 现在会把待回答的 Input Request 写成 Issue 或 Pull Request 评论，供人在那里直接回答；不需要额外改动，但这些评论是新出现且对外可见的。Eve 0.34 还允许 Tool 或 Connection 把 `approval` 声明为 `{ request, response }` 而不只是一个函数——Response Policy 可以校验回应者身份并返回带标签的允许或拒绝决定——原有的函数简写继续有效。实验性的 `agent/instrumentation/` Provider 目录随 `experimental.instrumentationProviders` 开关提供；它与单文件 `agent/instrumentation.ts` **互斥**，开启其一会让另一种布局变成构建错误。`defineInstrumentation` 不再在 `tsc` 阶段拒绝未知键，拼错的选项要到 `eve build` 才会暴露。
+
+对于当前最新支持线，即使 `^0.34.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.34.0`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
 
 仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；进入时会有意识地移除较旧 Minor。
 
