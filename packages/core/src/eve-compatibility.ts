@@ -76,6 +76,18 @@ export function unsupportedEveVersionMessage(specifier: string | null): string {
   return `Unsupported Eve dependency "${specifier}". Eveland requires Eve ${SUPPORTED_EVE_VERSION_RANGE}. Upgrade the project's "eve" dependency before importing or deploying.`;
 }
 
+/**
+ * Recognizes an {@link unsupportedEveVersionMessage} that has crossed a process
+ * boundary as plain text -- the worker records it on
+ * `runtime_instances.last_error` and the activation route reads it back, so the
+ * typed throw is long gone by the time a status code has to be chosen. A
+ * version gate cannot pass on a retry, so callers answer with a terminal status
+ * rather than a retryable one.
+ */
+export function isUnsupportedEveVersionMessage(message: string): boolean {
+  return /^(?:Unsupported|Missing) Eve dependency\b/.test(message);
+}
+
 export function createEveVersionInfo(
   version: string | null,
   sourceRevisionId: string | null,
