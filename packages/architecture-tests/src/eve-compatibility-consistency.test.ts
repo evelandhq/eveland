@@ -19,6 +19,10 @@ function normalizedWhitespace(value: string): string {
 }
 
 describe("Eve compatibility repository contract", () => {
+  test("pins the latest verified Eve patch reviewed for this release", () => {
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.37.1");
+  });
+
   test("publishes a browser-safe compatibility policy subpath", () => {
     const corePackage = JSON.parse(repositoryFile("packages/core/package.json")) as {
       exports?: Record<string, string>;
