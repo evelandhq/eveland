@@ -1,5 +1,6 @@
 import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
 import type { ActivationLeaseClaim } from "@evelandhq/core/contracts";
+import { isUnsupportedEveVersionMessage } from "@evelandhq/core/eve-compatibility";
 import {
   resolveSchedulerDispatchSecret,
   resolveSchedulerRuntimeSecret,
@@ -142,6 +143,13 @@ export function registerInternalRoutes(input: {
         });
       }
       const message = error instanceof Error ? error.message : String(error);
+      // The Eve version gate runs on every launch, so a deployment built under a
+      // compatibility window that has since slid fails here forever. 503 reads as
+      // "try again" to the workflow dispatcher, which burned three attempts and
+      // three doomed runtime-instance generations per message before
+      // dead-lettering. 409 is the terminal status it already understands, and
+      // matches what the gateway returns for the same condition.
+      if (isUnsupportedEveVersionMessage(message)) return c.json({ error: message }, 409);
       return c.json({ error: message }, message.includes("timed out") ? 504 : 503);
     }
   });

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { createEveVersionInfo, inspectEveProject, isSupportedEveDependency } from "./source.js";
+import {
+  createEveVersionInfo,
+  inspectEveProject,
+  isSupportedEveDependency,
+  isUnsupportedEveVersionMessage,
+  unsupportedEveVersionMessage,
+} from "./source.js";
 
 describe("inspectEveProject", () => {
   test("recognizes nested eve agent layout and summarizes authored slots", () => {
@@ -158,6 +164,19 @@ describe("inspectEveProject", () => {
       "latest",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(false);
+    }
+  });
+
+  test("recognizes its own gate message after it has been reduced to plain text", () => {
+    for (const specifier of ["0.31.1", "^0.31.0", null]) {
+      expect(isUnsupportedEveVersionMessage(unsupportedEveVersionMessage(specifier))).toBe(true);
+    }
+    for (const message of [
+      "Runtime activation timed out after 30000ms.",
+      "Deployment is still draining.",
+      "RuntimeInstance disappeared during activation.",
+    ]) {
+      expect(isUnsupportedEveVersionMessage(message)).toBe(false);
     }
   });
 

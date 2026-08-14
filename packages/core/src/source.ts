@@ -9,6 +9,7 @@ function posixBasename(filePath: string): string {
 export {
   createEveVersionInfo,
   isSupportedEveDependency,
+  isUnsupportedEveVersionMessage,
   SUPPORTED_EVE_VERSION_RANGE,
   SUPPORTED_EVE_VERSION_RANGES,
   unsupportedEveVersionMessage,

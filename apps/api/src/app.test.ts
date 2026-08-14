@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createBuildInfo } from "@evelandhq/core/build-info";
 import { createScheduleDispatchCredential } from "@evelandhq/core/server/scheduler-dispatch";
+import { unsupportedEveVersionMessage } from "@evelandhq/core/eve-compatibility";
 import { createApp } from "./app.js";
 import { createTestStore } from "@evelandhq/db/vitest";
 
@@ -84,6 +85,65 @@ describe("api app", () => {
     });
     expect(release.status).toBe(204);
     await expect(store.getActivationLease(body.lease.id)).resolves.toMatchObject({
+      releasedAt: expect.any(String),
+    });
+  });
+
+  test("answers a launch blocked by the Eve version gate with a terminal 409", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Stale Eve Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/stale-eve-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:stale-eve",
+      containerName: "fixture-stale-eve",
+      internalPort: 3000,
+      hostPort: 41993,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    let gatedLeaseId: string | null = null;
+    const app = createApp(store, {
+      gatewayServiceToken: "gateway-service-token",
+      // The worker records the gate failure on the runtime instance and
+      // waitForRuntimeActivation rethrows it as a bare message, which is exactly
+      // what the waiter stands in for here.
+      runtimeActivationWaiter: async (claim) => {
+        gatedLeaseId = claim.lease.id;
+        throw new Error(unsupportedEveVersionMessage("0.31.1"));
+      },
+    });
+
+    const activation = await app.request("/internal/runtime/activations", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer gateway-service-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        deploymentId: deployment.id,
+        kind: "workflow_step",
+        ownerId: "workflow-dispatcher:msg_stale_eve",
+      }),
+    });
+
+    expect(activation.status).toBe(409);
+    await expect(activation.json()).resolves.toEqual({
+      error: unsupportedEveVersionMessage("0.31.1"),
+    });
+    expect(gatedLeaseId).not.toBeNull();
+    await expect(store.getActivationLease(gatedLeaseId!)).resolves.toMatchObject({
       releasedAt: expect.any(String),
     });
   });
