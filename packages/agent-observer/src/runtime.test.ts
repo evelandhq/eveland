@@ -803,6 +803,75 @@ describe("private Agent telemetry runtime", () => {
     ]);
   });
 
+  test("keeps a background subagent span open until the child session terminates", async () => {
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const parentContext = hookContext();
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
+    await runtime.capture(
+      {
+        type: "subagent.called",
+        data: {
+          callId: "call_background",
+          childSessionId: "eve_child",
+          name: "Background researcher",
+          turnId: "turn_1",
+        },
+      },
+      parentContext,
+    );
+    await runtime.capture(
+      {
+        type: "subagent.completed",
+        data: {
+          backgroundTask: { status: "working", taskId: "task_123" },
+          callId: "call_background",
+          output: '{"status":"working","taskId":"task_123"}',
+          subagentName: "Background researcher",
+        },
+      },
+      parentContext,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, parentContext);
+    await runtime.forceFlush();
+
+    expect(traces.getFinishedSpans().map((span) => span.name)).not.toContain(
+      "invoke_agent Background researcher",
+    );
+
+    await runtime.capture(
+      { type: "session.completed", data: {} },
+      {
+        session: {
+          id: "eve_child",
+          parent: { sessionId: "eve_session_1", callId: "call_background" },
+        },
+        agent: { name: "Background researcher", nodeId: "root/background-researcher" },
+        channel: { kind: "http" },
+      },
+    );
+    await runtime.forceFlush();
+
+    const subagentSpan = traces
+      .getFinishedSpans()
+      .find((span) => span.name === "invoke_agent Background researcher");
+    expect(subagentSpan?.attributes).toMatchObject({
+      "gen_ai.tool.call.id": "call_background",
+      "eveland.eve.background_task.id": "task_123",
+      "eveland.eve.background_task.status": "working",
+    });
+    expect(subagentSpan?.attributes).not.toHaveProperty("gen_ai.output.messages");
+  });
+
   test("keeps reasoning out of spans when outputs are not recorded", async () => {
     const traces = new InMemorySpanExporter();
     const runtime = createPrivateAgentTelemetryRuntime({
