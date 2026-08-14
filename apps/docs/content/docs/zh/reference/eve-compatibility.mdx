@@ -3,7 +3,7 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 通常支持最近三个经过完整验证的 Eve Minor Line。由于 Eve 0.35–0.37 在同一轮兼容审查中连续发布，当前版本临时保留第四条重叠线，而不立即淘汰 0.34。代码中的产品契约支持 `0.34.x`、`0.35.x`、`0.36.x` 与 `0.37.x`，验证版本为 `0.34.0`、`0.35.0`、`0.36.0` 与 `0.37.0`。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 通常支持最近三个经过完整验证的 Eve Minor Line。由于 Eve 0.35–0.37 在同一轮兼容审查中连续发布，当前版本临时保留第四条重叠线，而不立即淘汰 0.34。代码中的产品契约支持 `0.34.x`、`0.35.x`、`0.36.x` 与 `0.37.x`，验证版本为 `0.34.0`、`0.35.0`、`0.36.0` 与 `0.37.1`。
 
 UI 仅将最新支持线 `0.37.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
@@ -25,7 +25,9 @@ Eve 0.32 的 Sandbox 契约是整个窗口的基线：自定义 Sandbox Backend 
 
 **Eve 0.37 增加 Vercel Sandbox Drives，并调整本地创作 CLI。** Eveland 仍会用受管 bwrap backend 替换项目声明的 Sandbox Backend，同时保留 Workspace Seed，因此 Eveland Deployment 不暴露 Vercel Drive Mount。`eve init`/`eve dev` 的变化只影响本地创作，不改变平台明确执行的 Build/Start 命令。
 
-对于当前最新支持线，即使 `^0.37.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.37.0`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
+**Eve 0.37.1 增加 Durable Background Work 与 Invocation Channel。** 当 `subagent.completed` 携带 `backgroundTask: { status: "working" }` 时，它只是后台任务回执，不是 Child 的终态；Consumer 必须继续跟随 Child Stream。Remote Child Stream 可以经 Parent 的 `GET /eve/v1/session/:parentSessionId/subagents/:callId/:childSessionId/stream` 路由读取。已认证 Caller 可用 `operationId` 实现 Session Create-once；Remote Task Input 通过 `POST /eve/v1/task-input/:token` 返回；`mcpChannel()` 提供 Durable `agent_start`、`agent_get`、`agent_update` 与 `agent_cancel` 工具。Eveland 会让 Child-stream Proxy 继续使用 Parent SessionBinding，并让 Create-once 与 Invocation Traffic 在加权发布、Promote/Rollback 与 Cold Activation 期间保持 Durable Deployment Routing。Eve 0.37.1 还修复了 `eve init` 的 Package Manager Detection、CommonJS Native Module 动态加载、Vercel Auth-stream 错误处理，以及多处 Task/Authorization 清理竞态。
+
+对于当前最新支持线，即使 `^0.37.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.37.1`。自定义 NDJSON Consumer 必须忽略空行，也不得把 Background-task Receipt 当作终态；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
 
 仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；通常会有意识地移除最旧 Minor。当前四版本重叠是显式的临时例外，之后会通过分阶段兼容变更缩回三条线。
 

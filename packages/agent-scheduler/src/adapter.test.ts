@@ -221,7 +221,9 @@ Produce the daily report.
       expect(await readChannel(eveVersion), eveVersion).toContain("turnPolicy");
     }
 
-    const current = await readChannel("0.37.0");
+    const current = await readChannel(
+      EVE_COMPATIBILITY_POLICY.supportedLines.at(-1)!.verifiedVersion,
+    );
     // Both send sites: the markdown dispatch and the wrapper around the
     // authored handler's own `to(...).send`, where the author still wins
     // because their options are spread last.
