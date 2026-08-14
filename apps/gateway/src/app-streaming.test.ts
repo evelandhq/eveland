@@ -84,6 +84,72 @@ describe("Gateway", () => {
     await expect(response.text()).resolves.toContain("session.waiting");
   });
 
+  test("pins Eve 0.37.1 parent-origin subagent streams to the parent deployment", async () => {
+    const first = await startUpstream((_request, response) => response.end("wrong deployment"));
+    let upstreamPath: string | undefined;
+    const second = await startUpstream((request, response) => {
+      upstreamPath = request.url;
+      response.writeHead(200, {
+        "content-type": "application/x-ndjson",
+        "x-eve-stream-format": "ndjson",
+      });
+      response.end('{"type":"session.waiting"}\n');
+    });
+    const weighted = route({
+      targets: [
+        {
+          routeId: "route_project",
+          deploymentId: "dep_a",
+          weight: 10_000,
+          variantName: "current",
+          hostPort: first.port,
+          status: "running",
+        },
+        {
+          routeId: "route_project",
+          deploymentId: "dep_b",
+          weight: 0,
+          variantName: "parent-owner",
+          hostPort: second.port,
+          status: "running",
+        },
+      ],
+    });
+    const repo = repository([weighted]);
+    repo.bindings.push({
+      id: "bind_parent",
+      projectId: "proj_1",
+      eveSessionId: "eve_parent",
+      continuationToken: null,
+      routeId: "route_project",
+      deploymentId: "dep_b",
+      trigger: "api",
+      variantName: "parent-owner",
+      experimentId: "route_project:r1",
+      requestId: "request_parent",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-08-14T00:00:00.000Z",
+      updatedAt: "2026-08-14T00:00:00.000Z",
+    });
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
+
+    const response = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session/eve_parent/subagents/call_1/eve_child/stream?startIndex=4",
+      { headers: { host: "p-alpha.agent.localhost" } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamPath).toBe(
+      "/eve/v1/session/eve_parent/subagents/call_1/eve_child/stream?startIndex=4",
+    );
+    await expect(response.text()).resolves.toContain("session.waiting");
+  });
+
   test("passes through a custom channel method, query, headers, and body", async () => {
     const upstream = await startUpstream((request, response) => {
       const chunks: Buffer[] = [];

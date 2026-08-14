@@ -13,6 +13,49 @@ import {
 registerGatewayTestCleanup();
 
 describe("Gateway", () => {
+  test("proxies Eve 0.37.1 parent-origin subagent streams through Playground", async () => {
+    let upstreamPath: string | undefined;
+    const upstream = await startUpstream((request, response) => {
+      upstreamPath = request.url;
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end('{"type":"session.waiting"}\n');
+    });
+    const repo = repository([route({ hostPort: upstream.port })]);
+    repo.bindings.push({
+      id: "bind_playground_parent",
+      projectId: "proj_1",
+      eveSessionId: "eve_parent",
+      continuationToken: null,
+      routeId: "route_project",
+      deploymentId: "dep_1",
+      trigger: "playground",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_playground_parent",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-08-14T00:00:00.000Z",
+      updatedAt: "2026-08-14T00:00:00.000Z",
+    });
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+    });
+
+    const response = await app.request(
+      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_parent/subagents/call_1/eve_child/stream?startIndex=2",
+      { headers: { authorization: "Bearer service-secret" } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamPath).toBe(
+      "/eve/v1/session/eve_parent/subagents/call_1/eve_child/stream?startIndex=2",
+    );
+    await expect(response.text()).resolves.toContain("session.waiting");
+  });
+
   test("returns 410 instead of waking an expired Playground SessionBinding", async () => {
     const repo = repository([route({ deploymentStatus: "stopped" })]);
     repo.bindings.push({
