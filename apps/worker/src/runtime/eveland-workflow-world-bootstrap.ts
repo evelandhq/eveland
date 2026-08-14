@@ -4,6 +4,35 @@ import {
   runMigrations,
 } from "@evelandhq/workflow-world/migrate";
 import { Pool } from "pg";
+import { resolveWorkflowWorldPlatformUrl } from "./eveland-workflow-world-url.js";
+
+export type EvelandWorkflowWorldBootstrapDeps = {
+  createPool: (connectionString: string) => Pool;
+  runMigrations: typeof runMigrations;
+};
+
+const defaultBootstrapDeps: EvelandWorkflowWorldBootstrapDeps = {
+  createPool: (connectionString) => new Pool({ connectionString, max: 1 }),
+  runMigrations,
+};
+
+/** Apply shared-World migrations once at worker startup, before retention runs. */
+export async function bootstrapEvelandWorkflowWorld(
+  env: NodeJS.ProcessEnv,
+  overrides: Partial<EvelandWorkflowWorldBootstrapDeps> = {},
+): Promise<boolean> {
+  const worldUrl = resolveWorkflowWorldPlatformUrl(env);
+  if (!worldUrl) return false;
+
+  const deps = { ...defaultBootstrapDeps, ...overrides };
+  const pool = deps.createPool(worldUrl);
+  try {
+    await deps.runMigrations(pool);
+    return true;
+  } finally {
+    await pool.end().catch(() => {});
+  }
+}
 
 /**
  * Provisioning for the platform workflow world (`@evelandhq/workflow-world`).
