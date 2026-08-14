@@ -149,6 +149,28 @@ export function classifyEveSessionRequest(
     return { kind: "reset", sessionId: null };
   }
 
+  // Eve 0.37.1 lets a caller follow a remote child's stream through the
+  // parent Agent that owns the subagent call. Routing is therefore pinned by
+  // the parent session, while transport semantics stay identical to the
+  // canonical session stream (activation kind, idle timeout, and heartbeat).
+  const subagentStream = /^\/eve\/v1\/session\/([^/]+)\/subagents\/([^/]+)\/([^/]+)\/stream$/.exec(
+    pathname,
+  );
+  if (subagentStream) {
+    if (method !== "GET") return null;
+    try {
+      const parentSessionId = decodeURIComponent(subagentStream[1]!);
+      // Validate every encoded identity even though the Gateway only needs
+      // the parent for binding lookup; malformed call/child segments must not
+      // be admitted into Eve's reserved session namespace.
+      decodeURIComponent(subagentStream[2]!);
+      decodeURIComponent(subagentStream[3]!);
+      return { kind: "stream", sessionId: parentSessionId };
+    } catch {
+      return null;
+    }
+  }
+
   const match = /^\/eve\/v1\/session\/([^/]+)(?:\/(cancel|stream|clear|compact|reset))?$/.exec(
     pathname,
   );

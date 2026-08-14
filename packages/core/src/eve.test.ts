@@ -106,6 +106,12 @@ describe("Eve session request classification", () => {
       kind: "stream",
       sessionId: "eve_1",
     });
+    expect(
+      classify("GET", "/eve/v1/session/eve%2Fparent/subagents/call%2F1/eve%2Fchild/stream"),
+    ).toEqual({
+      kind: "stream",
+      sessionId: "eve/parent",
+    });
     // Eve 0.33 moved clear/compact/reset onto ID-addressed control routes.
     expect(classify("POST", "/eve/v1/session/eve_1/clear")).toEqual({
       kind: "clear",
@@ -133,6 +139,13 @@ describe("Eve session request classification", () => {
     expect(classify("GET", "/eve/v1/session/eve_1/reset")).toBeNull();
     expect(classify("GET", "/eve/v1/session/eve_1/stream?startIndex=1")).toBeNull();
     expect(classify("POST", "/eve/v1/session/eve_1/unknown")).toBeNull();
+    expect(
+      classify("POST", "/eve/v1/session/eve_parent/subagents/call_1/eve_child/stream"),
+    ).toBeNull();
+    expect(classify("GET", "/eve/v1/session/eve_parent/subagents/call_1/stream")).toBeNull();
+    expect(
+      classify("GET", "/eve/v1/session/eve_parent/subagents/%E0%A4%A/eve_child/stream"),
+    ).toBeNull();
     expect(classify("POST", "/eve/v1/session/%E0%A4%A")).toBeNull();
     expect(classify("POST", "/other")).toBeNull();
 
