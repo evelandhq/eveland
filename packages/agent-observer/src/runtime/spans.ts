@@ -19,6 +19,8 @@ export type AgentSpanState = {
   stepStartedAt: Map<string, number>;
   actions: Map<string, Span>;
   subagents: Map<string, Span>;
+  /** Parent invocation spans whose child returned a still-working task receipt. */
+  backgroundSubagents: Set<string>;
 };
 
 export type AgentTelemetryRuntimeState = AgentSpanState & TranscriptState;
@@ -32,6 +34,7 @@ export function createAgentTelemetryRuntimeState(): AgentTelemetryRuntimeState {
     stepStartedAt: new Map(),
     actions: new Map(),
     subagents: new Map(),
+    backgroundSubagents: new Set(),
     ...createTranscriptState(),
   };
 }
@@ -74,6 +77,7 @@ export function endAllAgentTelemetrySpans(state: AgentTelemetryRuntimeState): vo
   }
   state.stepStartedAt.clear();
   state.turnStartedAt.clear();
+  state.backgroundSubagents.clear();
   clearTranscriptState(state);
 }
 
@@ -91,12 +95,15 @@ export function endTurnChildren(
   }
   forgetTurn(state, turnKey);
   const sessionPrefix = `${sessionId}\0`;
-  for (const spans of [state.actions, state.subagents]) {
-    for (const [key, span] of spans) {
-      if (!key.startsWith(sessionPrefix)) continue;
-      span.end();
-      spans.delete(key);
-    }
+  for (const [key, span] of state.actions) {
+    if (!key.startsWith(sessionPrefix)) continue;
+    span.end();
+    state.actions.delete(key);
+  }
+  for (const [key, span] of state.subagents) {
+    if (!key.startsWith(sessionPrefix) || state.backgroundSubagents.has(key)) continue;
+    span.end();
+    state.subagents.delete(key);
   }
   forgetSessionActions(state, sessionPrefix);
 }
@@ -120,6 +127,9 @@ export function endSessionSpans(
     for (const key of startedAt.keys()) {
       if (key.startsWith(prefix)) startedAt.delete(key);
     }
+  }
+  for (const key of state.backgroundSubagents) {
+    if (key.startsWith(prefix)) state.backgroundSubagents.delete(key);
   }
   forgetSession(state, prefix);
 }
