@@ -21,6 +21,7 @@ import type {
   SourceRevision,
   AgentRoute,
   SessionBinding,
+  OperationBinding,
   ProjectSchedule,
   ScheduleVersion,
   ProjectSchedulerTarget,
@@ -716,6 +717,26 @@ export function sessionBindingRowToSessionBinding(row: {
     ...row,
     trigger: row.trigger as SessionBinding["trigger"],
     affinitySource: row.affinitySource as SessionBinding["affinitySource"],
+    createdAt: timestampToIso(row.createdAt),
+    updatedAt: timestampToIso(row.updatedAt),
+  };
+}
+
+export function operationBindingRowToOperationBinding(row: {
+  id: string;
+  projectId: string;
+  operationKey: string;
+  routeId: string;
+  deploymentId: string;
+  trigger: string;
+  variantName: string | null;
+  experimentId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): OperationBinding {
+  return {
+    ...row,
+    trigger: row.trigger as OperationBinding["trigger"],
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };

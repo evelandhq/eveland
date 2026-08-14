@@ -42,8 +42,23 @@ export type PlaygroundAttachmentLimits = {
 };
 
 export type EveSessionRequest = {
-  kind: "initial" | "continuation" | "cancel" | "reset" | "stream" | "clear" | "compact";
+  kind:
+    | "initial"
+    | "continuation"
+    | "cancel"
+    | "reset"
+    | "stream"
+    | "clear"
+    | "compact"
+    | "task_input"
+    | "mcp_start"
+    | "mcp_invocation";
   sessionId: string | null;
+};
+
+export type EveTaskInputRequest = {
+  kind: "task_input";
+  token: string;
 };
 
 const defaultPlaygroundAttachmentLimits: PlaygroundAttachmentLimits = {
@@ -171,6 +186,24 @@ export function classifyEveSessionRequest(
 
 export function isEveSessionNamespace(pathname: string): boolean {
   return pathname === "/eve/v1/session" || pathname.startsWith("/eve/v1/session/");
+}
+
+export function classifyEveTaskInputRequest(
+  method: string,
+  pathname: string,
+): EveTaskInputRequest | null {
+  if (method !== "POST") return null;
+  const match = /^\/eve\/v1\/task-input\/([^/]+)$/.exec(pathname);
+  if (!match?.[1]) return null;
+  try {
+    return { kind: "task_input", token: decodeURIComponent(match[1]) };
+  } catch {
+    return null;
+  }
+}
+
+export function isEveTaskInputNamespace(pathname: string): boolean {
+  return pathname === "/eve/v1/task-input" || pathname.startsWith("/eve/v1/task-input/");
 }
 
 /**

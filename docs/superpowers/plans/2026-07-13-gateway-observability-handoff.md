@@ -1555,3 +1555,27 @@ restart、cold activation、Playground、Gateway 与 scheduler adapter 继续共
 - 0.37 的 Vercel Sandbox Drives 不穿过 Eveland runtime boundary。Release preparation 继续用
   受管 bwrap backend 替换 authored backend 并只保留 workspace seeds；`eve init`/`eve dev` 的
   authoring-time 变化不改变 Worker 明确执行的 build/start 路径。
+
+---
+
+## 37. 2026-08-14 follow-up：Eve 0.37.1 durable Gateway routes
+
+Eve 0.37.1 新增 create-once `operationId`、durable MCP invocation 与 task-input callback。
+Gateway 的落地边界如下：
+
+- initial create 的 `operationId` 只以 `EVELAND_GATEWAY_AFFINITY_SECRET` HMAC 后写入
+  project-scoped `OperationBinding`；数据库不保存 raw ID。唯一索引和 `ON CONFLICT DO NOTHING`
+  使并发请求首写胜出，重试按首次 Deployment 冷启动，不受后续 promote/rollback/weight 影响；
+- MCP `agent_start` 从 bounded JSON 或 SSE response metadata 取得 `structuredContent.invocationId`，沿用
+  SessionBinding 保存目标；`agent_get`、`agent_update`、`agent_cancel` 用 invocation ID 查回原目标；
+- `POST /eve/v1/task-input/:token` 只验证 canonical path 并原样转发，token 不落库。Project 的旧
+  per-project workflow database 与 rollout shared world 都让同 Project Deployment 看到同一 durable
+  hook，因此 Gateway 在当前 route targets 中选择 Eve >=0.37.1 的可激活目标即可；
+- 三条能力均设置 0.37.1 feature floor。普通 Eve session 仍服从 0.34.x–0.37.x 临时窗口；feature
+  request 不会选中 0.37.0，若 binding 指向旧版本或没有兼容 target 则返回 409；
+- OperationBinding 沿用 API 7 天 / Playground 24 小时 idle TTL；有效 binding 以
+  `active_operation` 保护 Release，过期重试与 SessionBinding 一样返回稳定 410，不能漂移。
+
+迁移 `0050_regular_lenny_balinger` 必须先于 Gateway rollout。Gateway 仍只决定 target，不解析
+task-input capability、不替代 MCP/Agent auth，也不把同名 operation ID 当成平台身份；Agent 是
+principal 隔离与 create-once 结果的最终权威。

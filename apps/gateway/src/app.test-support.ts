@@ -50,10 +50,12 @@ export function route(
   };
 }
 
-export function repository(
-  routes: ResolvedAgentRoute[],
-): GatewayRepository & { bindings: Array<Record<string, unknown>> } {
+export function repository(routes: ResolvedAgentRoute[]): GatewayRepository & {
+  bindings: Array<Record<string, unknown>>;
+  operationBindings: Array<Record<string, unknown>>;
+} {
   const bindings: Array<Record<string, unknown>> = [];
+  const operationBindings: Array<Record<string, unknown>> = [];
   const deployments = new Map(
     routes
       .flatMap((route) => route.targets)
@@ -82,6 +84,7 @@ export function repository(
   );
   return {
     bindings,
+    operationBindings,
     async findRouteByHostname(hostname) {
       return routes.find((candidate) => candidate.hostname === hostname) ?? null;
     },
@@ -147,6 +150,37 @@ export function repository(
     async touchSessionBinding(projectId, eveSessionId, now = new Date()) {
       const binding = bindings.find(
         (candidate) => candidate.projectId === projectId && candidate.eveSessionId === eveSessionId,
+      );
+      if (!binding) return null;
+      binding.updatedAt = now.toISOString();
+      return binding as never;
+    },
+    async findOperationBinding(projectId: string, operationKey: string) {
+      return (
+        (operationBindings.find(
+          (binding) => binding.projectId === projectId && binding.operationKey === operationKey,
+        ) as never) ?? null
+      );
+    },
+    async bindOperation(input: Record<string, unknown>) {
+      const existing = operationBindings.find(
+        (binding) =>
+          binding.projectId === input.projectId && binding.operationKey === input.operationKey,
+      );
+      if (existing) return existing as never;
+      const now = new Date().toISOString();
+      const binding = {
+        id: `opbind_${operationBindings.length + 1}`,
+        createdAt: now,
+        updatedAt: now,
+        ...input,
+      };
+      operationBindings.push(binding);
+      return binding as never;
+    },
+    async touchOperationBinding(projectId: string, operationKey: string, now = new Date()) {
+      const binding = operationBindings.find(
+        (candidate) => candidate.projectId === projectId && candidate.operationKey === operationKey,
       );
       if (!binding) return null;
       binding.updatedAt = now.toISOString();

@@ -19,7 +19,7 @@ const hopByHopHeaders = new Set([
 export async function resolveTarget(
   repository: GatewayRepository,
   route: ResolvedAgentRoute,
-  binding: SessionBinding | null,
+  binding: Pick<SessionBinding, "deploymentId" | "variantName"> | null,
   affinityKey: string,
   allowStopped = false,
 ): Promise<ResolvedAgentRoute["targets"][number] | null> {

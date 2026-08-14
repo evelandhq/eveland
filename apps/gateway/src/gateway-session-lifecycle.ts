@@ -13,6 +13,7 @@ import {
 // symmetrically in gateway-transport.)
 const MAX_SESSION_METADATA_BYTES = PLAYGROUND_MAX_TRANSPORT_BYTES;
 import { isSessionBindingActive, type SessionBindingIdlePolicy } from "@evelandhq/core/routing";
+import { mcpInvocationIdFromValue } from "./gateway-durable-routing.js";
 
 export type GatewaySessionBindingRepository = {
   findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
@@ -134,18 +135,23 @@ export async function applyGatewaySessionResponse(input: {
     request.kind === "cancel" ||
     request.kind === "stream" ||
     request.kind === "clear" ||
-    request.kind === "compact"
+    request.kind === "compact" ||
+    request.kind === "task_input" ||
+    request.kind === "mcp_invocation"
   ) {
     return;
   }
 
   const metadata =
-    isJsonResponse(upstream) && !declaredLengthExceedsMetadataCap(upstream)
+    isSessionMetadataResponse(upstream) && !declaredLengthExceedsMetadataCap(upstream)
       ? await sessionResponseMetadata(upstream.clone())
       : null;
 
-  if (request.kind === "initial") {
-    const eveSessionId = upstream.headers.get("x-eve-session-id") ?? metadata?.sessionId ?? null;
+  if (request.kind === "initial" || request.kind === "mcp_start") {
+    const eveSessionId =
+      request.kind === "mcp_start"
+        ? (metadata?.invocationId ?? null)
+        : (upstream.headers.get("x-eve-session-id") ?? metadata?.sessionId ?? null);
     if (!eveSessionId) return;
 
     const provenance = bindingProvenance(input.provenance);
@@ -214,6 +220,14 @@ function isJsonResponse(response: Response): boolean {
   return response.headers.get("content-type")?.includes("application/json") ?? false;
 }
 
+function isSessionMetadataResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type");
+  return (
+    contentType?.includes("application/json") === true ||
+    contentType?.includes("text/event-stream") === true
+  );
+}
+
 function declaredLengthExceedsMetadataCap(response: Response): boolean {
   const declared = Number(response.headers.get("content-length"));
   return Number.isFinite(declared) && declared > MAX_SESSION_METADATA_BYTES;
@@ -256,18 +270,29 @@ async function readBodyWithin(
 
 async function sessionResponseMetadata(response: Response): Promise<{
   sessionId: string | null;
+  invocationId: string | null;
   continuationToken: string | null;
   previousSessionId: string | null;
   status: string | null;
 } | null> {
   const text = await readBodyWithin(response.body, MAX_SESSION_METADATA_BYTES);
   if (text === null) return null;
-  const parsed = parseEveJsonObject(text);
+  const parsed = isJsonResponse(response) ? parseEveJsonObject(text) : parseMcpSseEnvelope(text);
   if (!parsed) return null;
   return {
     sessionId: getEveString(parsed, "sessionId"),
+    invocationId: mcpInvocationIdFromValue(parsed),
     continuationToken: getEveString(parsed, "continuationToken"),
     previousSessionId: getEveString(parsed, "previousSessionId"),
     status: getEveString(parsed, "status"),
   };
+}
+
+function parseMcpSseEnvelope(text: string): Record<string, unknown> | null {
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const parsed = parseEveJsonObject(line.slice("data:".length).trimStart());
+    if (parsed && mcpInvocationIdFromValue(parsed)) return parsed;
+  }
+  return null;
 }

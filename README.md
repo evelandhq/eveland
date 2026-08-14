@@ -59,9 +59,11 @@ The main entrypoints are composers rather than homes for every implementation:
   build/stop/start/health/state lifecycle. Lower-level secret, filesystem, and
   networking helpers live in `process-support.ts`.
 - Gateway request/response lifecycle handling lives in
-  `apps/gateway/src/app.ts`; canonical Host validation, trusted forwarding
-  headers, affinity cookies, and target selection live in
-  `gateway-routing.ts`.
+  `apps/gateway/src/gateway-request-lifecycle.ts`; canonical Host validation,
+  trusted forwarding headers, affinity cookies, and target selection live in
+  `gateway-routing.ts`, while create-once and MCP durable keys live in
+  `gateway-durable-routing.ts`. `app.ts` composes the public and privileged
+  paths.
 - The new-project screen keeps orchestration in
   `apps/web/src/components/new-project-flow.tsx`, with presentation and browser
   request helpers in adjacent `new-project-flow-*` modules.

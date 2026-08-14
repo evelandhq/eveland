@@ -6,7 +6,9 @@ import {
   DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
 } from "@evelandhq/core/routing";
 import {
+  classifyEveTaskInputRequest,
   classifyEveSessionRequest,
+  isEveTaskInputNamespace,
   isEveSessionNamespace,
   isWorkflowQueueNamespace,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
@@ -22,6 +24,12 @@ export type {
 } from "./gateway-types.js";
 import type { GatewayAppOptions, GatewayRepository } from "./gateway-types.js";
 import { resolveGatewaySessionBinding } from "./gateway-session-lifecycle.js";
+import {
+  classifyMcpInvocation,
+  createOperationKey,
+  operationIdFromBody,
+  resolveGatewayOperationBinding,
+} from "./gateway-durable-routing.js";
 import {
   executeGatewaySessionProxy,
   readRoutingBody,
@@ -112,6 +120,19 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       limitBytes: PLAYGROUND_MAX_TRANSPORT_BYTES,
     });
     if (!routingBody.ok) return routingBody.response;
+    const operationId =
+      eveRequest.kind === "initial" ? operationIdFromBody(routingBody.body) : null;
+    const operationKey = operationId
+      ? createOperationKey(operationId, options.affinitySecret)
+      : null;
+    const operation = await resolveGatewayOperationBinding({
+      repository,
+      projectId: route.projectId,
+      operationKey,
+      now,
+      idlePolicy: sessionIdlePolicy,
+    });
+    if (operation.state === "expired") return sessionExpiredResponse();
     const session = await resolveGatewaySessionBinding({
       repository,
       projectId: route.projectId,
@@ -134,6 +155,9 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       route,
       eveRequest,
       binding,
+      operationBinding: operation.state === "active" ? operation.binding : null,
+      operationKey,
+      minimumEveVersion: operationKey ? "0.37.1" : null,
       targetKey: crypto.randomUUID(),
       activationOwnerId: crypto.randomUUID(),
       provenance: { kind: "playground", requestId: crypto.randomUUID() },
@@ -188,8 +212,15 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     if (isWorkflowQueueNamespace(requestUrl.pathname)) {
       return context.json({ error: "Route not found" }, 404);
     }
-    const eveRequest = classifyEveSessionRequest(context.req.method, requestUrl.pathname);
-    if (!eveRequest && isEveSessionNamespace(requestUrl.pathname)) {
+    const sessionRequest = classifyEveSessionRequest(context.req.method, requestUrl.pathname);
+    const taskInputRequest = classifyEveTaskInputRequest(context.req.method, requestUrl.pathname);
+    let eveRequest =
+      sessionRequest ??
+      (taskInputRequest ? ({ kind: "task_input", sessionId: null } as const) : null);
+    if (
+      !eveRequest &&
+      (isEveSessionNamespace(requestUrl.pathname) || isEveTaskInputNamespace(requestUrl.pathname))
+    ) {
       return context.json({ error: "Route not found" }, 404);
     }
     const requestId = crypto.randomUUID();
@@ -201,6 +232,20 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       limitBytes: maxRequestBodyBytes,
     });
     if (!routingBody.ok) return routingBody.response;
+    eveRequest ??= classifyMcpInvocation(routingBody.body);
+    const operationId =
+      eveRequest?.kind === "initial" ? operationIdFromBody(routingBody.body) : null;
+    const operationKey = operationId
+      ? createOperationKey(operationId, options.affinitySecret)
+      : null;
+    const operation = await resolveGatewayOperationBinding({
+      repository,
+      projectId: route.projectId,
+      operationKey,
+      now,
+      idlePolicy: sessionIdlePolicy,
+    });
+    if (operation.state === "expired") return sessionExpiredResponse();
     // Only minted when the caller sent nothing of its own; a failed mint
     // yields null and the request is forwarded unchanged.
     const injectedCallerToken =
@@ -224,6 +269,15 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       route,
       eveRequest,
       binding,
+      operationBinding: operation.state === "active" ? operation.binding : null,
+      operationKey,
+      minimumEveVersion:
+        operationKey ||
+        eveRequest?.kind === "task_input" ||
+        eveRequest?.kind === "mcp_start" ||
+        eveRequest?.kind === "mcp_invocation"
+          ? "0.37.1"
+          : null,
       targetKey: affinity.key,
       activationOwnerId: requestId,
       provenance: {
