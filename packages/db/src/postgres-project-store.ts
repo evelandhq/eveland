@@ -15,6 +15,7 @@ import {
   jobs,
   logs,
   modelUsageEvents,
+  operationBindings,
   projectSchedulerTargets,
   projectSchedules,
   projects,
@@ -564,6 +565,7 @@ export function createPostgresProjectStore(
           .from(agentRoutes)
           .where(eq(agentRoutes.projectId, projectId));
         await tx.delete(sessionBindings).where(eq(sessionBindings.projectId, projectId));
+        await tx.delete(operationBindings).where(eq(operationBindings.projectId, projectId));
         for (const route of relatedRoutes)
           await tx.delete(routeTargets).where(eq(routeTargets.routeId, route.id));
         await tx.delete(agentRoutes).where(eq(agentRoutes.projectId, projectId));

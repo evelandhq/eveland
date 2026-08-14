@@ -8,6 +8,7 @@ import {
   deploymentRowToDeployment,
   releaseRowToRelease,
   sessionBindingRowToSessionBinding,
+  operationBindingRowToOperationBinding,
 } from "./mappers.js";
 import {
   agentRoutes,
@@ -17,6 +18,7 @@ import {
   projects,
   releases,
   routeTargets,
+  operationBindings,
   sessionBindings,
   sessions,
   sourceFiles,
@@ -650,6 +652,11 @@ export function createPostgresDeploymentRoutingStore({
         .from(sessionBindings)
         .where(eq(sessionBindings.projectId, projectId));
       const bindings = bindingRows.map(sessionBindingRowToSessionBinding);
+      const operationBindingRows = await db
+        .select()
+        .from(operationBindings)
+        .where(eq(operationBindings.projectId, projectId));
+      const operations = operationBindingRows.map(operationBindingRowToOperationBinding);
       const sessionRows = await db.select().from(sessions).where(eq(sessions.projectId, projectId));
       const terminalByEveId = new Map(
         sessionRows
@@ -659,13 +666,20 @@ export function createPostgresDeploymentRoutingStore({
             ["completed", "failed"].includes(session.status),
           ]),
       );
-      const active = new Set(
+      const activeSessions = new Set(
         bindings
           .filter(
             (binding) =>
               terminalByEveId.get(binding.eveSessionId) !== true &&
               isSessionBindingActive(binding, now, options),
           )
+          .map((binding) => binding.deploymentId),
+      );
+      // Create-once retries need their original Release even before a
+      // successful response materializes the SessionBinding.
+      const activeOperations = new Set(
+        operations
+          .filter((binding) => isSessionBindingActive(binding, now, options))
           .map((binding) => binding.deploymentId),
       );
       const activeLeaseRows =
@@ -692,12 +706,14 @@ export function createPostgresDeploymentRoutingStore({
         const reasons: Array<
           | "route_target"
           | "active_session"
+          | "active_operation"
           | "active_request"
           | "recent_artifact"
           | "active_workflow_run"
         > = [];
         if (targeted.has(deployment.id)) reasons.push("route_target");
-        if (active.has(deployment.id)) reasons.push("active_session");
+        if (activeSessions.has(deployment.id)) reasons.push("active_session");
+        if (activeOperations.has(deployment.id)) reasons.push("active_operation");
         if (activeRequests.has(deployment.id)) reasons.push("active_request");
         if (recent.has(deployment.id)) reasons.push("recent_artifact");
         // A sleeping run holds no session, no lease and no route, so every
@@ -720,6 +736,60 @@ export function createPostgresDeploymentRoutingStore({
         )
         .limit(1);
       return binding ? sessionBindingRowToSessionBinding(binding) : null;
+    },
+
+    async findOperationBinding(projectId, operationKey) {
+      const [binding] = await db
+        .select()
+        .from(operationBindings)
+        .where(
+          and(
+            eq(operationBindings.projectId, projectId),
+            eq(operationBindings.operationKey, operationKey),
+          ),
+        )
+        .limit(1);
+      return binding ? operationBindingRowToOperationBinding(binding) : null;
+    },
+
+    async bindOperation(input) {
+      return db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(operationBindings)
+          .values({ id: createId("opbind"), ...input })
+          .onConflictDoNothing({
+            target: [operationBindings.projectId, operationBindings.operationKey],
+          })
+          .returning();
+        const [binding] = inserted
+          ? [inserted]
+          : await tx
+              .select()
+              .from(operationBindings)
+              .where(
+                and(
+                  eq(operationBindings.projectId, input.projectId),
+                  eq(operationBindings.operationKey, input.operationKey),
+                ),
+              )
+              .limit(1);
+        if (!binding) throw new Error("Failed to persist the Gateway OperationBinding.");
+        return operationBindingRowToOperationBinding(binding);
+      });
+    },
+
+    async touchOperationBinding(projectId, operationKey, now = new Date()) {
+      const [binding] = await db
+        .update(operationBindings)
+        .set({ updatedAt: now })
+        .where(
+          and(
+            eq(operationBindings.projectId, projectId),
+            eq(operationBindings.operationKey, operationKey),
+          ),
+        )
+        .returning();
+      return binding ? operationBindingRowToOperationBinding(binding) : null;
     },
 
     async findSessionBindingByContinuationToken(projectId, continuationToken) {

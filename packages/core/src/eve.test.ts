@@ -167,6 +167,22 @@ describe("Eve session request classification", () => {
     expect(Eve.isWorkflowQueueNamespace("/.well-known/security.txt")).toBe(false);
     expect(Eve.isWorkflowQueueNamespace("/api/.well-known/workflow/v1/flow")).toBe(false);
   });
+
+  test("classifies only the canonical Eve 0.37.1 task-input callback", () => {
+    const classify = (Eve as Record<string, unknown>).classifyEveTaskInputRequest;
+    expect(classify).toBeTypeOf("function");
+    if (typeof classify !== "function") return;
+
+    expect(classify("POST", "/eve/v1/task-input/eve%3Atask-input%3Aabc")).toEqual({
+      kind: "task_input",
+      token: "eve:task-input:abc",
+    });
+    expect(classify("GET", "/eve/v1/task-input/token")).toBeNull();
+    expect(classify("POST", "/eve/v1/task-input/%E0%A4%A")).toBeNull();
+    expect(classify("POST", "/eve/v1/task-input/token/nested")).toBeNull();
+    expect(Eve.isEveTaskInputNamespace("/eve/v1/task-input/token")).toBe(true);
+    expect(Eve.isEveTaskInputNamespace("/eve/v1/task-input-like/token")).toBe(false);
+  });
 });
 
 describe("Playground turn validation", () => {

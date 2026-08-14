@@ -95,6 +95,70 @@ describe("routing repository", () => {
     });
   });
 
+  test("claims an operation route once and keeps it pinned across policy changes", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Create Once Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/create-once",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const first = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "create-once-first",
+      containerName: "create-once-first",
+      internalPort: 3000,
+      hostPort: 41011,
+      runtimeKind: "docker",
+    });
+    const [stable] = await store.ensureDeploymentRoutes(project.id, first.id, "agent.localhost");
+    const second = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "create-once-second",
+      containerName: "create-once-second",
+      internalPort: 3000,
+      hostPort: 41012,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
+
+    const claimed = await store.bindOperation({
+      projectId: project.id,
+      operationKey: "hmac-sha256-create-once",
+      routeId: stable!.id,
+      deploymentId: first.id,
+      trigger: "api",
+      variantName: "control",
+      experimentId: `${stable!.id}:r1`,
+    });
+    await store.promoteDeployment(project.id, second.id);
+    const replayed = await store.bindOperation({
+      projectId: project.id,
+      operationKey: "hmac-sha256-create-once",
+      routeId: stable!.id,
+      deploymentId: second.id,
+      trigger: "api",
+      variantName: "candidate",
+      experimentId: `${stable!.id}:r2`,
+    });
+
+    expect(claimed).toMatchObject({ deploymentId: first.id, variantName: "control" });
+    expect(replayed).toMatchObject({ deploymentId: first.id, variantName: "control" });
+    await expect(
+      store.findOperationBinding(project.id, "hmac-sha256-create-once"),
+    ).resolves.toMatchObject({ deploymentId: first.id, routeId: stable!.id });
+    const touchedAt = new Date("2026-08-14T12:00:00.000Z");
+    await expect(
+      store.touchOperationBinding(project.id, "hmac-sha256-create-once", touchedAt),
+    ).resolves.toMatchObject({ updatedAt: touchedAt.toISOString() });
+  });
+
   test("reserves host ports until their Deployment is archived", async () => {
     const store = createTestStore();
     const project = await store.createProject({
@@ -303,6 +367,58 @@ describe("routing repository", () => {
     expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({
       protected: false,
       reasons: [],
+    });
+  });
+
+  test("protects the Deployment claimed by an active create-once operation", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Operation Retention Agent",
+      importKind: "zip",
+    });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/operation-retention",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployments: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      deployments.push(
+        await store.recordDeployment({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          imageTag: `operation-v${index}`,
+          containerName: `operation-v${index}`,
+          internalPort: 3000,
+          hostPort: 41124 + index,
+          runtimeKind: "docker",
+        }),
+      );
+    }
+    const [stable] = await store.ensureDeploymentRoutes(
+      project.id,
+      deployments[3]!.id,
+      "agent.localhost",
+    );
+    await store.bindOperation({
+      projectId: project.id,
+      operationKey: "hmac-sha256-retained-operation",
+      routeId: stable!.id,
+      deploymentId: deployments[0]!.id,
+      trigger: "api",
+      variantName: null,
+      experimentId: null,
+    });
+
+    const policy = await store.getDeploymentRetention(project.id, 3);
+
+    expect(policy.find((entry) => entry.deployment.id === deployments[0]!.id)).toMatchObject({
+      protected: true,
+      reasons: ["active_operation"],
     });
   });
 

@@ -1,6 +1,10 @@
 import { createEveVersionInfo, unsupportedEveVersionMessage } from "@evelandhq/core/source";
 import type { EveSessionRequest } from "@evelandhq/core/eve";
-import type { ResolvedAgentRoute, SessionBinding } from "@evelandhq/core/contracts";
+import type {
+  OperationBinding,
+  ResolvedAgentRoute,
+  SessionBinding,
+} from "@evelandhq/core/contracts";
 import type { GatewayActivationClient, GatewayRepository } from "./gateway-types.js";
 import {
   applyGatewaySessionResponse,
@@ -37,18 +41,42 @@ export function clientClosedResponse(): Response {
 export async function unsupportedDeploymentResponse(
   repository: GatewayRepository,
   deploymentId: string,
+  minimumVersion?: string | null,
 ): Promise<Response | null> {
   const eveVersion =
     (await repository.getDeploymentEveVersion(deploymentId)) ?? createEveVersionInfo(null, null);
-  if (eveVersion.supported) return null;
+  if (
+    eveVersion.supported &&
+    (!minimumVersion || isVersionAtLeast(eveVersion.version, minimumVersion))
+  ) {
+    return null;
+  }
   return Response.json(
     {
       error: "Unsupported Eve version",
-      detail: unsupportedEveVersionMessage(eveVersion.version),
+      detail:
+        eveVersion.supported && minimumVersion
+          ? `This Eve route requires version ${minimumVersion} or later; the selected Deployment runs ${eveVersion.version ?? "an unknown version"}.`
+          : unsupportedEveVersionMessage(eveVersion.version),
       eveVersion,
     },
     { status: 409 },
   );
+}
+
+function isVersionAtLeast(version: string | null, minimum: string): boolean {
+  const actual = parseExactVersion(version);
+  const required = parseExactVersion(minimum);
+  if (!actual || !required) return false;
+  for (let index = 0; index < required.length; index += 1) {
+    if (actual[index]! !== required[index]!) return actual[index]! > required[index]!;
+  }
+  return true;
+}
+
+function parseExactVersion(version: string | null): [number, number, number] | null {
+  const match = version?.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
 export function activationKind(
@@ -65,10 +93,9 @@ export function isAbortError(error: unknown): boolean {
 
 /**
  * Enforce the declared-length limit and buffer the body the session-routing
- * layer must inspect (initial/reset continuation-token lookup). Other request
- * kinds stay unread here (`body: undefined`) and stream into the proxy step's
- * own limited read. An Eve 0.31 ID-addressed reset carries the session in the
- * path, so only the tokenless-generation reset (no sessionId) needs its body.
+ * layer must inspect (initial/reset continuation-token lookup, create-once
+ * operation IDs, and Eve MCP tools). Non-JSON request kinds stay unread here
+ * (`body: undefined`) and stream into the proxy step's own limited read.
  */
 export async function readRoutingBody(input: {
   request: Request;
@@ -85,7 +112,10 @@ export async function readRoutingBody(input: {
   const sniffsContinuationToken =
     input.eveRequest?.kind === "initial" ||
     (input.eveRequest?.kind === "reset" && input.eveRequest.sessionId === null);
-  if (!sniffsContinuationToken) {
+  const sniffsJsonProtocol = input.request.headers
+    .get("content-type")
+    ?.includes("application/json");
+  if (!sniffsContinuationToken && !sniffsJsonProtocol) {
     return { ok: true, body: undefined };
   }
   try {
@@ -129,6 +159,9 @@ export async function executeGatewaySessionProxy(input: {
   route: ResolvedAgentRoute;
   eveRequest: EveSessionRequest | null;
   binding: SessionBinding | null;
+  operationBinding?: OperationBinding | null;
+  operationKey?: string | null;
+  minimumEveVersion?: string | null;
   targetKey: string;
   activationOwnerId: string;
   provenance: GatewaySessionProvenance;
@@ -141,17 +174,69 @@ export async function executeGatewaySessionProxy(input: {
   const signal = input.request.signal;
   const streamRequest = activationKind(eveRequest) === "stream";
 
-  const target = await resolveTarget(
+  let effectiveOperationBinding = input.operationBinding ?? null;
+  const routingBinding = binding ?? effectiveOperationBinding;
+  const selectionRoute =
+    input.minimumEveVersion && !routingBinding
+      ? await compatibleRoute(repository, route, input.minimumEveVersion)
+      : route;
+  if (!selectionRoute) {
+    return Response.json(
+      {
+        error: "Unsupported Eve version",
+        detail: `This Eve route requires version ${input.minimumEveVersion} or later, but no compatible Deployment is available.`,
+      },
+      { status: 409 },
+    );
+  }
+  let target = await resolveTarget(
     repository,
-    route,
-    binding,
+    selectionRoute,
+    routingBinding,
     input.targetKey,
     Boolean(activationClient),
   );
   if (!target) return Response.json({ error: "No running deployment target" }, { status: 503 });
   if (eveRequest) {
-    const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
+    const versionFailure = await unsupportedDeploymentResponse(
+      repository,
+      target.deploymentId,
+      input.minimumEveVersion,
+    );
     if (versionFailure) return versionFailure;
+  }
+
+  if (input.operationKey && !input.operationBinding) {
+    const claimed = await repository.bindOperation({
+      projectId: route.projectId,
+      operationKey: input.operationKey,
+      routeId: route.id,
+      deploymentId: target.deploymentId,
+      trigger: input.provenance.kind,
+      variantName: target.variantName,
+      experimentId: routeExperimentId(route),
+    });
+    effectiveOperationBinding = claimed;
+    if (claimed.deploymentId !== target.deploymentId) {
+      const claimedTarget = await resolveTarget(
+        repository,
+        route,
+        claimed,
+        input.targetKey,
+        Boolean(activationClient),
+      );
+      if (!claimedTarget)
+        return Response.json({ error: "No running deployment target" }, { status: 503 });
+      target = claimedTarget;
+      if (eveRequest) {
+        const versionFailure = await unsupportedDeploymentResponse(
+          repository,
+          target.deploymentId,
+          input.minimumEveVersion,
+        );
+        if (versionFailure) return versionFailure;
+      }
+    }
   }
 
   let activation: { leaseId: string; endpointPort: number } | null = null;
@@ -207,10 +292,14 @@ export async function executeGatewaySessionProxy(input: {
       binding,
       upstream,
       target: {
-        routeId: route.id,
+        routeId: effectiveOperationBinding?.routeId ?? route.id,
         deploymentId: target.deploymentId,
-        variantName: target.variantName,
-        experimentId: routeExperimentId(route),
+        variantName: effectiveOperationBinding
+          ? effectiveOperationBinding.variantName
+          : target.variantName,
+        experimentId: effectiveOperationBinding
+          ? effectiveOperationBinding.experimentId
+          : routeExperimentId(route),
       },
       provenance: input.provenance,
     });
@@ -242,6 +331,27 @@ export async function executeGatewaySessionProxy(input: {
         input.activationRenewIntervalMs,
       )
     : response;
+}
+
+async function compatibleRoute(
+  repository: GatewayRepository,
+  route: ResolvedAgentRoute,
+  minimumVersion: string,
+): Promise<ResolvedAgentRoute | null> {
+  const compatible = (
+    await Promise.all(
+      route.targets.map(async (target) => {
+        const info = await repository.getDeploymentEveVersion(target.deploymentId);
+        return info?.supported && isVersionAtLeast(info.version, minimumVersion) ? target : null;
+      }),
+    )
+  ).filter((target): target is ResolvedAgentRoute["targets"][number] => target !== null);
+  if (compatible.length === 0) return null;
+  if (compatible.length === route.targets.length) return route;
+  return {
+    ...route,
+    targets: compatible.map((target) => ({ ...target, weight: 10_000 })),
+  };
 }
 
 export async function cancelUpstreamAndReleaseActivation(

@@ -3,13 +3,15 @@ import type { ConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
 import type { DeploymentRecord, ResolvedAgentRoute } from "@evelandhq/core/contracts";
 import type { EveVersionInfo } from "@evelandhq/core/source";
 import type { GatewaySessionBindingRepository } from "./gateway-session-lifecycle.js";
+import type { GatewayOperationBindingRepository } from "./gateway-durable-routing.js";
 
-export type GatewayRepository = GatewaySessionBindingRepository & {
-  findRouteByHostname(hostname: string): Promise<ResolvedAgentRoute | null>;
-  findProjectRoute(projectId: string): Promise<ResolvedAgentRoute | null>;
-  getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
-  getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
-};
+export type GatewayRepository = GatewaySessionBindingRepository &
+  GatewayOperationBindingRepository & {
+    findRouteByHostname(hostname: string): Promise<ResolvedAgentRoute | null>;
+    findProjectRoute(projectId: string): Promise<ResolvedAgentRoute | null>;
+    getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
+    getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;
+  };
 
 export type GatewayIdentityClient = {
   /**
