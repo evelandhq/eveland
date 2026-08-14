@@ -9,6 +9,66 @@ const database = databaseUrl ? createDatabase(databaseUrl) : null;
 afterAll(async () => database?.close());
 
 describe.skipIf(!database)("Postgres Gateway routing", () => {
+  test("keeps the first OperationBinding winner under concurrent claims", async () => {
+    const store = createPostgresStore(database!);
+    const nonce = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+    const project = await store.createProject({
+      name: `Operation claim ${nonce}`,
+      importKind: "zip",
+    });
+    try {
+      const revision = await store.recordSourceRevision({
+        projectId: project.id,
+        kind: "zip",
+        sourcePath: "/tmp/postgres-operation-claim",
+        summary: {},
+        envVars: [],
+        files: [],
+        schedules: [],
+      });
+      const first = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `operation-first-${nonce}`,
+        containerName: `operation-first-${nonce}`,
+        internalPort: 3000,
+        hostPort: 42_100 + Math.floor(Math.random() * 500),
+        runtimeKind: "docker",
+      });
+      const second = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `operation-second-${nonce}`,
+        containerName: `operation-second-${nonce}`,
+        internalPort: 3000,
+        hostPort: 42_600 + Math.floor(Math.random() * 500),
+        runtimeKind: "docker",
+      });
+      const [stable] = await store.ensureDeploymentRoutes(project.id, first.id, "agent.localhost");
+      await store.ensureDeploymentRoutes(project.id, second.id, "agent.localhost");
+      const operationKey = `hmac-sha256-${nonce}`;
+
+      const claims = await Promise.all(
+        [first, second].map((deployment) =>
+          store.bindOperation({
+            projectId: project.id,
+            operationKey,
+            routeId: stable!.id,
+            deploymentId: deployment.id,
+            trigger: "api",
+            variantName: deployment.id,
+            experimentId: null,
+          }),
+        ),
+      );
+
+      expect(new Set(claims.map((claim) => claim.id)).size).toBe(1);
+      expect(new Set(claims.map((claim) => claim.deploymentId)).size).toBe(1);
+    } finally {
+      await store.deleteProject(project.id);
+    }
+  }, 30_000);
+
   test("atomically claims semantic project slugs and eight-character deployment keys", async () => {
     const store = createPostgresStore(database!);
     const requestedName = `postgres-slug-${Date.now()}`;

@@ -281,6 +281,7 @@ export function mapAgentTelemetryLifecycle(input: {
         span.end();
         state.actions.delete(actionKey);
         state.subagents.delete(actionKey);
+        state.backgroundSubagents.delete(actionKey);
       }
       return span;
     }
@@ -355,6 +356,16 @@ export function mapAgentTelemetryLifecycle(input: {
       const actionKey = callId ? spanKey(sessionId, callId) : undefined;
       const span = actionKey ? state.subagents.get(actionKey) : undefined;
       if (span) {
+        const backgroundTask = asRecord(data.backgroundTask);
+        const backgroundTaskId = asString(backgroundTask?.taskId);
+        if (backgroundTaskId && backgroundTask?.status === "working") {
+          span.setAttributes({
+            "eveland.eve.background_task.id": backgroundTaskId,
+            "eveland.eve.background_task.status": "working",
+          });
+          state.backgroundSubagents.add(actionKey!);
+          return span;
+        }
         if (capture.recordOutputs && data.output !== undefined) {
           span.setAttribute(
             ATTR_GEN_AI_OUTPUT_MESSAGES,
@@ -363,6 +374,7 @@ export function mapAgentTelemetryLifecycle(input: {
         }
         span.end();
         state.subagents.delete(actionKey!);
+        state.backgroundSubagents.delete(actionKey!);
       }
       return span;
     }
@@ -445,7 +457,21 @@ export function mapAgentTelemetryLifecycle(input: {
     case "session.completed": {
       endSessionSpans(state, sessionId, eventType === "session.failed", data);
       state.sessionModels.delete(sessionId);
-      return undefined;
+      const parentSessionId = asString(context.session?.parent?.sessionId);
+      const parentCallId = asString(context.session?.parent?.callId);
+      const parentActionKey =
+        parentSessionId && parentCallId ? spanKey(parentSessionId, parentCallId) : undefined;
+      const parentSpan =
+        parentActionKey && state.backgroundSubagents.has(parentActionKey)
+          ? state.subagents.get(parentActionKey)
+          : undefined;
+      if (parentSpan && parentActionKey) {
+        if (eventType === "session.failed") setErrorStatus(parentSpan, data);
+        parentSpan.end();
+        state.subagents.delete(parentActionKey);
+        state.backgroundSubagents.delete(parentActionKey);
+      }
+      return parentSpan;
     }
     default:
       return stepKey

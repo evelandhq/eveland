@@ -15,6 +15,7 @@ import type {
   JobType,
   LogRecord,
   ModelUsageEvent,
+  OperationBinding,
   Project,
   ProjectImportKind,
   ProjectSchedule,
@@ -88,7 +89,12 @@ export type DeploymentRetention = {
   deployment: DeploymentRecord;
   protected: boolean;
   reasons: Array<
-    "route_target" | "active_session" | "active_request" | "recent_artifact" | "active_workflow_run"
+    | "route_target"
+    | "active_session"
+    | "active_operation"
+    | "active_request"
+    | "recent_artifact"
+    | "active_workflow_run"
   >;
 };
 
@@ -593,6 +599,15 @@ export interface RoutingStore {
     targets: Array<Omit<RouteTarget, "routeId">>,
   ): Promise<ResolvedAgentRoute>;
   findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
+  findOperationBinding(projectId: string, operationKey: string): Promise<OperationBinding | null>;
+  bindOperation(
+    input: Omit<OperationBinding, "id" | "createdAt" | "updatedAt">,
+  ): Promise<OperationBinding>;
+  touchOperationBinding(
+    projectId: string,
+    operationKey: string,
+    now?: Date,
+  ): Promise<OperationBinding | null>;
   findSessionBindingByContinuationToken(
     projectId: string,
     continuationToken: string,

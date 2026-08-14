@@ -985,6 +985,32 @@ export const sessionBindings = pgTable(
   ],
 );
 
+export const operationBindings = pgTable(
+  "operation_bindings",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    operationKey: text("operation_key").notNull(),
+    routeId: text("route_id")
+      .notNull()
+      .references(() => agentRoutes.id),
+    deploymentId: text("deployment_id")
+      .notNull()
+      .references(() => deployments.id),
+    trigger: text("trigger").notNull(),
+    variantName: text("variant_name"),
+    experimentId: text("experiment_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("operation_bindings_project_key_idx").on(table.projectId, table.operationKey),
+    check("operation_bindings_trigger_check", sql`${table.trigger} in ('api', 'playground')`),
+  ],
+);
+
 export const sourceFiles = pgTable(
   "source_files",
   {

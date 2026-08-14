@@ -371,7 +371,9 @@ export type ResolvedAgentRoute = AgentRoute & {
 export type PublicDeploymentRetention = {
   deployment: PublicDeploymentRecord;
   protected: boolean;
-  reasons: Array<"route_target" | "active_session" | "active_request" | "recent_artifact">;
+  reasons: Array<
+    "route_target" | "active_session" | "active_operation" | "active_request" | "recent_artifact"
+  >;
 };
 
 export type DeploymentOverview = {
@@ -419,6 +421,20 @@ export type SessionBinding = {
   remoteIp: string | null;
   affinityFingerprint: string | null;
   affinitySource: "cookie" | "version_key" | "generated" | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Durable Gateway target for one opaque, HMAC-keyed Eve create operation. */
+export type OperationBinding = {
+  id: string;
+  projectId: string;
+  operationKey: string;
+  routeId: string;
+  deploymentId: string;
+  trigger: "api" | "playground";
+  variantName: string | null;
+  experimentId: string | null;
   createdAt: string;
   updatedAt: string;
 };
