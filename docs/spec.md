@@ -1140,28 +1140,45 @@ systemd 记录 unit state、result/restart count 与最近 200 行 journal。诊
 logs 前必须使用完整 Project Secret 集合脱敏并限制为 32,000 字符。诊断采集或后续清理失败
 只能追加独立错误，不能覆盖原始健康检查错误；响应和持久化日志不得泄露 Secret 明文。
 
-durable workflow world 是平台 runtime contract，不是 Agent 源码 contract。只要 worker
-配置了 `WORKFLOW_POSTGRES_URL`，worker 启动时必须幂等 bootstrap 对应 Postgres schema，
-并在每个 Eve Release 副本中强制注入 `@workflow/world-postgres` 配置及平台固定的兼容
-依赖版本；不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent 已有的 root
-配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile 不得被修改。
+durable workflow world 是平台 runtime contract，不是 Agent 源码 contract。worker 按
+`EVELAND_WORKFLOW_WORLD_ROLLOUT` 为每个新 Release 选择 legacy
+`@workflow/world-postgres` 或共享 `@evelandhq/workflow-world`，并强制注入平台固定且经过 Eve
+兼容性验证的依赖版本；不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
+已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
+不得被修改。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
+配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在开始共享库 retention 前幂等执行
+`@evelandhq/workflow-world` migration；若 host 与 Deployment 访问同一数据库所需地址不同，
+host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。
 外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Control API 的
 公开 `/health` 成功，不能用 Graphile job 的首次失败承担并行进程启动顺序；健康门打开后
 的 activation、executor dispatch 与重试语义仍由 dispatcher 持有。
 
-workflow 隔离按 Project 物理分库：`WORKFLOW_POSTGRES_URL` 是 base URL，worker 在任何
-进程启动路径（deploy、restart、activation、schedule）之前为该 Project 派生并确保
-`eveland_wf_<project>_<digest>` 数据库存在且 schema 已 bootstrap，注入 Deployment 的
-是派生后的 Project URL。不同 Project 的 runtime 不得共享同一个 workflow 数据库——
-共享库意味着任何 runtime 都能认领其他 Project 的 turn，并在冷启动时把其他 Project 的
-active runs 重新入队到自己队列。base URL 的数据库角色因此需要 `CREATEDB` 权限。
-删除 Project 时必须一并删除其派生 workflow 数据库（在项目行删除之前执行，删库失败
-必须让删除可重试），派生库不得作为孤儿残留。
+legacy workflow 的隔离按 Project 物理分库：`WORKFLOW_POSTGRES_URL` 是 base URL，worker
+在任何进程启动路径（deploy、restart、activation、schedule）之前为该 Project 派生并确保
+`eveland_wf_<project>_<digest>` 数据库存在且 schema 已 bootstrap，注入 Deployment 的是
+派生后的 Project URL。base URL 的数据库角色因此需要 `CREATEDB` 权限。删除 Project 时
+必须一并删除其派生 workflow 数据库（在项目行删除之前执行，删库失败必须让删除可重试），
+派生库不得作为孤儿残留。
+
+共享 workflow 使用一个数据库内的 `tenant_id` 作为强制查询边界，events 与 stream chunks
+按 Project LIST partition；queue 只由 tenant-safe 的 embedded runner 或平台 dispatcher
+认领，cold-start recovery 也必须按 tenant 过滤。Project 删除时 drop 自己的 partitions，
+不得扫描或删除其他 tenant。legacy 与共享 Deployment 可在 rollout 期间并存；选择是
+Release 的 build-time 属性，不能用运行时改 flag 的方式替换仍在执行的 World。
 当 Deployment URL 使用 `host.docker.internal` 且除 host 外与 `DATABASE_URL` 完全一致时，
 worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
 `WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。
+
+worker 每小时（默认 `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=3600000`）独立清理 legacy 与共享
+workflow 的过期 stream chunks；任一路失败不得抑制另一路。默认保留窗口固定为 24 小时
+（`EVELAND_WORKFLOW_STREAM_RETENTION_MS=86400000`），只删除 completed、failed、cancelled
+run 的 `eof=false` chunk，EOF marker 必须永久保留。共享库每次最多 20 个、每个最多 50,000
+行的 DELETE，并使用 advisory lock 避免多个 worker 叠加负载；达到上限必须报告 backlog，
+后续 sweep 继续排空。`EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=0` 同时禁用两条路径。删除窗口外
+chunk 意味着更老 raw cursor 不再保证 replay；普通 DELETE 只保证页面可复用，不保证数据库
+文件立即向操作系统缩小。
 
 Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
 必须连接到可执行的隔离 Sandbox，而不能在生产式 `eve start` 下静默退化为缺少

@@ -81,6 +81,34 @@ describe("configuration diagnostics", () => {
     );
   });
 
+  test("reports shared workflow retention defaults and redacts its database URL", () => {
+    const snapshot = createConfigurationSnapshot("worker", {
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL:
+        "postgres://world:database-password@db.internal:5432/workflow?sslmode=require",
+    });
+
+    expect(snapshot.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "EVELAND_WORKFLOW_SWEEP_INTERVAL_MS", value: "3600000" }),
+        expect.objectContaining({
+          name: "EVELAND_WORKFLOW_STREAM_RETENTION_MS",
+          value: "86400000",
+        }),
+        expect.objectContaining({ name: "EVELAND_WORKFLOW_SWEEP_BATCH_SIZE", value: "50000" }),
+        expect.objectContaining({
+          name: "EVELAND_WORKFLOW_SHARED_SWEEP_MAX_BATCHES",
+          value: "20",
+        }),
+        expect.objectContaining({
+          name: "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
+          value: "postgres://••••@db.internal:5432/workflow?sslmode=••••",
+          sensitivity: "url",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(snapshot)).not.toContain("database-password");
+  });
+
   test("reports Git retry and generic job lease defaults for the worker", () => {
     const snapshot = createConfigurationSnapshot("worker", {});
 

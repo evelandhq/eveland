@@ -18,10 +18,17 @@ import {
 import { resolveMaxConcurrentHeavyJobs } from "./runtime/job-concurrency.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
+import { bootstrapEvelandWorkflowWorld } from "./runtime/eveland-workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { sweepReleaseRetention } from "./runtime/release-reaper.js";
 import { sweepWorkflowStreamRetention } from "./runtime/workflow-world-reaper.js";
+import { createSharedWorkflowWorldReaper } from "./runtime/shared-workflow-world-reaper.js";
+import {
+  formatWorkflowStreamRetentionSummary,
+  runWorkflowStreamRetentionSweeps,
+  startWorkflowStreamRetentionScheduler,
+} from "./runtime/workflow-stream-retention.js";
 import {
   reconcileRuntimeInstances,
   recoverStartingRuntimeInstances,
@@ -104,7 +111,10 @@ const reconcileObservability = createWorkerObservabilityReconciler([
 try {
   await assertWorkerPreflight(process.env);
   const bootstrapLog = await bootstrapWorkflowWorld(process.env);
-  if (bootstrapLog) console.log("Platform workflow-world database schema is ready.");
+  if (bootstrapLog) console.log("Legacy per-project workflow database schema is ready.");
+  if (await bootstrapEvelandWorkflowWorld(process.env)) {
+    console.log("Shared workflow-world database schema is ready.");
+  }
   const identityConfiguration = resolveIdentityDeploymentConfiguration({
     dataDir,
     nodeEnv: process.env.NODE_ENV,
@@ -291,22 +301,36 @@ if (releaseSweepIntervalMs > 0) {
   releaseTimer = setInterval(sweepReleases, releaseSweepIntervalMs);
 }
 
-const sweepWorkflowWorlds = () => {
-  sweepWorkflowStreamRetention(process.env, {
-    retentionMs: Number(process.env.EVELAND_WORKFLOW_STREAM_RETENTION_MS ?? 86_400_000),
-    batchSize: Number(process.env.EVELAND_WORKFLOW_SWEEP_BATCH_SIZE ?? 50_000),
-  }).catch((error: unknown) =>
+const sharedWorkflowWorldReaper = createSharedWorkflowWorldReaper();
+const workflowRetentionScheduler = startWorkflowStreamRetentionScheduler({
+  intervalMs: workflowSweepIntervalMs,
+  run: async () => {
+    await runWorkflowStreamRetentionSweeps({
+      sweepLegacy: () =>
+        sweepWorkflowStreamRetention(process.env, {
+          retentionMs: Number(process.env.EVELAND_WORKFLOW_STREAM_RETENTION_MS ?? 86_400_000),
+          batchSize: Number(process.env.EVELAND_WORKFLOW_SWEEP_BATCH_SIZE ?? 50_000),
+        }),
+      sweepShared: () => sharedWorkflowWorldReaper.sweep(process.env),
+      onSummary(summary) {
+        const formatted = formatWorkflowStreamRetentionSummary(summary);
+        console[formatted.level](formatted.message);
+        platformObservability.emitLog({
+          severity: formatted.level,
+          eventName: "eveland.worker.workflow_stream_retention.sweep",
+          body: formatted.message,
+          attributes: formatted.attributes,
+        });
+      },
+    });
+  },
+  close: () => sharedWorkflowWorldReaper.close(),
+  onError: (error) =>
     console.error(
-      "Workflow stream retention sweep failed:",
-      error instanceof Error ? error.message : String(error),
+      "Workflow stream retention scheduler failed:",
+      error instanceof Error ? error.name : "UnknownError",
     ),
-  );
-};
-let workflowSweepTimer: NodeJS.Timeout | undefined;
-if (workflowSweepIntervalMs > 0) {
-  sweepWorkflowWorlds();
-  workflowSweepTimer = setInterval(sweepWorkflowWorlds, workflowSweepIntervalMs);
-}
+});
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
@@ -314,9 +338,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     clearInterval(telemetryTimer);
     if (orphanTimer) clearInterval(orphanTimer);
     if (releaseTimer) clearInterval(releaseTimer);
-    if (workflowSweepTimer) clearInterval(workflowSweepTimer);
     void Promise.all([
       storeFactory.close(),
+      workflowRetentionScheduler.close(),
       capacityObservability.shutdown(),
       platformObservability.shutdown(),
       runtimeObservability.shutdown(),
