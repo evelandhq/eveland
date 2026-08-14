@@ -4,6 +4,22 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.33.0](https://github.com/evelandhq/eveland/compare/v0.32.0...v0.33.0) (2026-08-14)
+
+
+### Features
+
+* add shared workflow stream retention ([d53504b](https://github.com/evelandhq/eveland/commit/d53504b8a26b800a586ea16f012829c4f575b005))
+* support Eve 0.34 through 0.37 ([#300](https://github.com/evelandhq/eveland/issues/300)) ([8400694](https://github.com/evelandhq/eveland/commit/8400694658999a3af521fc873d8d31815c026e07))
+
+
+### Bug Fixes
+
+* dead-letter activations blocked by the Eve version gate ([a93ece4](https://github.com/evelandhq/eveland/commit/a93ece4af1f2215b23990a0360b7b9609808dcaf))
+* preserve background subagent spans ([#304](https://github.com/evelandhq/eveland/issues/304)) ([cf2b085](https://github.com/evelandhq/eveland/commit/cf2b085b8c0b38c25b43ba062857844605efebb1))
+* preserve Eve 0.37.1 durable routing ([#306](https://github.com/evelandhq/eveland/issues/306)) ([ed37d8a](https://github.com/evelandhq/eveland/commit/ed37d8a3ac143ee5f4127b33a3e77ba65ad1ae69))
+* route parent-origin subagent streams ([#303](https://github.com/evelandhq/eveland/issues/303)) ([bbe3eb7](https://github.com/evelandhq/eveland/commit/bbe3eb7242c3f2069b40dde204455db31c6d4e23))
+
 ## [0.32.0](https://github.com/evelandhq/eveland/compare/v0.31.0...v0.32.0) (2026-08-13)
 
 
