@@ -2,13 +2,14 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.34.0
+  eve: 0.37.0
 catalogs:
   eve-matrix:
-    eve-oldest: npm:eve@0.32.0
-    eve-middle: npm:eve@0.33.3
+    eve-oldest: npm:eve@0.34.0
+    eve-middle: npm:eve@0.35.0
+    eve-newer: npm:eve@0.36.0
   # The published SDK's contract is narrower than the platform's. It imports
-  # four primitives from eve/channels/auth, stable across 0.27-0.33, while the
+  # four primitives from eve/channels/auth, stable across 0.27-0.37, while the
   # policy's peerDependencyRange tracks what Eveland can actually host and
   # slides every minor. Tying the SDK to that forced a republish per slide and
   # left consumers on a newer eve with a spurious peer warning in between. The
@@ -19,7 +20,7 @@ catalogs:
   # deliberately wider peer range. The platform's hosting window survives as
   # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
-    eve: ">=0.32.0 <1.0.0"
+    eve: ">=0.34.0 <1.0.0"
 allowBuilds:
   cbor-extract: true
   esbuild: true
@@ -32,7 +33,7 @@ overrides:
   "react-jsx-parser>@types/react-dom": 19.2.3
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the three-version window.
+# verified minor in the temporary four-version window.
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve` and `@evelandhq/sandbox-bwrap` are excluded by name rather than by

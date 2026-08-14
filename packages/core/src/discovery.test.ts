@@ -83,6 +83,26 @@ describe("projectDiscoveryManifest", () => {
     });
   });
 
+  test("projects the Eve 0.35+ discovery manifest schema", () => {
+    const projection = projectDiscoveryManifest({
+      ...nestedManifest,
+      version: 13,
+      instructions: [
+        {
+          sourceKind: "module",
+          logicalPath: "instructions/context.ts",
+          sourceId: "instructions/context.ts",
+          role: "user",
+        },
+      ],
+    });
+
+    expect(projection).toMatchObject({
+      manifestVersion: 13,
+      instructions: ["agent/instructions/context.ts"],
+    });
+  });
+
   test("returns null for anything that is not a discovery manifest", () => {
     expect(projectDiscoveryManifest(null)).toBeNull();
     expect(projectDiscoveryManifest({ kind: "something-else", version: 12 })).toBeNull();

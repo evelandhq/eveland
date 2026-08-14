@@ -3,9 +3,9 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 支持最近三个经过完整验证的 Eve Minor Line。当前代码中的产品契约支持 `0.32.x`、`0.33.x` 与 `0.34.x`，验证版本为 `0.32.0`、`0.33.3` 与 `0.34.0`。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 通常支持最近三个经过完整验证的 Eve Minor Line。由于 Eve 0.35–0.37 在同一轮兼容审查中连续发布，当前版本临时保留第四条重叠线，而不立即淘汰 0.34。代码中的产品契约支持 `0.34.x`、`0.35.x`、`0.36.x` 与 `0.37.x`，验证版本为 `0.34.0`、`0.35.0`、`0.36.0` 与 `0.37.0`。
 
-UI 仅将最新支持线 `0.34.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
+UI 仅将最新支持线 `0.37.x` 标为绿色。较旧但仍受支持的版本保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
 窗口此前依赖 Eve 0.27 的能力现在都是基线：通过 `POST /eve/v1/session/reset` 的 Durable Session Reset、通过 `session.stream({ follow: false })` 与 `x-eve-stream-tail-index` Header 的有界 Catch-up Read、符合标准的 Route Auth Challenge，以及默认关闭的 Remote Principal Forwarding。Eveland 在公开路径与 Playground 路径都原样保留这些 Query、Header 与无缓冲 NDJSON Body，且从不替 Agent 开启信任、重写 Principal 或转发 Credential。Eve 0.27.3 及以后要求 AI SDK `ai@^7.0.34`，若项目单独钉死了更旧的 AI SDK，应一并升级。
 
@@ -19,9 +19,15 @@ Eve 0.32 的 Sandbox 契约是整个窗口的基线：自定义 Sandbox Backend 
 
 **Eve 0.34 默认会把 Human-in-the-loop 提问贴进 GitHub 讨论串。** 使用 `githubChannel` 的 Agent 现在会把待回答的 Input Request 写成 Issue 或 Pull Request 评论，供人在那里直接回答；不需要额外改动，但这些评论是新出现且对外可见的。Eve 0.34 还允许 Tool 或 Connection 把 `approval` 声明为 `{ request, response }` 而不只是一个函数——Response Policy 可以校验回应者身份并返回带标签的允许或拒绝决定——原有的函数简写继续有效。实验性的 `agent/instrumentation/` Provider 目录随 `experimental.instrumentationProviders` 开关提供；它与单文件 `agent/instrumentation.ts` **互斥**，开启其一会让另一种布局变成构建错误。`defineInstrumentation` 不再在 `tsc` 阶段拒绝未知键，拼错的选项要到 `eve build` 才会暴露。
 
-对于当前最新支持线，即使 `^0.34.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.34.0`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
+**Eve 0.35 将 Instrumentation 内容改为显式 Opt-in，并引入带 Role 的 Instruction。** Eve 自身的 Instrumentation 只有启用 `recordInputs`/`recordOutputs`（或为本地 Trace 设置 `EVE_TRACES_CONTENT=on`）才记录 Model/Tool 输入输出。Eveland 注入的私有 Observer 不依赖该开关，仍按 Project 的 Eveland Capture Policy 工作。Instruction Module 现在使用 `content` 和可选的 `system`/`user` Role；旧 `markdown` 已弃用，user-role Instruction 会进入 Durable Model History。Session/Turn Start Event 还可能携带可选的 Portable Trace Context。从该版本起 Eve Discovery Manifest 升为 v13，Eveland 在重叠窗口内同时接受 v12 与 v13。
 
-仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；进入时会有意识地移除较旧 Minor。
+**Eve 0.36 将默认模型改为 `zai/glm-5.2`。** 依赖 Eve 隐式默认值的项目重新构建后，Provider、行为、Credential 要求与费用都可能变化；升级前应显式固定 `model`。`eve/sveltekit` 也迁移到稳定的 Vercel Services Model，并移除 `configureVercelJson`、`servicePrefix` 与 `EVE_SVELTEKIT_SERVICE_PREFIX`；使用这些选项的项目必须先迁移源码。
+
+**Eve 0.37 增加 Vercel Sandbox Drives，并调整本地创作 CLI。** Eveland 仍会用受管 bwrap backend 替换项目声明的 Sandbox Backend，同时保留 Workspace Seed，因此 Eveland Deployment 不暴露 Vercel Drive Mount。`eve init`/`eve dev` 的变化只影响本地创作，不改变平台明确执行的 Build/Start 命令。
+
+对于当前最新支持线，即使 `^0.37.0` 等 Range 已允许新 Patch，Agent 项目也应刷新 Lockfile 并重新部署，才能实际获得 `0.37.0`。自定义 NDJSON Consumer 必须忽略空行；如果 Relay/Proxy 自己管理恢复，可以使用 Reconnect Opt-out；普通 Agent Client 应保留默认 Live Follow。只有在两端 Deployment 都升级、且接收端能精确识别可信 Forwarder 后，才应启用 Remote Principal Forwarding。
+
+仅有 npm Publication 不会扩大窗口。新 Minor 只有在 Changelog/Source Review 与完整 Compatibility Matrix 通过后才进入；通常会有意识地移除最旧 Minor。当前四版本重叠是显式的临时例外，之后会通过分阶段兼容变更缩回三条线。
 
 ## Enforcement Point
 
