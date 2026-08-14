@@ -20,7 +20,7 @@ import { readSource, repoRoot } from "./scan-support.js";
  * deploy time on a real project instead of in CI. The world is resolved from
  * `apps/worker` — the workspace that actually installs the version the worker
  * injects — and the eve lines from `packages/agent-observer`, which installs
- * all three supported lines for its own compatibility tests.
+ * all four supported lines for its own compatibility tests.
  */
 const require = createRequire(import.meta.url);
 
@@ -33,11 +33,12 @@ const RESOLUTION_ANCHORS: Record<string, string> = {
   "@evelandhq/workflow-world": "apps/worker",
   eve: "packages/agent-observer",
   "eve-middle": "packages/agent-observer",
+  "eve-newer": "packages/agent-observer",
   "eve-oldest": "packages/agent-observer",
 };
 
 /** The supported eve lines, newest first; alias names are pnpm catalog entries. */
-const EVE_LINES = ["eve", "eve-middle", "eve-oldest"] as const;
+const EVE_LINES = ["eve", "eve-newer", "eve-middle", "eve-oldest"] as const;
 
 function resolveInstalled(specifier: string): string {
   const packageName = specifier.startsWith("@")
@@ -133,7 +134,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
 
   for (const line of EVE_LINES) {
     describe(`against ${line}`, () => {
-      // eve-middle / eve-oldest are pnpm catalog aliases for pinned eve lines.
+      // Non-default names are pnpm catalog aliases for pinned Eve lines.
       const eveRoot = resolveInstalledPackageRoot(line, "eve");
       const eveManifest = readJson(path.join(eveRoot, "package.json")) as {
         version: string;

@@ -35,9 +35,9 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes a valid sliding compatibility window", () => {
+  test("describes the temporary four-line compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
-    const stableDependencyNames = ["eve-oldest", "eve-middle", "eve"];
+    const stableDependencyNames = ["eve-oldest", "eve-middle", "eve-newer", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
       const rangeMatch = /^0\.(\d+)\.x$/.exec(line.range);
       const verifiedMatch = /^0\.(\d+)\.(\d+)$/.exec(line.verifiedVersion);
@@ -51,8 +51,8 @@ describe("Eve compatibility repository contract", () => {
       return minor;
     });
 
-    expect(supportedLines).toHaveLength(3);
-    expect(new Set(minorNumbers).size).toBe(3);
+    expect(supportedLines).toHaveLength(4);
+    expect(new Set(minorNumbers).size).toBe(4);
     expect(minorNumbers).toEqual(minorNumbers.map((_, index) => minorNumbers[0]! + index));
     expect(peerDependencyRange).toBe(`>=0.${minorNumbers[0]}.0 <0.${minorNumbers.at(-1)! + 1}.0`);
   });
@@ -211,7 +211,10 @@ describe("Eve compatibility repository contract", () => {
   });
 
   test("keeps the active product and public documentation windows aligned", () => {
-    const [oldest, middle, latest] = SUPPORTED_EVE_VERSION_RANGES;
+    const quotedRanges = SUPPORTED_EVE_VERSION_RANGES.map((range) => `\`${range}\``);
+    const englishRanges = `${quotedRanges.slice(0, -1).join(", ")}, and ${quotedRanges.at(-1)}`;
+    const chineseRanges = `${quotedRanges.slice(0, -1).join("、")} 与 ${quotedRanges.at(-1)}`;
+    const specRanges = `${SUPPORTED_EVE_VERSION_RANGES.slice(0, -1).join("、")} 与 ${SUPPORTED_EVE_VERSION_RANGES.at(-1)}`;
     const exactMinors = SUPPORTED_EVE_VERSION_RANGES.map((range) => range.replace(/\.x$/, "")).join(
       "/",
     );
@@ -223,10 +226,8 @@ describe("Eve compatibility repository contract", () => {
       repositoryFile("apps/docs/content/docs/zh/reference/eve-compatibility.mdx"),
     );
 
-    expect(spec).toContain(
-      `当前窗口是 ${oldest}、${middle} 与 ${latest}。允许精确的 ${exactMinors} patch`,
-    );
-    expect(englishDocs).toContain(`supports \`${oldest}\`, \`${middle}\`, and \`${latest}\``);
-    expect(chineseDocs).toContain(`支持 \`${oldest}\`、\`${middle}\` 与 \`${latest}\``);
+    expect(spec).toContain(`当前窗口是 ${specRanges}。允许精确的 ${exactMinors} patch`);
+    expect(englishDocs).toContain(`supports ${englishRanges}`);
+    expect(chineseDocs).toContain(`支持 ${chineseRanges}`);
   });
 });

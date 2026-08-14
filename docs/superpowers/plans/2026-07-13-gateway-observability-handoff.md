@@ -1526,3 +1526,32 @@ RuntimeInstance、健康检查、lease 与持久化状态机，Launch Context �
 解密和 telemetry credential 分别隐式读取不同的 `process.env`。cold/schedule activation 在源码
 目录消失后可从 SourceRevision 持久化的 `package.json`/lockfile 元数据恢复 command context；
 restart 仍要求 live source，并在停止当前进程之前 fail closed。
+
+---
+
+## 36. 2026-08-14 follow-up：Eve 0.34–0.37 temporary compatibility window
+
+Eve 0.35.0、0.36.0 与 0.37.0 在同一轮兼容审查中连续发布。为避免接纳三条新线时立即淘汰
+仍在线的 0.34 Agent，本轮把通常的三 minor 滑动窗口临时扩大为四条：0.34.x、0.35.x、
+0.36.x 与 0.37.x；精确矩阵 patch 为 0.34.0、0.35.0、0.36.0 与 0.37.0。import、build、
+restart、cold activation、Playground、Gateway 与 scheduler adapter 继续共享同一 fail-closed
+门禁，0.33.x 及以下和 0.38.x 及以上均不放行。之后缩回三条线必须作为分阶段兼容变更，
+不能由依赖更新隐式完成。
+
+本轮源码、发布包和真实 Eve compiler 核对得到以下边界：
+
+- 0.35 把 discovery manifest 从 v12 升到 v13；平台在重叠窗口同时投影 v12/v13，未知 schema
+  仍返回 null 并保留静态 Source summary。v13 的 role-aware instruction entry 继续按
+  `logicalPath` 投影，不把 `system`/`user` role 猜成新的平台实体；
+- message stream 从 21 升到 22，只在 `session.started` 与 `turn.started` 增加可选 portable
+  trace context。Gateway 继续逐字节透传 NDJSON，Collector 对未知字段保持兼容，usage 仍来自
+  `step.completed.data.usage`；本轮不新增数据库字段；
+- Hook、Channel、Channel Auth 与 Schedule 公共定义在四个发布包中保持兼容。Observer 仍是
+  Eveland 注入的私有 Hook/OTel provider，不受 Eve 0.35 将 authored instrumentation content
+  改为 opt-in 的开关影响；AI SDK global integration 仍可达。Scheduler 的所有受支持线都已拥有
+  `turnPolicy`，注入 adapter 继续显式使用 `queue`，避免 schedule 抢占用户 turn；
+- 0.36 把隐式默认模型改为 `zai/glm-5.2`，项目升级前应显式固定 `model`；旧
+  `eve/sveltekit` 的 `configureVercelJson`、`servicePrefix` 与对应环境变量需要项目侧迁移；
+- 0.37 的 Vercel Sandbox Drives 不穿过 Eveland runtime boundary。Release preparation 继续用
+  受管 bwrap backend 替换 authored backend 并只保留 workspace seeds；`eve init`/`eve dev` 的
+  authoring-time 变化不改变 Worker 明确执行的 build/start 路径。

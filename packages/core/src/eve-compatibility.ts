@@ -1,22 +1,27 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.32.x",
-      verifiedVersion: "0.32.0",
+      range: "0.34.x",
+      verifiedVersion: "0.34.0",
       dependencyName: "eve-oldest",
     },
     {
-      range: "0.33.x",
-      verifiedVersion: "0.33.3",
+      range: "0.35.x",
+      verifiedVersion: "0.35.0",
       dependencyName: "eve-middle",
     },
     {
-      range: "0.34.x",
-      verifiedVersion: "0.34.0",
+      range: "0.36.x",
+      verifiedVersion: "0.36.0",
+      dependencyName: "eve-newer",
+    },
+    {
+      range: "0.37.x",
+      verifiedVersion: "0.37.0",
       dependencyName: "eve",
     },
   ],
-  peerDependencyRange: ">=0.32.0 <0.35.0",
+  peerDependencyRange: ">=0.34.0 <0.38.0",
 } as const;
 
 export type SupportedEveVersionRange =
@@ -55,18 +60,6 @@ export function isSupportedEveDependency(specifier: string | null): boolean {
     return false;
   }
   return SUPPORTED_EVE_VERSION_RANGES.includes(`${minor}.x` as SupportedEveVersionRange);
-}
-
-/**
- * The minor line a single-minor Eve dependency specifier names (32 for
- * "~0.32.2"), or null for missing, wildcard, or cross-minor specifiers.
- * Callers that need generation-specific behavior (the scheduler adapter's
- * `turnPolicy` option, which exists only from 0.33 up) branch on this after
- * the specifier passed {@link isSupportedEveDependency}.
- */
-export function eveMinorFromDependency(specifier: string | null): number | null {
-  const match = specifier?.trim().match(/^[~^]?0\.(\d+)(?:\.(?:\d+|[x*]))?$/);
-  return match?.[1] === undefined ? null : Number(match[1]);
 }
 
 export function unsupportedEveVersionMessage(specifier: string | null): string {

@@ -1,20 +1,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { eveMinorFromDependency } from "@evelandhq/core/eve-compatibility";
 import { parseScheduleSource } from "@evelandhq/core/schedules";
 import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@evelandhq/core/source";
 import ts from "typescript";
-
-/**
- * Eve 0.33 added `turnPolicy` to the send options and made `"steer"` the
- * default, so the generated dispatch must ask for `"queue"` to keep a schedule
- * from cancelling a turn already running on the target session. Older lines
- * have no such option and reject it as an excess property at Agent build time.
- */
-function usesExplicitTurnPolicy(eveVersion: string): boolean {
-  return (eveMinorFromDependency(eveVersion) ?? 0) >= 33;
-}
 
 const reservedOriginalSchedule = "__evelandOriginalSchedule";
 const reservedOriginalMarkdown = "__evelandOriginalMarkdown";
@@ -114,10 +103,7 @@ export async function injectSchedulerAdapter(input: {
   }
 
   await mkdir(path.dirname(channelPath), { recursive: true });
-  await writeFile(
-    channelPath,
-    generateSchedulerChannel(definitions, usesExplicitTurnPolicy(eveVersion)),
-  );
+  await writeFile(channelPath, generateSchedulerChannel(definitions));
   return { eveVersion, channelPath: reservedChannelPath, definitions };
 }
 
@@ -221,21 +207,16 @@ function transformModuleSchedule(
 // the continuation-token operations this used to branch on; every minor in the
 // supported window now speaks fixed-session addressing.)
 //
-// `queuedTurnPolicy` is empty before Eve 0.33. Eve 0.33 changed the default
-// send policy to `"steer"`, which cancels and replaces a turn that is already
-// running on the target session. A schedule is a background actor, so it must
-// never preempt a turn a human is waiting on; the generated dispatch asks for
-// the pre-0.33 wait-for-completion behavior explicitly. The option is omitted
-// on older lines because it does not exist in their `SessionSendOptions` and
-// would fail the excess-property check when the Agent is built. An authored
-// handler still wins: its own options are spread last.
-function fixedSessionDispatchBlock(explicitTurnPolicy: boolean): string {
-  const literalTurnPolicy = explicitTurnPolicy ? `\n            turnPolicy: "queue",` : "";
-  const spreadTurnPolicy = explicitTurnPolicy ? `turnPolicy: "queue", ` : "";
+// Eve 0.33 changed the default send policy to `"steer"`, which cancels and
+// replaces a turn already running on the target session. A schedule is a
+// background actor, so every supported Eve line explicitly asks for `"queue"`.
+// An authored handler still wins because its own options are spread last.
+function fixedSessionDispatchBlock(): string {
   return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
           const session = await from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
-            auth: scheduleAppAuth,${literalTurnPolicy}
+            auth: scheduleAppAuth,
+            turnPolicy: "queue",
             mode: "task",
             title: \`Schedule · \${scheduleKey}\`,
           });
@@ -247,7 +228,7 @@ function fixedSessionDispatchBlock(explicitTurnPolicy: boolean): string {
             const handle = to(channel, target);
             return {
               send(message, options) {
-                const task = handle.send(message, { ${spreadTurnPolicy}...options });
+                const task = handle.send(message, { turnPolicy: "queue", ...options });
                 sendTasks.push(task);
                 return task;
               },
@@ -271,10 +252,7 @@ function fixedSessionDispatchBlock(explicitTurnPolicy: boolean): string {
         }`;
 }
 
-function generateSchedulerChannel(
-  definitions: SchedulerDefinition[],
-  explicitTurnPolicy: boolean,
-): string {
+function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
   const imports = definitions.map((definition, index) => {
     const exportName = definition.sourcePath.endsWith(".md")
       ? reservedOriginalMarkdown
@@ -292,7 +270,7 @@ function generateSchedulerChannel(
     return `  ${JSON.stringify(definition.key)}: ${value},`;
   });
   const routeArgs = "{ params, from, to }";
-  const dispatchBlock = fixedSessionDispatchBlock(explicitTurnPolicy);
+  const dispatchBlock = fixedSessionDispatchBlock();
 
   return `${imports.length > 0 ? `${imports.join("\n")}\n` : ""}import { defineChannel, POST } from "eve/channels";
 
