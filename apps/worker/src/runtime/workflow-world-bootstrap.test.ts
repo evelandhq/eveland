@@ -9,10 +9,7 @@ import {
 
 describe("bootstrapWorkflowWorld", () => {
   test("does nothing when the platform world URL is not configured", async () => {
-    const run = vi.fn();
-
-    await expect(bootstrapWorkflowWorld({}, { run })).resolves.toBeUndefined();
-    expect(run).not.toHaveBeenCalled();
+    await expect(bootstrapWorkflowWorld({})).resolves.toBeUndefined();
   });
 
   test("fails fast when a production worker has no platform world URL", async () => {
@@ -21,131 +18,12 @@ describe("bootstrapWorkflowWorld", () => {
     );
   });
 
-  test("runs the pinned package bootstrap with only the workflow database URL in its environment", async () => {
-    const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
-
+  test("does not initialize a legacy schema in the base database", async () => {
     await expect(
-      bootstrapWorkflowWorld(
-        { WORKFLOW_POSTGRES_URL: "postgres://world:secret@db:5432/eveland" },
-        { run, resolveBin: () => "/workspace/node_modules/@workflow/world-postgres/bin/setup.js" },
-      ),
-    ).resolves.toBe("schema ready");
-
-    expect(run).toHaveBeenCalledWith(
-      process.execPath,
-      ["/workspace/node_modules/@workflow/world-postgres/bin/setup.js"],
-      {
-        all: true,
-        reject: false,
-        extendEnv: false,
-        env: { WORKFLOW_POSTGRES_URL: "postgres://world:secret@db:5432/eveland" },
-      },
-    );
-  });
-
-  test("uses a worker-reachable bootstrap URL without changing the deployment URL", async () => {
-    const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
-
-    await bootstrapWorkflowWorld(
-      {
-        WORKFLOW_POSTGRES_URL: "postgres://world:secret@host.docker.internal:5432/eveland",
-        WORKFLOW_POSTGRES_BOOTSTRAP_URL: "postgres://world:secret@postgres:5432/eveland",
-      },
-      { run, resolveBin: () => "/bootstrap.js" },
-    );
-
-    expect(run).toHaveBeenCalledWith(
-      process.execPath,
-      ["/bootstrap.js"],
-      expect.objectContaining({
-        env: { WORKFLOW_POSTGRES_URL: "postgres://world:secret@postgres:5432/eveland" },
+      bootstrapWorkflowWorld({
+        WORKFLOW_POSTGRES_URL: "postgres://world:secret@unreachable.invalid:5432/eveland",
       }),
-    );
-  });
-
-  test("uses the reachable control-plane URL when it is the same database behind host.docker.internal", async () => {
-    const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
-
-    await bootstrapWorkflowWorld(
-      {
-        DATABASE_URL: "postgres://world:secret@localhost:5432/eveland",
-        WORKFLOW_POSTGRES_URL: "postgres://world:secret@host.docker.internal:5432/eveland",
-      },
-      { run, resolveBin: () => "/bootstrap.js" },
-    );
-
-    expect(run).toHaveBeenCalledWith(
-      process.execPath,
-      ["/bootstrap.js"],
-      expect.objectContaining({
-        env: { WORKFLOW_POSTGRES_URL: "postgres://world:secret@localhost:5432/eveland" },
-      }),
-    );
-  });
-
-  test("treats an empty bootstrap override as unset instead of letting the package use its default database", async () => {
-    const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
-
-    await bootstrapWorkflowWorld(
-      {
-        WORKFLOW_POSTGRES_URL: "postgres://world:secret@host.docker.internal:5432/eveland",
-        WORKFLOW_POSTGRES_BOOTSTRAP_URL: "",
-      },
-      { run, resolveBin: () => "/bootstrap.js" },
-    );
-
-    expect(run).toHaveBeenCalledWith(
-      process.execPath,
-      ["/bootstrap.js"],
-      expect.objectContaining({
-        env: { WORKFLOW_POSTGRES_URL: "postgres://world:secret@host.docker.internal:5432/eveland" },
-      }),
-    );
-  });
-
-  test("retries a database that is not ready and returns after the first successful bootstrap", async () => {
-    const run = vi
-      .fn()
-      .mockResolvedValueOnce({ exitCode: 1, all: "connection refused" })
-      .mockResolvedValueOnce({ exitCode: 1, all: "connection refused" })
-      .mockResolvedValueOnce({ exitCode: 0, all: "schema ready" });
-    const wait = vi.fn(async () => {});
-
-    await expect(
-      bootstrapWorkflowWorld(
-        { WORKFLOW_POSTGRES_URL: "postgres://world:secret@db:5432/eveland" },
-        { run, wait, maxAttempts: 3, retryDelayMs: 25, resolveBin: () => "/bootstrap.js" },
-      ),
-    ).resolves.toBe("schema ready");
-
-    expect(run).toHaveBeenCalledTimes(3);
-    expect(wait).toHaveBeenCalledTimes(2);
-    expect(wait).toHaveBeenNthCalledWith(1, 25);
-  });
-
-  test("fails without leaking the configured database URL after retries are exhausted", async () => {
-    const workflowPostgresUrl = "postgres://world:secret@db:5432/eveland";
-    const run = vi.fn(async () => ({
-      exitCode: 1,
-      all: `could not connect to ${workflowPostgresUrl}`,
-    }));
-
-    await expect(
-      bootstrapWorkflowWorld(
-        { WORKFLOW_POSTGRES_URL: workflowPostgresUrl },
-        { run, wait: async () => {}, maxAttempts: 2, resolveBin: () => "/bootstrap.js" },
-      ),
-    ).rejects.toThrow("could not connect to [redacted]");
-
-    try {
-      await bootstrapWorkflowWorld(
-        { WORKFLOW_POSTGRES_URL: workflowPostgresUrl },
-        { run, wait: async () => {}, maxAttempts: 1, resolveBin: () => "/bootstrap.js" },
-      );
-    } catch (error) {
-      expect(String(error)).not.toContain(workflowPostgresUrl);
-      expect(String(error)).not.toContain("secret");
-    }
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -213,6 +91,90 @@ describe("ensureProjectWorkflowWorld", () => {
       extendEnv: false,
       env: { WORKFLOW_POSTGRES_URL: `postgres://world:secret@postgres:5432/${databaseName}` },
     });
+  });
+
+  test("uses an explicit worker-reachable bootstrap URL for the derived project database", async () => {
+    const ensureDatabase = vi.fn(async () => {});
+    const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
+    const databaseName = deriveProjectWorkflowDatabaseName("proj_abc123");
+
+    await ensureProjectWorkflowWorld(
+      {
+        WORKFLOW_POSTGRES_URL: "postgres://world:secret@host.docker.internal:5432/eveland",
+        WORKFLOW_POSTGRES_BOOTSTRAP_URL: "postgres://world:secret@postgres:5432/eveland",
+      },
+      "proj_abc123",
+      { ensureDatabase, run, resolveBin: () => "/bootstrap.js", cache: new Set() },
+    );
+
+    expect(ensureDatabase).toHaveBeenCalledExactlyOnceWith(
+      "postgres://world:secret@postgres:5432/eveland",
+      databaseName,
+    );
+    expect(run).toHaveBeenCalledExactlyOnceWith(
+      process.execPath,
+      ["/bootstrap.js"],
+      expect.objectContaining({
+        env: { WORKFLOW_POSTGRES_URL: `postgres://world:secret@postgres:5432/${databaseName}` },
+      }),
+    );
+  });
+
+  test("treats an empty bootstrap override as unset for project provisioning", async () => {
+    const ensureDatabase = vi.fn(async () => {});
+    const run = vi.fn(async () => ({ exitCode: 0, all: "schema ready" }));
+    const baseUrl = "postgres://world:secret@host.docker.internal:5432/eveland";
+    const databaseName = deriveProjectWorkflowDatabaseName("proj_abc123");
+
+    await ensureProjectWorkflowWorld(
+      {
+        WORKFLOW_POSTGRES_URL: baseUrl,
+        WORKFLOW_POSTGRES_BOOTSTRAP_URL: "",
+      },
+      "proj_abc123",
+      { ensureDatabase, run, resolveBin: () => "/bootstrap.js", cache: new Set() },
+    );
+
+    expect(ensureDatabase).toHaveBeenCalledExactlyOnceWith(baseUrl, databaseName);
+    expect(run).toHaveBeenCalledExactlyOnceWith(
+      process.execPath,
+      ["/bootstrap.js"],
+      expect.objectContaining({
+        env: {
+          WORKFLOW_POSTGRES_URL: `postgres://world:secret@host.docker.internal:5432/${databaseName}`,
+        },
+      }),
+    );
+  });
+
+  test("retries project database setup until Postgres is ready", async () => {
+    const ensureDatabase = vi.fn(async () => {});
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 1, all: "connection refused" })
+      .mockResolvedValueOnce({ exitCode: 1, all: "connection refused" })
+      .mockResolvedValueOnce({ exitCode: 0, all: "schema ready" });
+    const wait = vi.fn(async () => {});
+
+    await expect(
+      ensureProjectWorkflowWorld(
+        { WORKFLOW_POSTGRES_URL: "postgres://world:secret@db:5432/eveland" },
+        "proj_abc123",
+        {
+          ensureDatabase,
+          run,
+          wait,
+          maxAttempts: 3,
+          retryDelayMs: 25,
+          resolveBin: () => "/bootstrap.js",
+          cache: new Set(),
+        },
+      ),
+    ).resolves.toContain("eveland_wf_proj_abc123");
+
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(wait).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenNthCalledWith(1, 25);
   });
 
   test("memoizes per project so repeated activations skip database work", async () => {

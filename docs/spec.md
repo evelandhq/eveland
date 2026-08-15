@@ -1179,7 +1179,9 @@ dispatcher、Agent workflow 流量并显式执行 `workflow-world-setup` 后，w
 legacy workflow 的隔离按 Project 物理分库：`WORKFLOW_POSTGRES_URL` 是 base URL，worker
 在任何进程启动路径（deploy、restart、activation、schedule）之前为该 Project 派生并确保
 `eveland_wf_<project>_<digest>` 数据库存在且 schema 已 bootstrap，注入 Deployment 的是
-派生后的 Project URL。base URL 的数据库角色因此需要 `CREATEDB` 权限。删除 Project 时
+派生后的 Project URL。base database 只作为创建、枚举与删除派生库的管理连接，worker 启动
+不得把它本身当作 legacy World 执行 `@workflow/world-postgres` migration；实际 migration 只在
+派生 Project 数据库执行。base URL 的数据库角色因此需要 `CREATEDB` 权限。删除 Project 时
 必须一并删除其派生 workflow 数据库（在项目行删除之前执行，删库失败必须让删除可重试），
 派生库不得作为孤儿残留。
 

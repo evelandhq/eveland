@@ -39,10 +39,7 @@ const defaultDeps: WorkflowWorldBootstrapDeps = {
   retryDelayMs: 1_000,
 };
 
-export async function bootstrapWorkflowWorld(
-  env: NodeJS.ProcessEnv,
-  overrides: Partial<WorkflowWorldBootstrapDeps> = {},
-): Promise<string | undefined> {
+export async function bootstrapWorkflowWorld(env: NodeJS.ProcessEnv): Promise<void> {
   const workflowPostgresUrl = env.WORKFLOW_POSTGRES_URL;
   if (!workflowPostgresUrl) {
     if (env.NODE_ENV === "production") {
@@ -52,8 +49,13 @@ export async function bootstrapWorkflowWorld(
     }
     return undefined;
   }
-  const bootstrapPostgresUrl = resolveBootstrapPostgresUrl(env, workflowPostgresUrl);
-  return runWorkflowWorldSetup(bootstrapPostgresUrl, { ...defaultDeps, ...overrides });
+
+  // This URL is an administrative base used to create each project's derived
+  // legacy database; it is not itself a workflow database. Migrating it here
+  // lets the legacy and shared migration owners collide when an operator has
+  // ever reused the base database for the shared World. The actual legacy
+  // schema is installed by ensureProjectWorkflowWorld() after deriving the
+  // project's physical database.
 }
 
 async function runWorkflowWorldSetup(
