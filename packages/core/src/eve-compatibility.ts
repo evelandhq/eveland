@@ -1,27 +1,17 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.34.x",
-      verifiedVersion: "0.34.0",
+      range: "0.37.x",
+      verifiedVersion: "0.37.1",
       dependencyName: "eve-oldest",
     },
     {
-      range: "0.35.x",
-      verifiedVersion: "0.35.0",
-      dependencyName: "eve-middle",
-    },
-    {
-      range: "0.36.x",
-      verifiedVersion: "0.36.0",
-      dependencyName: "eve-newer",
-    },
-    {
-      range: "0.37.x",
-      verifiedVersion: "0.37.1",
+      range: "0.38.x",
+      verifiedVersion: "0.38.3",
       dependencyName: "eve",
     },
   ],
-  peerDependencyRange: ">=0.34.0 <0.38.0",
+  peerDependencyRange: ">=0.37.0 <0.39.0",
 } as const;
 
 export type SupportedEveVersionRange =
@@ -39,9 +29,10 @@ export const OLDEST_VERIFIED_EVE_VERSION = VERIFIED_EVE_VERSIONS[0]!;
 
 export const LATEST_VERIFIED_EVE_VERSION = VERIFIED_EVE_VERSIONS[VERIFIED_EVE_VERSIONS.length - 1]!;
 
-export const SUPPORTED_EVE_VERSION_RANGE = `${SUPPORTED_EVE_VERSION_RANGES.slice(0, -1).join(
-  ", ",
-)}, or ${SUPPORTED_EVE_VERSION_RANGES.at(-1)}`;
+export const SUPPORTED_EVE_VERSION_RANGE =
+  SUPPORTED_EVE_VERSION_RANGES.length === 2
+    ? `${SUPPORTED_EVE_VERSION_RANGES[0]} or ${SUPPORTED_EVE_VERSION_RANGES[1]}`
+    : `${SUPPORTED_EVE_VERSION_RANGES.slice(0, -1).join(", ")}, or ${SUPPORTED_EVE_VERSION_RANGES.at(-1)}`;
 
 export type EveVersionInfo = {
   version: string | null;

@@ -18,7 +18,7 @@ test("copies source into a prepared release and injects observers without modify
   await mkdir(path.join(sourcePath, "agent", "subagents", "child"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.34.5" } }),
+    JSON.stringify({ dependencies: { eve: "0.38.3" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -52,7 +52,7 @@ test("injects the scheduler adapter only into the disposable release", async () 
   await mkdir(path.join(sourcePath, "agent", "schedules"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.34.5" } }),
+    JSON.stringify({ dependencies: { eve: "0.38.3" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -90,7 +90,7 @@ export default {
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.34.5" } }),
+    JSON.stringify({ dependencies: { eve: "0.38.3" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(path.join(sourcePath, "agent", "agent.ts"), authoredConfig);
@@ -100,7 +100,7 @@ export default {
     buildDir,
     workflowWorld: {
       packageName: "@workflow/world-postgres",
-      packageVersion: "5.0.0-beta.25",
+      packageVersion: "5.0.0-beta.34",
     },
   });
 
@@ -135,7 +135,7 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.34.5" } }),
+    JSON.stringify({ dependencies: { eve: "0.38.3" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
 
@@ -144,7 +144,7 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
     buildDir,
     workflowWorld: {
       packageName: "@workflow/world-postgres",
-      packageVersion: "5.0.0-beta.25",
+      packageVersion: "5.0.0-beta.34",
     },
   });
 
@@ -166,7 +166,7 @@ test("wraps every Eve-supported authored agent module extension", async () => {
     await mkdir(sourcePath, { recursive: true });
     await writeFile(
       path.join(sourcePath, "package.json"),
-      JSON.stringify({ dependencies: { eve: "0.34.5" } }),
+      JSON.stringify({ dependencies: { eve: "0.38.3" } }),
     );
     await writeFile(path.join(sourcePath, "instructions.md"), "root");
     await writeFile(
@@ -179,7 +179,7 @@ test("wraps every Eve-supported authored agent module extension", async () => {
       buildDir,
       workflowWorld: {
         packageName: "@workflow/world-postgres",
-        packageVersion: "5.0.0-beta.25",
+        packageVersion: "5.0.0-beta.34",
       },
     });
 

@@ -18,8 +18,6 @@
   },
   "devDependencies": {
     "eve": "catalog:",
-    "eve-middle": "catalog:eve-matrix",
-    "eve-newer": "catalog:eve-matrix",
     "eve-oldest": "catalog:eve-matrix",
     "vitest": "^4.1.9"
   }

@@ -504,7 +504,7 @@ describe("processNextJob", () => {
     expect(build?.input).toMatchObject({
       workflowWorld: {
         packageName: "@workflow/world-postgres",
-        packageVersion: "5.0.0-beta.25",
+        packageVersion: "5.0.0-beta.34",
       },
     });
     const run = runtimeCalls.find((call) => call.name === "startProcess");

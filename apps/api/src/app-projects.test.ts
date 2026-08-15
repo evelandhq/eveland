@@ -41,7 +41,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/version-summary-agent",
-      summary: { eveVersion: "0.34.5" },
+      summary: { eveVersion: "0.38.3" },
       envVars: [],
       files: [],
       schedules: [],
@@ -55,9 +55,9 @@ describe("api app", () => {
         expect.objectContaining({
           id: project.id,
           eveVersion: {
-            version: "0.34.5",
-            expected: "0.34.x, 0.35.x, 0.36.x, or 0.37.x",
-            supportedRanges: ["0.34.x", "0.35.x", "0.36.x", "0.37.x"],
+            version: "0.38.3",
+            expected: "0.37.x or 0.38.x",
+            supportedRanges: ["0.37.x", "0.38.x"],
             supported: true,
             sourceRevisionId: revision.id,
           },
@@ -229,7 +229,7 @@ describe("api app", () => {
     await store.completeSourcePreflight(queued.preflight.id, claimed!.attempts, {
       sourcePath: "/data/preflights/source",
       commitSha: "abc123",
-      summary: { eveVersion: "0.34.5", layout: "single-agent" },
+      summary: { eveVersion: "0.38.3", layout: "single-agent" },
     });
 
     const statusResponse = await app.request(`/source-preflights/${queued.preflight.id}`);
@@ -238,7 +238,7 @@ describe("api app", () => {
       preflight: expect.objectContaining({
         id: queued.preflight.id,
         status: "completed",
-        summary: { eveVersion: "0.34.5", layout: "single-agent" },
+        summary: { eveVersion: "0.38.3", layout: "single-agent" },
       }),
     });
 
@@ -703,7 +703,7 @@ describe("api app", () => {
           sourceRevisionId: revision.id,
           imageTag: `expired-retention-${index}`,
           summary:
-            index === 0 ? { summarySource: "build-manifest", eveVersionResolved: "0.34.5" } : null,
+            index === 0 ? { summarySource: "build-manifest", eveVersionResolved: "0.38.3" } : null,
           containerName: `expired-retention-${index}`,
           internalPort: 3000,
           hostPort: 41210 + index,
@@ -755,7 +755,7 @@ describe("api app", () => {
       releaseSummaries: expect.objectContaining({
         [deployments[0]!.releaseId]: expect.objectContaining({
           summarySource: "build-manifest",
-          eveVersionResolved: "0.34.5",
+          eveVersionResolved: "0.38.3",
         }),
         [deployments[1]!.releaseId]: null,
       }),

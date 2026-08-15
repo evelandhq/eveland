@@ -1579,3 +1579,30 @@ Gateway 的落地边界如下：
 迁移 `0050_regular_lenny_balinger` 必须先于 Gateway rollout。Gateway 仍只决定 target，不解析
 task-input capability、不替代 MCP/Agent auth，也不把同名 operation ID 当成平台身份；Agent 是
 principal 隔离与 create-once 结果的最终权威。
+
+---
+
+## 38. 2026-08-15 follow-up：Eve 0.38.3 compatibility foundation
+
+本轮把平台窗口显式收缩为 Eve 0.37.x–0.38.x，精确矩阵 patch 为 0.37.1 与 0.38.3；0.34–0.36
+在 import、build、restart、cold activation、Playground、Gateway 与 scheduler execution 的共享
+门禁中一起淘汰。workspace 只保留 `eve-oldest` 与 `eve` 两个位置别名，SDK peer floor 同步提高到
+0.37.0。
+
+Eve 0.38 的 frontend binding 删除同步 `stop()`。Playground 在 session 已知时通过独立
+ClientSession handle 发 durable `cancel()`，首个 response 尚未返回时则 abort 本地请求，避免
+hook-owned `cancel()` 永久等待 response resolver；单次 in-flight guard 阻止重复取消。MCP 默认
+route 改为 `/eve/v1/mcp` 且可由 Agent 配置，Gateway 继续 path-transparent，
+不把默认路径或 OAuth protected-resource metadata path 写死。
+
+Eve 0.38.3 只接受 workflow spec v6。legacy topology 固定升级到
+`@workflow/world-postgres@5.0.0-beta.34`，shared topology 升级到
+`@evelandhq/workflow-world@0.6.0`；architecture contract 会从已安装包读取 spec version、Eve runtime
+guard、注入常量与文档 pin，防止任一路径在 Deploy 后才暴露不兼容。已有 shared schema 若尚未执行
+会重建 workflow_events 主键的 `0006_event_slots.sql`，worker startup/tenant provisioning fail closed，
+要求 operator 在停流量的 maintenance window 显式运行 `workflow-world-setup`；空库仍自动 bootstrap。
+
+Eve 0.38 新增 Extension Schedule、Channel 与 Subagent，但本兼容 foundation 不把 Extension
+Schedule 当作 root Schedule，也不把 Extension Subagent 当作已注入 Observer 的节点。完整的
+Scheduler/Observer/Discovery 支持在独立的 stacked follow-up 中落地，避免把新能力与兼容窗口、
+Workflow protocol 升级混在同一审查单元。

@@ -22,16 +22,16 @@ test("reads the discovery manifest and the installed eve version from a built re
   await mkdir(path.join(releaseDir, "node_modules", "eve"), { recursive: true });
   await writeFile(
     path.join(releaseDir, ".eve", "discovery", "agent-discovery-manifest.json"),
-    JSON.stringify({ kind: "eve-agent-discovery-manifest", version: 12 }),
+    JSON.stringify({ kind: "eve-agent-discovery-manifest", version: 13 }),
   );
   await writeFile(
     path.join(releaseDir, "node_modules", "eve", "package.json"),
-    JSON.stringify({ name: "eve", version: "0.34.5" }),
+    JSON.stringify({ name: "eve", version: "0.38.3" }),
   );
 
   await expect(readReleaseDiscovery(releaseDir)).resolves.toEqual({
-    manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
-    resolvedEveVersion: "0.34.5",
+    manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
+    resolvedEveVersion: "0.38.3",
   });
 });
 

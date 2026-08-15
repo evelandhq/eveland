@@ -18,9 +18,9 @@ import { readSource, repoRoot } from "./scan-support.js";
  *
  * Neither is a type error, so without this suite an eve bump would fail at
  * deploy time on a real project instead of in CI. The world is resolved from
- * `apps/worker` — the workspace that actually installs the version the worker
+ * `apps/worker` — the workspace that actually installs the versions the worker
  * injects — and the eve lines from `packages/agent-observer`, which installs
- * all four supported lines for its own compatibility tests.
+ * both supported lines for its own compatibility tests.
  */
 const require = createRequire(import.meta.url);
 
@@ -31,14 +31,13 @@ const require = createRequire(import.meta.url);
  */
 const RESOLUTION_ANCHORS: Record<string, string> = {
   "@evelandhq/workflow-world": "apps/worker",
+  "@workflow/world-postgres": "apps/worker",
   eve: "packages/agent-observer",
-  "eve-middle": "packages/agent-observer",
-  "eve-newer": "packages/agent-observer",
   "eve-oldest": "packages/agent-observer",
 };
 
 /** The supported eve lines, newest first; alias names are pnpm catalog entries. */
-const EVE_LINES = ["eve", "eve-newer", "eve-middle", "eve-oldest"] as const;
+const EVE_LINES = ["eve", "eve-oldest"] as const;
 
 function resolveInstalled(specifier: string): string {
   const packageName = specifier.startsWith("@")
@@ -117,8 +116,29 @@ const worldManifest = readJson(path.join(worldRoot, "package.json")) as {
   version: string;
   dependencies: Record<string, string>;
 };
+const postgresWorldRoot = resolveInstalledPackageRoot("@workflow/world-postgres");
+const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.json")) as {
+  version: string;
+};
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
+  test("pins the spec-v6 platform worlds reviewed for Eve 0.38.3", () => {
+    expect(worldManifest.version).toBe("0.6.0");
+    expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
+
+    const workspace = readSource("pnpm-workspace.yaml");
+    expect(workspace).toContain('  - "@workflow/utils@5.0.0-beta.8"');
+
+    const { SPEC_VERSION_CURRENT: sharedSpecVersion } = require(
+      require.resolve("@workflow/world", { paths: [worldRoot] }),
+    ) as { SPEC_VERSION_CURRENT: number };
+    const { SPEC_VERSION_CURRENT: postgresSpecVersion } = require(
+      require.resolve("@workflow/world", { paths: [postgresWorldRoot] }),
+    ) as { SPEC_VERSION_CURRENT: number };
+    expect(sharedSpecVersion).toBe(6);
+    expect(postgresSpecVersion).toBe(6);
+  });
+
   test("the injected version is exactly the installed one these tests run against", () => {
     // The build-time injection constant must match the version apps/worker
     // installs: CI's contract gates run against the installed copy, so
@@ -130,6 +150,21 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       );
     expect(injected, "could not find EVELAND_WORKFLOW_WORLD in workflow-world.ts").not.toBeNull();
     expect(injected![1]).toBe(worldManifest.version);
+
+    const postgresInjected =
+      /PLATFORM_WORKFLOW_WORLD = \{\s*packageName: "@workflow\/world-postgres",\s*packageVersion: "([^"]+)"/.exec(
+        injectionSource,
+      );
+    expect(
+      postgresInjected,
+      "could not find PLATFORM_WORKFLOW_WORLD in workflow-world.ts",
+    ).not.toBeNull();
+    expect(postgresInjected![1]).toBe(postgresWorldManifest.version);
+
+    for (const documentation of [readSource("docs/spec.md"), readSource("docs/deploy/linux.md")]) {
+      expect(documentation).toContain(`@evelandhq/workflow-world@${worldManifest.version}`);
+      expect(documentation).toContain(`@workflow/world-postgres@${postgresWorldManifest.version}`);
+    }
   });
 
   for (const line of EVE_LINES) {

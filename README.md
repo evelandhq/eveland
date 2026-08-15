@@ -74,9 +74,9 @@ fixtures rather than duplicating setup when adding coverage.
 Eve compatibility has one semantic owner:
 `packages/core/src/eve-compatibility.ts`. Workspace consumers reference the
 matching pnpm catalogs instead of copying patch versions into package
-manifests. The temporary four-line matrix uses stable positional aliases
-(`eve-oldest`, `eve-middle`, `eve-newer`, and `eve`) so sliding the supported
-minor window does not rename consumer dependencies. Standalone integration
+manifests. The current two-line matrix uses stable positional aliases
+(`eve-oldest` and `eve`) so sliding the supported minor window does not rename
+consumer dependencies. Standalone integration
 fixtures keep the `catalog:` marker in source and are materialized into
 temporary directories through `@evelandhq/core/server/eve-fixture` before
 import, so an Eve patch upgrade does not require editing every fixture.
@@ -106,8 +106,10 @@ Open the control panel at `http://localhost:3000` and the public documentation s
   jobs, so parallel `pnpm dev` startup does not spend a Graphile retry while the API is
   still binding its port.
 - The worker migrates the configured shared workflow database before use and sweeps
-  terminal stream chunks in both the legacy per-project and shared topologies. The
-  default replay window is 24 hours and EOF markers are retained.
+  terminal stream chunks in both the legacy per-project and shared topologies. A
+  pending disruptive shared-World migration instead blocks unattended startup until
+  an operator applies it in the documented maintenance window. The default replay
+  window is 24 hours and EOF markers are retained.
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
   `pnpm dev:docs` in separate terminals when isolated logs are more useful.
 - Public development endpoints use `http://<projectSlug>.agent.localhost:4080`;

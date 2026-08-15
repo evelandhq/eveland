@@ -71,7 +71,7 @@ import {
 } from "@evelandhq/core/eve";
 import { resetPlaygroundOnPageLeave } from "@/lib/client-api";
 import {
-  cancelPlaygroundTurn,
+  createPlaygroundTurnCanceller,
   createPlaygroundMessage,
   resetPlaygroundConversation,
 } from "@/lib/playground-session";
@@ -97,16 +97,20 @@ type PlaygroundPanelProps = {
 };
 
 export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps) {
-  // The hook owns the session (created on the first turn); the standalone
-  // Client only mints I/O-free `sessions.attach` handles for control
-  // operations (cooperative cancel, reset) on the hook's current session ID.
+  // The hook owns the session (created on the first turn). Once its ID is
+  // known, the standalone Client mints an I/O-free `sessions.attach` handle
+  // for out-of-band durable cancel/reset; before then, Stop aborts the local
+  // request rather than waiting forever for the first response.
   const [client] = useState(
     () => new Client({ host: `/api/eveland/projects/${projectId}/playground` }),
   );
   const pendingRouteAuthTurn = useRef<PendingPlaygroundMessage | null>(null);
   const leaveResetSent = useRef(false);
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [cancelTurn] = useState(() => createPlaygroundTurnCanceller());
+  const activeTurnAbortController = useRef<AbortController | null>(null);
   const resumedPendingTurn = useRef(false);
   const agent = useEveAgent({
     host: `/api/eveland/projects/${projectId}/playground`,
@@ -139,10 +143,15 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
     : (versionError ?? composerError ?? agent.error?.message ?? null);
 
   async function sendMessageWithRouteAuth(message: PendingPlaygroundMessage) {
+    const abortController = new AbortController();
+    activeTurnAbortController.current = abortController;
     pendingRouteAuthTurn.current = message;
     try {
-      await agent.send(message);
+      await agent.send(message, { signal: abortController.signal });
     } finally {
+      if (activeTurnAbortController.current === abortController) {
+        activeTurnAbortController.current = null;
+      }
       pendingRouteAuthTurn.current = null;
     }
   }
@@ -316,18 +325,21 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               <span className="text-xs text-muted-foreground">Up to 4 files · 10 MiB total</span>
             </PromptInputTools>
             <PromptInputSubmit
-              disabled={!eveVersion.supported}
+              disabled={!eveVersion.supported || isCancelling}
               onStop={() => {
+                if (isCancelling) return;
                 setComposerError(null);
-                // Before the first turn's response names the session there is
-                // nothing server-side to cancel cooperatively; abort locally.
-                if (sessionHandle) {
-                  void cancelPlaygroundTurn(sessionHandle).catch((cancelError) => {
+                setIsCancelling(true);
+                void cancelTurn({
+                  session: sessionHandle,
+                  abort: () => activeTurnAbortController.current?.abort(),
+                })
+                  .catch((cancelError) => {
                     setComposerError(toErrorMessage(cancelError));
+                  })
+                  .finally(() => {
+                    setIsCancelling(false);
                   });
-                } else {
-                  agent.stop();
-                }
               }}
               status={agent.status}
             />

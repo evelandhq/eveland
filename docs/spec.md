@@ -490,7 +490,7 @@ Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使�
 
 - 拉取或解压源码
 - 检查是否为合法 Eve 项目
-- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.34.x、0.35.x、0.36.x 或 0.37.x
+- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.37.x 或 0.38.x
 - 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
   `capabilities.eveChat`
 - 创建 Source Revision
@@ -525,12 +525,10 @@ worker 不得覆盖新 attempt 的状态。同一 Project 同时至多一个 run
 Project 页面展示最近 Git import job 的 queued/running/failed 状态，在活动期间自动刷新，
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 
-Eveland 在 Eve 达到稳定产品兼容承诺前，通常支持“最新一个已经完成验证的 minor 与其前两个
-minor”的三版本滑动窗口。Eve 0.35–0.37 在同一轮兼容审查中连续发布，本次为避免接纳新版本时
-立即淘汰 0.34，临时扩大为四版本窗口；当前窗口是 0.34.x、0.35.x、0.36.x 与 0.37.x。允许精确的 0.34/0.35/0.36/0.37
-patch、锚定在对应 minor patch 上的 `~`/`^` range，以及 `0.34` / `0.34.x` / `0.34.*`、
-`0.35` / `0.35.x` / `0.35.*`、`0.36` / `0.36.x` / `0.36.*`、
-`0.37` / `0.37.x` / `0.37.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
+Eveland 在 Eve 达到稳定产品兼容承诺前，只支持已经完成完整兼容验证的 minor line；每次扩展或
+收缩窗口都是显式产品变更。当前窗口是 0.37.x 与 0.38.x。允许精确的 0.37/0.38
+patch、锚定在对应 minor patch 上的 `~`/`^` range，以及
+`0.37` / `0.37.x` / `0.37.*`、`0.38` / `0.38.x` / `0.38.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
 Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、reset 和 stream 请求，不能通过已有的
@@ -538,7 +536,7 @@ Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、res
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
 无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
-UI 仅将当前最新支持线 0.37.x 标为绿色；仍受支持但较旧的 0.34.x/0.35.x/0.36.x 使用红色状态与
+UI 仅将当前最新支持线 0.38.x 标为绿色；仍受支持但较旧的 0.37.x 使用红色状态与
 “尽快升级”提醒，但不阻断运行。窗口外或无法识别的版本同样使用红色状态，并继续阻断操作。
 
 用户随后确认自动猜测的项目名称并点击 `Deploy`。Project 与初始 import job 在同一数据库
@@ -624,7 +622,7 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 
 - `local-dev`：不发送 credential，并且用 loopback Host 调用 Agent。**它对当前窗口内的
   任何 Agent 都不再构成认证**——`localDev()` 从 Eve 0.30 起只看进程是否 `eve dev`，
-  而 Agent 在 Eveland 上以 `eve start` 运行，因此不放行任何请求。窗口下限已是 0.34，
+  而 Agent 在 Eveland 上以 `eve start` 运行，因此不放行任何请求。窗口下限已是 0.37，
   该方法只剩历史含义；这类项目必须改用 `eveland-identity` 或 Agent 自有的 AuthFn。
   Gateway“绝不为公网流量把 Host 改写成 loopback”的不变量与本条无关，且必须保留；
 - `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
@@ -709,7 +707,7 @@ Playground 中可查看当前 Session 的：
 - HITL：确认/拒绝、选项、自由文本和外部授权提示
 - 当前 turn 的图片、PDF、文本和代码附件
 
-Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.34.x、0.35.x、0.36.x 与 0.37.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
+Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.37.x 与 0.38.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.38 的前端 binding 使用异步 `cancel()`，它会等待准确的 durable turn id，且在 settlement 前保持 stream attached；平台不得退回已移除的同步 `stop()`。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
 Eve 0.27.7+ Client 可以通过 `follow: false` 做有界 Catch-up Read：请求使用
 `includeTailIndex=1`，Agent 返回 `x-eve-stream-tail-index`。Web rewrite、API Playground proxy、
 内部与公开 Gateway 必须原样保留该 query、响应 header 与 NDJSON body；只有 Client 与目标 Agent
@@ -1149,12 +1147,17 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 `@workflow/world-postgres` 或共享 `@evelandhq/workflow-world`，并强制注入平台固定且经过 Eve
 兼容性验证的依赖版本；不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
-不得被修改。
+不得被修改。Eve 0.38.3 要求 workflow spec v6，因此 legacy world 固定为
+`@workflow/world-postgres@5.0.0-beta.34`，共享 world 固定为
+`@evelandhq/workflow-world@0.6.0`；两者都必须通过 0.37.1 与 0.38.3 的 World contract 门禁。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
 配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在开始共享库 retention 前幂等执行
 `@evelandhq/workflow-world` migration；若 host 与 Deployment 访问同一数据库所需地址不同，
-host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。
+host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。新空库可以无人值守完成完整
+bootstrap；已有 schema 若缺少标记为 maintenance-window 的破坏性 migration，worker startup 与
+tenant provisioning 必须 fail closed，不能在仍有 workflow 流量时自动重试。operator 停止
+dispatcher、Agent workflow 流量并显式执行 `workflow-world-setup` 后，worker 才能继续启动。
 外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Control API 的
 公开 `/health` 成功，不能用 Graphile job 的首次失败承担并行进程启动顺序；健康门打开后
 的 activation、executor dispatch 与重试语义仍由 dispatcher 持有。

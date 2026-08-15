@@ -42,6 +42,7 @@ describe("Gateway", () => {
       allowedBaseDomains: ["agent.localhost"],
       affinitySecret,
       internalServiceToken: "service-secret",
+      now: () => new Date("2026-08-14T00:00:01.000Z"),
     });
 
     const response = await app.request(
