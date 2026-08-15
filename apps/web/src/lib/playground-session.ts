@@ -25,8 +25,30 @@ export function createPlaygroundMessage(
   ];
 }
 
-export async function cancelPlaygroundTurn(session: { cancel(): Promise<unknown> }): Promise<void> {
-  await session.cancel();
+export type PlaygroundTurnCancellation = {
+  session: { cancel(): Promise<unknown> } | null;
+  abort: () => void;
+};
+
+export async function cancelPlaygroundTurn(input: PlaygroundTurnCancellation): Promise<void> {
+  if (!input.session) {
+    input.abort();
+    return;
+  }
+  await input.session.cancel();
+}
+
+export function createPlaygroundTurnCanceller(): (
+  input: PlaygroundTurnCancellation,
+) => Promise<void> {
+  let inFlight: Promise<void> | undefined;
+  return (input) => {
+    if (inFlight) return inFlight;
+    inFlight = cancelPlaygroundTurn(input).finally(() => {
+      inFlight = undefined;
+    });
+    return inFlight;
+  };
 }
 
 export async function resetPlaygroundConversation(input: {

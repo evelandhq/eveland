@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import * as ClientApi from "../lib/client-api.js";
 import {
   cancelPlaygroundTurn,
+  createPlaygroundTurnCanceller,
   createPlaygroundMessage,
   resetPlaygroundConversation,
 } from "../lib/playground-session.js";
@@ -48,15 +49,52 @@ describe("Playground message composition", () => {
     ]);
   });
 
-  test("requests server cancellation and surfaces failures", async () => {
+  test("requests server cancellation when the active session is known", async () => {
     const cancel = vi.fn(async () => ({ sessionId: "eve_1", status: "accepted" as const }));
-    await cancelPlaygroundTurn({ cancel });
+    const abort = vi.fn();
+    await cancelPlaygroundTurn({ session: { cancel }, abort });
     expect(cancel).toHaveBeenCalledOnce();
+    expect(abort).not.toHaveBeenCalled();
 
     const serverFailure = Object.assign(new Error("Unavailable"), { status: 503 });
     await expect(
-      cancelPlaygroundTurn({ cancel: vi.fn(async () => Promise.reject(serverFailure)) }),
+      cancelPlaygroundTurn({
+        session: { cancel: vi.fn(async () => Promise.reject(serverFailure)) },
+        abort,
+      }),
     ).rejects.toBe(serverFailure);
+  });
+
+  test("aborts a submitted turn locally before the server names its session", async () => {
+    const abort = vi.fn();
+
+    await expect(cancelPlaygroundTurn({ session: null, abort })).resolves.toBeUndefined();
+
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
+  test("coalesces repeated cancellation requests while one is in flight", async () => {
+    let resolveCancel: (() => void) | undefined;
+    const cancel = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCancel = resolve;
+        }),
+    );
+    const cancelTurn = createPlaygroundTurnCanceller();
+    const input = { session: { cancel }, abort: vi.fn() };
+
+    const first = cancelTurn(input);
+    const second = cancelTurn(input);
+
+    expect(cancel).toHaveBeenCalledOnce();
+    resolveCancel?.();
+    await Promise.all([first, second]);
+
+    const third = cancelTurn(input);
+    expect(cancel).toHaveBeenCalledTimes(2);
+    resolveCancel?.();
+    await third;
   });
 
   test("resets the durable Playground session before clearing the conversation", async () => {

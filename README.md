@@ -106,8 +106,10 @@ Open the control panel at `http://localhost:3000` and the public documentation s
   jobs, so parallel `pnpm dev` startup does not spend a Graphile retry while the API is
   still binding its port.
 - The worker migrates the configured shared workflow database before use and sweeps
-  terminal stream chunks in both the legacy per-project and shared topologies. The
-  default replay window is 24 hours and EOF markers are retained.
+  terminal stream chunks in both the legacy per-project and shared topologies. A
+  pending disruptive shared-World migration instead blocks unattended startup until
+  an operator applies it in the documented maintenance window. The default replay
+  window is 24 hours and EOF markers are retained.
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
   `pnpm dev:docs` in separate terminals when isolated logs are more useful.
 - Public development endpoints use `http://<projectSlug>.agent.localhost:4080`;

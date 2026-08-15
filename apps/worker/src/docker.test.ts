@@ -369,7 +369,7 @@ describe("createDockerAdapter", () => {
       .mockResolvedValueOnce({
         exitCode: 0,
         stdout: JSON.stringify({
-          manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
+          manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
           resolvedEveVersion: "0.38.3",
         }),
       } as never);
@@ -400,7 +400,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Injected eve sandbox modules: agent/sandbox.js");
     expect(result.log).toContain("Docker sandbox self-check passed");
     expect(result.discovery).toEqual({
-      manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
+      manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
       resolvedEveVersion: "0.38.3",
     });
     expect(vi.mocked(execa).mock.calls).toEqual([

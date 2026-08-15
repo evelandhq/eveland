@@ -321,7 +321,7 @@ describe("processNextJob", () => {
               discovery: {
                 manifest: {
                   kind: "eve-agent-discovery-manifest",
-                  version: 12,
+                  version: 13,
                   agentId: "fixture-agent",
                   agentRoot: `${input.sourcePath}/agent`,
                   appRoot: input.sourcePath,
@@ -333,6 +333,8 @@ describe("processNextJob", () => {
                   schedules: [{ logicalPath: "schedules/daily.md" }],
                   hooks: [],
                   channels: [],
+                  extensions: [],
+                  resolvedExtensions: [],
                   sandbox: null,
                   diagnosticsSummary: { errors: 0, warnings: 0 },
                 },
@@ -394,7 +396,7 @@ describe("processNextJob", () => {
     await expect(store.getRelease(recordedDeployment!.releaseId)).resolves.toMatchObject({
       summary: expect.objectContaining({
         summarySource: "build-manifest",
-        manifestVersion: 12,
+        manifestVersion: 13,
         agentId: "fixture-agent",
         layout: "nested",
         eveVersionResolved: "0.38.3",

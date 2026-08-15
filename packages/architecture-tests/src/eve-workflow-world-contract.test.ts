@@ -126,6 +126,9 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     expect(worldManifest.version).toBe("0.6.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
+    const workspace = readSource("pnpm-workspace.yaml");
+    expect(workspace).toContain('  - "@workflow/utils@5.0.0-beta.8"');
+
     const { SPEC_VERSION_CURRENT: sharedSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [worldRoot] }),
     ) as { SPEC_VERSION_CURRENT: number };
@@ -157,6 +160,11 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       "could not find PLATFORM_WORKFLOW_WORLD in workflow-world.ts",
     ).not.toBeNull();
     expect(postgresInjected![1]).toBe(postgresWorldManifest.version);
+
+    for (const documentation of [readSource("docs/spec.md"), readSource("docs/deploy/linux.md")]) {
+      expect(documentation).toContain(`@evelandhq/workflow-world@${worldManifest.version}`);
+      expect(documentation).toContain(`@workflow/world-postgres@${postgresWorldManifest.version}`);
+    }
   });
 
   for (const line of EVE_LINES) {

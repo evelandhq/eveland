@@ -1154,7 +1154,10 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
 配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在开始共享库 retention 前幂等执行
 `@evelandhq/workflow-world` migration；若 host 与 Deployment 访问同一数据库所需地址不同，
-host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。
+host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。新空库可以无人值守完成完整
+bootstrap；已有 schema 若缺少标记为 maintenance-window 的破坏性 migration，worker startup 与
+tenant provisioning 必须 fail closed，不能在仍有 workflow 流量时自动重试。operator 停止
+dispatcher、Agent workflow 流量并显式执行 `workflow-world-setup` 后，worker 才能继续启动。
 外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Control API 的
 公开 `/health` 成功，不能用 Graphile job 的首次失败承担并行进程启动顺序；健康门打开后
 的 activation、executor dispatch 与重试语义仍由 dispatcher 持有。
