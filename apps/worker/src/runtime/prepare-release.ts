@@ -3,6 +3,7 @@ import path from "node:path";
 import { injectObserverHooks, type ObserverInjectionResult } from "@evelandhq/agent-observer";
 import { injectSchedulerAdapter, type SchedulerInjectionResult } from "@evelandhq/agent-scheduler";
 import { execa } from "execa";
+import { injectExtensionIntegrator } from "./extension-integration.js";
 import {
   injectWorkflowWorld,
   type WorkflowWorldBuildConfig,
@@ -10,6 +11,7 @@ import {
 } from "./workflow-world.js";
 
 export type PreparedReleaseResult = ObserverInjectionResult & {
+  extensionIntegratorFile: string;
   workflowWorld?: WorkflowWorldInjectionResult;
   scheduler: SchedulerInjectionResult;
 };
@@ -31,5 +33,11 @@ export async function prepareReleaseTree(input: {
     ? await injectWorkflowWorld({ releaseDir: buildDir, config: input.workflowWorld })
     : undefined;
   const scheduler = await injectSchedulerAdapter({ releaseDir: buildDir });
-  return { ...observer, ...(workflowWorld ? { workflowWorld } : {}), scheduler };
+  const extensionIntegratorFile = await injectExtensionIntegrator(buildDir);
+  return {
+    ...observer,
+    extensionIntegratorFile,
+    ...(workflowWorld ? { workflowWorld } : {}),
+    scheduler,
+  };
 }

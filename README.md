@@ -15,13 +15,15 @@ repository shape and how to run it.
   browser-safe imports cannot pull in Node-only code.
 - `packages/db`: Drizzle schema and migrations, and the one domain-oriented SQL Store
   shared by production Postgres and PGlite tests.
-- `packages/agent-observer`: release-time Eve hook injection with private OpenTelemetry
-  providers that never register or mutate a user's global providers.
+- `packages/agent-observer`: release-time Eve hook injection for root, local, and mounted
+  Extension directory-form subagents, with private OpenTelemetry providers that never
+  register or mutate a user's global providers.
 - `packages/agent-auth`: Playground authentication registry, OIDC acquisition
   (Authorization Code + PKCE), and credential materialization.
 - `packages/identity-broker`: Agent-user identity finalization, Identity Sessions,
   short-lived project-audience Caller Tokens, signing-key rotation, and public JWKS.
-- `packages/agent-scheduler`: release-time injection of the private Scheduler Channel.
+- `packages/agent-scheduler`: release-time injection of the private Scheduler Channel,
+  including namespaced schedules contributed or overridden by Eve Extensions.
 - `packages/platform-observability`: shared OpenTelemetry SDK bootstrap for API,
   Gateway, and Worker.
 - `packages/session-collector`: standard OTLP decoding and projection into the built-in

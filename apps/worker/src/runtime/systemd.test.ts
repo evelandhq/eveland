@@ -261,7 +261,7 @@ describe("buildReleaseBuildCommand", () => {
         packageManager: "pnpm",
       }),
     ).toBe(
-      "pnpm install --frozen-lockfile --config.minimum-release-age=0 && npx eve build && npx eve info --json >/dev/null",
+      "pnpm install --frozen-lockfile --config.minimum-release-age=0 && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json >/dev/null",
     );
   });
 
@@ -289,13 +289,13 @@ describe("buildReleaseBuildCommand", () => {
         { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
       ),
     ).toBe(
-      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.34 && npx eve build && npx eve info --json >/dev/null",
+      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.34 && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json >/dev/null",
     );
   });
 
   test("uses npm install and eve build without a lockfile", () => {
     expect(buildReleaseBuildCommand({ hasLockfile: false })).toBe(
-      "npm install && npx eve build && npx eve info --json >/dev/null",
+      "npm install && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json >/dev/null",
     );
   });
 });
@@ -1029,7 +1029,7 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
       `HOME=${releaseDir}`,
       "sh",
       "-lc",
-      "npm ci && npx eve build && npx eve info --json >/dev/null",
+      "npm ci && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json >/dev/null",
     ]);
     expect(runuserOptions).toMatchObject({
       all: true,
@@ -1077,7 +1077,8 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
         releaseDir,
         npmCacheDir,
         dataDir,
-        command: "npm ci && npx eve build && npx eve info --json >/dev/null",
+        command:
+          "npm ci && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json >/dev/null",
       }),
     ]);
     // buildBwrapArgs (asserted above) already carries `--setenv HOME

@@ -39,6 +39,8 @@ export type ReleaseDiscovery = {
   manifest: unknown;
   /** The eve version actually installed into the release, from node_modules/eve. */
   resolvedEveVersion: string | null;
+  /** Post-install definitions, including mounted Extension schedules. */
+  schedulerDefinitions?: SchedulerDefinition[];
 };
 
 export type ProcessStartInput = {

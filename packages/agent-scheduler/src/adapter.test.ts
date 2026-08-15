@@ -7,7 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { EVE_COMPATIBILITY_POLICY } from "@evelandhq/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
-import { injectSchedulerAdapter } from "./adapter.js";
+import { injectExtensionSchedules, injectSchedulerAdapter } from "./adapter.js";
 
 const execFileAsync = promisify(execFile);
 const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
@@ -483,6 +483,128 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
     60_000,
   );
 });
+
+describe("injectExtensionSchedules", () => {
+  test("namespaces Extension schedules, honors consumer overrides, and regenerates the dispatch Channel", async () => {
+    const releaseDir = await fixture({
+      eveVersion: "0.38.3",
+      files: {
+        "agent/schedules/root.ts": 'export default { cron: "0 1 * * *", async run() {} };',
+        "node_modules/@acme/crm/package.json": JSON.stringify({
+          name: "@acme/crm",
+          type: "module",
+        }),
+        "node_modules/@acme/crm/dist/extension/schedules/sync.mjs":
+          'export default { cron: "0 2 * * *", async run() {} };',
+        "node_modules/@acme/crm/dist/extension/schedules/report.md":
+          '---\ncron: "0 3 * * *"\n---\nProduce the extension report.\n',
+        "agent/extensions/crm/schedules/sync.ts":
+          'export default { cron: "30 2 * * *", async run() {} };',
+      },
+    });
+    await injectSchedulerAdapter({ releaseDir });
+    const extensionRoot = path.join(releaseDir, "node_modules/@acme/crm/dist/extension");
+
+    const result = await injectExtensionSchedules({
+      releaseDir,
+      manifest: extensionDiscoveryManifest({
+        releaseDir,
+        extensionRoot,
+        schedules: ["schedules/sync.mjs", "schedules/report.md"],
+        overrideSchedules: ["schedules/sync.ts"],
+      }),
+    });
+
+    expect(result.definitions.map(({ key, cron }) => ({ key, cron }))).toEqual([
+      { key: "crm__report", cron: "0 3 * * *" },
+      { key: "crm__sync", cron: "30 2 * * *" },
+      { key: "root", cron: "0 1 * * *" },
+    ]);
+    await expect(readFile(path.join(extensionRoot, "schedules/sync.mjs"), "utf8")).resolves.toBe(
+      'export default { cron: "0 2 * * *", async run() {} };',
+    );
+    await expect(
+      readFile(path.join(releaseDir, "agent/extensions/crm/schedules/sync.ts"), "utf8"),
+    ).resolves.toContain("__evelandOriginalSchedule");
+    const channel = await readFile(
+      path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
+      "utf8",
+    );
+    expect(channel).toContain('"crm__report"');
+    expect(channel).toContain('"crm__sync"');
+    expect(channel).toContain("../../node_modules/@acme/crm/dist/extension/schedules/report");
+  });
+
+  test("rejects Extension source paths outside the disposable Release", async () => {
+    const releaseDir = await fixture({ eveVersion: "0.38.3", files: {} });
+    await injectSchedulerAdapter({ releaseDir });
+    const outsideRoot = path.join(path.dirname(releaseDir), "outside-extension");
+
+    await expect(
+      injectExtensionSchedules({
+        releaseDir,
+        manifest: extensionDiscoveryManifest({
+          releaseDir,
+          extensionRoot: outsideRoot,
+          schedules: ["schedules/escape.mjs"],
+        }),
+      }),
+    ).rejects.toThrow(/must stay inside the disposable Release directory/);
+  });
+});
+
+function extensionDiscoveryManifest(input: {
+  releaseDir: string;
+  extensionRoot: string;
+  schedules: string[];
+  overrideSchedules?: string[];
+}) {
+  const emptyManifest = (agentRoot: string) => ({
+    kind: "eve-agent-discovery-manifest",
+    version: 13,
+    agentId: "fixture",
+    agentRoot,
+    appRoot: input.releaseDir,
+    channels: [],
+    connections: [],
+    diagnosticsSummary: { errors: 0, warnings: 0 },
+    extensions: [],
+    resolvedExtensions: [],
+    hooks: [],
+    instructions: [],
+    lib: [],
+    sandbox: null,
+    sandboxWorkspaces: [],
+    schedules: [],
+    skills: [],
+    tools: [],
+    subagents: [],
+  });
+  return {
+    ...emptyManifest(path.join(input.releaseDir, "agent")),
+    resolvedExtensions: [
+      {
+        namespace: "crm",
+        specifier: "@acme/crm",
+        packageName: "@acme/crm",
+        packageRoot: path.dirname(path.dirname(input.extensionRoot)),
+        sourceRoot: input.extensionRoot,
+        manifest: {
+          ...emptyManifest(input.extensionRoot),
+          schedules: input.schedules.map((logicalPath) => ({ logicalPath })),
+        },
+        ...(input.overrideSchedules
+          ? {
+              overrides: {
+                ...emptyManifest(path.join(input.releaseDir, "agent/extensions/crm")),
+                schedules: input.overrideSchedules.map((logicalPath) => ({ logicalPath })),
+              },
+            }
+          : {}),
+      },
+    ],
+  };
+}
 
 async function availablePort(): Promise<number> {
   const server = net.createServer();

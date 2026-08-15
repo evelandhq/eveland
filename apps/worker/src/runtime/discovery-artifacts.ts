@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { ReleaseDiscovery } from "./types.js";
+import { readSchedulerDefinitions, type SchedulerDefinition } from "@evelandhq/agent-scheduler";
 
 /**
  * Eveland runs `eve info` after `eve build` to materialize the full discovery
@@ -23,6 +24,16 @@ export async function readReleaseDiscovery(
     return undefined;
   }
   return { manifest, resolvedEveVersion: await readResolvedEveVersion(releaseDir) };
+}
+
+export async function readReleaseSchedulerDefinitions(
+  releaseDir: string,
+): Promise<SchedulerDefinition[] | undefined> {
+  try {
+    return await readSchedulerDefinitions(releaseDir);
+  } catch {
+    return undefined;
+  }
 }
 
 async function readResolvedEveVersion(releaseDir: string): Promise<string | null> {

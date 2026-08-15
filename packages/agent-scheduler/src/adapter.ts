@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseScheduleSource } from "@evelandhq/core/schedules";
 import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@evelandhq/core/source";
@@ -8,6 +8,7 @@ import ts from "typescript";
 const reservedOriginalSchedule = "__evelandOriginalSchedule";
 const reservedOriginalMarkdown = "__evelandOriginalMarkdown";
 const reservedChannelPath = "agent/channels/eveland-scheduler.ts";
+export const SCHEDULER_DEFINITIONS_RELEASE_PATH = ".eveland/scheduler/definitions.json";
 const moduleExtensions = new Set([".cts", ".mts", ".cjs", ".mjs", ".ts", ".js"]);
 
 export type SchedulerDefinition = {
@@ -23,6 +24,17 @@ export type SchedulerInjectionResult = {
   eveVersion: string;
   channelPath: typeof reservedChannelPath;
   definitions: SchedulerDefinition[];
+};
+
+type ExtensionScheduleManifest = {
+  agentRoot: string;
+  schedules: Array<{ logicalPath: string }>;
+};
+
+type ResolvedExtensionScheduleMount = {
+  namespace: string;
+  manifest: ExtensionScheduleManifest;
+  overrides?: ExtensionScheduleManifest;
 };
 
 export async function injectSchedulerAdapter(input: {
@@ -64,7 +76,7 @@ export async function injectSchedulerAdapter(input: {
           `Markdown schedule ${sourcePath} collides with reserved generated module ${generatedRelativePath}.`,
         );
       }
-      await writeFile(
+      await atomicWriteFile(
         generatedPath,
         [
           `export const ${reservedOriginalMarkdown} = ${JSON.stringify(discovered.prompt)};`,
@@ -91,7 +103,7 @@ export async function injectSchedulerAdapter(input: {
     }
 
     const transformed = transformModuleSchedule(sourcePath, content);
-    await writeFile(path.join(schedulesRoot, relativePath), transformed.code);
+    await atomicWriteFile(path.join(schedulesRoot, relativePath), transformed.code);
     definitions.push({
       key: discovered.key,
       kind: transformed.kind,
@@ -102,9 +114,118 @@ export async function injectSchedulerAdapter(input: {
     });
   }
 
-  await mkdir(path.dirname(channelPath), { recursive: true });
-  await writeFile(channelPath, generateSchedulerChannel(definitions));
+  await writeSchedulerArtifacts(releaseDir, definitions);
   return { eveVersion, channelPath: reservedChannelPath, definitions };
+}
+
+export async function injectExtensionSchedules(input: {
+  releaseDir: string;
+  manifest: unknown;
+}): Promise<{ definitions: SchedulerDefinition[]; transformedFiles: string[] }> {
+  const releaseDir = path.resolve(input.releaseDir);
+  const definitions = await readSchedulerDefinitions(releaseDir);
+  if (!definitions) {
+    throw new Error(
+      `Missing platform scheduler definitions at ${SCHEDULER_DEFINITIONS_RELEASE_PATH}.`,
+    );
+  }
+  const mounts = readResolvedExtensionMounts(input.manifest);
+  const existingKeys = new Set(definitions.map((definition) => definition.key));
+  const transformedFiles: string[] = [];
+  const transformedSources = new Map<
+    string,
+    Pick<SchedulerDefinition, "kind" | "cron" | "definitionHash" | "modulePath">
+  >();
+
+  for (const mount of mounts.sort((left, right) => left.namespace.localeCompare(right.namespace))) {
+    const effective = mergeExtensionScheduleSources(mount);
+    for (const source of effective) {
+      const relativeSchedulePath = assertScheduleLogicalPath(source.entry.logicalPath);
+      const localKey = scheduleKeyFromLogicalPath(relativeSchedulePath);
+      const key = `${mount.namespace}__${localKey}`;
+      if (existingKeys.has(key)) continue;
+
+      const sourceFile = resolveReleaseFile(
+        releaseDir,
+        source.manifest.agentRoot,
+        source.entry.logicalPath,
+      );
+      let transformed = transformedSources.get(sourceFile);
+      const sourcePath = path.posix.join(
+        "agent/extensions",
+        mount.namespace,
+        source.entry.logicalPath,
+      );
+      if (!transformed) {
+        const content = await readFile(sourceFile, "utf8");
+        const discovered = parseScheduleSource(
+          path.posix.join("agent/schedules", relativeSchedulePath),
+          content,
+        );
+        if (discovered.kind === "markdown") {
+          const generatedFile = sourceFile.replace(/\.md$/, ".ts");
+          if (await exists(generatedFile)) {
+            throw new Error(
+              `Extension Markdown schedule ${sourcePath} collides with reserved generated module ${path.basename(generatedFile)}.`,
+            );
+          }
+          await atomicWriteFile(
+            generatedFile,
+            [
+              `export const ${reservedOriginalMarkdown} = ${JSON.stringify(discovered.prompt)};`,
+              `export default {`,
+              `  cron: ${JSON.stringify(discovered.cron)},`,
+              `  run: async () => {},`,
+              `};`,
+              ``,
+            ].join("\n"),
+          );
+          await rm(sourceFile);
+          transformed = {
+            kind: "markdown",
+            cron: discovered.cron,
+            definitionHash: hashDefinition(content),
+            modulePath: releaseRelativePath(releaseDir, generatedFile),
+          };
+        } else {
+          const module = transformModuleSchedule(sourcePath, content);
+          await atomicWriteFile(sourceFile, module.code);
+          transformed = {
+            kind: module.kind,
+            cron: module.cron,
+            definitionHash: hashDefinition(content),
+            modulePath: releaseRelativePath(releaseDir, sourceFile),
+          };
+        }
+        transformedSources.set(sourceFile, transformed);
+        transformedFiles.push(releaseRelativePath(releaseDir, sourceFile));
+      }
+      existingKeys.add(key);
+      definitions.push({ key, sourcePath, ...transformed });
+    }
+  }
+
+  definitions.sort((left, right) => left.key.localeCompare(right.key));
+  await writeSchedulerArtifacts(releaseDir, definitions);
+  return { definitions, transformedFiles };
+}
+
+export async function readSchedulerDefinitions(
+  releaseDir: string,
+): Promise<SchedulerDefinition[] | undefined> {
+  try {
+    const value = JSON.parse(
+      await readFile(path.join(releaseDir, SCHEDULER_DEFINITIONS_RELEASE_PATH), "utf8"),
+    ) as unknown;
+    return parseSchedulerDefinitions(value);
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseSchedulerDefinitions(value: unknown): SchedulerDefinition[] | undefined {
+  if (!Array.isArray(value) || !value.every(isSchedulerDefinition)) return undefined;
+  return value;
 }
 
 function transformModuleSchedule(
@@ -119,16 +240,13 @@ function transformModuleSchedule(
     scriptKind(sourcePath),
   );
   assertNoReservedIdentifier(sourceFile, sourcePath);
-  const exportAssignment = sourceFile.statements.find(
-    (statement): statement is ts.ExportAssignment =>
-      ts.isExportAssignment(statement) && !statement.isExportEquals,
-  );
-  if (!exportAssignment) {
+  const defaultExport = findConcreteDefaultExport(sourceFile);
+  if (!defaultExport) {
     throw new Error(
       `Schedule ${sourcePath} must use a concrete default export; default re-exports are not supported.`,
     );
   }
-  const definition = resolveDefinitionExpression(sourceFile, exportAssignment.expression);
+  const definition = resolveDefinitionExpression(sourceFile, defaultExport.expression);
   const cron = readStringProperty(definition, "cron", sourcePath);
   const hasMarkdown = findProperty(definition, "markdown") !== undefined;
   const hasRun = findProperty(definition, "run") !== undefined;
@@ -145,7 +263,7 @@ function transformModuleSchedule(
           reservedOriginalSchedule,
           undefined,
           undefined,
-          exportAssignment.expression,
+          defaultExport.expression,
         ),
       ],
       ts.NodeFlags.Const,
@@ -189,14 +307,67 @@ function transformModuleSchedule(
       true,
     ),
   );
-  const statements = sourceFile.statements.flatMap((statement) =>
-    statement === exportAssignment
-      ? [originalDeclaration, originalExport, noopDefault]
-      : [statement],
-  );
+  const statements = sourceFile.statements.flatMap((statement) => {
+    if (statement !== defaultExport.statement) return [statement];
+    return [...defaultExport.preservedStatements, originalDeclaration, originalExport, noopDefault];
+  });
   const next = factory.updateSourceFile(sourceFile, statements);
   const code = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }).printFile(next);
   return { code, cron, kind: hasMarkdown ? "markdown" : "handler" };
+}
+
+function findConcreteDefaultExport(sourceFile: ts.SourceFile):
+  | {
+      statement: ts.Statement;
+      expression: ts.Expression;
+      preservedStatements: ts.Statement[];
+    }
+  | undefined {
+  const assignment = sourceFile.statements.find(
+    (statement): statement is ts.ExportAssignment =>
+      ts.isExportAssignment(statement) && !statement.isExportEquals,
+  );
+  if (assignment) {
+    return { statement: assignment, expression: assignment.expression, preservedStatements: [] };
+  }
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isExportDeclaration(statement) ||
+      statement.moduleSpecifier !== undefined ||
+      !statement.exportClause ||
+      !ts.isNamedExports(statement.exportClause)
+    ) {
+      continue;
+    }
+    const defaultSpecifier = statement.exportClause.elements.find(
+      (element) => element.name.text === "default" && element.propertyName !== undefined,
+    );
+    if (!defaultSpecifier?.propertyName || !ts.isIdentifier(defaultSpecifier.propertyName))
+      continue;
+    const remaining = statement.exportClause.elements.filter(
+      (element) => element !== defaultSpecifier,
+    );
+    const preservedStatements =
+      remaining.length === 0
+        ? []
+        : [
+            ts.factory.updateExportDeclaration(
+              statement,
+              statement.modifiers,
+              statement.isTypeOnly,
+              ts.factory.updateNamedExports(statement.exportClause, remaining),
+              statement.moduleSpecifier,
+              statement.attributes,
+            ),
+          ];
+    return {
+      statement,
+      expression: ts.factory.createIdentifier(defaultSpecifier.propertyName.text),
+      preservedStatements,
+    };
+  }
+  return undefined;
 }
 
 // The dispatch body collects every Session the authored handler started,
@@ -470,7 +641,8 @@ async function listScheduleFiles(root: string, relativeDir = ""): Promise<string
 
 function moduleSpecifierFromChannel(modulePath: string): string {
   const withoutExtension = modulePath.replace(/\.(?:[cm]?[jt]s)$/, "");
-  return `../${withoutExtension.replace(/^agent\//, "")}`;
+  const relative = path.posix.relative("agent/channels", withoutExtension);
+  return relative.startsWith(".") ? relative : `./${relative}`;
 }
 
 function scriptKind(sourcePath: string): ts.ScriptKind {
@@ -491,4 +663,131 @@ async function exists(target: string): Promise<boolean> {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
     throw error;
   }
+}
+
+async function writeSchedulerArtifacts(
+  releaseDir: string,
+  definitions: SchedulerDefinition[],
+): Promise<void> {
+  const channelPath = path.join(releaseDir, reservedChannelPath);
+  const definitionsPath = path.join(releaseDir, SCHEDULER_DEFINITIONS_RELEASE_PATH);
+  await mkdir(path.dirname(channelPath), { recursive: true });
+  await mkdir(path.dirname(definitionsPath), { recursive: true });
+  await atomicWriteFile(channelPath, generateSchedulerChannel(definitions));
+  await atomicWriteFile(definitionsPath, `${JSON.stringify(definitions, null, 2)}\n`);
+}
+
+async function atomicWriteFile(target: string, content: string): Promise<void> {
+  const temporaryPath = `${target}.eveland-${process.pid}-${randomUUID()}.tmp`;
+  await writeFile(temporaryPath, content);
+  try {
+    await rename(temporaryPath, target);
+  } catch (error) {
+    await rm(temporaryPath, { force: true });
+    throw error;
+  }
+}
+
+function readResolvedExtensionMounts(manifest: unknown): ResolvedExtensionScheduleMount[] {
+  if (!isRecord(manifest)) throw new Error("Expected an Eve discovery manifest object.");
+  if (manifest.resolvedExtensions === undefined) return [];
+  if (
+    !Array.isArray(manifest.resolvedExtensions) ||
+    !manifest.resolvedExtensions.every(isResolvedExtensionScheduleMount)
+  ) {
+    throw new Error("Expected well-formed resolvedExtensions in the Eve discovery manifest.");
+  }
+  return manifest.resolvedExtensions;
+}
+
+function isResolvedExtensionScheduleMount(value: unknown): value is ResolvedExtensionScheduleMount {
+  if (!isRecord(value) || typeof value.namespace !== "string" || !value.namespace) return false;
+  if (!isExtensionScheduleManifest(value.manifest)) return false;
+  return value.overrides === undefined || isExtensionScheduleManifest(value.overrides);
+}
+
+function isExtensionScheduleManifest(value: unknown): value is ExtensionScheduleManifest {
+  return (
+    isRecord(value) &&
+    typeof value.agentRoot === "string" &&
+    Array.isArray(value.schedules) &&
+    value.schedules.every((entry) => isRecord(entry) && typeof entry.logicalPath === "string")
+  );
+}
+
+function mergeExtensionScheduleSources(mount: ResolvedExtensionScheduleMount): Array<{
+  entry: { logicalPath: string };
+  manifest: ExtensionScheduleManifest;
+}> {
+  const merged: Array<{
+    entry: { logicalPath: string };
+    manifest: ExtensionScheduleManifest;
+  }> = [];
+  const names = new Set<string>();
+  for (const manifest of [mount.overrides, mount.manifest]) {
+    if (!manifest) continue;
+    for (const entry of manifest.schedules) {
+      const name = scheduleKeyFromLogicalPath(assertScheduleLogicalPath(entry.logicalPath));
+      if (names.has(name)) continue;
+      names.add(name);
+      merged.push({ entry, manifest });
+    }
+  }
+  return merged.sort((left, right) =>
+    left.entry.logicalPath.localeCompare(right.entry.logicalPath),
+  );
+}
+
+function assertScheduleLogicalPath(logicalPath: string): string {
+  const normalized = logicalPath.replaceAll("\\", "/");
+  if (!normalized.startsWith("schedules/")) {
+    throw new Error(`Extension schedule ${logicalPath} is outside its schedules/ slot.`);
+  }
+  const relative = normalized.slice("schedules/".length);
+  if (
+    !relative ||
+    relative.split("/").some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new Error(`Extension schedule ${logicalPath} has an invalid logical path.`);
+  }
+  return relative;
+}
+
+function scheduleKeyFromLogicalPath(relativePath: string): string {
+  const extension = path.posix.extname(relativePath);
+  if (extension !== ".md" && !moduleExtensions.has(extension)) {
+    throw new Error(`Extension schedule schedules/${relativePath} uses an unsupported extension.`);
+  }
+  return relativePath.slice(0, -extension.length);
+}
+
+function resolveReleaseFile(releaseDir: string, agentRoot: string, logicalPath: string): string {
+  const target = path.resolve(agentRoot, logicalPath);
+  const relative = path.relative(releaseDir, target);
+  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(
+      `Extension source ${target} must stay inside the disposable Release directory ${releaseDir}.`,
+    );
+  }
+  return target;
+}
+
+function releaseRelativePath(releaseDir: string, target: string): string {
+  return path.relative(releaseDir, target).split(path.sep).join("/");
+}
+
+function isSchedulerDefinition(value: unknown): value is SchedulerDefinition {
+  return (
+    isRecord(value) &&
+    typeof value.key === "string" &&
+    (value.kind === "markdown" || value.kind === "handler") &&
+    typeof value.cron === "string" &&
+    typeof value.sourcePath === "string" &&
+    typeof value.definitionHash === "string" &&
+    typeof value.modulePath === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

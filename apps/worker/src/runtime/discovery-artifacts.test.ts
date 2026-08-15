@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { readReleaseDiscovery } from "./discovery-artifacts.js";
+import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
 
 const roots: string[] = [];
 
@@ -60,4 +60,36 @@ test("swallows a corrupt manifest instead of failing the build path", async () =
   );
 
   await expect(readReleaseDiscovery(releaseDir)).resolves.toBeUndefined();
+});
+
+test("reads the post-integration scheduler definitions from the built release", async () => {
+  const releaseDir = await makeRelease();
+  const definitions = [
+    {
+      key: "crm__sync",
+      kind: "handler",
+      cron: "0 2 * * *",
+      sourcePath: "agent/extensions/crm/schedules/sync.mjs",
+      definitionHash: "fixture-hash",
+      modulePath: "node_modules/@acme/crm/dist/extension/schedules/sync.mjs",
+    },
+  ];
+  await mkdir(path.join(releaseDir, ".eveland", "scheduler"), { recursive: true });
+  await writeFile(
+    path.join(releaseDir, ".eveland", "scheduler", "definitions.json"),
+    JSON.stringify(definitions),
+  );
+
+  await expect(readReleaseSchedulerDefinitions(releaseDir)).resolves.toEqual(definitions);
+});
+
+test("ignores malformed scheduler definitions instead of persisting untrusted build output", async () => {
+  const releaseDir = await makeRelease();
+  await mkdir(path.join(releaseDir, ".eveland", "scheduler"), { recursive: true });
+  await writeFile(
+    path.join(releaseDir, ".eveland", "scheduler", "definitions.json"),
+    JSON.stringify([{ key: "crm__sync", cron: "not a complete definition" }]),
+  );
+
+  await expect(readReleaseSchedulerDefinitions(releaseDir)).resolves.toBeUndefined();
 });

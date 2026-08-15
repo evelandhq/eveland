@@ -33,6 +33,8 @@ const nestedManifest = {
     { logicalPath: "subagents/file-child.ts", subagentId: "file-child", manifest: {} },
     { logicalPath: "subagents/remote-child.ts", subagentId: "remote-child", manifest: {} },
   ],
+  extensions: [],
+  resolvedExtensions: [],
 };
 
 describe("projectDiscoveryManifest", () => {
@@ -100,6 +102,67 @@ describe("projectDiscoveryManifest", () => {
     expect(projection).toMatchObject({
       manifestVersion: 13,
       instructions: ["agent/instructions/context.ts"],
+    });
+  });
+
+  test("projects effective Extension schedules and subagents under their mount namespace", () => {
+    const extensionManifest = {
+      ...nestedManifest,
+      agentId: "crm-extension",
+      agentRoot: "/srv/app/node_modules/@acme/crm/dist/extension",
+      appRoot: "/srv/app/node_modules/@acme/crm",
+      schedules: [{ logicalPath: "schedules/sync.mjs" }, { logicalPath: "schedules/report.md" }],
+      subagents: [
+        {
+          logicalPath: "subagents/reviewer",
+          subagentId: "reviewer",
+          manifest: { ...nestedManifest, subagents: [] },
+        },
+      ],
+    };
+    const overrideManifest = {
+      ...nestedManifest,
+      agentId: "crm-overrides",
+      agentRoot: "/srv/app/agent/extensions/crm",
+      appRoot: "/srv/app",
+      schedules: [{ logicalPath: "schedules/sync.ts" }],
+      subagents: [
+        {
+          logicalPath: "subagents/reviewer",
+          subagentId: "reviewer",
+          manifest: { ...nestedManifest, subagents: [] },
+        },
+      ],
+    };
+
+    const projection = projectDiscoveryManifest({
+      ...nestedManifest,
+      extensions: [{ logicalPath: "extensions/crm/extension.ts" }],
+      resolvedExtensions: [
+        {
+          namespace: "crm",
+          specifier: "@acme/crm",
+          packageName: "@acme/crm",
+          packageRoot: "/srv/app/node_modules/@acme/crm",
+          sourceRoot: extensionManifest.agentRoot,
+          manifest: extensionManifest,
+          overrides: overrideManifest,
+        },
+      ],
+    });
+
+    expect(projection).toMatchObject({
+      schedules: [
+        "agent/extensions/crm/schedules/sync.ts",
+        "agent/extensions/crm/schedules/report.md",
+      ],
+      subagents: [
+        "agent/subagents/directory-child",
+        "agent/subagents/file-child.ts",
+        "agent/subagents/remote-child.ts",
+        "agent/extensions/crm/subagents/reviewer",
+      ],
+      subagentIds: ["directory-child", "file-child", "remote-child", "crm__reviewer"],
     });
   });
 

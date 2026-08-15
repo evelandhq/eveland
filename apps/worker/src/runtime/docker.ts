@@ -1,8 +1,10 @@
 import { execa } from "execa";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { parseSchedulerDefinitions } from "@evelandhq/agent-scheduler";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
 import { prepareReleaseTree } from "./prepare-release.js";
+import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
@@ -172,10 +174,11 @@ export function buildDockerSandboxVerifyArgs(imageTag: string): string[] {
 // One throwaway container prints them; failures only cost the build-derived
 // summary (the import-time static one remains).
 const readImageDiscoveryScript =
-  'const fs=require("fs");let m=null,v=null;' +
+  'const fs=require("fs");let m=null,v=null,d=null;' +
   'try{m=JSON.parse(fs.readFileSync("/app/.eve/discovery/agent-discovery-manifest.json","utf8"))}catch{}' +
   'try{v=require("/app/node_modules/eve/package.json").version}catch{}' +
-  'process.stdout.write(JSON.stringify({manifest:m,resolvedEveVersion:typeof v==="string"?v:null}))';
+  'try{d=JSON.parse(fs.readFileSync("/app/.eveland/scheduler/definitions.json","utf8"))}catch{}' +
+  'process.stdout.write(JSON.stringify({manifest:m,resolvedEveVersion:typeof v==="string"?v:null,...Array.isArray(d)?{schedulerDefinitions:d}:{}}))';
 
 export async function readImageDiscovery(imageTag: string): Promise<ReleaseDiscovery | undefined> {
   const result = await execa(
@@ -188,8 +191,15 @@ export async function readImageDiscovery(imageTag: string): Promise<ReleaseDisco
     const parsed = JSON.parse(result.stdout) as {
       manifest: unknown;
       resolvedEveVersion: string | null;
+      schedulerDefinitions?: unknown;
     };
-    return parsed.manifest === null ? undefined : parsed;
+    if (parsed.manifest === null) return undefined;
+    const schedulerDefinitions = parseSchedulerDefinitions(parsed.schedulerDefinitions);
+    return {
+      manifest: parsed.manifest,
+      resolvedEveVersion: parsed.resolvedEveVersion,
+      ...(schedulerDefinitions ? { schedulerDefinitions } : {}),
+    };
   } catch {
     return undefined;
   }
@@ -252,7 +262,7 @@ RUN if [ -f pnpm-lock.yaml ]; then ${PNPM_FROZEN_INSTALL_COMMAND}; elif [ -f pac
 ${workflowWorldInstall}COPY . .
 # Compile the eve application ahead of time, then materialize the full
 # discovery manifest from that exact installed dependency tree.
-${buildVariableArgs}RUN npx eve build && npx eve info --json > /dev/null
+${buildVariableArgs}RUN npx eve info --json > /dev/null && node ${EXTENSION_INTEGRATOR_RELEASE_PATH} && npx eve build && npx eve info --json > /dev/null
 EXPOSE 3000
 `,
   );
@@ -400,7 +410,8 @@ export function createDockerAdapter(
         const discovery = await readImageDiscovery(imageTag);
         return {
           releaseRef: imageTag,
-          schedulerDefinitions: observerInjection.scheduler?.definitions,
+          schedulerDefinitions:
+            discovery?.schedulerDefinitions ?? observerInjection.scheduler?.definitions,
           ...(discovery ? { discovery } : {}),
           log: [
             log,

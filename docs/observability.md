@@ -98,6 +98,13 @@ Eveland private providers
 tracer、logger 和 meter，不调用 global registration，也不对用户 provider 执行
 flush 或 shutdown。
 
+依赖安装后的 Extension integration 还会读取 Eve v13 的 `resolvedExtensions`，对有效的
+directory-form Extension Subagent（含嵌套后代与 consumer override）注入同一 observer。
+fallback runtime 复制到 Extension 自己的 `lib/` 保留位并由 shim 静态引用，使 Eve 把模块
+物化到 authored-module cache 后仍可在平台 mount 缺席时启动；部署时仍优先使用
+`/run/eveland/observability/runtime.mjs`。Eve 的 file-form Subagent 没有独立 hooks slot，
+无论本地还是 Extension 来源都继续记录明确 coverage gap，不 patch Eve compiled internals。
+
 私有 provider 分别产生 traces、logs 和 metrics。三个 signal 共享 Resource 和
 correlation identifiers，但由三个独立 provider 管理。
 

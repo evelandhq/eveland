@@ -37,6 +37,7 @@ vi.mock("@evelandhq/agent-scheduler", () => ({
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
+  parseSchedulerDefinitions: vi.fn((value: unknown) => (Array.isArray(value) ? value : undefined)),
 }));
 
 vi.mock("./runtime/sandbox-inject.js", () => ({
@@ -371,6 +372,16 @@ describe("createDockerAdapter", () => {
         stdout: JSON.stringify({
           manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
           resolvedEveVersion: "0.38.3",
+          schedulerDefinitions: [
+            {
+              key: "crm__sync",
+              kind: "handler",
+              cron: "0 2 * * *",
+              sourcePath: "agent/extensions/crm/schedules/sync.mjs",
+              definitionHash: "fixture-hash",
+              modulePath: "node_modules/@acme/crm/dist/extension/schedules/sync.mjs",
+            },
+          ],
         }),
       } as never);
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
@@ -387,7 +398,9 @@ describe("createDockerAdapter", () => {
     const dockerfilePath = path.join(buildDir, "Dockerfile");
     const contents = await readFile(dockerfilePath, "utf8");
     expect(contents).toContain("FROM node:24-alpine");
-    expect(contents).toContain("RUN npx eve build && npx eve info --json > /dev/null");
+    expect(contents).toContain(
+      "RUN npx eve info --json > /dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json > /dev/null",
+    );
     await expect(
       readFile(path.join(buildDir, ".eveland", "verify-sandbox.mjs"), "utf8"),
     ).resolves.toContain("node eveland-verify.ts");
@@ -402,7 +415,18 @@ describe("createDockerAdapter", () => {
     expect(result.discovery).toEqual({
       manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
       resolvedEveVersion: "0.38.3",
+      schedulerDefinitions: [
+        {
+          key: "crm__sync",
+          kind: "handler",
+          cron: "0 2 * * *",
+          sourcePath: "agent/extensions/crm/schedules/sync.mjs",
+          definitionHash: "fixture-hash",
+          modulePath: "node_modules/@acme/crm/dist/extension/schedules/sync.mjs",
+        },
+      ],
     });
+    expect(result.schedulerDefinitions?.map((definition) => definition.key)).toEqual(["crm__sync"]);
     expect(vi.mocked(execa).mock.calls).toEqual([
       ["cp", ["-a", "/workspace/source/.", buildDir]],
       [
