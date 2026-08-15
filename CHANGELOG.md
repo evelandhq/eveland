@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.34.0](https://github.com/evelandhq/eveland/compare/v0.33.0...v0.34.0) (2026-08-15)
+
+
+### Features
+
+* support Eve 0.38.3 ([#307](https://github.com/evelandhq/eveland/issues/307)) ([e0f2642](https://github.com/evelandhq/eveland/commit/e0f26425c5a16564960f178c50379aa5c3fcf8ed))
+* support Eve extension schedules and subagents ([#308](https://github.com/evelandhq/eveland/issues/308)) ([8c1ba74](https://github.com/evelandhq/eveland/commit/8c1ba747bbc28c9054bc39b189f16df7a32c71ba))
+
+
+### Bug Fixes
+
+* avoid migrating legacy workflow base database ([#310](https://github.com/evelandhq/eveland/issues/310)) ([2bb4ca6](https://github.com/evelandhq/eveland/commit/2bb4ca610858f56cd78925e798943f4b7fdf7530))
+
 ## [0.33.0](https://github.com/evelandhq/eveland/compare/v0.32.0...v0.33.0) (2026-08-14)
 
 
