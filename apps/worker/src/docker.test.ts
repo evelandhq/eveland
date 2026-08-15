@@ -33,7 +33,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.34.5",
+    eveVersion: "0.38.3",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
@@ -269,12 +269,12 @@ describe("writeGeneratedDockerfile", () => {
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
     const dockerfilePath = await writeGeneratedDockerfile(buildDir, {
       packageName: "@workflow/world-postgres",
-      packageVersion: "5.0.0-beta.25",
+      packageVersion: "5.0.0-beta.34",
     });
     const contents = await readFile(dockerfilePath, "utf8");
 
     expect(contents).toContain(
-      "npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.25",
+      "npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.34",
     );
     expect(contents.indexOf("npm install --no-save")).toBeLessThan(
       contents.indexOf("npx eve build"),
@@ -370,7 +370,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
-          resolvedEveVersion: "0.34.5",
+          resolvedEveVersion: "0.38.3",
         }),
       } as never);
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
@@ -401,7 +401,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Docker sandbox self-check passed");
     expect(result.discovery).toEqual({
       manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
-      resolvedEveVersion: "0.34.5",
+      resolvedEveVersion: "0.38.3",
     });
     expect(vi.mocked(execa).mock.calls).toEqual([
       ["cp", ["-a", "/workspace/source/.", buildDir]],

@@ -12,7 +12,7 @@ describe("inspectEveProject", () => {
     const result = inspectEveProject([
       {
         path: "package.json",
-        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.34.5" } }),
+        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.38.3" } }),
       },
       {
         path: "agent/agent.ts",
@@ -38,7 +38,7 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(true);
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
-    expect(result.eveVersion).toBe("0.34.5");
+    expect(result.eveVersion).toBe("0.38.3");
     expect(result.capabilities).toEqual({ eveChat: true });
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
@@ -60,7 +60,7 @@ describe("inspectEveProject", () => {
 
   test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.34.5" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.38.3" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       {
         path: "agent/channels/eve.ts",
@@ -73,7 +73,7 @@ describe("inspectEveProject", () => {
 
   test("uses Eve's authored skill extensions in the source summary", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.34.5" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.38.3" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       ...["md", "ts", "cts", "mts", "js", "cjs", "mjs"].map((extension) => ({
         path: `agent/skills/research.${extension}`,
@@ -116,39 +116,25 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.34.x, 0.35.x, 0.36.x, or 0.37.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.37.x or 0.38.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts dependency declarations contained inside the four verified Eve minors", () => {
+  test("accepts dependency declarations contained inside the 0.37-0.38 compatibility window", () => {
     for (const version of [
-      "0.34.0",
-      "0.34.7",
-      "~0.34.0",
-      "^0.34.0",
-      "0.34",
-      "0.34.x",
-      "0.34.*",
-      "0.35.0",
-      "0.35.6",
-      "~0.35.2",
-      "^0.35.0",
-      "0.35",
-      "0.35.x",
-      "0.35.*",
-      "0.36.0",
-      "0.36.4",
-      "~0.36.1",
-      "^0.36.0",
-      "0.36",
-      "0.36.x",
-      "0.36.*",
       "0.37.0",
       "~0.37.0",
       "^0.37.0",
       "0.37",
       "0.37.x",
       "0.37.*",
+      "0.38.0",
+      "0.38.3",
+      "~0.38.1",
+      "^0.38.0",
+      "0.38",
+      "0.38.x",
+      "0.38.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
@@ -157,9 +143,11 @@ describe("inspectEveProject", () => {
       "0.31.3",
       "0.32.5",
       "0.33.3",
-      ">=0.34.0",
+      "0.34.0",
+      "0.35.0",
+      "0.36.0",
       ">=0.37.0",
-      "0.38.0",
+      "0.39.0",
       "*",
       "latest",
     ]) {
@@ -181,10 +169,10 @@ describe("inspectEveProject", () => {
   });
 
   test("reports the sliding compatibility window as structured ranges", () => {
-    expect(createEveVersionInfo("0.37.0", "src_1")).toEqual({
-      version: "0.37.0",
-      expected: "0.34.x, 0.35.x, 0.36.x, or 0.37.x",
-      supportedRanges: ["0.34.x", "0.35.x", "0.36.x", "0.37.x"],
+    expect(createEveVersionInfo("0.38.3", "src_1")).toEqual({
+      version: "0.38.3",
+      expected: "0.37.x or 0.38.x",
+      supportedRanges: ["0.37.x", "0.38.x"],
       supported: true,
       sourceRevisionId: "src_1",
     });

@@ -8,7 +8,7 @@ import { PNPM_RELEASE_AGE_CONFIG } from "./package-manager.js";
  */
 export const PLATFORM_WORKFLOW_WORLD = {
   packageName: "@workflow/world-postgres",
-  packageVersion: "5.0.0-beta.25",
+  packageVersion: "5.0.0-beta.34",
 } as const;
 
 /**
@@ -21,7 +21,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.5.0",
+  packageVersion: "0.6.0",
 } as const;
 
 export type WorkflowWorldBuildConfig = {

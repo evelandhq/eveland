@@ -34,7 +34,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.34.5",
+    eveVersion: "0.38.3",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
@@ -271,12 +271,12 @@ describe("buildReleaseBuildCommand", () => {
         hasLockfile: true,
         packageManager: "pnpm",
       },
-      { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.25" },
+      { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
     );
 
     expect(command).toContain("pnpm install --frozen-lockfile --config.minimum-release-age=0");
     expect(command).toContain(
-      "pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 @workflow/world-postgres@5.0.0-beta.25",
+      "pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 @workflow/world-postgres@5.0.0-beta.34",
     );
     expect(command).toContain("trap");
     expect(command).not.toMatch(/(^|&& )npm install/);
@@ -286,10 +286,10 @@ describe("buildReleaseBuildCommand", () => {
     expect(
       buildReleaseBuildCommand(
         { hasLockfile: true },
-        { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.25" },
+        { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
       ),
     ).toBe(
-      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.25 && npx eve build && npx eve info --json >/dev/null",
+      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.34 && npx eve build && npx eve info --json >/dev/null",
     );
   });
 

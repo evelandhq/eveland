@@ -98,8 +98,9 @@ type PlaygroundPanelProps = {
 
 export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps) {
   // The hook owns the session (created on the first turn); the standalone
-  // Client only mints I/O-free `sessions.attach` handles for control
-  // operations (cooperative cancel, reset) on the hook's current session ID.
+  // Client only mints an I/O-free `sessions.attach` handle for durable reset on
+  // the hook's current session ID. The hook itself owns turn cancellation so
+  // it can wait for a turn ID before the first server event arrives.
   const [client] = useState(
     () => new Client({ host: `/api/eveland/projects/${projectId}/playground` }),
   );
@@ -319,15 +320,9 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               disabled={!eveVersion.supported}
               onStop={() => {
                 setComposerError(null);
-                // Before the first turn's response names the session there is
-                // nothing server-side to cancel cooperatively; abort locally.
-                if (sessionHandle) {
-                  void cancelPlaygroundTurn(sessionHandle).catch((cancelError) => {
-                    setComposerError(toErrorMessage(cancelError));
-                  });
-                } else {
-                  agent.stop();
-                }
+                void cancelPlaygroundTurn(agent).catch((cancelError) => {
+                  setComposerError(toErrorMessage(cancelError));
+                });
               }}
               status={agent.status}
             />

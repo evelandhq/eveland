@@ -551,7 +551,9 @@ complete production boundary:
 - `WORKFLOW_POSTGRES_URL` is required when `NODE_ENV=production`; the worker
   fails at startup and a deploy also retains a defensive gate if it is absent.
 - Worker startup runs the pinned `@workflow/world-postgres` bootstrap
-  idempotently, retrying while Postgres becomes ready. Use
+  idempotently, retrying while Postgres becomes ready. Eve 0.38.3 requires
+  workflow spec v6, so Releases inject `@workflow/world-postgres@5.0.0-beta.34`
+  on this path and `@evelandhq/workflow-world@0.6.0` on the shared path. Use
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
   for that same database server. A deployment URL on `host.docker.internal`
   automatically reuses `DATABASE_URL` when its credentials, port, database

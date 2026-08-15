@@ -36,7 +36,7 @@ describe("Gateway", () => {
       affinityFingerprint: null,
       affinitySource: null,
       createdAt: "2026-08-14T00:00:00.000Z",
-      updatedAt: "2026-08-14T00:00:00.000Z",
+      updatedAt: new Date().toISOString(),
     });
     const app = createGatewayApp(repo, {
       allowedBaseDomains: ["agent.localhost"],

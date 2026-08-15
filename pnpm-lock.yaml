@@ -7,18 +7,12 @@ settings:
 catalogs:
   default:
     eve:
-      specifier: 0.37.1
-      version: 0.37.1
+      specifier: 0.38.3
+      version: 0.38.3
   eve-matrix:
-    eve-middle:
-      specifier: npm:eve@0.35.0
-      version: 0.35.0
-    eve-newer:
-      specifier: npm:eve@0.36.0
-      version: 0.36.0
     eve-oldest:
-      specifier: npm:eve@0.34.0
-      version: 0.34.0
+      specifier: npm:eve@0.37.1
+      version: 0.37.1
 
 overrides:
   react-jsx-parser>@types/react: 19.2.17
@@ -234,7 +228,7 @@ importers:
         version: 8.6.0(react@19.2.7)
       eve:
         specifier: 'catalog:'
-        version: 0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+        version: 0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
       lucide-react:
         specifier: ^1.22.0
         version: 1.22.0(react@19.2.7)
@@ -328,16 +322,16 @@ importers:
         version: link:../../packages/platform-observability
       '@evelandhq/sandbox-bwrap':
         specifier: ^0.1.1
-        version: 0.1.1(eve@0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0))
+        version: 0.1.1(eve@0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0))
       '@evelandhq/workflow-world':
-        specifier: ^0.5.0
-        version: 0.5.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: ^0.6.0
+        version: 0.6.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
       '@workflow/world-postgres':
-        specifier: 5.0.0-beta.25
-        version: 5.0.0-beta.25(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: 5.0.0-beta.34
+        version: 5.0.0-beta.34(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
       execa:
         specifier: ^9.6.1
         version: 9.6.1
@@ -379,8 +373,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/platform-observability
       '@evelandhq/workflow-world':
-        specifier: ^0.5.0
-        version: 0.5.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: ^0.6.0
+        version: 0.6.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
     devDependencies:
       vitest:
         specifier: ^4.1.9
@@ -393,7 +387,7 @@ importers:
         version: link:../core
       eve:
         specifier: 'catalog:'
-        version: 0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+        version: 0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
       openid-client:
         specifier: ^6.8.4
         version: 6.8.4
@@ -446,16 +440,10 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
-      eve-middle:
-        specifier: catalog:eve-matrix
-        version: eve@0.35.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
-      eve-newer:
-        specifier: catalog:eve-matrix
-        version: eve@0.36.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+        version: 0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
       eve-oldest:
         specifier: catalog:eve-matrix
-        version: eve@0.34.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+        version: eve@0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
@@ -471,16 +459,10 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
-      eve-middle:
-        specifier: catalog:eve-matrix
-        version: eve@0.35.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
-      eve-newer:
-        specifier: catalog:eve-matrix
-        version: eve@0.36.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+        version: 0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
       eve-oldest:
         specifier: catalog:eve-matrix
-        version: eve@0.34.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+        version: eve@0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
@@ -619,7 +601,7 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+        version: 0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))
@@ -2072,8 +2054,8 @@ packages:
     peerDependencies:
       eve: '>=0.27.0 <1.0.0'
 
-  '@evelandhq/workflow-world@0.5.0':
-    resolution: {integrity: sha512-YfVNrXZ/RYwnn0rUVdJyhO3IIWqqX6TriYfjqFAztn80v7CwLbPaxj+NME8dbwWk/o3xut/KljTbu+nn8diR2Q==}
+  '@evelandhq/workflow-world@0.6.0':
+    resolution: {integrity: sha512-GAThmfogZpiCYUbBN7+DMcKGyOFNPLdN5bIVxRmfL+BGHYi0pKn3N3BLTG/BuUSTbMzl79Xn8l4chote1P6ORA==}
     engines: {node: '>=24.0.0'}
     hasBin: true
 
@@ -4260,46 +4242,29 @@ packages:
   '@vitest/utils@4.1.9':
     resolution: {integrity: sha512-A51o8ymO5PpqlWNnBP9ZHPXDIpuMtTLlGSjN7la4US+LJzoUMyhwjA5QXlm39JexgwHKW4Xjs8Z2d3dLCXOeuA==}
 
-  '@workflow/errors@5.0.0-beta.10':
-    resolution: {integrity: sha512-l/6+Ukys3FBVjbND3Vs+PDgCYgM9LjFnEPQmD7mTLWkgBg9nvlb8Th09MKhDRo2rBX86VT2lcpXtEThubjasuQ==}
-
-  '@workflow/errors@5.0.0-beta.16':
-    resolution: {integrity: sha512-wG0Nmpr/OogTeLUV9RESQaz9PQh/1pwMceVkkPD9MDrLeK/GUAZU8hqUK9pVeZ0uFV0iIM756Ql6vT5IC4JGGw==}
+  '@workflow/errors@5.0.0-beta.17':
+    resolution: {integrity: sha512-orc86yllgOKpss/o5YD4kuhRbng+4aq8i4pPJR4uZCFeNpn4I4A+ek83lelQf31EJ5tyf12ikceOjabQxp317A==}
 
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
 
-  '@workflow/utils@5.0.0-beta.6':
-    resolution: {integrity: sha512-YMZqvtRMzlmWkgshURp4ilvcY8VMrNxwXxDEXQ/gkppKWhJ1xdJBpq3plZLf8LWS7JHXd32Wqll/UvQeARu93Q==}
-
   '@workflow/utils@5.0.0-beta.8':
     resolution: {integrity: sha512-dDiQ/LT05g9HyOicqWNNX/Gw/fmO7Ma2kZ+ddUXXpm/EFTMRS9eiI69suSe1+1NnhMzdV6ObI8wrO5lvQqPIbg==}
 
-  '@workflow/world-local@5.0.0-beta.27':
-    resolution: {integrity: sha512-qDNZKLl4jE3c2r/M3kqu7svBLPS76G3peuLSgML2Gk2dwxLqNUjTWg8eVYuEq6JNocSOlo50qFkVmJATms0gbw==}
+  '@workflow/world-local@5.0.0-beta.36':
+    resolution: {integrity: sha512-M0F2/6Ax0vstQoTTX0EwX0O+FxOyBrjLosSy+vwYth6XeRYt6hqzoWFLSMQoIdWsPDSY7B0SE9NtnEoBr3Ackg==}
     peerDependencies:
       '@opentelemetry/api': '1'
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
 
-  '@workflow/world-local@5.0.0-beta.34':
-    resolution: {integrity: sha512-hf32jMgA1k4MB4Hw7USUjvpViof2v7o4Hk7L94WuOPwwU/vvJEt72g/TodZLCyLSViCcZdQQjW6XyuH0xFq5jA==}
-    peerDependencies:
-      '@opentelemetry/api': '1'
-    peerDependenciesMeta:
-      '@opentelemetry/api':
-        optional: true
-
-  '@workflow/world-postgres@5.0.0-beta.25':
-    resolution: {integrity: sha512-rzrhMGXchbF0ZB6jJrJPCFZhvvB9XnA2Jnz76qn5CypFlo1ORUvoBbuaHXNHneMrAn185yegRkf/5HqrEEg64g==}
+  '@workflow/world-postgres@5.0.0-beta.34':
+    resolution: {integrity: sha512-e3MSOXmtg4tZC8M7u95iSkIV2yE3BNC1mzOTnhaadJACAzW9/iyIMlqZxh+AUWAX5aA6CvKUX2vPdiSpnFWD/A==}
     hasBin: true
 
-  '@workflow/world@5.0.0-beta.19':
-    resolution: {integrity: sha512-L2D3ceE7VpV6Xncrhf4OHRLQpinHEwTOPSByYnrQZKfPjrrPjzLqk+5BAEfDwSagCWTJy5TEyBj/eTCn+8ANaw==}
-
-  '@workflow/world@5.0.0-beta.25':
-    resolution: {integrity: sha512-x5fIve47JYZlGGX97JLol6WfwJak6UrGm5Grl2Ir9gLAqiNfTjBSZb2XTxl2T25kI5uRV3wFKOulK5pjgAWCeQ==}
+  '@workflow/world@5.0.0-beta.27':
+    resolution: {integrity: sha512-6+cpxAKgKuIO7khpTZFs9WVTTt8CVXWL8+QTz8VQJFtjg9QF1Kfc3bHPpzj1j6jjQCW6X0pF7CsQGSpLKuL9gw==}
 
   '@xyflow/react@12.11.2':
     resolution: {integrity: sha512-eLAlDWJfWnQEhJwGMjlWdAXO9eYllKpliUmPQlAmOLxz6mExXuzMVDUKLMquixgkrtmMFFtug3jGKmYYld12cA==}
@@ -5389,68 +5354,28 @@ packages:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
     engines: {node: '>= 0.6'}
 
-  eve@0.34.0:
-    resolution: {integrity: sha512-zgrYIbm8u78Furxfdyzaknf5AxFCzwmTGfLEvgax00BUNXu3eebaos8igjYQyM4q5JAxlWAoZCJuItE6r2S0cw==}
-    engines: {node: '>=24'}
-    hasBin: true
-    peerDependencies:
-      '@opentelemetry/api': ^1.0.0
-      ai: ^7.0.58
-      braintrust: ^3.0.0
-      just-bash: ^3.0.0
-      microsandbox: ^0.5.0
-    peerDependenciesMeta:
-      '@opentelemetry/api':
-        optional: true
-      braintrust:
-        optional: true
-      just-bash:
-        optional: true
-      microsandbox:
-        optional: true
-
-  eve@0.35.0:
-    resolution: {integrity: sha512-HcODFBh3ad9mmp5zqE+GBsFGmPBiLd2Nk3SmbHVOZa/4muCP2AKWZfLfJb8asl1vdEq4qT51LGgdPvDy758bwg==}
-    engines: {node: '>=24'}
-    hasBin: true
-    peerDependencies:
-      '@opentelemetry/api': ^1.0.0
-      ai: ^7.0.58
-      braintrust: ^3.0.0
-      just-bash: ^3.0.0
-      microsandbox: ^0.5.0
-    peerDependenciesMeta:
-      '@opentelemetry/api':
-        optional: true
-      braintrust:
-        optional: true
-      just-bash:
-        optional: true
-      microsandbox:
-        optional: true
-
-  eve@0.36.0:
-    resolution: {integrity: sha512-dkUR2mg/FmIR84vvavx4XYsrMuGPi+EO3r0k94KSMHjoUi6G/DmJaNtm62dbD6FGDnRViO7uwSYOdVp5+mJhYQ==}
-    engines: {node: '>=24'}
-    hasBin: true
-    peerDependencies:
-      '@opentelemetry/api': ^1.0.0
-      ai: ^7.0.58
-      braintrust: ^3.0.0
-      just-bash: ^3.0.0
-      microsandbox: ^0.5.0
-    peerDependenciesMeta:
-      '@opentelemetry/api':
-        optional: true
-      braintrust:
-        optional: true
-      just-bash:
-        optional: true
-      microsandbox:
-        optional: true
-
   eve@0.37.1:
     resolution: {integrity: sha512-oU4qN9O0Ek/hVjHVFwdDNrEVFTjCQ1k4rVXe7wnfWarCR8BLJeyW56AHM/qzMBgUY1UkdoxBg8vxEvVtI08TCA==}
+    engines: {node: '>=24'}
+    hasBin: true
+    peerDependencies:
+      '@opentelemetry/api': ^1.0.0
+      ai: ^7.0.58
+      braintrust: ^3.0.0
+      just-bash: ^3.0.0
+      microsandbox: ^0.5.0
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
+      braintrust:
+        optional: true
+      just-bash:
+        optional: true
+      microsandbox:
+        optional: true
+
+  eve@0.38.3:
+    resolution: {integrity: sha512-Ds942WB9JyhKZYCEG60fxRpsDbzsByPwbW/8iMxFP3xYe9TpKdGBiOxmqukI8KsdoKdyudXWnHY2KMVeSd3Iig==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
@@ -9531,16 +9456,16 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@evelandhq/sandbox-bwrap@0.1.1(eve@0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0))':
+  '@evelandhq/sandbox-bwrap@0.1.1(eve@0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0))':
     dependencies:
-      eve: 0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+      eve: 0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
 
-  '@evelandhq/workflow-world@0.5.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
+  '@evelandhq/workflow-world@0.6.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
     dependencies:
-      '@workflow/errors': 5.0.0-beta.16
+      '@workflow/errors': 5.0.0-beta.17
       '@workflow/utils': 5.0.0-beta.8
-      '@workflow/world': 5.0.0-beta.25
-      '@workflow/world-local': 5.0.0-beta.34(@opentelemetry/api@1.9.1)
+      '@workflow/world': 5.0.0-beta.27
+      '@workflow/world-local': 5.0.0-beta.36(@opentelemetry/api@1.9.1)
       cbor-x: 1.6.0
       drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9)
       graphile-worker: 0.16.6(typescript@6.0.3)
@@ -11640,45 +11565,23 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@workflow/errors@5.0.0-beta.10':
-    dependencies:
-      '@workflow/utils': 5.0.0-beta.6
-      ms: 2.1.3
-
-  '@workflow/errors@5.0.0-beta.16':
+  '@workflow/errors@5.0.0-beta.17':
     dependencies:
       '@workflow/utils': 5.0.0-beta.8
       ms: 2.1.3
 
   '@workflow/serde@4.1.0': {}
 
-  '@workflow/utils@5.0.0-beta.6':
-    dependencies:
-      ms: 2.1.3
-
   '@workflow/utils@5.0.0-beta.8':
     dependencies:
       ms: 2.1.3
 
-  '@workflow/world-local@5.0.0-beta.27(@opentelemetry/api@1.9.1)':
+  '@workflow/world-local@5.0.0-beta.36(@opentelemetry/api@1.9.1)':
     dependencies:
       '@vercel/queue': 0.4.0(@opentelemetry/api@1.9.1)
-      '@workflow/errors': 5.0.0-beta.10
-      '@workflow/utils': 5.0.0-beta.6
-      '@workflow/world': 5.0.0-beta.19
-      async-sema: 3.1.1
-      ulid: 3.0.2
-      undici: 7.28.0
-      zod: 4.3.6
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-
-  '@workflow/world-local@5.0.0-beta.34(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@vercel/queue': 0.4.0(@opentelemetry/api@1.9.1)
-      '@workflow/errors': 5.0.0-beta.16
+      '@workflow/errors': 5.0.0-beta.17
       '@workflow/utils': 5.0.0-beta.8
-      '@workflow/world': 5.0.0-beta.25
+      '@workflow/world': 5.0.0-beta.27
       async-sema: 3.1.1
       proper-lockfile: 4.1.2
       ulid: 3.0.2
@@ -11687,13 +11590,13 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@workflow/world-postgres@5.0.0-beta.25(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
+  '@workflow/world-postgres@5.0.0-beta.34(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
     dependencies:
       '@vercel/queue': 0.4.0(@opentelemetry/api@1.9.1)
-      '@workflow/errors': 5.0.0-beta.10
-      '@workflow/utils': 5.0.0-beta.6
-      '@workflow/world': 5.0.0-beta.19
-      '@workflow/world-local': 5.0.0-beta.27(@opentelemetry/api@1.9.1)
+      '@workflow/errors': 5.0.0-beta.17
+      '@workflow/utils': 5.0.0-beta.8
+      '@workflow/world': 5.0.0-beta.27
+      '@workflow/world-local': 5.0.0-beta.36(@opentelemetry/api@1.9.1)
       cbor-x: 1.6.0
       dotenv: 17.3.1
       drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9)
@@ -11734,12 +11637,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@workflow/world@5.0.0-beta.19':
-    dependencies:
-      ulid: 3.0.2
-      zod: 4.3.6
-
-  '@workflow/world@5.0.0-beta.25':
+  '@workflow/world@5.0.0-beta.27':
     dependencies:
       ulid: 3.0.2
       zod: 4.3.6
@@ -12776,148 +12674,54 @@ snapshots:
 
   etag@1.8.1: {}
 
-  eve@0.34.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0):
-    dependencies:
-      ai: 7.0.59(zod@4.4.3)
-      nitro: 3.0.260610-beta(@electric-sql/pglite@0.5.4)(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
-      undici: 8.9.0
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-    transitivePeerDependencies:
-      - '@azure/app-configuration'
-      - '@azure/cosmos'
-      - '@azure/data-tables'
-      - '@azure/identity'
-      - '@azure/keyvault-secrets'
-      - '@azure/storage-blob'
-      - '@capacitor/preferences'
-      - '@deno/kv'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@netlify/blobs'
-      - '@netlify/runtime'
-      - '@planetscale/database'
-      - '@upstash/redis'
-      - '@vercel/blob'
-      - '@vercel/functions'
-      - '@vercel/kv'
-      - '@vercel/queue'
-      - aws4fetch
-      - better-sqlite3
-      - chokidar
-      - dotenv
-      - drizzle-orm
-      - giget
-      - idb-keyval
-      - ioredis
-      - jiti
-      - lru-cache
-      - miniflare
-      - mongodb
-      - mysql2
-      - rollup
-      - sqlite3
-      - uploadthing
-      - vite
-      - wrangler
-      - xml2js
-      - zephyr-agent
-
-  eve@0.35.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0):
-    dependencies:
-      ai: 7.0.59(zod@4.4.3)
-      nitro: 3.0.260610-beta(@electric-sql/pglite@0.5.4)(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
-      undici: 8.9.0
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-    transitivePeerDependencies:
-      - '@azure/app-configuration'
-      - '@azure/cosmos'
-      - '@azure/data-tables'
-      - '@azure/identity'
-      - '@azure/keyvault-secrets'
-      - '@azure/storage-blob'
-      - '@capacitor/preferences'
-      - '@deno/kv'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@netlify/blobs'
-      - '@netlify/runtime'
-      - '@planetscale/database'
-      - '@upstash/redis'
-      - '@vercel/blob'
-      - '@vercel/functions'
-      - '@vercel/kv'
-      - '@vercel/queue'
-      - aws4fetch
-      - better-sqlite3
-      - chokidar
-      - dotenv
-      - drizzle-orm
-      - giget
-      - idb-keyval
-      - ioredis
-      - jiti
-      - lru-cache
-      - miniflare
-      - mongodb
-      - mysql2
-      - rollup
-      - sqlite3
-      - uploadthing
-      - vite
-      - wrangler
-      - xml2js
-      - zephyr-agent
-
-  eve@0.36.0(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0):
-    dependencies:
-      ai: 7.0.59(zod@4.4.3)
-      nitro: 3.0.260610-beta(@electric-sql/pglite@0.5.4)(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
-      undici: 8.9.0
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-    transitivePeerDependencies:
-      - '@azure/app-configuration'
-      - '@azure/cosmos'
-      - '@azure/data-tables'
-      - '@azure/identity'
-      - '@azure/keyvault-secrets'
-      - '@azure/storage-blob'
-      - '@capacitor/preferences'
-      - '@deno/kv'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@netlify/blobs'
-      - '@netlify/runtime'
-      - '@planetscale/database'
-      - '@upstash/redis'
-      - '@vercel/blob'
-      - '@vercel/functions'
-      - '@vercel/kv'
-      - '@vercel/queue'
-      - aws4fetch
-      - better-sqlite3
-      - chokidar
-      - dotenv
-      - drizzle-orm
-      - giget
-      - idb-keyval
-      - ioredis
-      - jiti
-      - lru-cache
-      - miniflare
-      - mongodb
-      - mysql2
-      - rollup
-      - sqlite3
-      - uploadthing
-      - vite
-      - wrangler
-      - xml2js
-      - zephyr-agent
-
   eve@0.37.1(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0):
+    dependencies:
+      ai: 7.0.59(zod@4.4.3)
+      nitro: 3.0.260610-beta(@electric-sql/pglite@0.5.4)(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)
+      undici: 8.9.0
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.1
+    transitivePeerDependencies:
+      - '@azure/app-configuration'
+      - '@azure/cosmos'
+      - '@azure/data-tables'
+      - '@azure/identity'
+      - '@azure/keyvault-secrets'
+      - '@azure/storage-blob'
+      - '@capacitor/preferences'
+      - '@deno/kv'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@netlify/blobs'
+      - '@netlify/runtime'
+      - '@planetscale/database'
+      - '@upstash/redis'
+      - '@vercel/blob'
+      - '@vercel/functions'
+      - '@vercel/kv'
+      - '@vercel/queue'
+      - aws4fetch
+      - better-sqlite3
+      - chokidar
+      - dotenv
+      - drizzle-orm
+      - giget
+      - idb-keyval
+      - ioredis
+      - jiti
+      - lru-cache
+      - miniflare
+      - mongodb
+      - mysql2
+      - rollup
+      - sqlite3
+      - uploadthing
+      - vite
+      - wrangler
+      - xml2js
+      - zephyr-agent
+
+  eve@0.38.3(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(ai@7.0.59(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0):
     dependencies:
       ai: 7.0.59(zod@4.4.3)
       nitro: 3.0.260610-beta(@electric-sql/pglite@0.5.4)(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1)(rollup@4.62.2)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.110.0)

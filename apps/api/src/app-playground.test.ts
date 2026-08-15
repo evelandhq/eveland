@@ -13,7 +13,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/dormant-playground",
-      summary: { eveVersion: "0.34.5" },
+      summary: { eveVersion: "0.38.3" },
       envVars: [],
       files: [],
       schedules: [],
@@ -90,7 +90,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/routed-playground",
-      summary: { eveVersion: "0.34.5" },
+      summary: { eveVersion: "0.38.3" },
       envVars: [],
       files: [],
       schedules: [],
@@ -181,7 +181,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: { eveVersion: "0.34.5" },
+      summary: { eveVersion: "0.38.3" },
       envVars: [],
       files: [],
       schedules: [],
@@ -474,8 +474,7 @@ describe("api app", () => {
       Response.json(
         {
           error: "Unsupported Eve version",
-          detail:
-            'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.34.x, 0.35.x, 0.36.x, or 0.37.x.',
+          detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.37.x or 0.38.x.',
         },
         { status: 409 },
       ),
@@ -487,8 +486,8 @@ describe("api app", () => {
     await expect(version.json()).resolves.toEqual({
       eveVersion: {
         version: "0.22.6",
-        expected: "0.34.x, 0.35.x, 0.36.x, or 0.37.x",
-        supportedRanges: ["0.34.x", "0.35.x", "0.36.x", "0.37.x"],
+        expected: "0.37.x or 0.38.x",
+        supportedRanges: ["0.37.x", "0.38.x"],
         supported: false,
         sourceRevisionId: revision.id,
       },
@@ -512,7 +511,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/current-eve-playground-agent",
-      summary: { eveVersion: "0.34.5" },
+      summary: { eveVersion: "0.38.3" },
       envVars: [],
       files: [],
       schedules: [],

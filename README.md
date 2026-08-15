@@ -74,9 +74,9 @@ fixtures rather than duplicating setup when adding coverage.
 Eve compatibility has one semantic owner:
 `packages/core/src/eve-compatibility.ts`. Workspace consumers reference the
 matching pnpm catalogs instead of copying patch versions into package
-manifests. The temporary four-line matrix uses stable positional aliases
-(`eve-oldest`, `eve-middle`, `eve-newer`, and `eve`) so sliding the supported
-minor window does not rename consumer dependencies. Standalone integration
+manifests. The current two-line matrix uses stable positional aliases
+(`eve-oldest` and `eve`) so sliding the supported minor window does not rename
+consumer dependencies. Standalone integration
 fixtures keep the `catalog:` marker in source and are materialized into
 temporary directories through `@evelandhq/core/server/eve-fixture` before
 import, so an Eve patch upgrade does not require editing every fixture.

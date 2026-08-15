@@ -18,9 +18,20 @@ function normalizedWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function englishList(values: readonly string[]): string {
+  if (values.length < 2) return values[0] ?? "";
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
+}
+
+function chineseList(values: readonly string[]): string {
+  if (values.length < 2) return values[0] ?? "";
+  return `${values.slice(0, -1).join("、")} 与 ${values.at(-1)}`;
+}
+
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.37.1");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.38.3");
   });
 
   test("publishes a browser-safe compatibility policy subpath", () => {
@@ -39,9 +50,9 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the temporary four-line compatibility window", () => {
+  test("describes the supported 0.37-0.38 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
-    const stableDependencyNames = ["eve-oldest", "eve-middle", "eve-newer", "eve"];
+    const stableDependencyNames = ["eve-oldest", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
       const rangeMatch = /^0\.(\d+)\.x$/.exec(line.range);
       const verifiedMatch = /^0\.(\d+)\.(\d+)$/.exec(line.verifiedVersion);
@@ -55,8 +66,8 @@ describe("Eve compatibility repository contract", () => {
       return minor;
     });
 
-    expect(supportedLines).toHaveLength(4);
-    expect(new Set(minorNumbers).size).toBe(4);
+    expect(supportedLines).toHaveLength(2);
+    expect(new Set(minorNumbers).size).toBe(2);
     expect(minorNumbers).toEqual(minorNumbers.map((_, index) => minorNumbers[0]! + index));
     expect(peerDependencyRange).toBe(`>=0.${minorNumbers[0]}.0 <0.${minorNumbers.at(-1)! + 1}.0`);
   });
@@ -72,7 +83,9 @@ describe("Eve compatibility repository contract", () => {
     expect(compatibility.VERIFIED_EVE_VERSIONS).toEqual(expectedVersions);
     expect(compatibility.LATEST_VERIFIED_EVE_VERSION).toBe(expectedVersions.at(-1));
     expect(compatibility.SUPPORTED_EVE_VERSION_RANGE).toBe(
-      `${expectedRanges.slice(0, -1).join(", ")}, or ${expectedRanges.at(-1)}`,
+      expectedRanges.length === 2
+        ? `${expectedRanges[0]} or ${expectedRanges[1]}`
+        : `${expectedRanges.slice(0, -1).join(", ")}, or ${expectedRanges.at(-1)}`,
     );
   });
 
@@ -192,9 +205,9 @@ describe("Eve compatibility repository contract", () => {
   test("keeps active documentation references aligned with policy", () => {
     const latestRange = SUPPORTED_EVE_VERSION_RANGES.at(-1)!;
     const quotedVerifiedVersions = VERIFIED_EVE_VERSIONS.map((version) => `\`${version}\``);
-    const verifiedEnglish = `${quotedVerifiedVersions.slice(0, -1).join(", ")}, and ${quotedVerifiedVersions.at(-1)}`;
+    const verifiedEnglish = englishList(quotedVerifiedVersions);
     const quotedVerifiedVersionsChinese = VERIFIED_EVE_VERSIONS.map((version) => `\`${version}\``);
-    const verifiedChinese = `${quotedVerifiedVersionsChinese.slice(0, -1).join("、")} 与 ${quotedVerifiedVersionsChinese.at(-1)}`;
+    const verifiedChinese = chineseList(quotedVerifiedVersionsChinese);
     const englishDocs = normalizedWhitespace(
       repositoryFile("apps/docs/content/docs/en/reference/eve-compatibility.mdx"),
     );
@@ -216,9 +229,9 @@ describe("Eve compatibility repository contract", () => {
 
   test("keeps the active product and public documentation windows aligned", () => {
     const quotedRanges = SUPPORTED_EVE_VERSION_RANGES.map((range) => `\`${range}\``);
-    const englishRanges = `${quotedRanges.slice(0, -1).join(", ")}, and ${quotedRanges.at(-1)}`;
-    const chineseRanges = `${quotedRanges.slice(0, -1).join("、")} 与 ${quotedRanges.at(-1)}`;
-    const specRanges = `${SUPPORTED_EVE_VERSION_RANGES.slice(0, -1).join("、")} 与 ${SUPPORTED_EVE_VERSION_RANGES.at(-1)}`;
+    const englishRanges = englishList(quotedRanges);
+    const chineseRanges = chineseList(quotedRanges);
+    const specRanges = chineseList(SUPPORTED_EVE_VERSION_RANGES);
     const exactMinors = SUPPORTED_EVE_VERSION_RANGES.map((range) => range.replace(/\.x$/, "")).join(
       "/",
     );
