@@ -110,8 +110,7 @@ const reconcileObservability = createWorkerObservabilityReconciler([
 // deployment attempt; fail fast here with the complete list of what's missing.
 try {
   await assertWorkerPreflight(process.env);
-  const bootstrapLog = await bootstrapWorkflowWorld(process.env);
-  if (bootstrapLog) console.log("Legacy per-project workflow database schema is ready.");
+  await bootstrapWorkflowWorld(process.env);
   if (await bootstrapEvelandWorkflowWorld(process.env)) {
     console.log("Shared workflow-world database schema is ready.");
   }
