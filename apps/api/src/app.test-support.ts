@@ -75,7 +75,7 @@ export async function createScheduleRunFixture(store: Store, createRun = true) {
         kind: "handler",
         cron: "0 3 * * *",
         sourcePath: "agent/schedules/billing/sweep.ts",
-        definitionHash: "fixture-v1",
+        definitionHash: "a".repeat(64),
       },
     ],
   });

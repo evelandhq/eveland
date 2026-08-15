@@ -806,7 +806,10 @@ closed 并返回明确的 adapter diagnostic，不能猜测或降级执行。导
 discovery manifest 读取已解析的 Extension Schedule，并按 Eve 的
 `<mount namespace>__<schedule name>` 规则加入同一调度面。目录 mount 中同名 consumer
 override 优先于 Extension distribution。两种来源都只接受五字段、UTC、分钟级 cron
-语义；每次 Source Revision
+语义；namespaced key 冲突必须在改写任一模块前使 build 失败，不能静默保留 native cron。
+最终 `.eveland/scheduler/definitions.json` 是必须存在并通过 key、cron、Release-relative
+path 与 definition hash 校验的 build artifact；Docker 与 systemd 都不得回退到依赖安装前的
+root-only definitions。每次 Source Revision
 保留不可变 ScheduleVersion。Project 另有一个
 显式 scheduler target，未来 cron/manual run 固定到该 Deployment、Release 和
 ScheduleVersion，不通过 Gateway 或 stable route 重新选流量目标。
@@ -845,10 +848,11 @@ Session 的 root `turn.completed`、
 
 Prepared Release 会保留 root 与 Extension Schedule 的 Eve 注册形状，但将 native cron
 handler 改为 no-op，因此 warm preview、旧版本和 stable target 不会各自执行同一 cron。
-Extension package 只能在 dependency install 后解析，所以 build 先执行一次 `eve info`，再由
-Release 内自包含的 platform integrator 只改写一次性 Release tree（模块使用原子替换，不能
-修改 pnpm content-addressed store），随后才执行正式 `eve build` 和最终 `eve info`。真正的
-Markdown/TypeScript handler 只由上述经过认证的私有 Channel 调用。
+当源码声明 Extension mount 时，Extension package 只能在 dependency install 后解析，所以
+build 先执行一次 `eve info`，再由 Release 内自包含的 platform integrator 只改写一次性 Release
+tree（模块使用原子替换，不能修改 pnpm content-addressed store），随后才执行正式 `eve build`
+和最终 `eve info`。没有 Extension mount 的 Release 不注入约 11 MiB 的 integrator，也不执行额外
+的预发现步骤。真正的 Markdown/TypeScript handler 只由上述经过认证的私有 Channel 调用。
 
 切换 scheduler target 只影响切换后创建的 cron/manual run。已经 queued、running 或
 完成的 ScheduleRun 永远保留创建时固定的 Deployment、Release 和 ScheduleVersion；

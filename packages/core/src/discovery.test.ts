@@ -177,6 +177,24 @@ describe("projectDiscoveryManifest", () => {
     expect(projectDiscoveryManifest({ ...nestedManifest, version: 99 })).toBeNull();
   });
 
+  test("fails closed on invalid Extension namespaces and unsupported schedule modules", () => {
+    const extensionManifest = {
+      ...nestedManifest,
+      agentRoot: "/srv/app/node_modules/@acme/crm/dist/extension",
+      subagents: [],
+      schedules: [{ logicalPath: "schedules/report.mdx" }],
+    };
+    const withMount = (namespace: string, manifest = extensionManifest) => ({
+      ...nestedManifest,
+      version: 13,
+      extensions: [{ logicalPath: "extensions/crm.ts" }],
+      resolvedExtensions: [{ namespace, manifest }],
+    });
+
+    expect(projectDiscoveryManifest(withMount(""))).toBeNull();
+    expect(projectDiscoveryManifest(withMount("crm"))).toBeNull();
+  });
+
   test("fails closed when entity arrays or roots are missing", () => {
     // A bare kind+version envelope must not wipe the static summary's entity lists.
     expect(

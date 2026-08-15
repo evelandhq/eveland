@@ -34,7 +34,7 @@ describe.skipIf(!database)("Postgres schedule state", () => {
             kind: "handler",
             cron: "* * * * *",
             sourcePath: "agent/schedules/nested/minute.ts",
-            definitionHash: "postgres-minute-v1",
+            definitionHash: "a".repeat(64),
           },
         ],
       });

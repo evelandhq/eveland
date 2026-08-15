@@ -70,7 +70,7 @@ test("reads the post-integration scheduler definitions from the built release", 
       kind: "handler",
       cron: "0 2 * * *",
       sourcePath: "agent/extensions/crm/schedules/sync.mjs",
-      definitionHash: "fixture-hash",
+      definitionHash: "a".repeat(64),
       modulePath: "node_modules/@acme/crm/dist/extension/schedules/sync.mjs",
     },
   ];
@@ -83,7 +83,7 @@ test("reads the post-integration scheduler definitions from the built release", 
   await expect(readReleaseSchedulerDefinitions(releaseDir)).resolves.toEqual(definitions);
 });
 
-test("ignores malformed scheduler definitions instead of persisting untrusted build output", async () => {
+test("fails the build when scheduler definitions are malformed", async () => {
   const releaseDir = await makeRelease();
   await mkdir(path.join(releaseDir, ".eveland", "scheduler"), { recursive: true });
   await writeFile(
@@ -91,5 +91,15 @@ test("ignores malformed scheduler definitions instead of persisting untrusted bu
     JSON.stringify([{ key: "crm__sync", cron: "not a complete definition" }]),
   );
 
-  await expect(readReleaseSchedulerDefinitions(releaseDir)).resolves.toBeUndefined();
+  await expect(readReleaseSchedulerDefinitions(releaseDir)).rejects.toThrow(
+    /invalid scheduler definitions/i,
+  );
+});
+
+test("fails the build when post-integration scheduler definitions are missing", async () => {
+  const releaseDir = await makeRelease();
+
+  await expect(readReleaseSchedulerDefinitions(releaseDir)).rejects.toThrow(
+    /required scheduler definitions/i,
+  );
 });

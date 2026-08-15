@@ -1619,9 +1619,16 @@ stacked follow-up 在 dependency install 与正式 `eve build` 之间先运行 `
 不写 content-addressed store。
 
 有效的 directory-form Extension Subagent 及其嵌套后代获得 private observer hook；override
-Subagent 替代原贡献，Extension 内的 fallback runtime 放在其 `lib/` 保留文件并被静态 bundle，避免
-Eve authored-module cache 改变相对 import 基准。file-form Subagent 仍没有 Eve hooks slot，和本地
-file-form 一样记录 coverage gap，不 patch compiled internals。最终 discovery summary 以稳定的
+Subagent 替代原贡献，Extension 内的 fallback runtime 作为无副作用 lazy loader 放在其 `lib/`
+保留文件并被静态 bundle，避免 Eve authored-module cache 改变相对 import 基准，同时确保健康的
+platform mount 不会求值烘焙副本。file-form Subagent 仍没有 Eve hooks slot，和本地 file-form 一样
+记录结构化 coverage gap 到 Release artifact，不 patch compiled internals。最终 discovery summary 以稳定的
 `agent/extensions/<namespace>/...` 路径和 namespaced Subagent ID 展示有效贡献。
 Release observer contract 升到 3，使旧 Release 在 activation 时明确提示需要 rebuild 才能获得
 Extension Subagent 覆盖。
+
+Review 加固要求 Extension schedule key 冲突在任何 no-op 改写前 fail closed，最终 scheduler
+definitions 必须存在并通过 cron/key/path/hash 校验，Docker/systemd 不得回退到 root-only 快照。
+注入器对 manifest 路径同时做词法与 realpath containment；无 Extension mount 的存量 Release
+跳过预发现和约 11 MiB integrator。真实兼容矩阵覆盖 Eve 0.37.1 的 v13 Extension manifest no-op
+路径与 Eve 0.38.3 的 Schedule/Subagent 完整路径。

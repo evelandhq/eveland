@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,7 +90,7 @@ export function bundleObserverRuntime(): Promise<string> {
       // bundle esbuild routes those through a shim that needs a real require.
       // Without this, importing the bundle in plain Node throws
       // "Dynamic require of 'util' is not supported".
-      js: 'import { createRequire as __eveland_createRequire } from "node:module"; const require = __eveland_createRequire(import.meta.url);',
+      js: 'import { createRequire as __eveland_createRequire } from "node:module"; import { pathToFileURL as __eveland_pathToFileURL } from "node:url"; const require = __eveland_createRequire(import.meta.url.startsWith("file:") ? import.meta.url : __eveland_pathToFileURL(`${process.cwd()}/`).href);',
     },
   }).then((result) => {
     const file = result.outputFiles[0];
@@ -231,7 +232,7 @@ export async function injectExtensionSubagentHooks(input: {
   const runtime = await readFile(runtimePath, "utf8");
   for (const fallbackRuntimePath of fallbackRuntimePaths) {
     await mkdir(path.dirname(fallbackRuntimePath), { recursive: true });
-    await writeFile(fallbackRuntimePath, runtime, "utf8");
+    await writeFile(fallbackRuntimePath, createFallbackRuntimeLoader(runtime), "utf8");
   }
   const injectedFiles: string[] = [];
   for (const { observerPath, fallbackRuntimePath } of observerTargets) {
@@ -246,10 +247,11 @@ export async function injectExtensionSubagentHooks(input: {
   return { injectedFiles, coverageGaps };
 }
 
-function createObserverShim(
+export function createObserverShim(
   observerPath: string,
   runtimePath: string,
   staticFallback = false,
+  platformRuntimeUrl = `file://${PLATFORM_OBSERVER_RUNTIME_PATH}`,
 ): string {
   let relativeRuntimePath = path
     .relative(path.dirname(observerPath), runtimePath)
@@ -260,17 +262,19 @@ function createObserverShim(
   }
   const fallback = staticFallback
     ? [
-        `import fallbackRuntime from ${JSON.stringify(relativeRuntimePath)};`,
+        `import { loadFallbackRuntime } from ${JSON.stringify(relativeRuntimePath)};`,
         ``,
-        `let runtime = { default: fallbackRuntime };`,
+        `let runtime;`,
         `try {`,
-        `  runtime = await import(${JSON.stringify(`file://${PLATFORM_OBSERVER_RUNTIME_PATH}`)});`,
-        `} catch {}`,
+        `  runtime = await import(${JSON.stringify(platformRuntimeUrl)});`,
+        `} catch {`,
+        `  runtime = await loadFallbackRuntime();`,
+        `}`,
       ]
     : [
         `let runtime;`,
         `try {`,
-        `  runtime = await import(${JSON.stringify(`file://${PLATFORM_OBSERVER_RUNTIME_PATH}`)});`,
+        `  runtime = await import(${JSON.stringify(platformRuntimeUrl)});`,
         `} catch {`,
         `  runtime = await import(${JSON.stringify(relativeRuntimePath)});`,
         `}`,
@@ -285,6 +289,18 @@ function createObserverShim(
     ...fallback,
     ``,
     `export default defineHook(runtime.default);`,
+    ``,
+  ].join("\n");
+}
+
+function createFallbackRuntimeLoader(runtime: string): string {
+  const runtimeUrl = `data:text/javascript;base64,${Buffer.from(runtime).toString("base64")}`;
+  return [
+    `let fallbackRuntime;`,
+    `export function loadFallbackRuntime() {`,
+    `  fallbackRuntime ??= import(${JSON.stringify(runtimeUrl)});`,
+    `  return fallbackRuntime;`,
+    `}`,
     ``,
   ].join("\n");
 }
@@ -408,6 +424,7 @@ function isExtensionSubagentMount(value: unknown): value is ExtensionSubagentMou
   return (
     isRecord(value) &&
     typeof value.namespace === "string" &&
+    Boolean(value.namespace) &&
     isExtensionSubagentManifest(value.manifest) &&
     (value.overrides === undefined || isExtensionSubagentManifest(value.overrides))
   );
@@ -415,13 +432,38 @@ function isExtensionSubagentMount(value: unknown): value is ExtensionSubagentMou
 
 function resolveReleasePath(releaseDir: string, target: string): string {
   const resolved = path.resolve(target);
-  const relative = path.relative(releaseDir, resolved);
-  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  const canonical = canonicalizeExistingAncestor(resolved);
+  if (!isPathInside(releaseDir, resolved) || !isPathInside(realpathSync(releaseDir), canonical)) {
     throw new Error(
       `Extension source ${resolved} must stay inside the disposable Release directory ${releaseDir}.`,
     );
   }
   return resolved;
+}
+
+function canonicalizeExistingAncestor(target: string): string {
+  let candidate = target;
+  for (;;) {
+    try {
+      const suffix = path.relative(candidate, target);
+      return path.resolve(realpathSync(candidate), suffix);
+    } catch (error) {
+      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+      const parent = path.dirname(candidate);
+      if (parent === candidate) throw error;
+      candidate = parent;
+    }
+  }
+}
+
+function isPathInside(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return (
+    Boolean(relative) &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
 }
 
 function releaseRelativePath(releaseDir: string, target: string): string {

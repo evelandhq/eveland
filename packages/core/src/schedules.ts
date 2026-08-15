@@ -97,6 +97,46 @@ export function validateFiveFieldCron(cron: string): void {
   }
 }
 
+export function validateScheduleDefinitionFields(input: {
+  key: string;
+  cron: string;
+  sourcePath: string;
+  definitionHash: string;
+}): void {
+  const keySegments = input.key.split("/");
+  if (
+    !input.key ||
+    input.key.trim() !== input.key ||
+    input.key.includes("\\") ||
+    keySegments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new Error("Schedule definition key must be a normalized non-empty key.");
+  }
+  validateFiveFieldCron(input.cron);
+  validateReleaseRelativePath(input.sourcePath, "source path");
+  if (
+    !input.sourcePath.startsWith("agent/schedules/") &&
+    !input.sourcePath.startsWith("agent/extensions/")
+  ) {
+    throw new Error("Schedule definition source path must identify a platform schedule slot.");
+  }
+  if (!/^[a-f0-9]{64}$/i.test(input.definitionHash)) {
+    throw new Error("Schedule definition hash must be a SHA-256 digest.");
+  }
+}
+
+export function validateReleaseRelativePath(value: string, label: string): void {
+  const segments = value.split("/");
+  if (
+    !value ||
+    value.startsWith("/") ||
+    value.includes("\\") ||
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new Error(`Schedule definition ${label} must be a normalized Release-relative path.`);
+  }
+}
+
 function scheduleKeyFromPath(sourcePath: string): string {
   const prefix = "agent/schedules/";
   if (!sourcePath.startsWith(prefix)) {

@@ -140,7 +140,7 @@ describe("Agent observability ingestion repository", () => {
           kind: "markdown",
           cron: "0 2 * * *",
           sourcePath: "agent/schedules/daily-topics.md",
-          definitionHash: "observer-boundary-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
@@ -205,7 +205,7 @@ describe("Agent observability ingestion repository", () => {
           kind: "handler",
           cron: "0 2 * * *",
           sourcePath: "agent/schedules/parallel-topics.ts",
-          definitionHash: "parallel-boundary-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
@@ -289,7 +289,7 @@ describe("Agent observability ingestion repository", () => {
           kind: "handler",
           cron: "0 2 * * *",
           sourcePath: "agent/schedules/fast-topic.ts",
-          definitionHash: "observer-race-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
@@ -557,7 +557,7 @@ describe("Agent observability ingestion repository", () => {
           kind: "markdown",
           cron: "0 2 * * *",
           sourcePath: "agent/schedules/daily-stolen-turn.md",
-          definitionHash: "stolen-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });

@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseScheduleSource } from "@evelandhq/core/schedules";
+import {
+  parseScheduleSource,
+  validateReleaseRelativePath,
+  validateScheduleDefinitionFields,
+} from "@evelandhq/core/schedules";
 import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@evelandhq/core/source";
 import ts from "typescript";
 
@@ -137,72 +142,86 @@ export async function injectExtensionSchedules(input: {
     Pick<SchedulerDefinition, "kind" | "cron" | "definitionHash" | "modulePath">
   >();
 
-  for (const mount of mounts.sort((left, right) => left.namespace.localeCompare(right.namespace))) {
-    const effective = mergeExtensionScheduleSources(mount);
-    for (const source of effective) {
-      const relativeSchedulePath = assertScheduleLogicalPath(source.entry.logicalPath);
-      const localKey = scheduleKeyFromLogicalPath(relativeSchedulePath);
-      const key = `${mount.namespace}__${localKey}`;
-      if (existingKeys.has(key)) continue;
-
-      const sourceFile = resolveReleaseFile(
-        releaseDir,
-        source.manifest.agentRoot,
-        source.entry.logicalPath,
+  const planned = mounts
+    .sort((left, right) => left.namespace.localeCompare(right.namespace))
+    .flatMap((mount) =>
+      mergeExtensionScheduleSources(mount).map((source) => {
+        const relativeSchedulePath = assertScheduleLogicalPath(source.entry.logicalPath);
+        const localKey = scheduleKeyFromLogicalPath(relativeSchedulePath);
+        return {
+          mount,
+          source,
+          relativeSchedulePath,
+          key: `${mount.namespace}__${localKey}`,
+          sourceFile: resolveReleaseFile(
+            releaseDir,
+            source.manifest.agentRoot,
+            source.entry.logicalPath,
+          ),
+        };
+      }),
+    );
+  for (const entry of planned) {
+    if (existingKeys.has(entry.key)) {
+      throw new Error(
+        `Extension schedule key ${entry.key} collides with an existing or namespaced schedule key.`,
       );
-      let transformed = transformedSources.get(sourceFile);
-      const sourcePath = path.posix.join(
-        "agent/extensions",
-        mount.namespace,
-        source.entry.logicalPath,
-      );
-      if (!transformed) {
-        const content = await readFile(sourceFile, "utf8");
-        const discovered = parseScheduleSource(
-          path.posix.join("agent/schedules", relativeSchedulePath),
-          content,
-        );
-        if (discovered.kind === "markdown") {
-          const generatedFile = sourceFile.replace(/\.md$/, ".ts");
-          if (await exists(generatedFile)) {
-            throw new Error(
-              `Extension Markdown schedule ${sourcePath} collides with reserved generated module ${path.basename(generatedFile)}.`,
-            );
-          }
-          await atomicWriteFile(
-            generatedFile,
-            [
-              `export const ${reservedOriginalMarkdown} = ${JSON.stringify(discovered.prompt)};`,
-              `export default {`,
-              `  cron: ${JSON.stringify(discovered.cron)},`,
-              `  run: async () => {},`,
-              `};`,
-              ``,
-            ].join("\n"),
-          );
-          await rm(sourceFile);
-          transformed = {
-            kind: "markdown",
-            cron: discovered.cron,
-            definitionHash: hashDefinition(content),
-            modulePath: releaseRelativePath(releaseDir, generatedFile),
-          };
-        } else {
-          const module = transformModuleSchedule(sourcePath, content);
-          await atomicWriteFile(sourceFile, module.code);
-          transformed = {
-            kind: module.kind,
-            cron: module.cron,
-            definitionHash: hashDefinition(content),
-            modulePath: releaseRelativePath(releaseDir, sourceFile),
-          };
-        }
-        transformedSources.set(sourceFile, transformed);
-        transformedFiles.push(releaseRelativePath(releaseDir, sourceFile));
-      }
-      existingKeys.add(key);
-      definitions.push({ key, sourcePath, ...transformed });
     }
+    existingKeys.add(entry.key);
+  }
+
+  for (const { mount, source, relativeSchedulePath, key, sourceFile } of planned) {
+    let transformed = transformedSources.get(sourceFile);
+    const sourcePath = path.posix.join(
+      "agent/extensions",
+      mount.namespace,
+      source.entry.logicalPath,
+    );
+    if (!transformed) {
+      const content = await readFile(sourceFile, "utf8");
+      const discovered = parseScheduleSource(
+        path.posix.join("agent/schedules", relativeSchedulePath),
+        content,
+      );
+      if (discovered.kind === "markdown") {
+        const generatedFile = sourceFile.replace(/\.md$/, ".ts");
+        if (await exists(generatedFile)) {
+          throw new Error(
+            `Extension Markdown schedule ${sourcePath} collides with reserved generated module ${path.basename(generatedFile)}.`,
+          );
+        }
+        await atomicWriteFile(
+          generatedFile,
+          [
+            `export const ${reservedOriginalMarkdown} = ${JSON.stringify(discovered.prompt)};`,
+            `export default {`,
+            `  cron: ${JSON.stringify(discovered.cron)},`,
+            `  run: async () => {},`,
+            `};`,
+            ``,
+          ].join("\n"),
+        );
+        await rm(sourceFile);
+        transformed = {
+          kind: "markdown",
+          cron: discovered.cron,
+          definitionHash: hashDefinition(content),
+          modulePath: releaseRelativePath(releaseDir, generatedFile),
+        };
+      } else {
+        const module = transformModuleSchedule(sourcePath, content);
+        await atomicWriteFile(sourceFile, module.code);
+        transformed = {
+          kind: module.kind,
+          cron: module.cron,
+          definitionHash: hashDefinition(content),
+          modulePath: releaseRelativePath(releaseDir, sourceFile),
+        };
+      }
+      transformedSources.set(sourceFile, transformed);
+      transformedFiles.push(transformed.modulePath);
+    }
+    definitions.push({ key, sourcePath, ...transformed });
   }
 
   definitions.sort((left, right) => left.key.localeCompare(right.key));
@@ -225,6 +244,17 @@ export async function readSchedulerDefinitions(
 
 export function parseSchedulerDefinitions(value: unknown): SchedulerDefinition[] | undefined {
   if (!Array.isArray(value) || !value.every(isSchedulerDefinition)) return undefined;
+  const keys = new Set<string>();
+  try {
+    for (const definition of value) {
+      validateScheduleDefinitionFields(definition);
+      validateReleaseRelativePath(definition.modulePath, "module path");
+      if (keys.has(definition.key)) throw new Error(`Duplicate schedule key: ${definition.key}`);
+      keys.add(definition.key);
+    }
+  } catch {
+    return undefined;
+  }
   return value;
 }
 
@@ -763,13 +793,25 @@ function scheduleKeyFromLogicalPath(relativePath: string): string {
 
 function resolveReleaseFile(releaseDir: string, agentRoot: string, logicalPath: string): string {
   const target = path.resolve(agentRoot, logicalPath);
-  const relative = path.relative(releaseDir, target);
-  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  if (
+    !isPathInside(releaseDir, target) ||
+    !isPathInside(realpathSync(releaseDir), realpathSync(target))
+  ) {
     throw new Error(
       `Extension source ${target} must stay inside the disposable Release directory ${releaseDir}.`,
     );
   }
   return target;
+}
+
+function isPathInside(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return (
+    Boolean(relative) &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
 }
 
 function releaseRelativePath(releaseDir: string, target: string): string {

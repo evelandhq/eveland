@@ -600,7 +600,7 @@ describe("ensureDeploymentActive", () => {
           kind: "markdown",
           cron: "0 2 * * *",
           sourcePath: "agent/schedules/daily-topics.md",
-          definitionHash: "interrupted-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
@@ -770,7 +770,7 @@ async function createRunningScheduleExecution(
         kind: "markdown",
         cron: "0 2 * * *",
         sourcePath: "agent/schedules/daily-topics.md",
-        definitionHash: `${name}-v1`,
+        definitionHash: "a".repeat(64),
       },
     ],
   });

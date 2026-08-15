@@ -177,7 +177,7 @@ function scheduleName(entry: { logicalPath: string }): string {
 }
 
 function isResolvedExtensionMount(value: unknown): value is ResolvedExtensionProjection {
-  if (!isRecord(value) || typeof value.namespace !== "string") return false;
+  if (!isRecord(value) || typeof value.namespace !== "string" || !value.namespace) return false;
   if (!isExtensionManifest(value.manifest)) return false;
   return value.overrides === undefined || isExtensionManifest(value.overrides);
 }
@@ -187,10 +187,24 @@ function isExtensionManifest(value: unknown): value is ExtensionManifestProjecti
     isRecord(value) &&
     typeof value.agentRoot === "string" &&
     Array.isArray(value.schedules) &&
-    value.schedules.every(isEntry) &&
+    value.schedules.every(isSupportedExtensionScheduleEntry) &&
     Array.isArray(value.subagents) &&
     value.subagents.every(isEntry)
   );
+}
+
+function isSupportedExtensionScheduleEntry(value: unknown): value is { logicalPath: string } {
+  if (!isEntry(value)) return false;
+  const normalized = value.logicalPath.replaceAll("\\", "/");
+  if (!normalized.startsWith("schedules/")) return false;
+  const relative = normalized.slice("schedules/".length);
+  if (
+    !relative ||
+    relative.split("/").some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return false;
+  }
+  return /\.(?:md|[cm]?[jt]s)$/.test(relative);
 }
 
 function isEntry(value: unknown): value is { logicalPath: string } {

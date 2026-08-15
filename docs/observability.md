@@ -100,10 +100,13 @@ flush 或 shutdown。
 
 依赖安装后的 Extension integration 还会读取 Eve v13 的 `resolvedExtensions`，对有效的
 directory-form Extension Subagent（含嵌套后代与 consumer override）注入同一 observer。
-fallback runtime 复制到 Extension 自己的 `lib/` 保留位并由 shim 静态引用，使 Eve 把模块
-物化到 authored-module cache 后仍可在平台 mount 缺席时启动；部署时仍优先使用
+fallback runtime 以无副作用的 lazy loader 写入 Extension 自己的 `lib/` 保留位并由 shim
+静态引用，使 Eve 把模块物化到 authored-module cache 后仍可在平台 mount 缺席时启动；只有
+mount 加载失败才求值烘焙 runtime，避免同时安装两份 model capture。部署时仍优先使用
 `/run/eveland/observability/runtime.mjs`。Eve 的 file-form Subagent 没有独立 hooks slot，
-无论本地还是 Extension 来源都继续记录明确 coverage gap，不 patch Eve compiled internals。
+无论本地还是 Extension 来源都继续记录明确 coverage gap，不 patch Eve compiled internals；
+Extension 缺口的完整 `{kind,path,reason}` 同时写入
+`.eveland/observability/extension-coverage-gaps.json`。
 
 私有 provider 分别产生 traces、logs 和 metrics。三个 signal 共享 Resource 和
 correlation identifiers，但由三个独立 provider 管理。

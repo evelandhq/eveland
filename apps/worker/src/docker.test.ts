@@ -12,6 +12,7 @@ import {
   createDockerAdapter,
   isBenignDockerStopFailure,
   parseDockerPublishOwnership,
+  readImageDiscovery,
   verifyDockerSandbox,
   writeGeneratedDockerfile,
 } from "./runtime/docker.js";
@@ -378,7 +379,7 @@ describe("createDockerAdapter", () => {
               kind: "handler",
               cron: "0 2 * * *",
               sourcePath: "agent/extensions/crm/schedules/sync.mjs",
-              definitionHash: "fixture-hash",
+              definitionHash: "a".repeat(64),
               modulePath: "node_modules/@acme/crm/dist/extension/schedules/sync.mjs",
             },
           ],
@@ -398,9 +399,7 @@ describe("createDockerAdapter", () => {
     const dockerfilePath = path.join(buildDir, "Dockerfile");
     const contents = await readFile(dockerfilePath, "utf8");
     expect(contents).toContain("FROM node:24-alpine");
-    expect(contents).toContain(
-      "RUN npx eve info --json > /dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json > /dev/null",
-    );
+    expect(contents).toContain("RUN npx eve build && npx eve info --json > /dev/null");
     await expect(
       readFile(path.join(buildDir, ".eveland", "verify-sandbox.mjs"), "utf8"),
     ).resolves.toContain("node eveland-verify.ts");
@@ -421,7 +420,7 @@ describe("createDockerAdapter", () => {
           kind: "handler",
           cron: "0 2 * * *",
           sourcePath: "agent/extensions/crm/schedules/sync.mjs",
-          definitionHash: "fixture-hash",
+          definitionHash: "a".repeat(64),
           modulePath: "node_modules/@acme/crm/dist/extension/schedules/sync.mjs",
         },
       ],
@@ -493,7 +492,15 @@ describe("createDockerAdapter", () => {
     vi.mocked(execa)
       .mockResolvedValueOnce({ all: "" } as never)
       .mockResolvedValueOnce({ all: "docker build ok" } as never)
-      .mockResolvedValueOnce({ exitCode: 0, all: "SANDBOX VERIFY OK" } as never);
+      .mockResolvedValueOnce({ exitCode: 0, all: "SANDBOX VERIFY OK" } as never)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          manifest: null,
+          resolvedEveVersion: "0.38.3",
+          schedulerDefinitions: [],
+        }),
+      } as never);
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
@@ -518,7 +525,15 @@ describe("createDockerAdapter", () => {
     vi.mocked(execa)
       .mockResolvedValueOnce({ all: "" } as never)
       .mockResolvedValueOnce({ all: "docker build ok" } as never)
-      .mockResolvedValueOnce({ exitCode: 0, all: "SANDBOX VERIFY OK" } as never);
+      .mockResolvedValueOnce({ exitCode: 0, all: "SANDBOX VERIFY OK" } as never)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          manifest: null,
+          resolvedEveVersion: "0.38.3",
+          schedulerDefinitions: [],
+        }),
+      } as never);
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
@@ -899,6 +914,34 @@ describe("createDockerAdapter", () => {
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     await expect(adapter.removeRelease!("eveland/proj_123:rel_456")).rejects.toThrow(stderr);
+  });
+});
+
+describe("readImageDiscovery", () => {
+  test("fails closed when the image is missing post-integration scheduler definitions", async () => {
+    vi.mocked(execa).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
+        resolvedEveVersion: "0.38.3",
+      }),
+    } as never);
+
+    await expect(readImageDiscovery("fixture:missing-definitions")).rejects.toThrow(
+      /required scheduler definitions/i,
+    );
+  });
+
+  test("fails closed when the image artifact reader cannot run", async () => {
+    vi.mocked(execa).mockResolvedValueOnce({
+      exitCode: 1,
+      stdout: "",
+      stderr: "image read failed",
+    } as never);
+
+    await expect(readImageDiscovery("fixture:unreadable")).rejects.toThrow(
+      /could not read build artifacts/i,
+    );
   });
 });
 

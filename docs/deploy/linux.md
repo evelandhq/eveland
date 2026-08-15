@@ -615,9 +615,11 @@ does not inject a world and Eve keeps its local development world.
 - Build: source is copied to `$EVELAND_DATA_DIR/builds/<project>/<release>`, then
   Eveland injects its reserved private OpenTelemetry hook and, when configured, the platform workflow-world
   wrapper into the copied release (never the imported source). The project install and pinned
-  package-manager-aware world install run first; `eve info` then resolves mounted Extension
-  distributions, a self-contained integrator adapts their schedules and directory-form subagents,
-  and the final `npx eve build` plus `eve info` compile and record that exact tree. These commands run
+  package-manager-aware world install run first. When the source declares an Extension mount,
+  `eve info` then resolves its distribution and a self-contained integrator adapts schedules and
+  directory-form subagents; releases without mounts skip this prepass and do not carry the integrator.
+  The final `npx eve build` plus `eve info` compile and record that exact tree, and the build fails if
+  the required final scheduler definitions are absent or invalid. These commands run
   as the unprivileged build user (`EVELAND_BUILD_USER`)
   inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
   PID namespace).

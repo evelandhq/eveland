@@ -17,6 +17,11 @@ const evePackageRoot = path.resolve(
   "../../../../packages/agent-scheduler/node_modules/eve",
 );
 const eveBin = path.join(evePackageRoot, "bin/eve.js");
+const oldestEvePackageRoot = path.resolve(
+  import.meta.dirname,
+  "../../../../packages/agent-scheduler/node_modules/eve-oldest",
+);
+const oldestEveBin = path.join(oldestEvePackageRoot, "bin/eve.js");
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -41,7 +46,20 @@ test("builds Extension schedules and observed Extension subagents with the real 
   });
 
   expect(integration.stdout).toContain("[eveland-extensions]");
+  expect(integration.stdout).toContain('"observerCoverageGaps":[');
   expect(integration.stdout).toContain('"scheduleDefinitions":2');
+  await expect(
+    readFile(
+      path.join(releaseDir, ".eveland/observability/extension-coverage-gaps.json"),
+      "utf8",
+    ).then((value) => JSON.parse(value)),
+  ).resolves.toEqual([
+    {
+      kind: "file-form-subagent",
+      path: "node_modules/@fixture/crm/dist/extension/subagents/quick.mjs",
+      reason: expect.stringContaining("no independent hooks slot"),
+    },
+  ]);
   await expect(readSchedulerDefinitions(releaseDir)).resolves.toEqual([
     expect.objectContaining({
       key: "crm__digest",
@@ -78,14 +96,17 @@ test("builds Extension schedules and observed Extension subagents with the real 
   ) as {
     resolvedExtensions: Array<{
       manifest: {
-        subagents: Array<{ manifest: { hooks: Array<{ logicalPath: string }> } }>;
+        subagents: Array<{
+          subagentId: string;
+          manifest: { hooks: Array<{ logicalPath: string }> };
+        }>;
       };
     }>;
   };
   expect(
-    finalManifest.resolvedExtensions[0]?.manifest.subagents[0]?.manifest.hooks.map(
-      (hook) => hook.logicalPath,
-    ),
+    finalManifest.resolvedExtensions[0]?.manifest.subagents
+      .find((subagent) => subagent.subagentId === "reviewer")
+      ?.manifest.hooks.map((hook) => hook.logicalPath),
   ).toContain("hooks/eveland-observer.js");
 
   const runtimePort = await availablePort();
@@ -151,7 +172,41 @@ test("builds Extension schedules and observed Extension subagents with the real 
   }
 }, 120_000);
 
-async function writeFixtureExtension(extensionPackageRoot: string): Promise<void> {
+test("keeps the Extension integrator compatible with the oldest supported Eve 0.37 manifest", async () => {
+  const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-oldest-"));
+  roots.push(releaseDir);
+  const extensionPackageRoot = path.join(releaseDir, "packages/crm");
+  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.37.1", false);
+  await execFileAsync(process.execPath, [oldestEveBin, "extension", "build"], {
+    cwd: extensionPackageRoot,
+  });
+  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.37.1");
+
+  await injectObserverHooks({ releaseDir });
+  await injectSchedulerAdapter({ releaseDir });
+  const integratorPath = await injectExtensionIntegrator(releaseDir);
+  await execFileAsync(process.execPath, [oldestEveBin, "info", "--json"], { cwd: releaseDir });
+  await execFileAsync(process.execPath, [integratorPath], { cwd: releaseDir });
+  await execFileAsync(process.execPath, [oldestEveBin, "build", "--skip-sandbox-prewarm"], {
+    cwd: releaseDir,
+  });
+  await execFileAsync(process.execPath, [oldestEveBin, "info", "--json"], { cwd: releaseDir });
+
+  await expect(readSchedulerDefinitions(releaseDir)).resolves.toEqual([]);
+  await expect(
+    readFile(
+      path.join(releaseDir, ".eveland/observability/extension-coverage-gaps.json"),
+      "utf8",
+    ).then((value) => JSON.parse(value)),
+  ).resolves.toEqual([]);
+}, 120_000);
+
+async function writeFixtureExtension(
+  extensionPackageRoot: string,
+  installedEveRoot = evePackageRoot,
+  eveVersion = "0.38.3",
+  includeScheduleSubagents = true,
+): Promise<void> {
   await write(
     extensionPackageRoot,
     "package.json",
@@ -165,7 +220,7 @@ async function writeFixtureExtension(extensionPackageRoot: string): Promise<void
         ".": { types: "./dist/index.d.ts", default: "./dist/index.mjs" },
       },
       peerDependencies: { eve: "*" },
-      devDependencies: { eve: "0.38.3" },
+      devDependencies: { eve: eveVersion },
     }),
   );
   await write(
@@ -173,39 +228,51 @@ async function writeFixtureExtension(extensionPackageRoot: string): Promise<void
     "extension/extension.ts",
     'import { defineExtension } from "eve/extension";\nexport default defineExtension();\n',
   );
-  await write(
-    extensionPackageRoot,
-    "extension/schedules/digest.md",
-    '---\ncron: "30 2 * * *"\n---\nSummarize the CRM changes.\n',
-  );
-  await write(
-    extensionPackageRoot,
-    "extension/schedules/sync.ts",
-    'import { defineSchedule } from "eve/schedules";\nexport default defineSchedule({ cron: "0 2 * * *", async run() {} });\n',
-  );
-  await write(
-    extensionPackageRoot,
-    "extension/subagents/reviewer/agent.ts",
-    'import { defineAgent } from "eve";\nexport default defineAgent({ description: "Review CRM records.", model: "anthropic/claude-sonnet-5" });\n',
-  );
+  if (includeScheduleSubagents) {
+    await write(
+      extensionPackageRoot,
+      "extension/schedules/digest.md",
+      '---\ncron: "30 2 * * *"\n---\nSummarize the CRM changes.\n',
+    );
+    await write(
+      extensionPackageRoot,
+      "extension/schedules/sync.ts",
+      'import { defineSchedule } from "eve/schedules";\nexport default defineSchedule({ cron: "0 2 * * *", async run() {} });\n',
+    );
+    await write(
+      extensionPackageRoot,
+      "extension/subagents/reviewer/agent.ts",
+      'import { defineAgent } from "eve";\nexport default defineAgent({ description: "Review CRM records.", model: "anthropic/claude-sonnet-5" });\n',
+    );
+    await write(
+      extensionPackageRoot,
+      "extension/subagents/quick.ts",
+      'import { defineAgent } from "eve";\nexport default defineAgent({ description: "Quick CRM review.", model: "anthropic/claude-sonnet-5" });\n',
+    );
+  }
   await mkdir(path.join(extensionPackageRoot, "node_modules"), { recursive: true });
-  await symlink(evePackageRoot, path.join(extensionPackageRoot, "node_modules/eve"));
+  await symlink(installedEveRoot, path.join(extensionPackageRoot, "node_modules/eve"));
 }
 
-async function writeConsumer(releaseDir: string, extensionPackageRoot: string): Promise<void> {
+async function writeConsumer(
+  releaseDir: string,
+  extensionPackageRoot: string,
+  installedEveRoot = evePackageRoot,
+  eveVersion = "0.38.3",
+): Promise<void> {
   await write(
     releaseDir,
     "package.json",
     JSON.stringify({
       name: "extension-consumer",
       type: "module",
-      dependencies: { eve: "0.38.3", "@fixture/crm": "0.0.0" },
+      dependencies: { eve: eveVersion, "@fixture/crm": "0.0.0" },
     }),
   );
   await write(releaseDir, "agent/instructions.md", "Use the CRM extension.");
   await write(releaseDir, "agent/extensions/crm.ts", 'export { default } from "@fixture/crm";\n');
   await mkdir(path.join(releaseDir, "node_modules/@fixture"), { recursive: true });
-  await symlink(evePackageRoot, path.join(releaseDir, "node_modules/eve"));
+  await symlink(installedEveRoot, path.join(releaseDir, "node_modules/eve"));
   await symlink(extensionPackageRoot, path.join(releaseDir, "node_modules/@fixture/crm"));
 }
 
