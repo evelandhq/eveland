@@ -59,6 +59,15 @@ export function projectDiscoveryManifest(manifest: unknown): DiscoverySummaryPro
     if (!Array.isArray(value) || !value.every(isEntry)) return null;
   }
   if (manifest.sandbox !== null && !isEntry(manifest.sandbox)) return null;
+  if (
+    version >= 13 &&
+    (!Array.isArray(manifest.extensions) ||
+      !manifest.extensions.every(isEntry) ||
+      !Array.isArray(manifest.resolvedExtensions) ||
+      !manifest.resolvedExtensions.every(isResolvedExtensionMount))
+  ) {
+    return null;
+  }
 
   const agentRoot = typeof manifest.agentRoot === "string" ? manifest.agentRoot : null;
   const appRoot = typeof manifest.appRoot === "string" ? manifest.appRoot : null;
@@ -70,6 +79,7 @@ export function projectDiscoveryManifest(manifest: unknown): DiscoverySummaryPro
   const prefix = (paths: string[]) => paths.map((entry) => `${root}${entry}`);
 
   const subagents = readEntries(manifest.subagents);
+  const extensionContributions = readExtensionContributions(manifest.resolvedExtensions, root);
 
   return {
     summarySource: "build-manifest",
@@ -80,16 +90,121 @@ export function projectDiscoveryManifest(manifest: unknown): DiscoverySummaryPro
     instructions: prefix(logicalPaths(manifest.instructions)),
     tools: prefix(logicalPaths(manifest.tools)),
     skills: prefix(logicalPaths(manifest.skills)),
-    subagents: prefix(subagents.map((entry) => entry.logicalPath)),
+    subagents: [
+      ...prefix(subagents.map((entry) => entry.logicalPath)),
+      ...extensionContributions.subagents.map((entry) => entry.path),
+    ],
     connections: prefix(logicalPaths(manifest.connections)),
-    schedules: prefix(logicalPaths(manifest.schedules)),
+    schedules: [...prefix(logicalPaths(manifest.schedules)), ...extensionContributions.schedules],
     sandbox: prefix(logicalPaths(manifest.sandbox === null ? [] : [manifest.sandbox])),
     hooks: prefix(logicalPaths(manifest.hooks)),
     channels: prefix(logicalPaths(manifest.channels)),
-    subagentIds: subagents
-      .map((entry) => entry.subagentId)
-      .filter((value): value is string => typeof value === "string"),
+    subagentIds: [
+      ...subagents
+        .map((entry) => entry.subagentId)
+        .filter((value): value is string => typeof value === "string"),
+      ...extensionContributions.subagents.map((entry) => entry.id),
+    ],
   };
+}
+
+type ExtensionManifestProjection = {
+  agentRoot: string;
+  schedules: Array<{ logicalPath: string }>;
+  subagents: Array<{ logicalPath: string; subagentId?: unknown }>;
+};
+
+type ResolvedExtensionProjection = {
+  namespace: string;
+  manifest: ExtensionManifestProjection;
+  overrides?: ExtensionManifestProjection;
+};
+
+function readExtensionContributions(
+  value: unknown,
+  root: string,
+): { schedules: string[]; subagents: Array<{ id: string; path: string }> } {
+  if (!Array.isArray(value)) return { schedules: [], subagents: [] };
+  const schedules: string[] = [];
+  const subagents: Array<{ id: string; path: string }> = [];
+  const mounts = value
+    .filter(isResolvedExtensionMount)
+    .sort((left, right) => left.namespace.localeCompare(right.namespace));
+
+  for (const mount of mounts) {
+    const effectiveSchedules = mergeNamedEntries(
+      mount.overrides?.schedules ?? [],
+      mount.manifest.schedules,
+      scheduleName,
+    );
+    schedules.push(
+      ...effectiveSchedules.map(
+        (entry) => `${root}extensions/${mount.namespace}/${entry.logicalPath}`,
+      ),
+    );
+
+    const effectiveSubagents = mergeNamedEntries(
+      mount.overrides?.subagents ?? [],
+      mount.manifest.subagents,
+      (entry) => (typeof entry.subagentId === "string" ? entry.subagentId : entry.logicalPath),
+    );
+    for (const entry of effectiveSubagents) {
+      if (typeof entry.subagentId !== "string") continue;
+      subagents.push({
+        id: `${mount.namespace}__${entry.subagentId}`,
+        path: `${root}extensions/${mount.namespace}/${entry.logicalPath}`,
+      });
+    }
+  }
+  return { schedules, subagents };
+}
+
+function mergeNamedEntries<T>(primary: T[], secondary: T[], name: (entry: T) => string): T[] {
+  const names = new Set<string>();
+  const merged: T[] = [];
+  for (const entry of [...primary, ...secondary]) {
+    const key = name(entry);
+    if (names.has(key)) continue;
+    names.add(key);
+    merged.push(entry);
+  }
+  return merged;
+}
+
+function scheduleName(entry: { logicalPath: string }): string {
+  const relative = entry.logicalPath.replace(/^schedules\//, "");
+  return relative.replace(/\.(?:md|[cm]?[jt]s)$/, "");
+}
+
+function isResolvedExtensionMount(value: unknown): value is ResolvedExtensionProjection {
+  if (!isRecord(value) || typeof value.namespace !== "string" || !value.namespace) return false;
+  if (!isExtensionManifest(value.manifest)) return false;
+  return value.overrides === undefined || isExtensionManifest(value.overrides);
+}
+
+function isExtensionManifest(value: unknown): value is ExtensionManifestProjection {
+  return (
+    isRecord(value) &&
+    typeof value.agentRoot === "string" &&
+    Array.isArray(value.schedules) &&
+    value.schedules.every(isSupportedExtensionScheduleEntry) &&
+    Array.isArray(value.subagents) &&
+    value.subagents.every(isEntry)
+  );
+}
+
+function isSupportedExtensionScheduleEntry(value: unknown): value is { logicalPath: string } {
+  if (!isEntry(value)) return false;
+  const normalized = value.logicalPath.replaceAll("\\", "/");
+  if (!normalized.startsWith("schedules/")) return false;
+  const relative = normalized.slice("schedules/".length);
+  if (
+    !relative ||
+    relative.split("/").some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return false;
+  }
+  return /\.(?:md|[cm]?[jt]s)$/.test(relative);
 }
 
 function isEntry(value: unknown): value is { logicalPath: string } {

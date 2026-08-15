@@ -27,9 +27,9 @@ export type ReleaseBuildResult = {
   log: string;
   schedulerDefinitions?: SchedulerDefinition[];
   /**
-   * eve's own build artifacts, read back from the built release. Informational:
-   * a release that built fine but whose artifacts could not be read still
-   * deploys, so adapters return undefined instead of failing here.
+   * Eve's discovery manifest read back from the built release. This summary is
+   * informational; required scheduler definitions are validated separately and
+   * fail the build when absent or corrupt.
    */
   discovery?: ReleaseDiscovery;
 };
@@ -39,6 +39,8 @@ export type ReleaseDiscovery = {
   manifest: unknown;
   /** The eve version actually installed into the release, from node_modules/eve. */
   resolvedEveVersion: string | null;
+  /** Post-install definitions, including mounted Extension schedules. */
+  schedulerDefinitions?: SchedulerDefinition[];
 };
 
 export type ProcessStartInput = {

@@ -1,8 +1,9 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { injectObserverHooks, type ObserverInjectionResult } from "@evelandhq/agent-observer";
 import { injectSchedulerAdapter, type SchedulerInjectionResult } from "@evelandhq/agent-scheduler";
 import { execa } from "execa";
+import { injectExtensionIntegrator } from "./extension-integration.js";
 import {
   injectWorkflowWorld,
   type WorkflowWorldBuildConfig,
@@ -10,6 +11,7 @@ import {
 } from "./workflow-world.js";
 
 export type PreparedReleaseResult = ObserverInjectionResult & {
+  extensionIntegratorFile?: string;
   workflowWorld?: WorkflowWorldInjectionResult;
   scheduler: SchedulerInjectionResult;
 };
@@ -31,5 +33,46 @@ export async function prepareReleaseTree(input: {
     ? await injectWorkflowWorld({ releaseDir: buildDir, config: input.workflowWorld })
     : undefined;
   const scheduler = await injectSchedulerAdapter({ releaseDir: buildDir });
-  return { ...observer, ...(workflowWorld ? { workflowWorld } : {}), scheduler };
+  const extensionIntegratorFile = (await hasExtensionMountSources(buildDir))
+    ? await injectExtensionIntegrator(buildDir)
+    : undefined;
+  return {
+    ...observer,
+    ...(extensionIntegratorFile ? { extensionIntegratorFile } : {}),
+    ...(workflowWorld ? { workflowWorld } : {}),
+    scheduler,
+  };
+}
+
+async function hasExtensionMountSources(releaseDir: string): Promise<boolean> {
+  const nestedAgentRoot = path.join(releaseDir, "agent");
+  const agentRoot = (await isDirectory(nestedAgentRoot)) ? nestedAgentRoot : releaseDir;
+  return agentTreeHasExtensions(agentRoot);
+}
+
+async function agentTreeHasExtensions(agentRoot: string): Promise<boolean> {
+  const extensionEntries = await readdir(path.join(agentRoot, "extensions"), {
+    withFileTypes: true,
+  }).catch(() => []);
+  if (extensionEntries.length > 0) return true;
+
+  const subagents = await readdir(path.join(agentRoot, "subagents"), {
+    withFileTypes: true,
+  }).catch(() => []);
+  for (const subagent of subagents) {
+    if (
+      subagent.isDirectory() &&
+      (await agentTreeHasExtensions(path.join(agentRoot, "subagents", subagent.name)))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function isDirectory(target: string): Promise<boolean> {
+  return readdir(target).then(
+    () => true,
+    () => false,
+  );
 }

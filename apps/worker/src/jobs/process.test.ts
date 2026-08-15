@@ -622,7 +622,7 @@ describe("processNextJob", () => {
           kind: "handler",
           cron: "0 3 * * *",
           sourcePath: "agent/schedules/billing/sweep.ts",
-          definitionHash: "trigger-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });

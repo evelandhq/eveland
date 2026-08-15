@@ -20,6 +20,7 @@ import {
 } from "./systemd.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { verifySandbox } from "./sandbox-verify.js";
+import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
 
 vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
@@ -55,6 +56,11 @@ vi.mock("./sandbox-inject.js", () => ({
 // without depending on the generic execa mock's shape (no exitCode/marker) below.
 vi.mock("./sandbox-verify.js", () => ({
   verifySandbox: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./discovery-artifacts.js", () => ({
+  readReleaseDiscovery: vi.fn().mockResolvedValue(undefined),
+  readReleaseSchedulerDefinitions: vi.fn().mockResolvedValue([]),
 }));
 
 describe("buildSystemdRunArgs", () => {
@@ -261,7 +267,7 @@ describe("buildReleaseBuildCommand", () => {
         packageManager: "pnpm",
       }),
     ).toBe(
-      "pnpm install --frozen-lockfile --config.minimum-release-age=0 && npx eve build && npx eve info --json >/dev/null",
+      "pnpm install --frozen-lockfile --config.minimum-release-age=0 && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json >/dev/null",
     );
   });
 
@@ -289,13 +295,13 @@ describe("buildReleaseBuildCommand", () => {
         { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
       ),
     ).toBe(
-      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.34 && npx eve build && npx eve info --json >/dev/null",
+      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.34 && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json >/dev/null",
     );
   });
 
   test("uses npm install and eve build without a lockfile", () => {
     expect(buildReleaseBuildCommand({ hasLockfile: false })).toBe(
-      "npm install && npx eve build && npx eve info --json >/dev/null",
+      "npm install && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json >/dev/null",
     );
   });
 });
@@ -872,6 +878,24 @@ describe("isBenignSystemctlStopFailure", () => {
 });
 
 describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
+  test("fails closed when final scheduler definitions cannot be read", async () => {
+    vi.mocked(readReleaseSchedulerDefinitions).mockRejectedValueOnce(
+      new Error("Required scheduler definitions are missing."),
+    );
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    await expect(
+      adapter.buildRelease({
+        projectId: "proj_123",
+        releaseId: "rel_789",
+        sourcePath: "/data/sources/proj_123",
+        buildDir: "/data/builds/proj_123/rel_789",
+        commandContext: { hasLockfile: true },
+      }),
+    ).rejects.toThrow(/required scheduler definitions/i);
+    expect(readReleaseDiscovery).toHaveBeenCalled();
+  });
+
   test("injects the sandbox after cp -a and before the build command, then creates and chowns the project cache dir", async () => {
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
       generated: ["agent/sandbox.js"],

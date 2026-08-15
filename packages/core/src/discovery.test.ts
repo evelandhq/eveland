@@ -33,6 +33,8 @@ const nestedManifest = {
     { logicalPath: "subagents/file-child.ts", subagentId: "file-child", manifest: {} },
     { logicalPath: "subagents/remote-child.ts", subagentId: "remote-child", manifest: {} },
   ],
+  extensions: [],
+  resolvedExtensions: [],
 };
 
 describe("projectDiscoveryManifest", () => {
@@ -103,6 +105,67 @@ describe("projectDiscoveryManifest", () => {
     });
   });
 
+  test("projects effective Extension schedules and subagents under their mount namespace", () => {
+    const extensionManifest = {
+      ...nestedManifest,
+      agentId: "crm-extension",
+      agentRoot: "/srv/app/node_modules/@acme/crm/dist/extension",
+      appRoot: "/srv/app/node_modules/@acme/crm",
+      schedules: [{ logicalPath: "schedules/sync.mjs" }, { logicalPath: "schedules/report.md" }],
+      subagents: [
+        {
+          logicalPath: "subagents/reviewer",
+          subagentId: "reviewer",
+          manifest: { ...nestedManifest, subagents: [] },
+        },
+      ],
+    };
+    const overrideManifest = {
+      ...nestedManifest,
+      agentId: "crm-overrides",
+      agentRoot: "/srv/app/agent/extensions/crm",
+      appRoot: "/srv/app",
+      schedules: [{ logicalPath: "schedules/sync.ts" }],
+      subagents: [
+        {
+          logicalPath: "subagents/reviewer",
+          subagentId: "reviewer",
+          manifest: { ...nestedManifest, subagents: [] },
+        },
+      ],
+    };
+
+    const projection = projectDiscoveryManifest({
+      ...nestedManifest,
+      extensions: [{ logicalPath: "extensions/crm/extension.ts" }],
+      resolvedExtensions: [
+        {
+          namespace: "crm",
+          specifier: "@acme/crm",
+          packageName: "@acme/crm",
+          packageRoot: "/srv/app/node_modules/@acme/crm",
+          sourceRoot: extensionManifest.agentRoot,
+          manifest: extensionManifest,
+          overrides: overrideManifest,
+        },
+      ],
+    });
+
+    expect(projection).toMatchObject({
+      schedules: [
+        "agent/extensions/crm/schedules/sync.ts",
+        "agent/extensions/crm/schedules/report.md",
+      ],
+      subagents: [
+        "agent/subagents/directory-child",
+        "agent/subagents/file-child.ts",
+        "agent/subagents/remote-child.ts",
+        "agent/extensions/crm/subagents/reviewer",
+      ],
+      subagentIds: ["directory-child", "file-child", "remote-child", "crm__reviewer"],
+    });
+  });
+
   test("returns null for anything that is not a discovery manifest", () => {
     expect(projectDiscoveryManifest(null)).toBeNull();
     expect(projectDiscoveryManifest({ kind: "something-else", version: 12 })).toBeNull();
@@ -112,6 +175,24 @@ describe("projectDiscoveryManifest", () => {
 
   test("fails closed on an unknown schema version instead of becoming authoritative emptiness", () => {
     expect(projectDiscoveryManifest({ ...nestedManifest, version: 99 })).toBeNull();
+  });
+
+  test("fails closed on invalid Extension namespaces and unsupported schedule modules", () => {
+    const extensionManifest = {
+      ...nestedManifest,
+      agentRoot: "/srv/app/node_modules/@acme/crm/dist/extension",
+      subagents: [],
+      schedules: [{ logicalPath: "schedules/report.mdx" }],
+    };
+    const withMount = (namespace: string, manifest = extensionManifest) => ({
+      ...nestedManifest,
+      version: 13,
+      extensions: [{ logicalPath: "extensions/crm.ts" }],
+      resolvedExtensions: [{ namespace, manifest }],
+    });
+
+    expect(projectDiscoveryManifest(withMount(""))).toBeNull();
+    expect(projectDiscoveryManifest(withMount("crm"))).toBeNull();
   });
 
   test("fails closed when entity arrays or roots are missing", () => {

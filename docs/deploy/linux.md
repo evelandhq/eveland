@@ -595,7 +595,7 @@ complete production boundary:
   committed pnpm lock remains frozen and integrity-checked, while the platform's
   own package minimum-release-age policy is disabled for that already-locked graph.
 - Builds install the pinned world package through the selected package manager
-  before `eve build`; npm uses `--no-save --package-lock=false --ignore-scripts`,
+  before Eve discovery/build; npm uses `--no-save --package-lock=false --ignore-scripts`,
   while pnpm temporarily adds it with lockfile writes disabled and restores the
   manifest on shell exit. The imported source, `package.json`, and lockfile remain unchanged.
 - `WORKFLOW_POSTGRES_URL` is a reserved runtime value. A Project Secret with
@@ -614,8 +614,13 @@ does not inject a world and Eve keeps its local development world.
 
 - Build: source is copied to `$EVELAND_DATA_DIR/builds/<project>/<release>`, then
   Eveland injects its reserved private OpenTelemetry hook and, when configured, the platform workflow-world
-  wrapper into the copied release (never the imported source). The project install, pinned
-  package-manager-aware world install, and `npx eve build` run as the unprivileged build user (`EVELAND_BUILD_USER`)
+  wrapper into the copied release (never the imported source). The project install and pinned
+  package-manager-aware world install run first. When the source declares an Extension mount,
+  `eve info` then resolves its distribution and a self-contained integrator adapts schedules and
+  directory-form subagents; releases without mounts skip this prepass and do not carry the integrator.
+  The final `npx eve build` plus `eve info` compile and record that exact tree, and the build fails if
+  the required final scheduler definitions are absent or invalid. These commands run
+  as the unprivileged build user (`EVELAND_BUILD_USER`)
   inside bubblewrap (read-only rootfs, writable release dir + shared npm cache,
   PID namespace).
 - Run: `systemd-run` starts transient unit `eveland-<project>-<deployment>.service`

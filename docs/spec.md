@@ -802,8 +802,14 @@ Model 的 distinct root Sessions，Token、Cost 和 step 数按 model usage even
 Eveland 是生产 Schedule 的唯一调度器。Release adapter 遵循「新建项目」一节定义的
 全局 Eve 版本滑动窗口；任何可能解析到窗口之外的 Eve 依赖必须在 build 时 fail
 closed 并返回明确的 adapter diagnostic，不能猜测或降级执行。导入源码时按
-`agent/schedules/` 下的完整相对路径
-识别 Schedule key，并只接受五字段、UTC、分钟级 cron 语义；每次 Source Revision
+`agent/schedules/` 下的完整相对路径识别 root Schedule key；安装依赖后还从 Eve v13
+discovery manifest 读取已解析的 Extension Schedule，并按 Eve 的
+`<mount namespace>__<schedule name>` 规则加入同一调度面。目录 mount 中同名 consumer
+override 优先于 Extension distribution。两种来源都只接受五字段、UTC、分钟级 cron
+语义；namespaced key 冲突必须在改写任一模块前使 build 失败，不能静默保留 native cron。
+最终 `.eveland/scheduler/definitions.json` 是必须存在并通过 key、cron、Release-relative
+path 与 definition hash 校验的 build artifact；Docker 与 systemd 都不得回退到依赖安装前的
+root-only definitions。每次 Source Revision
 保留不可变 ScheduleVersion。Project 另有一个
 显式 scheduler target，未来 cron/manual run 固定到该 Deployment、Release 和
 ScheduleVersion，不通过 Gateway 或 stable route 重新选流量目标。
@@ -840,9 +846,13 @@ Session 的 root `turn.completed`、
 有界退避，待它停止后创建下一 generation；这属于瞬态等待，不得直接把 ScheduleRun
 记为 failed。credential 一旦兑换，仍不得因响应丢失而自动重放 authored side effect。
 
-Prepared Release 会保留 Eve 的 Schedule 注册形状，但将 native cron handler 改为
-no-op，因此 warm preview、旧版本和 stable target 不会各自执行同一 cron。真正的
-Markdown/TypeScript handler 只由上述经过认证的私有 Channel 调用。
+Prepared Release 会保留 root 与 Extension Schedule 的 Eve 注册形状，但将 native cron
+handler 改为 no-op，因此 warm preview、旧版本和 stable target 不会各自执行同一 cron。
+当源码声明 Extension mount 时，Extension package 只能在 dependency install 后解析，所以
+build 先执行一次 `eve info`，再由 Release 内自包含的 platform integrator 只改写一次性 Release
+tree（模块使用原子替换，不能修改 pnpm content-addressed store），随后才执行正式 `eve build`
+和最终 `eve info`。没有 Extension mount 的 Release 不注入约 11 MiB 的 integrator，也不执行额外
+的预发现步骤。真正的 Markdown/TypeScript handler 只由上述经过认证的私有 Channel 调用。
 
 切换 scheduler target 只影响切换后创建的 cron/manual run。已经 queued、running 或
 完成的 ScheduleRun 永远保留创建时固定的 Deployment、Release 和 ScheduleVersion；
@@ -904,9 +914,12 @@ sandbox
 ```
 
 Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘要展示，不提供独立的 Connections
-导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上依次执行的 `eve build` 与 `eve info`；平台同时接受
-Eve 0.34 的 discovery manifest v12 与 Eve 0.35–0.37 的 v13，未知版本继续 fail closed 并保留静态摘要；
-只投影根 Agent 的 Connection path，Subagent-owned Connection 保持在自己的 manifest scope 内。
+导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上的最终 `eve info`；平台接受
+Eve 0.37–0.38 的 discovery manifest v13，并为既有 artifact reader 保留 v12 投影，未知版本继续
+fail closed 并保留静态摘要。摘要会把有效的 Extension Schedule 与直接贡献的 Extension
+Subagent 投影成稳定的 `agent/extensions/<namespace>/...` 路径，Subagent ID 使用 Eve 的
+`<namespace>__<id>`；consumer override 与 Eve 编译器保持相同的优先级。只投影根 Agent 的
+Connection path，Subagent-owned Connection 保持在自己的 manifest scope 内。
 
 不做在线编辑，不做 Git 写回。
 
@@ -998,7 +1011,8 @@ reference 或对应的兼容 API。Shared Agent Environment 使用独立 singlet
 
 ### Build 可见的 Variable
 
-Release build 运行 `npx eve build`，它会 import 项目自己的 agent config 来编译 manifest。
+Release build 在安装后运行预发现、Extension integrator、`npx eve build` 与最终 `eve info`；这些
+阶段都会 import 项目自己的 agent config 或已安装 Extension module 来编译 manifest。
 config 在模块加载期从 `process.env` 读到的值（最典型的是 model id）会被固化进 Release：build
 看不到该条目时，编译出来的是 config 里的兜底值，之后该 Release 每个 turn 上报的都是那个陈旧值。
 
@@ -1020,8 +1034,8 @@ build：install/build lifecycle script 是不可信的项目代码，无论以�
   live Deployment 排 restart，沿用原 Release。Environment 页面必须让 operator 看到这一点。
 - Docker runtime 通过 generated Dockerfile 的 `ARG` 与 `docker build --build-arg` 传递这些
   variable，其值会出现在该镜像的 build metadata 中；这是 `variable` 与 `secret` 分级的直接后果。
-  `ARG` 声明在依赖安装层之后，因此 Docker 上只有 `npx eve build` 能读到；systemd 把 install 与
-  build 放在同一个 shell，两者都能读到。
+  `ARG` 声明在依赖安装层之后，因此 Docker 上只有预发现、Extension integrator、`npx eve build`
+  与最终 discovery 能读到；systemd 把 install 与 build 放在同一个 shell，两者都能读到。
 - Build Log 仍对完整 Project/Shared Environment 值集合脱敏。
 
 ---

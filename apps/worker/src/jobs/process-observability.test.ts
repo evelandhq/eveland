@@ -153,14 +153,14 @@ describe("Deployment observability policy", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "fixture:current-observer",
-      observerContract: 2,
+      observerContract: 3,
       containerName: "fixture-current-observer",
       internalPort: 3000,
       hostPort: 41997,
       runtimeKind: "docker",
     });
     const currentRelease = await store.getRelease(currentDeployment.releaseId);
-    expect(currentRelease!.observerContract).toBe(2);
+    expect(currentRelease!.observerContract).toBe(3);
 
     await warnStaleObserverRelease(store, {
       projectId: project.id,

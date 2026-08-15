@@ -1,9 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
-import { bundleObserverRuntime, injectObserverHooks } from "./injector.js";
+import {
+  bundleObserverRuntime,
+  createObserverShim,
+  injectExtensionSubagentHooks,
+  injectObserverHooks,
+} from "./injector.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, "..");
@@ -35,7 +40,7 @@ describe("injectObserverHooks", () => {
       "file-child.ts",
       "remote-child.ts",
     ]);
-    expect(result.observerContract).toBe(2);
+    expect(result.observerContract).toBe(3);
     const rootShim = await readFile(path.join(releaseDir, result.injectedFiles[0]!), "utf8");
     expect(rootShim).toContain("file:///run/eveland/observability/runtime.mjs");
     expect(rootShim).toContain("../../.eveland/observability/runtime.mjs");
@@ -118,6 +123,229 @@ describe("injectObserverHooks", () => {
     const baked = await readFile(path.join(releaseDir, result.runtimeFile!), "utf8");
 
     await expect(bundleObserverRuntime()).resolves.toBe(baked);
+  });
+});
+
+describe("injectExtensionSubagentHooks", () => {
+  test("injects hooks into effective Extension subagents and their nested descendants", async () => {
+    const releaseDir = await createRelease();
+    await injectObserverHooks({ releaseDir });
+    const extensionRoot = path.join(releaseDir, "node_modules/@acme/crm/dist/extension");
+    const reviewerRoot = path.join(extensionRoot, "subagents/reviewer");
+    const nestedRoot = path.join(reviewerRoot, "subagents/editor");
+    await mkdir(reviewerRoot, { recursive: true });
+    await writeFile(path.join(reviewerRoot, "agent.mjs"), "export default {}");
+    await mkdir(nestedRoot, { recursive: true });
+    await writeFile(path.join(nestedRoot, "agent.mjs"), "export default {}");
+    const emptyManifest = (agentRoot: string): Record<string, unknown> => ({
+      kind: "eve-agent-discovery-manifest",
+      version: 13,
+      agentId: "fixture",
+      agentRoot,
+      appRoot: releaseDir,
+      channels: [],
+      connections: [],
+      diagnosticsSummary: { errors: 0, warnings: 0 },
+      extensions: [],
+      resolvedExtensions: [],
+      hooks: [],
+      instructions: [],
+      lib: [],
+      sandbox: null,
+      sandboxWorkspaces: [],
+      schedules: [],
+      skills: [],
+      tools: [],
+      subagents: [],
+    });
+    const nestedManifest = emptyManifest(nestedRoot);
+    const reviewerManifest = {
+      ...emptyManifest(reviewerRoot),
+      subagents: [
+        {
+          entryPath: nestedRoot,
+          logicalPath: "subagents/editor",
+          rootPath: reviewerRoot,
+          sourceId: "subagents/editor",
+          subagentId: "editor",
+          manifest: nestedManifest,
+        },
+      ],
+    };
+    const manifest = {
+      ...emptyManifest(path.join(releaseDir, "agent")),
+      resolvedExtensions: [
+        {
+          namespace: "crm",
+          specifier: "@acme/crm",
+          packageName: "@acme/crm",
+          packageRoot: path.join(releaseDir, "node_modules/@acme/crm"),
+          sourceRoot: extensionRoot,
+          manifest: {
+            ...emptyManifest(extensionRoot),
+            subagents: [
+              {
+                entryPath: reviewerRoot,
+                logicalPath: "subagents/reviewer",
+                rootPath: extensionRoot,
+                sourceId: "subagents/reviewer",
+                subagentId: "reviewer",
+                manifest: reviewerManifest,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const result = await injectExtensionSubagentHooks({ releaseDir, manifest });
+
+    expect(result.injectedFiles).toEqual([
+      "node_modules/@acme/crm/dist/extension/subagents/reviewer/hooks/eveland-observer.js",
+      "node_modules/@acme/crm/dist/extension/subagents/reviewer/subagents/editor/hooks/eveland-observer.js",
+    ]);
+    await expect(
+      readFile(path.join(reviewerRoot, "hooks/eveland-observer.js"), "utf8"),
+    ).resolves.toContain("eveland-observer-runtime.mjs");
+    await expect(
+      readFile(path.join(extensionRoot, "lib/eveland-observer-runtime.mjs"), "utf8"),
+    ).resolves.toContain("loadFallbackRuntime");
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `const shim = await import(${JSON.stringify(path.join(reviewerRoot, "hooks/eveland-observer.js"))}); console.log(typeof shim.default?.events?.["*"]);`,
+    ]);
+    expect(stdout.trim()).toBe("function");
+  });
+
+  test("does not evaluate the baked fallback when the mounted runtime is healthy", async () => {
+    const releaseDir = await createRelease();
+    const observerPath = path.join(releaseDir, "agent/hooks/extension-observer.js");
+    const fallbackLoaderPath = path.join(releaseDir, "agent/lib/fallback-loader.mjs");
+    const platformRuntimePath = path.join(releaseDir, "mounted-runtime.mjs");
+    await write(
+      "agent/lib/fallback-loader.mjs",
+      'export async function loadFallbackRuntime() { throw new Error("fallback evaluated"); }\n',
+      releaseDir,
+    );
+    await write(
+      "mounted-runtime.mjs",
+      'export default { events: { "*": () => undefined } };\n',
+      releaseDir,
+    );
+    await write(
+      "agent/hooks/extension-observer.js",
+      createObserverShim(
+        observerPath,
+        fallbackLoaderPath,
+        true,
+        new URL(`file://${platformRuntimePath}`).href,
+      ),
+      releaseDir,
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `const shim = await import(${JSON.stringify(observerPath)}); console.log(typeof shim.default?.events?.["*"]);`,
+    ]);
+    expect(stdout.trim()).toBe("function");
+  });
+
+  test("reports file-form coverage and rejects Extension subagent paths outside the Release", async () => {
+    const releaseDir = await createRelease();
+    await injectObserverHooks({ releaseDir });
+    const emptyManifest = (agentRoot: string): Record<string, unknown> => ({
+      agentRoot,
+      subagents: [],
+      resolvedExtensions: [],
+    });
+    const extensionRoot = path.join(releaseDir, "node_modules/@acme/crm/dist/extension");
+    const manifestWith = (entryPath: string) => ({
+      ...emptyManifest(path.join(releaseDir, "agent")),
+      resolvedExtensions: [
+        {
+          namespace: "crm",
+          manifest: {
+            ...emptyManifest(extensionRoot),
+            subagents: [
+              {
+                entryPath,
+                logicalPath: "subagents/quick.mjs",
+                subagentId: "quick",
+                manifest: emptyManifest(extensionRoot),
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const fileForm = path.join(extensionRoot, "subagents/quick.mjs");
+    const result = await injectExtensionSubagentHooks({
+      releaseDir,
+      manifest: manifestWith(fileForm),
+    });
+    expect(result.coverageGaps).toEqual([
+      expect.objectContaining({ kind: "file-form-subagent", path: fileForm }),
+    ]);
+
+    await expect(
+      injectExtensionSubagentHooks({
+        releaseDir,
+        manifest: manifestWith(path.join(path.dirname(releaseDir), "outside-subagent")),
+      }),
+    ).rejects.toThrow(/must stay inside the disposable Release directory/);
+  });
+
+  test("rejects bare-parent and symlinked Extension subagent paths that escape the Release", async () => {
+    const releaseDir = await createRelease();
+    await injectObserverHooks({ releaseDir });
+    const emptyManifest = (agentRoot: string): Record<string, unknown> => ({
+      agentRoot,
+      subagents: [],
+      resolvedExtensions: [],
+    });
+    const extensionRoot = path.join(releaseDir, "node_modules/@acme/crm/dist/extension");
+    const manifestWith = (entryPath: string) => ({
+      ...emptyManifest(path.join(releaseDir, "agent")),
+      resolvedExtensions: [
+        {
+          namespace: "crm",
+          manifest: {
+            ...emptyManifest(extensionRoot),
+            subagents: [
+              {
+                entryPath,
+                logicalPath: "subagents/reviewer",
+                subagentId: "reviewer",
+                manifest: emptyManifest(extensionRoot),
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    await expect(
+      injectExtensionSubagentHooks({
+        releaseDir,
+        manifest: manifestWith(path.dirname(releaseDir)),
+      }),
+    ).rejects.toThrow(/must stay inside the disposable Release directory/);
+
+    const outsideRoot = await mkdtemp(path.join(path.dirname(releaseDir), "observer-outside-"));
+    temporaryDirectories.push(outsideRoot);
+    await writeFile(path.join(outsideRoot, "agent.mjs"), "export default {}");
+    const linkedRoot = path.join(
+      releaseDir,
+      "node_modules/@acme/crm/dist/extension/subagents/reviewer",
+    );
+    await mkdir(path.dirname(linkedRoot), { recursive: true });
+    await symlink(outsideRoot, linkedRoot);
+    await expect(
+      injectExtensionSubagentHooks({ releaseDir, manifest: manifestWith(linkedRoot) }),
+    ).rejects.toThrow(/must stay inside the disposable Release directory/);
   });
 });
 

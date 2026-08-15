@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -33,15 +33,41 @@ test("copies source into a prepared release and injects observers without modify
     "agent/subagents/child/hooks/eveland-observer.js",
   ]);
   expect(result.runtimeFile).toBe(".eveland/observability/runtime.mjs");
+  expect(result.extensionIntegratorFile).toBeUndefined();
   await expect(readFile(path.join(buildDir, result.injectedFiles[0]!), "utf8")).resolves.toContain(
     "../../.eveland/observability/runtime.mjs",
   );
   await expect(readFile(path.join(buildDir, result.runtimeFile!), "utf8")).resolves.toContain(
     "OTLPTraceExporter",
   );
+  await expect(access(path.join(buildDir, ".eveland/extensions/integrate.mjs"))).rejects.toThrow();
   await expect(readFile(path.join(sourcePath, "agent", "instructions.md"), "utf8")).resolves.toBe(
     "root",
   );
+});
+
+test("injects the Extension integrator only when the source declares an Extension mount", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
+  roots.push(root);
+  const sourcePath = path.join(root, "source");
+  const buildDir = path.join(root, "build");
+  await mkdir(path.join(sourcePath, "agent", "extensions"), { recursive: true });
+  await writeFile(
+    path.join(sourcePath, "package.json"),
+    JSON.stringify({ dependencies: { eve: "0.38.3" } }),
+  );
+  await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
+  await writeFile(
+    path.join(sourcePath, "agent", "extensions", "crm.ts"),
+    'export { default } from "@acme/crm";\n',
+  );
+
+  const result = await prepareReleaseTree({ sourcePath, buildDir });
+
+  expect(result.extensionIntegratorFile).toBe(".eveland/extensions/integrate.mjs");
+  await expect(
+    readFile(path.join(buildDir, result.extensionIntegratorFile!), "utf8"),
+  ).resolves.toContain("agent-discovery-manifest.json");
 });
 
 test("injects the scheduler adapter only into the disposable release", async () => {

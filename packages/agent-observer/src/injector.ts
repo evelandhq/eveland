@@ -1,10 +1,12 @@
-import { access, mkdir, readdir, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { AGENT_RUNTIME_POLICY_PATH } from "@evelandhq/core/observability";
 
 const observerFileName = "eveland-observer.js";
+const extensionRuntimeFileName = "eveland-observer-runtime.mjs";
 const runtimeRelativePath = ".eveland/observability/runtime.mjs";
 
 export const OBSERVER_RUNTIME_FILE_NAME = "runtime.mjs";
@@ -32,7 +34,7 @@ export const PLATFORM_OBSERVER_RUNTIME_PATH = path.posix.join(
  * constant existed embed a fully self-contained observer that ignores the
  * platform-delivered runtime and goes stale as the platform moves.
  */
-export const OBSERVER_RUNTIME_CONTRACT = 2;
+export const OBSERVER_RUNTIME_CONTRACT = 3;
 
 export type ObserverCoverageGap = {
   kind: "file-form-subagent";
@@ -45,6 +47,25 @@ export type ObserverInjectionResult = {
   runtimeFile?: string;
   observerContract: number;
   coverageGaps: ObserverCoverageGap[];
+};
+
+type ExtensionSubagentSource = {
+  entryPath: string;
+  logicalPath: string;
+  subagentId: string;
+  manifest: ExtensionSubagentManifest;
+};
+
+type ExtensionSubagentManifest = {
+  agentRoot: string;
+  subagents: ExtensionSubagentSource[];
+  resolvedExtensions: ExtensionSubagentMount[];
+};
+
+type ExtensionSubagentMount = {
+  namespace: string;
+  manifest: ExtensionSubagentManifest;
+  overrides?: ExtensionSubagentManifest;
 };
 
 let bundledRuntime: Promise<string> | undefined;
@@ -69,7 +90,7 @@ export function bundleObserverRuntime(): Promise<string> {
       // bundle esbuild routes those through a shim that needs a real require.
       // Without this, importing the bundle in plain Node throws
       // "Dynamic require of 'util' is not supported".
-      js: 'import { createRequire as __eveland_createRequire } from "node:module"; const require = __eveland_createRequire(import.meta.url);',
+      js: 'import { createRequire as __eveland_createRequire } from "node:module"; import { pathToFileURL as __eveland_pathToFileURL } from "node:url"; const require = __eveland_createRequire(import.meta.url.startsWith("file:") ? import.meta.url : __eveland_pathToFileURL(`${process.cwd()}/`).href);',
     },
   }).then((result) => {
     const file = result.outputFiles[0];
@@ -134,7 +155,104 @@ export async function injectObserverHooks(input: {
   };
 }
 
-function createObserverShim(observerPath: string, runtimePath: string): string {
+export async function injectExtensionSubagentHooks(input: {
+  releaseDir: string;
+  manifest: unknown;
+}): Promise<{ injectedFiles: string[]; coverageGaps: ObserverCoverageGap[] }> {
+  const releaseDir = path.resolve(input.releaseDir);
+  const manifest = readExtensionSubagentManifest(input.manifest);
+  const agentRoots: Array<{ agentRoot: string; fallbackRuntimePath: string }> = [];
+  const coverageGaps: ObserverCoverageGap[] = [];
+
+  const collectExtensionSubagent = (
+    source: ExtensionSubagentSource,
+    ownerManifest: ExtensionSubagentManifest,
+  ): void => {
+    const entryPath = resolveReleasePath(releaseDir, source.entryPath);
+    if (isModulePath(entryPath)) {
+      coverageGaps.push({
+        kind: "file-form-subagent",
+        path: entryPath,
+        reason:
+          "Eve Extension file-form subagents have no independent hooks slot; the parent stream exposes only control-plane child events.",
+      });
+      return;
+    }
+    agentRoots.push({
+      agentRoot: entryPath,
+      fallbackRuntimePath: resolveReleasePath(
+        releaseDir,
+        path.join(ownerManifest.agentRoot, "lib", extensionRuntimeFileName),
+      ),
+    });
+    for (const nested of source.manifest.subagents) {
+      collectExtensionSubagent(nested, ownerManifest);
+    }
+    collectMountedSubagents(source.manifest, collectExtensionSubagent);
+  };
+
+  const scanConsumerManifest = (current: ExtensionSubagentManifest): void => {
+    collectMountedSubagents(current, collectExtensionSubagent);
+    for (const local of current.subagents) scanConsumerManifest(local.manifest);
+  };
+  scanConsumerManifest(manifest);
+
+  const runtimePath = path.join(releaseDir, runtimeRelativePath);
+  if (!(await exists(runtimePath))) {
+    throw new Error(
+      `Extension observer injection requires the platform runtime at ${runtimeRelativePath}.`,
+    );
+  }
+  const observerTargets = [
+    ...new Map(agentRoots.map((entry) => [entry.agentRoot, entry] as const)).values(),
+  ]
+    .sort((left, right) => left.agentRoot.localeCompare(right.agentRoot))
+    .map((entry) => ({
+      observerPath: path.join(entry.agentRoot, "hooks", observerFileName),
+      fallbackRuntimePath: entry.fallbackRuntimePath,
+    }));
+  const fallbackRuntimePaths = [
+    ...new Set(observerTargets.map((target) => target.fallbackRuntimePath)),
+  ];
+  for (const fallbackRuntimePath of fallbackRuntimePaths) {
+    if (await exists(fallbackRuntimePath)) {
+      throw new Error(
+        `Reserved Extension observer runtime already exists at ${releaseRelativePath(releaseDir, fallbackRuntimePath)}. Rename the authored file; Eveland will not overwrite it.`,
+      );
+    }
+  }
+  for (const { observerPath } of observerTargets) {
+    if (await exists(observerPath)) {
+      throw new Error(
+        `Reserved observer hook already exists at ${releaseRelativePath(releaseDir, observerPath)}. Rename the Extension-authored file; Eveland will not overwrite it.`,
+      );
+    }
+  }
+
+  const runtime = await readFile(runtimePath, "utf8");
+  for (const fallbackRuntimePath of fallbackRuntimePaths) {
+    await mkdir(path.dirname(fallbackRuntimePath), { recursive: true });
+    await writeFile(fallbackRuntimePath, createFallbackRuntimeLoader(runtime), "utf8");
+  }
+  const injectedFiles: string[] = [];
+  for (const { observerPath, fallbackRuntimePath } of observerTargets) {
+    await mkdir(path.dirname(observerPath), { recursive: true });
+    await writeFile(
+      observerPath,
+      createObserverShim(observerPath, fallbackRuntimePath, true),
+      "utf8",
+    );
+    injectedFiles.push(releaseRelativePath(releaseDir, observerPath));
+  }
+  return { injectedFiles, coverageGaps };
+}
+
+export function createObserverShim(
+  observerPath: string,
+  runtimePath: string,
+  staticFallback = false,
+  platformRuntimeUrl = `file://${PLATFORM_OBSERVER_RUNTIME_PATH}`,
+): string {
   let relativeRuntimePath = path
     .relative(path.dirname(observerPath), runtimePath)
     .split(path.sep)
@@ -142,6 +260,25 @@ function createObserverShim(observerPath: string, runtimePath: string): string {
   if (!relativeRuntimePath.startsWith(".")) {
     relativeRuntimePath = `./${relativeRuntimePath}`;
   }
+  const fallback = staticFallback
+    ? [
+        `import { loadFallbackRuntime } from ${JSON.stringify(relativeRuntimePath)};`,
+        ``,
+        `let runtime;`,
+        `try {`,
+        `  runtime = await import(${JSON.stringify(platformRuntimeUrl)});`,
+        `} catch {`,
+        `  runtime = await loadFallbackRuntime();`,
+        `}`,
+      ]
+    : [
+        `let runtime;`,
+        `try {`,
+        `  runtime = await import(${JSON.stringify(platformRuntimeUrl)});`,
+        `} catch {`,
+        `  runtime = await import(${JSON.stringify(relativeRuntimePath)});`,
+        `}`,
+      ];
   return [
     `import { defineHook } from "eve/hooks";`,
     ``,
@@ -149,14 +286,21 @@ function createObserverShim(observerPath: string, runtimePath: string): string {
     `// observability mount, so captured telemetry always matches the running`,
     `// platform; fall back to the bundle baked into this release when the Agent`,
     `// runs outside an Eveland deployment.`,
-    `let runtime;`,
-    `try {`,
-    `  runtime = await import(${JSON.stringify(`file://${PLATFORM_OBSERVER_RUNTIME_PATH}`)});`,
-    `} catch {`,
-    `  runtime = await import(${JSON.stringify(relativeRuntimePath)});`,
-    `}`,
+    ...fallback,
     ``,
     `export default defineHook(runtime.default);`,
+    ``,
+  ].join("\n");
+}
+
+function createFallbackRuntimeLoader(runtime: string): string {
+  const runtimeUrl = `data:text/javascript;base64,${Buffer.from(runtime).toString("base64")}`;
+  return [
+    `let fallbackRuntime;`,
+    `export function loadFallbackRuntime() {`,
+    `  fallbackRuntime ??= import(${JSON.stringify(runtimeUrl)});`,
+    `  return fallbackRuntime;`,
+    `}`,
     ``,
   ].join("\n");
 }
@@ -217,4 +361,119 @@ async function exists(target: string): Promise<boolean> {
     () => true,
     () => false,
   );
+}
+
+function collectMountedSubagents(
+  manifest: ExtensionSubagentManifest,
+  collect: (source: ExtensionSubagentSource, ownerManifest: ExtensionSubagentManifest) => void,
+): void {
+  for (const mount of [...manifest.resolvedExtensions].sort((left, right) =>
+    left.namespace.localeCompare(right.namespace),
+  )) {
+    const ids = new Set<string>();
+    const sources: Array<{
+      source: ExtensionSubagentSource;
+      ownerManifest: ExtensionSubagentManifest;
+    }> = [
+      ...(mount.overrides?.subagents.map((source) => ({
+        source,
+        ownerManifest: mount.overrides!,
+      })) ?? []),
+      ...mount.manifest.subagents.map((source) => ({
+        source,
+        ownerManifest: mount.manifest,
+      })),
+    ];
+    for (const { source, ownerManifest } of sources) {
+      if (ids.has(source.subagentId)) continue;
+      ids.add(source.subagentId);
+      collect(source, ownerManifest);
+    }
+  }
+}
+
+function readExtensionSubagentManifest(value: unknown): ExtensionSubagentManifest {
+  if (!isExtensionSubagentManifest(value)) {
+    throw new Error("Expected a well-formed Eve discovery manifest for Extension injection.");
+  }
+  return value;
+}
+
+function isExtensionSubagentManifest(value: unknown): value is ExtensionSubagentManifest {
+  return (
+    isRecord(value) &&
+    typeof value.agentRoot === "string" &&
+    Array.isArray(value.subagents) &&
+    value.subagents.every(isExtensionSubagentSource) &&
+    Array.isArray(value.resolvedExtensions) &&
+    value.resolvedExtensions.every(isExtensionSubagentMount)
+  );
+}
+
+function isExtensionSubagentSource(value: unknown): value is ExtensionSubagentSource {
+  return (
+    isRecord(value) &&
+    typeof value.entryPath === "string" &&
+    typeof value.logicalPath === "string" &&
+    typeof value.subagentId === "string" &&
+    isExtensionSubagentManifest(value.manifest)
+  );
+}
+
+function isExtensionSubagentMount(value: unknown): value is ExtensionSubagentMount {
+  return (
+    isRecord(value) &&
+    typeof value.namespace === "string" &&
+    Boolean(value.namespace) &&
+    isExtensionSubagentManifest(value.manifest) &&
+    (value.overrides === undefined || isExtensionSubagentManifest(value.overrides))
+  );
+}
+
+function resolveReleasePath(releaseDir: string, target: string): string {
+  const resolved = path.resolve(target);
+  const canonical = canonicalizeExistingAncestor(resolved);
+  if (!isPathInside(releaseDir, resolved) || !isPathInside(realpathSync(releaseDir), canonical)) {
+    throw new Error(
+      `Extension source ${resolved} must stay inside the disposable Release directory ${releaseDir}.`,
+    );
+  }
+  return resolved;
+}
+
+function canonicalizeExistingAncestor(target: string): string {
+  let candidate = target;
+  for (;;) {
+    try {
+      const suffix = path.relative(candidate, target);
+      return path.resolve(realpathSync(candidate), suffix);
+    } catch (error) {
+      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+      const parent = path.dirname(candidate);
+      if (parent === candidate) throw error;
+      candidate = parent;
+    }
+  }
+}
+
+function isPathInside(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return (
+    Boolean(relative) &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+function releaseRelativePath(releaseDir: string, target: string): string {
+  return path.relative(releaseDir, target).split(path.sep).join("/");
+}
+
+function isModulePath(target: string): boolean {
+  return /\.(?:[cm]?[jt]s)$/.test(target);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

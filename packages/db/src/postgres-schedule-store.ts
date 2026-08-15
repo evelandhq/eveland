@@ -1,5 +1,5 @@
 import { createId } from "@evelandhq/core/ids";
-import { getNextRunAt } from "@evelandhq/core/schedules";
+import { getNextRunAt, validateScheduleDefinitionFields } from "@evelandhq/core/schedules";
 import {
   EVE_SESSION_BOUNDARY_EVENT_TYPES,
   scheduleExecutionErrorFromEveEvent,
@@ -54,6 +54,9 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
     },
 
     async recordScheduleVersions(input) {
+      for (const definition of input.definitions) {
+        validateScheduleDefinitionFields(definition);
+      }
       return db.transaction(async (tx) => {
         const [revision] = await tx
           .select({ id: sourceRevisions.id })
@@ -358,11 +361,13 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
         for (const row of due) {
           if (!row.schedule.nextRunAt) continue;
           const dueAt = row.schedule.nextRunAt;
-          let next = getNextRunAt(row.version.cron, dueAt);
-          let missedTicks = 0;
-          while (next <= input.now) {
-            missedTicks += 1;
-            next = getNextRunAt(row.version.cron, next);
+          const advance = calculateScheduleAdvance(row.version.cron, dueAt, input.now);
+          if (!advance) {
+            await tx
+              .update(projectSchedules)
+              .set({ enabled: false, nextRunAt: null, updatedAt: input.now })
+              .where(eq(projectSchedules.id, row.schedule.id));
+            continue;
           }
 
           const [run] = await tx
@@ -376,7 +381,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
               dueAt,
               trigger: "cron",
               status: "queued",
-              missedTicks,
+              missedTicks: advance.missedTicks,
               createdAt: input.now,
               updatedAt: input.now,
             })
@@ -389,7 +394,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
 
           await tx
             .update(projectSchedules)
-            .set({ nextRunAt: next, updatedAt: input.now })
+            .set({ nextRunAt: advance.nextRunAt, updatedAt: input.now })
             .where(eq(projectSchedules.id, row.schedule.id));
           await insertJobRowTx(tx, {
             projectId: row.schedule.projectId,
@@ -868,4 +873,22 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
       });
     },
   };
+}
+
+export function calculateScheduleAdvance(
+  cron: string,
+  dueAt: Date,
+  now: Date,
+): { nextRunAt: Date; missedTicks: number } | undefined {
+  try {
+    let nextRunAt = getNextRunAt(cron, dueAt);
+    let missedTicks = 0;
+    while (nextRunAt <= now) {
+      missedTicks += 1;
+      nextRunAt = getNextRunAt(cron, nextRunAt);
+    }
+    return { nextRunAt, missedTicks };
+  } catch {
+    return undefined;
+  }
 }

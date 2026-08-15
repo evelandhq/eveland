@@ -3,9 +3,10 @@ import { createHash } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
-import { readReleaseDiscovery } from "./discovery-artifacts.js";
+import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
+import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import {
@@ -176,6 +177,7 @@ export function buildSystemdStartCommand(_context: RuntimeCommandContext, port: 
 export function buildReleaseBuildCommand(
   context: RuntimeCommandContext,
   workflowWorld?: WorkflowWorldBuildConfig,
+  integrateExtensions = true,
 ): string {
   const install =
     context.packageManager === "pnpm"
@@ -186,11 +188,14 @@ export function buildReleaseBuildCommand(
   const worldInstall = workflowWorld
     ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld, context.packageManager ?? "npm")}`
     : "";
-  // `eve build` writes `.eve/agent-summary.json`, but the full discovery
-  // manifest (including hooks and remote subagents) is materialized by
-  // `eve info`. Run both inside the same secret-free build sandbox so the
-  // Release summary is derived from the exact dependency tree we deploy.
-  return `${install}${worldInstall} && npx eve build && npx eve info --json >/dev/null`;
+  // Extension packages can only be resolved after install. Materialize Eve's
+  // source manifest, let the bundled platform integrator adapt Extension
+  // schedules/subagents inside this disposable Release, then compile and write
+  // the final authoritative discovery manifest from the exact deployed tree.
+  const extensionIntegration = integrateExtensions
+    ? `npx eve info --json >/dev/null && node ${EXTENSION_INTEGRATOR_RELEASE_PATH} && `
+    : "";
+  return `${install}${worldInstall} && ${extensionIntegration}npx eve build && npx eve info --json >/dev/null`;
 }
 
 /**
@@ -419,7 +424,11 @@ export function createSystemdAdapter(
       await execa("chown", ["-R", `${config.buildUser}:`, releaseDir]);
       await execa("chown", ["-R", `${config.buildUser}:`, npmCacheDir]);
 
-      const command = buildReleaseBuildCommand(input.commandContext, input.workflowWorld);
+      const command = buildReleaseBuildCommand(
+        input.commandContext,
+        input.workflowWorld,
+        Boolean(observerInjection.extensionIntegratorFile),
+      );
       const { environment: buildEnv, rejectedKeys } = buildReleaseBuildEnvironment({
         npmCacheDir,
         pathValue:
@@ -498,9 +507,10 @@ export function createSystemdAdapter(
           ].join("\n")
         : undefined;
       const discovery = await readReleaseDiscovery(releaseDir);
+      const schedulerDefinitions = await readReleaseSchedulerDefinitions(releaseDir);
       return {
         releaseRef: releaseDir,
-        schedulerDefinitions: observerInjection.scheduler?.definitions,
+        schedulerDefinitions,
         ...(discovery ? { discovery } : {}),
         log: [
           `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,

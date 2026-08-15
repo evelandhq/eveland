@@ -314,7 +314,7 @@ describe("processNextJob", () => {
                   kind: "markdown" as const,
                   cron: "0 8 * * *",
                   sourcePath: "agent/schedules/daily.md",
-                  definitionHash: "daily-v1",
+                  definitionHash: "a".repeat(64),
                   modulePath: "agent/schedules/daily.ts",
                 },
               ],
@@ -427,7 +427,7 @@ describe("processNextJob", () => {
         version: expect.objectContaining({
           kind: "markdown",
           cron: "0 8 * * *",
-          definitionHash: "daily-v1",
+          definitionHash: "a".repeat(64),
         }),
       }),
     ]);

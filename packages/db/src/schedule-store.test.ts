@@ -1,7 +1,101 @@
 import { describe, expect, test } from "vitest";
 import { createTestStore } from "./vitest-store.js";
+import { calculateScheduleAdvance } from "./postgres-schedule-store.js";
 
 describe("schedule persistence", () => {
+  test("isolates a corrupt legacy cron row from the rest of the planner batch", () => {
+    expect(
+      calculateScheduleAdvance(
+        "not cron",
+        new Date("2026-07-15T00:01:00.000Z"),
+        new Date("2026-07-15T00:05:10.000Z"),
+      ),
+    ).toBeUndefined();
+    expect(
+      calculateScheduleAdvance(
+        "* * * * *",
+        new Date("2026-07-15T00:01:00.000Z"),
+        new Date("2026-07-15T00:05:10.000Z"),
+      ),
+    ).toEqual({
+      nextRunAt: new Date("2026-07-15T00:06:00.000Z"),
+      missedTicks: 4,
+    });
+  });
+
+  test.each([
+    [
+      "invalid cron",
+      {
+        key: "sync",
+        cron: "not cron",
+        sourcePath: "agent/schedules/sync.ts",
+        definitionHash: "a".repeat(64),
+      },
+    ],
+    [
+      "empty key",
+      {
+        key: "",
+        cron: "0 2 * * *",
+        sourcePath: "agent/schedules/sync.ts",
+        definitionHash: "a".repeat(64),
+      },
+    ],
+    [
+      "escaping source path",
+      {
+        key: "sync",
+        cron: "0 2 * * *",
+        sourcePath: "../sync.ts",
+        definitionHash: "a".repeat(64),
+      },
+    ],
+    [
+      "escaping key",
+      {
+        key: "../sync",
+        cron: "0 2 * * *",
+        sourcePath: "agent/schedules/sync.ts",
+        definitionHash: "a".repeat(64),
+      },
+    ],
+    [
+      "malformed definition hash",
+      {
+        key: "sync",
+        cron: "0 2 * * *",
+        sourcePath: "agent/schedules/sync.ts",
+        definitionHash: "hash",
+      },
+    ],
+    [
+      "empty definition hash",
+      { key: "sync", cron: "0 2 * * *", sourcePath: "agent/schedules/sync.ts", definitionHash: "" },
+    ],
+  ])("rejects %s before persisting an immutable schedule version", async (_label, invalid) => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Invalid schedule", importKind: "git" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      sourcePath: "/tmp/invalid",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+
+    await expect(
+      store.recordScheduleVersions({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        definitions: [{ ...invalid, kind: "handler" }],
+      }),
+    ).rejects.toThrow();
+    await expect(store.listProjectScheduleVersions(project.id, revision.id)).resolves.toEqual([]);
+  });
+
   test("keeps stable logical identity and immutable versions across source revisions", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Versioned schedules", importKind: "git" });
@@ -24,21 +118,21 @@ describe("schedule persistence", () => {
           kind: "markdown",
           cron: "0 3 * * *",
           sourcePath: "agent/schedules/billing/sweep.md",
-          definitionHash: "hash-v1",
+          definitionHash: "a".repeat(64),
         },
         {
           key: "cleanup",
           kind: "handler",
           cron: "15 4 * * *",
           sourcePath: "agent/schedules/cleanup.ts",
-          definitionHash: "cleanup-v1",
+          definitionHash: "b".repeat(64),
         },
         {
           key: "ops/sweep",
           kind: "handler",
           cron: "30 4 * * *",
           sourcePath: "agent/schedules/ops/sweep.ts",
-          definitionHash: "ops-sweep-v1",
+          definitionHash: "c".repeat(64),
         },
       ],
     });
@@ -89,7 +183,7 @@ describe("schedule persistence", () => {
           kind: "markdown",
           cron: "30 3 * * *",
           sourcePath: "agent/schedules/billing/sweep.md",
-          definitionHash: "hash-v2",
+          definitionHash: "d".repeat(64),
         },
       ],
     });
@@ -97,7 +191,10 @@ describe("schedule persistence", () => {
     const second = await store.listProjectScheduleVersions(project.id, secondRevision.id);
     expect(second).toHaveLength(1);
     expect(second[0]?.schedule.id).toBe(stableId);
-    expect(second[0]?.version).toMatchObject({ cron: "30 3 * * *", definitionHash: "hash-v2" });
+    expect(second[0]?.version).toMatchObject({
+      cron: "30 3 * * *",
+      definitionHash: "d".repeat(64),
+    });
     const secondDeployment = await store.recordDeployment({
       projectId: project.id,
       sourceRevisionId: secondRevision.id,
@@ -142,7 +239,7 @@ describe("schedule persistence", () => {
           kind: "handler",
           cron: "* * * * *",
           sourcePath: "agent/schedules/minute.ts",
-          definitionHash: "minute-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
@@ -244,7 +341,7 @@ describe("schedule persistence", () => {
           kind: "handler",
           cron: "0 3 * * *",
           sourcePath: "agent/schedules/billing/sweep.ts",
-          definitionHash: "manual-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
@@ -328,7 +425,7 @@ describe("schedule persistence", () => {
           kind: "markdown",
           cron: "0 2 * * *",
           sourcePath: "agent/schedules/daily-topics.md",
-          definitionHash: "running-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
@@ -392,7 +489,7 @@ describe("schedule persistence", () => {
           kind: "handler",
           cron: "0 3 * * *",
           sourcePath: "agent/schedules/billing/sweep.ts",
-          definitionHash: "history-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });

@@ -27,7 +27,7 @@ describe("planDueSchedules", () => {
           kind: "handler",
           cron: "* * * * *",
           sourcePath: "agent/schedules/heartbeat.ts",
-          definitionHash: "heartbeat-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
@@ -90,7 +90,7 @@ describe("planDueSchedules", () => {
           kind: "handler",
           cron: "* * * * *",
           sourcePath: "agent/schedules/heartbeat.ts",
-          definitionHash: "heartbeat-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });

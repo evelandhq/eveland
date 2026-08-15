@@ -1,8 +1,10 @@
 import { execa } from "execa";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { parseSchedulerDefinitions } from "@evelandhq/agent-scheduler";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
 import { prepareReleaseTree } from "./prepare-release.js";
+import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
@@ -169,29 +171,52 @@ export function buildDockerSandboxVerifyArgs(imageTag: string): string[] {
 
 // eve build and the post-build eve info discovery pass ran inside the image,
 // so their discovery artifacts live in the image filesystem, not on the host.
-// One throwaway container prints them; failures only cost the build-derived
-// summary (the import-time static one remains).
+// One throwaway container prints them. The discovery manifest remains
+// informational, but the post-integration scheduler definitions are required:
+// native cron exports have already been disabled, so losing these definitions
+// must fail the build instead of falling back to a root-only snapshot.
 const readImageDiscoveryScript =
-  'const fs=require("fs");let m=null,v=null;' +
+  'const fs=require("fs");let m=null,v=null,d=null;' +
   'try{m=JSON.parse(fs.readFileSync("/app/.eve/discovery/agent-discovery-manifest.json","utf8"))}catch{}' +
   'try{v=require("/app/node_modules/eve/package.json").version}catch{}' +
-  'process.stdout.write(JSON.stringify({manifest:m,resolvedEveVersion:typeof v==="string"?v:null}))';
+  'try{d=JSON.parse(fs.readFileSync("/app/.eveland/scheduler/definitions.json","utf8"))}catch{}' +
+  'process.stdout.write(JSON.stringify({manifest:m,resolvedEveVersion:typeof v==="string"?v:null,...Array.isArray(d)?{schedulerDefinitions:d}:{}}))';
 
-export async function readImageDiscovery(imageTag: string): Promise<ReleaseDiscovery | undefined> {
+export async function readImageDiscovery(imageTag: string): Promise<ReleaseDiscovery> {
   const result = await execa(
     "docker",
     ["run", "--rm", "--network", "none", imageTag, "node", "-e", readImageDiscoveryScript],
     { reject: false },
-  ).catch(() => undefined);
-  if (!result || result.exitCode !== 0 || typeof result.stdout !== "string") return undefined;
+  ).catch((error: unknown) => {
+    throw new Error(`Could not read build artifacts from Docker image ${imageTag}.`, {
+      cause: error,
+    });
+  });
+  if (result.exitCode !== 0 || typeof result.stdout !== "string") {
+    throw new Error(
+      `Could not read build artifacts from Docker image ${imageTag}: ${result.stderr || "artifact reader failed"}`,
+    );
+  }
   try {
     const parsed = JSON.parse(result.stdout) as {
       manifest: unknown;
       resolvedEveVersion: string | null;
+      schedulerDefinitions?: unknown;
     };
-    return parsed.manifest === null ? undefined : parsed;
-  } catch {
-    return undefined;
+    const schedulerDefinitions = parseSchedulerDefinitions(parsed.schedulerDefinitions);
+    if (!schedulerDefinitions) {
+      throw new Error("Required scheduler definitions are missing or invalid.");
+    }
+    return {
+      manifest: parsed.manifest,
+      resolvedEveVersion: parsed.resolvedEveVersion,
+      schedulerDefinitions,
+    };
+  } catch (error) {
+    throw new Error(
+      `Invalid build artifacts in Docker image ${imageTag}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 }
 
@@ -217,6 +242,7 @@ export async function writeGeneratedDockerfile(
   buildDir: string,
   workflowWorld?: WorkflowWorldBuildConfig,
   variableKeys: readonly string[] = [],
+  integrateExtensions = true,
 ): Promise<string> {
   await mkdir(buildDir, { recursive: true });
   const dockerfilePath = path.join(buildDir, "Dockerfile");
@@ -232,6 +258,9 @@ export async function writeGeneratedDockerfile(
     .sort((a, b) => a.localeCompare(b))
     .map((key) => `ARG ${key}\n`)
     .join("");
+  const buildCommand = integrateExtensions
+    ? `npx eve info --json > /dev/null && node ${EXTENSION_INTEGRATOR_RELEASE_PATH} && npx eve build && npx eve info --json > /dev/null`
+    : "npx eve build && npx eve info --json > /dev/null";
   await writeFile(
     dockerfilePath,
     `FROM node:24-alpine
@@ -252,7 +281,7 @@ RUN if [ -f pnpm-lock.yaml ]; then ${PNPM_FROZEN_INSTALL_COMMAND}; elif [ -f pac
 ${workflowWorldInstall}COPY . .
 # Compile the eve application ahead of time, then materialize the full
 # discovery manifest from that exact installed dependency tree.
-${buildVariableArgs}RUN npx eve build && npx eve info --json > /dev/null
+${buildVariableArgs}RUN ${buildCommand}
 EXPOSE 3000
 `,
   );
@@ -386,6 +415,7 @@ export function createDockerAdapter(
           input.buildDir,
           input.workflowWorld,
           Object.keys(buildVariables.variables),
+          Boolean(observerInjection.extensionIntegratorFile),
         );
         const log = await dockerBuild({
           contextDir: input.buildDir,
@@ -400,8 +430,8 @@ export function createDockerAdapter(
         const discovery = await readImageDiscovery(imageTag);
         return {
           releaseRef: imageTag,
-          schedulerDefinitions: observerInjection.scheduler?.definitions,
-          ...(discovery ? { discovery } : {}),
+          schedulerDefinitions: discovery.schedulerDefinitions,
+          discovery,
           log: [
             log,
             rejectedBuildVariablesLog(buildVariables.rejectedKeys),

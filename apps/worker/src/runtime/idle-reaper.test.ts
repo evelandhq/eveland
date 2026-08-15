@@ -28,7 +28,7 @@ describe("reapIdleDeployments", () => {
           kind: "handler",
           cron: "* * * * *",
           sourcePath: "agent/schedules/heartbeat.ts",
-          definitionHash: "heartbeat-v1",
+          definitionHash: "a".repeat(64),
         },
       ],
     });
