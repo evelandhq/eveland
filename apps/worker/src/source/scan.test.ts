@@ -33,4 +33,28 @@ describe("scanEveSource", () => {
       }
     },
   );
+
+  test("skips text files carrying NUL bytes Postgres cannot store", async () => {
+    const sourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-source-scan-"));
+    try {
+      await mkdir(path.join(sourcePath, "agent"), { recursive: true });
+      await writeFile(
+        path.join(sourcePath, "package.json"),
+        JSON.stringify({ dependencies: { eve: "^0.38.0" } }),
+      );
+      await writeFile(path.join(sourcePath, "agent", "instructions.md"), "You are concise.");
+      await writeFile(
+        path.join(sourcePath, "agent", "tools.ts"),
+        "export const separator = `a\u0000b`;\n",
+      );
+
+      const scan = await scanEveSource({ kind: "zip", sourcePath });
+
+      expect(scan.files).not.toContainEqual(expect.objectContaining({ path: "agent/tools.ts" }));
+      expect(scan.files).toContainEqual(expect.objectContaining({ path: "agent/instructions.md" }));
+      expect(scan.files.every((file) => !file.content.includes("\u0000"))).toBe(true);
+    } finally {
+      await rm(sourcePath, { recursive: true, force: true });
+    }
+  });
 });
