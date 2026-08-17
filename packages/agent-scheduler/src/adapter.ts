@@ -415,12 +415,12 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile):
 function fixedSessionDispatchBlock(): string {
   return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
-          const session = await from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
+          const session = await withScheduledRunRetention(() => from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
             auth: scheduleAppAuth,
             turnPolicy: "queue",
             mode: "task",
             title: \`Schedule · \${scheduleKey}\`,
-          });
+          }));
           sessionIds.push(session.id);
         } else {
           const waitUntilTasks: Promise<unknown>[] = [];
@@ -429,7 +429,7 @@ function fixedSessionDispatchBlock(): string {
             const handle = to(channel, target);
             return {
               send(message, options) {
-                const task = handle.send(message, { turnPolicy: "queue", ...options });
+                const task = withScheduledRunRetention(() => handle.send(message, { turnPolicy: "queue", ...options }));
                 sendTasks.push(task);
                 return task;
               },
@@ -473,7 +473,8 @@ function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
   const routeArgs = "{ params, from, to }";
   const dispatchBlock = fixedSessionDispatchBlock();
 
-  return `${imports.length > 0 ? `${imports.join("\n")}\n` : ""}import { defineChannel, POST } from "eve/channels";
+  return `${imports.length > 0 ? `${imports.join("\n")}\n` : ""}import { AsyncLocalStorage } from "node:async_hooks";
+import { defineChannel, POST } from "eve/channels";
 
 const scheduleAppAuth = {
   attributes: {},
@@ -549,6 +550,23 @@ async function reportDispatch(url: string, runtimeSecret: string, body: Record<s
     headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
     body: JSON.stringify(body),
   });
+}
+
+type RunRetentionIntent = { retentionClass: "scheduled" };
+const runRetentionContextSymbol = Symbol.for("@evelandhq/workflow-world.run-retention-intent");
+
+function withScheduledRunRetention<T>(operation: () => T): T {
+  return getRunRetentionContext().run({ retentionClass: "scheduled" }, operation);
+}
+
+function getRunRetentionContext(): AsyncLocalStorage<RunRetentionIntent> {
+  const existing = Reflect.get(globalThis, runRetentionContextSymbol);
+  if (existing instanceof AsyncLocalStorage) {
+    return existing as AsyncLocalStorage<RunRetentionIntent>;
+  }
+  const created = new AsyncLocalStorage<RunRetentionIntent>();
+  Reflect.set(globalThis, runRetentionContextSymbol, created);
+  return created;
 }
 
 // Keeps the authored handler's failure reason visible on the ScheduleRun; the

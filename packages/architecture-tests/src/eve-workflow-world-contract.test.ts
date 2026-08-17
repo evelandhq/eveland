@@ -123,7 +123,7 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins the spec-v6 platform worlds reviewed for Eve 0.38.3", () => {
-    expect(worldManifest.version).toBe("0.7.1");
+    expect(worldManifest.version).toBe("0.8.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     const workspace = readSource("pnpm-workspace.yaml");
@@ -167,6 +167,13 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       );
     expect(injected, "could not find EVELAND_WORKFLOW_WORLD in workflow-world.ts").not.toBeNull();
     expect(injected![1]).toBe(worldManifest.version);
+
+    const dispatcherManifest = readJson(
+      path.join(repoRoot, "apps/workflow-dispatcher/package.json"),
+    ) as { dependencies?: Record<string, string> };
+    expect(dispatcherManifest.dependencies?.["@evelandhq/workflow-world"]).toBe(
+      `^${worldManifest.version}`,
+    );
 
     const postgresInjected =
       /PLATFORM_WORKFLOW_WORLD = \{\s*packageName: "@workflow\/world-postgres",\s*packageVersion: "([^"]+)"/.exec(

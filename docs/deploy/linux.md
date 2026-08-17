@@ -575,7 +575,7 @@ complete production boundary:
   production but does not install a workflow schema in that base database. Eve
   0.38.3 requires workflow spec v6, so Releases inject
   `@workflow/world-postgres@5.0.0-beta.34` on the legacy path and
-  `@evelandhq/workflow-world@0.7.1` on the shared path. Use
+  `@evelandhq/workflow-world@0.8.0` on the shared path. Use
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
   for the same database server while administering derived project databases.
   A deployment URL on `host.docker.internal` automatically reuses

@@ -187,7 +187,9 @@ Produce the daily report.
     );
 
     expect(channel).toContain("{ params, from, to }");
-    expect(channel).toContain("await from(`eveland-schedule:${params.scheduleRunId}`).send(");
+    expect(channel).toContain(
+      "await withScheduledRunRetention(() => from(`eveland-schedule:${params.scheduleRunId}`).send(",
+    );
     expect(channel).toContain("to: wrappedTo");
     expect(channel).toContain(
       "const [runResult] = await Promise.allSettled([entry.definition.run(",
@@ -222,6 +224,31 @@ Produce the daily report.
     // because their options are spread last.
     expect(current).toContain('turnPolicy: "queue",\n            mode: "task"');
     expect(current).toContain('handle.send(message, { turnPolicy: "queue", ...options })');
+  });
+
+  test("marks every scheduler-created root in async context without changing existing sessions", async () => {
+    const releaseDir = await fixture({
+      eveVersion: "0.38.3",
+      files: {
+        "agent/schedules/report.md": `---\ncron: "30 5 * * *"\n---\nProduce the daily report.\n`,
+        "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
+      },
+    });
+
+    await injectSchedulerAdapter({ releaseDir });
+    const channel = await readFile(
+      path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
+      "utf8",
+    );
+
+    expect(channel).toContain('import { AsyncLocalStorage } from "node:async_hooks"');
+    expect(channel).toContain('Symbol.for("@evelandhq/workflow-world.run-retention-intent")');
+    expect(channel).toContain(
+      "await withScheduledRunRetention(() => from(`eveland-schedule:${params.scheduleRunId}`).send(",
+    );
+    expect(channel).toContain(
+      'withScheduledRunRetention(() => handle.send(message, { turnPolicy: "queue", ...options }))',
+    );
   });
 
   test.each(["ts", "mts", "cts", "js", "mjs", "cjs"])(

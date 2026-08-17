@@ -854,6 +854,14 @@ tree（模块使用原子替换，不能修改 pnpm content-addressed store）�
 和最终 `eve info`。没有 Extension mount 的 Release 不注入约 11 MiB 的 integrator，也不执行额外
 的预发现步骤。真正的 Markdown/TypeScript handler 只由上述经过认证的私有 Channel 调用。
 
+私有 Scheduler Channel 还是 workflow retention 的平台策略边界。Markdown Schedule 的
+`from(...).send(...)` 与 handler Schedule 暴露的每个 `to(...).send(...)` 都必须在平台拥有的
+`scheduled` 运行上下文中执行；这个上下文包在 authored options 之外，authored spread 无法把
+Schedule 改成 `persistent`。若 delivery 新建 Session，其 root `workflowEntry` 为 `scheduled`；
+若 delivery 命中既有 Session，则该 Session 已存 root class 优先，不能因本次 Schedule
+delivery 被升级或降级。legacy `@workflow/world-postgres` 不理解 per-run class，运行上下文对它
+无害，仍继续使用平台的 24 小时全局 sweep。
+
 切换 scheduler target 只影响切换后创建的 cron/manual run。已经 queued、running 或
 完成的 ScheduleRun 永远保留创建时固定的 Deployment、Release 和 ScheduleVersion；
 promote、rollback 或 stable route 权重变化不得重选其 target。
@@ -1164,7 +1172,7 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
 不得被修改。Eve 0.38.3 要求 workflow spec v6，因此 legacy world 固定为
 `@workflow/world-postgres@5.0.0-beta.34`，共享 world 固定为
-`@evelandhq/workflow-world@0.7.1`；两者都必须通过 0.37.1 与 0.38.3 的 World contract 门禁。
+`@evelandhq/workflow-world@0.8.0`；两者都必须通过 0.37.1 与 0.38.3 的 World contract 门禁。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
 配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在 dispatcher 或 Deployment 使用共享库前幂等执行
@@ -1201,7 +1209,7 @@ per-project workflow 的过期 stream chunks。默认保留窗口为 24 小时
 run 的 `eof=false` chunk，EOF marker 永久保留；`EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=0`
 只禁用这条 legacy sweep。
 
-共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.7.1` 与 dispatcher 共同持有。
+共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.8.0` 与 dispatcher 共同持有。
 World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
 建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
 physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。
@@ -1217,6 +1225,37 @@ queue。每项使用 advisory lock、彼此 failure-isolated，单次工作量�
 persistent 永不自动删除。active/waiting run 没有 deadline，EOF marker 永久保留。删除窗口外
 chunk 意味着更老 raw cursor 不再保证 replay；普通 DELETE 只保证页面可复用，不保证数据库
 文件立即向操作系统缩小。
+
+共享 World 对新 run 只使用一条完整策略链：显式 `retentionClass` 高于
+`workflow-world.retention-class` attribute，attribute 高于 Workflow SDK 的
+`$rootRunId`/`$parentRunId` lineage，lineage 高于平台 root invocation context，最后才是
+`interactive` 默认值。子 run 直接读取同租户 ancestor 的已存 class，不按 workflow name、
+timeout 或 callback 猜测；lineage 存在但无法解析时 fail closed。Eve 自身不做 Eveland 专用
+修改，现有 SDK lineage 同时覆盖 `workflowEntry`、`turnWorkflow`、
+`sessionTimeoutWorkflow`、`taskRunWorkflow`、subagent 与任意 custom workflow。architecture
+门禁从支持的 Eve 发布包读取 `STABLE_WORKFLOW_NAMES`，新增稳定内部 workflow 而未更新审计矩阵
+时必须失败。
+
+root source 的产品契约如下：
+
+| root source                                              | 默认 class                           | 说明                                           |
+| -------------------------------------------------------- | ------------------------------------ | ---------------------------------------------- |
+| Eveland Markdown Schedule 新建 Session                   | `scheduled`                          | 平台强制，authored options 不可放宽            |
+| Eveland handler Schedule 新建 target Session             | `scheduled`                          | cross-channel origin 保持到 owner resolution   |
+| Schedule delivery 到既有 Session                         | 保留既有 root                        | continuation 不重新分类                        |
+| Playground / public Eve HTTP / ordinary authored Channel | `interactive`                        | Eveland 只做代理，不注入策略                   |
+| Eve SDK Session create、MCP/operation invocation         | `interactive`                        | create-once 与 binding 不改变 class            |
+| callback、follow-up、reset                               | 既有 root；reset 新 owner 时重新选择 | lineage 优先；新 root 按当前 source            |
+| 直接/custom Workflow start                               | 显式 class，否则 `interactive`       | 任意 workflow name 都不能作为策略依据          |
+| 审核通过的 durable product operation                     | `persistent`                         | 必须有可观测 owner/reason；不得从 timeout 推断 |
+
+历史修复与前向正确性分开。operator 必须先以精确 durable root trigger（当前为
+`$eve.trigger = channel:eveland-scheduler`）预览单 tenant 的 root/descendant 图和 mismatch，
+再按 bounded batch 优先修 active graph；已有 `persistent` 行永不改写，terminal class 更新由
+数据库 trigger 按原 terminal timestamp 原子重算 deadline。之后只运行正常 bounded
+maintenance，不允许无界删除或 `VACUUM FULL`。诊断按 tenant、resolved root trigger、run type、
+workflow name、status 与当前 class 分组，并单独报告错误 root class 与 child/root mismatch；
+不得根据 title 或稳定 Eve workflow name 本身回填。
 
 Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
 必须连接到可执行的隔离 Sandbox，而不能在生产式 `eve start` 下静默退化为缺少

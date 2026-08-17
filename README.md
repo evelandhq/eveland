@@ -111,10 +111,15 @@ Open the control panel at `http://localhost:3000` and the public documentation s
   still binding its port.
 - The worker migrates the configured shared workflow database before use and keeps
   the hourly 24-hour terminal-stream sweep for legacy per-project worlds. Shared
-  `@evelandhq/workflow-world@0.7.1` storage is bounded by write-time compaction plus
+  `@evelandhq/workflow-world@0.8.0` storage is bounded by write-time compaction plus
   the dispatcher's per-minute block packing and deadline-driven stream/run retention;
   EOF markers are retained. A pending disruptive shared-World migration blocks
   unattended startup until an operator applies it in the documented maintenance window.
+- Prepared Scheduler Channels mark every newly created Markdown or handler Session as
+  `scheduled` at the platform boundary. Workflow SDK lineage carries that class to turns,
+  timeouts, tasks, subagents, and custom descendants; delivery to an existing Session
+  preserves its stored root class. Eve itself remains unmodified, and legacy Worlds
+  safely ignore the marker.
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
   `pnpm dev:docs` in separate terminals when isolated logs are more useful.
 - Public development endpoints use `http://<projectSlug>.agent.localhost:4080`;
