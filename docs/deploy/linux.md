@@ -161,22 +161,19 @@ pnpm install --frozen-lockfile
 pnpm --filter @evelandhq/api db:migrate
 ```
 
-Upgrading an existing shared `@evelandhq/workflow-world` database through `0.6.0`
-includes `0006_event_slots.sql`, which rebuilds the `workflow_events` primary key
-under an `ACCESS EXCLUSIVE` lock. The Worker deliberately refuses to apply that
-migration during unattended startup or tenant provisioning. Schedule a maintenance
-window, stop the workflow dispatcher and Agent workflow traffic, then run the setup
-command from the checked-out release with a Worker-reachable database URL:
+Worker startup and tenant provisioning apply every pending shared
+`@evelandhq/workflow-world` migration before the schema is used. This includes
+`0006_event_slots.sql` when upgrading through `0.6.0` and the storage-v2 and
+retention-class migrations (`0007`–`0009`) introduced in `0.7.0`. The package's
+PostgreSQL advisory lock serializes concurrent migration attempts; new and existing
+shared databases follow the same automatic bootstrap path.
 
-```bash
-EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:5432/eveland_workflow \
-  pnpm --filter @evelandhq/worker exec workflow-world-setup
-```
-
-Restart the Worker and dispatcher only after the command completes. Version `0.7.0`
-then applies the non-disruptive storage-v2 and retention-class migrations (`0007`–`0009`)
-before the dispatcher starts maintenance. A new empty shared database has no earlier
-migration registry and continues to bootstrap automatically.
+The external dispatcher in `@evelandhq/workflow-world@0.8.1` and later is single-instance and
+holds a PostgreSQL advisory lock for its lifetime. When first upgrading from an older
+dispatcher that did not participate in that lock, stop the old process before starting
+the new one. The new generation reclaims stranded worker locks only from active runs'
+exact per-run queues, re-enqueues those runs, and starts its Graphile worker pool last;
+do not run multiple dispatcher replicas against the same shared database.
 
 The host worker runs as root from its own checkout at `/opt/eveland` (see
 `infra/systemd/eveland-worker.service`); apply the same tag and
@@ -325,7 +322,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `WORKFLOW_POSTGRES_BOOTSTRAP_URL`                  | Matching `DATABASE_URL` when the deployment URL uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches a separate workflow database through `localhost` or a Compose service name. It is never injected into an Agent.                                                                                                                                                                                                                                          |
 | `WORKFLOW_POSTGRES_MAX_POOL_SIZE`                  | `10`                                                                                                           | Max pg pool connections each deployment runtime opens against its workflow database; the worker injects it into every deployment and Project Secrets cannot override it. Size the workflow instance's `max_connections` as roughly this value × expected concurrent running deployments, plus the control-plane pools when both share one Postgres instance. Lower it to fit more deployments per instance; a Postgres `FATAL 53300 "too many clients"` at deployment startup means this budget is exceeded. |
 | `EVELAND_WORKFLOW_WORLD_URL`                       | _(unset)_                                                                                                      | Deployment-reachable shared database for `@evelandhq/workflow-world`. Required before selecting projects with `EVELAND_WORKFLOW_WORLD_ROLLOUT`; leave unset to keep the legacy topology only.                                                                                                                                                                                                                                                                                                                |
-| `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`             | `EVELAND_WORKFLOW_WORLD_URL`                                                                                   | Host-reachable address for the same shared database. Worker startup uses it for migrations and tenant provisioning; maintenance-window migrations must be applied explicitly with `workflow-world-setup`.                                                                                                                                                                                                                                                                                                    |
+| `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`             | `EVELAND_WORKFLOW_WORLD_URL`                                                                                   | Host-reachable address for the same shared database. Worker startup and tenant provisioning use it to apply all pending migrations automatically.                                                                                                                                                                                                                                                                                                                                                            |
 | `EVELAND_WORKFLOW_STREAM_COMPACTION`               | `on`                                                                                                           | Reserved switch injected into shared-world Deployments and also set on the dispatcher. `off` disables new snapshot stripping and terminal block rewrite compaction only; readers remain mixed-format compatible.                                                                                                                                                                                                                                                                                             |
 | `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS`               | `3600000`                                                                                                      | Legacy per-project stream-retention cadence; `0` disables that legacy sweep. Shared-world maintenance belongs to the dispatcher.                                                                                                                                                                                                                                                                                                                                                                             |
 | `EVELAND_WORKFLOW_STREAM_RETENTION_MS`             | `86400000`                                                                                                     | Legacy terminal stream replay window: 24 hours. EOF markers are not deleted.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -575,7 +572,7 @@ complete production boundary:
   production but does not install a workflow schema in that base database. Eve
   0.38.3 requires workflow spec v6, so Releases inject
   `@workflow/world-postgres@5.0.0-beta.34` on the legacy path and
-  `@evelandhq/workflow-world@0.8.0` on the shared path. Use
+  `@evelandhq/workflow-world@0.9.0` on the shared path. Use
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
   for the same database server while administering derived project databases.
   A deployment URL on `host.docker.internal` automatically reuses
@@ -588,10 +585,8 @@ complete production boundary:
   `@evelandhq/workflow-world`, the worker instead provisions that project's
   partitions in the configured shared database; tenancy and cold-start recovery
   remain scoped by `tenant_id`.
-- Worker startup applies non-disruptive shared-World migrations before the dispatcher
-  or a Deployment may use the schema. A previously initialized database with the
-  disruptive `0006_event_slots.sql` still pending fails closed with the maintenance
-  command above; tenant provisioning enforces the same gate. Set
+- Worker startup applies all pending shared-World migrations before the dispatcher or
+  a Deployment may use the schema; tenant provisioning follows the same path. Set
   `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when the host reaches the database through a
   different address than deployments.
 - Release preparation copies the imported source, moves any authored root

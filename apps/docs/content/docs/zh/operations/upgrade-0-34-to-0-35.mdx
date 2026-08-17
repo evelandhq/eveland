@@ -1,0 +1,210 @@
+---
+title: 从 0.34 升级到 0.35
+description: 将共享 Workflow World 升级到 0.9，把共享存储维护交给单一所有者 Dispatcher，并逐步启用有界的 Deployment 与 Sandbox 执行。
+---
+
+Eveland 0.35 默认限制 Durable Workflow 存储与 Agent 命令执行的资源增长。它把共享 `@evelandhq/workflow-world` 从 `0.6.0` 升级到 `0.9.0`，将共享 World Maintenance 从 Worker 移交给 Dispatcher，为 Scheduled Workflow Graph 增加按执行结果区分的 Retention，并在两种 Runtime Adapter 上增加 cgroup 与 Sandbox 上限。本文说明如何将生产环境从 `v0.34.0` 升级到 `v0.35.0`。
+
+## 运维影响
+
+请为宿主机 Worker 与 Workflow Dispatcher 安排维护窗口。二者停止期间，已经运行的 Agent 仍可继续接收 Public Traffic，但 Cold Activation、Durable Workflow Dispatch、Schedule、Import、Build 与 Deployment 操作会暂停，直到服务恢复。
+
+**本次发布没有 Eveland 控制面数据库 Migration。** 仍应执行 `pnpm --filter @evelandhq/api db:migrate`；它应当是 no-op，同时确认控制面数据库已经是最新状态。
+
+使用共享 Workflow World 的安装有一条独立的 Migration 边界。Worker 或 Dispatcher 启动时会在 PostgreSQL advisory lock 下自动应用 Package Migration `0007` 到 `0012`：加入 storage-v2 元数据与 Checkpoint、Retention Class 与 Deadline、Dead-letter Recovery 索引、按结果区分的 Scheduled Retention，以及物化的 Workflow Lineage；同时把既有 Terminal Run 回填为 `interactive` 并写入 Retention Root。不需要单独执行 `workflow-world-setup`。
+
+首次以 Maintenance Enabled 启动 Dispatcher 时会立即执行一次有界维护。因此既有 Terminal Shared-world Run 可能立刻达到删除条件：超过 24 小时的 non-EOF Stream Data 和超过 30 天的 Interactive Workflow Graph 可能被删除，EOF Marker 保留。即使 Eveland 主数据库有独立备份，也必须在启动 0.35 前备份共享 Workflow World。
+
+如果没有设置 `EVELAND_WORKFLOW_WORLD_URL`，且没有 Project 使用共享 World，下文的共享 Migration、Dispatcher 与共享 Retention 步骤不适用；Deployment 与 Sandbox 上限仍然适用。
+
+### 预期中的行为变化
+
+- **每个共享数据库只能运行一个 Workflow Dispatcher。** 它在完整生命周期内持有 advisory lock，只从 Active Run 的精确 per-run Queue 回收遗留 Graphile Worker Lock，重新入队后才启动 Worker Pool。第二个 0.35 Dispatcher 会 fail closed。0.34 Dispatcher 不参与该 Ownership Lock，因此必须先停止旧进程，再启动 0.35。
+- **Dispatcher 的连接预算更严格。** 一个 Pool Connection 用于 Lifecycle Ownership，另一个用于 Graphile `LISTEN`，所以 `WORKFLOW_DISPATCHER_CONCURRENCY` 最大只能是 `WORKFLOW_DISPATCHER_POOL_SIZE - 2`。默认 Pool Size 为 10，对应默认 Concurrency 8；0.34 中可用的显式值 9 必须下调。
+- **共享存储有了物理上界与过期策略。** 新 Reader 同时理解 Legacy Row 和 storage-v2 Block。Dispatcher 会打包 Terminal Stream、按 Deadline 过期 non-EOF Stream Data、删除过期 Workflow Graph，并回收空的 per-run Graphile Queue。`EVELAND_WORKFLOW_SWEEP_*` 从此只控制 Legacy per-Project World；`EVELAND_WORKFLOW_SHARED_SWEEP_MAX_BATCHES` 已废弃。
+- **Scheduled Graph 的失败记录比成功记录保留更久。** 在 0.35 下新构建的 Scheduler Channel 会把新建 Markdown/Handler Session 标记为 `scheduled`，其 Descendant 通过 Workflow SDK Lineage 继承 Root Class。成功的 Scheduled Graph 保留 Stream Data 15 分钟、Graph Detail 24 小时；失败时分别为 1 小时和 7 天；取消时分别为 1 小时和 3 天。Interactive Graph 分别保留 24 小时和 30 天；Persistent Graph 不自动过期。投递到既有 Session 时保留该 Session 已存的 Root Class。
+- **每个 Deployment 都有 cgroup 上限。** Docker 现在应用与 systemd 相同的 Memory/CPU 设置，两种 Adapter 都增加 Task 上限。默认值是每个 Deployment 2 GiB、200% CPU 与 512 个进程/线程。Docker 还会运行 init process，回收 orphaned bwrap helper，避免它们变成永久 Zombie。
+- **Sandbox 命令有明确边界。** 注入的 bwrap `run()` 默认有 10 分钟 wall-clock 上限；每个 Compute Generation 最多接纳 64 个 live Sandbox Command；单个 `run()` 最多保留 16 MiB stdout/stderr 合计输出。超时或调用方 Abort 会终止完整 bwrap Process Group。需要长期存活的 Authored Service 必须使用 `spawn()`。
+- **Authored Sandbox Lifecycle 会真正执行。** 新构建 Release 仍使用 Eveland 受管 Backend，但保留 Project 的 `bootstrap()`、`onSession()`、`description`、`revalidationKey`、相对 Import 与 `sandbox/workspace/**` Seed。重新部署曾依赖 0.34 意外丢弃这些 Hook 的 Project 前，必须先检查其副作用。
+
+## 1. 备份并盘点 0.34
+
+按照现有基础设施流程备份以下全部内容：
+
+1. Eveland 控制面 Postgres 数据库；
+2. 已配置时，由 `EVELAND_WORKFLOW_WORLD_URL` 指向的数据库；
+3. `EVELAND_DATA_DIR`。
+
+记录当前 Tag 与 Revision，等待重要的 Import、Build、Deploy、Delete、Schedule 与 Interactive Workflow Turn 收敛。只检查两份宿主机 Environment 文件中的非密钥 Workflow 设置：
+
+```bash
+sudo grep -E '^(EVELAND_WORKFLOW_WORLD_ROLLOUT|EVELAND_WORKFLOW_RUNNER|EVELAND_WORKFLOW_STREAM_COMPACTION)=' /etc/eveland/eveland-worker.env
+sudo grep -E '^(WORKFLOW_DISPATCHER_POOL_SIZE|WORKFLOW_DISPATCHER_CONCURRENCY|WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS|EVELAND_WORKFLOW_STREAM_COMPACTION)=' /etc/eveland/eveland-workflow-dispatcher.env
+```
+
+先停止旧 Dispatcher，再停止 Worker：
+
+```bash
+sudo systemctl stop eveland-workflow-dispatcher
+sudo systemctl stop eveland-worker
+```
+
+升级期间不要在其他位置启动旧 Dispatcher。新的 Ownership Lock 无法 Fence 一个从不获取该锁的 0.34 Binary。
+
+## 2. 设置 0.35 上限与 Rollout 开关
+
+把 [`infra/systemd/eveland-worker.env.example`](https://github.com/evelandhq/eveland/blob/main/infra/systemd/eveland-worker.env.example) 与 [`infra/systemd/eveland-workflow-dispatcher.env.example`](https://github.com/evelandhq/eveland/blob/main/infra/systemd/eveland-workflow-dispatcher.env.example) 当作检查清单，不要覆盖现有密钥或拓扑相关 URL。
+
+为 Worker 明确选择限制值。沿用默认值完全有效，但在生产配置中写明它们能让边界保持有意识、可审计：
+
+```bash
+EVELAND_MEMORY_MAX=2G
+EVELAND_CPU_QUOTA=200%
+EVELAND_TASKS_MAX=512
+EVELAND_SANDBOX_RUN_TIMEOUT_MS=600000
+EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES=64
+EVELAND_SANDBOX_MAX_OUTPUT_BYTES=16777216
+```
+
+调高任何值前先检查 Agent。尤其不要通过无限调大 Deadline 把 `run()` 变成长驻服务；生命周期确实应绑定到 Session 的 Authored Process 应使用 `spawn()`。
+
+Dispatcher 侧需要：
+
+- 删除仍然存在的 `EVELAND_WORKFLOW_SHARED_SWEEP_MAX_BATCHES`；
+- 只在 Worker 保留 Legacy `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS`、`EVELAND_WORKFLOW_STREAM_RETENTION_MS` 与 `EVELAND_WORKFLOW_SWEEP_BATCH_SIZE`；
+- 让 `WORKFLOW_DISPATCHER_CONCURRENCY` 不高于 `WORKFLOW_DISPATCHER_POOL_SIZE - 2`；
+- 从示例文件加入 `WORKFLOW_DISPATCHER_MAINTENANCE_*`，或接受它们的有界默认值；
+- Worker 与 Dispatcher 的 `EVELAND_WORKFLOW_STREAM_COMPACTION` 必须相同。
+
+对于已有共享 World，最安全的首次启动方式是临时使用：
+
+```bash
+# Dispatcher：执行 Migration 与 Dispatch，但首次启动不删除、不重打包。
+WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS=0
+
+# Worker 与 Dispatcher：保持相同值；正常设置为 on。
+EVELAND_WORKFLOW_STREAM_COMPACTION=on
+```
+
+如果仍有 Retained Session 路由到 0.34 构建的 Deployment，暂停 Maintenance 很重要：其中打包的 0.6 Reader 不理解 v2 Physical Block，而 0.35 Reader 同时接受两种格式。`EVELAND_WORKFLOW_STREAM_COMPACTION=off` 不是 Migration 开关：它只关闭 Snapshot Stripping，Maintenance 仍会打包 v2 Physical Block。没有 Retained Session 或 Active Shared-world Run 需要 0.34 构建的 Deployment 后再启用 Maintenance；或者由 Operator 明确接受这些旧 Session 无法再经原 Deployment Replay。
+
+如果是新建/空的共享 World，或所有相关 Deployment 都已使用 Mixed-format Reader，可以直接使用正常值：
+
+```bash
+WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS=60000
+EVELAND_WORKFLOW_STREAM_COMPACTION=on
+```
+
+## 3. 安装 0.35
+
+在控制面 Checkout 中：
+
+```bash
+git fetch --tags origin
+git checkout v0.35.0
+pnpm install --frozen-lockfile
+pnpm --filter @evelandhq/api db:migrate
+git rev-parse --short=12 HEAD
+```
+
+把打印出的 Revision 作为 `EVELAND_REVISION` 写入共享生产环境，并保持 `EVELAND_RELEASE_CHANNEL=stable`。
+
+更新 Worker 与 Dispatcher 共用的宿主机 Checkout：
+
+```bash
+cd /opt/eveland
+git fetch --tags origin
+git checkout v0.35.0
+pnpm install --frozen-lockfile
+git rev-parse --short=12 HEAD
+```
+
+在 `/etc/eveland/eveland-worker.env` 与 `/etc/eveland/eveland-workflow-dispatcher.env` 中写入相同的 Revision 与 Channel。
+
+本次没有 `@evelandhq/sandbox-bwrap` Build 步骤。`0.2.0` 已在 npm Package 中提供预构建产物，Frozen Lockfile 会选择经过验证的精确 Artifact。
+
+## 4. 按 Migration 顺序启动
+
+先验证并启动控制面，让 Dispatcher 的 Activation Health Gate 能访问 API：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+随后启动 Worker。它会在接收 Job 或启动 Deployment 前应用 Shared-world Migration：
+
+```bash
+sudo systemctl start eveland-worker
+sudo journalctl -u eveland-worker -n 150 --no-pager
+```
+
+配置了共享 World 时，等待日志出现 `Shared workflow-world database schema is ready.`，随后出现 Worker Ready Line。然后只启动一个 Dispatcher：
+
+```bash
+sudo systemctl start eveland-workflow-dispatcher
+sudo journalctl -u eveland-workflow-dispatcher -n 150 --no-pager
+```
+
+在它打印 `workflow-dispatcher: ready` 前不要继续。`Another workflow dispatcher already owns this database` 表示已有另一个 0.35 Generation 正在运行，必须先定位它；这不是增加 Replica 或批量清除所有 Graphile Lock 的理由。
+
+## 5. 验证 0.35
+
+完成所有适用检查：
+
+1. API 与 Gateway `/health` 返回 `version: 0.35.0`、`channel: stable` 以及相同 Revision。
+2. **Settings → About** 中 Web、API、Gateway 与 Worker 的 Build Identity 一致，并显示预期 Worker Limit。
+3. Worker 日志报告共享 Schema Ready，且只有一个 Dispatcher 报告 Ready。
+4. 共享数据库的 Migration Registry 包含 `0007` 到 `0012`：
+
+   ```sql
+   select name
+   from workflow.eveland_migrations
+   where name >= '0007'
+   order by name;
+   ```
+
+5. 运行一次普通 Playground Turn 与一次 Schedule，确认 Session Timeline、Usage、ScheduleRun 与最终响应仍出现在 Eveland Read Model 中。
+6. 部署一个 Canary Project。如果它声明了 Sandbox Lifecycle，确认 Build Log 明确记录 Lifecycle 已保留，并执行一个短时 Sandbox `run()`。
+7. Restart 或 Cold-activate 一个 Canary Deployment 并检查 Runtime Boundary。systemd 可执行 `systemctl show <deployment-unit> -p MemoryMax -p CPUQuotaPerSecUSec -p TasksMax`；Docker 应显示对应的 Memory、CPU 与 PID Limit。
+8. 启用 Maintenance 时，确认 `workflow_dispatcher.storage_maintenance` 的 Block、Stream 与 Run 三种 Role 都没有错误。Hit Batch Limit 只表示有界 Backlog 会由后续轮次继续处理，不应改成手工无界清理。
+
+## 6. 在分阶段启动后启用有界维护
+
+如果首次启动设置了 `WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS=0`，先确认共享 World 备份可用，且 Retention Window 符合运维预期；然后将它设为 `60000`，只重启 Dispatcher：
+
+```bash
+sudo systemctl restart eveland-workflow-dispatcher
+sudo journalctl -u eveland-workflow-dispatcher -n 150 --no-pager
+```
+
+首次 Maintenance Pass 会立即执行、重打包符合条件的 Terminal Stream，并可能删除已经过期的数据。不要把 `VACUUM FULL` 作为本次升级的一部分；普通 Delete 会让 Page 可复用，数据库文件不需要立刻缩小。
+
+正常运行应保持 `EVELAND_WORKFLOW_STREAM_COMPACTION=on`。如果诊断 Stream Shape 时需要紧急 `off`，必须同时应用到 Worker 与 Dispatcher；它改变的是 Snapshot Stripping，不是 storage-v2 Reader 兼容性或 Maintenance Schedule。重启 Worker 与 Dispatcher 使二者一致，再 Restart 或 Redeploy 需要接收新 Write Policy 的 0.35 Deployment。
+
+## Agent 重新部署边界
+
+平台升级不会改写不可变 Release。既有 Agent 会继续使用打包在 Release 中的 `workflow-world@0.6.0` 与 `sandbox-bwrap@0.1.1`，直到在 0.35 下构建新 Release。
+
+有意识地重新部署后才会获得：
+
+- Mixed-format Shared-world Reader、storage-v2 Writer 与 Retention Lineage；
+- 注入 Scheduler Channel 的 Scheduled Root Classification；
+- `sandbox-bwrap@0.2.0` 的完整 Process-group Termination 与命令并发/输出上限；
+- Authored Sandbox Lifecycle 与 Metadata 的保留。
+
+重新部署前，把需要长期存活的 `run()` 调用改为 `spawn()`，并检查 `bootstrap()` 或 `onSession()` 中 0.34 曾意外抑制的副作用。cgroup Limit 在 Deployment Process 下次创建时生效；注入的 Sandbox 与 Scheduler 变化需要新 Release。
+
+除此之外，0.35 不要求 Agent Source Migration，也不要求升级 `eveland` SDK。
+
+## 回滚到 0.34
+
+如果安装从未配置共享 Workflow World，本次没有需要撤销的数据库变化：停止 Dispatcher 与 Worker，在两个位置 Checkout `v0.34.0`，重新安装 Frozen Lockfile，恢复此前的 Revision 与 Environment，启动 Compose，最后启动 Worker。
+
+使用共享 World 的安装，**完整回滚的受支持路径是恢复升级前的共享 World 数据库备份**。Package Migration 本身是 Additive，但 0.34 Reader 无法解码重打包后的 storage-v2 Row；Maintenance 还可能不可逆地删除过期 non-EOF Stream Data 与 Workflow Graph，源码 Checkout 无法重建二者。
+
+先停止 Dispatcher，再停止 Worker 与 0.35 控制面服务。把共享 World 数据库恢复到升级前时间点；如果备份流程要求数据库与文件系统时间点一致，则同时恢复控制面数据库与 `EVELAND_DATA_DIR`。在两个 Checkout 中切回 `v0.34.0`，重新安装 Frozen Lockfile，恢复旧 Environment 与 Revision，启动 Compose、启动 Worker，最后启动单一 0.34 Dispatcher。
+
+恢复操作会丢弃备份之后的 Shared Workflow Activity。0.35 Dispatcher 仍持有 Ownership 或数据库仍在恢复时，绝不能启动 0.34 Dispatcher 连接该共享数据库。
+
+关于不随版本变化的通用升级流程，见[升级与回滚](/zh/docs/operations/upgrades)。本文提到的每个变量，见[配置](/zh/docs/reference/configuration)。

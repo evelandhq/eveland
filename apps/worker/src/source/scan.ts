@@ -39,7 +39,7 @@ export async function scanEveSource(input: {
     throw new Error(`Invalid eve project: ${inspection.errors.join(" ")}`);
   }
 
-  return {
+  const result: SourceScanResult = {
     kind: input.kind,
     sourcePath: input.sourcePath,
     commitSha: input.commitSha ?? null,
@@ -79,6 +79,29 @@ export async function scanEveSource(input: {
       };
     }),
   };
+
+  assertNoNulCharacters(result);
+  return result;
+}
+
+function assertNoNulCharacters(value: unknown, fieldPath = ""): void {
+  if (typeof value === "string") {
+    if (value.includes("\u0000")) {
+      throw new Error(`Source scan result contains a NUL character at ${fieldPath}.`);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => assertNoNulCharacters(entry, `${fieldPath}[${index}]`));
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    for (const [key, entry] of Object.entries(value)) {
+      assertNoNulCharacters(entry, fieldPath ? `${fieldPath}.${key}` : key);
+    }
+  }
 }
 
 async function collectSourceFiles(rootDir: string, relativeDir = ""): Promise<SourceFile[]> {
@@ -115,10 +138,14 @@ async function collectSourceFiles(rootDir: string, relativeDir = ""): Promise<So
     }
 
     try {
-      files.push({
-        path: relativePath,
-        content: await readFile(absolutePath, "utf8"),
-      });
+      const content = await readFile(absolutePath, "utf8");
+      // A utf8 read keeps NUL bytes instead of throwing, and Postgres rejects them
+      // in TEXT/JSONB (22021), so treat such a file as binary rather than rewriting
+      // content the source browser is meant to mirror.
+      if (content.includes("\u0000")) {
+        continue;
+      }
+      files.push({ path: relativePath, content });
     } catch {
       // Binary or unreadable files are not needed for the source browser.
     }
