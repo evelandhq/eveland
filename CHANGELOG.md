@@ -4,6 +4,21 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.35.0](https://github.com/evelandhq/eveland/compare/v0.34.0...v0.35.0) (2026-08-17)
+
+
+### Features
+
+* enforce scheduled workflow retention ([7958d36](https://github.com/evelandhq/eveland/commit/7958d36f1f6b777e3bbf48593f774796c8f20507))
+
+
+### Bug Fixes
+
+* contain runaway sandbox processes ([3647947](https://github.com/evelandhq/eveland/commit/36479471ac778211c9c9ad108007a0f78d0ccb8c))
+* prevent unbounded workflow storage growth ([182593e](https://github.com/evelandhq/eveland/commit/182593ec074078676912afd48e6293b4b59f720d))
+* **worker:** harden sandbox lifecycle and retention ([#317](https://github.com/evelandhq/eveland/issues/317)) ([5c4f410](https://github.com/evelandhq/eveland/commit/5c4f4108d32abbcebdd19a9fbee57ac0a9e6b2d6))
+* **worker:** preserve authored sandbox lifecycle ([d414859](https://github.com/evelandhq/eveland/commit/d414859fc29fac98c2660f8ed4e49626079748ee))
+
 ## [0.34.0](https://github.com/evelandhq/eveland/compare/v0.33.0...v0.34.0) (2026-08-15)
 
 
