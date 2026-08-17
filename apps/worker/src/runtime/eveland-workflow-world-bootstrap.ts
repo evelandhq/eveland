@@ -20,7 +20,7 @@ const defaultBootstrapDeps: EvelandWorkflowWorldBootstrapDeps = {
   ensureTenantPartitions: ensureTenantPartitionsDefault,
 };
 
-/** Apply shared-World migrations once at worker startup, before retention runs. */
+/** Apply shared-World migrations once at worker startup, before dispatch or execution. */
 export async function bootstrapEvelandWorkflowWorld(
   env: NodeJS.ProcessEnv,
   overrides: Partial<EvelandWorkflowWorldBootstrapDeps> = {},

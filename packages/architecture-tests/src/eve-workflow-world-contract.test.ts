@@ -123,7 +123,7 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins the spec-v6 platform worlds reviewed for Eve 0.38.3", () => {
-    expect(worldManifest.version).toBe("0.6.0");
+    expect(worldManifest.version).toBe("0.7.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     const workspace = readSource("pnpm-workspace.yaml");
@@ -137,6 +137,23 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     ) as { SPEC_VERSION_CURRENT: number };
     expect(sharedSpecVersion).toBe(6);
     expect(postgresSpecVersion).toBe(6);
+  });
+
+  test("exposes the bounded-storage controls in the root environment example", () => {
+    const environmentExample = readSource(".env.example");
+    for (const name of [
+      "EVELAND_WORKFLOW_STREAM_COMPACTION",
+      "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
+      "WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS",
+      "WORKFLOW_DISPATCHER_MAINTENANCE_STREAM_BATCH_SIZE",
+      "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_BATCHES",
+      "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK",
+      "WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE",
+    ]) {
+      expect(environmentExample, `.env.example must expose ${name}`).toMatch(
+        new RegExp(`^${name}=`, "m"),
+      );
+    }
   });
 
   test("the injected version is exactly the installed one these tests run against", () => {

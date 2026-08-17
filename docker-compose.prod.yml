@@ -119,6 +119,7 @@ services:
       CI: "true"
       DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
       WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland
       EVELAND_RUNTIME: docker
       EVELAND_DATA_DIR: /var/lib/eveland
       EVELAND_OTLP_ENDPOINT: http://127.0.0.1:4318

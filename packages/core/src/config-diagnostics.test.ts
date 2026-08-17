@@ -81,7 +81,7 @@ describe("configuration diagnostics", () => {
     );
   });
 
-  test("reports shared workflow retention defaults and redacts its database URL", () => {
+  test("reports legacy workflow retention defaults and redacts the shared database URL", () => {
     const snapshot = createConfigurationSnapshot("worker", {
       EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL:
         "postgres://world:database-password@db.internal:5432/workflow?sslmode=require",
@@ -96,10 +96,6 @@ describe("configuration diagnostics", () => {
         }),
         expect.objectContaining({ name: "EVELAND_WORKFLOW_SWEEP_BATCH_SIZE", value: "50000" }),
         expect.objectContaining({
-          name: "EVELAND_WORKFLOW_SHARED_SWEEP_MAX_BATCHES",
-          value: "20",
-        }),
-        expect.objectContaining({
           name: "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
           value: "postgres://••••@db.internal:5432/workflow?sslmode=••••",
           sensitivity: "url",
@@ -107,6 +103,47 @@ describe("configuration diagnostics", () => {
       ]),
     );
     expect(JSON.stringify(snapshot)).not.toContain("database-password");
+  });
+
+  test("reports workflow-world 0.7 bounded-storage controls", () => {
+    const worker = createConfigurationSnapshot("worker", {});
+    const dispatcher = createConfigurationSnapshot("workflow-dispatcher", {});
+
+    expect(worker.entries).toContainEqual(
+      expect.objectContaining({ name: "EVELAND_WORKFLOW_STREAM_COMPACTION", value: "on" }),
+    );
+    expect(dispatcher.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "EVELAND_WORKFLOW_STREAM_COMPACTION",
+          value: "on",
+        }),
+        expect.objectContaining({
+          name: "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
+          value: "300000",
+        }),
+        expect.objectContaining({
+          name: "WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS",
+          value: "60000",
+        }),
+        expect.objectContaining({
+          name: "WORKFLOW_DISPATCHER_MAINTENANCE_STREAM_BATCH_SIZE",
+          value: "50000",
+        }),
+        expect.objectContaining({
+          name: "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_BATCHES",
+          value: "20",
+        }),
+        expect.objectContaining({
+          name: "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK",
+          value: "100",
+        }),
+        expect.objectContaining({
+          name: "WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE",
+          value: "1000",
+        }),
+      ]),
+    );
   });
 
   test("reports Git retry and generic job lease defaults for the worker", () => {

@@ -23,10 +23,9 @@ import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { sweepReleaseRetention } from "./runtime/release-reaper.js";
 import { sweepWorkflowStreamRetention } from "./runtime/workflow-world-reaper.js";
-import { createSharedWorkflowWorldReaper } from "./runtime/shared-workflow-world-reaper.js";
 import {
   formatWorkflowStreamRetentionSummary,
-  runWorkflowStreamRetentionSweeps,
+  runWorkflowStreamRetentionSweep,
   startWorkflowStreamRetentionScheduler,
 } from "./runtime/workflow-stream-retention.js";
 import {
@@ -300,17 +299,15 @@ if (releaseSweepIntervalMs > 0) {
   releaseTimer = setInterval(sweepReleases, releaseSweepIntervalMs);
 }
 
-const sharedWorkflowWorldReaper = createSharedWorkflowWorldReaper();
 const workflowRetentionScheduler = startWorkflowStreamRetentionScheduler({
   intervalMs: workflowSweepIntervalMs,
   run: async () => {
-    await runWorkflowStreamRetentionSweeps({
+    await runWorkflowStreamRetentionSweep({
       sweepLegacy: () =>
         sweepWorkflowStreamRetention(process.env, {
           retentionMs: Number(process.env.EVELAND_WORKFLOW_STREAM_RETENTION_MS ?? 86_400_000),
           batchSize: Number(process.env.EVELAND_WORKFLOW_SWEEP_BATCH_SIZE ?? 50_000),
         }),
-      sweepShared: () => sharedWorkflowWorldReaper.sweep(process.env),
       onSummary(summary) {
         const formatted = formatWorkflowStreamRetentionSummary(summary);
         console[formatted.level](formatted.message);
@@ -323,7 +320,6 @@ const workflowRetentionScheduler = startWorkflowStreamRetentionScheduler({
       },
     });
   },
-  close: () => sharedWorkflowWorldReaper.close(),
   onError: (error) =>
     console.error(
       "Workflow stream retention scheduler failed:",

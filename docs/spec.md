@@ -1025,7 +1025,8 @@ build：install/build lifecycle script 是不可信的项目代码，无论以�
   Build Log 记录 `WARNING`，但仍照常注入已部署进程，不能静默丢弃。
 - 运行时保留变量同样不进入 build：`NODE_ENV`、`EVELAND_PROJECT_ID`、`EVELAND_IDENTITY_ISSUER`、
   `EVELAND_IDENTITY_JWKS_URL`、`EVELAND_SCHEDULER_REDEEM_URL`、`EVELAND_SCHEDULER_RUNTIME_SECRET`、
-  `WORKFLOW_POSTGRES_URL`、`WORKFLOW_POSTGRES_MAX_POOL_SIZE`。运行时以保留层最后覆盖它们，build
+  `EVELAND_WORKFLOW_STREAM_COMPACTION`、`WORKFLOW_POSTGRES_URL`、
+  `WORKFLOW_POSTGRES_MAX_POOL_SIZE`。运行时以保留层最后覆盖它们，build
   若采用 Project 值就会编译出运行时随即覆盖的结果——正是 build 可见 variable 要消除的那类
   build/runtime 分歧。其中 `NODE_ENV` 无条件丢弃：`npm ci` 与 `pnpm install --frozen-lockfile` 在
   `NODE_ENV=production` 下都会跳过 devDependencies，会把项目自己的构建工具链从 `npx eve build`
@@ -1163,10 +1164,10 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
 不得被修改。Eve 0.38.3 要求 workflow spec v6，因此 legacy world 固定为
 `@workflow/world-postgres@5.0.0-beta.34`，共享 world 固定为
-`@evelandhq/workflow-world@0.6.0`；两者都必须通过 0.37.1 与 0.38.3 的 World contract 门禁。
+`@evelandhq/workflow-world@0.7.0`；两者都必须通过 0.37.1 与 0.38.3 的 World contract 门禁。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
-配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在开始共享库 retention 前幂等执行
+配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在 dispatcher 或 Deployment 使用共享库前幂等执行
 `@evelandhq/workflow-world` migration；若 host 与 Deployment 访问同一数据库所需地址不同，
 host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。新空库可以无人值守完成完整
 bootstrap；已有 schema 若缺少标记为 maintenance-window 的破坏性 migration，worker startup 与
@@ -1194,12 +1195,26 @@ Release 的 build-time 属性，不能用运行时改 flag 的方式替换仍在
 worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
 `WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。
 
-worker 每小时（默认 `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=3600000`）独立清理 legacy 与共享
-workflow 的过期 stream chunks；任一路失败不得抑制另一路。默认保留窗口固定为 24 小时
+worker 每小时（默认 `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=3600000`）只清理 legacy
+per-project workflow 的过期 stream chunks。默认保留窗口为 24 小时
 （`EVELAND_WORKFLOW_STREAM_RETENTION_MS=86400000`），只删除 completed、failed、cancelled
-run 的 `eof=false` chunk，EOF marker 必须永久保留。共享库每次最多 20 个、每个最多 50,000
-行的 DELETE，并使用 advisory lock 避免多个 worker 叠加负载；达到上限必须报告 backlog，
-后续 sweep 继续排空。`EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=0` 同时禁用两条路径。删除窗口外
+run 的 `eof=false` chunk，EOF marker 永久保留；`EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=0`
+只禁用这条 legacy sweep。
+
+共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.7.0` 与 dispatcher 共同持有。
+World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
+建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
+physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。
+`EVELAND_WORKFLOW_STREAM_COMPACTION=off` 只是写侧与 terminal block rewrite 的紧急开关，
+由 worker 保留并注入 Deployment，同时提供给 dispatcher；reader 始终兼容新旧混合数据。
+
+dispatcher 在启动时以及默认每 60 秒执行一次 bounded maintenance：打包旧 terminal stream、
+按 deadline 删除非 EOF stream data、删除过期 workflow graph，并独立回收空的 per-run Graphile
+queue。每项使用 advisory lock、彼此 failure-isolated，单次工作量由
+`WORKFLOW_DISPATCHER_MAINTENANCE_*` 控制；`WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS=0`
+禁用自动 maintenance。scheduled/ephemeral run 在 terminal 后 1 分钟可 compact、15 分钟删除
+非 EOF stream data、7 天删除 graph；interactive（默认）分别为 5 分钟、24 小时和 30 天；
+persistent 永不自动删除。active/waiting run 没有 deadline，EOF marker 永久保留。删除窗口外
 chunk 意味着更老 raw cursor 不再保证 replay；普通 DELETE 只保证页面可复用，不保证数据库
 文件立即向操作系统缩小。
 

@@ -288,6 +288,7 @@ export async function composeDeploymentEnv(
       ? {
           EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
           EVELAND_WORKFLOW_RUNNER: resolveWorkflowRunnerMode(workerEnv),
+          EVELAND_WORKFLOW_STREAM_COMPACTION: workerEnv.EVELAND_WORKFLOW_STREAM_COMPACTION ?? "on",
         }
       : {}),
     ...(identityIssuer ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") } : {}),
