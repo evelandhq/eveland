@@ -468,7 +468,6 @@ export function sessionRowToSession(row: {
   projectId: string;
   deploymentId: string | null;
   eveSessionId: string | null;
-  continuationToken: string | null;
   rootNodeId: string | null;
   routeId: string | null;
   experimentId: string | null;
@@ -492,7 +491,6 @@ export function sessionRowToSession(row: {
     projectId: row.projectId,
     deploymentId: row.deploymentId,
     eveSessionId: row.eveSessionId,
-    continuationToken: row.continuationToken,
     rootNodeId: row.rootNodeId,
     routeId: row.routeId,
     experimentId: row.experimentId,
@@ -700,7 +698,6 @@ export function sessionBindingRowToSessionBinding(row: {
   id: string;
   projectId: string;
   eveSessionId: string;
-  continuationToken: string | null;
   routeId: string;
   deploymentId: string;
   trigger: string;

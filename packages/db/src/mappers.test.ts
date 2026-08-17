@@ -97,7 +97,6 @@ describe("db mappers", () => {
         projectId: "proj_123",
         deploymentId: "dep_123",
         eveSessionId: "eve_123",
-        continuationToken: null,
         rootNodeId: "node_123",
         routeId: null,
         experimentId: null,

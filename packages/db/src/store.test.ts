@@ -756,8 +756,8 @@ describe("SQL Store jobs", () => {
 
     await expect(store.getDeploymentEveVersion(oldDeployment.id)).resolves.toEqual({
       version: "0.22.6",
-      expected: "0.37.x or 0.38.x",
-      supportedRanges: ["0.37.x", "0.38.x"],
+      expected: "0.38.x or 0.39.x",
+      supportedRanges: ["0.38.x", "0.39.x"],
       supported: false,
       sourceRevisionId: oldRevision.id,
     });
@@ -905,7 +905,6 @@ describe("SQL Store jobs", () => {
     const completed = await store.completeSession(session.id, {
       status: "completed",
       eveSessionId: "eve_123",
-      continuationToken: "continue_123",
     });
 
     await expect(store.listSessions(project.id)).resolves.toEqual([
@@ -913,7 +912,6 @@ describe("SQL Store jobs", () => {
         id: session.id,
         status: "completed",
         eveSessionId: "eve_123",
-        continuationToken: "continue_123",
         completedAt: expect.any(String),
       }),
     ]);

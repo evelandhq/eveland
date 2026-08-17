@@ -137,7 +137,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       repository,
       projectId: route.projectId,
       request: eveRequest,
-      bufferedBody: routingBody.body,
       now,
       idlePolicy: sessionIdlePolicy,
     });
@@ -157,7 +156,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       binding,
       operationBinding: operation.state === "active" ? operation.binding : null,
       operationKey,
-      minimumEveVersion: operationKey ? "0.37.1" : null,
       targetKey: crypto.randomUUID(),
       activationOwnerId: crypto.randomUUID(),
       provenance: { kind: "playground", requestId: crypto.randomUUID() },
@@ -256,7 +254,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       repository,
       projectId: route.projectId,
       request: eveRequest,
-      bufferedBody: routingBody.body,
       now,
       idlePolicy: sessionIdlePolicy,
     });
@@ -271,13 +268,6 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       binding,
       operationBinding: operation.state === "active" ? operation.binding : null,
       operationKey,
-      minimumEveVersion:
-        operationKey ||
-        eveRequest?.kind === "task_input" ||
-        eveRequest?.kind === "mcp_start" ||
-        eveRequest?.kind === "mcp_invocation"
-          ? "0.37.1"
-          : null,
       targetKey: affinity.key,
       activationOwnerId: requestId,
       provenance: {

@@ -17,29 +17,15 @@ import { mcpInvocationIdFromValue } from "./gateway-durable-routing.js";
 
 export type GatewaySessionBindingRepository = {
   findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
-  findSessionBindingByContinuationToken(
-    projectId: string,
-    continuationToken: string,
-  ): Promise<SessionBinding | null>;
   touchSessionBinding(
     projectId: string,
     eveSessionId: string,
     now?: Date,
   ): Promise<SessionBinding | null>;
-  bindSession(
-    input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt" | "continuationToken"> & {
-      continuationToken?: string | null;
-    },
-  ): Promise<unknown>;
-  setSessionBindingContinuationToken(
-    projectId: string,
-    eveSessionId: string,
-    continuationToken: string | null,
-    now?: Date,
-  ): Promise<SessionBinding | null>;
+  bindSession(input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt">): Promise<unknown>;
 };
 
-type GatewaySessionLookup = "none" | "session_id" | "continuation_token";
+type GatewaySessionLookup = "none" | "session_id";
 
 export type GatewaySessionResolution =
   | {
@@ -59,7 +45,6 @@ export async function resolveGatewaySessionBinding(input: {
   repository: GatewaySessionBindingRepository;
   projectId: string;
   request: EveSessionRequest | null;
-  bufferedBody: Uint8Array | null | undefined;
   now: () => Date;
   idlePolicy: SessionBindingIdlePolicy;
 }): Promise<GatewaySessionResolution> {
@@ -70,15 +55,6 @@ export async function resolveGatewaySessionBinding(input: {
   if (request?.sessionId) {
     lookup = "session_id";
     binding = await repository.findSessionBinding(projectId, request.sessionId);
-  } else if (request?.kind === "initial" || request?.kind === "reset") {
-    const continuationToken = continuationTokenFromBody(input.bufferedBody);
-    if (continuationToken) {
-      lookup = "continuation_token";
-      binding = await repository.findSessionBindingByContinuationToken(
-        projectId,
-        continuationToken,
-      );
-    }
   }
 
   if (!binding || !request || lookup === "none") {
@@ -123,22 +99,12 @@ export async function applyGatewaySessionResponse(input: {
   repository: GatewaySessionBindingRepository;
   projectId: string;
   request: EveSessionRequest | null;
-  binding: SessionBinding | null;
   upstream: Response;
   target: GatewaySessionTarget;
   provenance: GatewaySessionProvenance;
 }): Promise<void> {
   const { request, upstream } = input;
-  if (
-    !request ||
-    !upstream.ok ||
-    request.kind === "cancel" ||
-    request.kind === "stream" ||
-    request.kind === "clear" ||
-    request.kind === "compact" ||
-    request.kind === "task_input" ||
-    request.kind === "mcp_invocation"
-  ) {
+  if (!request || !upstream.ok || (request.kind !== "initial" && request.kind !== "mcp_start")) {
     return;
   }
 
@@ -147,45 +113,19 @@ export async function applyGatewaySessionResponse(input: {
       ? await sessionResponseMetadata(upstream.clone())
       : null;
 
-  if (request.kind === "initial" || request.kind === "mcp_start") {
-    const eveSessionId =
-      request.kind === "mcp_start"
-        ? (metadata?.invocationId ?? null)
-        : (upstream.headers.get("x-eve-session-id") ?? metadata?.sessionId ?? null);
-    if (!eveSessionId) return;
+  const eveSessionId =
+    request.kind === "mcp_start"
+      ? (metadata?.invocationId ?? null)
+      : (upstream.headers.get("x-eve-session-id") ?? metadata?.sessionId ?? null);
+  if (!eveSessionId) return;
 
-    const provenance = bindingProvenance(input.provenance);
-    await input.repository.bindSession({
-      projectId: input.projectId,
-      eveSessionId,
-      continuationToken: metadata?.continuationToken ?? null,
-      ...input.target,
-      ...provenance,
-    });
-    return;
-  }
-
-  if (request.kind === "continuation" && request.sessionId && metadata?.continuationToken) {
-    await input.repository.setSessionBindingContinuationToken(
-      input.projectId,
-      request.sessionId,
-      metadata.continuationToken,
-    );
-    return;
-  }
-
-  if (
-    request.kind === "reset" &&
-    input.binding &&
-    metadata?.status === "reset" &&
-    metadata.previousSessionId === input.binding.eveSessionId
-  ) {
-    await input.repository.setSessionBindingContinuationToken(
-      input.projectId,
-      input.binding.eveSessionId,
-      null,
-    );
-  }
+  const provenance = bindingProvenance(input.provenance);
+  await input.repository.bindSession({
+    projectId: input.projectId,
+    eveSessionId,
+    ...input.target,
+    ...provenance,
+  });
 }
 
 function bindingProvenance(
@@ -209,11 +149,6 @@ function bindingProvenance(
         affinityFingerprint: null,
         affinitySource: null,
       };
-}
-
-function continuationTokenFromBody(body: Uint8Array | null | undefined): string | null {
-  if (!body || body.byteLength === 0) return null;
-  return getEveString(parseEveJsonObject(new TextDecoder().decode(body)), "continuationToken");
 }
 
 function isJsonResponse(response: Response): boolean {
@@ -271,9 +206,6 @@ async function readBodyWithin(
 async function sessionResponseMetadata(response: Response): Promise<{
   sessionId: string | null;
   invocationId: string | null;
-  continuationToken: string | null;
-  previousSessionId: string | null;
-  status: string | null;
 } | null> {
   const text = await readBodyWithin(response.body, MAX_SESSION_METADATA_BYTES);
   if (text === null) return null;
@@ -282,9 +214,6 @@ async function sessionResponseMetadata(response: Response): Promise<{
   return {
     sessionId: getEveString(parsed, "sessionId"),
     invocationId: mcpInvocationIdFromValue(parsed),
-    continuationToken: getEveString(parsed, "continuationToken"),
-    previousSessionId: getEveString(parsed, "previousSessionId"),
-    status: getEveString(parsed, "status"),
   };
 }
 

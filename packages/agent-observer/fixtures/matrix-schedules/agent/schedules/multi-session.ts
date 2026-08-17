@@ -2,33 +2,14 @@ import { defineSchedule } from "eve/schedules";
 
 import sink from "../channels/sink";
 
-// Runs under every Eve line in the compatibility matrix. Eve 0.29/0.30 passed
-// `receive(channel, { auth, message, target })`; Eve 0.31 passes
-// `to(channel, target).send(message, { auth })`. Every line in the window is
-// now 0.31+, so only the `to` branch runs; the structural cast is kept so the
-// fixture still compiles unchanged if a future window ever spans two type
-// generations again.
-type ScheduleOps = {
-  receive?: (
-    channel: typeof sink,
-    input: { auth: unknown; message: string; target: Record<string, unknown> },
-  ) => Promise<unknown>;
-  to?: (
-    channel: typeof sink,
-    target: Record<string, unknown>,
-  ) => { send(message: string, options: { auth: unknown }): Promise<unknown> };
-};
-
+// Runs under every Eve line in the compatibility matrix. Every line speaks
+// fixed-session addressing: `to(channel, target).send(message, { auth })`.
 export default defineSchedule({
   cron: "45 6 * * *",
   async run(ctx) {
-    const { appAuth, waitUntil } = ctx;
-    const ops = ctx as unknown as ScheduleOps;
-    const start = (message: string, address: string) => {
-      if (ops.to) return ops.to(sink, { address }).send(message, { auth: appAuth });
-      if (!ops.receive) throw new Error("Neither generation's schedule operations are available.");
-      return ops.receive(sink, { auth: appAuth, message, target: { address } });
-    };
+    const { appAuth, waitUntil, to } = ctx;
+    const start = (message: string, address: string) =>
+      to(sink, { address }).send(message, { auth: appAuth });
     waitUntil(
       Promise.all([
         start("Start fixture session one.", "schedule-fixture-one"),

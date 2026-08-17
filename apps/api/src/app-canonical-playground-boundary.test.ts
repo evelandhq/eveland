@@ -90,7 +90,6 @@ describe("canonical Playground API boundary", () => {
         new Response(
           JSON.stringify({
             sessionId: "eve_focused_boundary",
-            continuationToken: "continue_focused_boundary",
           }),
           {
             status: 202,
@@ -126,7 +125,6 @@ describe("canonical Playground API boundary", () => {
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({
         eveSessionId: "eve_focused_boundary",
-        continuationToken: "continue_focused_boundary",
         status: "running",
         trigger: "playground",
       }),
@@ -172,7 +170,6 @@ describe("canonical Playground API boundary", () => {
       projectId: project.id,
       trigger: "playground",
       eveSessionId: "eve_existing_continuation",
-      continuationToken: "continue_existing",
     });
     const agentAuth = await createRecoverableAgentAuth(store, project.id, "retry");
     const playgroundProxy = vi.fn(async () => new Response(null, { status: 401 }));
@@ -204,7 +201,6 @@ describe("canonical Playground API boundary", () => {
         id: existingSession.id,
         status: "failed",
         eveSessionId: "eve_existing_continuation",
-        continuationToken: "continue_existing",
       }),
     ]);
   });

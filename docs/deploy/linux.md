@@ -144,7 +144,7 @@ hosts to. Agent processes remain on `127.0.0.1:41xxx`; never add those dynamic p
 Traefik or firewall rules. Start from `infra/traefik/agents.yml`, replace the example domain,
 and keep its `!PathPrefix('/internal')` guard.
 
-Keep the wildcard rule path-transparent. Eve 0.37.1 task-input callbacks and custom MCP
+Keep the wildcard rule path-transparent. Eve task-input callbacks and custom MCP
 channel paths must reach the same Gateway catch-all as canonical session routes; do not add
 path-specific proxy rules that bypass Gateway target selection or cold activation.
 
@@ -330,7 +330,7 @@ runs it against the Lima VM as part of the integration smoke test.
 | `NODE_ENV`                                         | _(unset)_                                                                                                      | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above).                                                                                                                                     |
 | `EVELAND_SANDBOX_CACHE_DIR`                        | `$EVELAND_DATA_DIR/sandbox`                                                                                    | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below.                                                                                                                                                                                                                        |
 
-Eve 0.37.1 durable Gateway routes also use these existing controls. The affinity secret derives
+Eve durable Gateway routes also use these existing controls. The affinity secret derives
 non-reversible create-once operation keys; their trigger-specific idle TTL matches SessionBindings,
 and active OperationBindings protect the exact Deployment from Release retention. Deployments of one
 Project intentionally share its workflow world (different Projects remain isolated), which lets an
@@ -365,7 +365,7 @@ localhost, literal private addresses, and redirects; the network layer must addi
 resolved private/link-local destinations. Never expose OIDC tokens, authorization codes, state, client secrets, or
 PKCE verifiers through reverse-proxy access logs or runtime diagnostics.
 
-The explicit Vercel OIDC Playground authentication method mirrors Eve 0.29.5 by resolving its configured Secret reference and
+The explicit Vercel OIDC Playground authentication method mirrors the Eve Client by resolving its configured Secret reference and
 sending the token in both `Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`. Vercel OIDC tokens are short
 lived; rotate the referenced Secret before expiry. Eveland does not infer this method from a Vercel deployment,
 Agent source, or a 401 response.
@@ -954,7 +954,7 @@ smoke test as root inside the guest. A successful run
 exits 0 and prints `SMOKE OK`. If it fails, inspect the unit logs from the
 host: `limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`.
 
-The same script also runs real Eve 0.29.x, 0.30.x, and 0.31.x compatibility fixtures through the
+The same script also runs real compatibility fixtures for every Eve line in the supported window through the
 systemd adapter. It proves a dormant scheduler target wakes for one due cron,
 executes the authored TypeScript definition once, exports standard OTLP logs, projects two Sessions and
 provider usage, observes no duplicate from the neutralized native tick, stops
@@ -974,10 +974,12 @@ Playground reset requests. Apply migrations before rolling API/Gateway/Worker pr
 principal forwarding remains Agent-owned and opt-in on both deployments; do not add a permissive
 `trustedForwarders` predicate as a platform workaround.
 
-Eve 0.37.1 create-once routing requires migration `0050_regular_lenny_balinger`, which adds the
+Eve create-once routing requires migration `0050_regular_lenny_balinger`, which adds the
 HMAC-keyed Gateway OperationBinding. Apply it before rolling Gateway. OperationBindings use the same
 trigger-specific idle TTL as SessionBindings and protect their exact Deployment artifact while active;
-task-input tokens remain opaque and are never stored.
+task-input tokens remain opaque and are never stored. Migration
+`0051_drop_session_continuation_token` removes the pre-0.31 continuation-token columns; apply it
+together with the release that drops Eve 0.37 support.
 
 The backend's own contract test is no longer part of this script — it belongs to
 `evelandhq/sandbox-bwrap`, which runs it under these same systemd constraints via

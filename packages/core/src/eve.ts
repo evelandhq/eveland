@@ -154,15 +154,6 @@ export function classifyEveSessionRequest(
   if (method === "POST" && pathname === "/eve/v1/session") {
     return { kind: "initial", sessionId: null };
   }
-  // Eve 0.29/0.30 generation: reset addresses the session through a
-  // continuation token in the body, not the path. Eve 0.31 removed the route
-  // and 0.31 is now the window floor, so no supported Deployment still serves
-  // it. The branch stays because Sessions created by an older Deployment are
-  // still in the database with their tokens; it is deleted together with the
-  // `continuation_token` columns and the api translation once those run out.
-  if (method === "POST" && pathname === "/eve/v1/session/reset") {
-    return { kind: "reset", sessionId: null };
-  }
 
   // Eve 0.37.1 lets a caller follow a remote child's stream through the
   // parent Agent that owns the subagent call. Routing is therefore pinned by

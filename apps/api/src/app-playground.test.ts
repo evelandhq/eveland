@@ -50,7 +50,6 @@ describe("api app", () => {
       return new Response(
         JSON.stringify({
           sessionId: "eve_dormant",
-          continuationToken: "continue_dormant",
         }),
         {
           status: 202,
@@ -136,7 +135,6 @@ describe("api app", () => {
         return new Response(
           JSON.stringify({
             sessionId: "eve_routed",
-            continuationToken: "continue_routed",
           }),
           {
             status: 202,
@@ -210,7 +208,6 @@ describe("api app", () => {
           await store.bindSession({
             projectId: project.id,
             eveSessionId: "eve_chat",
-            continuationToken: "continue_1",
             routeId: route!.id,
             deploymentId: deployment.id,
             trigger: "playground",
@@ -224,7 +221,6 @@ describe("api app", () => {
           return new Response(
             JSON.stringify({
               sessionId: "eve_chat",
-              continuationToken: "continue_1",
             }),
             {
               status: 202,
@@ -286,11 +282,9 @@ describe("api app", () => {
           );
         }
         if (input.method === "POST" && input.path === "/eve/v1/session/eve_chat") {
-          await store.setSessionBindingContinuationToken(project.id, "eve_chat", "continue_2");
           return new Response(
             JSON.stringify({
               sessionId: "eve_chat",
-              continuationToken: "continue_2",
             }),
             {
               status: 202,
@@ -306,7 +300,7 @@ describe("api app", () => {
           if (cancelCalls > 1) return new Response("not found", { status: 404 });
           return Response.json({ sessionId: "eve_chat", status: "accepted" }, { status: 202 });
         }
-        if (input.method === "POST" && input.path === "/eve/v1/session/reset") {
+        if (input.method === "POST" && input.path === "/eve/v1/session/eve_chat/reset") {
           return Response.json({
             ok: true,
             previousSessionId: "eve_chat",
@@ -344,7 +338,6 @@ describe("api app", () => {
     expect(initial.status).toBe(202);
     await expect(initial.json()).resolves.toMatchObject({
       sessionId: "eve_chat",
-      continuationToken: "continue_1",
     });
     expect(stream.status).toBe(200);
     expect(stream.headers.get("x-eve-stream-tail-index")).toBe("2");
@@ -353,7 +346,6 @@ describe("api app", () => {
       expect.objectContaining({
         eveSessionId: "eve_chat",
         status: "waiting_approval",
-        continuationToken: "continue_1",
         completedAt: null,
       }),
     ]);
@@ -363,7 +355,6 @@ describe("api app", () => {
     );
 
     const continuationBody = JSON.stringify({
-      continuationToken: "continue_1",
       inputResponses: [{ requestId: "request_1", optionId: "approve" }],
     });
     const continuation = await app.request(
@@ -376,9 +367,7 @@ describe("api app", () => {
     );
 
     expect(continuation.status).toBe(202);
-    await expect(continuation.json()).resolves.toMatchObject({
-      continuationToken: "continue_2",
-    });
+    await expect(continuation.json()).resolves.toMatchObject({});
     const cancelBody = JSON.stringify({ turnId: "turn_1" });
     const cancel = await app.request(
       `/projects/${project.id}/playground/eve/v1/session/eve_chat/cancel`,
@@ -400,12 +389,13 @@ describe("api app", () => {
       },
     );
     expect(unsupportedCancel.status).toBe(404);
-    const resetBody = JSON.stringify({ continuationToken: "continue_2" });
-    const reset = await app.request(`/projects/${project.id}/playground/eve/v1/session/reset`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: resetBody,
-    });
+    const resetBody = "";
+    const reset = await app.request(
+      `/projects/${project.id}/playground/eve/v1/session/eve_chat/reset`,
+      {
+        method: "POST",
+      },
+    );
     expect(reset.status).toBe(200);
     await expect(reset.json()).resolves.toEqual({
       ok: true,
@@ -416,7 +406,6 @@ describe("api app", () => {
       expect.objectContaining({
         eveSessionId: "eve_chat",
         status: "completed",
-        continuationToken: null,
       }),
     ]);
     expect(proxyCalls).toEqual([
@@ -437,7 +426,7 @@ describe("api app", () => {
         body: cancelBody,
       },
       { method: "POST", path: "/eve/v1/session/eve_chat/cancel", body: "" },
-      { method: "POST", path: "/eve/v1/session/reset", body: resetBody },
+      { method: "POST", path: "/eve/v1/session/eve_chat/reset", body: resetBody },
     ]);
   });
 
@@ -474,7 +463,7 @@ describe("api app", () => {
       Response.json(
         {
           error: "Unsupported Eve version",
-          detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.37.x or 0.38.x.',
+          detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.38.x or 0.39.x.',
         },
         { status: 409 },
       ),
@@ -486,8 +475,8 @@ describe("api app", () => {
     await expect(version.json()).resolves.toEqual({
       eveVersion: {
         version: "0.22.6",
-        expected: "0.37.x or 0.38.x",
-        supportedRanges: ["0.37.x", "0.38.x"],
+        expected: "0.38.x or 0.39.x",
+        supportedRanges: ["0.38.x", "0.39.x"],
         supported: false,
         sourceRevisionId: revision.id,
       },
@@ -535,7 +524,6 @@ describe("api app", () => {
     await store.completeSession(pinnedOldSession.id, {
       status: "waiting",
       eveSessionId: "eve_old_pinned",
-      continuationToken: "continue_old",
     });
     const pinnedContinuation = await app.request(
       `/projects/${project.id}/playground/eve/v1/session/eve_old_pinned`,
@@ -543,7 +531,6 @@ describe("api app", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          continuationToken: "continue_old",
           message: "continue",
         }),
       },

@@ -15,14 +15,14 @@ registerGatewayTestCleanup();
 function version(version: string, deploymentId: string): EveVersionInfo {
   return {
     version,
-    expected: "0.37.x or 0.38.x",
-    supportedRanges: ["0.37.x", "0.38.x"],
+    expected: "0.38.x or 0.39.x",
+    supportedRanges: ["0.38.x", "0.39.x"],
     supported: true,
     sourceRevisionId: `src-${deploymentId}`,
   };
 }
 
-describe("Gateway durable Eve 0.37.1 routes", () => {
+describe("Gateway durable Eve routes", () => {
   test("pins create-once operation retries across a policy flip and cold activation", async () => {
     let firstAttempts = 0;
     const first = await startUpstream((_request, response) => {
@@ -57,7 +57,7 @@ describe("Gateway durable Eve 0.37.1 routes", () => {
       ],
     });
     const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.37.1", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.38.3", deploymentId));
     const activationClient = {
       activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
         leaseId: `lease-${deploymentId}`,
@@ -100,73 +100,12 @@ describe("Gateway durable Eve 0.37.1 routes", () => {
     );
   });
 
-  test("routes opaque task-input callbacks only to Eve 0.37.1-compatible targets", async () => {
-    const old = await startUpstream((_request, response) => response.end("old"));
-    let receivedUrl = "";
-    const current = await startUpstream((request, response) => {
-      receivedUrl = request.url ?? "";
-      response.end("current");
-    });
-    const weighted = route({
-      targets: [
-        {
-          routeId: "route_project",
-          deploymentId: "dep_old",
-          weight: 10_000,
-          variantName: "old",
-          hostPort: old.port,
-          status: "running",
-        },
-        {
-          routeId: "route_project",
-          deploymentId: "dep_current",
-          weight: 0,
-          variantName: "current",
-          hostPort: current.port,
-          status: "stopped",
-        },
-      ],
-    });
-    const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) =>
-      version(deploymentId === "dep_current" ? "0.37.1" : "0.37.0", deploymentId),
-    );
-    const activationClient = {
-      activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
-        leaseId: `lease-${deploymentId}`,
-        endpointPort: deploymentId === "dep_current" ? current.port : old.port,
-      })),
-      renew: vi.fn(async () => {}),
-      release: vi.fn(async () => {}),
-    };
-    const app = createGatewayApp(repo, {
-      allowedBaseDomains: ["agent.localhost"],
-      affinitySecret,
-      activationClient,
-    });
-
-    const response = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/task-input/eve%3Atask-input%3Asecret",
-      {
-        method: "POST",
-        headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
-        body: JSON.stringify({ value: "approved" }),
-      },
-    );
-
-    expect(await response.text()).toBe("current");
-    expect(receivedUrl).toBe("/eve/v1/task-input/eve%3Atask-input%3Asecret");
-    expect(repo.operationBindings).toHaveLength(0);
-    expect(repo.bindings).toHaveLength(0);
-    expect(activationClient.activate).toHaveBeenCalledWith(
-      expect.objectContaining({ deploymentId: "dep_current", kind: "turn" }),
-      expect.any(AbortSignal),
-    );
-  });
-
-  test("returns 409 when no route target meets the Eve 0.37.1 feature floor", async () => {
+  test("returns 409 when the selected target runs an unsupported Eve version", async () => {
     const repo = repository([route()]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.37.0", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => ({
+      ...version("0.37.1", deploymentId),
+      supported: false,
+    }));
     const activationClient = {
       activate: vi.fn(async () => ({ leaseId: "unused", endpointPort: 0 })),
       renew: vi.fn(async () => {}),
@@ -244,7 +183,7 @@ describe("Gateway durable Eve 0.37.1 routes", () => {
       ],
     });
     const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.37.1", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.38.3", deploymentId));
     const activationClient = {
       activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
         leaseId: `lease-${deploymentId}`,
@@ -293,7 +232,7 @@ describe("Gateway durable Eve 0.37.1 routes", () => {
   test("expires an idle create-once route instead of silently moving its retry", async () => {
     const stable = route();
     const repo = repository([stable]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.37.1", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.38.3", deploymentId));
     repo.operationBindings.push({
       id: "opbind_expired",
       projectId: "proj_1",

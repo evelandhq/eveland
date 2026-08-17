@@ -960,7 +960,6 @@ export const sessionBindings = pgTable(
       .notNull()
       .references(() => projects.id),
     eveSessionId: text("eve_session_id").notNull(),
-    continuationToken: text("continuation_token"),
     routeId: text("route_id")
       .notNull()
       .references(() => agentRoutes.id),
@@ -979,9 +978,6 @@ export const sessionBindings = pgTable(
   },
   (table) => [
     uniqueIndex("session_bindings_project_eve_idx").on(table.projectId, table.eveSessionId),
-    uniqueIndex("session_bindings_project_continuation_idx")
-      .on(table.projectId, table.continuationToken)
-      .where(sql`${table.continuationToken} is not null`),
   ],
 );
 
@@ -1034,7 +1030,6 @@ export const sessions = pgTable(
       .references(() => projects.id),
     deploymentId: text("deployment_id"),
     eveSessionId: text("eve_session_id"),
-    continuationToken: text("continuation_token"),
     rootNodeId: text("root_node_id"),
     routeId: text("route_id").references(() => agentRoutes.id),
     experimentId: text("experiment_id"),

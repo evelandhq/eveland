@@ -21,7 +21,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.37-0.38 compatibility window", async () => {
+  test("fails closed outside the 0.38-0.39 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -30,9 +30,10 @@ describe("injectSchedulerAdapter", () => {
       "0.34.0",
       "0.35.0",
       "0.36.0",
-      "0.39.0",
-      "~0.39.0",
-      ">=0.37.0",
+      "0.37.1",
+      "0.40.0",
+      "~0.40.0",
+      ">=0.38.0",
       "*",
       "latest",
     ]) {
@@ -40,7 +41,7 @@ describe("injectSchedulerAdapter", () => {
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
         new RegExp(
-          `supports Eve 0\\.37\\.x or 0\\.38\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+          `supports Eve 0\\.38\\.x or 0\\.39\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
         ),
       );
     }
@@ -48,16 +49,16 @@ describe("injectSchedulerAdapter", () => {
 
   test("accepts every dependency form that stays inside a verified Eve minor", async () => {
     for (const eveVersion of [
-      "0.37.0",
-      "~0.37.0",
-      "^0.37.0",
-      "0.37",
-      "0.37.x",
-      "0.37.*",
       "0.38.0",
       "0.38.3",
       "~0.38.1",
       "^0.38.0",
+      "0.38",
+      "0.38.x",
+      "0.38.*",
+      "0.39.0",
+      "~0.39.0",
+      "^0.39.0",
       "0.38",
       "0.38.x",
       "0.38.*",
@@ -202,7 +203,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.37-0.38 window supports the explicit `turnPolicy` option.
+    // current 0.38-0.39 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };

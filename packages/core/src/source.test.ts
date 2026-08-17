@@ -116,18 +116,12 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.37.x or 0.38.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.38.x or 0.39.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts dependency declarations contained inside the 0.37-0.38 compatibility window", () => {
+  test("accepts dependency declarations contained inside the 0.38-0.39 compatibility window", () => {
     for (const version of [
-      "0.37.0",
-      "~0.37.0",
-      "^0.37.0",
-      "0.37",
-      "0.37.x",
-      "0.37.*",
       "0.38.0",
       "0.38.3",
       "~0.38.1",
@@ -135,6 +129,12 @@ describe("inspectEveProject", () => {
       "0.38",
       "0.38.x",
       "0.38.*",
+      "0.39.0",
+      "~0.39.0",
+      "^0.39.0",
+      "0.39",
+      "0.39.x",
+      "0.39.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
@@ -146,8 +146,9 @@ describe("inspectEveProject", () => {
       "0.34.0",
       "0.35.0",
       "0.36.0",
-      ">=0.37.0",
-      "0.39.0",
+      "0.37.1",
+      ">=0.38.0",
+      "0.40.0",
       "*",
       "latest",
     ]) {
@@ -171,8 +172,8 @@ describe("inspectEveProject", () => {
   test("reports the sliding compatibility window as structured ranges", () => {
     expect(createEveVersionInfo("0.38.3", "src_1")).toEqual({
       version: "0.38.3",
-      expected: "0.37.x or 0.38.x",
-      supportedRanges: ["0.37.x", "0.38.x"],
+      expected: "0.38.x or 0.39.x",
+      supportedRanges: ["0.38.x", "0.39.x"],
       supported: true,
       sourceRevisionId: "src_1",
     });

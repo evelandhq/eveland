@@ -490,7 +490,7 @@ Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使�
 
 - 拉取或解压源码
 - 检查是否为合法 Eve 项目
-- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.37.x 或 0.38.x
+- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.38.x 或 0.39.x
 - 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
   `capabilities.eveChat`
 - 创建 Source Revision
@@ -508,7 +508,7 @@ pnpm 版本执行 frozen install，存在 `package-lock.json` 时使用 `npm ci`
 到 `npm install`。pnpm frozen install 仍校验 lockfile 与 package integrity，但不得因为平台
 自身的 package minimum-release-age 策略拒绝项目已经提交的锁定版本。Docker 与 systemd
 runtime 必须使用相同选择，不能改用 npm 重新解析 pnpm 项目并绕过其 lockfile。
-Eve 0.29.5 的 `eve add` / `eve registry` 只属于源码作者主动执行的 CLI；Eveland 的 import、
+Eve 的 `eve add` / `eve registry` 只属于源码作者主动执行的 CLI；Eveland 的 import、
 build 与 deploy 不得运行这些命令、访问 registry 或修改不可变 Source Revision。
 
 Git 拉取由 worker 以非交互方式执行，默认最多等待 120 秒；可通过
@@ -526,9 +526,9 @@ Project 页面展示最近 Git import job 的 queued/running/failed 状态，在
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 
 Eveland 在 Eve 达到稳定产品兼容承诺前，只支持已经完成完整兼容验证的 minor line；每次扩展或
-收缩窗口都是显式产品变更。当前窗口是 0.37.x 与 0.38.x。允许精确的 0.37/0.38
+收缩窗口都是显式产品变更。当前窗口是 0.38.x 与 0.39.x。允许精确的 0.38/0.39
 patch、锚定在对应 minor patch 上的 `~`/`^` range，以及
-`0.37` / `0.37.x` / `0.37.*`、`0.38` / `0.38.x` / `0.38.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
+`0.38` / `0.38.x` / `0.38.*`、`0.39` / `0.39.x` / `0.39.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
 Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、reset 和 stream 请求，不能通过已有的
@@ -536,7 +536,7 @@ Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、res
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
 无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
-UI 仅将当前最新支持线 0.38.x 标为绿色；仍受支持但较旧的 0.37.x 使用红色状态与
+UI 仅将当前最新支持线 0.39.x 标为绿色；仍受支持但较旧的 0.38.x 使用红色状态与
 “尽快升级”提醒，但不阻断运行。窗口外或无法识别的版本同样使用红色状态，并继续阻断操作。
 
 用户随后确认自动猜测的项目名称并点击 `Deploy`。Project 与初始 import job 在同一数据库
@@ -621,8 +621,8 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 `agent/connections/*` 中 Agent 访问外部 MCP/OpenAPI server 的能力。Playground authentication 当前通用方法包括：
 
 - `local-dev`：不发送 credential，并且用 loopback Host 调用 Agent。**它对当前窗口内的
-  任何 Agent 都不再构成认证**——`localDev()` 从 Eve 0.30 起只看进程是否 `eve dev`，
-  而 Agent 在 Eveland 上以 `eve start` 运行，因此不放行任何请求。窗口下限已是 0.37，
+  任何 Agent 都不再构成认证**——`localDev()` 只看进程是否 `eve dev`，
+  而 Agent 在 Eveland 上以 `eve start` 运行，因此不放行任何请求。
   该方法只剩历史含义；这类项目必须改用 `eveland-identity` 或 Agent 自有的 AuthFn。
   Gateway“绝不为公网流量把 Host 改写成 loopback”的不变量与本条无关，且必须保留；
 - `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
@@ -654,7 +654,7 @@ user authorization 尚未纳入端到端支持矩阵；Connection marketplace �
 只作为 Caller Principal 隔离未来的 delegated credential，不发送到 Agent，也不与 Agent
 verifier 建立的 Caller 做隐式映射。
 
-`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve 0.29.5
+`vercel-oidc` 是独立的显式客户端 provider，不是 generic `oidc` 的 provider-name 分支。它按 Eve Client
 `ClientAuth.vercelOidc` 的 wire behavior 发送同一个短期 token 到 `Authorization: Bearer` 和
 `x-vercel-trusted-oidc-idp-token`，从而同时穿过 Vercel Deployment Protection 并到达 Agent verifier。
 Playground authentication 只保存 token Secret reference/configured 状态；平台不从 Agent 源码或 Vercel 环境自动切换方法。
@@ -707,7 +707,7 @@ Playground 中可查看当前 Session 的：
 - HITL：确认/拒绝、选项、自由文本和外部授权提示
 - 当前 turn 的图片、PDF、文本和代码附件
 
-Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.37.x 与 0.38.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.38 的前端 binding 使用异步 `cancel()`，它会等待准确的 durable turn id，且在 settlement 前保持 stream attached；平台不得退回已移除的同步 `stop()`。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
+Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.38.x 与 0.39.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.38 的前端 binding 使用异步 `cancel()`，它会等待准确的 durable turn id，且在 settlement 前保持 stream attached；平台不得退回已移除的同步 `stop()`。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
 Eve 0.27.7+ Client 可以通过 `follow: false` 做有界 Catch-up Read：请求使用
 `includeTailIndex=1`，Agent 返回 `x-eve-stream-tail-index`。Web rewrite、API Playground proxy、
 内部与公开 Gateway 必须原样保留该 query、响应 header 与 NDJSON body；只有 Client 与目标 Agent
@@ -922,8 +922,8 @@ sandbox
 ```
 
 Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘要展示，不提供独立的 Connections
-导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上的最终 `eve info`；平台接受
-Eve 0.37–0.38 的 discovery manifest v13，并为既有 artifact reader 保留 v12 投影，未知版本继续
+导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上的最终 `eve info`；平台只接受
+当前窗口产出的 discovery manifest v13，未知版本继续
 fail closed 并保留静态摘要。摘要会把有效的 Extension Schedule 与直接贡献的 Extension
 Subagent 投影成稳定的 `agent/extensions/<namespace>/...` 路径，Subagent ID 使用 Eve 的
 `<namespace>__<id>`；consumer override 与 Eve 编译器保持相同的优先级。只投影根 Agent 的
@@ -1106,9 +1106,9 @@ http://<deploymentKey>--<projectSlug>.agent.localhost:4080
 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个
 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
-底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 通过单一 `Create deployment` Dialog 组合 Source（当前 Revision 或先同步 Git）与结果（保留 preview 或健康后 promote）；任何选择 promote 的组合都必须显式 promote 该次任务创建的确切 Deployment，不能通过查询“最新 Deployment”猜测 target。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；双 target policy 中一个 target 不可用（failed/starting/draining/stopped）时，Gateway 必须把新 Session 降级路由到仅存的健康 target——即使其权重为 0——而不是对未 pinned 请求返回错误；两个 target 都不可用才返回 503。Eve 返回 sessionId 与 continuationToken 后持久化 `SessionBinding`。continuation、cancel、stream、带 token 的 create/resume 与 Eve 0.27.4+ session reset 在 binding 未过期时，即使 promote、rollback 或 weight 归零也仍回到原 Deployment；每次成功使用前刷新 binding 的 `updatedAt`。Playground binding 默认 idle 24 小时过期，公开 API binding 默认 idle 7 天过期；已知但过期的 binding 必须返回 `410` 与稳定的 `session_expired` code，不能重跑路由权重或落到另一 Deployment。reset 成功后必须释放旧 token 绑定，让下一次新建 Session 重新按当前 route policy 选择 Deployment。
+底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 通过单一 `Create deployment` Dialog 组合 Source（当前 Revision 或先同步 Git）与结果（保留 preview 或健康后 promote）；任何选择 promote 的组合都必须显式 promote 该次任务创建的确切 Deployment，不能通过查询“最新 Deployment”猜测 target。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；双 target policy 中一个 target 不可用（failed/starting/draining/stopped）时，Gateway 必须把新 Session 降级路由到仅存的健康 target——即使其权重为 0——而不是对未 pinned 请求返回错误；两个 target 都不可用才返回 503。Eve 返回 sessionId 后持久化 `SessionBinding`。continuation、cancel、stream 与 ID 寻址的 session reset 在 binding 未过期时，即使 promote、rollback 或 weight 归零也仍回到原 Deployment；每次成功使用前刷新 binding 的 `updatedAt`。Playground binding 默认 idle 24 小时过期，公开 API binding 默认 idle 7 天过期；已知但过期的 binding 必须返回 `410` 与稳定的 `session_expired` code，不能重跑路由权重或落到另一 Deployment。reset 成功后平台把对应平台 Session 标记完成；下一次新建 Session 重新按当前 route policy 选择 Deployment。
 
-Eve 0.37.1 的 durable route 使用同一固定目标规则。initial create 携带非空 `operationId` 时，Gateway 必须先以独立 Gateway secret 做 HMAC，按 `(projectId, operationKey)` 首写胜出地持久化 `OperationBinding`，且不得保存或记录原始 operation ID；重复 create 即使遇到 promote、rollback、weight 归零或 dormant target 也回到首次目标。该绑定只决定 Deployment，不解释 Eve 基于 Agent principal 的幂等/授权语义；不同 principal 的同名 ID 最多共享目标，仍由 Agent 自己隔离结果。MCP `agent_start` 成功后把 response `structuredContent.invocationId` 写为 SessionBinding，`agent_get`、`agent_update` 与 `agent_cancel` 按该 invocation ID 回到原 Deployment。`POST /eve/v1/task-input/:token` 的 token 对 Gateway 完全 opaque，不得落库；同一 Project 的 Deployment 共享其 durable workflow world，因此 callback 可在 route targets 中任一 Eve >=0.37.1 的 Deployment 恢复，并通过正常 ActivationLease 唤醒 dormant target。operation、task-input 与这些 MCP 工具都必须跳过 0.37.0 及更旧 target；没有兼容 target 或 pinned target 版本不足时返回 409，不能降级成普通不持久的转发。
+Eve 的 durable route（create-once、task-input、MCP invocation）使用同一固定目标规则。initial create 携带非空 `operationId` 时，Gateway 必须先以独立 Gateway secret 做 HMAC，按 `(projectId, operationKey)` 首写胜出地持久化 `OperationBinding`，且不得保存或记录原始 operation ID；重复 create 即使遇到 promote、rollback、weight 归零或 dormant target 也回到首次目标。该绑定只决定 Deployment，不解释 Eve 基于 Agent principal 的幂等/授权语义；不同 principal 的同名 ID 最多共享目标，仍由 Agent 自己隔离结果。MCP `agent_start` 成功后把 response `structuredContent.invocationId` 写为 SessionBinding，`agent_get`、`agent_update` 与 `agent_cancel` 按该 invocation ID 回到原 Deployment。`POST /eve/v1/task-input/:token` 的 token 对 Gateway 完全 opaque，不得落库；同一 Project 的 Deployment 共享其 durable workflow world，因此 callback 可在 route targets 中任一窗口内的 Deployment 恢复，并通过正常 ActivationLease 唤醒 dormant target。当前窗口内的每条线都支持这些 durable route，不再维护按操作区分的版本下限；选定 target 不在支持窗口内时返回 409，不能降级成普通不持久的转发。
 
 Deployment 生命周期为 running、draining、stopped、archiving、archived；最近三个 artifact、可变 route target、未过期 SessionBinding、未过期 OperationBinding 和活跃 ActivationLease 都受 retention protection。Worker 周期性扫描不受保护且已经 `stopped` 的旧 Deployment，幂等排入 archive job；archive 必须先原子地把目标置为 `archiving`（claim）——持有期间激活与 restart 都必须拒绝该 Deployment——claim 之后复查 retention protection，才按 Deployment 保存的 `runtimeKind` 删除 runtime artifact 和对应的 build directory，成功后置 `archived`，任何失败都回退到 claim 前的状态。构建或启动在 Deployment 落库前失败时也必须删除已准备的 build directory 和已创建的 runtime artifact，不能留下数据库无法寻址的 Release。
 
@@ -1170,9 +1170,9 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 `@workflow/world-postgres` 或共享 `@evelandhq/workflow-world`，并强制注入平台固定且经过 Eve
 兼容性验证的依赖版本；不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
-不得被修改。Eve 0.38.3 要求 workflow spec v6，因此 legacy world 固定为
+不得被修改。Eve 0.38 起要求 workflow spec v6，因此 legacy world 固定为
 `@workflow/world-postgres@5.0.0-beta.34`，共享 world 固定为
-`@evelandhq/workflow-world@0.9.0`；两者都必须通过 0.37.1 与 0.38.3 的 World contract 门禁。
+`@evelandhq/workflow-world@0.9.0`；两者都必须通过 0.38.3 与 0.39.0 的 World contract 门禁。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
 配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在 dispatcher 或 Deployment 使用共享库前幂等执行

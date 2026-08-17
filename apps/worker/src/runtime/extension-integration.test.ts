@@ -172,15 +172,15 @@ test("builds Extension schedules and observed Extension subagents with the real 
   }
 }, 120_000);
 
-test("keeps the Extension integrator compatible with the oldest supported Eve 0.37 manifest", async () => {
+test("keeps the Extension integrator compatible with the oldest supported Eve 0.38 manifest", async () => {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-oldest-"));
   roots.push(releaseDir);
   const extensionPackageRoot = path.join(releaseDir, "packages/crm");
-  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.37.1", false);
+  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.38.3", false);
   await execFileAsync(process.execPath, [oldestEveBin, "extension", "build"], {
     cwd: extensionPackageRoot,
   });
-  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.37.1");
+  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.38.3");
 
   await injectObserverHooks({ releaseDir });
   await injectSchedulerAdapter({ releaseDir });
