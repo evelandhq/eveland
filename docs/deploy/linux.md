@@ -267,6 +267,8 @@ runs it against the Lima VM as part of the integration smoke test.
 | `EVELAND_CPU_QUOTA`                                | `200%`                                                                                                         | Per-Deployment CPU ceiling: systemd `CPUQuota` in production and Docker `--cpus` in the local runtime.                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `EVELAND_TASKS_MAX`                                | `512`                                                                                                          | Per-Deployment process/thread ceiling: systemd `TasksMax` or Docker `--pids-limit`.                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `EVELAND_SANDBOX_RUN_TIMEOUT_MS`                   | `600000`                                                                                                       | Hard wall-clock limit for one sandbox `run()` command. Timeout kills the complete bwrap process group; authored long-running processes must use `spawn()`.                                                                                                                                                                                                                                                                                                                                                   |
+| `EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES`         | `64`                                                                                                           | Maximum live sandbox commands admitted in one compute generation. This bounds bwrap churn before the Deployment-wide Docker/systemd PID ceiling is reached.                                                                                                                                                                                                                                                                                                                                                  |
+| `EVELAND_SANDBOX_MAX_OUTPUT_BYTES`                 | `16777216`                                                                                                     | Maximum combined stdout and stderr retained by one sandbox `run()` command. Exceeding it aborts and cleans up the complete process group.                                                                                                                                                                                                                                                                                                                                                                    |
 | `EVELAND_BUILD_SANDBOX`                            | `bwrap`                                                                                                        | `none` disables the build sandbox (not recommended: `npm install` runs third-party lifecycle scripts).                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `EVELAND_DATA_DIR`                                 | `.eveland-data`                                                                                                | Sources, builds, npm cache, env files, Agent observability policies, and managed Collector configuration. Use an absolute path, e.g. `/var/lib/eveland`.                                                                                                                                                                                                                                                                                                                                                     |
 | `EVELAND_HOST_DATA_DIR`                            | `EVELAND_DATA_DIR`                                                                                             | Host-daemon view of the same data directory. Set this only when a containerized worker drives Docker through `/var/run/docker.sock`; native systemd workers use the same path on both sides.                                                                                                                                                                                                                                                                                                                 |
@@ -573,7 +575,7 @@ complete production boundary:
   production but does not install a workflow schema in that base database. Eve
   0.38.3 requires workflow spec v6, so Releases inject
   `@workflow/world-postgres@5.0.0-beta.34` on the legacy path and
-  `@evelandhq/workflow-world@0.7.0` on the shared path. Use
+  `@evelandhq/workflow-world@0.7.1` on the shared path. Use
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
   for the same database server while administering derived project databases.
   A deployment URL on `host.docker.internal` automatically reuses
@@ -721,6 +723,11 @@ Docker socket, source tree, or another Project's sandbox cache. The worker maps 
 Project cache through `EVELAND_HOST_DATA_DIR` and mounts it inside the Agent container
 at `/var/lib/eveland-sandbox`. These outer-container settings are deliberately limited
 to the local-development Docker runtime; production uses the unprivileged systemd path.
+Docker Deployments also start with `--init`: the tiny PID 1 acts as a child subreaper, so
+orphaned bwrap descendants are reaped instead of accumulating as zombies until
+`--pids-limit` is exhausted. Existing containers acquire this only when they are recreated.
+The systemd path needs no equivalent flag: systemd is already the host PID 1/subreaper and
+reaps orphaned descendants while `TasksMax` supplies the cgroup process ceiling.
 
 The host prerequisites are the AppArmor profile and the `/workspace` directory
 covered above ("Host prerequisites"). The backend works inside the deployment
@@ -789,19 +796,23 @@ the release directory itself). A Docker Deployment gets the Docker-host view of 
 same Project directory as a bind mount. Both expose the runtime-visible location as
 `EVELAND_SANDBOX_CACHE_DIR`.
 
-Every generated sandbox module also passes `EVELAND_SANDBOX_RUN_TIMEOUT_MS` to the
-vendored backend. A `run()` command that exceeds the default 10-minute deadline is
-aborted and its complete detached bwrap process group is killed; `spawn()` remains the
-explicit API for a long-running process. This command deadline is backed by the
+Every generated sandbox module also passes `EVELAND_SANDBOX_RUN_TIMEOUT_MS`,
+`EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES`, and `EVELAND_SANDBOX_MAX_OUTPUT_BYTES` to
+the vendored backend. A `run()` command that exceeds the default 10-minute deadline or
+16 MiB combined output budget is aborted and its complete detached bwrap process group
+is killed. A compute generation admits at most 64 live commands by default; `spawn()`
+remains the explicit API for a long-running process and counts against that admission
+ceiling while alive. These command boundaries are backed by the
 Deployment cgroup limits above: Docker applies memory, CPU, and PID limits to the outer
 Agent container, while systemd applies `MemoryMax`, `CPUQuota`, and `TasksMax` to the
 transient unit, including every sandbox child.
 
 The sandbox cache (both session and Release-revisioned template directories under
 `EVELAND_SANDBOX_CACHE_DIR`) grows with the number of durable sessions and unique
-templates and is **not** pruned automatically — neither by a redeploy nor by anything
-else in eveland today. Reclaiming space requires manual deletion of directories
-corresponding to known-dead sessions.
+templates and is **not** pruned automatically by Eveland. The vendored backend exposes
+metadata-backed, dry-run-first list/prune APIs with age/LRU policies and active-generation
+leases; Eveland does not schedule them yet. Prefer those APIs over deleting hash-named
+directories by hand, and always inspect a dry run before applying deletion.
 
 See [`evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap)'s README
 for the full backend behavior and security boundary.
@@ -908,9 +919,10 @@ cap enforces on a typical host of that size — memory-bound at one build per
 
 ## Known limits (v1)
 
-- The sandbox cache under `EVELAND_SANDBOX_CACHE_DIR` is never pruned; disk usage grows
-  with the number of durable sessions and unique templates (see "Agent exec sandbox"
-  above).
+- Eveland does not automatically prune the sandbox cache under
+  `EVELAND_SANDBOX_CACHE_DIR`; disk usage grows with the number of durable sessions and
+  unique templates. The backend's explicit dry-run/list/prune API is available to an
+  operator (see "Agent exec sandbox" above).
 - Each active Docker Deployment uses one bridge subnet. Capacity is bounded by
   Docker's configured `default-address-pools`; the recommended `/16` split into
   `/24` networks permits 256 concurrent managed networks, including other Docker

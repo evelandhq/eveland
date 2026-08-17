@@ -95,6 +95,10 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     input.containerName,
     "--restart",
     "unless-stopped",
+    // The Agent process can outlive transient bwrap children. Without a
+    // subreaper as PID 1, orphaned bwrap helpers become permanent zombies in
+    // the container PID namespace and eventually exhaust --pids-limit.
+    "--init",
     "--memory",
     input.memoryMax ?? defaultMemoryMax,
     "--cpus",

@@ -1599,7 +1599,7 @@ route 改为 `/eve/v1/mcp` 且可由 Agent 配置，Gateway 继续 path-transpar
 
 Eve 0.38.3 只接受 workflow spec v6。legacy topology 固定升级到
 `@workflow/world-postgres@5.0.0-beta.34`，shared topology 升级到
-`@evelandhq/workflow-world@0.7.0`；architecture contract 会从已安装包读取 spec version、Eve runtime
+`@evelandhq/workflow-world@0.7.1`；architecture contract 会从已安装包读取 spec version、Eve runtime
 guard、注入常量与文档 pin，防止任一路径在 Deploy 后才暴露不兼容。已有 shared schema 若尚未执行
 会重建 workflow_events 主键的 `0006_event_slots.sql`，worker startup/tenant provisioning fail closed，
 要求 operator 在停流量的 maintenance window 显式运行 `workflow-world-setup`；空库仍自动 bootstrap。
@@ -1610,6 +1610,11 @@ block packing、deadline stream/run retention 与 per-run queue GC。worker 不�
 调用固定 24 小时的旧 cleanup primitive，以免绕过 scheduled/interactive/persistent retention class；
 它只保留 legacy per-project sweep。`EVELAND_WORKFLOW_STREAM_COMPACTION` 由平台保留并注入，
 `WORKFLOW_DISPATCHER_MAINTENANCE_*` 控制 shared maintenance 单次上限。
+
+同日的 0.7.1 follow-up 为无法解析 Deployment 的 dispatch failure 增加 unresolved dead-letter
+quarantine。dead letter 保留 run 与显式 replay/cancel 语义，但 Worker 的 Release retention 不再把它
+视为可路由 active run；resolved dead letter 重新进入普通 pending/running 保护。这样已永久失去
+目标的 run 不会无限 pin 旧 Deployment，同时不会把 quarantine 偷换成隐式完成或删除。
 
 Eve 0.38 新增 Extension Schedule、Channel 与 Subagent，但本兼容 foundation 不把 Extension
 Schedule 当作 root Schedule，也不把 Extension Subagent 当作已注入 Observer 的节点。完整的
@@ -1641,3 +1646,20 @@ definitions 必须存在并通过 cron/key/path/hash 校验，Docker/systemd 不
 注入器对 manifest 路径同时做词法与 realpath containment；无 Extension mount 的存量 Release
 跳过预发现和约 11 MiB integrator。真实兼容矩阵覆盖 Eve 0.37.1 的 v13 Extension manifest no-op
 路径与 Eve 0.38.3 的 Schedule/Subagent 完整路径。
+
+---
+
+## 40. 2026-08-17 follow-up：Sandbox lifecycle 与资源边界
+
+平台升级到 `@evelandhq/sandbox-bwrap@0.2.0`，把高频短命命令造成的进程残留与无界资源占用
+收敛为 Docker/systemd 共用的 backend 契约：`run()` 的 timeout 或 Abort 会终止完整进程组，
+session stop/shutdown 会回收所有受管进程；每个 compute generation 默认最多接纳 64 个 live
+command，每个 `run()` 默认最多保留 16 MiB 合并 stdout/stderr。三个限制均由 Worker 解析为
+Project 不可覆盖的保留环境，非法值在启动路径 fail closed；长期进程继续使用受生命周期管理的
+`spawn()`。
+
+Docker Deployment 显式启用 `--init`，让 PID 1 作为 subreaper 回收孤儿 bwrap helper；真实 Docker
+smoke 连续执行 500 次短命命令和一次递归后台超时，并要求 PID/zombie 数回到基线。systemd 不需要
+Docker init，但使用同一 backend timeout、并发与输出上限，并继续由 systemd 管理进程树。两种
+runtime 都保留现有的 2 GiB memory、200% CPU 与 512 tasks 默认 cgroup 边界；本次没有放宽 bwrap
+security boundary，也没有把 Docker socket 暴露给 Agent。

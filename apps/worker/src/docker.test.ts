@@ -190,6 +190,7 @@ describe("buildDockerRunArgs", () => {
       "eveland-proj_123",
       "--restart",
       "unless-stopped",
+      "--init",
       "--memory",
       "2G",
       "--cpus",

@@ -4,11 +4,11 @@ import { listDeploymentsWithActiveWorkflowRuns } from "./eveland-workflow-world-
 
 /**
  * Runs the real query against a real Postgres. The table here is a minimal
- * stand-in for `@evelandhq/workflow-world`'s `workflow.workflow_runs` carrying
- * exactly the columns the query touches (`tenant_id`, `deployment_id`,
- * `status`), so a typo in any of those names fails here rather than in
- * production. The full schema arrives with the package dependency and is
- * exercised end to end by the wake harness.
+ * stand-in for `@evelandhq/workflow-world`'s run and dead-letter tables,
+ * carrying exactly the columns the retention query touches. A typo in any
+ * table or column name therefore fails here rather than in production. The
+ * full schema arrives with the package dependency and is exercised end to end
+ * by the wake harness.
  */
 const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
 const sql = databaseUrl ? postgres(databaseUrl, { max: 1 }) : null;
@@ -23,6 +23,13 @@ beforeAll(async () => {
       deployment_id varchar not null,
       status varchar not null,
       constraint workflow_runs_test_pkey primary key (tenant_id, id)
+    )
+  `;
+  await sql`
+    create table if not exists "workflow"."dispatch_dead_letters" (
+      tenant_id varchar not null,
+      run_id varchar,
+      resolved_at timestamptz
     )
   `;
 });
@@ -43,11 +50,18 @@ describe.skipIf(!sql)("listDeploymentsWithActiveWorkflowRuns", () => {
         (${tenant}, 'run_queued', 'dep_queued', 'pending'),
         (${tenant}, 'run_done', 'dep_done', 'completed'),
         (${tenant}, 'run_failed', 'dep_failed', 'failed'),
+        (${tenant}, 'run_dead_lettered', 'dep_dead_lettered', 'running'),
+        (${tenant}, 'run_dead_letter_resolved', 'dep_recoverable', 'running'),
         (${other}, 'run_foreign', 'dep_foreign', 'running')
+    `;
+    await sql!`
+      insert into "workflow"."dispatch_dead_letters" (tenant_id, run_id, resolved_at) values
+        (${tenant}, 'run_dead_lettered', null),
+        (${tenant}, 'run_dead_letter_resolved', now())
     `;
 
     await expect(listDeploymentsWithActiveWorkflowRuns(databaseUrl, tenant)).resolves.toEqual(
-      new Set(["dep_sleeping", "dep_queued"]),
+      new Set(["dep_sleeping", "dep_queued", "dep_recoverable"]),
     );
   });
 

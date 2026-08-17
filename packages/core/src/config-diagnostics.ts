@@ -652,6 +652,18 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "600000",
   ),
   entry(
+    "EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES",
+    ["worker"],
+    "Maximum live sandbox commands admitted per compute generation.",
+    "64",
+  ),
+  entry(
+    "EVELAND_SANDBOX_MAX_OUTPUT_BYTES",
+    ["worker"],
+    "Maximum combined stdout and stderr retained by one sandbox run() command.",
+    "16777216",
+  ),
+  entry(
     "EVELAND_INTERNAL_PORT",
     ["worker"],
     "Container-internal port used by Docker Deployments.",
