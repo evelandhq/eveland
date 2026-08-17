@@ -466,6 +466,11 @@ export function createDockerAdapter(
               ? "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
                 "be injected. The deployed agent will fall back to eve's default sandbox backend chain."
               : undefined,
+            sandboxInjection?.wrapped.length
+              ? `Preserved the project's authored sandbox lifecycle (${sandboxInjection.wrapped.join(", ")}). ` +
+                "Eveland overrides only the backend; authored bootstrap(), onSession(), description, and " +
+                "revalidationKey remain active, while workspace seeds are preserved."
+              : undefined,
             sandboxInjection?.replaced.length
               ? `WARNING: replaced the project's authored sandbox (${sandboxInjection.replaced.join(", ")}). ` +
                 "eveland selects the sandbox backend for Docker deployments; the authored module's " +

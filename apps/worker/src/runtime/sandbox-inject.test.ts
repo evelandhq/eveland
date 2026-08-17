@@ -48,6 +48,17 @@ describe("buildGeneratedSandboxModule", () => {
     expect(source).toContain("process.env.EVELAND_SANDBOX_RUN_TIMEOUT_MS");
     expect(source).toContain("runTimeoutMs");
   });
+
+  test("preserves an authored definition while overriding only its backend", () => {
+    const source = buildGeneratedSandboxModule(
+      "../.eveland/sandbox-bwrap/index.js",
+      "./.sandbox.eveland-authored.ts",
+    );
+
+    expect(source).toContain('import authoredSandbox from "./.sandbox.eveland-authored.ts";');
+    expect(source).toContain("  ...authoredSandbox,");
+    expect(source.indexOf("...authoredSandbox")).toBeLessThan(source.indexOf("backend:"));
+  });
 });
 
 describe("resolveSandboxRunTimeoutMs", () => {
@@ -103,16 +114,30 @@ describe("injectSandboxModules", () => {
     expect(generated).toContain('from "../.eveland/sandbox-bwrap/index.js"');
   });
 
-  test("replaces an authored sandbox module and reports it", async () => {
+  test("wraps an authored sandbox module and reports its lifecycle as preserved", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
-    await writeFile(path.join(releaseDir, "agent", "sandbox.ts"), "export default {};\n");
+    const authored = `import { defineSandbox } from "eve/sandbox";
+export default defineSandbox({
+  backend: authoredBackend,
+  bootstrap: async () => {},
+  onSession: async () => {},
+  revalidationKey: () => "authored-v1",
+});
+`;
+    await writeFile(path.join(releaseDir, "agent", "sandbox.ts"), authored);
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
-    expect(result.replaced).toEqual(["agent/sandbox.ts"]);
-    // .ts sorts before .js in eve's module resolution, so it must be gone.
+    expect(result.wrapped).toEqual(["agent/sandbox.ts"]);
+    expect(result.replaced).toEqual([]);
     expect(existsSync(path.join(releaseDir, "agent", "sandbox.ts"))).toBe(false);
     expect(existsSync(path.join(releaseDir, "agent", "sandbox.js"))).toBe(true);
+    await expect(
+      readFile(path.join(releaseDir, "agent", ".sandbox.eveland-authored.ts"), "utf8"),
+    ).resolves.toBe(authored);
+    await expect(readFile(path.join(releaseDir, "agent", "sandbox.js"), "utf8")).resolves.toContain(
+      'import authoredSandbox from "./.sandbox.eveland-authored.ts";',
+    );
   });
 
   test("preserves an authored workspace seed directory", async () => {
@@ -125,6 +150,7 @@ describe("injectSandboxModules", () => {
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
+    expect(result.wrapped).toEqual([]);
     expect(result.replaced).toEqual([]);
     expect(result.generated).toEqual(["agent/sandbox/sandbox.js"]);
     await expect(
@@ -135,12 +161,12 @@ describe("injectSandboxModules", () => {
     ).resolves.toContain('from "../../.eveland/sandbox-bwrap/index.js"');
   });
 
-  test("replaces an authored folder sandbox module without removing workspace seeds", async () => {
+  test("wraps an authored folder sandbox module without removing workspace seeds", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
     await writeFile(
       path.join(releaseDir, "agent", "sandbox", "sandbox.ts"),
-      "export default {};\n",
+      "export default { bootstrap: async () => {}, onSession: async () => {} };\n",
     );
     await writeFile(
       path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"),
@@ -149,9 +175,16 @@ describe("injectSandboxModules", () => {
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
-    expect(result.replaced).toEqual(["agent/sandbox/sandbox.ts"]);
+    expect(result.wrapped).toEqual(["agent/sandbox/sandbox.ts"]);
+    expect(result.replaced).toEqual([]);
     expect(result.generated).toEqual(["agent/sandbox/sandbox.js"]);
     expect(existsSync(path.join(releaseDir, "agent", "sandbox", "sandbox.ts"))).toBe(false);
+    await expect(
+      readFile(path.join(releaseDir, "agent", "sandbox", ".sandbox.eveland-authored.ts"), "utf8"),
+    ).resolves.toContain("bootstrap");
+    await expect(
+      readFile(path.join(releaseDir, "agent", "sandbox", "sandbox.js"), "utf8"),
+    ).resolves.toContain('import authoredSandbox from "./.sandbox.eveland-authored.ts";');
     await expect(
       readFile(path.join(releaseDir, "agent", "sandbox", "workspace", "knowledge.md"), "utf8"),
     ).resolves.toBe("seeded\n");
@@ -196,21 +229,41 @@ describe("injectSandboxModules", () => {
 
   test("re-running is idempotent and does not report its own output as replaced", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
+    await writeFile(path.join(releaseDir, "agent", "sandbox.ts"), "export default {};\n");
     const first = await injectSandboxModules({ releaseDir, backendDistDir });
     const second = await injectSandboxModules({ releaseDir, backendDistDir });
     expect(first.replaced).toEqual([]);
     expect(second.replaced).toEqual([]);
+    expect(first.wrapped).toEqual(["agent/sandbox.ts"]);
+    expect(second.wrapped).toEqual(["agent/sandbox.ts"]);
     expect(second.generated).toEqual(["agent/sandbox.js"]);
   });
 
-  test("an authored sandbox.js IS reported as replaced", async () => {
+  test("an authored sandbox.js is wrapped rather than confused with generated output", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
     await writeFile(path.join(releaseDir, "agent", "sandbox.js"), "export default {};\n");
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
-    expect(result.replaced).toEqual(["agent/sandbox.js"]);
+    expect(result.wrapped).toEqual(["agent/sandbox.js"]);
+    expect(result.replaced).toEqual([]);
+    await expect(
+      readFile(path.join(releaseDir, "agent", ".sandbox.eveland-authored.js"), "utf8"),
+    ).resolves.toBe("export default {};\n");
   });
 
-  test("an authored non-.js module is reported even when its content starts with the generated marker", async () => {
+  test("replaces rather than wraps a symlinked authored sandbox module", async () => {
+    const { releaseDir, backendDistDir } = await makeRelease();
+    const target = path.join(releaseDir, "outside-sandbox.ts");
+    await writeFile(target, "export default {};\n");
+    symlinkSync(target, path.join(releaseDir, "agent", "sandbox.ts"));
+
+    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+
+    expect(result.wrapped).toEqual([]);
+    expect(result.replaced).toEqual(["agent/sandbox.ts"]);
+    expect(existsSync(path.join(releaseDir, "agent", ".sandbox.eveland-authored.ts"))).toBe(false);
+  });
+
+  test("an authored non-.js module is wrapped even when its content starts with the generated marker", async () => {
     const { releaseDir, backendDistDir } = await makeRelease();
     await writeFile(
       path.join(releaseDir, "agent", "sandbox.ts"),
@@ -219,7 +272,8 @@ describe("injectSandboxModules", () => {
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
-    expect(result.replaced).toEqual(["agent/sandbox.ts"]);
+    expect(result.wrapped).toEqual(["agent/sandbox.ts"]);
+    expect(result.replaced).toEqual([]);
   });
 
   test("removes and reports a symlinked sandbox directory regardless of type", async () => {

@@ -42,7 +42,11 @@ vi.mock("@evelandhq/agent-scheduler", () => ({
 }));
 
 vi.mock("./runtime/sandbox-inject.js", () => ({
-  injectSandboxModules: vi.fn(async () => ({ generated: ["agent/sandbox.js"], replaced: [] })),
+  injectSandboxModules: vi.fn(async () => ({
+    generated: ["agent/sandbox.js"],
+    replaced: [],
+    wrapped: [],
+  })),
 }));
 
 // A real (temporary) data dir: startProcess writes the deployment's 0600 env
@@ -514,7 +518,11 @@ describe("createDockerAdapter", () => {
 
   test("warns when an Eve release has no agent root to receive the sandbox module", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(injectSandboxModules).mockResolvedValueOnce({ generated: [], replaced: [] });
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      generated: [],
+      replaced: [],
+      wrapped: [],
+    });
     vi.mocked(execa)
       .mockResolvedValueOnce({ all: "" } as never)
       .mockResolvedValueOnce({ all: "docker build ok" } as never)
@@ -542,11 +550,12 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("default sandbox backend chain");
   });
 
-  test("reports replaced authored sandbox behavior while confirming workspace seeds are preserved", async () => {
+  test("reports preserved authored sandbox lifecycle while overriding its backend", async () => {
     vi.mocked(execa).mockClear();
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
       generated: ["agent/sandbox/sandbox.js"],
-      replaced: ["agent/sandbox/sandbox.ts"],
+      replaced: [],
+      wrapped: ["agent/sandbox/sandbox.ts"],
     });
     vi.mocked(execa)
       .mockResolvedValueOnce({ all: "" } as never)
@@ -573,7 +582,10 @@ describe("createDockerAdapter", () => {
 
     expect(result.log).toContain("bootstrap()");
     expect(result.log).toContain("onSession()");
-    expect(result.log).toContain("workspace seeds are preserved");
+    expect(result.log).toContain("agent/sandbox/sandbox.ts");
+    expect(result.log).toContain("overrides only the backend");
+    expect(result.log).toContain("revalidationKey");
+    expect(result.log).not.toContain("are not used");
   });
 
   test("startProcess publishes the configured internal port and runs the eve start command", async () => {

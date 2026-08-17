@@ -1100,8 +1100,9 @@ core/db 边界落地
 - sandbox cache 使用 `EVELAND_HOST_DATA_DIR` 映射并按 Project 持久化，redeploy
   不丢 durable Eve Session 的 workspace；
 - Release 注入平台 backend 时保留 `agent/sandbox/workspace/**`，目录形式生成
-  `agent/sandbox/sandbox.js`；只替换 authored `bootstrap()`/`onSession()`，不能删除
-  Eve 应在新 Session 中初始化到 `/workspace/**` 的 seed files；
+  `agent/sandbox/sandbox.js`；只替换 authored `backend`，继续执行 `bootstrap()` 与
+  `onSession()`，并保留 `description`、`revalidationKey` 及 Eve 应在新 Session 中初始化到
+  `/workspace/**` 的 seed files；
 - bwrap template 按不可变 Release revision 隔离，针对新 Deployment 创建的 Session 使用该
   Release 更新后的 seeds；session cache 仍按 durable Eve session key 复用，已有 `/workspace` 不被覆盖；
 - Docker 与 systemd build self-check 都必须在真实 bwrap 中写入并用 Node 24
@@ -1390,8 +1391,8 @@ basic systemd smoke 继续使用窗口最旧端的 0.25.3。
   在 bootstrap 前写入；
 - canonical session/continuation/cancel/stream protocol message、Vercel OIDC headers、Hook event
   schema、Schedule public definitions 与 `SandboxBackend` public contract 未变。Eveland 的平台
-  backend 替换 authored `bootstrap`/`onSession`，因此 Agent 仍应通过 workspace seed 提供
-  sandbox 初始文件，不应依赖 authored bootstrap。
+  backend 只替换 authored `backend`；workspace seed 会先写入 template，随后继续执行 authored
+  `bootstrap()`，每个 durable Session 还会执行 `onSession()`。
 
 Agent 项目即使声明 `^0.27.0`，也必须刷新 lockfile 并重新部署才能确定获得 0.27.3；Eve
 0.27.3 的 AI SDK peer 下限已提高到 `ai@^7.0.34`，项目与平台 workspace 中单独锁定的旧版本
@@ -1553,8 +1554,9 @@ restart、cold activation、Playground、Gateway 与 scheduler adapter 继续共
 - 0.36 把隐式默认模型改为 `zai/glm-5.2`，项目升级前应显式固定 `model`；旧
   `eve/sveltekit` 的 `configureVercelJson`、`servicePrefix` 与对应环境变量需要项目侧迁移；
 - 0.37 的 Vercel Sandbox Drives 不穿过 Eveland runtime boundary。Release preparation 继续用
-  受管 bwrap backend 替换 authored backend 并只保留 workspace seeds；`eve init`/`eve dev` 的
-  authoring-time 变化不改变 Worker 明确执行的 build/start 路径。
+  受管 bwrap backend 替换 authored backend，同时保留并执行 `bootstrap()`、`onSession()`，保留
+  `description`、`revalidationKey` 与 workspace seeds；`eve init`/`eve dev` 的 authoring-time
+  变化不改变 Worker 明确执行的 build/start 路径。
 
 ---
 
