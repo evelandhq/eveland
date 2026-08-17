@@ -4,6 +4,24 @@ import { createDockerAdapter } from "./docker.js";
 import { createSystemdAdapter, resolveSandboxCacheRoot } from "./systemd.js";
 import type { CompleteRuntimeAdapter } from "./types.js";
 
+export type DeploymentResourceLimits = {
+  memoryMax: string;
+  cpuQuota: string;
+  tasksMax: number;
+};
+
+export function resolveDeploymentResourceLimits(env: NodeJS.ProcessEnv): DeploymentResourceLimits {
+  const tasksMax = Number(env.EVELAND_TASKS_MAX ?? 512);
+  if (!Number.isSafeInteger(tasksMax) || tasksMax <= 0) {
+    throw new Error("EVELAND_TASKS_MAX must be a positive safe integer.");
+  }
+  return {
+    memoryMax: env.EVELAND_MEMORY_MAX ?? "2G",
+    cpuQuota: env.EVELAND_CPU_QUOTA ?? "200%",
+    tasksMax,
+  };
+}
+
 /**
  * Locates @evelandhq/sandbox-bwrap's dist, which gets vendored into each release.
  * Passed to createSystemdAdapter as a provider and invoked inside buildRelease
@@ -37,12 +55,14 @@ export function createRuntimeAdapterForKind(
   kind: "docker" | "systemd",
   env: NodeJS.ProcessEnv = process.env,
 ): CompleteRuntimeAdapter {
+  const limits = resolveDeploymentResourceLimits(env);
   if (kind === "docker") {
     return createDockerAdapter({
       internalPort: Number(env.EVELAND_INTERNAL_PORT ?? 3000),
       dataDir: path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data"),
       collectorContainerName: env.EVELAND_OTEL_COLLECTOR_CONTAINER ?? "eveland-otel-collector",
       backendDistDir: resolveBackendDistDir,
+      ...limits,
     });
   }
 
@@ -50,8 +70,7 @@ export function createRuntimeAdapterForKind(
     dataDir: path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data"),
     user: env.EVELAND_APP_USER ?? "eveland-app",
     buildUser: env.EVELAND_BUILD_USER ?? "eveland-build",
-    memoryMax: env.EVELAND_MEMORY_MAX ?? "2G",
-    cpuQuota: env.EVELAND_CPU_QUOTA ?? "200%",
+    ...limits,
     buildSandbox: env.EVELAND_BUILD_SANDBOX === "none" ? "none" : "bwrap",
     // Each release gets a fresh directory, but eve keys session sandboxes per
     // durable session and promises a redeploy preserves a session's /workspace

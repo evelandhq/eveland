@@ -22,6 +22,7 @@ export const RESERVED_RUNTIME_ENVIRONMENT_KEYS: readonly string[] = [
   "EVELAND_IDENTITY_ISSUER",
   "EVELAND_IDENTITY_JWKS_URL",
   "EVELAND_PROJECT_ID",
+  "EVELAND_SANDBOX_RUN_TIMEOUT_MS",
   "EVELAND_SCHEDULER_REDEEM_URL",
   "EVELAND_SCHEDULER_RUNTIME_SECRET",
   // Tenancy and topology for the platform workflow world. A project that could

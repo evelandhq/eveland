@@ -186,6 +186,12 @@ describe("buildDockerRunArgs", () => {
       "eveland-proj_123",
       "--restart",
       "unless-stopped",
+      "--memory",
+      "2G",
+      "--cpus",
+      "2",
+      "--pids-limit",
+      "512",
       "--network",
       resolveAgentTelemetryNetworkName("eveland-proj_123"),
       "--cap-drop",
@@ -218,6 +224,26 @@ describe("buildDockerRunArgs", () => {
       "npm run start",
     ]);
     expect(args).toContain("EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_456");
+  });
+
+  test("applies configured memory, CPU, and PID limits", () => {
+    const args = buildDockerRunArgs({
+      containerName: "eveland-proj_123",
+      imageTag: "eveland/proj_123:rel_456",
+      internalPort: 3000,
+      hostPort: 43123,
+      memoryMax: "1G",
+      cpuQuota: "50%",
+      tasksMax: 64,
+      sandboxCacheDir: "/host/eveland/sandbox/proj_123",
+      observabilityPolicyDir: "/host/eveland/observability/proj_123/dep_456",
+      envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
+      command: "npm run start",
+    });
+
+    expect(args).toContain("1G");
+    expect(args).toContain("0.5");
+    expect(args).toContain("64");
   });
 
   test("does not let project env override the platform template revision", () => {

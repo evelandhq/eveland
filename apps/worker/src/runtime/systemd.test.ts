@@ -103,6 +103,7 @@ describe("buildSystemdRunArgs", () => {
       "--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/data/builds/proj_123/rel_789",
       "--property=MemoryMax=2G",
       "--property=CPUQuota=200%",
+      "--property=TasksMax=512",
       "--property=ProtectSystem=strict",
       "--property=ReadWritePaths=/data/builds/proj_123/rel_789",
       "--property=ReadWritePaths=/var/lib/eveland-data/sandbox/proj_123",
@@ -125,6 +126,28 @@ describe("buildSystemdRunArgs", () => {
     expect(args).toContain(
       "--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/data/builds/proj_123/rel_789",
     );
+  });
+
+  test("applies the configured task limit", () => {
+    const args = buildSystemdRunArgs({
+      unitName: "eveland-proj_123-dep_456",
+      releaseDir: "/data/builds/proj_123/rel_789",
+      envFilePath: "/data/deployment-env/eveland-proj_123-dep_456.env",
+      port: 41000,
+      user: "eveland-app",
+      memoryMax: "2G",
+      cpuQuota: "200%",
+      tasksMax: 64,
+      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      dataDir: "/var/lib/eveland-data",
+      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
+      accessRepairScriptPath: "/data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
+      dynamicUserUidMarkerPath:
+        "/var/lib/eveland-data/observability/proj_123/dep_456/.dynamic-user-uid",
+      command: "npx eve start --host 127.0.0.1 --port 41000",
+    });
+
+    expect(args).toContain("--property=TasksMax=64");
   });
 });
 

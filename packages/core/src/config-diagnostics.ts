@@ -627,8 +627,30 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     warning: (_env, value) => value === "none",
     emptyUsesFallback: true,
   },
-  entry("EVELAND_MEMORY_MAX", ["worker"], "systemd MemoryMax limit applied per Deployment.", "2G"),
-  entry("EVELAND_CPU_QUOTA", ["worker"], "systemd CPUQuota limit applied per Deployment.", "200%"),
+  entry(
+    "EVELAND_MEMORY_MAX",
+    ["worker"],
+    "Memory limit applied to each Docker container or systemd Deployment unit.",
+    "2G",
+  ),
+  entry(
+    "EVELAND_CPU_QUOTA",
+    ["worker"],
+    "CPU quota applied to each Docker container or systemd Deployment unit.",
+    "200%",
+  ),
+  entry(
+    "EVELAND_TASKS_MAX",
+    ["worker"],
+    "Maximum processes and threads in each Deployment cgroup.",
+    "512",
+  ),
+  entry(
+    "EVELAND_SANDBOX_RUN_TIMEOUT_MS",
+    ["worker"],
+    "Hard wall-clock limit for one sandbox run() command.",
+    "600000",
+  ),
   entry(
     "EVELAND_INTERNAL_PORT",
     ["worker"],

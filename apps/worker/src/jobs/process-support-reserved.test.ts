@@ -89,6 +89,7 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
     expect(env.EVELAND_WORKFLOW_RUNNER).toBe("embedded");
     expect(env.EVELAND_WORKFLOW_STREAM_COMPACTION).toBe("off");
+    expect(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS).toBe("600000");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
     // Provisioning a per-project database here would leave an empty one behind
     // for every project on the new world.

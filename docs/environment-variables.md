@@ -165,18 +165,21 @@ The dispatcher (`apps/workflow-dispatcher`, a thin launcher for the dispatcher i
 | `WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK` | Maximum terminal streams rewritten into bounded physical blocks in one maintenance pass.                                                                                | `100`                                                       | `@evelandhq/workflow-world` |
 | `WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE`      | Maximum expired workflow graphs deleted by one maintenance statement.                                                                                                   | `1000`                                                      | `@evelandhq/workflow-world` |
 
-## systemd runtime (Linux / production only)
+## Deployment runtime and sandbox limits
 
-These take effect only on the systemd runtime; the docker runtime ignores them.
+The resource and command limits apply to both Docker and systemd Deployments. User/group and
+build-sandbox settings apply only to the Linux systemd runtime.
 
-| Variable                    | Purpose                                                                                                             | Default                      |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `EVELAND_APP_USER`          | Unix access group used by each deployment's isolated systemd DynamicUser. The user and same-named group must exist. | `eveland-app`                |
-| `EVELAND_BUILD_USER`        | Unprivileged Unix user that runs `npm ci` / `npx eve build`.                                                        | `eveland-build`              |
-| `EVELAND_MEMORY_MAX`        | systemd unit `MemoryMax`.                                                                                           | `2G`                         |
-| `EVELAND_CPU_QUOTA`         | systemd unit `CPUQuota`.                                                                                            | `200%`                       |
-| `EVELAND_BUILD_SANDBOX`     | `none` disables the bwrap wrapper around the build; also drops `bwrap` from the preflight's required-binary list.   | `bwrap`                      |
-| `EVELAND_SANDBOX_CACHE_DIR` | Root for bwrap template/session persistent caches (one subdirectory per project).                                   | `<EVELAND_DATA_DIR>/sandbox` |
+| Variable                         | Purpose                                                                                                             | Default                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `EVELAND_APP_USER`               | Unix access group used by each deployment's isolated systemd DynamicUser. The user and same-named group must exist. | `eveland-app`                |
+| `EVELAND_BUILD_USER`             | Unprivileged Unix user that runs `npm ci` / `npx eve build`.                                                        | `eveland-build`              |
+| `EVELAND_MEMORY_MAX`             | Per-Deployment memory limit (`docker --memory` or systemd `MemoryMax`).                                             | `2G`                         |
+| `EVELAND_CPU_QUOTA`              | Per-Deployment CPU quota (`docker --cpus` or systemd `CPUQuota`).                                                   | `200%`                       |
+| `EVELAND_TASKS_MAX`              | Per-Deployment process/thread limit (`docker --pids-limit` or systemd `TasksMax`).                                  | `512`                        |
+| `EVELAND_SANDBOX_RUN_TIMEOUT_MS` | Hard wall-clock limit for one bwrap `run()` command; `spawn()` remains long-running.                                | `600000`                     |
+| `EVELAND_BUILD_SANDBOX`          | `none` disables the bwrap wrapper around the build; also drops `bwrap` from the preflight's required-binary list.   | `bwrap`                      |
+| `EVELAND_SANDBOX_CACHE_DIR`      | Root for bwrap template/session persistent caches (one subdirectory per project).                                   | `<EVELAND_DATA_DIR>/sandbox` |
 
 > **`EVELAND_SANDBOX_CACHE_DIR` must live outside the release directory.** Since eve
 > 0.22 keys session sandboxes per durable session, a cache inside the release dir would

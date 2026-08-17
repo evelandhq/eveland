@@ -1237,6 +1237,11 @@ systemd runtime 将它视为 host-owned contract，由 worker preflight 一次�
 因为 bwrap 的只读 host root 不能由 Project 在部署后修补。Docker 本地开发容器不得
 获得 Docker socket；为 nested bwrap 增加的 capability/seccomp 配置只属于本地
 Docker runtime，Linux production 继续使用 unprivileged systemd+bwrap 边界。
+单次 Sandbox `run()` 默认有 10 分钟硬截止时间；截止或调用方 Abort 时必须终止完整的
+bwrap 进程组，不能只终止直接 shell 而留下后代。需要长期存活的 authored process 必须使用
+`spawn()`，并继续受 Session stop/shutdown 管理。Docker 与 systemd 的每个 Deployment
+还必须具有一致的内存、CPU 和进程/线程 cgroup 上限；默认分别为 2 GiB、200% CPU 与
+512 tasks，避免递归 fork 或无限 CPU 命令把故障扩散到宿主机。
 
 代码依赖边界固定为：
 

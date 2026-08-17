@@ -7,6 +7,7 @@ import {
   buildGeneratedSandboxModule,
   GENERATED_MODULE_MARKER,
   injectSandboxModules,
+  resolveSandboxRunTimeoutMs,
   resolveSandboxRoots,
 } from "./sandbox-inject.js";
 
@@ -39,6 +40,26 @@ describe("buildGeneratedSandboxModule", () => {
 
     expect(source).toContain("process.env.EVELAND_SANDBOX_TEMPLATE_REVISION");
     expect(source).toContain("templateRevision ? { templateRevision } : {}");
+  });
+
+  test("forwards the platform-owned hard run timeout to the bwrap backend", () => {
+    const source = buildGeneratedSandboxModule("../.eveland/sandbox-bwrap/index.js");
+
+    expect(source).toContain("process.env.EVELAND_SANDBOX_RUN_TIMEOUT_MS");
+    expect(source).toContain("runTimeoutMs");
+  });
+});
+
+describe("resolveSandboxRunTimeoutMs", () => {
+  test("defaults to ten minutes and keeps an explicit positive integer", () => {
+    expect(resolveSandboxRunTimeoutMs({})).toBe("600000");
+    expect(resolveSandboxRunTimeoutMs({ EVELAND_SANDBOX_RUN_TIMEOUT_MS: "120000" })).toBe("120000");
+  });
+
+  test.each(["0", "-1", "1.5", "not-a-number"])("rejects invalid value %s", (value) => {
+    expect(() => resolveSandboxRunTimeoutMs({ EVELAND_SANDBOX_RUN_TIMEOUT_MS: value })).toThrow(
+      /EVELAND_SANDBOX_RUN_TIMEOUT_MS/,
+    );
   });
 });
 

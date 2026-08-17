@@ -29,6 +29,14 @@ export type SandboxInjectionResult = {
   replaced: string[];
 };
 
+export function resolveSandboxRunTimeoutMs(env: NodeJS.ProcessEnv): string {
+  const value = Number(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS ?? 600_000);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("EVELAND_SANDBOX_RUN_TIMEOUT_MS must be a positive safe integer.");
+  }
+  return String(value);
+}
+
 export function buildGeneratedSandboxModule(relativeImportPath: string): string {
   return `${GENERATED_MODULE_MARKER} Do not edit.
 // The deploy host decides the sandbox backend; agent projects never declare one.
@@ -37,9 +45,11 @@ import { bwrap, isBwrapAvailable } from "${relativeImportPath}";
 
 const cacheDir = process.env.EVELAND_SANDBOX_CACHE_DIR;
 const templateRevision = process.env.EVELAND_SANDBOX_TEMPLATE_REVISION;
+const runTimeoutMs = Number(process.env.EVELAND_SANDBOX_RUN_TIMEOUT_MS ?? "600000");
 const bwrapOptions = {
   ...(cacheDir ? { cacheDir } : {}),
   ...(templateRevision ? { templateRevision } : {}),
+  runTimeoutMs,
 };
 
 export default defineSandbox({

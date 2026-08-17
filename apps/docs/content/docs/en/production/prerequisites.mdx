@@ -19,7 +19,7 @@ Keep source revisions, releases, Agent observability policies, managed Collector
 
 ## Plan capacity
 
-Set a per-deployment `EVELAND_MEMORY_MAX` and `EVELAND_CPU_QUOTA` for the host. Capacity planning should include concurrent ready RuntimeInstances, build work, Postgres, the control plane, release artifacts, and durable sandbox caches. Idle stopping reduces steady-state process count; it does not remove retained artifacts or session workspaces.
+Set per-deployment `EVELAND_MEMORY_MAX`, `EVELAND_CPU_QUOTA`, and `EVELAND_TASKS_MAX` limits for the host, and keep the bounded `EVELAND_SANDBOX_RUN_TIMEOUT_MS` default unless a reviewed workload requires a different command deadline. Capacity planning should include concurrent ready RuntimeInstances, build work, Postgres, the control plane, release artifacts, and durable sandbox caches. Idle stopping reduces steady-state process count; it does not remove retained artifacts or session workspaces.
 
 ## Run preflight
 

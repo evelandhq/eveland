@@ -13,7 +13,7 @@ After the final lease ends, Worker waits for `EVELAND_ACTIVATION_IDLE_TTL_MS`, c
 
 ## Per-deployment limits
 
-The systemd adapter applies `MemoryMax` from `EVELAND_MEMORY_MAX` and `CPUQuota` from `EVELAND_CPU_QUOTA` to each transient unit. Choose values that leave headroom for builds, Postgres, the control plane, and concurrent cold starts.
+Both runtime adapters apply `EVELAND_MEMORY_MAX`, `EVELAND_CPU_QUOTA`, and `EVELAND_TASKS_MAX` to each Deployment cgroup. Docker maps them to `--memory`, `--cpus`, and `--pids-limit`; systemd maps them to `MemoryMax`, `CPUQuota`, and `TasksMax`. Injected bwrap `run()` commands also stop after `EVELAND_SANDBOX_RUN_TIMEOUT_MS` (10 minutes by default), while authored long-running processes must use `spawn()`. Choose limits that leave headroom for builds, Postgres, the control plane, and concurrent cold starts.
 
 ## Recovery and reconciliation
 
