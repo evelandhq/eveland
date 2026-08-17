@@ -57,4 +57,22 @@ describe("scanEveSource", () => {
       await rm(sourcePath, { recursive: true, force: true });
     }
   });
+
+  test("rejects parsed metadata carrying NUL bytes Postgres cannot store", async () => {
+    const sourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-source-scan-"));
+    try {
+      await mkdir(path.join(sourcePath, "agent"), { recursive: true });
+      await writeFile(
+        path.join(sourcePath, "package.json"),
+        '{"name":"agent\\u0000name","dependencies":{"eve":"^0.38.0"}}',
+      );
+      await writeFile(path.join(sourcePath, "agent", "instructions.md"), "You are concise.");
+
+      await expect(scanEveSource({ kind: "zip", sourcePath })).rejects.toThrow(
+        "Source scan result contains a NUL character at summary.projectName.",
+      );
+    } finally {
+      await rm(sourcePath, { recursive: true, force: true });
+    }
+  });
 });
