@@ -10,6 +10,7 @@ import { glob, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
+import { execa } from "execa";
 import { allocateAvailableHostPort } from "../jobs/process.js";
 import { createDockerAdapter } from "../runtime/docker.js";
 import { waitForHttpHealth } from "../runtime/health.js";
@@ -31,6 +32,87 @@ const adapter = createDockerAdapter({
   backendDistDir: resolveBackendDistDir,
 });
 let started = false;
+
+type ContainerPidSnapshot = { pids: number; zombies: number };
+
+async function readContainerPidSnapshot(): Promise<ContainerPidSnapshot> {
+  const script = `
+const fs = require("node:fs");
+const pids = fs.readdirSync("/proc").filter((name) => /^\\d+$/.test(name));
+let zombies = 0;
+for (const pid of pids) {
+  try {
+    const stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
+    if (stat.at(stat.lastIndexOf(")") + 2) === "Z") zombies += 1;
+  } catch {}
+}
+process.stdout.write(JSON.stringify({ pids: pids.length, zombies }));
+`;
+  const result = await execa("docker", ["exec", processName, "node", "-e", script]);
+  return JSON.parse(result.stdout) as ContainerPidSnapshot;
+}
+
+async function verifyContainerInitAndBwrapChurn(): Promise<void> {
+  const inspected = await execa("docker", [
+    "inspect",
+    "--format",
+    "{{.HostConfig.Init}}",
+    processName,
+  ]);
+  assert.equal(inspected.stdout.trim(), "true", "deployment container did not enable Docker init");
+
+  const before = await readContainerPidSnapshot();
+  const churnScript = `
+import { mkdtemp, rm } from "node:fs/promises";
+import path from "node:path";
+import { createBwrapSandboxBackend } from "/app/.eveland/sandbox-bwrap/index.js";
+const cacheRoot = process.env.EVELAND_SANDBOX_CACHE_DIR;
+if (!cacheRoot) throw new Error("missing EVELAND_SANDBOX_CACHE_DIR");
+const appRoot = await mkdtemp(path.join(cacheRoot, "pid-smoke-"));
+try {
+  const backend = createBwrapSandboxBackend({ createOptions: { cacheDir: appRoot, runTimeoutMs: 100 } });
+  const runtimeContext = { appRoot };
+  const handle = await backend.create({ templateKey: null, sessionKey: "pid-smoke", runtimeContext });
+  for (let index = 0; index < 500; index += 1) {
+    const result = await handle.session.run({ command: "true" });
+    if (result.exitCode !== 0) throw new Error("short command failed at " + index);
+  }
+  let timedOut = false;
+  try {
+    await handle.session.run({ command: "sleep 30 & (sleep 30 & wait) & wait" });
+  } catch (error) {
+    timedOut = String(error).includes("timed out");
+  }
+  if (!timedOut) throw new Error("recursive background command did not hit its deadline");
+  await handle.shutdown();
+} finally {
+  await rm(appRoot, { recursive: true, force: true });
+}
+`;
+  await execa("docker", [
+    "exec",
+    processName,
+    "node",
+    "--input-type=module",
+    "--eval",
+    churnScript,
+  ]);
+
+  let after = await readContainerPidSnapshot();
+  for (let attempt = 0; attempt < 20 && after.pids > before.pids + 2; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    after = await readContainerPidSnapshot();
+  }
+  assert.equal(
+    after.zombies,
+    before.zombies,
+    `bwrap churn leaked zombies: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+  );
+  assert.ok(
+    after.pids <= before.pids + 2,
+    `container PIDs did not return to baseline: before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+  );
+}
 
 async function runTypeScriptTurn(hostPort: number): Promise<void> {
   const command =
@@ -164,6 +246,7 @@ try {
   started = true;
   await waitForHttpHealth({ host: "127.0.0.1", port: hostPort, timeoutMs: 30_000 });
   await runTypeScriptTurn(hostPort);
+  await verifyContainerInitAndBwrapChurn();
   console.log("DOCKER TYPESCRIPT SANDBOX SMOKE OK");
 } finally {
   if (started) await adapter.stopProcess(processName).catch(() => {});

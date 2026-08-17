@@ -7,6 +7,7 @@ import {
   buildGeneratedSandboxModule,
   GENERATED_MODULE_MARKER,
   injectSandboxModules,
+  resolveSandboxProcessLimits,
   resolveSandboxRunTimeoutMs,
   resolveSandboxRoots,
 } from "./sandbox-inject.js";
@@ -49,6 +50,15 @@ describe("buildGeneratedSandboxModule", () => {
     expect(source).toContain("runTimeoutMs");
   });
 
+  test("forwards platform-owned process and output limits to the bwrap backend", () => {
+    const source = buildGeneratedSandboxModule("../.eveland/sandbox-bwrap/index.js");
+
+    expect(source).toContain("process.env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES");
+    expect(source).toContain("process.env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES");
+    expect(source).toContain("maxConcurrentProcesses");
+    expect(source).toContain("maxOutputBytes");
+  });
+
   test("preserves an authored definition while overriding only its backend", () => {
     const source = buildGeneratedSandboxModule(
       "../.eveland/sandbox-bwrap/index.js",
@@ -71,6 +81,30 @@ describe("resolveSandboxRunTimeoutMs", () => {
     expect(() => resolveSandboxRunTimeoutMs({ EVELAND_SANDBOX_RUN_TIMEOUT_MS: value })).toThrow(
       /EVELAND_SANDBOX_RUN_TIMEOUT_MS/,
     );
+  });
+});
+
+describe("resolveSandboxProcessLimits", () => {
+  test("returns bounded defaults and keeps explicit positive integers", () => {
+    expect(resolveSandboxProcessLimits({})).toEqual({
+      maxConcurrentProcesses: "64",
+      maxOutputBytes: "16777216",
+    });
+    expect(
+      resolveSandboxProcessLimits({
+        EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES: "8",
+        EVELAND_SANDBOX_MAX_OUTPUT_BYTES: "1048576",
+      }),
+    ).toEqual({ maxConcurrentProcesses: "8", maxOutputBytes: "1048576" });
+  });
+
+  test.each([
+    ["EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES", "0"],
+    ["EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES", "1.5"],
+    ["EVELAND_SANDBOX_MAX_OUTPUT_BYTES", "-1"],
+    ["EVELAND_SANDBOX_MAX_OUTPUT_BYTES", "not-a-number"],
+  ])("rejects invalid %s=%s", (name, value) => {
+    expect(() => resolveSandboxProcessLimits({ [name]: value })).toThrow(name);
   });
 });
 

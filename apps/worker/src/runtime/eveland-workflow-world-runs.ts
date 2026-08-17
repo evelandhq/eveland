@@ -24,9 +24,20 @@ export async function listDeploymentsWithActiveWorkflowRuns(
   const sql = postgres(worldUrl, { max: 1 });
   try {
     const rows = await sql`
-      select distinct deployment_id
-        from "workflow"."workflow_runs"
-       where tenant_id = ${projectId} and status in ('pending', 'running')
+      select distinct runs.deployment_id
+        from "workflow"."workflow_runs" as runs
+       where runs.tenant_id = ${projectId}
+         and runs.status in ('pending', 'running')
+         -- An unresolved dead letter is terminal dispatch quarantine. The
+         -- workflow row remains active for explicit replay/cancel semantics,
+         -- but must not pin a dead Deployment forever.
+         and not exists (
+           select 1
+             from "workflow"."dispatch_dead_letters" as dead
+            where dead.tenant_id = runs.tenant_id
+              and dead.run_id = runs.id
+              and dead.resolved_at is null
+         )
     `;
     return new Set(rows.map((row) => row.deployment_id as string));
   } catch (error) {

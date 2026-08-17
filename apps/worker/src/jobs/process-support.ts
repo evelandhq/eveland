@@ -11,7 +11,10 @@ import type { Store } from "@evelandhq/db";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
-import { resolveSandboxRunTimeoutMs } from "../runtime/sandbox-inject.js";
+import {
+  resolveSandboxProcessLimits,
+  resolveSandboxRunTimeoutMs,
+} from "../runtime/sandbox-inject.js";
 import {
   processSafeName,
   type RuntimeAdapter,
@@ -276,6 +279,7 @@ export async function composeDeploymentEnv(
     await store.getSharedAgentEnvironmentRecord(),
     appSecretKey,
   );
+  const sandboxProcessLimits = resolveSandboxProcessLimits(workerEnv);
   // Project secrets are runtime input, but the workflow database is
   // platform-owned and bootstrapped before this worker accepts jobs. Keep its
   // URL reserved so a project cannot silently redirect the injected world to
@@ -283,6 +287,8 @@ export async function composeDeploymentEnv(
   const reserved = {
     EVELAND_PROJECT_ID: projectId,
     EVELAND_SANDBOX_RUN_TIMEOUT_MS: resolveSandboxRunTimeoutMs(workerEnv),
+    EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES: sandboxProcessLimits.maxConcurrentProcesses,
+    EVELAND_SANDBOX_MAX_OUTPUT_BYTES: sandboxProcessLimits.maxOutputBytes,
     // Only injected when the platform has the shared world configured. A
     // project that could set these could scope its world at another tenant's
     // data, or hand the runner a database nothing provisions.

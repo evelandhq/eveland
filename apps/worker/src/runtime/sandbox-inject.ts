@@ -42,6 +42,36 @@ export function resolveSandboxRunTimeoutMs(env: NodeJS.ProcessEnv): string {
   return String(value);
 }
 
+function resolvePositiveSandboxInteger(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+): string {
+  const value = Number(env[name] ?? fallback);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive safe integer.`);
+  }
+  return String(value);
+}
+
+export function resolveSandboxProcessLimits(env: NodeJS.ProcessEnv): {
+  maxConcurrentProcesses: string;
+  maxOutputBytes: string;
+} {
+  return {
+    maxConcurrentProcesses: resolvePositiveSandboxInteger(
+      env,
+      "EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES",
+      64,
+    ),
+    maxOutputBytes: resolvePositiveSandboxInteger(
+      env,
+      "EVELAND_SANDBOX_MAX_OUTPUT_BYTES",
+      16 * 1024 * 1024,
+    ),
+  };
+}
+
 export function buildGeneratedSandboxModule(
   relativeImportPath: string,
   authoredImportPath?: string,
@@ -58,10 +88,14 @@ ${authoredImport}
 const cacheDir = process.env.EVELAND_SANDBOX_CACHE_DIR;
 const templateRevision = process.env.EVELAND_SANDBOX_TEMPLATE_REVISION;
 const runTimeoutMs = Number(process.env.EVELAND_SANDBOX_RUN_TIMEOUT_MS ?? "600000");
+const maxConcurrentProcesses = Number(process.env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES ?? "64");
+const maxOutputBytes = Number(process.env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES ?? "16777216");
 const bwrapOptions = {
   ...(cacheDir ? { cacheDir } : {}),
   ...(templateRevision ? { templateRevision } : {}),
   runTimeoutMs,
+  maxConcurrentProcesses,
+  maxOutputBytes,
 };
 
 export default defineSandbox({
