@@ -1599,7 +1599,7 @@ route 改为 `/eve/v1/mcp` 且可由 Agent 配置，Gateway 继续 path-transpar
 
 Eve 0.38.3 只接受 workflow spec v6。legacy topology 固定升级到
 `@workflow/world-postgres@5.0.0-beta.34`，shared topology 升级到
-`@evelandhq/workflow-world@0.7.1`；architecture contract 会从已安装包读取 spec version、Eve runtime
+`@evelandhq/workflow-world@0.8.0`；architecture contract 会从已安装包读取 spec version、Eve runtime
 guard、注入常量与文档 pin，防止任一路径在 Deploy 后才暴露不兼容。已有 shared schema 若尚未执行
 会重建 workflow_events 主键的 `0006_event_slots.sql`，worker startup/tenant provisioning fail closed，
 要求 operator 在停流量的 maintenance window 显式运行 `workflow-world-setup`；空库仍自动 bootstrap。

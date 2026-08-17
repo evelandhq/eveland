@@ -34,6 +34,30 @@ describe("Eve compatibility repository contract", () => {
     expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.38.3");
   });
 
+  test("keeps the stable Eve workflow retention audit exhaustive", () => {
+    const coveredStableWorkflowConstants = [
+      "WORKFLOW_ENTRY_NAME",
+      "TURN_WORKFLOW_NAME",
+      "SESSION_TIMEOUT_WORKFLOW_NAME",
+      "TASK_RUN_WORKFLOW_NAME",
+    ];
+
+    for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
+      const runtimeSource = repositoryFile(
+        `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/workflow-runtime.js`,
+      );
+      const stableSet = /STABLE_WORKFLOW_NAMES=new Set\(\[([^\]]+)\]\)/.exec(runtimeSource)?.[1];
+      expect(stableSet, dependencyName).toBeDefined();
+      expect(stableSet!.split(","), dependencyName).toEqual(coveredStableWorkflowConstants);
+
+      const lineageContract = repositoryFile(
+        `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/compiled/@workflow/world/attributes.d.ts`,
+      );
+      expect(lineageContract, dependencyName).toContain('ROOT_RUN_ID_ATTRIBUTE = "$rootRunId"');
+      expect(lineageContract, dependencyName).toContain('PARENT_RUN_ID_ATTRIBUTE = "$parentRunId"');
+    }
+  });
+
   test("publishes a browser-safe compatibility policy subpath", () => {
     const corePackage = JSON.parse(repositoryFile("packages/core/package.json")) as {
       exports?: Record<string, string>;
