@@ -37,7 +37,9 @@ repository shape and how to run it.
 - `apps/gateway`: host-routed public Agent data plane. Preserves Agent auth/cookies and
   streaming bodies, pins Eve sessions to deployments, keeps raw Agent ports private.
 - `apps/worker`: Docker and systemd runtime adapters plus the Postgres job consumer for
-  import, build, restart, and schedule jobs.
+  import, build, restart, and schedule jobs. Both runtimes enforce per-Deployment
+  memory, CPU, and task limits; injected bwrap `run()` commands also have a hard
+  wall-clock deadline.
 - `apps/web`: Next.js App Router control panel (shadcn preset, Tailwind v4).
 - `apps/docs`: bilingual public website and documentation for `eveland.ai` (Next.js +
   Fumadocs), separate from the authenticated control panel.

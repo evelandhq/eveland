@@ -2,8 +2,32 @@ import { describe, expect, test } from "vitest";
 import {
   createRuntimeAdapterForKind,
   createRuntimeAdapterFromEnv,
+  resolveDeploymentResourceLimits,
   resolveRuntimeKind,
 } from "./select.js";
+
+describe("resolveDeploymentResourceLimits", () => {
+  test("returns safe per-deployment defaults", () => {
+    expect(resolveDeploymentResourceLimits({})).toEqual({
+      memoryMax: "2G",
+      cpuQuota: "200%",
+      tasksMax: 512,
+    });
+  });
+
+  test("reads explicit limits and rejects an invalid task count", () => {
+    expect(
+      resolveDeploymentResourceLimits({
+        EVELAND_MEMORY_MAX: "1G",
+        EVELAND_CPU_QUOTA: "50%",
+        EVELAND_TASKS_MAX: "64",
+      } as NodeJS.ProcessEnv),
+    ).toEqual({ memoryMax: "1G", cpuQuota: "50%", tasksMax: 64 });
+    expect(() =>
+      resolveDeploymentResourceLimits({ EVELAND_TASKS_MAX: "0" } as NodeJS.ProcessEnv),
+    ).toThrow(/EVELAND_TASKS_MAX/);
+  });
+});
 
 describe("createRuntimeAdapterForKind", () => {
   test("constructs the docker adapter", () => {

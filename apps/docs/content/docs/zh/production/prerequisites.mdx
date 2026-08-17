@@ -19,7 +19,7 @@ description: 安装前准备 Linux 用户、目录、工具、存储、数据库
 
 ## 规划容量
 
-通过 `EVELAND_MEMORY_MAX` 与 `EVELAND_CPU_QUOTA` 设置每个 Deployment 的资源边界。容量估算应覆盖同时 Ready 的 RuntimeInstance、构建任务、Postgres、控制面、Release Artifact 与持久化 Sandbox Cache。空闲停止减少常驻进程数量，但不会删除保留中的 Artifact 或 Session Workspace。
+通过 `EVELAND_MEMORY_MAX`、`EVELAND_CPU_QUOTA` 与 `EVELAND_TASKS_MAX` 设置每个 Deployment 的资源边界；除非经过评审的工作负载确实需要不同命令期限，否则保留有界的 `EVELAND_SANDBOX_RUN_TIMEOUT_MS` 默认值。容量估算应覆盖同时 Ready 的 RuntimeInstance、构建任务、Postgres、控制面、Release Artifact 与持久化 Sandbox Cache。空闲停止减少常驻进程数量，但不会删除保留中的 Artifact 或 Session Workspace。
 
 ## 运行 Preflight
 

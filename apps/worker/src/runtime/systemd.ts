@@ -37,6 +37,7 @@ export type SystemdStartInput = {
   user: string;
   memoryMax: string;
   cpuQuota: string;
+  tasksMax?: number;
   sandboxCacheDir: string;
   dataDir: string;
   observabilityPolicyDir: string;
@@ -136,6 +137,7 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     `--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=${input.releaseDir}`,
     `--property=MemoryMax=${input.memoryMax}`,
     `--property=CPUQuota=${input.cpuQuota}`,
+    `--property=TasksMax=${input.tasksMax ?? 512}`,
     "--property=ProtectSystem=strict",
     `--property=ReadWritePaths=${input.releaseDir}`,
     // systemd list-type settings (ReadWritePaths= included) append across repeated
@@ -369,6 +371,7 @@ export type SystemdAdapterConfig = {
   buildUser: string;
   memoryMax: string;
   cpuQuota: string;
+  tasksMax?: number;
   buildSandbox: "bwrap" | "none";
   /** Root directory holding every project's durable eve sandbox session cache. */
   sandboxCacheDir: string;
@@ -566,6 +569,7 @@ export function createSystemdAdapter(
             user: config.user,
             memoryMax: config.memoryMax,
             cpuQuota: config.cpuQuota,
+            tasksMax: config.tasksMax,
             sandboxCacheDir: input.sandboxCacheDir,
             dataDir,
             observabilityPolicyDir: input.observabilityPolicyDir,

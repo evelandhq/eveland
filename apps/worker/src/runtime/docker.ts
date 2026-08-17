@@ -48,6 +48,9 @@ export type DockerRunInput = {
   imageTag: string;
   internalPort: number;
   hostPort: number;
+  memoryMax?: string;
+  cpuQuota?: string;
+  tasksMax?: number;
   sandboxCacheDir: string;
   observabilityPolicyDir: string;
   /**
@@ -62,6 +65,9 @@ export type DockerRunInput = {
 };
 
 const defaultCollectorContainerName = "eveland-otel-collector";
+const defaultMemoryMax = "2G";
+const defaultCpuQuota = "200%";
+const defaultTasksMax = 512;
 
 const DOCKER_BWRAP_SECURITY_ARGS = [
   "--cap-drop",
@@ -77,6 +83,11 @@ const DOCKER_BWRAP_SECURITY_ARGS = [
 ] as const;
 
 export function buildDockerRunArgs(input: DockerRunInput): string[] {
+  const cpuQuota = input.cpuQuota ?? defaultCpuQuota;
+  const quotaMatch = /^(\d+(?:\.\d+)?)%$/.exec(cpuQuota);
+  if (!quotaMatch || Number(quotaMatch[1]) <= 0) {
+    throw new Error(`EVELAND_CPU_QUOTA must be a positive percentage; received "${cpuQuota}".`);
+  }
   const args = [
     "run",
     "--detach",
@@ -84,6 +95,12 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     input.containerName,
     "--restart",
     "unless-stopped",
+    "--memory",
+    input.memoryMax ?? defaultMemoryMax,
+    "--cpus",
+    String(Number(quotaMatch[1]) / 100),
+    "--pids-limit",
+    String(input.tasksMax ?? defaultTasksMax),
     "--network",
     resolveAgentTelemetryNetworkName(input.containerName),
   ];
@@ -368,6 +385,9 @@ export type DockerAdapterConfig = {
   dataDir: string;
   /** Resolves the built bwrap backend only when an Eve release is built. */
   backendDistDir: () => string;
+  memoryMax?: string;
+  cpuQuota?: string;
+  tasksMax?: number;
 };
 
 /**
@@ -482,6 +502,9 @@ export function createDockerAdapter(
           imageTag: input.releaseRef,
           internalPort: config.internalPort,
           hostPort: input.port,
+          memoryMax: config.memoryMax,
+          cpuQuota: config.cpuQuota,
+          tasksMax: config.tasksMax,
           sandboxCacheDir: input.sandboxCacheDir,
           observabilityPolicyDir: input.observabilityPolicyDir,
           envFilePath,

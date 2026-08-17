@@ -13,7 +13,7 @@ Public Request、Continuation、Stream 与 Schedule 在访问进程前获取 Act
 
 ## 每 Deployment 限制
 
-systemd Adapter 为每个 Transient Unit 应用来自 `EVELAND_MEMORY_MAX` 的 `MemoryMax` 与来自 `EVELAND_CPU_QUOTA` 的 `CPUQuota`。设置时需要为 Build、Postgres、控制面与并发 Cold Start 留出余量。
+两种 Runtime Adapter 都会把 `EVELAND_MEMORY_MAX`、`EVELAND_CPU_QUOTA` 与 `EVELAND_TASKS_MAX` 应用到每个 Deployment cgroup：Docker 对应 `--memory`、`--cpus` 与 `--pids-limit`，systemd 对应 `MemoryMax`、`CPUQuota` 与 `TasksMax`。注入的 bwrap `run()` 命令还会在 `EVELAND_SANDBOX_RUN_TIMEOUT_MS` 后停止（默认 10 分钟）；需要长期存活的 authored process 必须使用 `spawn()`。设置时需要为 Build、Postgres、控制面与并发 Cold Start 留出余量。
 
 ## Recovery 与 Reconciliation
 

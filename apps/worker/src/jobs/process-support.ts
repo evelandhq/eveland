@@ -11,6 +11,7 @@ import type { Store } from "@evelandhq/db";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { resolveProjectSandboxCacheDir, resolveSandboxCacheRoot } from "../runtime/systemd.js";
+import { resolveSandboxRunTimeoutMs } from "../runtime/sandbox-inject.js";
 import {
   processSafeName,
   type RuntimeAdapter,
@@ -281,6 +282,7 @@ export async function composeDeploymentEnv(
   // an uninitialized or tenant-controlled database.
   const reserved = {
     EVELAND_PROJECT_ID: projectId,
+    EVELAND_SANDBOX_RUN_TIMEOUT_MS: resolveSandboxRunTimeoutMs(workerEnv),
     // Only injected when the platform has the shared world configured. A
     // project that could set these could scope its world at another tenant's
     // data, or hand the runner a database nothing provisions.
