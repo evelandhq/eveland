@@ -10,6 +10,7 @@ development series until its public installation and upgrade contracts stabilize
 ### Features
 
 * enforce scheduled workflow retention ([7958d36](https://github.com/evelandhq/eveland/commit/7958d36f1f6b777e3bbf48593f774796c8f20507))
+* **worker:** adopt workflow-world 0.9.0 retention ([#320](https://github.com/evelandhq/eveland/issues/320)) ([53cb7dd](https://github.com/evelandhq/eveland/commit/53cb7dd2a84f185d99fa9d1bd7cf70931c74a0a0))
 
 
 ### Bug Fixes
@@ -18,6 +19,8 @@ development series until its public installation and upgrade contracts stabilize
 * prevent unbounded workflow storage growth ([182593e](https://github.com/evelandhq/eveland/commit/182593ec074078676912afd48e6293b4b59f720d))
 * **worker:** harden sandbox lifecycle and retention ([#317](https://github.com/evelandhq/eveland/issues/317)) ([5c4f410](https://github.com/evelandhq/eveland/commit/5c4f4108d32abbcebdd19a9fbee57ac0a9e6b2d6))
 * **worker:** preserve authored sandbox lifecycle ([d414859](https://github.com/evelandhq/eveland/commit/d414859fc29fac98c2660f8ed4e49626079748ee))
+* **worker:** skip files with NUL bytes during source scan ([#312](https://github.com/evelandhq/eveland/issues/312)) ([03c745a](https://github.com/evelandhq/eveland/commit/03c745a8b71a2afc25c0072bd03f3fcd8a045432))
+* **worker:** upgrade workflow world to 0.8.1 ([4a6bd72](https://github.com/evelandhq/eveland/commit/4a6bd72a4709d45ed54ac4ecbeae28dde829c0f9))
 
 ## [0.34.0](https://github.com/evelandhq/eveland/compare/v0.33.0...v0.34.0) (2026-08-15)
 
