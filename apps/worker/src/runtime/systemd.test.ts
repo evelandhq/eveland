@@ -47,7 +47,7 @@ vi.mock("@evelandhq/agent-scheduler", () => ({
 vi.mock("./sandbox-inject.js", () => ({
   injectSandboxModules: vi
     .fn()
-    .mockResolvedValue({ generated: ["agent/sandbox.js"], replaced: [] }),
+    .mockResolvedValue({ generated: ["agent/sandbox.js"], replaced: [], wrapped: [] }),
 }));
 
 // verifySandbox shells out to the real vendored backend under systemd-run; it has its
@@ -923,6 +923,7 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
       generated: ["agent/sandbox.js"],
       replaced: [],
+      wrapped: [],
     });
     const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
 
@@ -971,10 +972,11 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     expect(result.log).not.toContain("WARNING");
   });
 
-  test("prefixes a loud warning listing every replaced authored sandbox module", async () => {
+  test("reports every authored sandbox whose lifecycle is preserved", async () => {
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
       generated: ["agent/sandbox.js"],
-      replaced: ["agent/sandbox.ts", "agent/subagents/researcher/sandbox.js"],
+      replaced: [],
+      wrapped: ["agent/sandbox.ts", "agent/subagents/researcher/sandbox.js"],
     });
     const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
 
@@ -986,12 +988,12 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
       commandContext: { hasLockfile: true },
     });
 
-    expect(result.log).toContain(
-      "WARNING: replaced the project's authored sandbox (agent/sandbox.ts, agent/subagents/researcher/sandbox.js)",
-    );
+    expect(result.log).toContain("agent/sandbox.ts, agent/subagents/researcher/sandbox.js");
+    expect(result.log).toContain("overrides only the backend");
     expect(result.log).toContain("bootstrap()");
     expect(result.log).toContain("onSession()");
-    expect(result.log).toContain("workspace seeds are preserved");
+    expect(result.log).toContain("revalidationKey");
+    expect(result.log).not.toContain("are not used");
   });
 });
 
@@ -1194,7 +1196,11 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
 
 describe("createSystemdAdapter buildRelease (no sandbox roots found)", () => {
   test("still vendors and verifies, but warns loudly instead of failing the build", async () => {
-    vi.mocked(injectSandboxModules).mockResolvedValueOnce({ generated: [], replaced: [] });
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      generated: [],
+      replaced: [],
+      wrapped: [],
+    });
     vi.mocked(verifySandbox).mockClear();
     const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
 

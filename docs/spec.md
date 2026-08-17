@@ -1223,8 +1223,11 @@ Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
 optional peer 的 `just-bash`。平台在 Docker 与 systemd 的 Release 副本中注入
 `@evelandhq/sandbox-bwrap`，并将每个 Project 的 durable Session workspace 保存在
 Release 目录之外；redeploy 或 restart 不得丢失同一 Eve Session 的 `/workspace`。
-Release 准备可以替换用户编写的 Sandbox backend、`bootstrap()` 与 `onSession()`，
-但必须保留 `agent/sandbox/workspace/**`；这些 authored seeds 继续由 Eve 编译并在
+Release 准备必须替换用户编写的 Sandbox backend，但必须保留 authored
+`bootstrap()`、`onSession()`、`description` 与 `revalidationKey`。注入器把有效 authored
+definition 原地改名为同目录的非发现 companion module，再由生成的 `sandbox.js` 展开其字段并
+最后覆盖 `backend`，因此原 definition 的相对 import 语义不能改变。平台还必须保留
+`agent/sandbox/workspace/**`；这些 authored seeds 继续由 Eve 编译并在
 每个新 Session 初始化到 `/workspace/**`，不能因为平台选择 backend 而从 Release 删除。
 workspace template 必须按不可变 Release 隔离：同步部署更新 seed 后，针对新 Release 创建的
 Session 必须使用其新内容；已有 durable Session 的 `/workspace` 不得被 deploy 覆盖。

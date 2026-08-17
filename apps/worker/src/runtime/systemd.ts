@@ -499,6 +499,13 @@ export function createSystemdAdapter(
                     "be injected. The deployed agent will fall back to eve's default sandbox backend chain.",
                 ]
               : []),
+            ...(injection.wrapped.length
+              ? [
+                  `Preserved the project's authored sandbox lifecycle (${injection.wrapped.join(", ")}). ` +
+                    "Eveland overrides only the backend; authored bootstrap(), onSession(), description, and " +
+                    "revalidationKey remain active, while workspace seeds are preserved.",
+                ]
+              : []),
             ...(injection.replaced.length
               ? [
                   `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +

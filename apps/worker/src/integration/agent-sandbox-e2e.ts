@@ -102,6 +102,13 @@ const sandboxModule = await import(pathToFileURL(sandboxModulePath).href);
 
 const backend = sandboxModule.default.backend();
 assert.equal(backend.name, "bwrap", \`expected the bwrap backend, got "\${backend.name}"\`);
+assert.equal(typeof sandboxModule.default.bootstrap, "function", "authored bootstrap was not preserved");
+assert.equal(typeof sandboxModule.default.onSession, "function", "authored onSession was not preserved");
+assert.equal(
+  sandboxModule.default.revalidationKey(),
+  "eveland-authored-lifecycle-v1",
+  "authored revalidationKey was not preserved",
+);
 
 const runtimeContext = { appRoot: releaseDir };
 const templateKey = ${JSON.stringify(TEMPLATE_KEY)};
@@ -239,9 +246,12 @@ async function runHttpTurnOnce(input: {
   expectedSeedContent: string;
 }): Promise<HttpTurnOutcome> {
   const markerName = "http-turn-marker.txt";
+  const expectedBootstrapContent = `authored-bootstrap-saw:${input.expectedSeedContent}`;
   const message =
     `Use the ${SKILL_NAME} skill, then use the bash tool to run the command ` +
     `\`test "$(cat eveland-seed.txt)" = ${JSON.stringify(input.expectedSeedContent)} && ` +
+    `test "$(cat eveland-bootstrap.txt)" = ${JSON.stringify(expectedBootstrapContent)} && ` +
+    `test "$(cat eveland-on-session.txt)" = authored-on-session-ran && ` +
     `echo http-turn-ran > ${markerName}\`.`;
 
   try {
@@ -494,9 +504,13 @@ try {
   );
   assert.ok(
     buildLogs.includes(
-      "WARNING: replaced the project's authored sandbox (agent/sandbox/sandbox.ts)",
+      "Preserved the project's authored sandbox lifecycle (agent/sandbox/sandbox.ts)",
     ),
-    `build log missing the replaced-authored-sandbox warning:\n${buildLogs}`,
+    `build log missing the preserved-authored-sandbox line:\n${buildLogs}`,
+  );
+  assert.ok(
+    buildLogs.includes("Eveland overrides only the backend"),
+    `build log did not explain the backend-only override:\n${buildLogs}`,
   );
 
   const releaseDir1 = releaseDirFor(project.id, deployment.releaseId);
@@ -506,7 +520,11 @@ try {
   );
   assert.ok(
     !(await pathExists(path.join(releaseDir1, "agent", "sandbox", "sandbox.ts"))),
-    `${releaseDir1}/agent/sandbox/sandbox.ts must NOT exist (the authored module must be removed)`,
+    `${releaseDir1}/agent/sandbox/sandbox.ts must NOT remain discoverable`,
+  );
+  assert.ok(
+    await pathExists(path.join(releaseDir1, "agent", "sandbox", ".sandbox.eveland-authored.ts")),
+    `${releaseDir1}/agent/sandbox/.sandbox.eveland-authored.ts must preserve the authored lifecycle`,
   );
   assert.ok(
     await pathExists(path.join(releaseDir1, "agent", "sandbox", "workspace", "eveland-seed.txt")),

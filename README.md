@@ -265,7 +265,9 @@ maintains the release PR, `CHANGELOG.md`, Git tag, and GitHub Release from
 Conventional Commit history. The bubblewrap sandbox backend
 [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) ships from
 its own repository on its own version line; the worker depends on it from npm and
-vendors its built output into each release.
+vendors its built output into each release. Release preparation overrides only an
+Agent's authored Sandbox backend: `bootstrap()`, `onSession()`, `description`,
+`revalidationKey`, and `sandbox/workspace/**` remain part of the deployed definition.
 
 See [`docs/releases.md`](docs/releases.md) for the release policy, checklist, and
 current artifact boundary, and [`docs/observability.md`](docs/observability.md) for

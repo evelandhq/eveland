@@ -23,7 +23,7 @@ Eve 0.32 的 Sandbox 契约是整个窗口的基线：自定义 Sandbox Backend 
 
 **Eve 0.36 将默认模型改为 `zai/glm-5.2`。** 依赖 Eve 隐式默认值的项目重新构建后，Provider、行为、Credential 要求与费用都可能变化；升级前应显式固定 `model`。`eve/sveltekit` 也迁移到稳定的 Vercel Services Model，并移除 `configureVercelJson`、`servicePrefix` 与 `EVE_SVELTEKIT_SERVICE_PREFIX`；使用这些选项的项目必须先迁移源码。
 
-**Eve 0.37 增加 Vercel Sandbox Drives，并调整本地创作 CLI。** Eveland 仍会用受管 bwrap backend 替换项目声明的 Sandbox Backend，同时保留 Workspace Seed，因此 Eveland Deployment 不暴露 Vercel Drive Mount。`eve init`/`eve dev` 的变化只影响本地创作，不改变平台明确执行的 Build/Start 命令。
+**Eve 0.37 增加 Vercel Sandbox Drives，并调整本地创作 CLI。** Eveland 仍会用受管 bwrap backend 替换项目声明的 Sandbox Backend，因此 Eveland Deployment 不暴露 Vercel Drive Mount。生成的 Definition 会保留 authored `bootstrap()`、`onSession()`、`description`、`revalidationKey` 与 Workspace Seed；只有 `backend` 归平台所有。`eve init`/`eve dev` 的变化只影响本地创作，不改变平台明确执行的 Build/Start 命令。
 
 **Eve 0.37.1 增加 Durable Background Work 与 Invocation Channel。** 当 `subagent.completed` 携带 `backgroundTask: { status: "working" }` 时，它只是后台任务回执，不是 Child 的终态；Consumer 必须继续跟随 Child Stream。Remote Child Stream 可以经 Parent 的 `GET /eve/v1/session/:parentSessionId/subagents/:callId/:childSessionId/stream` 路由读取。已认证 Caller 可用 `operationId` 实现 Session Create-once；Remote Task Input 通过 `POST /eve/v1/task-input/:token` 返回；`mcpChannel()` 提供 Durable `agent_start`、`agent_get`、`agent_update` 与 `agent_cancel` 工具。Eveland 会让 Child-stream Proxy 继续使用 Parent SessionBinding，并让 Create-once 与 Invocation Traffic 在加权发布、Promote/Rollback 与 Cold Activation 期间保持 Durable Deployment Routing。Eve 0.37.1 还修复了 `eve init` 的 Package Manager Detection、CommonJS Native Module 动态加载、Vercel Auth-stream 错误处理，以及多处 Task/Authorization 清理竞态。
 

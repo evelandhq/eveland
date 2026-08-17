@@ -675,11 +675,14 @@ to `<releaseDir>/.eveland/sandbox-bwrap/`. The generated module reads
 `EVELAND_SANDBOX_CACHE_DIR` from the environment and passes it to the backend as
 `cacheDir`. The runtime also supplies an internal `EVELAND_SANDBOX_TEMPLATE_REVISION`
 derived from the immutable Release reference. Nothing in the project's own source tree
-is touched to make this happen, and there is nothing for a project to author.
+is touched to select the backend. Projects may still author Sandbox lifecycle and metadata.
 
 If the project shipped its own `agent/sandbox.ts` or `agent/sandbox/sandbox.ts`, the build
-removes that authored backend definition and writes the generated module in its place. Its
-`bootstrap()` and `onSession()` are not run because Eveland owns the deployment backend.
+renames that definition to a non-discoverable same-directory companion and writes the generated
+module in its place. The generated module spreads the authored definition and then replaces only
+`backend`, so `bootstrap()`, `onSession()`, `description`, and `revalidationKey` remain active
+while Eveland still owns the deployment backend. Keeping the companion in the same directory
+preserves relative imports from the authored module.
 An `agent/sandbox/workspace/**` seed tree is preserved in the prepared Release; Eve compiles
 those files and initializes them under `/workspace/**` for each new Session. Templates are
 revision-scoped, so Sessions created against a later Deployment use its updated seed content.
@@ -688,7 +691,7 @@ workspace files; deployment never overwrites their runtime state.
 The build log carries a line so this is never a silent surprise:
 
 ```
-WARNING: replaced the project's authored sandbox (agent/sandbox/sandbox.ts). eveland selects the sandbox backend; the authored module's bootstrap() and onSession() are not used, while workspace seeds are preserved.
+Preserved the project's authored sandbox lifecycle (agent/sandbox/sandbox.ts). Eveland overrides only the backend; authored bootstrap(), onSession(), description, and revalidationKey remain active, while workspace seeds are preserved.
 ```
 
 If an eve project has no `agent/` directory at all, injection generates nothing, the
