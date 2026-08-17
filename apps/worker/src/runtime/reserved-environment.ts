@@ -28,6 +28,7 @@ export const RESERVED_RUNTIME_ENVIRONMENT_KEYS: readonly string[] = [
   // set these could scope its world at another tenant's data, or hand the
   // runner a database nothing provisions.
   "EVELAND_WORKFLOW_RUNNER",
+  "EVELAND_WORKFLOW_STREAM_COMPACTION",
   "EVELAND_WORKFLOW_WORLD_URL",
   // Reserved at runtime only in production, but reserved for every build
   // regardless: `npm ci` and `pnpm install --frozen-lockfile` both omit

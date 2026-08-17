@@ -161,7 +161,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @evelandhq/api db:migrate
 ```
 
-Upgrading an existing shared `@evelandhq/workflow-world` database to `0.6.0`
+Upgrading an existing shared `@evelandhq/workflow-world` database through `0.6.0`
 includes `0006_event_slots.sql`, which rebuilds the `workflow_events` primary key
 under an `ACCESS EXCLUSIVE` lock. The Worker deliberately refuses to apply that
 migration during unattended startup or tenant provisioning. Schedule a maintenance
@@ -173,8 +173,10 @@ EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:5432/eveland_wo
   pnpm --filter @evelandhq/worker exec workflow-world-setup
 ```
 
-Restart the Worker and dispatcher only after the command completes. A new empty shared
-database has no earlier migration registry and continues to bootstrap automatically.
+Restart the Worker and dispatcher only after the command completes. Version `0.7.0`
+then applies the non-disruptive storage-v2 and retention-class migrations (`0007`–`0009`)
+before the dispatcher starts maintenance. A new empty shared database has no earlier
+migration registry and continues to bootstrap automatically.
 
 The host worker runs as root from its own checkout at `/opt/eveland` (see
 `infra/systemd/eveland-worker.service`); apply the same tag and
@@ -319,11 +321,11 @@ runs it against the Lima VM as part of the integration smoke test.
 | `WORKFLOW_POSTGRES_BOOTSTRAP_URL`                  | Matching `DATABASE_URL` when the deployment URL uses `host.docker.internal`; otherwise `WORKFLOW_POSTGRES_URL` | Optional worker-reachable address for the same database. Set this when deployed Docker Agents require `host.docker.internal` but the worker reaches a separate workflow database through `localhost` or a Compose service name. It is never injected into an Agent.                                                                                                                                                                                                                                          |
 | `WORKFLOW_POSTGRES_MAX_POOL_SIZE`                  | `10`                                                                                                           | Max pg pool connections each deployment runtime opens against its workflow database; the worker injects it into every deployment and Project Secrets cannot override it. Size the workflow instance's `max_connections` as roughly this value × expected concurrent running deployments, plus the control-plane pools when both share one Postgres instance. Lower it to fit more deployments per instance; a Postgres `FATAL 53300 "too many clients"` at deployment startup means this budget is exceeded. |
 | `EVELAND_WORKFLOW_WORLD_URL`                       | _(unset)_                                                                                                      | Deployment-reachable shared database for `@evelandhq/workflow-world`. Required before selecting projects with `EVELAND_WORKFLOW_WORLD_ROLLOUT`; leave unset to keep the legacy topology only.                                                                                                                                                                                                                                                                                                                |
-| `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`             | `EVELAND_WORKFLOW_WORLD_URL`                                                                                   | Host-reachable address for the same shared database. Worker startup uses it for non-disruptive migrations and stream retention; maintenance-window migrations must be applied explicitly with `workflow-world-setup`.                                                                                                                                                                                                                                                                                        |
-| `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS`               | `3600000`                                                                                                      | Runs legacy and shared stream-retention paths independently; `0` disables both.                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `EVELAND_WORKFLOW_STREAM_RETENTION_MS`             | `86400000`                                                                                                     | Terminal stream replay window: 24 hours. EOF markers are not deleted.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `EVELAND_WORKFLOW_SWEEP_BATCH_SIZE`                | `50000`                                                                                                        | Maximum rows per retention `DELETE` statement in either topology.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `EVELAND_WORKFLOW_SHARED_SWEEP_MAX_BATCHES`        | `20`                                                                                                           | Maximum shared-database `DELETE` statements per sweep; a warning indicates that later sweeps must continue draining backlog.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`             | `EVELAND_WORKFLOW_WORLD_URL`                                                                                   | Host-reachable address for the same shared database. Worker startup uses it for migrations and tenant provisioning; maintenance-window migrations must be applied explicitly with `workflow-world-setup`.                                                                                                                                                                                                                                                                                                    |
+| `EVELAND_WORKFLOW_STREAM_COMPACTION`               | `on`                                                                                                           | Reserved switch injected into shared-world Deployments and also set on the dispatcher. `off` disables new snapshot stripping and terminal block rewrite compaction only; readers remain mixed-format compatible.                                                                                                                                                                                                                                                                                             |
+| `EVELAND_WORKFLOW_SWEEP_INTERVAL_MS`               | `3600000`                                                                                                      | Legacy per-project stream-retention cadence; `0` disables that legacy sweep. Shared-world maintenance belongs to the dispatcher.                                                                                                                                                                                                                                                                                                                                                                             |
+| `EVELAND_WORKFLOW_STREAM_RETENTION_MS`             | `86400000`                                                                                                     | Legacy terminal stream replay window: 24 hours. EOF markers are not deleted.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `EVELAND_WORKFLOW_SWEEP_BATCH_SIZE`                | `50000`                                                                                                        | Maximum rows per legacy retention `DELETE` statement.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `NODE_ENV`                                         | _(unset)_                                                                                                      | Set `production` on the deploy host to require the platform durable world; the worker fails before accepting jobs if `WORKFLOW_POSTGRES_URL` is absent. Also injected into each deployment so the Agent runs in production mode. `production` additionally makes the runtime default to `systemd` when `EVELAND_RUNTIME` is unset (see the `EVELAND_RUNTIME` row above).                                                                                                                                     |
 | `EVELAND_SANDBOX_CACHE_DIR`                        | `$EVELAND_DATA_DIR/sandbox`                                                                                    | Root holding every project's durable eve sandbox session cache (bubblewrap templates and session workspaces), one subdirectory per project. Use an absolute path, e.g. `/var/lib/eveland/sandbox`. Lives outside every release directory on purpose — see "Agent exec sandbox" below.                                                                                                                                                                                                                        |
 
@@ -569,7 +571,7 @@ complete production boundary:
   production but does not install a workflow schema in that base database. Eve
   0.38.3 requires workflow spec v6, so Releases inject
   `@workflow/world-postgres@5.0.0-beta.34` on the legacy path and
-  `@evelandhq/workflow-world@0.6.0` on the shared path. Use
+  `@evelandhq/workflow-world@0.7.0` on the shared path. Use
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
   for the same database server while administering derived project databases.
   A deployment URL on `host.docker.internal` automatically reuses
@@ -582,8 +584,8 @@ complete production boundary:
   `@evelandhq/workflow-world`, the worker instead provisions that project's
   partitions in the configured shared database; tenancy and cold-start recovery
   remain scoped by `tenant_id`.
-- Worker startup applies non-disruptive shared-World migrations before the shared
-  retention sweep is eligible to run. A previously initialized database with the
+- Worker startup applies non-disruptive shared-World migrations before the dispatcher
+  or a Deployment may use the schema. A previously initialized database with the
   disruptive `0006_event_slots.sql` still pending fails closed with the maintenance
   command above; tenant provisioning enforces the same gate. Set
   `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when the host reaches the database through a
@@ -603,11 +605,13 @@ complete production boundary:
 - `WORKFLOW_POSTGRES_URL` is a reserved runtime value. A Project Secret with
   that name remains stored and its decrypted value is still log-masked, but it
   cannot redirect the platform world.
-- Stream retention runs once at worker startup and hourly by default for both
-  database topologies. It preserves 24 hours of terminal-run chunks and every
-  EOF marker. Shared cleanup is capped at 20 batches of 50,000 rows per run and
-  reports when backlog remains; normal deletes make pages reusable but do not
-  guarantee immediate filesystem shrinkage.
+- Legacy stream retention runs once at worker startup and hourly by default, preserving
+  24 hours of terminal-run chunks and every EOF marker. Shared 0.7 storage strips
+  reconstructible snapshots, writes bounded physical blocks/checkpoints, and lets the
+  dispatcher run failure-isolated block packing plus deadline-driven stream/run expiry
+  at startup and every minute. The `WORKFLOW_DISPATCHER_MAINTENANCE_*` variables bound
+  each pass; normal deletes make pages reusable but do not guarantee immediate
+  filesystem shrinkage.
 
 When `NODE_ENV` is not production and no workflow URL is configured, Eveland
 does not inject a world and Eve keeps its local development world.

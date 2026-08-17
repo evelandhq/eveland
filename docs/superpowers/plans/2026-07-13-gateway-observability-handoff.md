@@ -1597,10 +1597,17 @@ route 改为 `/eve/v1/mcp` 且可由 Agent 配置，Gateway 继续 path-transpar
 
 Eve 0.38.3 只接受 workflow spec v6。legacy topology 固定升级到
 `@workflow/world-postgres@5.0.0-beta.34`，shared topology 升级到
-`@evelandhq/workflow-world@0.6.0`；architecture contract 会从已安装包读取 spec version、Eve runtime
+`@evelandhq/workflow-world@0.7.0`；architecture contract 会从已安装包读取 spec version、Eve runtime
 guard、注入常量与文档 pin，防止任一路径在 Deploy 后才暴露不兼容。已有 shared schema 若尚未执行
 会重建 workflow_events 主键的 `0006_event_slots.sql`，worker startup/tenant provisioning fail closed，
 要求 operator 在停流量的 maintenance window 显式运行 `workflow-world-setup`；空库仍自动 bootstrap。
+
+2026-08-17 的 0.7 follow-up 把 shared topology 的存储边界移入 World/dispatcher：写侧默认
+strip 可重建 snapshot 并写 checkpoint/bounded block，dispatcher 在启动和每分钟执行 bounded
+block packing、deadline stream/run retention 与 per-run queue GC。worker 不再对 shared database
+调用固定 24 小时的旧 cleanup primitive，以免绕过 scheduled/interactive/persistent retention class；
+它只保留 legacy per-project sweep。`EVELAND_WORKFLOW_STREAM_COMPACTION` 由平台保留并注入，
+`WORKFLOW_DISPATCHER_MAINTENANCE_*` 控制 shared maintenance 单次上限。
 
 Eve 0.38 新增 Extension Schedule、Channel 与 Subagent，但本兼容 foundation 不把 Extension
 Schedule 当作 root Schedule，也不把 Extension Subagent 当作已注入 Observer 的节点。完整的

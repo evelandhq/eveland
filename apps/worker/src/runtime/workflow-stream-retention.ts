@@ -1,30 +1,20 @@
-import type { SharedWorkflowWorldSweepResult } from "./shared-workflow-world-reaper.js";
-
-type SweepStatus = "ok" | "skipped" | "error";
+type SweepStatus = "ok" | "error";
 
 export type WorkflowStreamRetentionSummary = {
-  role: "legacy" | "shared";
+  role: "legacy";
   status: SweepStatus;
   durationMs: number;
   deletedRows: number;
-  batches?: number;
-  hitBatchLimit?: boolean;
-  lockAcquired?: boolean;
-  skipReason?: "lock-held" | "unconfigured";
   error?: unknown;
 };
 
-export async function runWorkflowStreamRetentionSweeps(input: {
+export async function runWorkflowStreamRetentionSweep(input: {
   sweepLegacy: () => Promise<number>;
-  sweepShared: () => Promise<SharedWorkflowWorldSweepResult>;
   onSummary?: (summary: WorkflowStreamRetentionSummary) => void;
-}): Promise<[WorkflowStreamRetentionSummary, WorkflowStreamRetentionSummary]> {
-  const summaries = await Promise.all([
-    captureLegacySweep(input.sweepLegacy),
-    captureSharedSweep(input.sweepShared),
-  ]);
-  for (const summary of summaries) input.onSummary?.(summary);
-  return summaries;
+}): Promise<WorkflowStreamRetentionSummary> {
+  const summary = await captureLegacySweep(input.sweepLegacy);
+  input.onSummary?.(summary);
+  return summary;
 }
 
 async function captureLegacySweep(
@@ -50,42 +40,10 @@ async function captureLegacySweep(
   }
 }
 
-async function captureSharedSweep(
-  sweep: () => Promise<SharedWorkflowWorldSweepResult>,
-): Promise<WorkflowStreamRetentionSummary> {
-  const startedAt = Date.now();
-  try {
-    const result = await sweep();
-    const skipReason = !result.configured
-      ? "unconfigured"
-      : !result.lockAcquired
-        ? "lock-held"
-        : undefined;
-    return {
-      role: "shared",
-      status: skipReason ? "skipped" : "ok",
-      durationMs: Date.now() - startedAt,
-      deletedRows: result.deletedRows,
-      batches: result.batches,
-      hitBatchLimit: result.hitBatchLimit,
-      lockAcquired: result.lockAcquired,
-      ...(skipReason ? { skipReason } : {}),
-    };
-  } catch (error) {
-    return {
-      role: "shared",
-      status: "error",
-      durationMs: Date.now() - startedAt,
-      deletedRows: 0,
-      error,
-    };
-  }
-}
-
 export function startWorkflowStreamRetentionScheduler(input: {
   intervalMs: number;
   run: () => Promise<void>;
-  close: () => Promise<void>;
+  close?: () => Promise<void>;
   onError?: (error: unknown) => void;
 }): { close(): Promise<void> } {
   let timer: NodeJS.Timeout | undefined;
@@ -111,7 +69,7 @@ export function startWorkflowStreamRetentionScheduler(input: {
       closePromise ??= (async () => {
         if (timer) clearInterval(timer);
         await running;
-        await input.close();
+        await input.close?.();
       })();
       return closePromise;
     },
@@ -129,19 +87,6 @@ export function formatWorkflowStreamRetentionSummary(summary: WorkflowStreamRete
     "eveland.workflow_retention.duration_ms": summary.durationMs,
     "eveland.workflow_retention.deleted_rows": summary.deletedRows,
   };
-  if (summary.batches !== undefined) {
-    attributes["eveland.workflow_retention.batches"] = summary.batches;
-  }
-  if (summary.hitBatchLimit !== undefined) {
-    attributes["eveland.workflow_retention.hit_batch_limit"] = summary.hitBatchLimit;
-  }
-  if (summary.lockAcquired !== undefined) {
-    attributes["eveland.workflow_retention.lock_acquired"] = summary.lockAcquired;
-  }
-  if (summary.skipReason) {
-    attributes["eveland.workflow_retention.skip_reason"] = summary.skipReason;
-  }
-
   if (summary.status === "error") {
     const error = summary.error;
     attributes["error.type"] = error instanceof Error ? error.name : "UnknownError";
@@ -149,20 +94,6 @@ export function formatWorkflowStreamRetentionSummary(summary: WorkflowStreamRete
     return {
       level: "error",
       message: `Workflow stream retention (${summary.role}) failed after ${String(summary.durationMs)}ms: ${detail}`,
-      attributes,
-    };
-  }
-  if (summary.skipReason) {
-    return {
-      level: "info",
-      message: `Workflow stream retention (${summary.role}) skipped: ${summary.skipReason}.`,
-      attributes,
-    };
-  }
-  if (summary.hitBatchLimit) {
-    return {
-      level: "warn",
-      message: `Workflow stream retention (${summary.role}) reached its batch limit after deleting ${String(summary.deletedRows)} rows; backlog may remain.`,
       attributes,
     };
   }

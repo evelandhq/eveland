@@ -107,11 +107,12 @@ Open the control panel at `http://localhost:3000` and the public documentation s
 - The workflow dispatcher waits for the API health endpoint before claiming durable
   jobs, so parallel `pnpm dev` startup does not spend a Graphile retry while the API is
   still binding its port.
-- The worker migrates the configured shared workflow database before use and sweeps
-  terminal stream chunks in both the legacy per-project and shared topologies. A
-  pending disruptive shared-World migration instead blocks unattended startup until
-  an operator applies it in the documented maintenance window. The default replay
-  window is 24 hours and EOF markers are retained.
+- The worker migrates the configured shared workflow database before use and keeps
+  the hourly 24-hour terminal-stream sweep for legacy per-project worlds. Shared
+  `@evelandhq/workflow-world@0.7.0` storage is bounded by write-time compaction plus
+  the dispatcher's per-minute block packing and deadline-driven stream/run retention;
+  EOF markers are retained. A pending disruptive shared-World migration blocks
+  unattended startup until an operator applies it in the documented maintenance window.
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
   `pnpm dev:docs` in separate terminals when isolated logs are more useful.
 - Public development endpoints use `http://<projectSlug>.agent.localhost:4080`;

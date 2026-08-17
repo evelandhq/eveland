@@ -140,8 +140,15 @@ services:
       # Shares the platform database in dev; production gives the workflow world
       # its own so the two schemas never mix.
       EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@postgres:5432/eveland
+      EVELAND_WORKFLOW_STREAM_COMPACTION: ${EVELAND_WORKFLOW_STREAM_COMPACTION:-on}
       WORKFLOW_DISPATCHER_ACTIVATION_API_URL: http://api:4000
       WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
+      WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS: ${WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS:-300000}
+      WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS: ${WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS:-60000}
+      WORKFLOW_DISPATCHER_MAINTENANCE_STREAM_BATCH_SIZE: ${WORKFLOW_DISPATCHER_MAINTENANCE_STREAM_BATCH_SIZE:-50000}
+      WORKFLOW_DISPATCHER_MAINTENANCE_MAX_BATCHES: ${WORKFLOW_DISPATCHER_MAINTENANCE_MAX_BATCHES:-20}
+      WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK: ${WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK:-100}
+      WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE: ${WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE:-1000}
       EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-scheduler-runtime-secret}
       EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
       EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
@@ -190,6 +197,11 @@ services:
       # The worker bootstraps the same database through its Compose-reachable address;
       # deployed Agent containers keep using the host-gateway address above.
       WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
+      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
+      EVELAND_WORKFLOW_WORLD_ROLLOUT: ${EVELAND_WORKFLOW_WORLD_ROLLOUT:-off}
+      EVELAND_WORKFLOW_RUNNER: ${EVELAND_WORKFLOW_RUNNER:-embedded}
+      EVELAND_WORKFLOW_STREAM_COMPACTION: ${EVELAND_WORKFLOW_STREAM_COMPACTION:-on}
       EVELAND_DATA_DIR: /workspace/.eveland-data
       # docker run bind mounts are resolved by the host daemon, not inside this container.
       EVELAND_HOST_DATA_DIR: ${EVELAND_HOST_DATA_DIR:-${PWD}/.eveland-data}

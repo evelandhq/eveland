@@ -333,26 +333,20 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry(
     "EVELAND_WORKFLOW_SWEEP_INTERVAL_MS",
     ["worker"],
-    "Interval between stream-chunk retention sweeps across legacy per-project and shared workflow databases. 0 disables both paths.",
+    "Interval between stream-chunk retention sweeps across legacy per-project workflow databases. 0 disables the legacy sweep.",
     "3600000",
   ),
   entry(
     "EVELAND_WORKFLOW_STREAM_RETENTION_MS",
     ["worker"],
-    "Resume window after a run turns terminal before its stream chunks become deletable in legacy and shared workflow databases.",
+    "Resume window after a run turns terminal before its stream chunks become deletable in legacy per-project workflow databases.",
     "86400000",
   ),
   entry(
     "EVELAND_WORKFLOW_SWEEP_BATCH_SIZE",
     ["worker"],
-    "Maximum stream-chunk rows deleted per DELETE batch in legacy and shared workflow databases.",
+    "Maximum stream-chunk rows deleted per DELETE batch in legacy per-project workflow databases.",
     "50000",
-  ),
-  entry(
-    "EVELAND_WORKFLOW_SHARED_SWEEP_MAX_BATCHES",
-    ["worker"],
-    "Maximum DELETE batches issued against the shared workflow database in one retention sweep.",
-    "20",
   ),
   {
     ...entry(
@@ -545,6 +539,12 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "embedded",
   ),
   entry(
+    "EVELAND_WORKFLOW_STREAM_COMPACTION",
+    ["worker", "workflow-dispatcher"],
+    "Enables workflow-world 0.7 snapshot stripping for new stream writes and terminal block rewrites; off is an emergency compatibility switch.",
+    "on",
+  ),
+  entry(
     "WORKFLOW_DISPATCHER_ACTIVATION_API_URL",
     ["workflow-dispatcher"],
     "Control API base URL the dispatcher activates deployments through, exactly as the Gateway's cold start does.",
@@ -559,8 +559,44 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry(
     "WORKFLOW_DISPATCHER_CONCURRENCY",
     ["workflow-dispatcher"],
-    "Maximum workflow jobs the dispatcher claims at once across all projects. Further tuning knobs (poll interval, pool size, per-tenant in-flight cap, lease renew interval) are documented in the @evelandhq/workflow-world README under the same WORKFLOW_DISPATCHER_* prefix.",
-    "50",
+    "Maximum workflow jobs the dispatcher claims at once across all projects; it must remain below the pool size.",
+    "9",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
+    ["workflow-dispatcher"],
+    "Interval for reclaiming empty per-run Graphile queue rows.",
+    "300000",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS",
+    ["workflow-dispatcher"],
+    "Cadence for bounded shared-world block packing and deadline-driven stream/run cleanup; 0 disables the loop.",
+    "60000",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_MAINTENANCE_STREAM_BATCH_SIZE",
+    ["workflow-dispatcher"],
+    "Maximum physical stream rows deleted by one shared-world maintenance statement.",
+    "50000",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_BATCHES",
+    ["workflow-dispatcher"],
+    "Maximum stream and workflow-run deletion batches in one shared-world maintenance pass.",
+    "20",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK",
+    ["workflow-dispatcher"],
+    "Maximum terminal streams rewritten into bounded physical blocks in one maintenance pass.",
+    "100",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE",
+    ["workflow-dispatcher"],
+    "Maximum expired workflow graphs deleted by one shared-world maintenance statement.",
+    "1000",
   ),
   {
     name: "EVELAND_RUNTIME",
