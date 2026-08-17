@@ -178,6 +178,13 @@ then applies the non-disruptive storage-v2 and retention-class migrations (`0007
 before the dispatcher starts maintenance. A new empty shared database has no earlier
 migration registry and continues to bootstrap automatically.
 
+The external dispatcher in `@evelandhq/workflow-world@0.8.1` is single-instance and
+holds a PostgreSQL advisory lock for its lifetime. When first upgrading from an older
+dispatcher that did not participate in that lock, stop the old process before starting
+the new one. The new generation reclaims stranded worker locks only from active runs'
+exact per-run queues, re-enqueues those runs, and starts its Graphile worker pool last;
+do not run multiple dispatcher replicas against the same shared database.
+
 The host worker runs as root from its own checkout at `/opt/eveland` (see
 `infra/systemd/eveland-worker.service`); apply the same tag and
 `pnpm install --frozen-lockfile` there. That is the whole upgrade — there is no
@@ -575,7 +582,7 @@ complete production boundary:
   production but does not install a workflow schema in that base database. Eve
   0.38.3 requires workflow spec v6, so Releases inject
   `@workflow/world-postgres@5.0.0-beta.34` on the legacy path and
-  `@evelandhq/workflow-world@0.8.0` on the shared path. Use
+  `@evelandhq/workflow-world@0.8.1` on the shared path. Use
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
   for the same database server while administering derived project databases.
   A deployment URL on `host.docker.internal` automatically reuses

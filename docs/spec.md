@@ -1172,7 +1172,7 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
 不得被修改。Eve 0.38.3 要求 workflow spec v6，因此 legacy world 固定为
 `@workflow/world-postgres@5.0.0-beta.34`，共享 world 固定为
-`@evelandhq/workflow-world@0.8.0`；两者都必须通过 0.37.1 与 0.38.3 的 World contract 门禁。
+`@evelandhq/workflow-world@0.8.1`；两者都必须通过 0.37.1 与 0.38.3 的 World contract 门禁。
 `WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
 缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
 配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在 dispatcher 或 Deployment 使用共享库前幂等执行
@@ -1184,6 +1184,11 @@ dispatcher、Agent workflow 流量并显式执行 `workflow-world-setup` 后，w
 外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Control API 的
 公开 `/health` 成功，不能用 Graphile job 的首次失败承担并行进程启动顺序；健康门打开后
 的 activation、executor dispatch 与重试语义仍由 dispatcher 持有。
+当前 external dispatcher 是单实例：健康门打开后先获取生命周期 PostgreSQL advisory lock，
+再从 active run 的精确 `wfrun:<tenant>:<run>` queue 收集旧 Graphile worker id 并强制解锁，
+随后 re-enqueue，最后才启动新 worker pool。第二个 dispatcher 必须 fail closed；从未参与
+该 ownership lock 的旧版本升级到 `0.8.1` 时，operator 必须先停止旧进程，不能用新锁推断
+旧 generation 已退出，也不能省略 per-run queueName 或批量清空所有 queue lock。
 
 legacy workflow 的隔离按 Project 物理分库：`WORKFLOW_POSTGRES_URL` 是 base URL，worker
 在任何进程启动路径（deploy、restart、activation、schedule）之前为该 Project 派生并确保
@@ -1209,7 +1214,7 @@ per-project workflow 的过期 stream chunks。默认保留窗口为 24 小时
 run 的 `eof=false` chunk，EOF marker 永久保留；`EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=0`
 只禁用这条 legacy sweep。
 
-共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.8.0` 与 dispatcher 共同持有。
+共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.8.1` 与 dispatcher 共同持有。
 World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
 建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
 physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。
