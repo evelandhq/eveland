@@ -3,6 +3,7 @@ import type {
   OidcAuthorizationCodeProviderOptions,
   OidcProtocol,
 } from "@evelandhq/agent-auth/oidc";
+import type { IdentityOidcProtocol } from "@evelandhq/identity-broker";
 import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
 import type { SystemConfigurationDiagnostics } from "@evelandhq/core/config-diagnostics";
 import type { ActivationLeaseClaim, RuntimeInstance } from "@evelandhq/core/contracts";
@@ -27,6 +28,7 @@ export type AppOptions = {
   appSecretKey?: string;
   identityIssuer?: string;
   identityAllowedOrigins?: string[];
+  identityOidcProtocol?: IdentityOidcProtocol;
   playgroundProxy?: PlaygroundProxy;
   dataDir?: string;
   gatewayHealth?: () => Promise<Omit<InstanceComponentHealth, "key" | "label">>;

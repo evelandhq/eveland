@@ -136,7 +136,7 @@ export function createApp(
   if (options.auth) {
     registerControlPlaneAuthBoundary({ app, auth: options.auth });
     registerAdminOnlyBoundary(app);
-    registerSystemIdentityRoutes(identityRouteContext);
+    registerSystemIdentityRoutes(identityRouteContext, identityRouteServices);
     registerMemberRoutes({ app, auth: options.auth, webOrigin });
     registerSystemDiagnosticsRoutes({
       app,

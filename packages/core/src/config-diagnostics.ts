@@ -247,6 +247,12 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     required: production,
   },
   entry(
+    "EVELAND_IDENTITY_OIDC_ALLOW_INSECURE",
+    ["api"],
+    "Set to 1 to let the platform OIDC Identity Provider use http:// or private-network issuers. Local integration testing only.",
+    "unset (https-only issuers)",
+  ),
+  entry(
     "EVELAND_DATA_DIR",
     ["api", "worker"],
     "Root for managed sources, releases, and runtime state.",

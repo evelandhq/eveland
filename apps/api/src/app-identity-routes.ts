@@ -4,15 +4,19 @@ import {
   normalizeIdentityProviderConnection,
   type IdentityProviderConnection,
 } from "@evelandhq/core/identity";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { decryptSecretValue, encryptSecretValue } from "@evelandhq/core/server/secrets";
 import {
   IdentityBrokerError,
   createIdentityBroker,
   hashIdentityToken,
+  oidcProviderConfig,
+  openIdentityProviderSecret,
+  sealIdentityProviderSecret,
 } from "@evelandhq/identity-broker";
 import type { Store } from "@evelandhq/db";
 import type { AppOptions, ApiApp } from "./app-types.js";
 import { isServiceRequest, publicGatewayUrl } from "./app-support.js";
+import { createIdentityOidcProtocol } from "./identity-oidc-protocol.js";
 import {
   callerTokenRequestSchema,
   createIdentityProviderSchema,
@@ -53,12 +57,24 @@ export function createIdentityRouteServices(context: IdentityRoutesContext) {
         ? ["http://localhost:3010"]
         : [],
   );
+  const oidcProtocol =
+    context.options.identityOidcProtocol ??
+    createIdentityOidcProtocol({
+      allowInsecureIssuer: process.env.EVELAND_IDENTITY_OIDC_ALLOW_INSECURE === "1",
+    });
   const broker = createIdentityBroker({
     store: context.store,
     issuer,
     appSecretKey: context.appSecretKey,
+    oidcProtocol,
   });
-  return { broker, issuer, allowedOrigins };
+  return {
+    broker,
+    issuer,
+    allowedOrigins,
+    oidcProtocol,
+    oidcRedirectUri: `${issuer}/identity/oidc/callback`,
+  };
 }
 
 export function registerPublicIdentityRoutes(
@@ -145,16 +161,6 @@ export function registerPublicIdentityRoutes(
         503,
       );
     }
-    if (provider.type !== "internal") {
-      return c.json(
-        {
-          code: "identity_provider_unavailable",
-          error: "The selected Identity Provider is not available in this release.",
-        },
-        503,
-      );
-    }
-
     const target = (await store.listIdentityReturnTargets()).find(
       (candidate) => candidate.key === targetKey && candidate.enabled,
     );
@@ -169,6 +175,41 @@ export function registerPublicIdentityRoutes(
     }
     const current = new Date();
     await store.deleteExpiredIdentityLoginTransactions(current, 100);
+
+    if (provider.type === "oidc") {
+      try {
+        const begun = await broker.beginOidcLogin({
+          providerConnectionId: provider.id,
+          redirectUri: services.oidcRedirectUri,
+        });
+        await store.createIdentityLoginTransaction({
+          stateHash: hashIdentityToken(begun.state),
+          providerConnectionId: provider.id,
+          providerSecurityRevision: begun.providerSecurityRevision,
+          returnTargetId: target.id,
+          returnPath,
+          nonceHash: hashIdentityToken(begun.nonce),
+          pkceVerifierEncrypted: sealOidcLoginSecrets(
+            { state: begun.state, nonce: begun.nonce, codeVerifier: begun.codeVerifier },
+            context.appSecretKey,
+          ),
+          expiresAt: new Date(current.getTime() + LOGIN_TRANSACTION_TTL_MS),
+        });
+        return c.redirect(begun.authorizationUrl, 302);
+      } catch (error) {
+        return identityError(c, error);
+      }
+    }
+    if (provider.type !== "internal") {
+      return c.json(
+        {
+          code: "identity_provider_unavailable",
+          error: "The selected Identity Provider is not available in this release.",
+        },
+        503,
+      );
+    }
+
     const state = randomBytes(32).toString("base64url");
     await store.createIdentityLoginTransaction({
       stateHash: hashIdentityToken(state),
@@ -203,6 +244,79 @@ export function registerPublicIdentityRoutes(
       return c.redirect(login.toString(), 302);
     }
     return completeInternalLogin(c, state, internalIdentity, context, services);
+  });
+
+  app.get("/identity/oidc/callback", async (c) => {
+    c.header("cache-control", "no-store");
+    const state = c.req.query("state") ?? "";
+    // Consume before anything else, including the IdP-error path: whatever
+    // happens next, this state must never complete a second login.
+    const transaction = state
+      ? await store.consumeIdentityLoginTransaction(hashIdentityToken(state))
+      : null;
+    if (c.req.query("error")) {
+      return c.json(
+        {
+          code: "identity_oidc_denied",
+          error: "The OIDC Identity Provider did not authorize this login.",
+        },
+        401,
+      );
+    }
+    if (!transaction) {
+      return c.json(
+        {
+          code: "identity_login_transaction_invalid",
+          error: "The Identity login transaction is invalid or expired.",
+        },
+        400,
+      );
+    }
+    const target = (await store.listIdentityReturnTargets()).find(
+      (candidate) => candidate.id === transaction.returnTargetId && candidate.enabled,
+    );
+    if (!target) {
+      return c.json(
+        {
+          code: "identity_return_target_invalid",
+          error: "The Identity return target is no longer available.",
+        },
+        400,
+      );
+    }
+    const secrets = openOidcLoginSecrets(transaction.pkceVerifierEncrypted, context.appSecretKey);
+    if (
+      !secrets ||
+      secrets.state !== state ||
+      transaction.nonceHash !== hashIdentityToken(secrets.nonce)
+    ) {
+      return c.json(
+        {
+          code: "identity_login_transaction_invalid",
+          error: "The Identity login transaction is invalid or expired.",
+        },
+        400,
+      );
+    }
+    try {
+      const callbackUrl = new URL(services.oidcRedirectUri);
+      callbackUrl.search = new URL(c.req.url).search;
+      const finalized = await broker.completeOidcLogin({
+        providerConnectionId: transaction.providerConnectionId,
+        providerSecurityRevision: transaction.providerSecurityRevision,
+        transaction: {
+          redirectUri: services.oidcRedirectUri,
+          state,
+          nonce: secrets.nonce,
+          codeVerifier: secrets.codeVerifier,
+        },
+        callbackUrl,
+      });
+      setIdentityCookie(c, finalized.sessionToken, issuer, finalized.session.expiresAt);
+      return c.redirect(await broker.resolveReturnTarget(target.key, transaction.returnPath), 302);
+    } catch (error) {
+      return identityError(c, error);
+    }
   });
 
   app.post("/identity/caller-tokens", async (c) => {
@@ -337,11 +451,17 @@ export function registerInternalIdentityRoutes(
   });
 }
 
-export function registerSystemIdentityRoutes(context: IdentityRoutesContext) {
+export function registerSystemIdentityRoutes(
+  context: IdentityRoutesContext,
+  services: ReturnType<typeof createIdentityRouteServices>,
+) {
   const { app, store, appSecretKey } = context;
   app.get("/system/identity/providers", async (c) => {
     return c.json({
       providers: (await store.listIdentityProviderConnections()).map(publicProvider),
+      // What an admin registers at their IdP; surfaced so the settings UI
+      // never has to guess the API origin.
+      oidcRedirectUri: services.oidcRedirectUri,
     });
   });
 
@@ -377,7 +497,7 @@ export function registerSystemIdentityRoutes(context: IdentityRoutesContext) {
               ...normalized,
               clientSecretEncrypted:
                 parsed.data.type === "oidc" && parsed.data.clientSecret
-                  ? sealProviderSecret(parsed.data.clientSecret, appSecretKey)
+                  ? sealIdentityProviderSecret(parsed.data.clientSecret, appSecretKey)
                   : null,
             }
           : normalized,
@@ -413,7 +533,53 @@ export function registerSystemIdentityRoutes(context: IdentityRoutesContext) {
         },
       });
     }
-    return c.json({ ok: false, error: "OIDC preflight is not implemented." }, 503);
+    let metadata: Record<string, unknown>;
+    try {
+      metadata = await services.oidcProtocol.discoverMetadata(
+        oidcProviderConfig(provider),
+        provider.clientSecretEncrypted
+          ? openIdentityProviderSecret(provider.clientSecretEncrypted, appSecretKey)
+          : undefined,
+      );
+    } catch {
+      return c.json({
+        ok: false,
+        error: "OIDC discovery failed: the issuer is unreachable or its metadata is invalid.",
+        checks: { discovery: false },
+      });
+    }
+    const advertised = (key: string): string[] | null => {
+      const value = metadata[key];
+      return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+        ? (value as string[])
+        : null;
+    };
+    const responseTypes = advertised("response_types_supported");
+    const authMethods = advertised("token_endpoint_auth_methods_supported");
+    const pkceMethods = advertised("code_challenge_methods_supported");
+    const scopes = advertised("scopes_supported");
+    const claims = advertised("claims_supported");
+    const checks = {
+      discovery: true,
+      authorizationCodeFlow: responseTypes === null || responseTypes.includes("code"),
+      tokenEndpointAuthMethod:
+        authMethods === null || authMethods.includes(provider.tokenEndpointAuthMethod ?? ""),
+      pkceS256: pkceMethods === null || pkceMethods.includes("S256"),
+    };
+    // Absent or incomplete advertisement lists are common (Auth0 does not
+    // list org_id), so these inform the admin without failing the preflight.
+    const advisories = {
+      scopesAdvertised: scopes === null || provider.scopes.every((scope) => scopes.includes(scope)),
+      realmClaimAdvertised:
+        !provider.externalRealmClaim ||
+        claims === null ||
+        claims.includes(provider.externalRealmClaim),
+    };
+    return c.json({
+      ok: Object.values(checks).every(Boolean),
+      checks,
+      advisories,
+    });
   });
 
   app.patch("/system/identity/providers/:providerId", async (c) => {
@@ -443,7 +609,7 @@ export function registerSystemIdentityRoutes(context: IdentityRoutesContext) {
         ? current.clientSecretEncrypted
         : parsed.data.clientSecret === null
           ? null
-          : sealProviderSecret(parsed.data.clientSecret, appSecretKey);
+          : sealIdentityProviderSecret(parsed.data.clientSecret, appSecretKey);
     const securityChanged =
       current.type === "internal"
         ? false
@@ -660,11 +826,52 @@ function publicProvider(provider: IdentityProviderConnection) {
   };
 }
 
-function sealProviderSecret(value: string, appSecretKey: string): string {
-  const contextKey = createHmac("sha256", appSecretKey)
-    .update("eveland:identity:provider-secret:v1")
+type OidcLoginSecrets = { state: string; nonce: string; codeVerifier: string };
+
+/**
+ * The raw per-login OIDC secrets, sealed into the transaction row. The nonce
+ * and PKCE verifier must come back verbatim at the callback (the exchange
+ * compares them against the ID token and the token endpoint), so a hash
+ * cannot carry them; the state rides along so an opened blob is provably the
+ * one minted for this transaction.
+ */
+function sealOidcLoginSecrets(secrets: OidcLoginSecrets, appSecretKey: string): string {
+  return JSON.stringify(
+    encryptSecretValue(JSON.stringify(secrets), loginTransactionKey(appSecretKey)),
+  );
+}
+
+function openOidcLoginSecrets(
+  sealed: string | null,
+  appSecretKey: string,
+): OidcLoginSecrets | null {
+  if (!sealed) return null;
+  try {
+    const opened: unknown = JSON.parse(
+      decryptSecretValue(
+        JSON.parse(sealed) as Parameters<typeof decryptSecretValue>[0],
+        loginTransactionKey(appSecretKey),
+      ),
+    );
+    if (
+      typeof opened === "object" &&
+      opened !== null &&
+      typeof (opened as OidcLoginSecrets).state === "string" &&
+      typeof (opened as OidcLoginSecrets).nonce === "string" &&
+      typeof (opened as OidcLoginSecrets).codeVerifier === "string"
+    ) {
+      return opened as OidcLoginSecrets;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function loginTransactionKey(appSecretKey: string): string {
+  return createHmac("sha256", appSecretKey)
+    .update("eveland:identity:login-transaction:v1")
     .digest("base64");
-  return JSON.stringify(encryptSecretValue(value, contextKey));
 }
 
 function splitOrigins(value: string | undefined): string[] {
