@@ -1228,9 +1228,14 @@ topology 已 `terminated`）：unknown-topology 的临时 deployment fence 不�
 所以 saga 必须停在 `workflow_safe`、finalize 拒绝 completion，直到每个 run 被 tombstone 或
 显式断言——否则迟到的 OTLP batch 恰好能复活被终止的那个 family。绝不猜测。
 cutover 的 prepare 在写任何 fence/cancel/topology 之前要求 operation 上已持久记录
-operator 的维护边界 attestation（quiescence 已验证 + 静默后正式备份的证据，
-`--quiescence-verified`/`--backup-evidence`，一次记录终身有效）——runbook 文字不是
-fail-closed 门，部分停机的误操作不得产生任何变更。cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
+operator 的维护边界 attestation（`--quiescence-verified`/`--backup-evidence`）——且该
+attestation 是**测量得出**而非采信：仅当对控制面与 World 的双读测量显示零活跃
+（无 running job、无未过期 activation lease、无 locked World job）且受保护序列在
+settle 间隔内稳定时才记录，测得的 baseline 随之持久化；此后每次 prepare 都重新校验
+baseline——出现新 run、新 Session、或本 operation 盖章无法解释的新平台 job 即证明备份
+之后仍有写入，边界随即**失效**，saga 持住直到 operator 以新鲜静默备份重新 attest
+（重新测量、重新建立 baseline）。runbook 文字不是 fail-closed 门，部分停机的误操作
+不得产生任何变更。cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
 要么完成分类/退休/staging，要么（仍为 `unknown` 时）获得 deployment fence 并置于 `fenced`
 topology，杜绝转换途中被唤醒；inventory 对每个保留 Deployment 应用**完整**兼容窗口判定
 （enqueue capability、dispatch protocol 非 null 且落在 dispatcher 窗口内、且 storage

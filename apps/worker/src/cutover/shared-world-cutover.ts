@@ -75,6 +75,7 @@ export type CutoverStore = Pick<
   | "convergeWorkflowTermination"
   | "convergeWorkflowRunFamilies"
   | "updateDeploymentWorkflowTopology"
+  | "measureCutoverQuiescence"
 >;
 
 type ActiveRunRow = {
@@ -318,12 +319,18 @@ export async function prepareSharedWorldCutover(input: {
   legacyWorlds?: { baseUrl: string | undefined; terminate?: LegacyWorldTerminator };
   /**
    * The operator's formal attestation that every producer/consumer is stopped
-   * and the rollback backups were taken AFTER quiescence. Durable once
-   * recorded. Without it — recorded or supplied — prepare mutates NOTHING:
-   * a partial-stop invocation would reintroduce the exact races the offline
-   * cutover exists to eliminate, with no valid rollback point.
+   * and the rollback backups were taken AFTER quiescence. The attestation is
+   * VERIFIED, not trusted: it records only while a double-read measurement of
+   * the control plane and the World shows zero live activity and stable
+   * sequences, and the measured baseline is persisted with it. Every later
+   * prepare re-validates the baseline — protected sequences advancing after
+   * the backup invalidate the boundary and hold the saga until the operator
+   * re-attests over fresh backups. Without a valid recorded boundary, prepare
+   * mutates NOTHING.
    */
   maintenance?: { quiescenceVerified: boolean; backupEvidence: string };
+  /** Settle interval between the two quiescence reads (default 1500ms). */
+  quiescenceSettleMs?: number;
   classifier?: ArtifactClassifier;
   log?: (message: string, meta?: Record<string, unknown>) => void;
 }): Promise<CutoverPrepareResult> {
@@ -331,41 +338,21 @@ export async function prepareSharedWorldCutover(input: {
   const log = input.log ?? (() => {});
   const workerUtils = await makeWorkerUtils({ pgPool: pool });
   try {
-    const operation = await store.ensureWorkflowCutoverOperation({
+    await store.ensureWorkflowCutoverOperation({
       id: operationId,
       kind: "cutover",
       scope: {},
     });
 
-    // The maintenance boundary is a fail-closed gate, not a runbook note.
-    const recorded = operation.checkpoints.maintenance as
-      | { quiescenceVerified?: boolean; backupEvidence?: string }
-      | undefined;
-    let maintenanceAttested =
-      recorded?.quiescenceVerified === true &&
-      typeof recorded.backupEvidence === "string" &&
-      recorded.backupEvidence.length > 0;
-    if (
-      !maintenanceAttested &&
-      input.maintenance?.quiescenceVerified === true &&
-      input.maintenance.backupEvidence.length > 0
-    ) {
-      await store.advanceWorkflowCutoverOperation(operationId, {
-        checkpoint: {
-          key: "maintenance",
-          value: {
-            quiescenceVerified: true,
-            backupEvidence: input.maintenance.backupEvidence,
-            attestedAt: new Date().toISOString(),
-          },
-        },
-      });
-      maintenanceAttested = true;
-    }
-    if (!maintenanceAttested) {
-      const hold =
-        "maintenance boundary not attested: stop every producer/consumer, take the formal backups, then supply --quiescence-verified true and --backup-evidence <snapshot ids>";
-      await store.advanceWorkflowCutoverOperation(operationId, { lastError: hold });
+    // The maintenance boundary is a fail-closed gate, not a runbook note —
+    // and the attestation is measured, never merely trusted.
+    const maintenanceHold = await enforceMaintenanceBoundary(pool, store, operationId, {
+      ...(input.maintenance ? { maintenance: input.maintenance } : {}),
+      settleMs: input.quiescenceSettleMs ?? 1_500,
+      log,
+    });
+    if (maintenanceHold) {
+      await store.advanceWorkflowCutoverOperation(operationId, { lastError: maintenanceHold });
       return {
         operationId,
         assessments: [],
@@ -378,7 +365,7 @@ export async function prepareSharedWorldCutover(input: {
         staged: await readStagedCheckpoint(store, operationId),
         converged: { failedSessions: 0, removedSessionBindings: 0 },
         unmappedTerminatedRuns: [],
-        holds: [hold],
+        holds: [maintenanceHold],
       };
     }
 
@@ -783,6 +770,166 @@ export async function prepareSharedWorldCutover(input: {
   } finally {
     await Promise.resolve(workerUtils.release()).catch(() => {});
   }
+}
+
+type MaintenanceBaseline = {
+  attestedAt: string;
+  backupEvidence: string;
+  worldRunCount: number;
+  latestSessionStartedAt: string | null;
+  latestJobSequence: number;
+};
+
+type QuiescenceReading = {
+  lockedWorldJobs: number;
+  worldRunCount: number;
+  runningJobs: number;
+  activeActivationLeases: number;
+  latestSessionStartedAt: string | null;
+  latestJobSequence: number;
+};
+
+async function readQuiescence(
+  pool: pg.Pool,
+  store: Pick<Store, "measureCutoverQuiescence">,
+): Promise<QuiescenceReading> {
+  const { rows } = await pool.query<{ locked: number; runs: number }>(
+    `select (select count(*)::int from graphile_worker._private_jobs where locked_by is not null) as locked,
+            (select count(*)::int from workflow.workflow_runs) as runs`,
+  );
+  const control = await store.measureCutoverQuiescence();
+  return {
+    lockedWorldJobs: rows[0]?.locked ?? 0,
+    worldRunCount: rows[0]?.runs ?? 0,
+    runningJobs: control.runningJobs,
+    activeActivationLeases: control.activeActivationLeases,
+    latestSessionStartedAt: control.latestSessionStartedAt,
+    latestJobSequence: control.latestJobSequence,
+  };
+}
+
+function liveActivity(reading: QuiescenceReading): string[] {
+  const live: string[] = [];
+  if (reading.lockedWorldJobs > 0)
+    live.push(`${String(reading.lockedWorldJobs)} locked World job(s)`);
+  if (reading.runningJobs > 0) live.push(`${String(reading.runningJobs)} running platform job(s)`);
+  if (reading.activeActivationLeases > 0)
+    live.push(`${String(reading.activeActivationLeases)} active activation lease(s)`);
+  return live;
+}
+
+/**
+ * Returns a hold message when the maintenance boundary is not (or no longer)
+ * valid; null when mutation may proceed.
+ *
+ * Recording requires the operator's flags AND a measured double-read showing
+ * zero live activity with stable sequences; the measured baseline persists
+ * with the attestation. Validation re-measures on every later prepare:
+ * protected sequences advancing past the baseline — new runs, new sessions,
+ * new jobs the operation's own stamp cannot explain — mean something wrote
+ * AFTER the backup, so the recorded boundary is invalidated and the saga
+ * holds until the operator re-attests over fresh backups.
+ */
+async function enforceMaintenanceBoundary(
+  pool: pg.Pool,
+  store: CutoverStore,
+  operationId: string,
+  input: {
+    maintenance?: { quiescenceVerified: boolean; backupEvidence: string };
+    settleMs: number;
+    log: (message: string, meta?: Record<string, unknown>) => void;
+  },
+): Promise<string | null> {
+  const operation = await store.getWorkflowCutoverOperation(operationId);
+  const recorded = operation?.checkpoints.maintenance as
+    | ({ quiescenceVerified?: boolean } & Partial<MaintenanceBaseline>)
+    | undefined;
+  const flagsSupplied =
+    input.maintenance?.quiescenceVerified === true && input.maintenance.backupEvidence.length > 0;
+
+  const recordedValid =
+    recorded?.quiescenceVerified === true &&
+    typeof recorded.backupEvidence === "string" &&
+    typeof recorded.attestedAt === "string" &&
+    typeof recorded.latestJobSequence === "number";
+
+  if (recordedValid && !flagsSupplied) {
+    // Validate the standing boundary: the backup is only a rollback point
+    // while nothing has written since it was taken.
+    const current = await readQuiescence(pool, store);
+    const foreign = await store.measureCutoverQuiescence({
+      sinceSequence: recorded.latestJobSequence!,
+      excludeOperationId: operationId,
+    });
+    const violations = liveActivity(current);
+    if (current.worldRunCount > (recorded.worldRunCount ?? 0)) {
+      violations.push(
+        `${String(current.worldRunCount - (recorded.worldRunCount ?? 0))} workflow run(s) created after the backup`,
+      );
+    }
+    if (
+      current.latestSessionStartedAt !== null &&
+      (recorded.latestSessionStartedAt === null ||
+        recorded.latestSessionStartedAt === undefined ||
+        current.latestSessionStartedAt > recorded.latestSessionStartedAt)
+    ) {
+      if (recorded.latestSessionStartedAt !== current.latestSessionStartedAt) {
+        violations.push("platform Session(s) created after the backup");
+      }
+    }
+    if (foreign.foreignJobsSince > 0) {
+      violations.push(
+        `${String(foreign.foreignJobsSince)} platform job(s) not stamped by this operation created after the backup`,
+      );
+    }
+    if (violations.length > 0) {
+      await store.advanceWorkflowCutoverOperation(operationId, {
+        checkpoint: {
+          key: "maintenanceViolation",
+          value: { at: new Date().toISOString(), violations },
+        },
+      });
+      return `maintenance boundary invalidated — writes after the recorded backup (${violations.join("; ")}); take fresh quiesced backups and re-attest with --quiescence-verified true --backup-evidence <ids>`;
+    }
+    return null;
+  }
+
+  if (!flagsSupplied) {
+    return "maintenance boundary not attested: stop every producer/consumer, take the formal backups, then supply --quiescence-verified true and --backup-evidence <snapshot ids>";
+  }
+
+  // (Re-)attestation: measure quiescence with a double read — zero live
+  // activity and stable sequences across the settle interval — before the
+  // operator's statement is accepted and the baseline recorded.
+  const first = await readQuiescence(pool, store);
+  await new Promise((resolve) => setTimeout(resolve, input.settleMs));
+  const second = await readQuiescence(pool, store);
+  const problems = [...new Set([...liveActivity(first), ...liveActivity(second)])];
+  if (
+    first.worldRunCount !== second.worldRunCount ||
+    first.latestJobSequence !== second.latestJobSequence ||
+    first.latestSessionStartedAt !== second.latestSessionStartedAt
+  ) {
+    problems.push("protected sequences advanced during the settle interval");
+  }
+  if (problems.length > 0) {
+    return `quiescence not measured — the system is still live (${problems.join("; ")}); stop every producer/consumer before attesting the maintenance boundary`;
+  }
+  const baseline: MaintenanceBaseline = {
+    attestedAt: new Date().toISOString(),
+    backupEvidence: input.maintenance!.backupEvidence,
+    worldRunCount: second.worldRunCount,
+    latestSessionStartedAt: second.latestSessionStartedAt,
+    latestJobSequence: second.latestJobSequence,
+  };
+  await store.advanceWorkflowCutoverOperation(operationId, {
+    checkpoint: {
+      key: "maintenance",
+      value: { quiescenceVerified: true, ...baseline },
+    },
+  });
+  input.log("maintenance boundary attested over a measured-quiescent system", { ...baseline });
+  return null;
 }
 
 async function readStagedCheckpoint(

@@ -943,6 +943,25 @@ export interface WorkflowCutoverStore {
     families: Array<{ projectId: string; eveSessionId: string }>,
   ): Promise<{ failedSessions: number; tombstonedFamilies: number }>;
   /**
+   * The control-plane half of the measured maintenance boundary: live
+   * activity counters plus monotonic high-water marks. A quiescent system
+   * shows zero live activity and stable marks across two reads; a later
+   * measurement with `sinceSequence`/`excludeOperationId` reports foreign
+   * jobs — writes the cutover's own stamped work cannot explain — created
+   * after the recorded baseline.
+   */
+  measureCutoverQuiescence(input?: {
+    now?: Date;
+    sinceSequence?: number;
+    excludeOperationId?: string;
+  }): Promise<{
+    runningJobs: number;
+    activeActivationLeases: number;
+    latestSessionStartedAt: string | null;
+    latestJobSequence: number;
+    foreignJobsSince: number;
+  }>;
+  /**
    * The control-plane half of a managed termination, in one idempotent
    * transaction per call: non-terminal Sessions on the targeted deployments
    * fail, their Session/Operation bindings are removed, activation leases are

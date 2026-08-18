@@ -236,4 +236,41 @@ describe("workflow cutover operations", () => {
     ]);
     expect(second).toMatchObject({ failedSessions: 0, tombstonedFamilies: 0 });
   });
+
+  test("quiescence measurement reports live activity and foreign jobs past a baseline", async () => {
+    const store = createTestStore();
+    const { project, deployment } = await createTerminationFixture(store);
+
+    const quiet = await store.measureCutoverQuiescence();
+    expect(quiet).toMatchObject({ runningJobs: 0, activeActivationLeases: 0 });
+    const baseline = quiet.latestJobSequence;
+
+    // A running job and an unexpired lease are live activity.
+    await store.enqueueJob(project.id, "restart_deployment", {
+      deploymentId: deployment.id,
+      cutoverOperationId: "cut_q_test",
+    });
+    const claimed = await store.claimNextJob("quiescence-worker");
+    await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_live",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const live = await store.measureCutoverQuiescence();
+    expect(live.runningJobs).toBe(1);
+    expect(live.activeActivationLeases).toBe(1);
+    expect(live.latestJobSequence).toBeGreaterThan(baseline);
+
+    // The operation's own stamped job is not "foreign"; anything else is.
+    await store.completeJob(claimed!.id);
+    await store.enqueueJob(project.id, "build_deploy", {});
+    const audit = await store.measureCutoverQuiescence({
+      sinceSequence: baseline,
+      excludeOperationId: "cut_q_test",
+    });
+    expect(audit.foreignJobsSince).toBe(1);
+    const auditAll = await store.measureCutoverQuiescence({ sinceSequence: baseline });
+    expect(auditAll.foreignJobsSince).toBe(2);
+  });
 });

@@ -4,10 +4,11 @@ import type {
   WorkflowFence,
 } from "@evelandhq/core/contracts";
 import { createId } from "@evelandhq/core/ids";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 import { timestampToIso } from "./mappers.js";
 import {
   activationLeases,
+  jobs,
   operationBindings,
   scheduleRuns,
   sessionBindings,
@@ -175,6 +176,49 @@ export function createPostgresWorkflowCutoverStore(
         )
         .returning();
       return row ? fenceRowToFence(row) : null;
+    },
+
+    async measureCutoverQuiescence(input = {}) {
+      const now = input.now ?? new Date();
+      const [running] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(jobs)
+        .where(eq(jobs.status, "running"));
+      const [leases] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(activationLeases)
+        .where(and(isNull(activationLeases.releasedAt), gt(activationLeases.expiresAt, now)));
+      const [latestSession] = await db
+        .select({ latest: sql<string | null>`max(${sessions.startedAt})::text` })
+        .from(sessions);
+      const [latestJob] = await db
+        .select({ latest: sql<number | null>`max(${jobs.sequence})::bigint` })
+        .from(jobs);
+      let foreignJobsSince = 0;
+      if (input.sinceSequence !== undefined) {
+        const [foreign] = await db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(jobs)
+          .where(
+            and(
+              gt(jobs.sequence, input.sinceSequence),
+              input.excludeOperationId
+                ? ne(
+                    sql`coalesce(${jobs.payload}->>'cutoverOperationId', '')`,
+                    input.excludeOperationId,
+                  )
+                : sql`true`,
+            ),
+          );
+        foreignJobsSince = foreign?.total ?? 0;
+      }
+      return {
+        runningJobs: running?.total ?? 0,
+        activeActivationLeases: leases?.total ?? 0,
+        latestSessionStartedAt: latestSession?.latest ?? null,
+        latestJobSequence: Number(latestJob?.latest ?? 0),
+        foreignJobsSince,
+      };
     },
 
     async convergeWorkflowRunFamilies(operationId, families) {

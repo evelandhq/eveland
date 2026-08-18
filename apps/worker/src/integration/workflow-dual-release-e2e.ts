@@ -70,6 +70,7 @@ async function waitFor<T>(
 
 const { store, close } = createStoreFromEnv();
 const worldPool = new Pool({ connectionString: WORLD_URL, max: 2 });
+const controlPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-workflow-dual-"));
 let dispatcher: ReturnType<typeof spawnDispatcherApp> | undefined;
 
@@ -93,6 +94,30 @@ async function startWake(
   const parsed = JSON.parse(body) as { sessionId?: unknown };
   assert.equal(typeof parsed.sessionId, "string", "workflow start must return a session id");
   return { sessionId: parsed.sessionId as string };
+}
+
+/** Cold-activate a deployment through the Control API's public-request path. */
+async function wakeDeployment(deploymentId: string): Promise<void> {
+  const apiUrl = (process.env.EVELAND_API_INTERNAL_URL ?? "http://127.0.0.1:4000").replace(
+    /\/+$/u,
+    "",
+  );
+  const token = process.env.EVELAND_GATEWAY_SERVICE_TOKEN ?? "eveland-dev-gateway-token";
+  const response = await fetch(`${apiUrl}/internal/runtime/activations`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      deploymentId,
+      kind: "public_request",
+      ownerId: `dual-e2e-wake-${Date.now().toString(36)}`,
+    }),
+    signal: AbortSignal.timeout(2 * 60_000),
+  });
+  const body = await response.text();
+  assert.ok(
+    response.ok,
+    `wake activation for ${deploymentId} returned HTTP ${String(response.status)}: ${body}`,
+  );
 }
 
 async function latestTurnRun(projectId: string, deploymentId: string) {
@@ -320,17 +345,31 @@ try {
   await assertRunSemantics(project.id, parkedRun.id, deploymentA.id, sessionId);
   await assertNoPoison(project.id);
 
-  // Session identity: platform Session (when this stack projects OTLP) must
-  // agree with the Eve session the fixture reported.
-  const platformSession = await store.getSessionByEveSessionId(project.id, sessionId);
-  if (platformSession) {
-    assert.equal(platformSession.projectId, project.id);
-    log("platform session identity verified", { sessionId, id: platformSession.id });
-  } else {
-    log("platform session projection not present in this stack; identity held World-side only", {
-      sessionId,
-    });
-  }
+  // Session identity is MANDATORY: the platform Session projected from OTLP
+  // must exist, carry the Eve session identity, and record the owning
+  // Release as its provenance. A stack without the projection path fails
+  // here instead of skipping — this harness must run with ingest enabled.
+  const platformSession = await waitFor(
+    "the platform Session to project from OTLP with a root node",
+    async () => {
+      const session = await store.getSessionByEveSessionId(project.id, sessionId);
+      return session && session.rootNodeId ? session : null;
+    },
+    3 * 60_000,
+  );
+  assert.equal(platformSession.projectId, project.id);
+  assert.equal(platformSession.eveSessionId, sessionId, "Eve session identity must agree");
+  assert.equal(
+    platformSession.deploymentId,
+    deploymentA.id,
+    "platform Session provenance must be the owning Release A, not the promoted decoy",
+  );
+  assert.notEqual(platformSession.status, "failed", "the projected Session must be healthy");
+  log("platform session identity and provenance verified", {
+    sessionId,
+    id: platformSession.id,
+    deploymentId: platformSession.deploymentId,
+  });
   log("PART 1 OK: continuation came home to Release A across a dispatcher restart");
 
   // --- Part 2: A/B online, duplicated concurrent delivery --------------------
@@ -458,13 +497,247 @@ try {
   );
   assert.deepEqual(unscoped, [], "post-recovery enqueues must stay on per-run queues");
 
+  log("PART 2 OK: duplicated continuation delivery resolved to the one owner");
+
+  // --- Part 3: the first-delivery race, BEFORE any dispatch ownership --------
+  // In Eve's external flow the SENDER persists run_created before the first
+  // delivery exists, so a row-absent window is not reachable from outside
+  // (the dispatcher's hint path serves runtimes where the executor writes
+  // the row; its no-row branch is unit-covered upstream). The strongest
+  // constructible live race is therefore the first-DISPATCH window: the run
+  // row is `pending`, no delivery has ever been claimed, and two genuinely
+  // concurrent copies of the first message — one on the exact per-run queue,
+  // one deliberately off-queue so nothing serializes them — compete for
+  // first dispatch ownership with both Releases proven online and B still
+  // the promoted decoy.
+  await wakeDeployment(deploymentA.id);
+  await wakeDeployment(deploymentB.id);
+  const warmToken = `dual-warm-${Date.now().toString(36)}`;
+  await startWake(deploymentB.hostPort, 1, warmToken); // B live and serving its own session
+  await dispatcher.stop();
+  const bothReady = async () => {
+    for (const deployment of [deploymentA, deploymentB]) {
+      const instances = await store.listDeploymentRuntimeInstances(deployment.id);
+      assert.ok(
+        instances.some((instance) => instance.status === "ready"),
+        `deployment ${deployment.id} must be online for the first-write race`,
+      );
+    }
+  };
+  await bothReady();
+  log("both Releases online; dispatcher stopped for the first-write window");
+
+  const raceToken = `dual-row-race-${Date.now().toString(36)}`;
+  // Fire and DO NOT await: the deployment enqueues the first delivery
+  // immediately, but the response waits on a delivery no dispatcher will make
+  // yet. The enqueue is durable either way.
+  const raceRequest = fetch(`http://127.0.0.1:${String(deploymentA.hostPort)}/start-wake`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ seconds: 5, token: raceToken }),
+    signal: AbortSignal.timeout(5 * 60_000),
+  }).catch(() => null);
+
+  const pendingFirst = await waitFor(
+    "a never-dispatched first delivery for a still-pending run",
+    async () => {
+      const { rows } = await worldPool.query<{
+        id: string;
+        run_id: string;
+        message_id: string;
+        hint: string;
+        queue_name: string | null;
+      }>(
+        `select jobs.id::text as id,
+                coalesce(convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'runId',
+                         convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'workflowRunId') as run_id,
+                jobs.payload ->> 'messageId' as message_id,
+                jobs.payload ->> 'deploymentId' as hint,
+                queues.queue_name
+           from graphile_worker._private_jobs as jobs
+           join graphile_worker._private_tasks as tasks on tasks.id = jobs.task_id
+           left join graphile_worker._private_job_queues as queues on queues.id = jobs.job_queue_id
+          where tasks.identifier = 'eveland_wf_flows'
+            and jobs.locked_by is null
+            and jobs.attempts = 0
+            and jobs.payload ->> 'tenantId' = $1
+            and exists (
+              select 1 from workflow.workflow_runs as runs
+               where runs.tenant_id = $1
+                 and runs.status = 'pending'
+                 and runs.name = 'workflow//eve//workflowEntry'
+                 and runs.id = coalesce(convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'runId',
+                                        convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'workflowRunId')
+            )`,
+        [project.id],
+      );
+      return rows.find((row) => row.run_id) ?? null;
+    },
+    60_000,
+  );
+  assert.equal(
+    pendingFirst.hint,
+    deploymentA.id,
+    "the enqueue hint must name the enqueuing Release",
+  );
+  assert.equal(
+    pendingFirst.queue_name,
+    runQueueName(project.id, pendingFirst.run_id),
+    "even the first delivery sits on its run's exact queue",
+  );
+  // Nothing has ever dispatched this run: the row is pending and its only
+  // delivery is unclaimed with zero attempts — first ownership is still open.
+  const { rows: pendingRow } = await worldPool.query<{ status: string }>(
+    `select status from workflow.workflow_runs where tenant_id = $1 and id = $2`,
+    [project.id, pendingFirst.run_id],
+  );
+  assert.equal(pendingRow[0]?.status, "pending", "the race must start before any dispatch");
+  // The duplicate goes UNQUEUED on purpose — the per-run queue would
+  // serialize it — and carries a DISTINCT messageId: the dispatcher's
+  // in-process dedup (keyed by message identity) swallows a verbatim copy
+  // before it ever activates, as a previous run of this harness proved live.
+  // A redelivery beyond dedup's reach is the shape the historical incidents
+  // actually had. Both copies are future-dated to the SAME instant: the
+  // restarting dispatcher's preflight (correctly!) refuses to boot over a
+  // claimable unscoped job — also proven live by this harness — so the race
+  // arms only after boot recovery, both copies claimable simultaneously
+  // under a running worker pool.
+  const raceAt = new Date(Date.now() + 25_000).toISOString();
+  const duplicateMessageId = `msg_race_dup_${Date.now().toString(36)}`;
+  await worldPool.query(
+    `select graphile_worker.add_job(
+       'eveland_wf_flows',
+       (jobs.payload::jsonb || jsonb_build_object('messageId', $3::text))::json,
+       run_at => $2::timestamptz, max_attempts => (max_attempts)::integer)
+       from graphile_worker._private_jobs as jobs
+      where jobs.id = $1::bigint`,
+    [pendingFirst.id, raceAt, duplicateMessageId],
+  );
+  await worldPool.query(
+    `update graphile_worker._private_jobs set run_at = $2::timestamptz where id = $1::bigint`,
+    [pendingFirst.id, raceAt],
+  );
+  log("duplicated the never-dispatched first delivery off-queue; both copies armed", {
+    runId: pendingFirst.run_id,
+    messageId: pendingFirst.message_id,
+    duplicateMessageId,
+    raceAt,
+  });
+
+  dispatcher = spawnDispatcherApp(dispatcherEnv, log);
+  await waitForDispatcherRegistration(store);
+  await bothReady();
+
+  const firstWrite = await waitFor(
+    "the run's first dispatch to settle its execution",
+    async () => {
+      const { rows } = await worldPool.query<{ deployment_id: string; status: string }>(
+        `select deployment_id, status from workflow.workflow_runs
+          where tenant_id = $1 and id = $2`,
+        [project.id, pendingFirst.run_id],
+      );
+      return rows[0] ?? null;
+    },
+    3 * 60_000,
+  );
+  assert.equal(
+    firstWrite.deployment_id,
+    deploymentA.id,
+    "the first write must choose the hint owner — never the promoted decoy",
+  );
+  const racedTurn = await waitFor(
+    "the raced session's turn to complete",
+    async () => {
+      const run = await latestTurnRun(project.id, deploymentA.id);
+      if (run?.status === "failed" || run?.status === "cancelled") {
+        throw new Error(`raced-session turn became ${run.status}`);
+      }
+      return run && run.id !== parkedRun.id && run.id !== racedRun.id && run.status === "completed"
+        ? run
+        : null;
+    },
+    10 * 60_000,
+  );
+  await raceRequest;
+  await assertRunSemantics(project.id, racedTurn.id, deploymentA.id, pendingFirst.run_id);
+  await assertNoPoison(project.id);
+
+  // Boot recovery may legitimately execute the entry BEFORE the armed copies
+  // come due; the copies are then racing duplicate deliveries of an
+  // already-started run — wait until both are actually consumed before
+  // reading the lease trail.
+  await waitFor(
+    "both raced delivery copies to be consumed",
+    async () => {
+      const { rows } = await worldPool.query<{ remaining: number }>(
+        `select count(*)::int as remaining
+           from graphile_worker._private_jobs as jobs
+          where jobs.id = $1::bigint
+             or jobs.payload ->> 'messageId' = $2`,
+        [pendingFirst.id, duplicateMessageId],
+      );
+      return (rows[0]?.remaining ?? 0) === 0 ? true : null;
+    },
+    3 * 60_000,
+  );
+  // Every dispatch of the raced message — either copy — activated A and only
+  // A. The verbatim copy may legitimately be swallowed by dedup (exactly-once
+  // is a PASS, not a miss); the distinct-identity redelivery cannot be, so at
+  // least one lease must exist, and none anywhere but A.
+  const raceOwners = [
+    `workflow-dispatcher:${pendingFirst.message_id}`,
+    `workflow-dispatcher:${duplicateMessageId}`,
+  ];
+  const { rows: foreignLeases } = await controlPool.query<{ deployment_id: string }>(
+    `select deployment_id from activation_leases
+      where owner_id = any($1) and deployment_id <> $2`,
+    [raceOwners, deploymentA.id],
+  );
+  assert.deepEqual(foreignLeases, [], "no delivery of the raced message may leave Release A");
+  const { rows: homeLeases } = await controlPool.query<{ deployment_id: string }>(
+    `select deployment_id from activation_leases
+      where owner_id = any($1) and deployment_id = $2`,
+    [raceOwners, deploymentA.id],
+  );
+  assert.ok(homeLeases.length >= 1, "the raced deliveries must have activated Release A");
+
+  // Observed peak execution concurrency 1: no two steps of the raced turn
+  // overlap in time.
+  const { rows: overlapping } = await worldPool.query<{ total: number }>(
+    `select count(*)::int as total
+       from workflow.workflow_steps as s1
+       join workflow.workflow_steps as s2
+         on s2.tenant_id = s1.tenant_id and s2.run_id = s1.run_id
+        and s2.step_id <> s1.step_id
+        and s1.started_at < s2.completed_at
+        and s2.started_at < s1.completed_at
+      where s1.tenant_id = $1 and s1.run_id = $2
+        and s1.completed_at is not null and s2.completed_at is not null`,
+    [project.id, racedTurn.id],
+  );
+  assert.equal(overlapping[0]?.total ?? 0, 0, "peak step execution concurrency must be 1");
+  log("PART 3 OK: the first-dispatch race chose one owner, once");
+
   console.log("\nWORKFLOW DUAL-RELEASE E2E OK");
   console.log(
-    "  PROVEN affinityAcrossRestart=1 semanticOwner=A promotedDecoy=B firstDeliveryRace=1 duplicatedSteps=0 deadLetters=0",
+    "  PROVEN affinityAcrossRestart=1 semanticOwner=A promotedDecoy=B sessionProvenance=1 continuationRace=1 firstDispatchRace=1 duplicatedSteps=0 peakConcurrency=1 deadLetters=0",
   );
 } finally {
   await dispatcher?.stop().catch(() => {});
+  // Never strand an off-queue duplicate: a claimable unscoped job would
+  // (correctly) block every later dispatcher boot against this World.
+  await worldPool
+    .query(
+      `delete from graphile_worker._private_jobs as jobs
+        using graphile_worker._private_tasks as tasks
+        where tasks.id = jobs.task_id
+          and tasks.identifier = 'eveland_wf_flows'
+          and jobs.job_queue_id is null
+          and jobs.locked_by is null`,
+    )
+    .catch(() => {});
   await worldPool.end().catch(() => {});
+  await controlPool.end().catch(() => {});
   await close().catch(() => {});
   await rm(temporaryRoot, { recursive: true, force: true }).catch(() => {});
 }

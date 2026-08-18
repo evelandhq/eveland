@@ -78,7 +78,16 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    `prepare` mutates **nothing** — no fences, no cancellations, no topology —
    until the operator's quiescence-and-backup attestation
    (`--quiescence-verified true --backup-evidence <snapshot ids>`) is durably
-   recorded on the operation. It is recorded once; reruns need no flags. A
+   recorded on the operation. The attestation is **measured, not trusted**:
+   it records only while a double-read of the control plane and the World
+   shows zero live activity (no running jobs, no unexpired activation leases,
+   no locked World jobs) and stable protected sequences, and that measured
+   baseline persists with it. Every later `prepare` re-validates the
+   baseline — new runs, new Sessions, or platform jobs the operation's own
+   stamp cannot explain mean something wrote AFTER the backup, so the
+   boundary is **invalidated**: the saga holds until you take fresh quiesced
+   backups and re-attest with the flags (which re-measures and re-baselines).
+   A valid attestation is recorded once; reruns need no flags. A
    run without a proven family on an owner that is merely unknown-**fenced**
    (not terminal) still needs its `--run-families`/`--no-family` disposition —
    a temporary fence is not convergence, and would otherwise leave the family

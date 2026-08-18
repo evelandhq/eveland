@@ -201,6 +201,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_1_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
     });
 
     // The incapable owner is terminated and quarantined, never re-activated.
@@ -245,6 +246,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_1_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
     });
     expect(rerun.migration.scoped).toBe(0);
     expect(rerun.holds).toEqual([]);
@@ -384,6 +386,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_3_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
       corruptedRuns: [{ tenantId: TENANT, runId: corruptRun }],
     });
     expect(held.holds[0]).toMatch(/no proven Eve family/);
@@ -402,6 +405,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_3_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
       runSessionFamilies: [
         { tenantId: TENANT, runId: corruptRun, eveSessionId: "eve_corrupt_family" },
       ],
@@ -469,6 +473,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_2_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
       runsWithoutFamilies: [{ tenantId: TENANT, runId }],
     });
     expect(await isRunQuarantined(pool, TENANT, runId)).toBe(true);
@@ -494,6 +499,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_4_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
     });
     expect(result.holds).toEqual([]);
     // The retired archived owner is deployment-fenced: the OTLP projector
@@ -548,6 +554,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_5_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
       legacyWorlds: { baseUrl: undefined },
     });
     expect(held.holds[0]).toMatch(/legacy Worlds/);
@@ -561,6 +568,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_5_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
       legacyWorlds: {
         baseUrl: "postgres://unused.invalid/postgres",
         terminate: async (_baseUrl, projectId) => ({
@@ -579,6 +587,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_5_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
       legacyWorlds: {
         baseUrl: "postgres://unused.invalid/postgres",
         terminate: async (_baseUrl, projectId) => ({
@@ -623,6 +632,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_6_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
     });
     expect(result.holds).toEqual([]);
     expect(result.staged).not.toContain(deployment.id);
@@ -722,6 +732,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_7_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
     });
     expect(attested.holds).toEqual([]);
     expect(attested.retiredDeployments).toContain(deployment.id);
@@ -734,6 +745,58 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     await expect(assessCutoverProofEligibility(store, `cut_it_7_${suffix}`)).resolves.toMatchObject(
       { eligible: true },
     );
+
+    // Writes AFTER the recorded backup invalidate the boundary: the snapshot
+    // is only a rollback point while nothing has advanced past it.
+    await store.createSession({
+      projectId: deployment.projectId,
+      deploymentId: deployment.id,
+      trigger: "playground",
+      eveSessionId: "eve_after_backup",
+    });
+    const invalidated = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_7_${suffix}`,
+    });
+    expect(invalidated.holds[0]).toMatch(/maintenance boundary invalidated/);
+    // Re-attestation over fresh backups re-measures and re-baselines.
+    const reattested = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_7_${suffix}`,
+      maintenance: { quiescenceVerified: true, backupEvidence: "pg_dump:fresh-snapshot" },
+      quiescenceSettleMs: 50,
+    });
+    expect(reattested.holds).toEqual([]);
+  }, 120_000);
+
+  test("attestation is refused while the system is measurably live", async () => {
+    const store = createTestStore();
+    const deployment = await createControlPlaneDeployment(store, {
+      enqueueCapability: "per_run_queue_v1",
+      hostPort: 42_614,
+    });
+    // A live activation lease is a running consumer: two flags must not beat
+    // the measurement.
+    await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_still_alive",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const held = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_9_${suffix}`,
+      maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
+    });
+    expect(held.holds[0]).toMatch(/quiescence not measured/);
+    expect(held.holds[0]).toMatch(/activation lease/);
+    await expect(store.getWorkflowCutoverOperation(`cut_it_9_${suffix}`)).resolves.toMatchObject({
+      phase: "pending",
+    });
   }, 120_000);
 
   test("an owner outside the storage window retires, idle or active", async () => {
@@ -767,6 +830,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       store,
       operationId: `cut_it_8_${suffix}`,
       maintenance: TEST_MAINTENANCE,
+      quiescenceSettleMs: 50,
     });
     expect(result.holds).toEqual([]);
     for (const deployment of [idleStale, activeStale]) {
