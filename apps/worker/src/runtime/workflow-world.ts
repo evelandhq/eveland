@@ -22,7 +22,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.10.0",
+  packageVersion: "0.10.1",
 } as const;
 
 export type WorkflowWorldBuildConfig = {
@@ -40,24 +40,28 @@ const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = 6;
 const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 1;
 
 /**
- * Maps what release preparation actually injected onto the Release's
- * immutable workflow attestation. Runner mode is a launch-time input and
- * deliberately absent. The shared world's deployment-side enqueue has scoped
- * every job to the per-run `wfrun:<tenant>:<run>` queue since 0.5.0, so the
- * pinned 0.9.0 attests `per_run_queue_v1`; the legacy world never scoped its
- * jobs and attests `unscoped`.
+ * Maps an actually-injected world package/version — from a fresh build or a
+ * classified historical artifact — onto the Release's immutable workflow
+ * attestation. Runner mode is a launch-time input and deliberately absent.
+ *
+ * Capabilities are VERSION facts, not package facts: the shared world's
+ * deployment-side enqueue only scopes every job to the per-run
+ * `wfrun:<tenant>:<run>` queue since 0.5.0 (3f0f483), so an earlier shared
+ * artifact attests `unscoped` and is managed-terminated rather than resumed.
+ * The legacy world never scoped its jobs.
  */
 export function deriveWorkflowWorldAttestation(
   config: WorkflowWorldBuildConfig,
 ): ReleaseWorkflowAttestation {
   if (config.packageName === EVELAND_WORKFLOW_WORLD.packageName) {
+    const perRunQueue = sharedWorldVersionAtLeast(config.packageVersion, 0, 5);
     return {
       worldKind: "shared",
       worldPackage: config.packageName,
       worldVersion: config.packageVersion,
-      storageSpec: EVELAND_WORKFLOW_WORLD_STORAGE_SPEC,
-      dispatchProtocol: EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL,
-      enqueueCapability: "per_run_queue_v1",
+      storageSpec: perRunQueue ? EVELAND_WORKFLOW_WORLD_STORAGE_SPEC : 5,
+      dispatchProtocol: perRunQueue ? EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL : null,
+      enqueueCapability: perRunQueue ? "per_run_queue_v1" : "unscoped",
     };
   }
   if (config.packageName === PLATFORM_WORKFLOW_WORLD.packageName) {
@@ -78,6 +82,15 @@ export function deriveWorkflowWorldAttestation(
     dispatchProtocol: null,
     enqueueCapability: "unknown",
   };
+}
+
+function sharedWorldVersionAtLeast(version: string, major: number, minor: number): boolean {
+  const match = /^(\d+)\.(\d+)\./.exec(version.trim());
+  if (!match) return false;
+  const [, majorText, minorText] = match;
+  const parsedMajor = Number(majorText);
+  const parsedMinor = Number(minorText);
+  return parsedMajor > major || (parsedMajor === major && parsedMinor >= minor);
 }
 
 /**

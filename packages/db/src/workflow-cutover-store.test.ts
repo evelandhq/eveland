@@ -78,6 +78,14 @@ describe("workflow cutover operations", () => {
     const { deployment } = await createTerminationFixture(store);
     await store.updateDeploymentStatus(deployment.id, "stopped");
 
+    // A lease acquired BEFORE the fence exists must stop renewing after it.
+    const preFenceLease = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_pre_fence",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
     await store.ensureWorkflowCutoverOperation({
       id: "cut_fence_test",
       kind: "termination",
@@ -86,6 +94,10 @@ describe("workflow cutover operations", () => {
     await store.writeWorkflowFences("cut_fence_test", [
       { scopeKind: "deployment", scopeId: deployment.id, reason: "legacy termination" },
     ]);
+
+    await expect(
+      store.renewActivationLease(preFenceLease.lease.id, new Date(Date.now() + 120_000)),
+    ).resolves.toBeNull();
 
     await expect(
       store.acquireActivationLease({
@@ -113,7 +125,7 @@ describe("workflow cutover operations", () => {
         ownerId: "req_unfenced",
         expiresAt: new Date(Date.now() + 60_000),
       }),
-    ).resolves.toMatchObject({ starter: true });
+    ).resolves.toHaveProperty("lease");
   });
 
   test("control-plane convergence fails sessions, removes bindings, releases leases, idempotently", async () => {

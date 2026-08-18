@@ -114,7 +114,7 @@ describe("api app", () => {
       workflowWorld: {
         worldKind: "shared",
         worldPackage: "@evelandhq/workflow-world",
-        worldVersion: "0.10.0",
+        worldVersion: "0.10.1",
         storageSpec: 6,
         dispatchProtocol: 1,
         enqueueCapability: "per_run_queue_v1",

@@ -507,6 +507,8 @@ export interface JobStore {
     runtimeInstanceId: string,
     now?: Date,
     staleAfterMs?: number,
+    /** Stamped so a cutover Worker claims only its own operation's jobs. */
+    cutoverOperationId?: string,
   ): Promise<Job>;
   /**
    * Claims the oldest claimable queued job. At most one job runs per project;
@@ -522,6 +524,12 @@ export interface JobStore {
       maxConcurrentHeavyJobs?: number;
       /** Cutover process mode: claim only these job types; others stay queued. */
       allowedTypes?: JobType[];
+      /**
+       * Cutover process mode: additionally claim only jobs stamped with this
+       * exact operation id. Ordinary or stale jobs stay queued for the normal
+       * worker that follows the maintenance window.
+       */
+      cutoverOperationId?: string;
     },
   ): Promise<Job | null>;
   heartbeatJob(jobId: string, attempt: number, now?: Date): Promise<boolean>;
@@ -567,6 +575,16 @@ export interface DeploymentStore {
      */
     workflowWorld?: ReleaseWorkflowAttestation;
   }): Promise<DeploymentRecord>;
+  /**
+   * Persist attestation derived from a Release's immutable artifact. Only an
+   * `unknown` Release may be classified — attestation is immutable once
+   * known, so a second classification (or any attempt to overwrite a real
+   * build's record) returns null and changes nothing.
+   */
+  attestReleaseWorkflow(
+    releaseId: string,
+    workflow: ReleaseWorkflowAttestation,
+  ): Promise<ReleaseRecord | null>;
   /**
    * Stage or finalize a Deployment's mutable workflow execution topology.
    * Partial and idempotent: omitted fields keep their current values, so a
@@ -924,6 +942,8 @@ export interface WorkflowCutoverStore {
     deploymentIds: string[],
   ): Promise<{
     failedSessions: number;
+    failedSessionNodes: number;
+    tombstonedFamilies: number;
     removedSessionBindings: number;
     removedOperationBindings: number;
     releasedLeases: number;

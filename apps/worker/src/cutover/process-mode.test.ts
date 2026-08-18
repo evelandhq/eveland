@@ -27,15 +27,42 @@ describe("cutover job claiming", () => {
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
 
-    // A build job — never a cutover worker's business — and an activation job.
+    // A build job — never a cutover worker's business — plus an ORDINARY
+    // restart job that predates the operation: neither may be claimed.
     await store.enqueueJob(project.id, "build_deploy");
     const claimed = await store.claimNextJob("cutover-worker", new Date(), {
       allowedTypes: [...CUTOVER_ALLOWED_JOB_TYPES],
+      cutoverOperationId: "cut_claim_test",
     });
     expect(claimed).toBeNull();
 
     // The build job is still queued, untouched, for a normal worker later.
     const normalClaim = await store.claimNextJob("normal-worker");
     expect(normalClaim).toMatchObject({ type: "build_deploy" });
+    await store.completeJob(normalClaim!.id);
+
+    // A stale ordinary restart job stays queued for the normal worker…
+    await store.enqueueJob(project.id, "restart_deployment", { reason: "stale" });
+    expect(
+      await store.claimNextJob("cutover-worker", new Date(), {
+        allowedTypes: [...CUTOVER_ALLOWED_JOB_TYPES],
+        cutoverOperationId: "cut_claim_test",
+      }),
+    ).toBeNull();
+    const staleClaim = await store.claimNextJob("normal-worker");
+    expect(staleClaim).toMatchObject({ type: "restart_deployment" });
+    await store.completeJob(staleClaim!.id);
+
+    // …while a job the operation stamped for itself is exactly its business.
+    await store.enqueueJob(project.id, "restart_deployment", {
+      reason: "cutover_reconciliation",
+      cutoverOperationId: "cut_claim_test",
+    });
+    expect(
+      await store.claimNextJob("cutover-worker", new Date(), {
+        allowedTypes: [...CUTOVER_ALLOWED_JOB_TYPES],
+        cutoverOperationId: "cut_claim_test",
+      }),
+    ).toMatchObject({ type: "restart_deployment" });
   });
 });

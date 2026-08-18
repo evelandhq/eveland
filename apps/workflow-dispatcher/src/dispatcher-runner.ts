@@ -6,6 +6,7 @@ import type {
   DispatcherServiceOptions,
   DispatcherTelemetry,
 } from "@evelandhq/workflow-world/dispatcher";
+import { worldDatabaseIdentity } from "@evelandhq/core/workflow-dispatch";
 import {
   countClaimableUnscopedFlowJobs,
   DISPATCH_VERSION,
@@ -49,14 +50,7 @@ export type DispatcherRunnerHandle = {
   stop(): Promise<void>;
 };
 
-export function worldDatabaseIdentity(worldUrl: string): string {
-  try {
-    const url = new URL(worldUrl);
-    return `${url.hostname}:${url.port || "5432"}${url.pathname || ""}`;
-  } catch {
-    return "unknown";
-  }
-}
+export { worldDatabaseIdentity };
 
 export async function startEvelandWorkflowDispatcher(
   env: NodeJS.ProcessEnv,

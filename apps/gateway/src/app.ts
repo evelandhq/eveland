@@ -147,6 +147,13 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     }
     if (session.state === "expired") return sessionExpiredResponse();
     const binding = session.state === "active" ? session.binding : null;
+    // One canonical id for BOTH activation ownership and provenance. The
+    // internal path is service-authenticated, so the API-minted (or
+    // browser-propagated) id is honored; Web, API, Gateway, activation and
+    // dispatcher logs all correlate on the same value. The public path still
+    // strips untrusted X-Eveland-* input and mints its own.
+    const playgroundRequestId =
+      context.req.raw.headers.get("x-eveland-request-id")?.slice(0, 64) ?? crypto.randomUUID();
     return executeGatewaySessionProxy({
       repository,
       activationClient: options.activationClient,
@@ -157,16 +164,8 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       operationBinding: operation.state === "active" ? operation.binding : null,
       operationKey,
       targetKey: crypto.randomUUID(),
-      activationOwnerId: crypto.randomUUID(),
-      provenance: {
-        kind: "playground",
-        // The internal path is service-authenticated: the API minted (or
-        // propagated) this canonical id, so honoring it keeps one id across
-        // Web, API, Gateway and activation logs. The public path still strips
-        // untrusted X-Eveland-* input and mints its own.
-        requestId:
-          context.req.raw.headers.get("x-eveland-request-id")?.slice(0, 64) ?? crypto.randomUUID(),
-      },
+      activationOwnerId: playgroundRequestId,
+      provenance: { kind: "playground", requestId: playgroundRequestId },
       request: context.req.raw,
       routingBody: routingBody.body,
       upstreamPath: `${evePath}${requestUrl.search}`,

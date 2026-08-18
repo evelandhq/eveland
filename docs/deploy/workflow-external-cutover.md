@@ -60,10 +60,15 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    pnpm --filter @evelandhq/worker cutover -- postcondition
    ```
 
-   `prepare` fences, terminates/quarantines the non-recoverable, migrates
-   provable early-external jobs in place, converges the control plane, and
-   stages surviving shared deployments to `converting`. Repeat until
-   `postcondition` reports `"passed": true`.
+   `prepare` first classifies still-`unknown` owners from their immutable
+   systemd artifacts (Docker images stay `unknown` for explicit operator
+   disposition and are named in the report), then fences — deployment-scoped
+   only for permanently retired owners, run-scoped for individually bad runs —
+   terminates/quarantines the non-recoverable, migrates provable
+   early-external jobs onto their **exact** per-run queues in place, converges
+   the control plane for the retired owners, and stages surviving shared
+   deployments to `converting`. Repeat until `postcondition` reports
+   `"passed": true`.
 
 6. **Start the dispatcher recover-paused**
    (`EVELAND_WORKFLOW_DISPATCHER_START_MODE=recover-paused`). Watch its
@@ -79,12 +84,17 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    ```
 
    The dispatcher picks the resume up on its next heartbeat and only then
-   starts claiming.
+   starts claiming. Both API and Worker run with the same
+   `EVELAND_WORKFLOW_CUTOVER_OPERATION_ID`; the cutover API refuses a
+   heartbeat or resume for any other operation, and the cutover Worker claims
+   only jobs stamped with this exact operation id.
 
 8. **Run the continuity gates** with internal traffic: the recovered run
    completes on its original `deployment_id` only, peak dispatch concurrency
    per run stays 1, and post-recovery continuations/child enqueues land on the
-   same per-run queue. Then finalize the staged deployments:
+   same per-run queue. Then finalize the staged deployments — finalize is a
+   gate, not a setter: it re-verifies the postcondition and refuses any
+   deployment that is not `converting` under this exact operation:
 
    ```bash
    pnpm --filter @evelandhq/worker cutover -- finalize --operation-id <id> \

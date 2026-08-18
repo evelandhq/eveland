@@ -203,11 +203,15 @@ export type JobPayloadMap = {
   restart_deployment: {
     deploymentId?: string;
     reason?: string;
+    /** Present only on jobs a cutover operation enqueued for itself. */
+    cutoverOperationId?: string;
   };
   trigger_schedule: { scheduleRunId: string };
   ensure_deployment_running: {
     deploymentId: string;
     runtimeInstanceId: string;
+    /** Present only on jobs a cutover operation enqueued for itself. */
+    cutoverOperationId?: string;
   };
   archive_deployment: { deploymentId: string; automatic?: boolean };
   delete_project: { sourcePaths?: string[] };

@@ -1066,7 +1066,9 @@ describe("processNextJob", () => {
       schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
-    await recordReadyDispatcherFixture(store);
+    // The dispatcher must be claiming from the SAME database (name+port) this
+    // deploy injects; the fixture registers a matching identity.
+    await recordReadyDispatcherFixture(store, "localhost:5452/eveland_workflow");
 
     await expect(
       processNextJob(store, "worker-a", {

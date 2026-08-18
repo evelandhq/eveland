@@ -8,7 +8,7 @@ function release(worldKind: "shared" | "legacy_project" | "unknown") {
     workflow: {
       worldKind,
       worldPackage: worldKind === "shared" ? "@evelandhq/workflow-world" : null,
-      worldVersion: worldKind === "shared" ? "0.10.0" : null,
+      worldVersion: worldKind === "shared" ? "0.10.1" : null,
       storageSpec: worldKind === "shared" ? 6 : null,
       dispatchProtocol: worldKind === "shared" ? 1 : null,
       enqueueCapability:
@@ -64,14 +64,19 @@ describe("assessWorkflowLaunch", () => {
 });
 
 describe("assessWorkflowArchive", () => {
-  test("shared deployments and completed terminations may archive", () => {
+  test("only converted or managed-terminated deployments may archive", () => {
     expect(assessWorkflowArchive(release("shared"), deployment("external")).allowed).toBe(true);
     expect(assessWorkflowArchive(release("legacy_project"), deployment("terminated")).allowed).toBe(
       true,
     );
   });
 
-  test("unknown and unterminated legacy topologies keep their artifact", () => {
+  test("a shared attestation alone never allows artifact destruction", () => {
+    // A historically classified Release with an unconverted Deployment may own
+    // the only artifact able to resume a parked run.
+    for (const state of ["unclassified", "fenced", "converting", "blocked"] as const) {
+      expect(assessWorkflowArchive(release("shared"), deployment(state)).allowed).toBe(false);
+    }
     expect(assessWorkflowArchive(release("unknown"), deployment("unclassified")).allowed).toBe(
       false,
     );

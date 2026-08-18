@@ -67,12 +67,13 @@ async function main(): Promise<void> {
           .map((d) => d.trim())
           .filter(Boolean);
         if (deployments.length === 0) fail("finalize requires --deployments dep_a,dep_b.");
-        const finalized = await finalizeSharedWorldCutover({
+        const result = await finalizeSharedWorldCutover({
+          pool,
           store,
           operationId: operationId!,
           deploymentIds: deployments,
         });
-        emit({ command, finalized });
+        emit({ command, ...result });
         return;
       }
       default:

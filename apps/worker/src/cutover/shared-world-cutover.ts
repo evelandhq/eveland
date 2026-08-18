@@ -5,20 +5,31 @@ import {
   listUnresolvedRunQuarantines,
   migrateUnscopedRunJobs,
   quarantineRun,
+  readFlowJobRun,
+  runQueueName,
 } from "@evelandhq/workflow-world";
 import { makeWorkerUtils } from "graphile-worker";
 import pg from "pg";
+import { classifyArtifactFromFilesystem, type ArtifactClassifier } from "./artifact-classifier.js";
 
 /**
  * The maintenance-downtime cutover over the shared workflow World (issue
  * #278). Every step is idempotent under one operation id and the command
  * fails closed: objects it cannot prove stay fenced/quarantined, and the
  * postcondition refuses dispatcher startup while anything claimable remains
- * outside a per-run queue or any non-recoverable run is neither terminal nor
+ * outside its run's exact per-run queue or any non-recoverable run is neither
+ * terminal nor durably quarantined.
+ *
+ * Fence scoping is deliberate: a DEPLOYMENT fence — which blocks every
+ * activation path and drives control-plane convergence — is reserved for
+ * owners that are permanently retired (non-shared attestation, or an
+ * immutable Release that cannot enqueue per-run). A shared-capable owner with
+ * one bad run keeps serving its healthy runs; only the bad run is fenced and
  * durably quarantined.
  *
  * This module orchestrates; the queue-internal algorithms (job migration,
- * quarantine parking) are owned and tested by `@evelandhq/workflow-world`.
+ * quarantine parking, exact-queue accounting) are owned and tested by
+ * `@evelandhq/workflow-world`.
  */
 
 export type SharedRunClassification =
@@ -33,6 +44,13 @@ export type SharedRunAssessment = {
   deploymentId: string | null;
   queueNamespace: string | null;
   classification: SharedRunClassification;
+  /**
+   * True when the OWNER is disqualified outright — non-shared attestation or
+   * an enqueue path that cannot scope future jobs. Only these owners are
+   * retired at deployment scope; per-run problems never take a whole
+   * Deployment down with them.
+   */
+  ownerRetired: boolean;
   reasons: string[];
 };
 
@@ -40,6 +58,7 @@ export type CutoverStore = Pick<
   Store,
   | "getDeployment"
   | "getRelease"
+  | "attestReleaseWorkflow"
   | "ensureWorkflowCutoverOperation"
   | "advanceWorkflowCutoverOperation"
   | "getWorkflowCutoverOperation"
@@ -64,12 +83,21 @@ const CORRUPTION_PATTERN = /REPLAY_DIVERGENCE|CORRUPTED_EVENT_LOG/i;
  * Release/Deployment classification alone never makes a run recoverable —
  * each run must individually prove non-corruption, exact ownership, known
  * namespace, protocol compatibility and a per-run-queue-capable owner.
+ *
+ * Owners still `unknown` are first classified from their immutable artifact
+ * (systemd release directories; Docker images stay unknown for explicit
+ * operator disposition) — that persisted attestation, never a guess, is what
+ * lets a genuine historical shared run reach `recoverable_shared`.
  */
 export async function assessSharedActiveRuns(
   pool: pg.Pool,
-  store: Pick<Store, "getDeployment" | "getRelease">,
-  options: { corruptedRuns?: Array<{ tenantId: string; runId: string }> } = {},
+  store: Pick<Store, "getDeployment" | "getRelease" | "attestReleaseWorkflow">,
+  options: {
+    corruptedRuns?: Array<{ tenantId: string; runId: string }>;
+    classifier?: ArtifactClassifier;
+  } = {},
 ): Promise<SharedRunAssessment[]> {
+  const classifier = options.classifier ?? classifyArtifactFromFilesystem;
   const { rows } = await pool.query<ActiveRunRow>(
     `select runs.tenant_id, runs.id, runs.deployment_id, runs.queue_namespace, runs.status,
             (select dead.reason
@@ -86,11 +114,37 @@ export async function assessSharedActiveRuns(
   const explicitlyCorrupted = new Set(
     (options.corruptedRuns ?? []).map((run) => `${run.tenantId}:${run.runId}`),
   );
+  // One pass over every claimable flow job: the per-run scoping check compares
+  // each job's decoded payload against its run's EXACT queue — a `wfrun:`
+  // prefix on some other run's queue proves nothing.
+  const { rows: jobRows } = await pool.query<{
+    id: string;
+    payload: unknown;
+    queue_name: string | null;
+  }>(
+    `select jobs.id::text as id, jobs.payload, queues.queue_name
+       from graphile_worker._private_jobs as jobs
+       join graphile_worker._private_tasks as tasks on tasks.id = jobs.task_id
+       left join graphile_worker._private_job_queues as queues on queues.id = jobs.job_queue_id
+      where tasks.identifier = 'eveland_wf_flows'
+        and jobs.locked_by is null
+        and jobs.attempts < jobs.max_attempts
+        and jobs.run_at <= now()`,
+  );
+  const misScopedJobsByRun = new Map<string, number>();
+  for (const jobRow of jobRows) {
+    const run = readFlowJobRun(jobRow.payload);
+    if (!run) continue; // undecodable: the migration parks it; not attributable here
+    if (jobRow.queue_name === runQueueName(run.tenantId, run.runId)) continue;
+    const key = `${run.tenantId}:${run.runId}`;
+    misScopedJobsByRun.set(key, (misScopedJobsByRun.get(key) ?? 0) + 1);
+  }
 
   const assessments: SharedRunAssessment[] = [];
   for (const row of rows) {
     const reasons: string[] = [];
     let classification: SharedRunClassification = "recoverable_shared";
+    let ownerRetired = false;
 
     const corrupted =
       explicitlyCorrupted.has(`${row.tenant_id}:${row.id}`) ||
@@ -101,7 +155,18 @@ export async function assessSharedActiveRuns(
     }
 
     const deployment = row.deployment_id ? await store.getDeployment(row.deployment_id) : null;
-    const release = deployment ? await store.getRelease(deployment.releaseId) : null;
+    let release = deployment ? await store.getRelease(deployment.releaseId) : null;
+    if (deployment && release && release.workflow.worldKind === "unknown") {
+      // Historical artifact classification: persist what the immutable
+      // artifact proves, then decide from the persisted record.
+      const attestation = await classifier({
+        releaseRef: release.imageTag,
+        runtimeKind: deployment.runtimeKind,
+      });
+      if (attestation) {
+        release = (await store.attestReleaseWorkflow(release.id, attestation)) ?? release;
+      }
+    }
     if (!deployment || !release) {
       if (classification === "recoverable_shared") classification = "quarantined_unknown";
       reasons.push(
@@ -112,53 +177,46 @@ export async function assessSharedActiveRuns(
     } else {
       if (release.workflow.worldKind !== "shared") {
         if (classification === "recoverable_shared") classification = "quarantined_unknown";
+        ownerRetired = release.workflow.worldKind === "legacy_project";
         reasons.push(
           `owner Release ${release.id} attestation is ${release.workflow.worldKind}, not shared`,
         );
       }
-      if (release.workflow.enqueueCapability !== "per_run_queue_v1") {
+      if (
+        release.workflow.worldKind === "shared" &&
+        release.workflow.enqueueCapability !== "per_run_queue_v1"
+      ) {
         // Even fully-migrated jobs do not help: the immutable owner would keep
         // producing unscoped jobs the moment it resumes. v1 has no bridge.
         classification = "managed_termination_required";
+        ownerRetired = true;
         reasons.push(
           `owner Release ${release.id} enqueue capability is ${release.workflow.enqueueCapability}; v1 has no compatibility bridge`,
         );
       }
       if (
-        release.workflow.dispatchProtocol === null ||
-        release.workflow.dispatchProtocol > DISPATCH_VERSION
+        release.workflow.worldKind === "shared" &&
+        (release.workflow.dispatchProtocol === null ||
+          release.workflow.dispatchProtocol > DISPATCH_VERSION)
       ) {
         classification = "managed_termination_required";
+        ownerRetired = true;
         reasons.push(
           `owner Release ${release.id} dispatch protocol ${String(release.workflow.dispatchProtocol)} is outside the dispatcher window`,
         );
       }
     }
 
-    // Job scoping: unscoped-but-decodable jobs are migratable; the migration
-    // helper itself parks anything it cannot prove.
-    const unscoped = await pool.query<{ count: string }>(
-      `select count(*)::text as count
-         from graphile_worker._private_jobs as jobs
-         join graphile_worker._private_tasks as tasks on tasks.id = jobs.task_id
-         left join graphile_worker._private_job_queues as queues on queues.id = jobs.job_queue_id
-        where tasks.identifier = 'eveland_wf_flows'
-          and jobs.payload->>'tenantId' = $1
-          and (queues.queue_name is null or queues.queue_name not like 'wfrun:%')
-          and convert_from(decode(jobs.payload->>'data', 'base64'), 'utf8')::jsonb->>'runId' = $2`,
-      [row.tenant_id, row.id],
-    );
-    const unscopedJobs = Number(unscoped.rows[0]!.count);
-
+    const misScopedJobs = misScopedJobsByRun.get(`${row.tenant_id}:${row.id}`) ?? 0;
     if (classification === "recoverable_shared") {
-      if (row.queue_namespace === null && unscopedJobs === 0) {
+      if (row.queue_namespace === null && misScopedJobs === 0) {
         // NULL means "never recorded"; with no job payload to prove it either
         // way, recovery would have to guess the executor's topic. It may not.
         classification = "quarantined_unknown";
         reasons.push("queue namespace was never recorded and no job payload can prove it");
-      } else if (unscopedJobs > 0) {
+      } else if (misScopedJobs > 0) {
         classification = "queue_migration_required";
-        reasons.push(`${String(unscopedJobs)} job(s) still outside the per-run queue`);
+        reasons.push(`${String(misScopedJobs)} job(s) outside the run's exact per-run queue`);
       }
     }
 
@@ -168,6 +226,7 @@ export async function assessSharedActiveRuns(
       deploymentId: row.deployment_id,
       queueNamespace: row.queue_namespace,
       classification,
+      ownerRetired,
       reasons,
     });
   }
@@ -180,22 +239,25 @@ export type CutoverPrepareResult = {
   migration: { scoped: number; parked: number; backfilledNamespaces: number };
   terminated: Array<{ tenantId: string; runId: string }>;
   quarantined: Array<{ tenantId: string; runId: string }>;
+  /** Deployments permanently retired (fenced + control-plane converged). */
+  retiredDeployments: string[];
   staged: string[];
   converged: { failedSessions: number; removedSessionBindings: number };
 };
 
 /**
  * Steps 6-11 of the maintenance-downtime cutover, idempotent under one
- * operation id: inventory, classify, terminate/quarantine what cannot be
- * recovered, migrate what can, stage the surviving deployments to
- * `converting`, and verify the database postcondition. `finalize` is a
- * separate explicit step after the post-resume continuity gate.
+ * operation id: classify, terminate/quarantine what cannot be recovered,
+ * migrate what can, stage the surviving deployments to `converting`, and
+ * verify the database postcondition. `finalize` is a separate explicit step
+ * after the post-resume continuity gate.
  */
 export async function prepareSharedWorldCutover(input: {
   pool: pg.Pool;
   store: CutoverStore;
   operationId: string;
   corruptedRuns?: Array<{ tenantId: string; runId: string }>;
+  classifier?: ArtifactClassifier;
   log?: (message: string, meta?: Record<string, unknown>) => void;
 }): Promise<CutoverPrepareResult> {
   const { pool, store, operationId } = input;
@@ -210,26 +272,30 @@ export async function prepareSharedWorldCutover(input: {
 
     const assessments = await assessSharedActiveRuns(pool, store, {
       ...(input.corruptedRuns ? { corruptedRuns: input.corruptedRuns } : {}),
+      ...(input.classifier ? { classifier: input.classifier } : {}),
     });
 
     // Fence first — in the control plane, before any workflow database write.
+    // Deployment scope only for permanently retired owners; every other
+    // non-recoverable object is fenced at run scope so a healthy sibling run
+    // on the same Deployment keeps working.
     const nonRecoverable = assessments.filter(
       (assessment) =>
         assessment.classification === "managed_termination_required" ||
         assessment.classification === "quarantined_unknown",
     );
-    const fencedDeployments = [
+    const retiredDeployments = [
       ...new Set(
-        nonRecoverable.flatMap((assessment) =>
-          assessment.deploymentId ? [assessment.deploymentId] : [],
+        assessments.flatMap((assessment) =>
+          assessment.ownerRetired && assessment.deploymentId ? [assessment.deploymentId] : [],
         ),
       ),
     ];
     await store.writeWorkflowFences(operationId, [
-      ...fencedDeployments.map((deploymentId) => ({
+      ...retiredDeployments.map((deploymentId) => ({
         scopeKind: "deployment" as const,
         scopeId: deploymentId,
-        reason: "workflow managed termination in progress",
+        reason: "owner Release permanently retired by the external-only cutover",
       })),
       ...nonRecoverable.map((assessment) => ({
         scopeKind: "run" as const,
@@ -280,16 +346,18 @@ export async function prepareSharedWorldCutover(input: {
       },
     });
 
-    // Control-plane convergence for the terminated owners.
-    const converged = await store.convergeWorkflowTermination(operationId, fencedDeployments);
+    // Control-plane convergence — only for the permanently retired owners.
+    const converged = await store.convergeWorkflowTermination(operationId, retiredDeployments);
     await store.advanceWorkflowCutoverOperation(operationId, {
       phase: "control_plane_converged",
       checkpoint: { key: "converged", value: converged },
     });
 
     // Stage surviving shared deployments to `converting`; finalize comes only
-    // after the post-resume continuity gate.
+    // after the post-resume continuity gate. A retired deployment never
+    // stages, even when it also owns a recoverable-looking run.
     const staged: string[] = [];
+    const retired = new Set(retiredDeployments);
     const recoverableDeployments = new Set(
       assessments
         .filter(
@@ -300,6 +368,7 @@ export async function prepareSharedWorldCutover(input: {
         .flatMap((assessment) => (assessment.deploymentId ? [assessment.deploymentId] : [])),
     );
     for (const deploymentId of recoverableDeployments) {
+      if (retired.has(deploymentId)) continue;
       const updated = await store.updateDeploymentWorkflowTopology(deploymentId, {
         runnerMode: "external",
         conversionState: "converting",
@@ -318,6 +387,7 @@ export async function prepareSharedWorldCutover(input: {
       },
       terminated,
       quarantined,
+      retiredDeployments,
       staged,
       converged: {
         failedSessions: converged.failedSessions,
@@ -337,14 +407,14 @@ export type CutoverPostcondition = {
 
 /**
  * The database postcondition the dispatcher's `recover-paused` startup and the
- * explicit resume both require: nothing claimable outside a per-run queue, and
- * every non-recoverable active run either workflow-terminal or carrying an
- * unresolved durable quarantine marker. A control-plane fence alone never
- * satisfies this.
+ * explicit resume both require: nothing claimable outside its run's exact
+ * per-run queue, and every non-recoverable active run either
+ * workflow-terminal or carrying an unresolved durable quarantine marker. A
+ * control-plane fence alone never satisfies this.
  */
 export async function verifySharedWorldPostcondition(
   pool: pg.Pool,
-  store: Pick<Store, "getDeployment" | "getRelease">,
+  store: Pick<Store, "getDeployment" | "getRelease" | "attestReleaseWorkflow">,
 ): Promise<CutoverPostcondition> {
   const claimableUnscopedJobs = await countClaimableUnscopedFlowJobs(pool);
   const quarantines = await listUnresolvedRunQuarantines(pool);
@@ -369,17 +439,61 @@ export async function verifySharedWorldPostcondition(
   };
 }
 
+export type CutoverFinalizeResult = {
+  finalized: string[];
+  refused: Array<{ deploymentId: string; reason: string }>;
+};
+
 /**
  * Step 15's tail: after the cross-Release continuity gate has passed on the
  * resumed dispatcher, finalize the staged deployments to `external`.
+ *
+ * This is a gate, not a setter: the operation must exist and have reached
+ * control-plane convergence, the database postcondition must hold RIGHT NOW,
+ * and each Deployment must be `converting` under this exact operation. A typo
+ * or stale invocation refuses instead of promoting an unclassified Deployment.
  */
 export async function finalizeSharedWorldCutover(input: {
+  pool: pg.Pool;
   store: CutoverStore;
   operationId: string;
   deploymentIds: string[];
-}): Promise<string[]> {
+}): Promise<CutoverFinalizeResult> {
+  const operation = await input.store.getWorkflowCutoverOperation(input.operationId);
+  if (!operation) {
+    throw new Error(`Cutover operation ${input.operationId} does not exist; nothing to finalize.`);
+  }
+  if (operation.phase !== "control_plane_converged" && operation.phase !== "completed") {
+    throw new Error(
+      `Cutover operation ${input.operationId} is ${operation.phase}; finalize requires control-plane convergence first.`,
+    );
+  }
+  const postcondition = await verifySharedWorldPostcondition(input.pool, input.store);
+  if (!postcondition.passed) {
+    throw new Error(
+      `The shared-world postcondition does not hold (${String(postcondition.claimableUnscopedJobs)} unscoped job(s), ${String(postcondition.blockingRuns.length)} blocking run(s)); finalize refused.`,
+    );
+  }
   const finalized: string[] = [];
+  const refused: CutoverFinalizeResult["refused"] = [];
   for (const deploymentId of input.deploymentIds) {
+    const deployment = await input.store.getDeployment(deploymentId);
+    if (!deployment) {
+      refused.push({ deploymentId, reason: "deployment does not exist" });
+      continue;
+    }
+    const { conversionState, conversionOperationId } = deployment.workflowTopology;
+    if (conversionState === "external" && conversionOperationId === input.operationId) {
+      finalized.push(deploymentId); // idempotent re-run
+      continue;
+    }
+    if (conversionState !== "converting" || conversionOperationId !== input.operationId) {
+      refused.push({
+        deploymentId,
+        reason: `deployment is ${conversionState} under operation ${String(conversionOperationId)}, not converting under ${input.operationId}`,
+      });
+      continue;
+    }
     const updated = await input.store.updateDeploymentWorkflowTopology(deploymentId, {
       conversionState: "external",
       conversionOperationId: input.operationId,
@@ -391,7 +505,7 @@ export async function finalizeSharedWorldCutover(input: {
     phase: "completed",
     checkpoint: { key: "finalized", value: finalized },
   });
-  return finalized;
+  return { finalized, refused };
 }
 
 /**

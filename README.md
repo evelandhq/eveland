@@ -111,7 +111,7 @@ Open the control panel at `http://localhost:3000` and the public documentation s
   still binding its port.
 - The worker migrates the configured shared workflow database before use and keeps
   the hourly 24-hour terminal-stream sweep for legacy per-project worlds. Shared
-  `@evelandhq/workflow-world@0.10.0` storage is bounded by write-time compaction plus
+  `@evelandhq/workflow-world@0.10.1` storage is bounded by write-time compaction plus
   the dispatcher's per-minute block packing and deadline-driven stream/run retention;
   EOF markers are retained. Worker startup and tenant provisioning apply all pending
   shared-World migrations directly under the package's migration advisory lock.

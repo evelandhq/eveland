@@ -12,7 +12,7 @@ import path from "node:path";
 export const sharedWorkflowWorldAttestation: ReleaseWorkflowAttestation = {
   worldKind: "shared",
   worldPackage: "@evelandhq/workflow-world",
-  worldVersion: "0.10.0",
+  worldVersion: "0.10.1",
   storageSpec: 6,
   dispatchProtocol: 1,
   enqueueCapability: "per_run_queue_v1",
@@ -22,25 +22,28 @@ export const sharedWorkflowWorldAttestation: ReleaseWorkflowAttestation = {
  * A fresh, ready dispatcher registration. Production deploys gate on this
  * machine-readable readiness, so production fixtures record one first.
  */
-export async function recordReadyDispatcherFixture(store: {
-  recordWorkflowDispatcherHeartbeat: (input: {
-    instanceId: string;
-    generation: string;
-    state: "ready";
-    ownershipAcquired: boolean;
-    bootRecoveryCompleted: boolean;
-    reenqueuedRuns: number | null;
-    worldDatabaseIdentity: string;
-    schemaGeneration: string | null;
-    protocolMin: number;
-    protocolMax: number;
-    cutoverOperationId: string | null;
-    unscopedRunnableJobs: number | null;
-    unresolvedQuarantines: number | null;
-    startedAt: string;
-    readyAt: string | null;
-  }) => Promise<unknown>;
-}): Promise<void> {
+export async function recordReadyDispatcherFixture(
+  store: {
+    recordWorkflowDispatcherHeartbeat: (input: {
+      instanceId: string;
+      generation: string;
+      state: "ready";
+      ownershipAcquired: boolean;
+      bootRecoveryCompleted: boolean;
+      reenqueuedRuns: number | null;
+      worldDatabaseIdentity: string;
+      schemaGeneration: string | null;
+      protocolMin: number;
+      protocolMax: number;
+      cutoverOperationId: string | null;
+      unscopedRunnableJobs: number | null;
+      unresolvedQuarantines: number | null;
+      startedAt: string;
+      readyAt: string | null;
+    }) => Promise<unknown>;
+  },
+  worldDatabaseIdentity = "localhost:5432/eveland_workflow",
+): Promise<void> {
   await store.recordWorkflowDispatcherHeartbeat({
     instanceId: "wfd_fixture",
     generation: "eveland-workflow-dispatcher fixture",
@@ -48,7 +51,7 @@ export async function recordReadyDispatcherFixture(store: {
     ownershipAcquired: true,
     bootRecoveryCompleted: true,
     reenqueuedRuns: 0,
-    worldDatabaseIdentity: "localhost:5432/eveland_workflow",
+    worldDatabaseIdentity,
     schemaGeneration: null,
     protocolMin: 1,
     protocolMax: 1,

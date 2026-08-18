@@ -184,7 +184,7 @@ describe("handleArchiveDeploymentJob", () => {
         runtime,
         dataDir: "/tmp/eveland-archive-claim-test",
       }),
-    ).rejects.toThrow(/classified or managed-terminated/);
+    ).rejects.toThrow(/finish converting or be managed-terminated/);
 
     expect(runtime.stopProcess).not.toHaveBeenCalled();
     expect(runtime.removeRelease).not.toHaveBeenCalled();

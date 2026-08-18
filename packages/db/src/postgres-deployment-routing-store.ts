@@ -397,6 +397,25 @@ export function createPostgresDeploymentRoutingStore({
       return release ? releaseRowToRelease(release) : null;
     },
 
+    async attestReleaseWorkflow(releaseId, workflow) {
+      // Attestation is immutable once known: only an `unknown` row may be
+      // classified, and never back to unknown.
+      if (workflow.worldKind === "unknown") return null;
+      const [row] = await db
+        .update(releases)
+        .set({
+          workflowWorldKind: workflow.worldKind,
+          workflowWorldPackage: workflow.worldPackage,
+          workflowWorldVersion: workflow.worldVersion,
+          workflowStorageSpec: workflow.storageSpec,
+          workflowDispatchProtocol: workflow.dispatchProtocol,
+          workflowEnqueueCapability: workflow.enqueueCapability,
+        })
+        .where(and(eq(releases.id, releaseId), eq(releases.workflowWorldKind, "unknown")))
+        .returning();
+      return row ? releaseRowToRelease(row) : null;
+    },
+
     async listReleaseSummaries(projectId) {
       // One project-scoped query: a deployment overview needs every listed
       // deployment's release summary, and per-release lookups would be an

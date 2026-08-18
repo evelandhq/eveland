@@ -152,6 +152,7 @@ export function createPostgresJobSourceStore({
       runtimeInstanceId,
       now = new Date(),
       staleAfterMs = 300_000,
+      cutoverOperationId,
     ) {
       return db.transaction(async (tx) => {
         const [runtimeInstance] = await tx
@@ -206,7 +207,11 @@ export function createPostgresJobSourceStore({
         const created = await insertJobRowTx(tx, {
           projectId,
           type: "ensure_deployment_running",
-          payload: { deploymentId, runtimeInstanceId },
+          payload: {
+            deploymentId,
+            runtimeInstanceId,
+            ...(cutoverOperationId ? { cutoverOperationId } : {}),
+          },
           createdAt: now,
           updatedAt: now,
         });
@@ -236,6 +241,12 @@ export function createPostgresJobSourceStore({
               options.allowedTypes.map((type) => sql`${type}`),
               sql`, `,
             )})`;
+      // A cutover Worker claims only jobs its exact operation stamped; a
+      // stale or ordinary activation/restart job is not its business.
+      const operationClause =
+        options.cutoverOperationId === undefined
+          ? sql``
+          : sql` and candidate.payload->>'cutoverOperationId' = ${options.cutoverOperationId}`;
       const heavyCapClause =
         heavyCap === undefined
           ? sql``
@@ -279,7 +290,7 @@ export function createPostgresJobSourceStore({
                   and (
                     project.deletion_status is distinct from 'deleting'
                     or candidate.type = 'delete_project'
-                  )${allowedTypesClause}${heavyCapClause}
+                  )${allowedTypesClause}${operationClause}${heavyCapClause}
                 order by candidate.created_at asc, candidate.sequence asc
                 limit 1
                 for update skip locked

@@ -51,18 +51,22 @@ export function assessWorkflowLaunch(
 
 /**
  * Archive destroys the runtime artifact — the only thing able to resume a
- * parked run. Unknown and legacy topologies conservatively protect their
- * artifact until the cutover has classified or terminated them; `terminated`
- * marks a completed managed-termination saga, whose artifact may go.
+ * parked run. A shared attestation alone is not enough: a historically
+ * classified Release can still own an `unclassified`/`fenced`/`converting`/
+ * `blocked` Deployment whose runs have not passed the recovery gate. Only a
+ * Deployment that finished converting (`external`) or completed its
+ * managed-termination saga (`terminated`) may lose its artifact.
  */
 export function assessWorkflowArchive(
   release: Pick<ReleaseRecord, "id" | "workflow">,
   deployment: Pick<DeploymentRecord, "id" | "workflowTopology">,
 ): { allowed: true } | { allowed: false; reason: string } {
-  if (deployment.workflowTopology.conversionState === "terminated") return { allowed: true };
-  if (release.workflow.worldKind === "shared") return { allowed: true };
+  const { conversionState } = deployment.workflowTopology;
+  if (conversionState === "terminated" || conversionState === "external") {
+    return { allowed: true };
+  }
   return {
     allowed: false,
-    reason: `Deployment ${deployment.id} keeps its artifact: Release ${release.id} workflow topology is ${release.workflow.worldKind}/${deployment.workflowTopology.conversionState} and must be classified or managed-terminated by the cutover before archive.`,
+    reason: `Deployment ${deployment.id} keeps its artifact: Release ${release.id} workflow topology is ${release.workflow.worldKind}/${conversionState} and must finish converting or be managed-terminated by the cutover before archive.`,
   };
 }

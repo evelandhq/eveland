@@ -11,6 +11,7 @@ import {
   operationBindings,
   scheduleRuns,
   sessionBindings,
+  sessionNodes,
   sessions,
   workflowCutoverOperations,
   workflowFences,
@@ -180,6 +181,8 @@ export function createPostgresWorkflowCutoverStore(
       if (deploymentIds.length === 0) {
         return {
           failedSessions: 0,
+          failedSessionNodes: 0,
+          tombstonedFamilies: 0,
           removedSessionBindings: 0,
           removedOperationBindings: 0,
           releasedLeases: 0,
@@ -196,22 +199,27 @@ export function createPostgresWorkflowCutoverStore(
               inArray(sessions.status, ["running", "waiting"]),
             ),
           )
-          .returning({
+          .returning({ id: sessions.id });
+        // Session-family tombstones for EVERY Eve family on the retired
+        // deployments — including Sessions corruption already marked failed
+        // before this operation ran. A late or replayed OTLP batch must never
+        // re-materialize any of them, whatever state they were in.
+        const families = await tx
+          .select({
             id: sessions.id,
             projectId: sessions.projectId,
             eveSessionId: sessions.eveSessionId,
-          });
-        // Session-family tombstones for every Eve family this termination
-        // touched: a late or replayed OTLP batch must never re-materialize a
-        // running Session the operation just terminated.
-        for (const failed of failedSessions) {
-          if (!failed.eveSessionId) continue;
+          })
+          .from(sessions)
+          .where(inArray(sessions.deploymentId, deploymentIds));
+        for (const family of families) {
+          if (!family.eveSessionId) continue;
           await tx
             .insert(workflowFences)
             .values({
               id: createId("wff"),
               scopeKind: "session_family",
-              scopeId: `${failed.projectId}:${failed.eveSessionId}`,
+              scopeId: `${family.projectId}:${family.eveSessionId}`,
               operationId,
               reason: "session family managed-terminated",
             })
@@ -219,6 +227,24 @@ export function createPostgresWorkflowCutoverStore(
               target: [workflowFences.scopeKind, workflowFences.scopeId],
             });
         }
+        // SessionNodes converge with their families: a node left `running`
+        // would keep reading as live work in every read model.
+        const failedNodes =
+          families.length === 0
+            ? []
+            : await tx
+                .update(sessionNodes)
+                .set({ status: "failed", updatedAt: new Date() })
+                .where(
+                  and(
+                    inArray(
+                      sessionNodes.rootSessionId,
+                      families.map((family) => family.id),
+                    ),
+                    eq(sessionNodes.status, "running"),
+                  ),
+                )
+                .returning({ id: sessionNodes.id });
         const removedSessionBindings = await tx
           .delete(sessionBindings)
           .where(inArray(sessionBindings.deploymentId, deploymentIds))
@@ -256,6 +282,8 @@ export function createPostgresWorkflowCutoverStore(
           .returning({ id: scheduleRuns.id });
         return {
           failedSessions: failedSessions.length,
+          failedSessionNodes: failedNodes.length,
+          tombstonedFamilies: families.filter((family) => family.eveSessionId).length,
           removedSessionBindings: removedSessionBindings.length,
           removedOperationBindings: removedOperationBindings.length,
           releasedLeases: releasedLeases.length,

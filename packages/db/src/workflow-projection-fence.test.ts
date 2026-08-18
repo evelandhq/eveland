@@ -90,7 +90,10 @@ describe("late OTLP projection fences", () => {
 
     const [after] = await store.listSessions(project.id);
     expect(after?.status).toBe("failed");
-    expect(await store.listSessionNodes(after!.id)).toHaveLength(1);
+    // The node converged with its family — nothing reads as live work.
+    const nodes = await store.listSessionNodes(after!.id);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.status).toBe("failed");
   });
 
   test("a retired deployment's projection fence blocks history the projector never saw", async () => {

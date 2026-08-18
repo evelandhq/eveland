@@ -3,6 +3,7 @@ import type { Job } from "@evelandhq/core/contracts";
 import {
   assessDispatcherReadiness,
   resolveDispatcherHeartbeatTtlMs,
+  worldDatabaseIdentity,
 } from "@evelandhq/core/workflow-dispatch";
 import { projectDiscoveryManifest } from "@evelandhq/core/discovery";
 import { createId } from "@evelandhq/core/ids";
@@ -91,6 +92,10 @@ export async function handleBuildDeployJob(
   if (isProduction) {
     const readiness = assessDispatcherReadiness(await store.getWorkflowDispatcherRegistration(), {
       ttlMs: resolveDispatcherHeartbeatTtlMs(process.env),
+      // The dispatcher must be claiming from the same World this deploy
+      // injects; a fresh heartbeat against the wrong database still means
+      // durable turns are never consumed.
+      expectedWorldDatabaseIdentity: worldDatabaseIdentity(evelandWorkflowWorldUrl!),
     });
     if (!readiness.ready) {
       await store.appendLog({

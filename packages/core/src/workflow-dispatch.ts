@@ -45,15 +45,65 @@ export function resolveDispatcherHeartbeatTtlMs(env: NodeJS.ProcessEnv): number 
 }
 
 /**
+ * The non-secret identity of a workflow database URL: host, port and database
+ * name — never credentials. The readiness surface compares identities, so the
+ * URL itself must not travel.
+ */
+export function worldDatabaseIdentity(worldUrl: string): string {
+  try {
+    const url = new URL(worldUrl);
+    return `${url.hostname}:${url.port || "5432"}${url.pathname || ""}`;
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * Whether two database identities plausibly name the same database. Hosts may
+ * legitimately differ between network views of one server (`localhost` vs
+ * `host.docker.internal` vs a Compose service name), but the database NAME and
+ * port never do — a dispatcher claiming from `.../eveland` while the worker
+ * injects `.../eveland_workflow` is exactly the split this check exists to
+ * catch.
+ */
+export function worldDatabaseIdentitiesCompatible(left: string, right: string): boolean {
+  const parse = (identity: string) => {
+    const slash = identity.indexOf("/");
+    if (slash < 0) return null;
+    const hostPort = identity.slice(0, slash);
+    const database = identity.slice(slash);
+    const colon = hostPort.lastIndexOf(":");
+    return { port: colon >= 0 ? hostPort.slice(colon + 1) : "5432", database };
+  };
+  const a = parse(left);
+  const b = parse(right);
+  if (!a || !b) return false;
+  return a.port === b.port && a.database === b.database;
+}
+
+/**
  * Freshness check the activation path, the production deploy gate and the
  * cutover share. A missing, stale, ownerless or failed registration means the
  * external dispatcher cannot be proven to be claiming — everything that
  * depends on it fails closed with a managed reason instead of timing out.
  * systemd "active" and the stdout token never substitute for this.
+ *
+ * The registration's own claims are checked too, not just its liveness: a
+ * dispatcher on the wrong World database, serving the wrong cutover operation,
+ * or reporting claimable unscoped jobs is not ready no matter how fresh its
+ * heartbeat is.
  */
 export function assessDispatcherReadiness(
   registration: WorkflowDispatcherRegistration | null,
-  input: { now?: Date; ttlMs?: number; allowPaused?: boolean } = {},
+  input: {
+    now?: Date;
+    ttlMs?: number;
+    allowPaused?: boolean;
+    /** Identity of the World database the caller injects/expects. */
+    expectedWorldDatabaseIdentity?: string;
+    /** The cutover operation this caller serves; null means "not in cutover". */
+    expectedOperationId?: string | null;
+  } = {},
 ): { ready: true } | { ready: false; reason: string } {
   const ttlMs = input.ttlMs ?? WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS;
   const now = input.now ?? new Date();
@@ -74,6 +124,35 @@ export function assessDispatcherReadiness(
     return {
       ready: false,
       reason: `${WORKFLOW_UNAVAILABLE}: dispatcher has not completed ownership and boot recovery`,
+    };
+  }
+  if (
+    input.expectedWorldDatabaseIdentity !== undefined &&
+    !worldDatabaseIdentitiesCompatible(
+      registration.worldDatabaseIdentity,
+      input.expectedWorldDatabaseIdentity,
+    )
+  ) {
+    return {
+      ready: false,
+      reason: `${WORKFLOW_UNAVAILABLE}: dispatcher is claiming from ${registration.worldDatabaseIdentity}, not the expected ${input.expectedWorldDatabaseIdentity}`,
+    };
+  }
+  if (
+    input.expectedOperationId !== undefined &&
+    registration.cutoverOperationId !== input.expectedOperationId
+  ) {
+    return {
+      ready: false,
+      reason: `${WORKFLOW_UNAVAILABLE}: dispatcher serves cutover operation ${String(registration.cutoverOperationId)}, expected ${String(input.expectedOperationId)}`,
+    };
+  }
+  // Null means the dispatcher's preflight never counted — unprovable is not
+  // ready, exactly like a non-zero count.
+  if (registration.unscopedRunnableJobs === null || registration.unscopedRunnableJobs > 0) {
+    return {
+      ready: false,
+      reason: `${WORKFLOW_UNAVAILABLE}: ${String(registration.unscopedRunnableJobs ?? "an unknown number of")} early-external job(s) remain claimable outside a per-run queue`,
     };
   }
   const acceptable = input.allowPaused ? ["ready", "ready_paused"] : ["ready"];

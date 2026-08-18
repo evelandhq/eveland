@@ -10,7 +10,7 @@ import { proxyTimeoutMs } from "../next.config.js";
  */
 describe("web proxy timeout budget", () => {
   test("covers the canonical cold-start + upstream + margin budget", () => {
-    const budget = resolveCanonicalRequestBudget({} as NodeJS.ProcessEnv);
+    const budget = resolveCanonicalRequestBudget({ NODE_ENV: "test" } as NodeJS.ProcessEnv);
     expect(proxyTimeoutMs).toBeGreaterThanOrEqual(budget.totalMs);
     expect(budget.totalMs).toBeGreaterThan(budget.upstreamMs);
     expect(budget.totalMs).toBeGreaterThan(120_000 + budget.coldStartMs);

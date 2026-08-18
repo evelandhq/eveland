@@ -240,6 +240,11 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
     },
 
     async renewActivationLease(leaseId, expiresAt, now = new Date()) {
+      // A terminal deployment fence blocks renewal exactly as it blocks
+      // acquisition: between the fence being written and convergence releasing
+      // leases — or indefinitely if convergence is interrupted — a runtime
+      // must not keep extending its lease and continuing work. The anti-join
+      // is part of the UPDATE predicate, so fence and renewal cannot race.
       const [row] = await db
         .update(activationLeases)
         .set({ expiresAt })
@@ -248,6 +253,12 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
             eq(activationLeases.id, leaseId),
             isNull(activationLeases.releasedAt),
             gt(activationLeases.expiresAt, now),
+            sql`not exists (
+              select 1 from ${workflowFences} fence
+              where fence.scope_kind = 'deployment'
+                and fence.scope_id = ${activationLeases.deploymentId}
+                and fence.resolved_at is null
+            )`,
           ),
         )
         .returning();

@@ -29,6 +29,12 @@ export function registerWorkflowDispatcherRoutes(input: {
   const { app, store, options } = input;
   const serviceToken = () =>
     options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
+  // The cutover operation this API instance serves, when it is a cutover API.
+  const apiCutoverOperationId = () =>
+    options.cutoverOperationId ??
+    (process.env.EVELAND_PROCESS_MODE === "workflow-cutover"
+      ? process.env.EVELAND_WORKFLOW_CUTOVER_OPERATION_ID
+      : undefined);
 
   app.post("/internal/workflow/dispatcher/heartbeat", async (c) => {
     if (!isServiceRequest(c.req.header("authorization"), serviceToken()))
@@ -37,6 +43,18 @@ export function registerWorkflowDispatcherRoutes(input: {
       await c.req.json().catch(() => null),
     );
     if (!parsed.success) return c.json({ error: "Invalid dispatcher heartbeat" }, 400);
+    // A cutover API accepts only the Dispatcher serving its exact operation:
+    // a normal-mode or stale-operation Dispatcher must not be able to
+    // register, resume, or participate in activation through it.
+    const expectedOperation = apiCutoverOperationId();
+    if (expectedOperation !== undefined && parsed.data.cutoverOperationId !== expectedOperation) {
+      return c.json(
+        {
+          error: `Dispatcher serves cutover operation ${String(parsed.data.cutoverOperationId)}, but this API serves ${expectedOperation}`,
+        },
+        409,
+      );
+    }
     const registration = await store.recordWorkflowDispatcherHeartbeat(parsed.data);
     return c.json({ desiredState: registration.desiredState });
   });
@@ -63,6 +81,17 @@ export function registerWorkflowDispatcherRoutes(input: {
     if (registration.state !== "ready_paused") {
       return c.json(
         { error: `Dispatcher is ${registration.state}; only ready_paused can be resumed` },
+        409,
+      );
+    }
+    // Resume is scoped to the operation this API serves — never a generic
+    // "resume whatever dispatcher happens to be registered".
+    const expectedOperation = apiCutoverOperationId();
+    if (expectedOperation !== undefined && registration.cutoverOperationId !== expectedOperation) {
+      return c.json(
+        {
+          error: `Registered dispatcher serves cutover operation ${String(registration.cutoverOperationId)}, but this API serves ${expectedOperation}`,
+        },
         409,
       );
     }

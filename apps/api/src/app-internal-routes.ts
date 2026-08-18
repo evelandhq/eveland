@@ -18,6 +18,16 @@ import {
 } from "@evelandhq/core/workflow-dispatch";
 import { registerWorkflowDispatcherRoutes } from "./app-workflow-dispatcher-routes.js";
 
+/** The cutover operation this API instance serves, when it is a cutover API. */
+function cutoverActivationOperationId(options: AppOptions): string | undefined {
+  return (
+    options.cutoverOperationId ??
+    (process.env.EVELAND_PROCESS_MODE === "workflow-cutover"
+      ? process.env.EVELAND_WORKFLOW_CUTOVER_OPERATION_ID
+      : undefined)
+  );
+}
+
 export function registerInternalRoutes(input: {
   app: ApiApp;
   store: Store;
@@ -117,8 +127,12 @@ export function registerInternalRoutes(input: {
       const readiness = assessDispatcherReadiness(registration, {
         ttlMs: resolveDispatcherHeartbeatTtlMs(process.env),
         // During the cutover the paused dispatcher verifies its exact
-        // activation path before the explicit resume.
+        // activation path before the explicit resume — but only the
+        // dispatcher serving this API's operation.
         allowPaused: true,
+        ...(cutoverActivationOperationId(options) !== undefined
+          ? { expectedOperationId: cutoverActivationOperationId(options) }
+          : {}),
       });
       if (!readiness.ready) return c.json({ error: readiness.reason }, 503);
       const release = await store.getRelease(deployment.releaseId);
@@ -173,11 +187,20 @@ export function registerInternalRoutes(input: {
     }
     try {
       if (claim.runtimeInstance.status === "starting") {
+        // In cutover mode the job is stamped with the operation id, so only
+        // the cutover Worker — never a stale normal worker — may claim it.
+        const cutoverOperationId =
+          options.cutoverOperationId ??
+          (process.env.EVELAND_PROCESS_MODE === "workflow-cutover"
+            ? process.env.EVELAND_WORKFLOW_CUTOVER_OPERATION_ID
+            : undefined);
         await store.enqueueDeploymentActivation(
           deployment.projectId,
           deployment.id,
           claim.runtimeInstance.id,
           now,
+          undefined,
+          cutoverOperationId,
         );
       }
       const runtimeInstance = await (

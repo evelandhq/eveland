@@ -209,17 +209,132 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
 
     // Finalize only after the continuity gate: the staged deployment becomes
     // the external topology and its launches are allowed again.
-    await finalizeSharedWorldCutover({
+    const finalizeResult = await finalizeSharedWorldCutover({
+      pool,
       store,
       operationId: "cut_it_1",
       deploymentIds: result.staged,
     });
+    expect(finalizeResult.refused).toEqual([]);
+    // A typo or stale invocation never promotes an unstaged deployment.
+    const bogus = await finalizeSharedWorldCutover({
+      pool,
+      store,
+      operationId: "cut_it_1",
+      deploymentIds: [earlyDeployment.id],
+    });
+    expect(bogus.finalized).toEqual([]);
+    expect(bogus.refused[0]?.reason).toContain("not converting");
     await expect(store.getDeployment(capableDeployment.id)).resolves.toMatchObject({
       workflowTopology: { conversionState: "external", runnerMode: "external" },
     });
     await expect(store.getWorkflowCutoverOperation("cut_it_1")).resolves.toMatchObject({
       phase: "completed",
     });
+  }, 120_000);
+
+  test("a historical unknown Release reaches recoverable_shared through artifact classification", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Historical Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/historical-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // No attestation: migration 0052 backfilled this Release as unknown.
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "/var/lib/eveland/builds/historical/rel_hist",
+      containerName: "fixture-historical",
+      internalPort: 3000,
+      hostPort: 42_604,
+      runtimeKind: "systemd",
+    });
+    const runId = await createSharedRun(deployment.id);
+
+    // The classifier stands in for reading the immutable systemd artifact,
+    // which proves a 0.9.0 shared world was actually injected.
+    const assessments = await assessSharedActiveRuns(pool, store, {
+      classifier: async (input) => {
+        expect(input).toEqual({
+          releaseRef: "/var/lib/eveland/builds/historical/rel_hist",
+          runtimeKind: "systemd",
+        });
+        return {
+          worldKind: "shared",
+          worldPackage: "@evelandhq/workflow-world",
+          worldVersion: "0.9.0",
+          storageSpec: 6,
+          dispatchProtocol: 1,
+          enqueueCapability: "per_run_queue_v1",
+        };
+      },
+    });
+    expect(assessments.find((entry) => entry.runId === runId)?.classification).toBe(
+      "recoverable_shared",
+    );
+    // The attestation persisted: a later assessment needs no classifier.
+    await expect(store.getRelease(deployment.releaseId)).resolves.toMatchObject({
+      workflow: { worldKind: "shared", enqueueCapability: "per_run_queue_v1" },
+    });
+    const again = await assessSharedActiveRuns(pool, store, {
+      classifier: async () => {
+        throw new Error("attestation is persisted; the classifier must not run again");
+      },
+    });
+    expect(again.find((entry) => entry.runId === runId)?.classification).toBe("recoverable_shared");
+    // Attestation is immutable once known.
+    await expect(
+      store.attestReleaseWorkflow(deployment.releaseId, {
+        worldKind: "legacy_project",
+        worldPackage: "@workflow/world-postgres",
+        worldVersion: "5.0.0-beta.34",
+        storageSpec: 6,
+        dispatchProtocol: null,
+        enqueueCapability: "unscoped",
+      }),
+    ).resolves.toBeNull();
+  }, 120_000);
+
+  test("one bad run never takes down its Deployment's healthy sibling", async () => {
+    const store = createTestStore();
+    const deployment = await createControlPlaneDeployment(store, {
+      enqueueCapability: "per_run_queue_v1",
+      hostPort: 42_605,
+    });
+    const healthyRun = await createSharedRun(deployment.id);
+    const corruptRun = await createSharedRun(deployment.id);
+
+    const result = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: "cut_it_3",
+      corruptedRuns: [{ tenantId: TENANT, runId: corruptRun }],
+    });
+
+    // The corrupt run is fenced and quarantined at RUN scope…
+    expect(await isRunQuarantined(pool, TENANT, corruptRun)).toBe(true);
+    expect(result.retiredDeployments).not.toContain(deployment.id);
+    // …while the shared-capable owner keeps its healthy run: no deployment
+    // fence, activation still possible, and the deployment stages.
+    expect(await store.getActiveWorkflowFence("deployment", deployment.id)).toBeNull();
+    await expect(
+      store.acquireActivationLease({
+        deploymentId: deployment.id,
+        kind: "workflow_step",
+        ownerId: "wfd_sibling_test",
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    ).resolves.toHaveProperty("lease");
+    expect(await isRunQuarantined(pool, TENANT, healthyRun)).toBe(false);
+    expect(result.staged).toContain(deployment.id);
   }, 120_000);
 
   test("a run whose namespace was never recorded is quarantined, not guessed", async () => {

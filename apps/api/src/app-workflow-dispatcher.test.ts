@@ -68,7 +68,7 @@ async function createDeployableFixture(
 const sharedAttestation = {
   worldKind: "shared" as const,
   worldPackage: "@evelandhq/workflow-world",
-  worldVersion: "0.10.0",
+  worldVersion: "0.10.1",
   storageSpec: 6,
   dispatchProtocol: 1,
   enqueueCapability: "per_run_queue_v1" as const,
@@ -179,14 +179,36 @@ describe("cutover process mode", () => {
     expect(projects.status).toBe(503);
     expect(((await projects.json()) as { error: string }).error).toContain("workflow_unavailable");
 
-    // The cutover surface stays up: health, heartbeat, and operation status.
+    // The cutover surface stays up: health, heartbeat, and operation status —
+    // but only for the Dispatcher serving this exact operation. A normal-mode
+    // or stale-operation Dispatcher is refused.
     expect((await app.request("/health")).status).toBe(200);
-    const heartbeat = await app.request("/internal/workflow/dispatcher/heartbeat", {
+    const wrongOperation = await app.request("/internal/workflow/dispatcher/heartbeat", {
       method: "POST",
       headers: serviceHeaders,
       body: heartbeatBody(),
     });
+    expect(wrongOperation.status).toBe(409);
+    const heartbeat = await app.request("/internal/workflow/dispatcher/heartbeat", {
+      method: "POST",
+      headers: serviceHeaders,
+      body: heartbeatBody({ cutoverOperationId: "cut_api_test" }),
+    });
     expect(heartbeat.status).toBe(200);
+
+    // Resume is likewise scoped: a registration for another operation cannot
+    // be resumed through this API.
+    const staleRegistration = createApp(store, { gatewayServiceToken: "gateway-service-token" });
+    await staleRegistration.request("/internal/workflow/dispatcher/heartbeat", {
+      method: "POST",
+      headers: serviceHeaders,
+      body: heartbeatBody({ instanceId: "wfd_stale_op", cutoverOperationId: "cut_other" }),
+    });
+    const resume = await app.request("/internal/workflow/dispatcher/resume", {
+      method: "POST",
+      headers: serviceHeaders,
+    });
+    expect(resume.status).toBe(409);
     const status = await app.request("/internal/workflow/cutover/status", {
       headers: serviceHeaders,
     });

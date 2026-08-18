@@ -120,6 +120,21 @@ const reconcileObservability = createWorkerObservabilityReconciler([
 try {
   await assertWorkerPreflight(process.env);
   assertWorkflowTopologyPreflight(process.env);
+  if (processMode.mode === "workflow-cutover") {
+    // A cutover Worker serves exactly one operation; it must exist (created by
+    // the cutover CLI) and must not already be finished.
+    const operation = await storeFactory.store.getWorkflowCutoverOperation(processMode.operationId);
+    if (!operation) {
+      throw new Error(
+        `Cutover operation ${processMode.operationId} does not exist. Create it with the cutover CLI before starting a cutover Worker.`,
+      );
+    }
+    if (operation.phase === "completed") {
+      throw new Error(
+        `Cutover operation ${processMode.operationId} is already completed; a cutover Worker must not serve a finished operation.`,
+      );
+    }
+  }
   await bootstrapWorkflowWorld(process.env);
   if (await bootstrapEvelandWorkflowWorld(process.env)) {
     console.log("Shared workflow-world database schema is ready.");
@@ -218,6 +233,9 @@ async function tick() {
                   tracer: platformObservability.tracer,
                   maxConcurrentHeavyJobs,
                   allowedJobTypes: [...CUTOVER_ALLOWED_JOB_TYPES],
+                  // Only jobs this exact operation stamped; stale or ordinary
+                  // activation jobs stay queued for the normal worker.
+                  cutoverOperationId: processMode.operationId,
                 }),
               ]
             : [
