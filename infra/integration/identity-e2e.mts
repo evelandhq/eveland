@@ -28,11 +28,25 @@
 //     deliberately because it is an operator-visible consequence of the
 //     switch, not something this harness can wish away.
 //
+// OIDC (switched over the same /system API):
+//   - a REAL loopback OpenID Provider (discovery document, RS256 JWKS, token
+//     endpoint with client_secret_basic + PKCE S256 verification) stands in
+//     for 金数据/Auth0, and EVELAND_IDENTITY_OIDC_ALLOW_INSECURE=1 lets the
+//     production openid-client protocol talk to it over http;
+//   - the admin preflight passes against the live discovery document;
+//   - the whole redirect chain runs without a browser: /identity/login 302s
+//     to the IdP, the "IdP" authorizes, GET /identity/oidc/callback exchanges
+//     the code (PKCE verified server-side), sets the eveland_identity cookie,
+//     and the session mints a Caller Token that authenticates a full turn;
+//   - a login resolving to an unregistered Realm is refused 403, and a
+//     replayed callback dies 400 on the one-shot transaction.
+//
 // Run locally (Docker runtime):
 //   EVELAND_AGENT_BASE_DOMAINS=agent.localhost pnpm exec tsx infra/integration/identity-e2e.mts
 // or inside the Lima VM with EVELAND_RUNTIME=systemd, like the other e2e's.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash, createSign, generateKeyPairSync, randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import http, { type IncomingMessage } from "node:http";
@@ -78,7 +92,11 @@ type HttpResult = {
 async function main(): Promise<void> {
   const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-identity-e2e-source-"));
   const priorNodeEnv = process.env.NODE_ENV;
+  const priorAllowInsecure = process.env.EVELAND_IDENTITY_OIDC_ALLOW_INSECURE;
   process.env.NODE_ENV = "test";
+  // The OIDC act runs the production openid-client protocol against a
+  // loopback IdP; read at createApp() time, so it must be set before then.
+  process.env.EVELAND_IDENTITY_OIDC_ALLOW_INSECURE = "1";
   process.env.EVELAND_HEALTH_TIMEOUT_MS ??= "60000";
   const servers: Array<ReturnType<typeof serve>> = [];
   const processNames: string[] = [];
@@ -454,13 +472,198 @@ async function main(): Promise<void> {
       `a Caller Token for another Project must 401: ${crossProject.statusCode}`,
     );
 
+    console.log("identity-e2e: eveland internal phase OK");
+
+    // ========================= SWITCH TO OIDC ============================
+    // A real loopback OpenID Provider; the platform talks to it through the
+    // production openid-client protocol (discovery, JWKS, PKCE, basic auth).
+    const idp = await startFakeIdp(servers);
+    const internalProviders = (
+      await apiRequest(apiPort, adminCookie, "GET", "/system/identity/providers")
+    ).json as {
+      providers: Array<{
+        id: string;
+        type: string;
+        enabled: boolean;
+        securityRevision: number;
+        displayName: string;
+      }>;
+    };
+    const activeInternal = internalProviders.providers.find((provider) => provider.enabled);
+    assert.ok(activeInternal && activeInternal.type === "internal");
+    const internalOff = await apiRequest(
+      apiPort,
+      adminCookie,
+      "PATCH",
+      `/system/identity/providers/${activeInternal.id}`,
+      {
+        expectedSecurityRevision: activeInternal.securityRevision,
+        displayName: activeInternal.displayName,
+        enabled: false,
+      },
+    );
+    assert.equal(internalOff.statusCode, 200, `disabling internal failed: ${internalOff.body}`);
+    const createdOidc = await apiRequest(
+      apiPort,
+      adminCookie,
+      "POST",
+      "/system/identity/providers",
+      {
+        type: "oidc",
+        displayName: "Identity E2E IdP",
+        issuer: idp.issuer,
+        clientId: idp.clientId,
+        clientSecret: idp.clientSecret,
+        scopes: ["openid", "profile", "email"],
+        tokenEndpointAuthMethod: "client_secret_basic",
+        externalRealmResolution: "id_token_claim",
+        externalRealmClaim: "account_id",
+        enabled: true,
+      },
+    );
+    assert.equal(createdOidc.statusCode, 201, `creating OIDC Provider failed: ${createdOidc.body}`);
+    const oidcProviderId = (createdOidc.json as { provider: { id: string } }).provider.id;
+    const oidcRealm = await apiRequest(apiPort, adminCookie, "POST", "/system/identity/realms", {
+      providerConnectionId: oidcProviderId,
+      externalRealmId: "acct_42",
+      externalRealmKind: "account",
+      displayName: "E2E Account",
+      enabled: true,
+    });
+    assert.equal(oidcRealm.statusCode, 201, `creating OIDC Realm failed: ${oidcRealm.body}`);
+
+    // The admin preflight runs live discovery against the IdP.
+    const preflight = await apiRequest(
+      apiPort,
+      adminCookie,
+      "POST",
+      `/system/identity/providers/${oidcProviderId}/preflight`,
+    );
+    assert.equal(preflight.statusCode, 200, `preflight failed: ${preflight.body}`);
+    assert.equal(
+      (preflight.json as { ok: boolean }).ok,
+      true,
+      `preflight must pass against the live IdP: ${preflight.body}`,
+    );
+
+    // The whole login chain, browser-free: login 302 -> IdP authorizes ->
+    // callback exchanges the code (PKCE verified by the IdP) -> cookie.
+    const oidcLogin = await request(apiPort, {
+      host: `127.0.0.1:${apiPort}`,
+      path: "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fidentity-e2e",
+      method: "GET",
+      headers: {},
+    });
+    assert.equal(oidcLogin.statusCode, 302, `OIDC login must redirect: ${oidcLogin.body}`);
+    const authorizationUrl = new URL(oidcLogin.headers.location?.toString() ?? "");
+    assert.ok(
+      authorizationUrl.href.startsWith(`${idp.issuer}/authorize`),
+      `login must redirect to the IdP: ${authorizationUrl.href}`,
+    );
+    const callbackUrl = idp.authorize(authorizationUrl);
+    const callback = await request(apiPort, {
+      host: `127.0.0.1:${apiPort}`,
+      path: `${callbackUrl.pathname}${callbackUrl.search}`,
+      method: "GET",
+      headers: {},
+    });
+    assert.equal(
+      callback.statusCode,
+      302,
+      `OIDC callback must complete the login: ${callback.statusCode} ${callback.body}`,
+    );
+    assert.equal(callback.headers.location, `${CHAT_ORIGIN}/agents/identity-e2e`);
+    const oidcCookie = callback.setCookies
+      .map((cookie) => cookie.split(";", 1)[0]!)
+      .find((cookie) => cookie.startsWith("eveland_identity="));
+    assert.ok(oidcCookie, `eveland_identity cookie missing: ${callback.setCookies.join(" | ")}`);
+
+    // A replayed callback dies on the one-shot transaction.
+    const replay = await request(apiPort, {
+      host: `127.0.0.1:${apiPort}`,
+      path: `${callbackUrl.pathname}${callbackUrl.search}`,
+      method: "GET",
+      headers: {},
+    });
+    assert.equal(replay.statusCode, 400, `replayed callback must 400: ${replay.statusCode}`);
+
+    // The OIDC-established session mints a Caller Token that carries a full
+    // turn through the same Gateway and Agent as the other providers.
+    const oidcMint = await request(apiPort, {
+      host: `127.0.0.1:${apiPort}`,
+      path: "/identity/caller-tokens",
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: CHAT_ORIGIN,
+        cookie: oidcCookie,
+      },
+      body: JSON.stringify({ projectId: project.id }),
+    });
+    assert.equal(oidcMint.statusCode, 200, `OIDC caller token mint failed: ${oidcMint.body}`);
+    const oidcToken = (JSON.parse(oidcMint.body) as { token?: string }).token;
+    assert.ok(oidcToken, "OIDC caller token missing");
+    const oidcCreate = await request(coldGateway.port, {
+      host: agentHost,
+      path: "/eve/v1/session",
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${oidcToken}`,
+      },
+      body: JSON.stringify({ message: "Say hello to the OIDC caller." }),
+    });
+    assert.equal(oidcCreate.statusCode, 202, `OIDC session create failed: ${oidcCreate.body}`);
+    const oidcSessionId =
+      oidcCreate.headers["x-eve-session-id"]?.toString() ??
+      (JSON.parse(oidcCreate.body) as { sessionId?: string }).sessionId;
+    assert.ok(oidcSessionId, "OIDC session id missing");
+    const oidcStream = await streamUntilTurnCompleted(
+      coldGateway.port,
+      agentHost,
+      oidcSessionId,
+      `Bearer ${oidcToken}`,
+    );
+    assert.ok(oidcStream.completedMs > 0, "OIDC turn did not complete");
+
+    // A login whose Realm claim is not on the allowlist is refused.
+    idp.claims = { ...idp.claims, account_id: "acct_unknown" };
+    const strangerLogin = await request(apiPort, {
+      host: `127.0.0.1:${apiPort}`,
+      path: "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fidentity-e2e",
+      method: "GET",
+      headers: {},
+    });
+    assert.equal(strangerLogin.statusCode, 302);
+    const strangerCallback = idp.authorize(
+      new URL(strangerLogin.headers.location?.toString() ?? ""),
+    );
+    const strangerResult = await request(apiPort, {
+      host: `127.0.0.1:${apiPort}`,
+      path: `${strangerCallback.pathname}${strangerCallback.search}`,
+      method: "GET",
+      headers: {},
+    });
+    assert.equal(
+      strangerResult.statusCode,
+      403,
+      `unregistered Realm must 403: ${strangerResult.statusCode} ${strangerResult.body}`,
+    );
+
     console.log(
       `IDENTITY E2E OK runtime=${runtime.name} open=202 badToken=401 direct=401 ` +
         `staleWarmGatewayInjection=202 internalAnonymous=401 internalToken=202 crossProject=401 ` +
-        `openTurnMs=${openStream.completedMs} internalTurnMs=${internalStream.completedMs}`,
+        `oidcPreflight=ok oidcToken=202 oidcReplay=400 oidcStrangerRealm=403 ` +
+        `openTurnMs=${openStream.completedMs} internalTurnMs=${internalStream.completedMs} ` +
+        `oidcTurnMs=${oidcStream.completedMs}`,
     );
   } finally {
     process.env.NODE_ENV = priorNodeEnv;
+    if (priorAllowInsecure === undefined) {
+      delete process.env.EVELAND_IDENTITY_OIDC_ALLOW_INSECURE;
+    } else {
+      process.env.EVELAND_IDENTITY_OIDC_ALLOW_INSECURE = priorAllowInsecure;
+    }
     for (const server of servers) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -472,6 +675,154 @@ async function main(): Promise<void> {
     await database.close();
     await rm(fixtureRoot, { recursive: true, force: true });
   }
+}
+
+type FakeIdp = {
+  port: number;
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+  /** Claims stamped into the next ID token; mutate to shape the next login. */
+  claims: Record<string, unknown>;
+  /**
+   * Plays the IdP's half of the authorization redirect: validates the
+   * request a browser would carry, records the PKCE challenge and nonce
+   * against a fresh code, and returns the callback URL the browser would be
+   * sent back to.
+   */
+  authorize(authorizationUrl: URL): URL;
+};
+
+/**
+ * A real loopback OpenID Provider over HTTP: live discovery document, RS256
+ * JWKS, and a token endpoint that enforces client_secret_basic and PKCE
+ * S256. Real enough that the production openid-client protocol completes
+ * discovery, code exchange, and ID token verification against it.
+ */
+async function startFakeIdp(servers: Array<ReturnType<typeof serve>>): Promise<FakeIdp> {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const keyId = "identity-e2e-idp-key";
+  const clientId = "eveland-identity-e2e";
+  const clientSecret = "identity-e2e-idp-client-secret";
+  const codes = new Map<string, { nonce: string; codeChallenge: string; redirectUri: string }>();
+  let issuer = "";
+  const idp: FakeIdp = {
+    port: 0,
+    issuer: "",
+    clientId,
+    clientSecret,
+    claims: {
+      sub: "user_9527",
+      name: "Identity E2E User",
+      email: "user@example.com",
+      account_id: "acct_42",
+      account_role: "admin",
+    },
+    authorize(authorizationUrl) {
+      assert.equal(authorizationUrl.searchParams.get("client_id"), clientId);
+      assert.equal(authorizationUrl.searchParams.get("response_type"), "code");
+      assert.equal(authorizationUrl.searchParams.get("code_challenge_method"), "S256");
+      const state = authorizationUrl.searchParams.get("state");
+      const nonce = authorizationUrl.searchParams.get("nonce");
+      const codeChallenge = authorizationUrl.searchParams.get("code_challenge");
+      const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+      assert.ok(state && nonce && codeChallenge && redirectUri, "authorization request incomplete");
+      const code = randomBytes(16).toString("base64url");
+      codes.set(code, { nonce, codeChallenge, redirectUri });
+      const callback = new URL(redirectUri);
+      callback.searchParams.set("code", code);
+      callback.searchParams.set("state", state);
+      return callback;
+    },
+  };
+  const server = serve({
+    port: 0,
+    fetch: async (request: Request): Promise<Response> => {
+      const url = new URL(request.url);
+      if (url.pathname === "/.well-known/openid-configuration") {
+        return Response.json({
+          issuer,
+          authorization_endpoint: `${issuer}/authorize`,
+          token_endpoint: `${issuer}/token`,
+          jwks_uri: `${issuer}/jwks`,
+          userinfo_endpoint: `${issuer}/userinfo`,
+          response_types_supported: ["code"],
+          grant_types_supported: ["authorization_code"],
+          token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
+          code_challenge_methods_supported: ["S256"],
+          id_token_signing_alg_values_supported: ["RS256"],
+          subject_types_supported: ["public"],
+          scopes_supported: ["openid", "profile", "email"],
+          claims_supported: ["iss", "sub", "aud", "name", "email", "account_id", "account_role"],
+        });
+      }
+      if (url.pathname === "/jwks") {
+        return Response.json({
+          keys: [{ ...publicKey.export({ format: "jwk" }), kid: keyId, alg: "RS256", use: "sig" }],
+        });
+      }
+      if (url.pathname === "/token" && request.method === "POST") {
+        const basic = request.headers.get("authorization") ?? "";
+        const decoded = Buffer.from(basic.replace(/^Basic /, ""), "base64").toString("utf8");
+        const [basicClient, basicSecret] = decoded.split(":", 2).map(decodeURIComponent);
+        if (basicClient !== clientId || basicSecret !== clientSecret) {
+          return Response.json({ error: "invalid_client" }, { status: 401 });
+        }
+        const form = new URLSearchParams(await request.text());
+        const grant = codes.get(form.get("code") ?? "");
+        codes.delete(form.get("code") ?? "");
+        if (form.get("grant_type") !== "authorization_code" || !grant) {
+          return Response.json({ error: "invalid_grant" }, { status: 400 });
+        }
+        const verifier = form.get("code_verifier") ?? "";
+        const challenge = createHash("sha256").update(verifier).digest("base64url");
+        if (challenge !== grant.codeChallenge || form.get("redirect_uri") !== grant.redirectUri) {
+          return Response.json({ error: "invalid_grant" }, { status: 400 });
+        }
+        const issuedAt = Math.floor(Date.now() / 1000);
+        const idToken = signRs256Jwt(
+          {
+            iss: issuer,
+            aud: clientId,
+            exp: issuedAt + 300,
+            iat: issuedAt,
+            nonce: grant.nonce,
+            ...idp.claims,
+          },
+          privateKey,
+          keyId,
+        );
+        return Response.json({
+          access_token: randomBytes(24).toString("base64url"),
+          token_type: "Bearer",
+          expires_in: 3600,
+          scope: "openid profile email",
+          id_token: idToken,
+        });
+      }
+      return Response.json({ error: "not_found" }, { status: 404 });
+    },
+  });
+  servers.push(server);
+  if (!server.listening) await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("IdP server did not bind.");
+  idp.port = address.port;
+  issuer = `http://127.0.0.1:${address.port}`;
+  idp.issuer = issuer;
+  return idp;
+}
+
+function signRs256Jwt(
+  payload: Record<string, unknown>,
+  privateKey: import("node:crypto").KeyObject,
+  keyId: string,
+): string {
+  const encode = (value: unknown): string =>
+    Buffer.from(JSON.stringify(value)).toString("base64url");
+  const signingInput = `${encode({ alg: "RS256", typ: "JWT", kid: keyId })}.${encode(payload)}`;
+  const signature = createSign("RSA-SHA256").update(signingInput).sign(privateKey);
+  return `${signingInput}.${signature.toString("base64url")}`;
 }
 
 async function startGateway(

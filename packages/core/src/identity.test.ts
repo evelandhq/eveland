@@ -98,6 +98,29 @@ describe("identity contracts", () => {
     ).toThrow(/https/i);
   });
 
+  test("allows an http issuer only on loopback, for integration harness IdPs", () => {
+    const config = (issuer: string) => ({
+      type: "oidc",
+      displayName: "OIDC",
+      issuer,
+      clientId: "chat",
+      scopes: ["openid"],
+      tokenEndpointAuthMethod: "none",
+      externalRealmResolution: "connection",
+      enabled: false,
+    });
+    expect(normalizeIdentityProviderConnection(config("http://127.0.0.1:4567"))).toMatchObject({
+      issuer: "http://127.0.0.1:4567",
+    });
+    expect(normalizeIdentityProviderConnection(config("http://localhost:4567"))).toMatchObject({
+      issuer: "http://localhost:4567",
+    });
+    // Non-loopback private addresses are still refused at the config layer.
+    expect(() => normalizeIdentityProviderConnection(config("http://192.168.1.10"))).toThrow(
+      /https/i,
+    );
+  });
+
   test("builds and parses only project-bound caller-token audiences", () => {
     expect(callerTokenAudience("proj_abc123")).toBe("eveland:project:proj_abc123");
     expect(parseCallerTokenAudience("eveland:project:proj_abc123")).toBe("proj_abc123");
