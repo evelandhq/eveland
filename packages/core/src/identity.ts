@@ -47,11 +47,7 @@ export const OPEN_SHARED_REALM_KEY = "open-shared";
 export const OPEN_SHARED_SUBJECT = "open-shared";
 
 /** How an OIDC provider resolves a caller's external Realm. */
-export type OidcExternalRealmResolution =
-  | "connection"
-  | "id_token_claim"
-  | "userinfo_claim"
-  | "provider_api";
+export type OidcExternalRealmResolution = "connection" | "id_token_claim" | "userinfo_claim";
 
 /**
  * Every resolution mode a persisted Identity Provider Connection can carry.
@@ -216,7 +212,7 @@ export function normalizeIdentityProviderConnection(
   );
   const externalRealmResolution = oneOf(
     input.externalRealmResolution,
-    ["connection", "id_token_claim", "userinfo_claim", "provider_api"] as const,
+    ["connection", "id_token_claim", "userinfo_claim"] as const,
     "OIDC external Realm resolution is invalid.",
   );
   const externalRealmClaim =
