@@ -41,6 +41,16 @@ export type OidcTransaction = {
   returnPath: string;
 };
 
+/**
+ * The slice of a transaction the wire protocol actually consumes. Callers
+ * outside the agent-auth flow (the platform Identity Broker) mint only these
+ * four values; the rest of OidcTransaction is agent-connection bookkeeping.
+ */
+export type OidcTransactionSecrets = Pick<
+  OidcTransaction,
+  "state" | "codeVerifier" | "nonce" | "redirectUri"
+>;
+
 export type OidcTokenSet = {
   accessToken: string;
   refreshToken?: string;
@@ -58,12 +68,12 @@ export type OidcProtocol = {
   buildAuthorizationUrl(
     config: OidcAuthorizationCodeConfig,
     clientSecret: string | undefined,
-    transaction: OidcTransaction,
+    transaction: OidcTransactionSecrets,
   ): Promise<URL>;
   exchangeAuthorizationCode(
     config: OidcAuthorizationCodeConfig,
     clientSecret: string | undefined,
-    transaction: OidcTransaction,
+    transaction: OidcTransactionSecrets,
     currentUrl: URL,
   ): Promise<OidcTokenSet>;
   refresh(

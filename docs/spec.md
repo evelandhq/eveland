@@ -79,7 +79,17 @@ Identity Provider 是实例级的，且任意时刻只能启用一个，三选�
 - `Internal`：API 只在服务端验证有效 Better Auth member，再映射为通用
   `ResolvedExternalIdentity`，通过统一的 `finalizeIdentity()` 建立独立
   `eveland_identity` Session。
-- `OIDC`：持久化与创建路径已就位，登录分发尚未实现。
+- `OIDC`：把身份委托给一个外部 OpenID Connect Provider（authorization code +
+  PKCE S256 + nonce，全部强制开启）。`/identity/login` 302 跳转到 IdP 授权端点，
+  `GET /identity/oidc/callback`（固定 redirect URI：`<identityIssuer>/identity/oidc/callback`，
+  管理员需在 IdP 侧登记）一次性消费登录事务、完成 code 交换与 ID token 验签后，
+  经同一个 `finalizeIdentity()` 建立 Session。调用者的 Realm 按连接配置解析——
+  `connection`（整个连接唯一启用的 Realm）、`id_token_claim` 或 `userinfo_claim`
+  （从指定 claim 取外部 Realm id）——且只允许落在管理员预先登记的 Realm 白名单内，
+  未登记的 Realm 一律 `identity_realm_not_allowed` 403。ID token 验签只接受非对称
+  算法；client secret 与换回的 access/refresh token 均以 APP_SECRET_KEY 派生密钥
+  加密存储。OIDC 模式下 Playground 的 `eveland-identity` 凭据（控制面用户直发
+  Caller Token）不可用——Playground 用户与 IdP 用户之间没有可信映射。
 
 Better Auth cookie/token、member role 与 provider credential 都不得进入 Caller Token、
 浏览器聊天存储、Gateway 或 Agent。
