@@ -15,6 +15,7 @@ import { registerObservabilityProxyRoute } from "./app-observability-proxy-route
 import {
   assessDispatcherReadiness,
   resolveDispatcherHeartbeatTtlMs,
+  isSupportedWorkflowStorageSpec,
 } from "@evelandhq/core/workflow-dispatch";
 import { registerWorkflowDispatcherRoutes } from "./app-workflow-dispatcher-routes.js";
 
@@ -162,6 +163,14 @@ export function registerInternalRoutes(input: {
         return c.json(
           {
             error: `workflow_migration_required: Release ${release.id} enqueue capability is ${workflow.enqueueCapability}; shared recovery requires per_run_queue_v1`,
+          },
+          409,
+        );
+      }
+      if (!isSupportedWorkflowStorageSpec(workflow.storageSpec)) {
+        return c.json(
+          {
+            error: `workflow_migration_required: Release ${release.id} storage spec ${String(workflow.storageSpec)} is outside the supported window`,
           },
           409,
         );

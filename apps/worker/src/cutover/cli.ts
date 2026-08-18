@@ -4,6 +4,7 @@ import pg from "pg";
 import { resolveWorkflowWorldPlatformUrl } from "../runtime/eveland-workflow-world-url.js";
 import { resolveBootstrapPostgresUrl } from "../runtime/workflow-world-bootstrap.js";
 import {
+  assessCutoverProofEligibility,
   assessSharedActiveRuns,
   finalizeSharedWorldCutover,
   prepareSharedWorldCutover,
@@ -14,11 +15,13 @@ import {
  * The idempotent maintenance-downtime cutover command. Every subcommand prints
  * a machine-readable JSON report of exactly which objects are unclassified,
  * unterminated or blocking readiness — an operator never has to infer state
- * from logs. Run it only inside the full maintenance window with every
- * producer/consumer stopped; it does not verify quiescence itself.
+ * from logs. Run it only inside the full maintenance window: `prepare`
+ * refuses to mutate anything until the operator's quiescence-and-backup
+ * attestation is durably recorded on the operation.
  *
  *   pnpm --filter @evelandhq/worker cutover -- inventory --operation-id cut_x
  *   pnpm --filter @evelandhq/worker cutover -- prepare --operation-id cut_x \
+ *     --quiescence-verified true --backup-evidence <snapshot ids> \
  *     [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...] \
  *     [--no-family tenant:run,...]
  *   pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id cut_x
@@ -60,6 +63,10 @@ async function main(): Promise<void> {
             ? { runSessionFamilies: parseFamilyList(flags["run-families"]!) }
             : {}),
           ...(flags["no-family"] ? { runsWithoutFamilies: parseRunList(flags["no-family"]!) } : {}),
+          maintenance: {
+            quiescenceVerified: flags["quiescence-verified"] === "true",
+            backupEvidence: flags["backup-evidence"] ?? "",
+          },
           // WORKFLOW_POSTGRES_URL is the Deployment-facing address and may
           // say host.docker.internal; this host process must connect the way
           // bootstrap and the reaper do, or every legacy World looks
@@ -81,18 +88,33 @@ async function main(): Promise<void> {
         // The proof is World-visible on purpose: the dispatcher's recover-paused
         // preflight gates boot recovery on it and never reads the control-plane
         // database. A failed check is recorded too — a stale passed proof must
-        // not outlive a regression.
+        // not outlive a regression. And a passing proof is EARNED: the database
+        // postcondition alone would "pass" for a pending operation over an
+        // empty shared World while legacy Worlds are still live, so the
+        // operation must have reached control-plane convergence with no
+        // unresolved family dispositions before `passed: true` is recorded.
+        let proofPassed = result.passed;
+        let eligibilityReasons: string[] = [];
         if (operationId) {
+          const eligibility = await assessCutoverProofEligibility(store, operationId);
+          eligibilityReasons = eligibility.reasons;
+          proofPassed = result.passed && eligibility.eligible;
           await recordCutoverProof(pool, {
             operationId,
-            passed: result.passed,
+            passed: proofPassed,
             claimableUnscopedJobs: result.claimableUnscopedJobs,
             blockingRuns: result.blockingRuns.length,
             recordedBy: "eveland-cutover-cli",
           });
         }
-        emit({ command, ...result, proofRecorded: Boolean(operationId) });
-        if (!result.passed) process.exitCode = 1;
+        emit({
+          command,
+          ...result,
+          proofRecorded: Boolean(operationId),
+          proofPassed: operationId ? proofPassed : null,
+          proofHolds: eligibilityReasons,
+        });
+        if (!result.passed || (operationId !== undefined && !proofPassed)) process.exitCode = 1;
         return;
       }
       case "finalize": {

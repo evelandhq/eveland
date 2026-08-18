@@ -1222,13 +1222,20 @@ session-family tombstone），或由 operator 显式断言其确无投影 family
 quarantine marker 为 key 的持久 disposition（`familyDispositions` checkpoint）：run 在首轮
 已被 cancel、不再出现在 active 评估中，重试时的收敛 worklist 从本轮评估 ∪ 本 operation 的
 未决 quarantine marker 播种（quarantine 先于 cancel 写入，crash 窗口因此闭合），映射与断言
-落在持久身份上且此后免重复提供。两者皆无的 run 是 **hold** 而非报告项：World 后置条件因 quarantine 而通过，
+落在持久身份上且此后免重复提供。worklist 只跳过**可证 terminal** 的 owner（本轮退休集合或
+topology 已 `terminated`）：unknown-topology 的临时 deployment fence 不算收敛——operator
+之后分类并解除该 fence 时，被它跳过的 family 将没有 tombstone。两者皆无的 run 是 **hold** 而非报告项：World 后置条件因 quarantine 而通过，
 所以 saga 必须停在 `workflow_safe`、finalize 拒绝 completion，直到每个 run 被 tombstone 或
 显式断言——否则迟到的 OTLP batch 恰好能复活被终止的那个 family。绝不猜测。
-cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
+cutover 的 prepare 在写任何 fence/cancel/topology 之前要求 operation 上已持久记录
+operator 的维护边界 attestation（quiescence 已验证 + 静默后正式备份的证据，
+`--quiescence-verified`/`--backup-evidence`，一次记录终身有效）——runbook 文字不是
+fail-closed 门，部分停机的误操作不得产生任何变更。cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
 要么完成分类/退休/staging，要么（仍为 `unknown` 时）获得 deployment fence 并置于 `fenced`
 topology，杜绝转换途中被唤醒；inventory 对每个保留 Deployment 应用**完整**兼容窗口判定
-（enqueue capability 且 dispatch protocol 非 null 且落在 dispatcher 窗口内）——无 active run
+（enqueue capability、dispatch protocol 非 null 且落在 dispatcher 窗口内、且 storage
+generation 落在平台支持窗口内——protocol 与 storage 是独立轴，`workflow_step` activation
+对窗口外 storage 同样返回 `workflow_migration_required` 409）——无 active run
 的 idle owner 不经过 run 评估，窗口外仍 staging 会让它以 `external` 完成转换却被 activation
 路径逐一拒绝；被退休的 owner 在控制面收敛时同步写入 terminal topology
 （`conversionState = terminated`），否则 archive 门（仅允许 external|terminated）会让其
@@ -1283,7 +1290,10 @@ capability 为 `per_run_queue_v1`、dispatch protocol 落在 registration 声明
 不 claim 任何 job；只有 Control API 上受认证的显式 resume（经 heartbeat 回复送达）才进入
 `ready`。dispatcher 启动前的 preflight 在仍存在可 claim 的 unscoped early-external job 时
 fail closed；设置了 cutover operation id 时还要求 World 内存在该 operation 的 **passed**
-cutover proof（`workflow.cutover_proofs`，由 `cutover postcondition --operation-id` 写入）——
+cutover proof（`workflow.cutover_proofs`，由 `cutover postcondition --operation-id` 写入；
+passed 是挣来的——数据库后置条件对空闲 shared World 上的全新 operation 也会成立，故只有
+operation 已达 control-plane convergence 且无未决 family disposition 时才记录 passed，
+否则记录 failed proof）——
 dispatcher 永不读取控制面数据库，postcondition 的完整结论必须以它可见的形式存在于它已拥有
 的 World 中。不可恢复的 shared run 必须已 workflow-terminal 或带有 boot recovery、enqueue 与
 dispatch handler 都识别的 durable World quarantine marker——仅控制面 fence 不满足该门禁。

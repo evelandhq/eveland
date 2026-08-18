@@ -14,6 +14,20 @@ export const WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS = 60_000;
 export const CANONICAL_REQUEST_ID_HEADER = "x-eveland-request-id";
 
 /**
+ * The workflow storage generations this platform can recover and activate.
+ * Storage spec and dispatch protocol are independent axes of the readiness
+ * contract: an owner can speak the current protocol while its event log was
+ * written under a storage generation nothing here can read. Spec 6 is the
+ * shared `@evelandhq/workflow-world` generation; spec 5 (the pre-per-run-queue
+ * layout) is retired with its `unscoped` enqueue capability.
+ */
+export const SUPPORTED_WORKFLOW_STORAGE_SPECS: ReadonlySet<number> = new Set([6]);
+
+export function isSupportedWorkflowStorageSpec(storageSpec: number | null): boolean {
+  return storageSpec !== null && SUPPORTED_WORKFLOW_STORAGE_SPECS.has(storageSpec);
+}
+
+/**
  * The canonical end-to-end request budget. The Web proxy must cover the whole
  * chain — cold activation plus the upstream idle timeout plus a transport
  * margin — or the browser sees Next's blank 500 while the API/Gateway are

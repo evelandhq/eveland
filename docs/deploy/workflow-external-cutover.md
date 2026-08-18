@@ -21,9 +21,13 @@ unterminated, or blocking readiness. Never infer state from logs.
   the workflow database** — boot recovery skips it, the dispatch handler parks
   racing jobs for it, and the deployment-side enqueue refuses it. A
   control-plane fence alone never satisfies the startup gate.
-- Owners whose Release does not attest `per_run_queue_v1` are
-  managed-terminated. There is no compatibility bridge in v1: even fully
-  migrated jobs do not help an owner that would keep producing unscoped jobs.
+- Owners whose Release does not attest `per_run_queue_v1`, speaks a dispatch
+  protocol outside the dispatcher window, or carries an event log written
+  under an unsupported **storage generation** are managed-terminated —
+  protocol and storage are independent axes, and the same full decision
+  applies to idle owners, not just those with active runs. There is no
+  compatibility bridge in v1: even fully migrated jobs do not help an owner
+  that would keep producing unscoped jobs.
 - Old jobs are migrated **in place** (same job id, payload, key, schedule,
   attempt history) — never deleted and re-enqueued, because a continuation or
   hook input that never reached the event log exists only in that payload.
@@ -64,10 +68,21 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    ```bash
    pnpm --filter @evelandhq/worker cutover -- inventory --operation-id <id>
    pnpm --filter @evelandhq/worker cutover -- prepare --operation-id <id> \
+     --quiescence-verified true --backup-evidence <snapshot ids> \
      [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...] \
      [--no-family tenant:run,...]
    pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id <id>
    ```
+
+   The maintenance boundary from steps 2–3 is a fail-closed gate, not prose:
+   `prepare` mutates **nothing** — no fences, no cancellations, no topology —
+   until the operator's quiescence-and-backup attestation
+   (`--quiescence-verified true --backup-evidence <snapshot ids>`) is durably
+   recorded on the operation. It is recorded once; reruns need no flags. A
+   run without a proven family on an owner that is merely unknown-**fenced**
+   (not terminal) still needs its `--run-families`/`--no-family` disposition —
+   a temporary fence is not convergence, and would otherwise leave the family
+   without a tombstone once the operator classifies and unfences the owner.
 
    `prepare` first classifies still-`unknown` owners from their immutable
    systemd artifacts (Docker images stay `unknown` for explicit operator
@@ -109,7 +124,11 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    `prepare` reports `"holds": []` and `postcondition` reports
    `"passed": true` — with `--operation-id` it also records a World-visible
    proof row (`workflow.cutover_proofs`) that the dispatcher preflight
-   requires.
+   requires. A **passing** proof is earned, not observed: the database
+   postcondition alone would hold for a freshly created operation over a
+   quiet shared World, so `passed: true` is recorded only when the operation
+   has reached control-plane convergence with no unresolved family
+   dispositions; anything less records a failed proof and exits non-zero.
 
 6. **Start the dispatcher recover-paused**
    (`EVELAND_WORKFLOW_DISPATCHER_START_MODE=recover-paused`). Watch its
@@ -143,7 +162,12 @@ db:migrate`; the shared World migrates itself on the next start). Historical
 8. **Run the continuity gates** with internal traffic: the recovered run
    completes on its original `deployment_id` only, peak dispatch concurrency
    per run stays 1, and post-recovery continuations/child enqueues land on the
-   same per-run queue. Then finalize the staged deployments — finalize is a
+   same per-run queue. The live proof of exactly these properties is
+   `pnpm --filter @evelandhq/worker smoke:workflow-dual-release` — two
+   semantically different Releases, the decoy promoted, a real dispatcher
+   restart, and a duplicated first delivery with both Releases online; run it
+   against a staging-shaped platform (API + Worker, the harness owns the
+   dispatcher lifecycle) before attesting `--continuity-verified`. Then finalize the staged deployments — finalize is a
    gate, not a setter: it re-verifies the postcondition and refuses any
    deployment that is not `converting` under this exact operation:
 

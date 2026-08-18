@@ -1,3 +1,4 @@
+import { isSupportedWorkflowStorageSpec } from "@evelandhq/core/workflow-dispatch";
 import type { Store } from "@evelandhq/db";
 import {
   countClaimableUnscopedFlowJobs,
@@ -218,6 +219,19 @@ export async function assessSharedActiveRuns(
           `owner Release ${release.id} dispatch protocol ${String(release.workflow.dispatchProtocol)} is outside the dispatcher window`,
         );
       }
+      if (
+        release.workflow.worldKind === "shared" &&
+        !isSupportedWorkflowStorageSpec(release.workflow.storageSpec)
+      ) {
+        // Protocol and storage are independent axes: an owner can speak the
+        // current dispatch protocol over an event log written under a storage
+        // generation nothing here can read.
+        classification = "managed_termination_required";
+        ownerRetired = true;
+        reasons.push(
+          `owner Release ${release.id} storage spec ${String(release.workflow.storageSpec)} is outside the supported window`,
+        );
+      }
     }
 
     const misScopedJobs = misScopedJobsByRun.get(`${row.tenant_id}:${row.id}`) ?? 0;
@@ -302,6 +316,14 @@ export async function prepareSharedWorldCutover(input: {
    * their runs live in databases this command would then be unable to reach.
    */
   legacyWorlds?: { baseUrl: string | undefined; terminate?: LegacyWorldTerminator };
+  /**
+   * The operator's formal attestation that every producer/consumer is stopped
+   * and the rollback backups were taken AFTER quiescence. Durable once
+   * recorded. Without it — recorded or supplied — prepare mutates NOTHING:
+   * a partial-stop invocation would reintroduce the exact races the offline
+   * cutover exists to eliminate, with no valid rollback point.
+   */
+  maintenance?: { quiescenceVerified: boolean; backupEvidence: string };
   classifier?: ArtifactClassifier;
   log?: (message: string, meta?: Record<string, unknown>) => void;
 }): Promise<CutoverPrepareResult> {
@@ -309,11 +331,56 @@ export async function prepareSharedWorldCutover(input: {
   const log = input.log ?? (() => {});
   const workerUtils = await makeWorkerUtils({ pgPool: pool });
   try {
-    await store.ensureWorkflowCutoverOperation({
+    const operation = await store.ensureWorkflowCutoverOperation({
       id: operationId,
       kind: "cutover",
       scope: {},
     });
+
+    // The maintenance boundary is a fail-closed gate, not a runbook note.
+    const recorded = operation.checkpoints.maintenance as
+      | { quiescenceVerified?: boolean; backupEvidence?: string }
+      | undefined;
+    let maintenanceAttested =
+      recorded?.quiescenceVerified === true &&
+      typeof recorded.backupEvidence === "string" &&
+      recorded.backupEvidence.length > 0;
+    if (
+      !maintenanceAttested &&
+      input.maintenance?.quiescenceVerified === true &&
+      input.maintenance.backupEvidence.length > 0
+    ) {
+      await store.advanceWorkflowCutoverOperation(operationId, {
+        checkpoint: {
+          key: "maintenance",
+          value: {
+            quiescenceVerified: true,
+            backupEvidence: input.maintenance.backupEvidence,
+            attestedAt: new Date().toISOString(),
+          },
+        },
+      });
+      maintenanceAttested = true;
+    }
+    if (!maintenanceAttested) {
+      const hold =
+        "maintenance boundary not attested: stop every producer/consumer, take the formal backups, then supply --quiescence-verified true and --backup-evidence <snapshot ids>";
+      await store.advanceWorkflowCutoverOperation(operationId, { lastError: hold });
+      return {
+        operationId,
+        assessments: [],
+        migration: { scoped: 0, parked: 0, backfilledNamespaces: 0 },
+        terminated: [],
+        quarantined: [],
+        retiredDeployments: [],
+        fencedUnknownDeployments: [],
+        legacyWorlds: [],
+        staged: await readStagedCheckpoint(store, operationId),
+        converged: { failedSessions: 0, removedSessionBindings: 0 },
+        unmappedTerminatedRuns: [],
+        holds: [hold],
+      };
+    }
 
     const assessments = await assessSharedActiveRuns(pool, store, {
       ...(input.corruptedRuns ? { corruptedRuns: input.corruptedRuns } : {}),
@@ -347,13 +414,17 @@ export async function prepareSharedWorldCutover(input: {
             release = (await store.attestReleaseWorkflow(release.id, attestation)) ?? release;
           }
         }
-        const { worldKind, enqueueCapability, dispatchProtocol } = release.workflow;
+        const { worldKind, enqueueCapability, dispatchProtocol, storageSpec } = release.workflow;
         if (worldKind === "legacy_project") legacyProjects.add(project.id);
-        // The full compatibility decision — capability AND dispatch-protocol
-        // window — applies to every retained Deployment, active run or not.
-        // An idle incompatible owner that staged here would finalize as
-        // `external` while the activation path rejects its every workflow.
-        const outsideWindow = dispatchProtocol === null || dispatchProtocol > DISPATCH_VERSION;
+        // The full compatibility decision — capability, dispatch-protocol
+        // window AND storage generation — applies to every retained
+        // Deployment, active run or not. An idle incompatible owner that
+        // staged here would finalize as `external` while the activation path
+        // rejects its every workflow.
+        const outsideWindow =
+          dispatchProtocol === null ||
+          dispatchProtocol > DISPATCH_VERSION ||
+          !isSupportedWorkflowStorageSpec(storageSpec);
         if (
           worldKind === "legacy_project" ||
           (worldKind === "shared" && (enqueueCapability !== "per_run_queue_v1" || outsideWindow))
@@ -591,13 +662,15 @@ export async function prepareSharedWorldCutover(input: {
     const unmappedTerminatedRuns: Array<{ tenantId: string; runId: string }> = [];
     for (const entry of worklist.values()) {
       // Deployment-wide convergence already tombstones every named family on
-      // a permanently retired owner — whether it retired in this call or in
-      // an earlier one (its unresolved deployment fence is the record).
+      // a permanently retired owner — retired in this call, or provably
+      // terminal (`terminated`) from an earlier one. A temporary
+      // unknown-topology fence is NOT convergence: the operator may later
+      // classify the owner and resolve that fence, and a family that was
+      // skipped because of it would have no tombstone against late OTLP.
       if (entry.deploymentId) {
         if (retired.has(entry.deploymentId)) continue;
-        if ((await store.getActiveWorkflowFence("deployment", entry.deploymentId)) !== null) {
-          continue;
-        }
+        const owner = await store.getDeployment(entry.deploymentId);
+        if (owner?.workflowTopology.conversionState === "terminated") continue;
       }
       const disposition = dispositions[`${entry.tenantId}:${entry.runId}`];
       if (disposition?.kind === "mapped") {
@@ -720,6 +793,39 @@ async function readStagedCheckpoint(
   return Array.isArray(operation?.checkpoints.staged)
     ? (operation.checkpoints.staged as string[])
     : [];
+}
+
+/**
+ * Whether recording a PASSED World-visible proof for this operation is
+ * honest. The database postcondition alone inspects only shared-World rows
+ * and claimable jobs — a freshly created `pending` operation over an empty
+ * shared World would "pass" while legacy Worlds are still live and nothing
+ * was ever fenced or converged. The proof the dispatcher trusts must carry
+ * the whole story: prepare reached control-plane convergence with no
+ * unresolved family dispositions.
+ */
+export async function assessCutoverProofEligibility(
+  store: Pick<Store, "getWorkflowCutoverOperation">,
+  operationId: string,
+): Promise<{ eligible: boolean; reasons: string[] }> {
+  const operation = await store.getWorkflowCutoverOperation(operationId);
+  const reasons: string[] = [];
+  if (!operation) {
+    reasons.push(`cutover operation ${operationId} does not exist`);
+  } else {
+    if (operation.phase !== "control_plane_converged" && operation.phase !== "completed") {
+      reasons.push(
+        `operation is ${operation.phase}; prepare must reach control-plane convergence before a passing proof`,
+      );
+    }
+    const unresolved = Array.isArray(operation.checkpoints.unresolvedFamilies)
+      ? operation.checkpoints.unresolvedFamilies.length
+      : 0;
+    if (unresolved > 0) {
+      reasons.push(`${String(unresolved)} terminated run(s) still lack a family disposition`);
+    }
+  }
+  return { eligible: reasons.length === 0, reasons };
 }
 
 type FamilyDisposition =

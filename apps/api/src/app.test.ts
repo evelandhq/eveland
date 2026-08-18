@@ -176,6 +176,82 @@ describe("api app", () => {
     });
   });
 
+  test("refuses workflow_step activation for a Release outside the storage window", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Stale Storage API Agent",
+      importKind: "zip",
+    });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/stale-storage-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // Protocol 1 and per_run_queue_v1, but an event log written under a
+    // storage generation this platform cannot read: independent axes.
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:stale-storage",
+      containerName: "fixture-stale-storage",
+      internalPort: 3000,
+      hostPort: 41989,
+      runtimeKind: "docker",
+      workflowWorld: {
+        worldKind: "shared",
+        worldPackage: "@evelandhq/workflow-world",
+        worldVersion: "0.4.0",
+        storageSpec: 4,
+        dispatchProtocol: 1,
+        enqueueCapability: "per_run_queue_v1",
+      },
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    await store.recordWorkflowDispatcherHeartbeat({
+      instanceId: "wfd_stale_storage_test",
+      generation: "test",
+      state: "ready",
+      ownershipAcquired: true,
+      bootRecoveryCompleted: true,
+      reenqueuedRuns: 0,
+      worldDatabaseIdentity: "localhost:5432/eveland_workflow",
+      schemaGeneration: null,
+      protocolMin: 1,
+      protocolMax: 1,
+      cutoverOperationId: null,
+      unscopedRunnableJobs: 0,
+      unresolvedQuarantines: 0,
+      startedAt: new Date().toISOString(),
+      readyAt: new Date().toISOString(),
+    });
+    const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
+
+    const activation = await app.request("/internal/runtime/activations", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer gateway-service-token",
+        "content-type": "application/json",
+        "x-eveland-dispatcher-instance": "wfd_stale_storage_test",
+      },
+      body: JSON.stringify({
+        deploymentId: deployment.id,
+        kind: "workflow_step",
+        ownerId: "workflow-dispatcher:msg_stale_storage",
+      }),
+    });
+
+    expect(activation.status).toBe(409);
+    const body = (await activation.json()) as { error: string };
+    expect(body.error).toMatch(/^workflow_migration_required: /);
+    expect(body.error).toContain("storage spec 4");
+  });
+
   test("releases only the request lease when a cold activation is aborted", async () => {
     const store = createTestStore();
     const project = await store.createProject({
