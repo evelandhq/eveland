@@ -3,7 +3,7 @@ import * as React from "react";
 
 const server = vi.hoisted(() => ({
   getCurrentMember: vi.fn(),
-  getIdentityProviders: vi.fn(),
+  getIdentityProviderSettings: vi.fn(),
   getIdentityRealms: vi.fn(),
   getIdentityReturnTargets: vi.fn(),
 }));
@@ -30,16 +30,17 @@ describe("Identity settings page", () => {
 
   test("loads provider, Realm, and return target context for an admin", async () => {
     server.getCurrentMember.mockResolvedValue({ role: "admin" });
-    server.getIdentityProviders.mockResolvedValue([
-      { id: "idpc_1", type: "internal", displayName: "Eveland Internal" },
-    ]);
+    server.getIdentityProviderSettings.mockResolvedValue({
+      providers: [{ id: "idpc_1", type: "internal", displayName: "Eveland Internal" }],
+      oidcRedirectUri: "http://localhost:4000/identity/oidc/callback",
+    });
     server.getIdentityRealms.mockResolvedValue([{ id: "irlm_1", providerConnectionId: "idpc_1" }]);
     server.getIdentityReturnTargets.mockResolvedValue([
       { id: "irtg_1", key: "eve-chats", origin: "http://localhost:3010", enabled: true },
     ]);
 
     await expect(IdentitySettingsPage()).resolves.toBeTruthy();
-    expect(server.getIdentityProviders).toHaveBeenCalledOnce();
+    expect(server.getIdentityProviderSettings).toHaveBeenCalledOnce();
     expect(server.getIdentityRealms).toHaveBeenCalledOnce();
     expect(server.getIdentityReturnTargets).toHaveBeenCalledOnce();
   });
@@ -48,7 +49,7 @@ describe("Identity settings page", () => {
     server.getCurrentMember.mockResolvedValue({ role: "member" });
 
     await expect(IdentitySettingsPage()).resolves.toBeTruthy();
-    expect(server.getIdentityProviders).not.toHaveBeenCalled();
+    expect(server.getIdentityProviderSettings).not.toHaveBeenCalled();
     expect(server.getIdentityRealms).not.toHaveBeenCalled();
     expect(server.getIdentityReturnTargets).not.toHaveBeenCalled();
   });

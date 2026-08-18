@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   createInternalIdentityProvider: vi.fn(),
   createInternalIdentityRealm: vi.fn(),
+  createOidcIdentityProvider: vi.fn(),
+  createOidcIdentityRealm: vi.fn(),
   createOpenIdentityProvider: vi.fn(),
   preflightIdentityProvider: vi.fn(),
   setIdentityProviderEnabled: vi.fn(),
   updateIdentityRealm: vi.fn(),
+  updateOidcIdentityProvider: vi.fn(),
   upsertIdentityReturnTarget: vi.fn(),
 }));
 
@@ -24,6 +27,19 @@ const internalProvider = provider({
   type: "internal",
   displayName: "Eveland Internal",
   internalRealmKey: "members",
+  enabled: false,
+});
+const oidcProvider = provider({
+  id: "idpc_oidc",
+  type: "oidc",
+  displayName: "金数据",
+  issuer: "https://account.jinshuju.net",
+  clientId: "eveland-client",
+  clientSecretConfigured: true,
+  scopes: ["openid", "profile", "email"],
+  tokenEndpointAuthMethod: "client_secret_basic",
+  externalRealmResolution: "id_token_claim",
+  externalRealmClaim: "account_id",
   enabled: false,
 });
 
@@ -105,9 +121,134 @@ describe("IdentitySettings provider selection", () => {
   });
 });
 
+describe("IdentitySettings OIDC configuration", () => {
+  beforeEach(() => {
+    Object.values(api).forEach((mock) => mock.mockReset());
+  });
+
+  test("keeps OIDC unselectable until a connection is configured", () => {
+    renderSettings([openProvider]);
+
+    const option = screen.getByRole("radio", { name: /OIDC/ });
+    expect(option.hasAttribute("disabled")).toBe(true);
+    expect(screen.getAllByText(/Configure it below first/).length).toBeGreaterThan(0);
+  });
+
+  test("creates the OIDC connection disabled, with the parsed form configuration", async () => {
+    api.createOidcIdentityProvider.mockResolvedValue(oidcProvider);
+    renderSettings([openProvider]);
+
+    fireEvent.change(screen.getByLabelText("Issuer"), {
+      target: { value: "https://account.jinshuju.net" },
+    });
+    fireEvent.change(screen.getByLabelText("Client ID"), {
+      target: { value: "eveland-client" },
+    });
+    fireEvent.change(screen.getByLabelText("Client secret"), {
+      target: { value: "s3cret-value" },
+    });
+    fireEvent.change(screen.getByLabelText("Scopes"), {
+      target: { value: "openid  profile email" },
+    });
+    fireEvent.change(screen.getByLabelText("Realm claim"), {
+      target: { value: "account_id" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Configure OIDC Provider/ }));
+
+    await waitFor(() => expect(api.createOidcIdentityProvider).toHaveBeenCalledOnce());
+    // Created disabled, like the other Providers: a failure here must leave
+    // the platform on whatever Provider it was already using.
+    expect(api.createOidcIdentityProvider).toHaveBeenCalledWith({
+      displayName: "OIDC",
+      issuer: "https://account.jinshuju.net",
+      clientId: "eveland-client",
+      clientSecret: "s3cret-value",
+      scopes: ["openid", "profile", "email"],
+      tokenEndpointAuthMethod: "client_secret_basic",
+      externalRealmResolution: "id_token_claim",
+      externalRealmClaim: "account_id",
+      enabled: false,
+    });
+  });
+
+  test("keeps the stored client secret when the field is left empty on update", async () => {
+    api.updateOidcIdentityProvider.mockResolvedValue(oidcProvider);
+    renderSettings([openProvider, oidcProvider]);
+
+    fireEvent.click(screen.getByRole("button", { name: /Save OIDC Provider/ }));
+
+    await waitFor(() => expect(api.updateOidcIdentityProvider).toHaveBeenCalledOnce());
+    const input = api.updateOidcIdentityProvider.mock.calls[0]![0] as Record<string, unknown>;
+    expect(input).not.toHaveProperty("clientSecret");
+    expect(input).toMatchObject({
+      id: "idpc_oidc",
+      expectedSecurityRevision: oidcProvider.securityRevision,
+    });
+  });
+
+  test("registers an allowed Realm for the OIDC connection", async () => {
+    api.createOidcIdentityRealm.mockResolvedValue({
+      id: "irlm_oidc",
+      providerConnectionId: "idpc_oidc",
+      externalRealmId: "acct_42",
+      externalRealmKind: "account",
+      displayName: "金数据团队",
+      enabled: true,
+    });
+    renderSettings([oidcProvider]);
+
+    // Several cards carry a "Display name" field; scope to the realm form.
+    const realmForm = within(screen.getByRole("button", { name: /Allow Realm/ }).closest("form")!);
+    fireEvent.change(realmForm.getByLabelText("External Realm ID"), {
+      target: { value: "acct_42" },
+    });
+    fireEvent.change(realmForm.getByLabelText("Display name"), {
+      target: { value: "金数据团队" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Allow Realm/ }));
+
+    await waitFor(() => expect(api.createOidcIdentityRealm).toHaveBeenCalledOnce());
+    expect(api.createOidcIdentityRealm).toHaveBeenCalledWith({
+      providerConnectionId: "idpc_oidc",
+      externalRealmId: "acct_42",
+      externalRealmKind: "account",
+      displayName: "金数据团队",
+      enabled: true,
+    });
+  });
+
+  test("surfaces failing preflight checks by name", async () => {
+    api.preflightIdentityProvider.mockResolvedValue({
+      ok: false,
+      checks: { discovery: true, tokenEndpointAuthMethod: false },
+    });
+    renderSettings([oidcProvider]);
+
+    fireEvent.click(screen.getByRole("button", { name: /Run preflight/ }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/OIDC preflight failed: tokenEndpointAuthMethod/)).toBeDefined(),
+    );
+  });
+
+  test("warns that switching to OIDC turns off the Playground identity credential", () => {
+    renderSettings([openProvider, oidcProvider]);
+
+    fireEvent.click(screen.getByRole("radio", { name: /OIDC/ }));
+
+    expect(screen.getByText(/Playground's Eveland Identity credential/)).toBeDefined();
+    expect(api.setIdentityProviderEnabled).not.toHaveBeenCalled();
+  });
+});
+
 function renderSettings(providers: PublicIdentityProvider[]) {
   render(
-    <IdentitySettings initialProviders={providers} initialRealms={[]} initialReturnTargets={[]} />,
+    <IdentitySettings
+      initialProviders={providers}
+      initialRealms={[]}
+      initialReturnTargets={[]}
+      oidcRedirectUri="http://localhost:4000/identity/oidc/callback"
+    />,
   );
 }
 
