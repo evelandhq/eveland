@@ -2,7 +2,7 @@ import { IdentitySettings } from "@/components/identity-settings";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getCurrentMember,
-  getIdentityProviders,
+  getIdentityProviderSettings,
   getIdentityRealms,
   getIdentityReturnTargets,
 } from "@/lib/server-api";
@@ -28,8 +28,8 @@ export default async function IdentitySettingsPage() {
     );
   }
 
-  const [providers, realms, returnTargets] = await Promise.all([
-    getIdentityProviders(),
+  const [providerSettings, realms, returnTargets] = await Promise.all([
+    getIdentityProviderSettings(),
     getIdentityRealms(),
     getIdentityReturnTargets(),
   ]);
@@ -41,9 +41,10 @@ export default async function IdentitySettingsPage() {
         <p className="text-sm text-muted-foreground">Configure how people sign in to Agents.</p>
       </header>
       <IdentitySettings
-        initialProviders={providers}
+        initialProviders={providerSettings.providers}
         initialRealms={realms}
         initialReturnTargets={returnTargets}
+        oidcRedirectUri={providerSettings.oidcRedirectUri}
       />
     </div>
   );

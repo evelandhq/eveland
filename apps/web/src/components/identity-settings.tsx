@@ -9,6 +9,7 @@ import {
   ShieldCheckIcon,
 } from "lucide-react";
 import type {
+  ExternalRealmKind,
   IdentityProviderType,
   IdentityRealm,
   IdentityReturnTarget,
@@ -42,16 +43,27 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import {
   createInternalIdentityProvider,
   createInternalIdentityRealm,
+  createOidcIdentityProvider,
+  createOidcIdentityRealm,
   createOpenIdentityProvider,
   preflightIdentityProvider,
   setIdentityProviderEnabled,
   updateIdentityRealm,
+  updateOidcIdentityProvider,
   upsertIdentityReturnTarget,
+  type OidcIdentityProviderConfigInput,
 } from "@/lib/client-api";
 import type { PublicIdentityProvider } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -60,10 +72,12 @@ export function IdentitySettings({
   initialProviders,
   initialRealms,
   initialReturnTargets,
+  oidcRedirectUri,
 }: {
   initialProviders: PublicIdentityProvider[];
   initialRealms: IdentityRealm[];
   initialReturnTargets: IdentityReturnTarget[];
+  oidcRedirectUri?: string;
 }) {
   const providerNameId = useId();
   const realmKeyId = useId();
@@ -79,11 +93,15 @@ export function IdentitySettings({
 
   const openProvider = providers.find((provider) => provider.type === "open");
   const internalProvider = providers.find((provider) => provider.type === "internal");
+  const oidcProvider = providers.find((provider) => provider.type === "oidc");
   const activeProvider = providers.find((provider) => provider.enabled);
   const activeType = activeProvider?.type ?? null;
   const internalRealm = internalProvider
     ? realms.find((realm) => realm.providerConnectionId === internalProvider.id)
     : undefined;
+  const oidcRealms = oidcProvider
+    ? realms.filter((realm) => realm.providerConnectionId === oidcProvider.id)
+    : [];
 
   async function run(label: string, action: () => Promise<void>) {
     setPending(label);
@@ -139,7 +157,8 @@ export function IdentitySettings({
     setConfirming(null);
     if (type === activeType) return;
     await run(`select-${type}`, async () => {
-      let target = type === "open" ? openProvider : internalProvider;
+      let target =
+        type === "open" ? openProvider : type === "internal" ? internalProvider : oidcProvider;
       if (type === "open" && !target) {
         target = await createOpenIdentityProvider({ displayName: "Open for all", enabled: false });
         replaceProviders(target);
@@ -179,7 +198,9 @@ export function IdentitySettings({
       setNotice(
         type === "open"
           ? "Eveland is now open to all callers. Existing identity sessions no longer authenticate anyone."
-          : "Eveland Internal is now the Identity Provider. Existing identity sessions were invalidated.",
+          : type === "internal"
+            ? "Eveland Internal is now the Identity Provider. Existing identity sessions were invalidated."
+            : "OIDC is now the Identity Provider. Existing identity sessions were invalidated, and callers sign in at your IdP.",
       );
     });
   }
@@ -190,6 +211,83 @@ export function IdentitySettings({
       const result = await preflightIdentityProvider(internalProvider.id);
       if (!result.ok) throw new Error("Internal Identity preflight did not pass.");
       setNotice("Internal Identity preflight passed.");
+    });
+  }
+
+  async function saveOidcProvider(input: OidcIdentityProviderConfigInput) {
+    await run("oidc-provider", async () => {
+      if (oidcProvider) {
+        const updated = await updateOidcIdentityProvider({
+          id: oidcProvider.id,
+          expectedSecurityRevision: oidcProvider.securityRevision,
+          enabled: oidcProvider.enabled,
+          ...input,
+        });
+        replaceProviders(updated);
+        setNotice(
+          "OIDC Provider updated. A security-relevant change signs existing OIDC users out.",
+        );
+      } else {
+        const created = await createOidcIdentityProvider({ ...input, enabled: false });
+        replaceProviders(created);
+        setNotice(
+          "OIDC Provider configured. Register the redirect URI at your IdP, add an allowed Realm, run the preflight, then select OIDC above.",
+        );
+      }
+    });
+  }
+
+  async function preflightOidc() {
+    if (!oidcProvider) return;
+    await run("preflight-oidc", async () => {
+      const result = await preflightIdentityProvider(oidcProvider.id);
+      if (!result.ok) {
+        const failing = Object.entries(result.checks ?? {})
+          .filter(([, ok]) => !ok)
+          .map(([check]) => check);
+        throw new Error(
+          result.error ?? `OIDC preflight failed: ${failing.join(", ") || "unknown check"}.`,
+        );
+      }
+      const advisories = Object.entries(result.advisories ?? {})
+        .filter(([, ok]) => !ok)
+        .map(([advisory]) => advisory);
+      setNotice(
+        advisories.length > 0
+          ? `OIDC preflight passed. The IdP does not advertise ${advisories.join(", ")}; verify those against its documentation.`
+          : "OIDC preflight passed.",
+      );
+    });
+  }
+
+  async function createOidcRealm(input: {
+    externalRealmId: string;
+    externalRealmKind: Exclude<ExternalRealmKind, "internal">;
+    displayName: string;
+  }) {
+    if (!oidcProvider) return;
+    await run("oidc-realm", async () => {
+      const realm = await createOidcIdentityRealm({
+        providerConnectionId: oidcProvider.id,
+        enabled: true,
+        ...input,
+      });
+      setRealms((current) => [...current, realm]);
+      setNotice("Identity Realm allowed. Logins resolving to it are now accepted.");
+    });
+  }
+
+  async function toggleOidcRealm(realm: IdentityRealm, enabled: boolean) {
+    await run(`oidc-realm-${realm.id}`, async () => {
+      const updated = await updateIdentityRealm({
+        id: realm.id,
+        displayName: realm.displayName,
+        enabled,
+      });
+      setRealms((current) =>
+        current.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
+      );
+      setNotice(enabled ? "Identity Realm enabled." : "Identity Realm disabled.");
     });
   }
 
@@ -341,11 +439,11 @@ export function IdentitySettings({
             <ProviderOption
               title="OIDC"
               description="Delegate identity to your own OpenID Connect provider."
-              selected={false}
-              pending={false}
-              disabled
-              hint="Coming soon"
-              onSelect={() => {}}
+              selected={activeType === "oidc"}
+              pending={pending === "select-oidc"}
+              disabled={pending !== null || !oidcProvider}
+              hint={oidcProvider ? undefined : "Configure it below first"}
+              onSelect={() => setConfirming("oidc")}
             />
           </div>
 
@@ -423,6 +521,24 @@ export function IdentitySettings({
         </CardContent>
       </Card>
 
+      <OidcProviderCard
+        provider={oidcProvider}
+        oidcRedirectUri={oidcRedirectUri}
+        pending={pending}
+        onSave={saveOidcProvider}
+        onPreflight={preflightOidc}
+      />
+
+      {oidcProvider ? (
+        <OidcRealmsCard
+          provider={oidcProvider}
+          realms={oidcRealms}
+          pending={pending}
+          onCreate={createOidcRealm}
+          onToggle={toggleOidcRealm}
+        />
+      ) : null}
+
       <AlertDialog
         open={confirming !== null}
         onOpenChange={(next) => {
@@ -434,14 +550,18 @@ export function IdentitySettings({
             <AlertDialogTitle>
               {confirming === "open"
                 ? "Open this instance to all callers?"
-                : "Switch to Eveland Internal?"}
+                : confirming === "internal"
+                  ? "Switch to Eveland Internal?"
+                  : "Switch to OIDC?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               Every identity session issued by the current Identity Provider stops authenticating
               anyone, and users signed in through it have to sign in again.
               {confirming === "open"
                 ? " Agents that rely on an Eveland identity will accept every caller."
-                : null}
+                : confirming === "oidc"
+                  ? " Callers sign in at your IdP, and the Playground's Eveland Identity credential becomes unavailable while OIDC is active."
+                  : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -526,6 +646,409 @@ export function IdentitySettings({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+const OIDC_REALM_KINDS = [
+  "account",
+  "organization",
+  "tenant",
+  "workspace",
+  "corp",
+  "enterprise",
+] as const satisfies readonly Exclude<ExternalRealmKind, "internal" | "open_shared">[];
+
+const OIDC_RESOLUTIONS = [
+  {
+    value: "id_token_claim",
+    label: "ID token claim",
+    description: "Read the Realm from a claim in the verified ID token (e.g. 金数据's account_id).",
+  },
+  {
+    value: "userinfo_claim",
+    label: "UserInfo claim",
+    description: "Read the Realm from a claim in the UserInfo response.",
+  },
+  {
+    value: "connection",
+    label: "Whole connection",
+    description: "Every login shares this connection's single enabled Realm.",
+  },
+] as const;
+
+function OidcProviderCard({
+  provider,
+  oidcRedirectUri,
+  pending,
+  onSave,
+  onPreflight,
+}: {
+  provider?: PublicIdentityProvider;
+  oidcRedirectUri?: string;
+  pending: string | null;
+  onSave: (input: OidcIdentityProviderConfigInput) => Promise<void>;
+  onPreflight: () => Promise<void>;
+}) {
+  const nameId = useId();
+  const issuerId = useId();
+  const clientIdId = useId();
+  const secretId = useId();
+  const scopesId = useId();
+  const claimId = useId();
+  const [resolution, setResolution] = useState<
+    OidcIdentityProviderConfigInput["externalRealmResolution"]
+  >(
+    provider?.externalRealmResolution === "connection" ||
+      provider?.externalRealmResolution === "id_token_claim" ||
+      provider?.externalRealmResolution === "userinfo_claim"
+      ? provider.externalRealmResolution
+      : "id_token_claim",
+  );
+  const [authMethod, setAuthMethod] = useState<
+    OidcIdentityProviderConfigInput["tokenEndpointAuthMethod"]
+  >(provider?.tokenEndpointAuthMethod ?? "client_secret_basic");
+
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const clientSecret = String(data.get("clientSecret") ?? "");
+    void onSave({
+      displayName: String(data.get("displayName") ?? ""),
+      issuer: String(data.get("issuer") ?? ""),
+      clientId: String(data.get("clientId") ?? ""),
+      ...(clientSecret ? { clientSecret } : {}),
+      scopes: String(data.get("scopes") ?? "")
+        .split(/\s+/)
+        .filter(Boolean),
+      tokenEndpointAuthMethod: authMethod,
+      externalRealmResolution: resolution,
+      ...(resolution === "connection"
+        ? {}
+        : { externalRealmClaim: String(data.get("externalRealmClaim") ?? "") }),
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>OIDC Provider</CardTitle>
+        <CardDescription>
+          Delegates identity to your OpenID Connect provider over authorization code with PKCE.
+          Register this exact redirect URI at the IdP:
+        </CardDescription>
+        {oidcRedirectUri ? (
+          <code className="w-fit rounded bg-muted px-2 py-1 text-sm">{oidcRedirectUri}</code>
+        ) : null}
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit}>
+          <FieldGroup>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor={nameId}>Display name</FieldLabel>
+                <Input
+                  id={nameId}
+                  name="displayName"
+                  defaultValue={provider?.displayName ?? "OIDC"}
+                  required
+                  disabled={pending !== null}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={issuerId}>Issuer</FieldLabel>
+                <Input
+                  id={issuerId}
+                  name="issuer"
+                  type="url"
+                  placeholder="https://account.jinshuju.net"
+                  defaultValue={provider?.issuer ?? ""}
+                  required
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pending !== null}
+                />
+                <FieldDescription>
+                  Exactly as the IdP publishes it; discovery loads /.well-known/openid-configuration
+                  from here.
+                </FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={clientIdId}>Client ID</FieldLabel>
+                <Input
+                  id={clientIdId}
+                  name="clientId"
+                  defaultValue={provider?.clientId ?? ""}
+                  required
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pending !== null}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={secretId}>Client secret</FieldLabel>
+                <Input
+                  id={secretId}
+                  name="clientSecret"
+                  type="password"
+                  placeholder={provider?.clientSecretConfigured ? "•••••• (configured)" : ""}
+                  autoComplete="new-password"
+                  disabled={pending !== null}
+                />
+                <FieldDescription>
+                  {provider?.clientSecretConfigured
+                    ? "Stored encrypted. Leave empty to keep the current secret; entering one rotates it and signs OIDC users out."
+                    : "Required unless the client authenticates with none."}
+                </FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={scopesId}>Scopes</FieldLabel>
+                <Input
+                  id={scopesId}
+                  name="scopes"
+                  defaultValue={provider?.scopes.join(" ") || "openid profile email"}
+                  required
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pending !== null}
+                />
+                <FieldDescription>Space-separated; must include openid.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="identity-oidc-auth-method">Token endpoint auth</FieldLabel>
+                <Select
+                  value={authMethod}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setAuthMethod(
+                        value as OidcIdentityProviderConfigInput["tokenEndpointAuthMethod"],
+                      );
+                    }
+                  }}
+                >
+                  <SelectTrigger id="identity-oidc-auth-method" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="client_secret_basic">client_secret_basic</SelectItem>
+                    <SelectItem value="client_secret_post">client_secret_post</SelectItem>
+                    <SelectItem value="none">none (public client + PKCE)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="identity-oidc-resolution">Realm resolution</FieldLabel>
+                <Select
+                  value={resolution}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setResolution(
+                        value as OidcIdentityProviderConfigInput["externalRealmResolution"],
+                      );
+                    }
+                  }}
+                >
+                  <SelectTrigger id="identity-oidc-resolution" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OIDC_RESOLUTIONS.map((candidate) => (
+                      <SelectItem key={candidate.value} value={candidate.value}>
+                        {candidate.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  {OIDC_RESOLUTIONS.find((candidate) => candidate.value === resolution)
+                    ?.description ?? ""}
+                </FieldDescription>
+              </Field>
+              {resolution !== "connection" ? (
+                <Field>
+                  <FieldLabel htmlFor={claimId}>Realm claim</FieldLabel>
+                  <Input
+                    id={claimId}
+                    name="externalRealmClaim"
+                    placeholder="account_id"
+                    defaultValue={provider?.externalRealmClaim ?? ""}
+                    required
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={pending !== null}
+                  />
+                  <FieldDescription>
+                    The claim whose value names the caller's external Realm.
+                  </FieldDescription>
+                </Field>
+              ) : null}
+            </div>
+            <Field orientation="horizontal">
+              <Button type="submit" disabled={pending !== null}>
+                {pending === "oidc-provider" ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <KeyRoundIcon data-icon="inline-start" />
+                )}
+                {pending === "oidc-provider"
+                  ? "Saving…"
+                  : provider
+                    ? "Save OIDC Provider"
+                    : "Configure OIDC Provider"}
+              </Button>
+              {provider ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void onPreflight()}
+                  disabled={pending !== null}
+                >
+                  {pending === "preflight-oidc" ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : (
+                    <ShieldCheckIcon data-icon="inline-start" />
+                  )}
+                  {pending === "preflight-oidc" ? "Running preflight…" : "Run preflight"}
+                </Button>
+              ) : null}
+            </Field>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OidcRealmsCard({
+  provider,
+  realms,
+  pending,
+  onCreate,
+  onToggle,
+}: {
+  provider: PublicIdentityProvider;
+  realms: IdentityRealm[];
+  pending: string | null;
+  onCreate: (input: {
+    externalRealmId: string;
+    externalRealmKind: Exclude<ExternalRealmKind, "internal">;
+    displayName: string;
+  }) => Promise<void>;
+  onToggle: (realm: IdentityRealm, enabled: boolean) => Promise<void>;
+}) {
+  const realmIdId = useId();
+  const realmNameId = useId();
+  const [kind, setKind] = useState<(typeof OIDC_REALM_KINDS)[number]>("account");
+
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    void onCreate({
+      externalRealmId: String(data.get("externalRealmId") ?? ""),
+      externalRealmKind: kind,
+      displayName: String(data.get("displayName") ?? ""),
+    }).then(() => form.reset());
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Allowed OIDC Realms</CardTitle>
+        <CardDescription>
+          Logins only succeed when they resolve to a Realm registered here.
+          {provider.externalRealmResolution === "connection"
+            ? " Whole-connection resolution uses exactly one enabled Realm."
+            : ` The Realm is read from the ${provider.externalRealmClaim ?? "configured"} claim.`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        {realms.length > 0 ? (
+          <ul className="flex flex-col gap-3">
+            {realms.map((realm) => (
+              <li key={realm.id} className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium">{realm.displayName}</span>
+                  <span className="text-sm text-muted-foreground">
+                    <code>{realm.externalRealmId}</code> · {realm.externalRealmKind}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge variant={realm.enabled ? "default" : "secondary"}>
+                    {realm.enabled ? "Enabled" : "Disabled"}
+                  </Badge>
+                  <Switch
+                    aria-label={`Enable Realm ${realm.displayName}`}
+                    checked={realm.enabled}
+                    onCheckedChange={(enabled) => void onToggle(realm, enabled)}
+                    disabled={pending !== null}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Alert>
+            <FingerprintIcon />
+            <AlertDescription>
+              No Realm is allowed yet, so every OIDC login is rejected. Register the first one
+              below.
+            </AlertDescription>
+          </Alert>
+        )}
+        <form onSubmit={submit} className="border-t pt-5">
+          <FieldGroup>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field>
+                <FieldLabel htmlFor={realmIdId}>External Realm ID</FieldLabel>
+                <Input
+                  id={realmIdId}
+                  name="externalRealmId"
+                  placeholder="acct_42"
+                  required
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pending !== null}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={realmNameId}>Display name</FieldLabel>
+                <Input id={realmNameId} name="displayName" required disabled={pending !== null} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="identity-oidc-realm-kind">Kind</FieldLabel>
+                <Select
+                  value={kind}
+                  onValueChange={(value) => {
+                    if (value) setKind(value as (typeof OIDC_REALM_KINDS)[number]);
+                  }}
+                >
+                  <SelectTrigger id="identity-oidc-realm-kind" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OIDC_REALM_KINDS.map((candidate) => (
+                      <SelectItem key={candidate} value={candidate}>
+                        {candidate}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <Field>
+              <Button type="submit" disabled={pending !== null}>
+                {pending === "oidc-realm" ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <FingerprintIcon data-icon="inline-start" />
+                )}
+                {pending === "oidc-realm" ? "Adding…" : "Allow Realm"}
+              </Button>
+            </Field>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -352,6 +352,46 @@ export async function createOpenIdentityProvider(input: {
   }).then((data) => data.provider);
 }
 
+export type OidcIdentityProviderConfigInput = {
+  displayName: string;
+  issuer: string;
+  clientId: string;
+  /** Omitted keeps the stored secret; empty string is never sent. */
+  clientSecret?: string;
+  scopes: string[];
+  tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
+  externalRealmResolution: "connection" | "id_token_claim" | "userinfo_claim";
+  externalRealmClaim?: string;
+};
+
+export async function createOidcIdentityProvider(
+  input: OidcIdentityProviderConfigInput & { enabled: boolean },
+): Promise<PublicIdentityProvider> {
+  return clientRequest<{ provider: PublicIdentityProvider }>("/system/identity/providers", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "oidc", ...input }),
+  }).then((data) => data.provider);
+}
+
+export async function updateOidcIdentityProvider(
+  input: OidcIdentityProviderConfigInput & {
+    id: string;
+    expectedSecurityRevision: number;
+    enabled: boolean;
+  },
+): Promise<PublicIdentityProvider> {
+  const { id, ...body } = input;
+  return clientRequest<{ provider: PublicIdentityProvider }>(
+    `/system/identity/providers/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  ).then((data) => data.provider);
+}
+
 /**
  * Enables or disables a Provider of any type. It deliberately sends no
  * type-specific field: the Provider is only being switched on or off, and
@@ -376,11 +416,27 @@ export async function setIdentityProviderEnabled(input: {
 
 export async function preflightIdentityProvider(providerId: string): Promise<{
   ok: boolean;
-  checks: Record<string, boolean>;
+  checks?: Record<string, boolean>;
+  advisories?: Record<string, boolean>;
+  error?: string;
 }> {
   return clientRequest(`/system/identity/providers/${encodeURIComponent(providerId)}/preflight`, {
     method: "POST",
   });
+}
+
+export async function createOidcIdentityRealm(input: {
+  providerConnectionId: string;
+  externalRealmId: string;
+  externalRealmKind: Exclude<IdentityRealm["externalRealmKind"], "internal">;
+  displayName: string;
+  enabled: boolean;
+}): Promise<IdentityRealm> {
+  return clientRequest<{ realm: IdentityRealm }>("/system/identity/realms", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  }).then((data) => data.realm);
 }
 
 export async function createInternalIdentityRealm(input: {

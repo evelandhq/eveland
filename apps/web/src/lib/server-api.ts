@@ -139,9 +139,9 @@ export const getSharedAgentEnvironment = () =>
   apiGet<{ environment: SharedAgentEnvironment | null }>("/platform/shared-agent-environment").then(
     (data) => data.environment,
   );
-export const getIdentityProviders = () =>
-  apiGet<{ providers: PublicIdentityProvider[] }>("/system/identity/providers").then(
-    (data) => data.providers,
+export const getIdentityProviderSettings = () =>
+  apiGet<{ providers: PublicIdentityProvider[]; oidcRedirectUri: string }>(
+    "/system/identity/providers",
   );
 export const getIdentityRealms = () =>
   apiGet<{ realms: IdentityRealm[] }>("/system/identity/realms").then((data) => data.realms);
