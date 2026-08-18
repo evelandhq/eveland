@@ -218,6 +218,81 @@ describe("Gateway", () => {
     expect(upstreamRequests).toBe(0);
   });
 
+  test("fails closed on custom routes to a running out-of-window Deployment", async () => {
+    let upstreamRequests = 0;
+    const upstream = await startUpstream((_request, response) => {
+      upstreamRequests += 1;
+      response.end("unexpected");
+    });
+    const repo = repository([route({ hostPort: upstream.port })]);
+    repo.getDeploymentEveVersion = vi.fn(async () => ({
+      version: "0.37.1",
+      expected: "0.38.x or 0.39.x" as const,
+      supportedRanges: ["0.38.x", "0.39.x"] as const,
+      supported: false,
+      sourceRevisionId: "src_old",
+    }));
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
+
+    // Neither path classifies as an Eve session operation; the version gate
+    // must still answer 409 instead of proxying to the old Deployment.
+    for (const request of [
+      { method: "POST", path: "/webhook/github" },
+      { method: "GET", path: "/eve/v1/health" },
+    ]) {
+      const response = await app.request(`http://p-alpha.agent.localhost${request.path}`, {
+        method: request.method,
+        headers: { host: "p-alpha.agent.localhost" },
+      });
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "Unsupported Eve version",
+        detail:
+          'Unsupported Eve dependency "0.37.1". Eveland requires Eve 0.38.x or 0.39.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      });
+    }
+
+    expect(repo.getDeploymentEveVersion).toHaveBeenCalledTimes(2);
+    expect(upstreamRequests).toBe(0);
+  });
+
+  test("answers 409 instead of waking a dormant out-of-window Deployment for a custom route", async () => {
+    const repo = repository([route({ deploymentStatus: "stopped" })]);
+    repo.getDeploymentEveVersion = vi.fn(async () => ({
+      version: "0.37.1",
+      expected: "0.38.x or 0.39.x" as const,
+      supportedRanges: ["0.38.x", "0.39.x"] as const,
+      supported: false,
+      sourceRevisionId: "src_old",
+    }));
+    const activationClient = {
+      activate: vi.fn(async () => ({ leaseId: "lease_unexpected", endpointPort: 0 })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/webhook/github", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
+      body: "{}",
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Unsupported Eve version",
+    });
+    expect(activationClient.activate).not.toHaveBeenCalled();
+  });
+
   test("hides unknown and disabled hosts, and reports routes without a running target", async () => {
     const disabled = route({ hostname: "p-disabled.agent.localhost", enabled: false });
     const stopped = route({ hostname: "p-stopped.agent.localhost", deploymentStatus: "stopped" });

@@ -531,8 +531,9 @@ patch、锚定在对应 minor patch 上的 `~`/`^` range，以及
 `0.38` / `0.38.x` / `0.38.*`、`0.39` / `0.39.x` / `0.39.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
-Playground，以及公开 Gateway 的 Eve session 新建、继续、取消、reset 和 stream 请求，不能通过已有的
-旧 Source Revision、旧 Deployment 或 SessionBinding 绕过。Gateway 在选定实际 Deployment
+Playground，以及公开 Gateway 到达所选 Deployment 的全部流量——Eve session 新建、继续、取消、
+reset、stream，以及自定义 Channel route 与 webhook 等未分类请求——不能通过已有的
+旧 Source Revision、旧 Deployment 或 SessionBinding 绕过，也不得因此唤醒休眠的窗口外 Deployment。Gateway 在选定实际 Deployment
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
 无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。

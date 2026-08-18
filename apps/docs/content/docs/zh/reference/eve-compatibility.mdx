@@ -37,6 +37,7 @@ npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelo
 - Playground 流量
 - 公开 Session 的 Create、Continue、Cancel 与 Stream
 - 公开 Session Reset
+- 到达所选 Deployment 的其余全部公开 Gateway 请求，包括自定义 Channel Route 与 Webhook（休眠的窗口外 Deployment 直接回答 409，而不会被唤醒）
 - Schedule Execution
 
 诊断信息会请项目所有者升级，而不是猜测旧协议。在生产环境升级 Eve 或 Eveland 之前，请先阅读对应 Release Notes。

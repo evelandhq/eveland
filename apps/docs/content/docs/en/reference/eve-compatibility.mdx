@@ -37,6 +37,7 @@ Eveland fails closed when the dependency is missing, outside the window, or cann
 - Playground traffic
 - public session create, continue, cancel, and stream
 - public session reset
+- every other public Gateway request to the selected Deployment, including custom channel routes and webhooks (a dormant out-of-window Deployment answers 409 instead of being woken)
 - schedule execution
 
 The diagnostic asks the project owner to upgrade instead of guessing an older protocol. Review the release notes before upgrading either Eve or Eveland in production.

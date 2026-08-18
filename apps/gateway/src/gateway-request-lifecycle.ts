@@ -157,7 +157,11 @@ export async function executeGatewaySessionProxy(input: {
     Boolean(activationClient),
   );
   if (!target) return Response.json({ error: "No running deployment target" }, { status: 503 });
-  if (eveRequest) {
+  // Every public request is version-gated, not only classified Eve session
+  // operations: custom channel routes and webhooks must fail closed with the
+  // same 409 upgrade diagnostic instead of reaching (or waking) an
+  // out-of-window Deployment.
+  {
     const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
     if (versionFailure) return versionFailure;
   }
@@ -184,10 +188,8 @@ export async function executeGatewaySessionProxy(input: {
       if (!claimedTarget)
         return Response.json({ error: "No running deployment target" }, { status: 503 });
       target = claimedTarget;
-      if (eveRequest) {
-        const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
-        if (versionFailure) return versionFailure;
-      }
+      const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
+      if (versionFailure) return versionFailure;
     }
   }
 
