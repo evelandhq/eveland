@@ -14,6 +14,7 @@ import {
 } from "@evelandhq/core/transcript";
 import { DateTime } from "@/components/date-time";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
+import { SessionTrace } from "@/components/session-trace";
 import {
   AgentActivity,
   AgentActivityReasoning,
@@ -35,7 +36,7 @@ type SessionReplayProps = {
 };
 
 export function SessionReplay({ events, nodes }: SessionReplayProps) {
-  const [view, setView] = useState<"chat" | "raw">("chat");
+  const [view, setView] = useState<"chat" | "trace">("chat");
   const transcript = useMemo(() => buildSessionTranscript(events, nodes), [events, nodes]);
 
   return (
@@ -53,15 +54,19 @@ export function SessionReplay({ events, nodes }: SessionReplayProps) {
             Chat
           </Button>
           <Button
-            onClick={() => setView("raw")}
+            onClick={() => setView("trace")}
             size="sm"
-            variant={view === "raw" ? "secondary" : "outline"}
+            variant={view === "trace" ? "secondary" : "outline"}
           >
-            Raw
+            Trace
           </Button>
         </ButtonGroup>
       </div>
-      {view === "chat" ? <ChatView transcript={transcript} /> : <RawView events={events} />}
+      {view === "chat" ? (
+        <ChatView transcript={transcript} />
+      ) : (
+        <SessionTrace events={events} nodes={nodes} />
+      )}
     </div>
   );
 }
@@ -74,7 +79,7 @@ function ChatView({ transcript }: { transcript: SessionTranscript }) {
       <div className="flex min-h-40 flex-col items-center justify-center gap-2 px-4 py-8 text-center text-sm text-muted-foreground">
         <MessageCircleIcon className="size-5" />
         <p>No conversation recorded for this session.</p>
-        <p className="text-xs">Switch to Raw to inspect lifecycle events.</p>
+        <p className="text-xs">Switch to Trace to inspect lifecycle events.</p>
       </div>
     );
   }
@@ -308,51 +313,4 @@ function displayItemKey(item: TranscriptDisplayItem, index: number): string {
 function activityItemKey(item: TranscriptActivityItem, index: number): string {
   if (item.kind === "tool") return item.call.callId ?? `tool-${item.call.eventAt}-${index}`;
   return `${item.kind}-${item.eventAt}-${index}`;
-}
-
-function RawView({ events }: { events: SessionEvent[] }) {
-  if (events.length === 0) {
-    return (
-      <div className="flex min-h-40 items-center justify-center px-4 py-8 text-sm text-muted-foreground">
-        No timeline events recorded.
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-3 p-4">
-      {events.map((event) => (
-        <article className="rounded-md border border-border bg-background p-3" key={event.id}>
-          <div className="flex items-center justify-between gap-4">
-            <h3 className="text-xs font-semibold uppercase tracking-normal">{event.type}</h3>
-            <DateTime className="text-xs text-muted-foreground" value={event.eventAt} />
-          </div>
-          <pre className="mt-3 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-sm bg-muted p-3 text-xs leading-5">
-            {formatPayload(event.payload)}
-          </pre>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function formatPayload(payload: unknown): string {
-  if (typeof payload === "string") {
-    return payload;
-  }
-  if (isRecord(payload)) {
-    const content = payload.content;
-    if (typeof content === "string") {
-      return content;
-    }
-    const message = payload.message;
-    if (typeof message === "string") {
-      return message;
-    }
-  }
-  return JSON.stringify(payload, null, 2);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
