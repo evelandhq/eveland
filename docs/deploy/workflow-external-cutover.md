@@ -64,7 +64,8 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    ```bash
    pnpm --filter @evelandhq/worker cutover -- inventory --operation-id <id>
    pnpm --filter @evelandhq/worker cutover -- prepare --operation-id <id> \
-     [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...]
+     [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...] \
+     [--no-family tenant:run,...]
    pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id <id>
    ```
 
@@ -78,15 +79,31 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    deployments to `converting`.
 
    `prepare` walks the **entire** control-plane inventory, not just owners of
-   active runs: every deployment either classifies, retires, stages, or — when
-   it stays `unknown` — gets a deployment fence and the `fenced` topology so it
-   cannot wake mid-conversion. `--run-families` maps managed-terminated runs to
-   their Eve session families so their control-plane Sessions are failed and
-   tombstoned individually; runs terminated without a mapping are reported as
-   `unmappedTerminatedRuns` and must be resolved (or accepted explicitly)
-   before finalize. Repeat until `postcondition` reports `"passed": true` —
-   with `--operation-id` it also records a World-visible proof row
-   (`workflow.cutover_proofs`) that the dispatcher preflight requires.
+   active runs: every deployment — archived rows included, since the OTLP
+   projector accepts any retained row — either classifies, retires, stages, or
+   — when it stays `unknown` — gets a deployment fence and the `fenced`
+   topology so it cannot wake mid-conversion (archived deployments classify
+   and fence but never stage; they have no runtime future to convert).
+
+   Legacy owners are terminated **in their own databases**: run the cutover
+   with `WORKFLOW_POSTGRES_URL` set so `prepare` can cancel every active run
+   in each retired project's derived `eveland_wf_*` database. Retiring a
+   legacy owner in the control plane alone is not workflow safety — if the
+   base URL is missing, a legacy World is unreachable, or active runs survive
+   the cancel, `prepare` reports it in `holds`, exits non-zero, and the saga
+   stays at `fenced`.
+
+   `--run-families` maps managed-terminated runs to their Eve session
+   families so their control-plane Sessions are failed and tombstoned
+   individually; `--no-family` records the explicit assertion that a run
+   projected no Eve family. A terminated run with neither is a **hold**: the
+   saga stops at `workflow_safe` (the quarantine satisfies the World
+   postcondition, so this gate is the only thing standing between a missing
+   tombstone and a late OTLP batch reopening the family). Repeat until
+   `prepare` reports `"holds": []` and `postcondition` reports
+   `"passed": true` — with `--operation-id` it also records a World-visible
+   proof row (`workflow.cutover_proofs`) that the dispatcher preflight
+   requires.
 
 6. **Start the dispatcher recover-paused**
    (`EVELAND_WORKFLOW_DISPATCHER_START_MODE=recover-paused`). Watch its
@@ -130,10 +147,13 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    ```
 
    The operation reaches `completed` only when finalize refused nothing, every
-   deployment the operation staged is now `external`, and the operator
-   attested the continuity gates with `--continuity-verified true` (recorded
-   as an operation checkpoint). Anything short of that leaves the operation
-   retryable at `control_plane_converged` and the command exits non-zero.
+   deployment the operation staged is now `external` (the staged checkpoint
+   only ever grows across `prepare` reruns — a deployment staged once cannot
+   drop out of the completion gate), no terminated run remains without a
+   proven-or-asserted Eve family, and the operator attested the continuity
+   gates with `--continuity-verified true` (recorded as an operation
+   checkpoint). Anything short of that leaves the operation retryable at
+   `control_plane_converged` and the command exits non-zero.
 
 9. **Restart API/Worker in normal mode** (drop `EVELAND_PROCESS_MODE`), keep
    ingress closed until readiness passes, then reopen Gateway/Web. When the

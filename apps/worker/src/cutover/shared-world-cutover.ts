@@ -11,6 +11,11 @@ import {
 import { makeWorkerUtils } from "graphile-worker";
 import pg from "pg";
 import { classifyArtifactFromFilesystem, type ArtifactClassifier } from "./artifact-classifier.js";
+import {
+  terminateLegacyProjectRuns,
+  type LegacyWorldTermination,
+  type LegacyWorldTerminator,
+} from "./legacy-world-termination.js";
 
 /**
  * The maintenance-downtime cutover over the shared workflow World (issue
@@ -250,10 +255,18 @@ export type CutoverPrepareResult = {
   retiredDeployments: string[];
   /** Unknown-topology deployments fenced pending operator disposition. */
   fencedUnknownDeployments: string[];
+  /** Legacy per-project Worlds terminated (or found already gone). */
+  legacyWorlds: LegacyWorldTermination[];
   staged: string[];
   converged: { failedSessions: number; removedSessionBindings: number };
   /** Terminated runs whose Eve family could not be proven; operator must map them. */
   unmappedTerminatedRuns: Array<{ tenantId: string; runId: string }>;
+  /**
+   * Why the saga did NOT advance this run. Empty means the operation reached
+   * control-plane convergence and staging; anything here holds it at the
+   * current phase, retryable after the operator resolves the cause.
+   */
+  holds: string[];
 };
 
 /**
@@ -275,6 +288,19 @@ export async function prepareSharedWorldCutover(input: {
    * are named in the result for explicit disposition.
    */
   runSessionFamilies?: Array<{ tenantId: string; runId: string; eveSessionId: string }>;
+  /**
+   * Operator assertion that a terminated run projected no Eve session family
+   * (e.g. a run created via the API with telemetry disabled). Recorded as a
+   * durable checkpoint; without a mapping or this assertion, a terminated run
+   * BLOCKS convergence and completion.
+   */
+  runsWithoutFamilies?: Array<{ tenantId: string; runId: string }>;
+  /**
+   * The legacy per-project World estate. `baseUrl` is WORKFLOW_POSTGRES_URL;
+   * leaving it undefined while legacy owners exist is a hold, not a pass —
+   * their runs live in databases this command would then be unable to reach.
+   */
+  legacyWorlds?: { baseUrl: string | undefined; terminate?: LegacyWorldTerminator };
   classifier?: ArtifactClassifier;
   log?: (message: string, meta?: Record<string, unknown>) => void;
 }): Promise<CutoverPrepareResult> {
@@ -302,9 +328,13 @@ export async function prepareSharedWorldCutover(input: {
     const inventoryRetired: string[] = [];
     const inventoryUnknown: string[] = [];
     const inventoryStageable: string[] = [];
+    const legacyProjects = new Set<string>();
     for (const project of await store.listProjects()) {
       for (const deployment of await store.listDeployments(project.id)) {
-        if (deployment.status === "archived") continue;
+        // Archived rows are still retained rows: the OTLP projector accepts
+        // them, so they classify and fence like live ones — they just never
+        // stage (an archived Deployment has no runtime future to convert).
+        const archived = deployment.status === "archived";
         let release = await store.getRelease(deployment.releaseId);
         if (!release) continue;
         if (release.workflow.worldKind === "unknown") {
@@ -317,6 +347,7 @@ export async function prepareSharedWorldCutover(input: {
           }
         }
         const { worldKind, enqueueCapability } = release.workflow;
+        if (worldKind === "legacy_project") legacyProjects.add(project.id);
         if (
           worldKind === "legacy_project" ||
           (worldKind === "shared" && enqueueCapability !== "per_run_queue_v1")
@@ -325,6 +356,7 @@ export async function prepareSharedWorldCutover(input: {
         } else if (worldKind === "unknown") {
           inventoryUnknown.push(deployment.id);
         } else if (
+          !archived &&
           worldKind === "shared" &&
           deployment.workflowTopology.conversionState === "unclassified"
         ) {
@@ -405,6 +437,67 @@ export async function prepareSharedWorldCutover(input: {
     // attested per_run_queue_v1 — anything else was terminated above).
     const migration = await migrateUnscopedRunJobs(pool, { log });
 
+    const partialResult = {
+      operationId,
+      assessments,
+      migration: {
+        scoped: migration.scoped,
+        parked: migration.parked.length,
+        backfilledNamespaces: migration.backfilledNamespaces,
+      },
+      terminated,
+      quarantined,
+      retiredDeployments,
+      fencedUnknownDeployments,
+    };
+
+    // Legacy Worlds hold real runs in per-project databases this command's
+    // shared pool never touches. Retiring their owners in the control plane
+    // is not workflow safety — every one of those runs must be cancelled in
+    // its own database, or the saga holds at `fenced`. No base URL while
+    // legacy owners exist is a hold too, never a pass.
+    const legacyWorlds: LegacyWorldTermination[] = [];
+    const legacyHolds: string[] = [];
+    if (legacyProjects.size > 0) {
+      const baseUrl = input.legacyWorlds?.baseUrl;
+      const terminate = input.legacyWorlds?.terminate ?? terminateLegacyProjectRuns;
+      if (!baseUrl) {
+        legacyHolds.push(
+          `${String(legacyProjects.size)} project(s) own legacy Worlds but no WORKFLOW_POSTGRES_URL was provided to terminate them`,
+        );
+      } else {
+        for (const projectId of legacyProjects) {
+          try {
+            const termination = await terminate(baseUrl, projectId);
+            legacyWorlds.push(termination);
+            if (termination.remainingActiveRuns > 0) {
+              legacyHolds.push(
+                `legacy World ${termination.database ?? projectId} still has ${String(termination.remainingActiveRuns)} active run(s) after cancellation`,
+              );
+            }
+            log("legacy World terminated", { ...termination });
+          } catch (error) {
+            legacyHolds.push(
+              `legacy World termination failed for project ${projectId}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
+    }
+    if (legacyHolds.length > 0) {
+      await store.advanceWorkflowCutoverOperation(operationId, {
+        lastError: legacyHolds.join("; "),
+      });
+      return {
+        ...partialResult,
+        legacyWorlds,
+        staged: await readStagedCheckpoint(store, operationId),
+        converged: { failedSessions: 0, removedSessionBindings: 0 },
+        unmappedTerminatedRuns: [],
+        holds: legacyHolds,
+      };
+    }
+
     await store.advanceWorkflowCutoverOperation(operationId, {
       phase: "workflow_safe",
       checkpoint: {
@@ -414,6 +507,11 @@ export async function prepareSharedWorldCutover(input: {
           quarantined: quarantined.length,
           migratedJobs: migration.scoped,
           parkedJobs: migration.parked.length,
+          legacyWorlds: legacyWorlds.map((entry) => ({
+            projectId: entry.projectId,
+            database: entry.database,
+            cancelledRuns: entry.cancelledRuns,
+          })),
         },
       },
     });
@@ -426,16 +524,23 @@ export async function prepareSharedWorldCutover(input: {
     const familyByRun = new Map(
       (input.runSessionFamilies ?? []).map((entry) => [`${entry.tenantId}:${entry.runId}`, entry]),
     );
+    const assertedNoFamily = new Set(
+      (input.runsWithoutFamilies ?? []).map((run) => `${run.tenantId}:${run.runId}`),
+    );
     const mappedFamilies: Array<{ projectId: string; eveSessionId: string }> = [];
+    const acceptedWithoutFamily: Array<{ tenantId: string; runId: string }> = [];
     const unmappedTerminatedRuns: Array<{ tenantId: string; runId: string }> = [];
     for (const assessment of nonRecoverable) {
       if (assessment.deploymentId && retired.has(assessment.deploymentId)) continue;
-      const mapping = familyByRun.get(`${assessment.tenantId}:${assessment.runId}`);
+      const key = `${assessment.tenantId}:${assessment.runId}`;
+      const mapping = familyByRun.get(key);
       if (mapping) {
         mappedFamilies.push({
           projectId: mapping.tenantId,
           eveSessionId: mapping.eveSessionId,
         });
+      } else if (assertedNoFamily.has(key)) {
+        acceptedWithoutFamily.push({ tenantId: assessment.tenantId, runId: assessment.runId });
       } else {
         unmappedTerminatedRuns.push({
           tenantId: assessment.tenantId,
@@ -445,9 +550,29 @@ export async function prepareSharedWorldCutover(input: {
     }
     const familyConvergence = await store.convergeWorkflowRunFamilies(operationId, mappedFamilies);
     if (unmappedTerminatedRuns.length > 0) {
+      // The World postcondition passes for these runs (they are quarantined),
+      // so this is the ONLY gate that notices a missing tombstone. Blocking
+      // here — not just reporting — is what keeps a late OTLP batch from
+      // reopening exactly the family that was terminated.
+      const hold = `${String(unmappedTerminatedRuns.length)} terminated run(s) have no proven Eve family; map them with --run-families or assert --no-family`;
       log("terminated runs without a proven Eve family; operator mapping required", {
         runs: unmappedTerminatedRuns.length,
       });
+      await store.advanceWorkflowCutoverOperation(operationId, {
+        lastError: hold,
+        checkpoint: { key: "unresolvedFamilies", value: unmappedTerminatedRuns },
+      });
+      return {
+        ...partialResult,
+        legacyWorlds,
+        staged: await readStagedCheckpoint(store, operationId),
+        converged: {
+          failedSessions: converged.failedSessions,
+          removedSessionBindings: converged.removedSessionBindings,
+        },
+        unmappedTerminatedRuns,
+        holds: [hold],
+      };
     }
     await store.advanceWorkflowCutoverOperation(operationId, {
       phase: "control_plane_converged",
@@ -456,9 +581,14 @@ export async function prepareSharedWorldCutover(input: {
         value: {
           ...converged,
           runFamilies: familyConvergence,
-          unmappedTerminatedRuns,
+          acceptedWithoutFamily,
         },
       },
+    });
+    // Every terminated run is now mapped or explicitly asserted family-less;
+    // clear the blocking checkpoint a previous partial run may have written.
+    await store.advanceWorkflowCutoverOperation(operationId, {
+      checkpoint: { key: "unresolvedFamilies", value: [] },
     });
 
     // Stage surviving shared deployments to `converting` — including shared
@@ -487,33 +617,41 @@ export async function prepareSharedWorldCutover(input: {
       if (updated) staged.push(deploymentId);
     }
     // The staged set is the operation's durable memory: finalize completes
-    // only once every one of these has actually finalized.
+    // only once every one of these has actually finalized. It only ever
+    // GROWS — a rerun no longer re-observes deployments it already staged
+    // (they are `converting`, not `unclassified`), and overwriting would let
+    // finalize complete while one of them still converts.
+    const stagedUnion = [
+      ...new Set([...(await readStagedCheckpoint(store, operationId)), ...staged]),
+    ];
     await store.advanceWorkflowCutoverOperation(operationId, {
-      checkpoint: { key: "staged", value: staged },
+      checkpoint: { key: "staged", value: stagedUnion },
     });
 
     return {
-      operationId,
-      assessments,
-      migration: {
-        scoped: migration.scoped,
-        parked: migration.parked.length,
-        backfilledNamespaces: migration.backfilledNamespaces,
-      },
-      terminated,
-      quarantined,
-      retiredDeployments,
-      fencedUnknownDeployments,
-      staged,
+      ...partialResult,
+      legacyWorlds,
+      staged: stagedUnion,
       converged: {
         failedSessions: converged.failedSessions,
         removedSessionBindings: converged.removedSessionBindings,
       },
       unmappedTerminatedRuns,
+      holds: [],
     };
   } finally {
     await Promise.resolve(workerUtils.release()).catch(() => {});
   }
+}
+
+async function readStagedCheckpoint(
+  store: Pick<Store, "getWorkflowCutoverOperation">,
+  operationId: string,
+): Promise<string[]> {
+  const operation = await store.getWorkflowCutoverOperation(operationId);
+  return Array.isArray(operation?.checkpoints.staged)
+    ? (operation.checkpoints.staged as string[])
+    : [];
 }
 
 export type CutoverPostcondition = {
@@ -646,7 +784,16 @@ export async function finalizeSharedWorldCutover(input: {
     if (deployment?.workflowTopology.conversionState !== "external") pending.push(deploymentId);
   }
   const continuityRecorded = current?.checkpoints.continuity !== undefined;
-  if (refused.length === 0 && pending.length === 0 && continuityRecorded) {
+  // A run of `prepare` that terminated runs without a proven Eve family
+  // records them here and holds. Belt and braces: even if the phase somehow
+  // advanced, an unresolved family blocks completion — the missing tombstone
+  // is exactly what a late OTLP batch would exploit.
+  const unresolvedFamilies = Array.isArray(current?.checkpoints.unresolvedFamilies)
+    ? current.checkpoints.unresolvedFamilies.length
+    : 0;
+  const completed =
+    refused.length === 0 && pending.length === 0 && continuityRecorded && unresolvedFamilies === 0;
+  if (completed) {
     await input.store.advanceWorkflowCutoverOperation(input.operationId, {
       phase: "completed",
       checkpoint: { key: "finalized", value: finalized },
@@ -655,7 +802,13 @@ export async function finalizeSharedWorldCutover(input: {
     await input.store.advanceWorkflowCutoverOperation(input.operationId, {
       checkpoint: {
         key: "finalized",
-        value: { finalized, refused, pendingStaged: pending, continuityRecorded },
+        value: {
+          finalized,
+          refused,
+          pendingStaged: pending,
+          continuityRecorded,
+          unresolvedFamilies,
+        },
       },
     });
   }
@@ -663,7 +816,7 @@ export async function finalizeSharedWorldCutover(input: {
     finalized,
     refused,
     pendingStaged: pending,
-    completed: refused.length === 0 && pending.length === 0 && continuityRecorded,
+    completed,
   };
 }
 

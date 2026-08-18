@@ -201,11 +201,19 @@ export function createPostgresJobSourceStore({
           const stale =
             existing.status === "running" &&
             existing.updatedAt.getTime() <= now.getTime() - staleAfterMs;
-          if (needsStamp || stale) {
+          // A cutover enqueue additionally requeues a still-"running" row
+          // without waiting out the stale window: the maintenance boundary
+          // stopped every ordinary Worker, so that claim is an orphan — and
+          // the cutover Worker claims queued jobs only, so leaving it locked
+          // would time the activation out. If the old holder somehow lives,
+          // its next heartbeat fails on status != running and it aborts.
+          const requeue =
+            stale || (cutoverOperationId !== undefined && existing.status === "running");
+          if (needsStamp || requeue) {
             const [updated] = await tx
               .update(jobs)
               .set({
-                ...(stale ? { status: "queued", lockedAt: null } : {}),
+                ...(requeue ? { status: "queued", lockedAt: null } : {}),
                 ...(needsStamp ? { payload: { ...existingPayload, cutoverOperationId } } : {}),
                 updatedAt: now,
               })

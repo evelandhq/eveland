@@ -167,6 +167,54 @@ describe("runtime activation persistence", () => {
     );
     expect(recovered).toMatchObject({ id: first.id, status: "queued" });
   });
+
+  test("a cutover enqueue requeues a coalesced running job without waiting out the stale window", async () => {
+    const store = createTestStore();
+    const { project, deployment } = await deploymentFixture(store, "Cutover Stamp Agent", 41994);
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "workflow_step",
+      ownerId: "wfd_cutover_stamp",
+      expiresAt: new Date("2026-07-15T04:10:00.000Z"),
+      now: new Date("2026-07-15T04:00:00.000Z"),
+    });
+    const first = await store.enqueueDeploymentActivation(
+      project.id,
+      deployment.id,
+      claim.runtimeInstance.id,
+      new Date("2026-07-15T04:00:00.000Z"),
+    );
+    // An ordinary Worker claimed it moments before the maintenance stop; its
+    // claim is younger than the 300s stale window when the cutover API
+    // coalesces onto the row.
+    await expect(
+      store.claimNextJob("pre-cutover-worker", new Date("2026-07-15T04:00:10.000Z")),
+    ).resolves.toMatchObject({ id: first.id, status: "running" });
+    const stamped = await store.enqueueDeploymentActivation(
+      project.id,
+      deployment.id,
+      claim.runtimeInstance.id,
+      new Date("2026-07-15T04:00:20.000Z"),
+      300_000,
+      "cut_stamp_test",
+    );
+    // Requeued AND stamped: the cutover Worker (queued jobs, exact operation
+    // stamp) can claim it instead of the activation timing out.
+    expect(stamped).toMatchObject({ id: first.id, status: "queued" });
+    expect((stamped.payload as { cutoverOperationId?: string }).cutoverOperationId).toBe(
+      "cut_stamp_test",
+    );
+    // The orphaned holder's heartbeat is fenced away by the requeue.
+    await expect(
+      store.heartbeatJob(first.id, 1, new Date("2026-07-15T04:00:21.000Z")),
+    ).resolves.toBe(false);
+    await expect(
+      store.claimNextJob("cutover-worker", new Date("2026-07-15T04:00:30.000Z"), {
+        allowedTypes: ["ensure_deployment_running", "restart_deployment"],
+        cutoverOperationId: "cut_stamp_test",
+      }),
+    ).resolves.toMatchObject({ id: first.id, status: "running" });
+  });
 });
 
 describe("orphan process adoption persistence", () => {

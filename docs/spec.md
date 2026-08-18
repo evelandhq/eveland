@@ -1218,19 +1218,30 @@ running SessionNode 收敛为 terminal、删除 binding、释放 lease、终止 
 shared-capable owner 上的单个坏 run 只得到 run fence + durable World quarantine，同
 Deployment 的健康 run 继续可用；被 managed-terminate 的 run 通过 operator 提供的
 run→Eve-session family 映射逐 family 收敛控制面（fail Session/SessionNode、删 binding、写
-session-family tombstone），无法映射的 run 在报告中列为 `unmappedTerminatedRuns`，绝不猜测。
+session-family tombstone），或由 operator 显式断言其确无投影 family（`--no-family`，记入
+checkpoint）。两者皆无的 run 是 **hold** 而非报告项：World 后置条件因 quarantine 而通过，
+所以 saga 必须停在 `workflow_safe`、finalize 拒绝 completion，直到每个 run 被 tombstone 或
+显式断言——否则迟到的 OTLP batch 恰好能复活被终止的那个 family。绝不猜测。
 cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
 要么完成分类/退休/staging，要么（仍为 `unknown` 时）获得 deployment fence 并置于 `fenced`
-topology，杜绝转换途中被唤醒。cutover 的 finalize 是门禁而非赋值：operation 必须已达
+topology，杜绝转换途中被唤醒；archived 行同样参与分类与退休 fence——OTLP projector 接受任何
+仍保留的 Deployment 行，archive 状态不是投影屏障——只是绝不 staging。legacy owner 的退休必须
+同时在其派生 `eveland_wf_*` 数据库内 cancel 全部活跃 run（状态按 text 比较以兼容
+world-postgres 0004 前后两代 enum）：缺 `WORKFLOW_POSTGRES_URL`、库不可达或 cancel 后仍有
+活跃 run 都是 hold，saga 停在 `fenced`，控制面退休本身永远不算 workflow safety。cutover 的 finalize 是门禁而非赋值：operation 必须已达
 control-plane convergence、数据库后置条件当下成立、且每个 Deployment 处于同一 operation 的
 `converting`，否则逐个拒绝并输出原因；operation 到达 `completed` 还要求 finalize 零拒绝、
-operation staged 的全部 Deployment 已为 `external`、且 operator 以显式 continuity 断言
+operation staged 的全部 Deployment 已为 `external`（staged checkpoint 跨 prepare 重跑只增
+不减——已 staged 的 Deployment 在重跑中已是 `converting`、不再被 inventory 或 run 评估看到，
+覆盖写会让它悄悄脱离 completion 门）、无未决 family、且 operator 以显式 continuity 断言
 （`--continuity-verified`，记录为 checkpoint）确认过连续性门，否则停在可重试的
 `control_plane_converged`。cutover 进程模式下,cutover API 只接受携带完全一致
 cutover operation id 的 dispatcher heartbeat/resume，且启动时校验该 operation 存在且未
 completed（否则拒绝启动）；cutover Worker 只认领同一 operation
 显式盖章（payload `cutoverOperationId`）的 activation/reconciliation job——盖章在 enqueue
-被 coalesce 到既有 pending job 时同样必须落到该已有 payload 上——普通或过期 job
+被 coalesce 到既有 job 时同样必须落到该已有 payload 上，且对仍为 `running` 的既有行直接
+requeue 而不等 300s stale 窗口：维护边界已停掉所有 normal worker，该 claim 是孤儿；万一
+持有者仍在，其下一次 heartbeat 因 status 不再是 running 而失败并中止——普通或过期 job
 留给停机后的 normal worker。dispatcher readiness 判定除新鲜度外还校验 World cluster
 identity、operation 归属与 unscoped-job 计数（非 0 或未知都不 ready）。cluster identity 是
 `cluster:<pg system_identifier>/<database>`，双方都从数据库本身读取（`pg_control_system()`），

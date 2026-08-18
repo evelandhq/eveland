@@ -18,7 +18,8 @@ import {
  *
  *   pnpm --filter @evelandhq/worker cutover -- inventory --operation-id cut_x
  *   pnpm --filter @evelandhq/worker cutover -- prepare --operation-id cut_x \
- *     [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...]
+ *     [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...] \
+ *     [--no-family tenant:run,...]
  *   pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id cut_x
  *   pnpm --filter @evelandhq/worker cutover -- finalize --operation-id cut_x \
  *     --deployments dep_a,dep_b --continuity-verified true
@@ -57,10 +58,13 @@ async function main(): Promise<void> {
           ...(flags["run-families"]
             ? { runSessionFamilies: parseFamilyList(flags["run-families"]!) }
             : {}),
+          ...(flags["no-family"] ? { runsWithoutFamilies: parseRunList(flags["no-family"]!) } : {}),
+          legacyWorlds: { baseUrl: process.env.WORKFLOW_POSTGRES_URL },
           log: (message, meta) =>
             console.error(`[cutover] ${message} ${JSON.stringify(meta ?? {})}`),
         });
         emit({ command, ...result });
+        if (result.holds.length > 0) process.exitCode = 1;
         return;
       }
       case "postcondition": {

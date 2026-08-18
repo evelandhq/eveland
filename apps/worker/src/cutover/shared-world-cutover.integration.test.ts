@@ -12,6 +12,11 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { sharedWorkflowWorldAttestation } from "../jobs/process.test-support.js";
 import {
+  dropProjectWorkflowWorld,
+  ensureProjectWorkflowWorld,
+} from "../runtime/workflow-world-bootstrap.js";
+import { terminateLegacyProjectRuns } from "./legacy-world-termination.js";
+import {
   assessSharedActiveRuns,
   finalizeSharedWorldCutover,
   prepareSharedWorldCutover,
@@ -158,6 +163,19 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     });
     const capableRun = await createSharedRun(capableDeployment.id);
     const capableJob = await addEarlyExternalJob(capableRun, capableDeployment.id);
+    // A shared-capable owner with NO active run: it stages purely through the
+    // control-plane inventory, so a rerun (where it is already `converting`)
+    // proves the staged checkpoint never shrinks.
+    const idleDeployment = await createControlPlaneDeployment(store, {
+      enqueueCapability: "per_run_queue_v1",
+      hostPort: 42_606,
+    });
+    // Simulate the historical shape: recorded before the topology columns
+    // existed, so migration 0052 left it unclassified.
+    await store.updateDeploymentWorkflowTopology(idleDeployment.id, {
+      runnerMode: "unknown",
+      conversionState: "unclassified",
+    });
 
     // Before the cutover, the dispatcher postcondition must refuse.
     const before = await verifySharedWorldPostcondition(pool, store);
@@ -198,14 +216,21 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     );
     expect(migrated.rows[0]?.queue_name).toBe(runQueueName(TENANT, capableRun));
     expect(result.staged).toContain(capableDeployment.id);
+    expect(result.staged).toContain(idleDeployment.id);
 
     // The postcondition now clears — the recover-paused dispatcher may proceed.
     const after = await verifySharedWorldPostcondition(pool, store);
     expect(after).toMatchObject({ passed: true, claimableUnscopedJobs: 0, blockingRuns: [] });
 
-    // Re-running the whole preparation is a no-op, not a second termination.
+    // Re-running the whole preparation is a no-op, not a second termination —
+    // and the durable staged set only grows: the idle deployment is now
+    // `converting`, invisible to both inventory and run assessment, yet must
+    // survive in the checkpoint or finalize would complete without it.
     const rerun = await prepareSharedWorldCutover({ pool, store, operationId: "cut_it_1" });
     expect(rerun.migration.scoped).toBe(0);
+    expect(rerun.holds).toEqual([]);
+    expect(rerun.staged).toContain(idleDeployment.id);
+    expect(rerun.staged).toContain(capableDeployment.id);
 
     // Finalize only after the continuity gate: the staged deployment becomes
     // the external topology and its launches are allowed again.
@@ -244,6 +269,11 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     await expect(store.getWorkflowCutoverOperation("cut_it_1")).resolves.toMatchObject({
       phase: "completed",
     });
+    // Leave no active run behind: later tests share this World database.
+    await pool.query(
+      "update workflow.workflow_runs set status = 'completed', completed_at = now() where tenant_id = $1 and id = $2",
+      [TENANT, capableRun],
+    );
   }, 120_000);
 
   test("a historical unknown Release reaches recoverable_shared through artifact classification", async () => {
@@ -312,6 +342,10 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
         enqueueCapability: "unscoped",
       }),
     ).resolves.toBeNull();
+    await pool.query(
+      "update workflow.workflow_runs set status = 'completed', completed_at = now() where tenant_id = $1 and id = $2",
+      [TENANT, runId],
+    );
   }, 120_000);
 
   test("one bad run never takes down its Deployment's healthy sibling", async () => {
@@ -323,12 +357,30 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     const healthyRun = await createSharedRun(deployment.id);
     const corruptRun = await createSharedRun(deployment.id);
 
-    const result = await prepareSharedWorldCutover({
+    // Without a proven Eve family for the terminated run, the saga HOLDS at
+    // workflow_safe: the quarantine satisfies the World postcondition, so
+    // this is the only gate that notices the missing tombstone.
+    const held = await prepareSharedWorldCutover({
       pool,
       store,
       operationId: "cut_it_3",
       corruptedRuns: [{ tenantId: TENANT, runId: corruptRun }],
     });
+    expect(held.holds[0]).toMatch(/no proven Eve family/);
+    expect(held.unmappedTerminatedRuns).toContainEqual({ tenantId: TENANT, runId: corruptRun });
+    expect(held.staged).not.toContain(deployment.id);
+    await expect(store.getWorkflowCutoverOperation("cut_it_3")).resolves.toMatchObject({
+      phase: "workflow_safe",
+    });
+
+    const result = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: "cut_it_3",
+      corruptedRuns: [{ tenantId: TENANT, runId: corruptRun }],
+      runsWithoutFamilies: [{ tenantId: TENANT, runId: corruptRun }],
+    });
+    expect(result.holds).toEqual([]);
 
     // The corrupt run is fenced and quarantined at RUN scope…
     expect(await isRunQuarantined(pool, TENANT, corruptRun)).toBe(true);
@@ -346,6 +398,10 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     ).resolves.toHaveProperty("lease");
     expect(await isRunQuarantined(pool, TENANT, healthyRun)).toBe(false);
     expect(result.staged).toContain(deployment.id);
+    await pool.query(
+      "update workflow.workflow_runs set status = 'completed', completed_at = now() where tenant_id = $1 and id = $2",
+      [TENANT, healthyRun],
+    );
   }, 120_000);
 
   test("a run whose namespace was never recorded is quarantined, not guessed", async () => {
@@ -365,9 +421,186 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       "quarantined_unknown",
     );
 
-    await prepareSharedWorldCutover({ pool, store, operationId: "cut_it_2" });
+    await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: "cut_it_2",
+      runsWithoutFamilies: [{ tenantId: TENANT, runId }],
+    });
     expect(await isRunQuarantined(pool, TENANT, runId)).toBe(true);
     const post = await verifySharedWorldPostcondition(pool, store);
     expect(post.passed).toBe(true);
+  }, 120_000);
+
+  test("archived historical deployments still classify and fence for late telemetry", async () => {
+    const store = createTestStore();
+    const archivedUnscoped = await createControlPlaneDeployment(store, {
+      enqueueCapability: "unscoped",
+      hostPort: 42_607,
+    });
+    const archivedShared = await createControlPlaneDeployment(store, {
+      enqueueCapability: "per_run_queue_v1",
+      hostPort: 42_608,
+    });
+    await store.updateDeploymentStatus(archivedUnscoped.id, "archived");
+    await store.updateDeploymentStatus(archivedShared.id, "archived");
+
+    const result = await prepareSharedWorldCutover({ pool, store, operationId: "cut_it_4" });
+    expect(result.holds).toEqual([]);
+    // The retired archived owner is deployment-fenced: the OTLP projector
+    // accepts retained rows regardless of archive status, so a delayed batch
+    // must hit the fence, not a gap.
+    expect(result.retiredDeployments).toContain(archivedUnscoped.id);
+    expect(await store.getActiveWorkflowFence("deployment", archivedUnscoped.id)).toMatchObject({
+      operationId: "cut_it_4",
+    });
+    // The shared-capable archived row classifies but never stages — an
+    // archived Deployment has no runtime future to convert.
+    expect(result.staged).not.toContain(archivedShared.id);
+    expect(await store.getActiveWorkflowFence("deployment", archivedShared.id)).toBeNull();
+  }, 120_000);
+
+  test("legacy Worlds must terminate in their own databases before workflow_safe", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Legacy Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/legacy-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:legacy",
+      containerName: "fixture-legacy",
+      internalPort: 3000,
+      hostPort: 42_609,
+      runtimeKind: "docker",
+      workflowWorld: {
+        worldKind: "legacy_project",
+        worldPackage: "@workflow/world-postgres",
+        worldVersion: "5.0.0-beta.34",
+        storageSpec: 6,
+        dispatchProtocol: null,
+        enqueueCapability: "unscoped",
+      },
+    });
+
+    // No legacy base URL: retiring the owner in the control plane alone must
+    // NOT count as workflow safety — the saga holds at `fenced`.
+    const held = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: "cut_it_5",
+      legacyWorlds: { baseUrl: undefined },
+    });
+    expect(held.holds[0]).toMatch(/legacy Worlds/);
+    await expect(store.getWorkflowCutoverOperation("cut_it_5")).resolves.toMatchObject({
+      phase: "fenced",
+    });
+
+    // A termination that leaves active runs behind is a hold too.
+    const stillActive = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: "cut_it_5",
+      legacyWorlds: {
+        baseUrl: "postgres://unused.invalid/postgres",
+        terminate: async (_baseUrl, projectId) => ({
+          projectId,
+          database: `eveland_wf_${projectId}`,
+          cancelledRuns: 1,
+          remainingActiveRuns: 1,
+        }),
+      },
+    });
+    expect(stillActive.holds[0]).toMatch(/still has 1 active run/);
+
+    // A clean termination lets the saga proceed and retires the owner.
+    const done = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: "cut_it_5",
+      legacyWorlds: {
+        baseUrl: "postgres://unused.invalid/postgres",
+        terminate: async (_baseUrl, projectId) => ({
+          projectId,
+          database: `eveland_wf_${projectId}`,
+          cancelledRuns: 3,
+          remainingActiveRuns: 0,
+        }),
+      },
+    });
+    expect(done.holds).toEqual([]);
+    expect(done.legacyWorlds[0]?.cancelledRuns).toBe(3);
+    expect(done.retiredDeployments).toContain(deployment.id);
+    expect(await store.getActiveWorkflowFence("deployment", deployment.id)).toMatchObject({
+      operationId: "cut_it_5",
+    });
+    await expect(store.getWorkflowCutoverOperation("cut_it_5")).resolves.toMatchObject({
+      phase: "control_plane_converged",
+    });
+  }, 120_000);
+
+  test("the default legacy terminator cancels runs in a real world-postgres database", async () => {
+    // The real @workflow/world-postgres schema, installed by the real setup
+    // binary — the same path ensureProjectWorkflowWorld takes in production —
+    // so the terminator's table, enum and column assumptions are proven, not
+    // presumed.
+    const projectId = `p_leg_${suffix}`;
+    const env = { WORKFLOW_POSTGRES_URL: testUrl } as NodeJS.ProcessEnv;
+    try {
+      const runtimeUrl = await ensureProjectWorkflowWorld(env, projectId, { cache: new Set() });
+      expect(runtimeUrl).toBeTruthy();
+      const legacy = new pg.Client({ connectionString: runtimeUrl });
+      await legacy.connect();
+      try {
+        // 'paused' no longer exists at the migrated schema head (world-postgres
+        // migration 0004 dropped it); the terminator compares as text so it
+        // covers pre-0004 databases without an enum-literal error here.
+        await legacy.query(
+          `insert into workflow.workflow_runs (id, deployment_id, status, name, input)
+           values ('wrun_leg_active', 'dep_leg', 'running', 'greet', '[]'::jsonb),
+                  ('wrun_leg_waiting', 'dep_leg', 'pending', 'greet', '[]'::jsonb),
+                  ('wrun_leg_done', 'dep_leg', 'completed', 'greet', '[]'::jsonb)`,
+        );
+      } finally {
+        await legacy.end().catch(() => {});
+      }
+
+      const result = await terminateLegacyProjectRuns(testUrl!, projectId);
+      expect(result).toMatchObject({ cancelledRuns: 2, remainingActiveRuns: 0 });
+      expect(result.database).toContain("eveland_wf_");
+
+      const verify = new pg.Client({ connectionString: runtimeUrl });
+      await verify.connect();
+      try {
+        const { rows } = await verify.query(
+          `select id, status from workflow.workflow_runs order by id`,
+        );
+        expect(rows).toEqual([
+          { id: "wrun_leg_active", status: "cancelled" },
+          { id: "wrun_leg_done", status: "completed" },
+          { id: "wrun_leg_waiting", status: "cancelled" },
+        ]);
+      } finally {
+        await verify.end().catch(() => {});
+      }
+
+      // A database that does not exist reports itself instead of failing.
+      await expect(terminateLegacyProjectRuns(testUrl!, "p_never_existed")).resolves.toMatchObject({
+        database: null,
+        cancelledRuns: 0,
+        remainingActiveRuns: 0,
+      });
+    } finally {
+      await dropProjectWorkflowWorld(env, projectId).catch(() => {});
+    }
   }, 120_000);
 });
