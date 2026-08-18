@@ -149,6 +149,17 @@ export async function getGitCredentials(): Promise<PublicGitCredential[]> {
   }).then((data) => data.credentials);
 }
 
+export async function createGitCredential(input: {
+  host: string;
+  gitlabPat: string;
+}): Promise<PublicGitCredential> {
+  return clientRequest<{ credential: PublicGitCredential }>("/git-credentials", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  }).then((data) => data.credential);
+}
+
 export async function deleteGitCredential(credentialId: string): Promise<void> {
   await clientRequest(`/git-credentials/${credentialId}`, { method: "DELETE" });
 }

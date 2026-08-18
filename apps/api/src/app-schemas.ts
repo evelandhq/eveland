@@ -78,6 +78,11 @@ export const createProjectFromPreflightSchema = z
     });
   });
 
+export const createGitCredentialSchema = z.object({
+  host: z.string().min(1).max(255),
+  gitlabPat: z.string().min(1).max(1024),
+});
+
 export const createGitSourcePreflightSchema = z.object({
   kind: z.literal("git"),
   gitUrl: gitRepositoryUrlSchema,

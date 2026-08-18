@@ -1,9 +1,14 @@
 import { rm } from "node:fs/promises";
-import { inferProjectSlugFromGitUrl, normalizeGitHttpHost } from "@evelandhq/core/ids";
+import {
+  inferProjectSlugFromGitUrl,
+  normalizeGitCredentialHost,
+  normalizeGitHttpHost,
+} from "@evelandhq/core/ids";
 import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import { ProjectSlugConflictError, type Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 import {
+  createGitCredentialSchema,
   createGitSourcePreflightSchema,
   createProjectFromPreflightSchema,
   createProjectSchema,
@@ -36,6 +41,7 @@ export type ProjectSourceStore = Pick<
   | "getSourcePreflight"
   | "isProjectSlugAvailable"
   | "listGitCredentials"
+  | "upsertGitCredential"
 >;
 
 export function registerProjectSourceRoutes(input: {
@@ -60,6 +66,40 @@ export function registerProjectSourceRoutes(input: {
     return c.json({
       credentials: await store.listGitCredentials(currentUserId(c)),
     });
+  });
+
+  app.post("/git-credentials", async (c) => {
+    const parsed = createGitCredentialSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ error: "Invalid Git credential input", issues: parsed.error.issues }, 400);
+    }
+    const host = normalizeGitCredentialHost(parsed.data.host);
+    if (!host) {
+      return c.json(
+        {
+          error:
+            "Enter an HTTPS Git host like gitlab.example.com, without a path or embedded credentials.",
+        },
+        400,
+      );
+    }
+    const record = await store.upsertGitCredential(
+      currentUserId(c),
+      host,
+      JSON.stringify(encryptSecretValue(parsed.data.gitlabPat, appSecretKey)),
+    );
+    // Echo only the public shape; the PAT never leaves the server again.
+    return c.json(
+      {
+        credential: {
+          id: record.id,
+          host: record.host,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+        },
+      },
+      201,
+    );
   });
 
   app.delete("/git-credentials/:credentialId", async (c) => {

@@ -6,6 +6,7 @@ import {
   createId,
   idAlphabet,
   inferProjectSlugFromGitUrl,
+  normalizeGitCredentialHost,
   normalizeGitHttpHost,
   slugifyProjectName,
 } from "./ids.js";
@@ -66,6 +67,15 @@ describe("Git HTTP hosts", () => {
     ).toBeNull();
     expect(normalizeGitHttpHost("http://gitlab.example.com/group/agent.git")).toBeNull();
     expect(normalizeGitHttpHost("git@gitlab.example.com:group/agent.git")).toBeNull();
+  });
+
+  test("normalizes typed host input with an optional https prefix but no path or credentials", () => {
+    expect(normalizeGitCredentialHost(" GitLab.Example.COM:8443 ")).toBe("gitlab.example.com:8443");
+    expect(normalizeGitCredentialHost("https://gitlab.example.com/")).toBe("gitlab.example.com");
+    expect(normalizeGitCredentialHost("gitlab.example.com/group")).toBeNull();
+    expect(normalizeGitCredentialHost("http://gitlab.example.com")).toBeNull();
+    expect(normalizeGitCredentialHost("oauth2:token@gitlab.example.com")).toBeNull();
+    expect(normalizeGitCredentialHost("")).toBeNull();
   });
 });
 

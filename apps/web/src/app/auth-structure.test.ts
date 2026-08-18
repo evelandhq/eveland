@@ -48,6 +48,12 @@ describe("team management web surfaces", () => {
     expect(credentialsForm).toContain("<Table");
     expect(credentialsForm).toContain("<Badge");
     expect(credentialsForm).toContain("deleteGitCredential");
+    // Manual add: a dialog saves a host + PAT without going through an import.
+    expect(credentialsForm).toContain("<Dialog");
+    expect(credentialsForm).toContain("createGitCredential");
+    expect(credentialsForm).toContain("normalizeGitCredentialHost");
+    expect(credentialsForm).toContain("Add credential");
+    expect(credentialsForm).toContain('type="password"');
   });
 
   test("provides one global shared Agent environment", () => {
