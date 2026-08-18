@@ -19,7 +19,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { verifyScheduleDispatchCredential } from "@evelandhq/core/server/scheduler-dispatch";
-import { createFixtureEveProject } from "./process.test-support.js";
+import { createFixtureEveProject, sharedWorkflowWorldAttestation } from "./process.test-support.js";
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -219,6 +219,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41992,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
     const claim = await store.acquireActivationLease({
@@ -319,6 +320,7 @@ describe("processNextJob", () => {
         internalPort: 3000,
         hostPort: retired.hostPort,
         runtimeKind: "docker",
+        workflowWorld: sharedWorkflowWorldAttestation,
       });
       await store.updateDeploymentStatus(deployment.id, "stopped");
       const claim = await store.acquireActivationLease({
@@ -399,6 +401,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41997,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
     const claim = await store.acquireActivationLease({
@@ -473,6 +476,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41993,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
     const claim = await store.acquireActivationLease({
@@ -507,6 +511,66 @@ describe("processNextJob", () => {
     });
   });
 
+  test("fails a cold activation closed when the workflow topology is unclassified", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject("0.38.3");
+    const project = await store.createProject({ name: "Unclassified Wake", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: { eveVersion: "^0.38.0" },
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // No attestation: a historical row the cutover has not classified yet.
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:unclassified-wake",
+      containerName: "fixture-unclassified-wake",
+      internalPort: 3000,
+      hostPort: 41994,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_unclassified_wake",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: deployment.id,
+      runtimeInstanceId: claim.runtimeInstance.id,
+    });
+
+    await expect(
+      processNextJob(store, "wake-worker", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("not used");
+          },
+          async startProcess() {
+            throw new Error("must not start an unclassified topology");
+          },
+          async stopProcess() {},
+        },
+      }),
+    ).resolves.toBe(true);
+
+    // The instance fails immediately with the managed reason instead of
+    // starting a process or waiting out an activation timeout.
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "failed",
+      lastError: expect.stringContaining("workflow_migration_required"),
+    });
+  });
+
   test("does not fail the Project when an old Deployment activation fails", async () => {
     const store = createTestStore();
     const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-missing-old-source-"));
@@ -532,6 +596,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41995,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.ensureDeploymentRoutes(project.id, oldDeployment.id, "agent.localhost");
     await store.updateDeploymentStatus(oldDeployment.id, "stopped");
@@ -552,6 +617,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41996,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.ensureDeploymentRoutes(project.id, currentDeployment.id, "agent.localhost");
     await store.promoteDeployment(project.id, currentDeployment.id);
@@ -636,6 +702,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41994,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.setProjectSchedulerTarget(project.id, deployment.id);
     await rm(sourcePath, { recursive: true, force: true });

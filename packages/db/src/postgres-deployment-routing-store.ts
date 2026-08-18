@@ -165,6 +165,7 @@ export function createPostgresDeploymentRoutingStore({
       // One transaction: a release the database cannot address through a
       // deployment must never survive a failure between these writes.
       return db.transaction(async (tx) => {
+        const attestation = input.workflowWorld ?? null;
         const [releaseRow] = await tx
           .insert(releases)
           .values({
@@ -174,6 +175,13 @@ export function createPostgresDeploymentRoutingStore({
             imageTag: input.imageTag,
             observerContract: input.observerContract ?? null,
             summary: input.summary ?? null,
+            // No attestation means "unknown", never a guessed topology.
+            workflowWorldKind: attestation?.worldKind ?? "unknown",
+            workflowWorldPackage: attestation?.worldPackage ?? null,
+            workflowWorldVersion: attestation?.worldVersion ?? null,
+            workflowStorageSpec: attestation?.storageSpec ?? null,
+            workflowDispatchProtocol: attestation?.dispatchProtocol ?? null,
+            workflowEnqueueCapability: attestation?.enqueueCapability ?? "unknown",
           })
           .returning();
 
@@ -198,6 +206,12 @@ export function createPostgresDeploymentRoutingStore({
                   hostPort: input.hostPort,
                   status: "running",
                   runtimeKind: input.runtimeKind,
+                  // A shared build starts life on the external topology; any
+                  // other recording stays unclassified until a cutover
+                  // operation classifies it.
+                  workflowRunnerMode: attestation?.worldKind === "shared" ? "external" : "unknown",
+                  workflowConversionState:
+                    attestation?.worldKind === "shared" ? "external" : "unclassified",
                 })
                 .returning();
               if (!claimed) throw new Error("Failed to create deployment.");
@@ -339,6 +353,30 @@ export function createPostgresDeploymentRoutingStore({
       const [deployment] = await db
         .update(deployments)
         .set({ status, updatedAt: new Date() })
+        .where(eq(deployments.id, deploymentId))
+        .returning();
+      return deployment ? deploymentRowToDeployment(deployment) : null;
+    },
+
+    async updateDeploymentWorkflowTopology(deploymentId, topology) {
+      const [deployment] = await db
+        .update(deployments)
+        .set({
+          ...(topology.runnerMode !== undefined ? { workflowRunnerMode: topology.runnerMode } : {}),
+          ...(topology.conversionState !== undefined
+            ? { workflowConversionState: topology.conversionState }
+            : {}),
+          ...(topology.conversionOperationId !== undefined
+            ? { workflowConversionOperationId: topology.conversionOperationId }
+            : {}),
+          ...(topology.runnerEvidence !== undefined
+            ? { workflowRunnerEvidence: topology.runnerEvidence }
+            : {}),
+          ...(topology.convertedAt !== undefined
+            ? { workflowConvertedAt: topology.convertedAt ? new Date(topology.convertedAt) : null }
+            : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(deployments.id, deploymentId))
         .returning();
       return deployment ? deploymentRowToDeployment(deployment) : null;

@@ -16,7 +16,9 @@ import {
   processNextSourcePreflight,
 } from "./jobs/process-source-preflight.js";
 import { resolveMaxConcurrentHeavyJobs } from "./runtime/job-concurrency.js";
+import { CUTOVER_ALLOWED_JOB_TYPES, resolveWorkerProcessMode } from "./cutover/process-mode.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
+import { assertWorkflowTopologyPreflight } from "./runtime/workflow-topology-preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 import { bootstrapEvelandWorkflowWorld } from "./runtime/eveland-workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
@@ -54,6 +56,14 @@ const releaseSweepIntervalMs = Number(process.env.EVELAND_RELEASE_SWEEP_INTERVAL
 const workflowSweepIntervalMs = Number(process.env.EVELAND_WORKFLOW_SWEEP_INTERVAL_MS ?? 3_600_000);
 const workerId = workerInstanceId;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
+// Fails closed when workflow-cutover mode is requested without its operation
+// id; every background loop below is additionally gated on normal mode.
+const processMode = resolveWorkerProcessMode(process.env);
+if (processMode.mode === "workflow-cutover") {
+  console.log(
+    `Worker is in workflow-cutover mode for operation ${processMode.operationId}: only exact activation/reconciliation jobs are claimed.`,
+  );
+}
 const maxConcurrentHeavyJobs = resolveMaxConcurrentHeavyJobs(process.env);
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
@@ -109,6 +119,7 @@ const reconcileObservability = createWorkerObservabilityReconciler([
 // deployment attempt; fail fast here with the complete list of what's missing.
 try {
   await assertWorkerPreflight(process.env);
+  assertWorkflowTopologyPreflight(process.env);
   await bootstrapWorkflowWorld(process.env);
   if (await bootstrapEvelandWorkflowWorld(process.env)) {
     console.log("Shared workflow-world database schema is ready.");
@@ -197,42 +208,55 @@ async function tick() {
     async (span) => {
       const startedAt = Date.now();
       try {
-        await Promise.all([
-          planDueSchedules(store, {
-            limit: Number(process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25),
-            prewarmMs: schedulerPrewarmMs,
-            activationLeaseTtlMs: schedulerPrewarmMs + Math.max(10_000, intervalMs * 2),
-          }),
-          reapIdleDeployments(store, {
-            idleTtlMs: Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 300_000),
-            schedulePrewarmMs: schedulerPrewarmMs,
-            limit: Number(process.env.EVELAND_ACTIVATION_REAPER_BATCH_SIZE ?? 25),
-          }),
-          recoverStartingRuntimeInstances(store, {
-            limit: Number(process.env.EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE ?? 25),
-            staleJobAfterMs: Number(process.env.EVELAND_ACTIVATION_START_STALE_MS ?? 300_000),
-          }),
-          reconcileRuntimeInstances(store, {
-            limit: Number(process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100),
-          }),
-          reconcileObservability(),
-          store.recoverStaleJobs(
-            new Date(),
-            Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
-            Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
-          ),
-          store.recoverStaleSourcePreflights(
-            new Date(),
-            Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
-            Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
-          ),
-          cleanupExpiredSourcePreflights(store),
-          processNextSourcePreflight(store, workerId),
-          processNextJob(store, workerId, {
-            tracer: platformObservability.tracer,
-            maxConcurrentHeavyJobs,
-          }),
-        ]);
+        // Cutover mode runs only the operation's exact activation work; the
+        // planner, reapers, recovery sweeps, preflights and ordinary jobs stay
+        // untouched for the normal worker that follows the maintenance window.
+        await Promise.all(
+          processMode.mode === "workflow-cutover"
+            ? [
+                processNextJob(store, workerId, {
+                  tracer: platformObservability.tracer,
+                  maxConcurrentHeavyJobs,
+                  allowedJobTypes: [...CUTOVER_ALLOWED_JOB_TYPES],
+                }),
+              ]
+            : [
+                planDueSchedules(store, {
+                  limit: Number(process.env.EVELAND_SCHEDULER_PLANNER_BATCH_SIZE ?? 25),
+                  prewarmMs: schedulerPrewarmMs,
+                  activationLeaseTtlMs: schedulerPrewarmMs + Math.max(10_000, intervalMs * 2),
+                }),
+                reapIdleDeployments(store, {
+                  idleTtlMs: Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 300_000),
+                  schedulePrewarmMs: schedulerPrewarmMs,
+                  limit: Number(process.env.EVELAND_ACTIVATION_REAPER_BATCH_SIZE ?? 25),
+                }),
+                recoverStartingRuntimeInstances(store, {
+                  limit: Number(process.env.EVELAND_ACTIVATION_RECOVERY_BATCH_SIZE ?? 25),
+                  staleJobAfterMs: Number(process.env.EVELAND_ACTIVATION_START_STALE_MS ?? 300_000),
+                }),
+                reconcileRuntimeInstances(store, {
+                  limit: Number(process.env.EVELAND_ACTIVATION_RECONCILE_BATCH_SIZE ?? 100),
+                }),
+                reconcileObservability(),
+                store.recoverStaleJobs(
+                  new Date(),
+                  Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
+                  Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
+                ),
+                store.recoverStaleSourcePreflights(
+                  new Date(),
+                  Number(process.env.WORKER_JOB_STALE_MS ?? 120_000),
+                  Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
+                ),
+                cleanupExpiredSourcePreflights(store),
+                processNextSourcePreflight(store, workerId),
+                processNextJob(store, workerId, {
+                  tracer: platformObservability.tracer,
+                  maxConcurrentHeavyJobs,
+                }),
+              ],
+        );
         lastTickError = null;
         span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
@@ -275,7 +299,7 @@ const sweepOrphans = () => {
   );
 };
 let orphanTimer: NodeJS.Timeout | undefined;
-if (orphanSweepIntervalMs > 0) {
+if (orphanSweepIntervalMs > 0 && processMode.mode === "normal") {
   sweepOrphans();
   orphanTimer = setInterval(sweepOrphans, orphanSweepIntervalMs);
 }
@@ -294,13 +318,13 @@ const sweepReleases = () => {
   );
 };
 let releaseTimer: NodeJS.Timeout | undefined;
-if (releaseSweepIntervalMs > 0) {
+if (releaseSweepIntervalMs > 0 && processMode.mode === "normal") {
   sweepReleases();
   releaseTimer = setInterval(sweepReleases, releaseSweepIntervalMs);
 }
 
 const workflowRetentionScheduler = startWorkflowStreamRetentionScheduler({
-  intervalMs: workflowSweepIntervalMs,
+  intervalMs: processMode.mode === "normal" ? workflowSweepIntervalMs : 0,
   run: async () => {
     await runWorkflowStreamRetentionSweep({
       sweepLegacy: () =>

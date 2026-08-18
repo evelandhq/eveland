@@ -12,6 +12,7 @@ import {
 } from "../deployment-launch-context.js";
 import { stopStartedProcessOnFailure } from "../process-support.js";
 import type { ProcessJobOptions } from "../process-types.js";
+import { assessWorkflowLaunch } from "../workflow-topology-gate.js";
 import { settleDeploymentStatus } from "./deployment-status.js";
 import type { RuntimeJob } from "./types.js";
 
@@ -83,6 +84,19 @@ export async function handleRestartDeploymentJob(
   if (!release) {
     throw new Error(`Release ${deployment.releaseId} not found for deployment ${deployment.id}.`);
   }
+  // Persisted topology decides the launch, never the worker's current
+  // environment; anything not provably shared/external fails closed here,
+  // before the running process is stopped.
+  const launchDecision = assessWorkflowLaunch(release, deployment);
+  if (!launchDecision.allowed) {
+    await store.appendLog({
+      projectId: job.projectId,
+      deploymentId: deployment.id,
+      type: "deploy",
+      line: `Restart blocked: ${launchDecision.reason}`,
+    });
+    throw new Error(launchDecision.reason);
+  }
   const revision = await store.getSourceRevision(release.sourceRevisionId);
   if (!revision) {
     throw new Error(
@@ -109,7 +123,7 @@ export async function handleRestartDeploymentJob(
     deploymentId: deployment.id,
     runtimeKind: adapter.name,
     sourcePath: revision.sourcePath,
-    options,
+    options: { ...options, workflowWorldKind: launchDecision.workflowWorldKind },
   });
 
   await adapter.stopProcess(deployment.containerName);

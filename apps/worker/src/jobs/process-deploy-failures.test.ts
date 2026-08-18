@@ -7,7 +7,7 @@ import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { encryptSecretValue } from "@evelandhq/core/server/secrets";
-import { createFixtureEveProject } from "./process.test-support.js";
+import { createFixtureEveProject, recordReadyDispatcherFixture } from "./process.test-support.js";
 
 describe("processNextJob", () => {
   test("removes a partially prepared build directory when buildRelease fails", async () => {
@@ -445,7 +445,7 @@ describe("processNextJob", () => {
     expect(jobFailedLine).not.toContain("docker logs unavailable");
   });
 
-  test("injects a platform-owned Postgres world and runtime URL even when the agent does not configure either", async () => {
+  test("bakes the shared workflow world and external runner into every new build", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
@@ -466,16 +466,25 @@ describe("processNextJob", () => {
       schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
+    await recordReadyDispatcherFixture(store);
 
-    const ensuredProjects: string[] = [];
+    const evelandWorldUrl = "postgres://eveland:eveland@host.docker.internal:5432/eveland_workflow";
+    const ensuredTenants: string[] = [];
+    const ensuredLegacyProjects: string[] = [];
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
         identityIssuer: "https://control.example.com",
         identityJwksUrl: "http://api:4000/.well-known/jwks.json",
+        // A lingering rollout flag or legacy database must not resurrect a
+        // legacy build: the build-selection semantics are gone.
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
+        evelandWorkflowWorldUrl: evelandWorldUrl,
+        ensureEvelandWorkflowTenant: async (_worldUrl, projectId) => {
+          ensuredTenants.push(projectId);
+        },
         ensureProjectWorkflowWorld: async (env, projectId) => {
-          ensuredProjects.push(projectId);
+          ensuredLegacyProjects.push(projectId);
           return deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId);
         },
         runtime: {
@@ -503,28 +512,138 @@ describe("processNextJob", () => {
     const build = runtimeCalls.find((call) => call.name === "buildRelease");
     expect(build?.input).toMatchObject({
       workflowWorld: {
-        packageName: "@workflow/world-postgres",
-        packageVersion: "5.0.0-beta.34",
+        packageName: "@evelandhq/workflow-world",
       },
     });
     const run = runtimeCalls.find((call) => call.name === "startProcess");
-    expect((run!.input as { env: Record<string, string> }).env).toMatchObject({
-      WORKFLOW_POSTGRES_URL: deriveProjectWorkflowUrl(
-        "postgres://eveland:eveland@host.docker.internal:5432/eveland",
-        project.id,
-      ),
+    const runEnv = (run!.input as { env: Record<string, string> }).env;
+    expect(runEnv).toMatchObject({
+      EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
+      EVELAND_WORKFLOW_RUNNER: "external",
       NODE_ENV: "production",
       EVELAND_PROJECT_ID: project.id,
       EVELAND_IDENTITY_ISSUER: "https://control.example.com",
       EVELAND_IDENTITY_JWKS_URL: "http://api:4000/.well-known/jwks.json",
     });
-    expect(ensuredProjects).toEqual([project.id]);
+    // A shared-world deployment gets no per-project legacy database.
+    expect(runEnv.WORKFLOW_POSTGRES_URL).toBeUndefined();
+    expect(ensuredLegacyProjects).toEqual([]);
+    expect(ensuredTenants).toEqual([project.id]);
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "deployed",
     });
   });
 
-  test("keeps the platform workflow database URL reserved when a project defines the same secret", async () => {
+  test("a production deploy fails closed without a fresh dispatcher registration", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "No Dispatcher Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    // Shared world configured, but no dispatcher has ever registered: the
+    // machine-readable readiness gate blocks the deploy; stdout tokens and
+    // systemd states never substitute.
+    await expect(
+      processNextJob(store, "worker-a", {
+        nodeEnv: "production",
+        evelandWorkflowWorldUrl:
+          "postgres://eveland:eveland@host.docker.internal:5432/eveland_workflow",
+        ensureEvelandWorkflowTenant: async () => {},
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("buildRelease must not run without dispatcher readiness");
+          },
+          async startProcess() {
+            throw new Error("startProcess must not run without dispatcher readiness");
+          },
+          async stopProcess() {},
+        },
+        allocateHostPort() {
+          return 41004;
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
+      expect.objectContaining({
+        line: expect.stringContaining("workflow_unavailable"),
+      }),
+    );
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "failed",
+      deploymentStatus: "failed",
+    });
+  });
+
+  test("a production deploy fails closed when the shared workflow world URL is missing", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Durable Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+
+    // The legacy database alone no longer unblocks a production deploy.
+    await expect(
+      processNextJob(store, "worker-a", {
+        nodeEnv: "production",
+        workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("buildRelease must not run without the shared world URL");
+          },
+          async startProcess() {
+            throw new Error("startProcess must not run without the shared world URL");
+          },
+          async stopProcess() {},
+        },
+        allocateHostPort() {
+          return 41003;
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    const logs = await store.listLogs(project.id, "deploy");
+    expect(logs.some((log) => log.line.includes("EVELAND_WORKFLOW_WORLD_URL"))).toBe(true);
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "failed",
+      deploymentStatus: "failed",
+    });
+  });
+
+  test("keeps the shared workflow world URL and runner reserved when a project defines the same secrets", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createTestStore();
@@ -545,19 +664,26 @@ describe("processNextJob", () => {
       files: [],
       schedules: [],
     });
+    // A project that could set these could scope its world at another
+    // tenant's data or re-enable the embedded runner.
     await store.upsertSecret(
       project.id,
-      "WORKFLOW_POSTGRES_URL",
+      "EVELAND_WORKFLOW_WORLD_URL",
       JSON.stringify(encryptSecretValue("postgres://custom@db:5432/app", secretKey)),
+    );
+    await store.upsertSecret(
+      project.id,
+      "EVELAND_WORKFLOW_RUNNER",
+      JSON.stringify(encryptSecretValue("embedded", secretKey)),
     );
     await store.enqueueJob(project.id, "build_deploy");
 
+    const platformWorldUrl = "postgres://platform@host.docker.internal:5432/eveland_workflow";
     await expect(
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
-        workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
-        ensureProjectWorkflowWorld: async (env, projectId) =>
-          deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
+        evelandWorkflowWorldUrl: platformWorldUrl,
+        ensureEvelandWorkflowTenant: async () => {},
         runtime: {
           name: "docker",
           async buildRelease(input) {
@@ -580,9 +706,9 @@ describe("processNextJob", () => {
     ).resolves.toBe(true);
 
     const run = runtimeCalls.find((call) => call.name === "startProcess");
-    expect((run!.input as { env: Record<string, string> }).env.WORKFLOW_POSTGRES_URL).toBe(
-      deriveProjectWorkflowUrl("postgres://platform@host.docker.internal:5432/eveland", project.id),
-    );
+    const runEnv = (run!.input as { env: Record<string, string> }).env;
+    expect(runEnv.EVELAND_WORKFLOW_WORLD_URL).toBe(platformWorldUrl);
+    expect(runEnv.EVELAND_WORKFLOW_RUNNER).toBe("external");
   });
 
   test("injects the global shared Agent environment as a fallback for Project Secrets", async () => {
@@ -805,7 +931,7 @@ describe("processNextJob", () => {
     });
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
       expect.objectContaining({
-        line: expect.stringContaining("WORKFLOW_POSTGRES_URL"),
+        line: expect.stringContaining("EVELAND_WORKFLOW_WORLD_URL"),
       }),
     );
   });
@@ -940,13 +1066,14 @@ describe("processNextJob", () => {
       schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
+    await recordReadyDispatcherFixture(store);
 
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
-        workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5452/eveland",
-        ensureProjectWorkflowWorld: async (env, projectId) =>
-          deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
+        evelandWorkflowWorldUrl:
+          "postgres://eveland:eveland@host.docker.internal:5452/eveland_workflow",
+        ensureEvelandWorkflowTenant: async () => {},
         runtime: {
           name: "docker",
           async buildRelease(input) {

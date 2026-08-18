@@ -20,6 +20,7 @@ export async function processNextJob(
 ): Promise<boolean> {
   const job = await store.claimNextJob(workerId, undefined, {
     maxConcurrentHeavyJobs: options.maxConcurrentHeavyJobs,
+    ...(options.allowedJobTypes ? { allowedTypes: options.allowedJobTypes } : {}),
   });
   if (!job) {
     return false;

@@ -29,7 +29,7 @@ import {
 import { registerMemberRoutes } from "./app-member-routes.js";
 import { registerSystemDiagnosticsRoutes } from "./app-system-diagnostics-routes.js";
 export type { AppOptions } from "./app-types.js";
-import { positiveDuration } from "./app-support.js";
+import { isServiceRequest, positiveDuration } from "./app-support.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
 const identityBrowserCorsPaths = new Set([
@@ -113,6 +113,47 @@ export function createApp(
       credentials: true,
     }),
   );
+
+  // Maintenance-downtime cutover mode: the API serves only the authenticated
+  // dispatcher registration/heartbeat/resume surface, exact runtime
+  // activation, operation status, and health. Public Sessions, deploys,
+  // schedule mutations and every ordinary control-plane write are refused with
+  // a stable managed error — this process is not a degraded normal API, it is
+  // a different one.
+  const cutoverOperationId =
+    options.cutoverOperationId ??
+    (process.env.EVELAND_PROCESS_MODE === "workflow-cutover"
+      ? process.env.EVELAND_WORKFLOW_CUTOVER_OPERATION_ID
+      : undefined);
+  if (process.env.EVELAND_PROCESS_MODE === "workflow-cutover" && !cutoverOperationId) {
+    throw new Error(
+      "EVELAND_PROCESS_MODE=workflow-cutover requires EVELAND_WORKFLOW_CUTOVER_OPERATION_ID; a cutover API must know which operation it serves.",
+    );
+  }
+  if (cutoverOperationId) {
+    const allowedCutoverPaths = [
+      /^\/health$/,
+      /^\/internal\/workflow\/dispatcher\//,
+      /^\/internal\/workflow\/cutover\//,
+      /^\/internal\/runtime\/activations/,
+    ];
+    app.use("*", async (c, next) => {
+      if (allowedCutoverPaths.some((pattern) => pattern.test(c.req.path))) return next();
+      return c.json(
+        {
+          error: `workflow_unavailable: the platform is in a workflow maintenance window (operation ${cutoverOperationId}).`,
+        },
+        503,
+      );
+    });
+    app.get("/internal/workflow/cutover/status", async (c) => {
+      const serviceToken = options.gatewayServiceToken ?? process.env.EVELAND_GATEWAY_SERVICE_TOKEN;
+      if (!isServiceRequest(c.req.header("authorization"), serviceToken))
+        return c.json({ error: "Not found" }, 404);
+      const operation = await store.getWorkflowCutoverOperation(cutoverOperationId);
+      return c.json({ operation });
+    });
+  }
 
   registerInternalRoutes({
     app,

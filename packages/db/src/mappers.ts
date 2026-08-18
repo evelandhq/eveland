@@ -1,6 +1,8 @@
 import type {
   DeploymentStatus,
   DeploymentRecord,
+  DeploymentWorkflowTopology,
+  ReleaseWorkflowAttestation,
   Job,
   LogRecord,
   Project,
@@ -654,6 +656,11 @@ export function deploymentRowToDeployment(row: {
   hostPort: number;
   status: string;
   runtimeKind: string;
+  workflowRunnerMode: string;
+  workflowConversionState: string;
+  workflowConversionOperationId: string | null;
+  workflowRunnerEvidence: unknown;
+  workflowConvertedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): DeploymentRecord {
@@ -667,9 +674,23 @@ export function deploymentRowToDeployment(row: {
     hostPort: row.hostPort,
     status: row.status as DeploymentStatus,
     runtimeKind: row.runtimeKind as RuntimeKind,
+    workflowTopology: {
+      runnerMode: row.workflowRunnerMode as DeploymentWorkflowTopology["runnerMode"],
+      conversionState: row.workflowConversionState as DeploymentWorkflowTopology["conversionState"],
+      conversionOperationId: row.workflowConversionOperationId,
+      runnerEvidence: parseRunnerEvidence(row.workflowRunnerEvidence),
+      convertedAt: timestampToIso(row.workflowConvertedAt),
+    },
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };
+}
+
+function parseRunnerEvidence(value: unknown): DeploymentWorkflowTopology["runnerEvidence"] {
+  if (!isRecord(value)) return null;
+  const { source, capturedAt } = value;
+  if (typeof source !== "string" || typeof capturedAt !== "string") return null;
+  return { source, capturedAt };
 }
 
 export function agentRouteRowToAgentRoute(row: {
@@ -746,6 +767,12 @@ export function releaseRowToRelease(row: {
   imageTag: string;
   observerContract: number | null;
   summary: unknown;
+  workflowWorldKind: string;
+  workflowWorldPackage: string | null;
+  workflowWorldVersion: string | null;
+  workflowStorageSpec: number | null;
+  workflowDispatchProtocol: number | null;
+  workflowEnqueueCapability: string;
   createdAt: Date;
 }): ReleaseRecord {
   return {
@@ -755,6 +782,15 @@ export function releaseRowToRelease(row: {
     imageTag: row.imageTag,
     observerContract: row.observerContract,
     summary: isRecord(row.summary) ? row.summary : null,
+    workflow: {
+      worldKind: row.workflowWorldKind as ReleaseWorkflowAttestation["worldKind"],
+      worldPackage: row.workflowWorldPackage,
+      worldVersion: row.workflowWorldVersion,
+      storageSpec: row.workflowStorageSpec,
+      dispatchProtocol: row.workflowDispatchProtocol,
+      enqueueCapability:
+        row.workflowEnqueueCapability as ReleaseWorkflowAttestation["enqueueCapability"],
+    },
     createdAt: timestampToIso(row.createdAt),
   };
 }

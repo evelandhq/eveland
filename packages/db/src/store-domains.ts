@@ -26,6 +26,7 @@ import type {
   PublicGitCredential,
   PublicSecret,
   ReleaseRecord,
+  ReleaseWorkflowAttestation,
   ResolvedAgentRoute,
   RouteTarget,
   RuntimeInstance,
@@ -34,6 +35,14 @@ import type {
   SharedAgentEnvironmentEntryKind,
   SharedAgentEnvironmentRecord,
   RuntimeKind,
+  WorkflowConversionState,
+  WorkflowCutoverOperation,
+  WorkflowCutoverPhase,
+  WorkflowDispatcherDesiredState,
+  WorkflowDispatcherRegistration,
+  WorkflowFence,
+  WorkflowFenceScopeKind,
+  WorkflowRunnerModeState,
   ScheduleRecord,
   ScheduleRun,
   ScheduleRunDetail,
@@ -509,7 +518,11 @@ export interface JobStore {
   claimNextJob(
     workerId: string,
     now?: Date,
-    options?: { maxConcurrentHeavyJobs?: number },
+    options?: {
+      maxConcurrentHeavyJobs?: number;
+      /** Cutover process mode: claim only these job types; others stay queued. */
+      allowedTypes?: JobType[];
+    },
   ): Promise<Job | null>;
   heartbeatJob(jobId: string, attempt: number, now?: Date): Promise<boolean>;
   replaceJobPayload<Type extends JobType>(
@@ -545,7 +558,31 @@ export interface DeploymentStore {
     internalPort: number;
     hostPort: number;
     runtimeKind: RuntimeKind;
+    /**
+     * Immutable workflow attestation from what release preparation actually
+     * injected. Omitted records the Release as `unknown`/`unknown` and the
+     * Deployment as `unknown`/`unclassified` — the conservative state that
+     * blocks activation rather than guessing. A shared attestation starts the
+     * Deployment directly on the external topology.
+     */
+    workflowWorld?: ReleaseWorkflowAttestation;
   }): Promise<DeploymentRecord>;
+  /**
+   * Stage or finalize a Deployment's mutable workflow execution topology.
+   * Partial and idempotent: omitted fields keep their current values, so a
+   * cutover step can be re-run under the same operation id without churn.
+   * Returns null when the Deployment does not exist.
+   */
+  updateDeploymentWorkflowTopology(
+    deploymentId: string,
+    topology: {
+      runnerMode?: WorkflowRunnerModeState;
+      conversionState?: WorkflowConversionState;
+      conversionOperationId?: string | null;
+      runnerEvidence?: { source: string; capturedAt: string } | null;
+      convertedAt?: string | null;
+    },
+  ): Promise<DeploymentRecord | null>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   listDeployments(projectId: string): Promise<DeploymentRecord[]>;
   listReservedDeploymentHostPorts(): Promise<number[]>;
@@ -839,6 +876,81 @@ export interface LogStore {
   listLogs(projectId: string, type?: LogRecord["type"]): Promise<LogRecord[]>;
 }
 
+export interface WorkflowCutoverStore {
+  /** Get-or-create by id, so a re-run resumes instead of duplicating. */
+  ensureWorkflowCutoverOperation(input: {
+    id: string;
+    kind: WorkflowCutoverOperation["kind"];
+    scope: Record<string, unknown>;
+  }): Promise<WorkflowCutoverOperation>;
+  getWorkflowCutoverOperation(id: string): Promise<WorkflowCutoverOperation | null>;
+  /**
+   * Advance the phase monotonically and/or merge a checkpoint. Regressing the
+   * phase is refused: a failed step keeps the operation where it is and
+   * records `lastError`; it never reopens an activatable state.
+   */
+  advanceWorkflowCutoverOperation(
+    id: string,
+    input: {
+      phase?: WorkflowCutoverPhase;
+      checkpoint?: { key: string; value: unknown };
+      lastError?: string | null;
+    },
+  ): Promise<WorkflowCutoverOperation | null>;
+  /** Idempotent: re-writing an existing fence under any operation keeps it. */
+  writeWorkflowFences(
+    operationId: string,
+    fences: Array<{ scopeKind: WorkflowFenceScopeKind; scopeId: string; reason: string }>,
+  ): Promise<WorkflowFence[]>;
+  getActiveWorkflowFence(
+    scopeKind: WorkflowFenceScopeKind,
+    scopeId: string,
+  ): Promise<WorkflowFence | null>;
+  listWorkflowFences(operationId: string): Promise<WorkflowFence[]>;
+  /** Explicit operator resolution; restarts never clear a fence. */
+  resolveWorkflowFence(
+    scopeKind: WorkflowFenceScopeKind,
+    scopeId: string,
+    resolvedBy: string,
+  ): Promise<WorkflowFence | null>;
+  /**
+   * The control-plane half of a managed termination, in one idempotent
+   * transaction per call: non-terminal Sessions on the targeted deployments
+   * fail, their Session/Operation bindings are removed, activation leases are
+   * released, and queued/active ScheduleRuns are cancelled.
+   */
+  convergeWorkflowTermination(
+    operationId: string,
+    deploymentIds: string[],
+  ): Promise<{
+    failedSessions: number;
+    removedSessionBindings: number;
+    removedOperationBindings: number;
+    releasedLeases: number;
+    cancelledScheduleRuns: number;
+  }>;
+}
+
+export interface WorkflowDispatcherStore {
+  /**
+   * Authenticated heartbeat from the dispatcher actually holding the ownership
+   * lock. Upserts by instance id and returns the stored registration — the
+   * response's `desiredState` is how an explicit, authenticated resume reaches
+   * a `ready_paused` dispatcher. A first heartbeat defaults the desired state
+   * to `paused` unless the dispatcher already reports `ready`.
+   */
+  recordWorkflowDispatcherHeartbeat(
+    input: Omit<WorkflowDispatcherRegistration, "desiredState" | "lastHeartbeatAt">,
+  ): Promise<WorkflowDispatcherRegistration>;
+  /** The registration with the freshest heartbeat; staleness is the caller's TTL. */
+  getWorkflowDispatcherRegistration(): Promise<WorkflowDispatcherRegistration | null>;
+  /** Explicit resume/pause; returns null when the instance is unknown. */
+  setWorkflowDispatcherDesiredState(
+    instanceId: string,
+    desiredState: WorkflowDispatcherDesiredState,
+  ): Promise<WorkflowDispatcherRegistration | null>;
+}
+
 export interface InstanceHealthStore {
   upsertWorkerHeartbeat(heartbeat: WorkerHeartbeat): Promise<WorkerHeartbeat>;
   listWorkerHeartbeats(): Promise<WorkerHeartbeat[]>;
@@ -905,5 +1017,7 @@ export type Store = ProjectStore &
   ScheduleStore &
   RuntimeStore &
   InstanceHealthStore &
+  WorkflowDispatcherStore &
+  WorkflowCutoverStore &
   ObservabilityStore &
   LogStore;

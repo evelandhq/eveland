@@ -17,6 +17,7 @@
     "dev:web": "pnpm --filter @evelandhq/web dev",
     "dev:api": "pnpm --filter @evelandhq/api dev",
     "dev:worker": "pnpm --filter @evelandhq/worker dev",
+    "dev:workflow-dispatcher": "pnpm --filter @evelandhq/workflow-dispatcher dev",
     "dev:gateway": "pnpm --filter @evelandhq/gateway dev"
   },
   "devDependencies": {

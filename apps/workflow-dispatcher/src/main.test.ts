@@ -2,8 +2,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 const startup = vi.hoisted(() => ({
   calls: [] as string[],
-  dispatcherMain: vi.fn(async () => {
+  startRunner: vi.fn(async () => {
     startup.calls.push("dispatcher");
+    return {
+      service: { phase: "ready" },
+      heartbeat: vi.fn(async () => {}),
+      stop: vi.fn(async () => {}),
+    };
   }),
   healthFetch: vi.fn(async () => {
     startup.calls.push("health");
@@ -14,7 +19,12 @@ const startup = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("@evelandhq/workflow-world/dispatcher", () => ({ main: startup.dispatcherMain }));
+vi.mock("@evelandhq/workflow-world/dispatcher", () => ({ startDispatcherService: vi.fn() }));
+vi.mock("./dispatcher-runner.js", () => ({
+  defaultRunnerDeps: {},
+  resolveHeartbeatIntervalMs: () => 15_000,
+  startEvelandWorkflowDispatcher: startup.startRunner,
+}));
 vi.mock("./observability.js", () => ({
   platformObservability: {
     emitLog() {},

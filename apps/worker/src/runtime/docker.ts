@@ -456,6 +456,11 @@ export function createDockerAdapter(
           releaseRef: imageTag,
           schedulerDefinitions: discovery.schedulerDefinitions,
           discovery,
+          // Echo what release preparation actually injected — the source of
+          // the Release's persisted workflow attestation.
+          ...(observerInjection.workflowWorld && input.workflowWorld
+            ? { workflowWorld: input.workflowWorld }
+            : {}),
           log: [
             log,
             rejectedBuildVariablesLog(buildVariables.rejectedKeys),

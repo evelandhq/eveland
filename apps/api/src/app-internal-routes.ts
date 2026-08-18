@@ -12,6 +12,11 @@ import { isServiceRequest, safeSecretEqual, waitForRuntimeActivation } from "./a
 import type { ApiApp, AppOptions } from "./app-types.js";
 import { registerOtlpRoutes } from "./app-otel-routes.js";
 import { registerObservabilityProxyRoute } from "./app-observability-proxy-routes.js";
+import {
+  assessDispatcherReadiness,
+  resolveDispatcherHeartbeatTtlMs,
+} from "@evelandhq/core/workflow-dispatch";
+import { registerWorkflowDispatcherRoutes } from "./app-workflow-dispatcher-routes.js";
 
 export function registerInternalRoutes(input: {
   app: ApiApp;
@@ -33,6 +38,7 @@ export function registerInternalRoutes(input: {
   app.get("/health", (c) => c.json({ ok: true, ...buildInfo }));
 
   registerOtlpRoutes({ app, store, options, appSecretKey: input.appSecretKey });
+  registerWorkflowDispatcherRoutes({ app, store, options });
   registerObservabilityProxyRoute({
     app,
     store,
@@ -100,6 +106,57 @@ export function registerInternalRoutes(input: {
     if (!deployment || deployment.status === "archived" || deployment.status === "failed") {
       return c.json({ error: "Deployment is not activatable" }, 409);
     }
+    // A workflow-step activation is only meaningful while the external
+    // dispatcher can actually be proven ready — and only against a Release
+    // whose attestation falls inside the dispatcher's protocol window with a
+    // per-run-queue-capable enqueue path. Everything else fails fast with a
+    // stable managed code instead of activating and timing out.
+    let negotiated: { selectedProtocol: number; enqueueCapability: string } | undefined;
+    if (parsed.data.kind === "workflow_step") {
+      const registration = await store.getWorkflowDispatcherRegistration();
+      const readiness = assessDispatcherReadiness(registration, {
+        ttlMs: resolveDispatcherHeartbeatTtlMs(process.env),
+        // During the cutover the paused dispatcher verifies its exact
+        // activation path before the explicit resume.
+        allowPaused: true,
+      });
+      if (!readiness.ready) return c.json({ error: readiness.reason }, 503);
+      const release = await store.getRelease(deployment.releaseId);
+      if (!release) return c.json({ error: "Deployment activation Release is missing" }, 409);
+      const { workflow } = release;
+      if (workflow.worldKind !== "shared") {
+        return c.json(
+          {
+            error: `workflow_migration_required: Release ${release.id} is ${workflow.worldKind}, not a shared-world build`,
+          },
+          409,
+        );
+      }
+      if (workflow.enqueueCapability !== "per_run_queue_v1") {
+        return c.json(
+          {
+            error: `workflow_migration_required: Release ${release.id} enqueue capability is ${workflow.enqueueCapability}; shared recovery requires per_run_queue_v1`,
+          },
+          409,
+        );
+      }
+      if (
+        workflow.dispatchProtocol === null ||
+        workflow.dispatchProtocol < registration!.protocolMin ||
+        workflow.dispatchProtocol > registration!.protocolMax
+      ) {
+        return c.json(
+          {
+            error: `workflow_migration_required: Release ${release.id} speaks dispatch protocol ${String(workflow.dispatchProtocol)}, outside the dispatcher window ${String(registration!.protocolMin)}-${String(registration!.protocolMax)}`,
+          },
+          409,
+        );
+      }
+      negotiated = {
+        selectedProtocol: Math.min(workflow.dispatchProtocol, registration!.protocolMax),
+        enqueueCapability: workflow.enqueueCapability,
+      };
+    }
     const now = new Date();
     let claim: ActivationLeaseClaim;
     try {
@@ -133,7 +190,11 @@ export function registerInternalRoutes(input: {
       if (runtimeInstance.status !== "ready" || runtimeInstance.endpointPort === null) {
         throw new Error("Runtime activation did not publish a ready endpoint.");
       }
-      return c.json({ lease: claim.lease, runtimeInstance });
+      return c.json({
+        lease: claim.lease,
+        runtimeInstance,
+        ...(negotiated ? { workflow: negotiated } : {}),
+      });
     } catch (error) {
       await store.releaseActivationLease(claim.lease.id);
       if (c.req.raw.signal.aborted) {

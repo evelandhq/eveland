@@ -27,6 +27,12 @@ export type ReleaseBuildResult = {
   log: string;
   schedulerDefinitions?: SchedulerDefinition[];
   /**
+   * The workflow world release preparation actually injected into this build.
+   * Absent when nothing was injected; the Release's persisted attestation is
+   * derived from this, never from the worker's environment at record time.
+   */
+  workflowWorld?: WorkflowWorldBuildConfig;
+  /**
    * Eve's discovery manifest read back from the built release. This summary is
    * informational; required scheduler definitions are validated separately and
    * fail the build when absent or corrupt.

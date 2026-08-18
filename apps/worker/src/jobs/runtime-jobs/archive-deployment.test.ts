@@ -1,4 +1,5 @@
 import type { DeploymentRecord } from "@evelandhq/core/contracts";
+import { sharedWorkflowWorldAttestation } from "../process.test-support.js";
 import type { Store } from "@evelandhq/db";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test, vi } from "vitest";
@@ -34,6 +35,7 @@ async function createArchiveFixture(store: Store) {
         internalPort: 3000,
         hostPort: 42_100 + index,
         runtimeKind: "docker",
+        workflowWorld: sharedWorkflowWorldAttestation,
       }),
     );
   }
@@ -133,6 +135,62 @@ describe("handleArchiveDeploymentJob", () => {
     });
     expect(runtime.stopProcess).not.toHaveBeenCalled();
     expect(runtime.removeRelease).not.toHaveBeenCalled();
+  });
+
+  test("an unclassified topology keeps its artifact until the cutover classifies it", async () => {
+    const store = createTestStore();
+    const { project, revisionId } = await (async () => {
+      const fixture = await createArchiveFixture(store);
+      const release = await store.getRelease(fixture.target.releaseId);
+      return { project: fixture.project, revisionId: release!.sourceRevisionId };
+    })();
+    // A historical deployment with no attestation, outside the retention
+    // window and stopped — archivable in every way except its topology.
+    const unclassified = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revisionId,
+      imageTag: "fixture:archive-unknown",
+      containerName: "fixture-archive-unknown",
+      internalPort: 3000,
+      hostPort: 42_110,
+      runtimeKind: "docker",
+    });
+    for (let index = 0; index < 3; index += 1) {
+      await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revisionId,
+        imageTag: `fixture:archive-newer-${index}`,
+        containerName: `fixture-archive-newer-${index}`,
+        internalPort: 3000,
+        hostPort: 42_120 + index,
+        runtimeKind: "docker",
+        workflowWorld: sharedWorkflowWorldAttestation,
+      });
+    }
+    await store.updateDeploymentStatus(unclassified.id, "stopped");
+    const runtime = {
+      name: "docker",
+      stopProcess: vi.fn(),
+      removeRelease: vi.fn(),
+    } as unknown as RuntimeAdapter;
+
+    // The automatic sweep skips it quietly; a manual archive gets the reason.
+    await handleArchiveDeploymentJob(store, archiveJob(project.id, unclassified.id, true), {
+      runtime,
+      dataDir: "/tmp/eveland-archive-claim-test",
+    });
+    await expect(
+      handleArchiveDeploymentJob(store, archiveJob(project.id, unclassified.id), {
+        runtime,
+        dataDir: "/tmp/eveland-archive-claim-test",
+      }),
+    ).rejects.toThrow(/classified or managed-terminated/);
+
+    expect(runtime.stopProcess).not.toHaveBeenCalled();
+    expect(runtime.removeRelease).not.toHaveBeenCalled();
+    await expect(store.getDeployment(unclassified.id)).resolves.toMatchObject({
+      status: "stopped",
+    });
   });
 
   test("an already archived deployment is left alone", async () => {

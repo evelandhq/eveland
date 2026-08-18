@@ -690,6 +690,16 @@ export const releases = pgTable(
     // different resolved dependencies. Null for releases whose manifest could
     // not be read or predates this column.
     summary: jsonb("summary"),
+    // Immutable workflow attestation from what release preparation actually
+    // injected. No defaults: every writer must state provenance, and the
+    // migration backfills historical rows with 'unknown' — which blocks
+    // activation/restart/archive until the cutover classifies the artifact.
+    workflowWorldKind: text("workflow_world_kind").notNull(),
+    workflowWorldPackage: text("workflow_world_package"),
+    workflowWorldVersion: text("workflow_world_version"),
+    workflowStorageSpec: integer("workflow_storage_spec"),
+    workflowDispatchProtocol: integer("workflow_dispatch_protocol"),
+    workflowEnqueueCapability: text("workflow_enqueue_capability").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   // Postgres does not index foreign keys on its own; listReleaseSummaries
@@ -715,6 +725,15 @@ export const deployments = pgTable(
     // No default: every caller must state which runtime adapter created the deployment.
     // The migration backfills existing rows with 'docker' then drops the column default.
     runtimeKind: text("runtime_kind").notNull(),
+    // Mutable workflow execution topology, distinct from the Release's
+    // immutable attestation. Historical rows migrate to 'unknown'/'unclassified'
+    // and only a cutover operation moves them; new shared builds start at
+    // 'external'/'external'.
+    workflowRunnerMode: text("workflow_runner_mode").notNull(),
+    workflowConversionState: text("workflow_conversion_state").notNull(),
+    workflowConversionOperationId: text("workflow_conversion_operation_id"),
+    workflowRunnerEvidence: jsonb("workflow_runner_evidence"),
+    workflowConvertedAt: timestamp("workflow_converted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -851,6 +870,75 @@ export const runtimeInstances = pgTable(
     ),
   ],
 );
+
+/**
+ * Fail-closed cutover/termination operations. There is no distributed
+ * transaction across the control-plane and workflow databases; each operation
+ * advances monotonically through
+ * `pending -> fenced -> workflow_safe -> control_plane_converged -> completed`
+ * with idempotent checkpoints, and any mid-phase failure leaves it fenced —
+ * never back in an activatable state.
+ */
+export const workflowCutoverOperations = pgTable("workflow_cutover_operations", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  phase: text("phase").notNull(),
+  scope: jsonb("scope").notNull(),
+  checkpoints: jsonb("checkpoints").notNull(),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Terminal fences and tombstones written by a cutover/termination operation
+ * before it touches any workflow database. Gateway, API, Worker and the OTLP
+ * projector refuse to touch, renew, wake or re-materialize a fenced scope;
+ * only explicit operator resolution closes one — never a process restart.
+ *
+ * scope kinds: `deployment` (activation/launch fence and projection fence for
+ * permanently retired deployments), `run` (`<tenantId>:<runId>`), and
+ * `session_family` (`<projectId>:<eveSessionId>` tombstone for late OTLP).
+ */
+export const workflowFences = pgTable(
+  "workflow_fences",
+  {
+    id: text("id").primaryKey(),
+    scopeKind: text("scope_kind").notNull(),
+    scopeId: text("scope_id").notNull(),
+    operationId: text("operation_id").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: text("resolved_by"),
+  },
+  (table) => [uniqueIndex("workflow_fences_scope_idx").on(table.scopeKind, table.scopeId)],
+);
+
+/**
+ * Machine-readable dispatcher readiness. One row per dispatcher instance,
+ * written only through the authenticated heartbeat; the newest heartbeat is
+ * the authority. Identity fields never carry credentials.
+ */
+export const workflowDispatcherRegistrations = pgTable("workflow_dispatcher_registrations", {
+  instanceId: text("instance_id").primaryKey(),
+  generation: text("generation").notNull(),
+  state: text("state").notNull(),
+  ownershipAcquired: boolean("ownership_acquired").notNull(),
+  bootRecoveryCompleted: boolean("boot_recovery_completed").notNull(),
+  reenqueuedRuns: integer("reenqueued_runs"),
+  worldDatabaseIdentity: text("world_database_identity").notNull(),
+  schemaGeneration: text("schema_generation"),
+  protocolMin: integer("protocol_min").notNull(),
+  protocolMax: integer("protocol_max").notNull(),
+  cutoverOperationId: text("cutover_operation_id"),
+  unscopedRunnableJobs: integer("unscoped_runnable_jobs"),
+  unresolvedQuarantines: integer("unresolved_quarantines"),
+  desiredState: text("desired_state").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  readyAt: timestamp("ready_at", { withTimezone: true }),
+  lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }).notNull(),
+});
 
 export const workerHeartbeats = pgTable("worker_heartbeats", {
   workerId: text("worker_id").primaryKey(),

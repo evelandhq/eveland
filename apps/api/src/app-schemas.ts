@@ -328,6 +328,30 @@ export const schedulerDispatchSchema = z.discriminatedUnion("phase", [
   }),
 ]);
 
+export const workflowDispatcherHeartbeatSchema = z
+  .object({
+    instanceId: z.string().min(1).max(128),
+    generation: z.string().min(1).max(256),
+    state: z.enum(["recovering", "ready_paused", "ready", "draining", "failed", "stopped"]),
+    ownershipAcquired: z.boolean(),
+    bootRecoveryCompleted: z.boolean(),
+    reenqueuedRuns: z.number().int().nonnegative().nullable(),
+    worldDatabaseIdentity: z.string().max(512),
+    schemaGeneration: z.string().max(256).nullable(),
+    protocolMin: z.number().int().positive(),
+    protocolMax: z.number().int().positive(),
+    cutoverOperationId: z.string().max(128).nullable(),
+    unscopedRunnableJobs: z.number().int().nonnegative().nullable(),
+    unresolvedQuarantines: z.number().int().nonnegative().nullable(),
+    startedAt: z.string().datetime(),
+    readyAt: z.string().datetime().nullable(),
+  })
+  // The identity is host:port/database, never a connection URL: a registration
+  // is diagnostics surface and must not be able to carry credentials.
+  .refine((value) => !/:\/\/|@/.test(value.worldDatabaseIdentity), {
+    message: "worldDatabaseIdentity must be a host:port/database identity, not a URL",
+  });
+
 export const runtimeActivationSchema = z.object({
   deploymentId: z.string().min(1),
   // Narrower than ActivationLeaseKind on purpose: schedule_run leases are

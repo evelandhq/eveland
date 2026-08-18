@@ -158,7 +158,15 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       operationKey,
       targetKey: crypto.randomUUID(),
       activationOwnerId: crypto.randomUUID(),
-      provenance: { kind: "playground", requestId: crypto.randomUUID() },
+      provenance: {
+        kind: "playground",
+        // The internal path is service-authenticated: the API minted (or
+        // propagated) this canonical id, so honoring it keeps one id across
+        // Web, API, Gateway and activation logs. The public path still strips
+        // untrusted X-Eveland-* input and mints its own.
+        requestId:
+          context.req.raw.headers.get("x-eveland-request-id")?.slice(0, 64) ?? crypto.randomUUID(),
+      },
       request: context.req.raw,
       routingBody: routingBody.body,
       upstreamPath: `${evePath}${requestUrl.search}`,

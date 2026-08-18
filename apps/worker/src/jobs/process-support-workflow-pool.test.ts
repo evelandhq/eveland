@@ -12,6 +12,9 @@ async function composeWithWorkflowWorld(workerEnv: NodeJS.ProcessEnv) {
     "proj_pool",
     {
       appSecretKey: "eveland-test-secret-key-00000000",
+      // Only the legacy termination flow still launches with the per-project
+      // world; the pool-size budget rides along with that URL.
+      workflowWorldKind: "legacy_project",
       workflowPostgresUrl,
       ensureProjectWorkflowWorld: async () => `${workflowPostgresUrl}_wf_proj_pool`,
     },

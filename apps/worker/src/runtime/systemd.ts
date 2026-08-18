@@ -522,6 +522,11 @@ export function createSystemdAdapter(
         releaseRef: releaseDir,
         schedulerDefinitions,
         ...(discovery ? { discovery } : {}),
+        // Echo what release preparation actually injected — the source of
+        // the Release's persisted workflow attestation.
+        ...(observerInjection.workflowWorld && input.workflowWorld
+          ? { workflowWorld: input.workflowWorld }
+          : {}),
         log: [
           `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
           observerInjection.workflowWorld

@@ -365,6 +365,27 @@
       "when": 1787009102320,
       "tag": "0051_drop_session_continuation_token",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1787051724231,
+      "tag": "0052_broad_betty_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1787053464319,
+      "tag": "0053_swift_morlocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1787054098716,
+      "tag": "0054_solid_shriek",
+      "breakpoints": true
     }
   ]
 }

@@ -39,8 +39,12 @@ export async function proxyGatewayPlayground(
   const headers: Record<string, string> = { authorization: `Bearer ${serviceToken}` };
   const accept = input.headers.get("accept");
   const contentType = input.headers.get("content-type");
+  const requestId = input.headers.get("x-eveland-request-id");
   if (accept) headers.accept = accept;
   if (contentType) headers["content-type"] = contentType;
+  // The canonical request id survives into the Gateway's internal path so one
+  // id correlates Web, API, Gateway and activation logs.
+  if (requestId) headers["x-eveland-request-id"] = requestId;
   if (input.agentAuthEnvelope) headers[AGENT_AUTH_ENVELOPE_HEADER] = input.agentAuthEnvelope;
 
   return (options.fetchImplementation ?? fetch)(

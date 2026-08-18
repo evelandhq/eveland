@@ -111,7 +111,7 @@ Open the control panel at `http://localhost:3000` and the public documentation s
   still binding its port.
 - The worker migrates the configured shared workflow database before use and keeps
   the hourly 24-hour terminal-stream sweep for legacy per-project worlds. Shared
-  `@evelandhq/workflow-world@0.9.0` storage is bounded by write-time compaction plus
+  `@evelandhq/workflow-world@0.10.0` storage is bounded by write-time compaction plus
   the dispatcher's per-minute block packing and deadline-driven stream/run retention;
   EOF markers are retained. Worker startup and tenant provisioning apply all pending
   shared-World migrations directly under the package's migration advisory lock.
@@ -120,8 +120,11 @@ Open the control panel at `http://localhost:3000` and the public documentation s
   timeouts, tasks, subagents, and custom descendants; delivery to an existing Session
   preserves its stored root class. Eve itself remains unmodified, and legacy Worlds
   safely ignore the marker.
-- Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`, and
-  `pnpm dev:docs` in separate terminals when isolated logs are more useful.
+- Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`,
+  `pnpm dev:workflow-dispatcher`, and `pnpm dev:docs` in separate terminals when
+  isolated logs are more useful. `dev:worker` does not start the dispatcher:
+  durable wake and continuation need the API, the worker, and exactly one
+  workflow dispatcher all running (root `pnpm dev` starts all of them).
 - Public development endpoints use `http://<projectSlug>.agent.localhost:4080`;
   immutable previews use
   `http://<eightCharacterDeploymentKey>--<projectSlug>.agent.localhost:4080`.

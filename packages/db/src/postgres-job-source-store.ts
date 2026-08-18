@@ -227,6 +227,15 @@ export function createPostgresJobSourceStore({
       // Concurrent claims each count committed running heavy jobs, so two
       // simultaneous claims can momentarily overshoot the cap by one; with a
       // single worker admitting one job per tick that window is negligible.
+      // Cutover process mode: only the operation's allowlisted job families
+      // may be claimed; everything else stays queued for the normal worker.
+      const allowedTypesClause =
+        options.allowedTypes === undefined
+          ? sql``
+          : sql` and candidate.type in (${sql.join(
+              options.allowedTypes.map((type) => sql`${type}`),
+              sql`, `,
+            )})`;
       const heavyCapClause =
         heavyCap === undefined
           ? sql``
@@ -270,7 +279,7 @@ export function createPostgresJobSourceStore({
                   and (
                     project.deletion_status is distinct from 'deleting'
                     or candidate.type = 'delete_project'
-                  )${heavyCapClause}
+                  )${allowedTypesClause}${heavyCapClause}
                 order by candidate.created_at asc, candidate.sequence asc
                 limit 1
                 for update skip locked

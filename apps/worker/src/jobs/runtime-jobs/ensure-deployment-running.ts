@@ -11,6 +11,7 @@ import {
   resolveRecoverableRuntimeSource,
 } from "../deployment-launch-context.js";
 import type { ProcessJobOptions } from "../process-types.js";
+import { assessWorkflowLaunch } from "../workflow-topology-gate.js";
 import { settleDeploymentStatus } from "./deployment-status.js";
 import type { RuntimeJob } from "./types.js";
 
@@ -51,6 +52,23 @@ export async function handleEnsureDeploymentRunningJob(
   }
   const release = await store.getRelease(deployment.releaseId);
   if (!release) throw new Error("Deployment activation Release is missing.");
+  // Cold activation decides from the persisted topology, never the worker's
+  // current environment. The instance fails with the managed reason instead of
+  // waiting out an activation timeout.
+  const launchDecision = assessWorkflowLaunch(release, deployment);
+  if (!launchDecision.allowed) {
+    await store.updateRuntimeInstance(runtimeInstanceId, {
+      status: "failed",
+      error: launchDecision.reason,
+    });
+    await store.appendLog({
+      projectId: job.projectId,
+      deploymentId: deployment.id,
+      type: "runtime",
+      line: `Activation blocked: ${launchDecision.reason}`,
+    });
+    return;
+  }
   const revision = await store.getSourceRevision(release.sourceRevisionId);
   if (!revision) throw new Error("Deployment activation SourceRevision is missing.");
   const recoverableSource = await resolveRecoverableRuntimeSource(store, revision);
@@ -65,7 +83,7 @@ export async function handleEnsureDeploymentRunningJob(
     runtimeKind: runtime.name,
     sourcePath: revision.sourcePath,
     ...recoverableSource,
-    options,
+    options: { ...options, workflowWorldKind: launchDecision.workflowWorldKind },
   });
   await ensureDeploymentLaunchSandbox(launchPrerequisites);
   const launchContext = await materializeDeploymentLaunchContext({

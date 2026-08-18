@@ -1,3 +1,4 @@
+import type { ReleaseWorkflowAttestation } from "@evelandhq/core/contracts";
 import { access, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PNPM_RELEASE_AGE_CONFIG } from "./package-manager.js";
@@ -21,7 +22,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.9.0",
+  packageVersion: "0.10.0",
 } as const;
 
 export type WorkflowWorldBuildConfig = {
@@ -30,42 +31,75 @@ export type WorkflowWorldBuildConfig = {
 };
 
 /**
- * Which world a project's *next* build bakes in.
- *
- * The choice is a build-time property of the deployment, which is what makes
- * the migration a run-out rather than a data migration: deployments on either
- * world coexist by construction, and rolling back is rebuilding with the flag
- * off.
- *
- * `EVELAND_WORKFLOW_WORLD_ROLLOUT` accepts `off` (default), `all`, or a
- * comma-separated list of project ids. This is deliberately a single seam — if
- * the rollout later wants a per-project column on the projects table, only this
- * function changes.
+ * The Workflow SDK storage spec generation and Eveland external dispatch
+ * protocol generation the pinned shared world implements. Bumped together
+ * with `EVELAND_WORKFLOW_WORLD.packageVersion`; the eve↔world contract suite
+ * gates the spec against the installed package.
  */
-export function resolveWorkflowWorldChoice(
-  env: NodeJS.ProcessEnv,
-  projectId: string,
-): WorkflowWorldBuildConfig {
-  const rollout = (env.EVELAND_WORKFLOW_WORLD_ROLLOUT ?? "off").trim();
-  if (rollout === "" || rollout === "off") return PLATFORM_WORKFLOW_WORLD;
-  if (rollout === "all") return EVELAND_WORKFLOW_WORLD;
-  const allowed = rollout
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  return allowed.includes(projectId) ? EVELAND_WORKFLOW_WORLD : PLATFORM_WORKFLOW_WORLD;
+const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = 6;
+const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 1;
+
+/**
+ * Maps what release preparation actually injected onto the Release's
+ * immutable workflow attestation. Runner mode is a launch-time input and
+ * deliberately absent. The shared world's deployment-side enqueue has scoped
+ * every job to the per-run `wfrun:<tenant>:<run>` queue since 0.5.0, so the
+ * pinned 0.9.0 attests `per_run_queue_v1`; the legacy world never scoped its
+ * jobs and attests `unscoped`.
+ */
+export function deriveWorkflowWorldAttestation(
+  config: WorkflowWorldBuildConfig,
+): ReleaseWorkflowAttestation {
+  if (config.packageName === EVELAND_WORKFLOW_WORLD.packageName) {
+    return {
+      worldKind: "shared",
+      worldPackage: config.packageName,
+      worldVersion: config.packageVersion,
+      storageSpec: EVELAND_WORKFLOW_WORLD_STORAGE_SPEC,
+      dispatchProtocol: EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL,
+      enqueueCapability: "per_run_queue_v1",
+    };
+  }
+  if (config.packageName === PLATFORM_WORKFLOW_WORLD.packageName) {
+    return {
+      worldKind: "legacy_project",
+      worldPackage: config.packageName,
+      worldVersion: config.packageVersion,
+      storageSpec: EVELAND_WORKFLOW_WORLD_STORAGE_SPEC,
+      dispatchProtocol: null,
+      enqueueCapability: "unscoped",
+    };
+  }
+  return {
+    worldKind: "unknown",
+    worldPackage: config.packageName,
+    worldVersion: config.packageVersion,
+    storageSpec: null,
+    dispatchProtocol: null,
+    enqueueCapability: "unknown",
+  };
 }
 
 /**
- * Whether deployments on the platform world run their own graphile runner
- * (`embedded`) or leave claiming to the dispatcher (`external`).
+ * The runner mode injected into every deployment: `external` only.
  *
- * Defaults to `embedded`, so turning the world on does not simultaneously
- * change the execution topology — the two are separate, separately reversible
- * steps.
+ * Every new build bakes in the shared world and leaves claiming to the single
+ * external dispatcher. `embedded` let multiple deployments of one project
+ * claim and replay each other's runs (issue #278), so an explicit request for
+ * it is a configuration error — it must fail closed here, never silently fall
+ * back to a topology the platform no longer provisions.
  */
-export function resolveWorkflowRunnerMode(env: NodeJS.ProcessEnv): "embedded" | "external" {
-  return env.EVELAND_WORKFLOW_RUNNER === "external" ? "external" : "embedded";
+export function resolveWorkflowRunnerMode(env: NodeJS.ProcessEnv): "external" {
+  const runner = env.EVELAND_WORKFLOW_RUNNER;
+  if (runner === undefined || runner === "" || runner === "external") return "external";
+  if (runner === "embedded") {
+    throw new Error(
+      'EVELAND_WORKFLOW_RUNNER=embedded is not supported: the embedded runner lets concurrent deployments of one project claim each other\'s workflow runs. Unset it or set "external".',
+    );
+  }
+  throw new Error(
+    `Invalid EVELAND_WORKFLOW_RUNNER "${runner}": the only supported runner mode is "external".`,
+  );
 }
 
 export type WorkflowWorldInjectionResult = {

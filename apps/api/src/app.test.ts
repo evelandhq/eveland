@@ -111,8 +111,35 @@ describe("api app", () => {
       internalPort: 3000,
       hostPort: 41993,
       runtimeKind: "docker",
+      workflowWorld: {
+        worldKind: "shared",
+        worldPackage: "@evelandhq/workflow-world",
+        worldVersion: "0.10.0",
+        storageSpec: 6,
+        dispatchProtocol: 1,
+        enqueueCapability: "per_run_queue_v1",
+      },
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
+    // workflow_step activation now gates on machine-readable dispatcher
+    // readiness before it ever reaches the Eve version gate.
+    await store.recordWorkflowDispatcherHeartbeat({
+      instanceId: "wfd_stale_eve_test",
+      generation: "test",
+      state: "ready",
+      ownershipAcquired: true,
+      bootRecoveryCompleted: true,
+      reenqueuedRuns: 0,
+      worldDatabaseIdentity: "localhost:5432/eveland_workflow",
+      schemaGeneration: null,
+      protocolMin: 1,
+      protocolMax: 1,
+      cutoverOperationId: null,
+      unscopedRunnableJobs: 0,
+      unresolvedQuarantines: 0,
+      startedAt: new Date().toISOString(),
+      readyAt: new Date().toISOString(),
+    });
     let gatedLeaseId: string | null = null;
     const app = createApp(store, {
       gatewayServiceToken: "gateway-service-token",

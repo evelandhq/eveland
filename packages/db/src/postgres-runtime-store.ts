@@ -4,7 +4,7 @@ import {
   activationLeaseRowToActivationLease,
   runtimeInstanceRowToRuntimeInstance,
 } from "./mappers.js";
-import { activationLeases, deployments, runtimeInstances } from "./schema.js";
+import { activationLeases, deployments, runtimeInstances, workflowFences } from "./schema.js";
 import { isUniqueConstraint } from "./postgres-store-support.js";
 import { RuntimeInstanceDrainingError } from "./store-shared.js";
 import type { RuntimeStore } from "./store-domains.js";
@@ -21,6 +21,25 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
           .limit(1)
           .for("update");
         if (!deployment) throw new Error("Cannot activate an unknown Deployment.");
+        // A terminal fence written by a cutover/termination operation blocks
+        // every wake path — public request, stream, turn, workflow step and
+        // schedule alike — until an operator explicitly resolves it.
+        const [fence] = await tx
+          .select({ operationId: workflowFences.operationId, reason: workflowFences.reason })
+          .from(workflowFences)
+          .where(
+            and(
+              eq(workflowFences.scopeKind, "deployment"),
+              eq(workflowFences.scopeId, input.deploymentId),
+              isNull(workflowFences.resolvedAt),
+            ),
+          )
+          .limit(1);
+        if (fence) {
+          throw new Error(
+            `workflow_unavailable: Deployment ${input.deploymentId} is fenced by operation ${fence.operationId} (${fence.reason}).`,
+          );
+        }
         const now = input.now ?? new Date();
         const [latestRuntimeInstance] = await tx
           .select()

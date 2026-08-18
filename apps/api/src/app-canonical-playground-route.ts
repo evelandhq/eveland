@@ -7,6 +7,7 @@ import {
   validatePlaygroundTurn,
 } from "@evelandhq/core/eve";
 import { unsupportedEveVersionMessage } from "@evelandhq/core/source";
+import { CANONICAL_REQUEST_ID_HEADER } from "@evelandhq/core/workflow-dispatch";
 import type { ProjectStore, SessionStore } from "@evelandhq/db";
 import type { AgentAuthService } from "./agent-auth-service.js";
 import {
@@ -37,6 +38,12 @@ export function registerCanonicalPlaygroundRoute(input: {
 
   app.all("/projects/:projectId/playground/eve/*", async (c) => {
     const projectId = c.req.param("projectId");
+    // One canonical id from the browser (when it sent one) through API,
+    // Gateway, activation and dispatcher logs; echoed on every response so a
+    // user-visible failure is correlatable without guessing.
+    const requestId =
+      c.req.header(CANONICAL_REQUEST_ID_HEADER)?.slice(0, 64) ?? crypto.randomUUID();
+    c.header(CANONICAL_REQUEST_ID_HEADER, requestId);
     const requestUrl = new URL(c.req.url);
     const playgroundMarker = "/playground";
     const markerIndex = requestUrl.pathname.indexOf(playgroundMarker);
@@ -142,12 +149,14 @@ export function registerCanonicalPlaygroundRoute(input: {
 
     let upstream: Response;
     try {
+      const forwardedHeaders = new Headers(c.req.raw.headers);
+      forwardedHeaders.set(CANONICAL_REQUEST_ID_HEADER, requestId);
       const proxy = (envelope: string) =>
         playgroundProxy({
           projectId,
           path: `${evePath}${requestUrl.search}`,
           method: c.req.method,
-          headers: c.req.raw.headers,
+          headers: forwardedHeaders,
           body,
           signal: c.req.raw.signal,
           agentAuthEnvelope: envelope,

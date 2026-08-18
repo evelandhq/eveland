@@ -12,10 +12,10 @@ describe("bootstrapWorkflowWorld", () => {
     await expect(bootstrapWorkflowWorld({})).resolves.toBeUndefined();
   });
 
-  test("fails fast when a production worker has no platform world URL", async () => {
-    await expect(bootstrapWorkflowWorld({ NODE_ENV: "production" })).rejects.toThrow(
-      "WORKFLOW_POSTGRES_URL is required",
-    );
+  test("a production worker no longer requires the legacy world URL", async () => {
+    // External-only installs never configure WORKFLOW_POSTGRES_URL; the
+    // shared-world requirement lives in assertWorkflowTopologyPreflight.
+    await expect(bootstrapWorkflowWorld({ NODE_ENV: "production" })).resolves.toBeUndefined();
   });
 
   test("does not initialize a legacy schema in the base database", async () => {

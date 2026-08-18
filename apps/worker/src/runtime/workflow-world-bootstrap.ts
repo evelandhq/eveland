@@ -42,11 +42,8 @@ const defaultDeps: WorkflowWorldBootstrapDeps = {
 export async function bootstrapWorkflowWorld(env: NodeJS.ProcessEnv): Promise<void> {
   const workflowPostgresUrl = env.WORKFLOW_POSTGRES_URL;
   if (!workflowPostgresUrl) {
-    if (env.NODE_ENV === "production") {
-      throw new Error(
-        "WORKFLOW_POSTGRES_URL is required for the platform-owned durable workflow world in production.",
-      );
-    }
+    // External-only installs never configure the legacy base URL; the shared
+    // world's production requirement lives in assertWorkflowTopologyPreflight.
     return undefined;
   }
 
