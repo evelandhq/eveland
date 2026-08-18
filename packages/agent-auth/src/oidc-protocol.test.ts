@@ -131,10 +131,14 @@ describe("openid-client OIDC protocol", () => {
       accessToken: "opaque-access-token",
       refreshToken: "refresh-token",
       subject: "idp-user",
+      claims: expect.objectContaining({ sub: "idp-user", iss: issuer }),
     });
     await expect(
       protocol.fetchUserInfo(config, undefined, token.accessToken, token.subject),
-    ).resolves.toEqual({ subject: "idp-user" });
+    ).resolves.toEqual({ subject: "idp-user", claims: { sub: "idp-user" } });
+    await expect(protocol.discoverMetadata?.(config, undefined)).resolves.toMatchObject({
+      issuer,
+    });
     await expect(
       protocol.refresh(config, undefined, token.refreshToken!, token.subject),
     ).resolves.toMatchObject({

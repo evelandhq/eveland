@@ -23,6 +23,23 @@ import {
   type ResolvedExternalIdentity,
 } from "@evelandhq/core/identity";
 import type { Project } from "@evelandhq/core/contracts";
+import { decryptSecretValue, encryptSecretValue } from "@evelandhq/core/server/secrets";
+import {
+  oidcProviderConfig,
+  principalClaims,
+  stringClaim,
+  type IdentityOidcProtocol,
+} from "./oidc.js";
+
+export {
+  oidcProviderConfig,
+  principalClaims,
+  stringClaim,
+  type IdentityOidcProtocol,
+  type IdentityOidcProviderConfig,
+  type IdentityOidcTokens,
+  type IdentityOidcTransaction,
+} from "./oidc.js";
 
 export class IdentityBrokerError extends Error {
   constructor(
@@ -42,6 +59,7 @@ export type IdentityBrokerPersistence = {
     providerConnectionId: string,
     externalRealmId: string,
   ): Promise<IdentityRealm | null>;
+  listIdentityRealms(providerConnectionId?: string): Promise<IdentityRealm[]>;
   createIdentityRealm(input: {
     providerConnectionId: string;
     externalRealmId: string;
@@ -79,6 +97,14 @@ export type IdentityBrokerPersistence = {
     notBefore: Date;
     expiresAt: Date;
   }): Promise<IdentitySigningKey>;
+  putIdentityOidcCredential(input: {
+    identityPrincipalId: string;
+    providerConnectionId: string;
+    accessTokenEncrypted: string;
+    refreshTokenEncrypted: string | null;
+    scope: string;
+    accessTokenExpiresAt: Date | null;
+  }): Promise<unknown>;
 };
 
 export type IdentityBrokerOptions = {
@@ -96,6 +122,13 @@ export type IdentityBrokerOptions = {
    */
   openCallerTokenTtlSeconds?: number;
   appTokenTtlSeconds?: number;
+  /**
+   * The OIDC wire protocol, injected by the composition root. Absent in
+   * deployments that never enable an OIDC provider; the OIDC login entry
+   * points fail with identity_provider_unavailable rather than at import
+   * time so the rest of the broker stays usable.
+   */
+  oidcProtocol?: IdentityOidcProtocol;
 };
 
 export function createIdentityBroker(options: IdentityBrokerOptions) {
@@ -111,6 +144,7 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
     providerConnectionId: string;
     providerSecurityRevision: number;
     identity: ResolvedExternalIdentity;
+    claims?: Record<string, string | readonly string[]>;
   }) {
     const connection = await options.store.getIdentityProviderConnection(
       input.providerConnectionId,
@@ -143,7 +177,7 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
       externalSubject: requiredIdentityValue(input.identity.externalSubject, "External subject"),
       displayName: optionalIdentityValue(input.identity.displayName),
       email: optionalIdentityValue(input.identity.email),
-      claims: {},
+      claims: input.claims ?? {},
     });
     const sessionToken = randomBytes(32).toString("base64url");
     const current = now();
@@ -154,6 +188,228 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
       expiresAt: new Date(current.getTime() + identitySessionTtlSeconds * 1_000),
     });
     return { sessionToken, session, principal, realm };
+  }
+
+  function requireOidcProtocol(): IdentityOidcProtocol {
+    if (!options.oidcProtocol) {
+      throw new IdentityBrokerError(
+        "identity_provider_unavailable",
+        503,
+        "This deployment has no OIDC protocol configured.",
+      );
+    }
+    return options.oidcProtocol;
+  }
+
+  async function loadOidcConnection(
+    providerConnectionId: string,
+    expectedSecurityRevision?: number,
+  ): Promise<IdentityProviderConnection> {
+    const connection = await options.store.getIdentityProviderConnection(providerConnectionId);
+    if (
+      !connection ||
+      !connection.enabled ||
+      connection.type !== "oidc" ||
+      (expectedSecurityRevision !== undefined &&
+        connection.securityRevision !== expectedSecurityRevision)
+    ) {
+      throw new IdentityBrokerError(
+        "identity_provider_invalid",
+        401,
+        "The Identity Provider Connection is no longer valid.",
+      );
+    }
+    return connection;
+  }
+
+  function oidcClientSecret(connection: IdentityProviderConnection): string | undefined {
+    return connection.clientSecretEncrypted
+      ? openIdentityProviderSecret(connection.clientSecretEncrypted, options.appSecretKey)
+      : undefined;
+  }
+
+  async function beginOidcLogin(input: { providerConnectionId: string; redirectUri: string }) {
+    const protocol = requireOidcProtocol();
+    const connection = await loadOidcConnection(input.providerConnectionId);
+    const transaction = {
+      redirectUri: input.redirectUri,
+      state: randomBytes(32).toString("base64url"),
+      nonce: randomBytes(32).toString("base64url"),
+      codeVerifier: randomBytes(48).toString("base64url"),
+    };
+    let authorizationUrl: URL;
+    try {
+      authorizationUrl = await protocol.buildAuthorizationUrl(
+        oidcProviderConfig(connection),
+        oidcClientSecret(connection),
+        transaction,
+      );
+    } catch {
+      throw new IdentityBrokerError(
+        "identity_provider_unavailable",
+        503,
+        "The OIDC Identity Provider could not be reached.",
+      );
+    }
+    return {
+      authorizationUrl: authorizationUrl.toString(),
+      state: transaction.state,
+      nonce: transaction.nonce,
+      codeVerifier: transaction.codeVerifier,
+      providerConnectionId: connection.id,
+      providerSecurityRevision: connection.securityRevision,
+    };
+  }
+
+  async function completeOidcLogin(input: {
+    providerConnectionId: string;
+    providerSecurityRevision: number;
+    transaction: { redirectUri: string; state: string; nonce: string; codeVerifier: string };
+    callbackUrl: URL;
+  }) {
+    const protocol = requireOidcProtocol();
+    const connection = await loadOidcConnection(
+      input.providerConnectionId,
+      input.providerSecurityRevision,
+    );
+    const config = oidcProviderConfig(connection);
+    const clientSecret = oidcClientSecret(connection);
+    let tokens;
+    try {
+      tokens = await protocol.exchangeAuthorizationCode(
+        config,
+        clientSecret,
+        input.transaction,
+        input.callbackUrl,
+      );
+    } catch {
+      // The concrete failure (bad code, nonce mismatch, unreachable token
+      // endpoint, signature rejection) is the IdP conversation's business;
+      // to the caller every variant means this login attempt is dead.
+      throw new IdentityBrokerError(
+        "identity_oidc_exchange_failed",
+        401,
+        "The OIDC authorization could not be completed.",
+      );
+    }
+    const subject = stringClaim(tokens.claims, "sub");
+    if (!subject) {
+      throw new IdentityBrokerError(
+        "identity_oidc_claims_invalid",
+        401,
+        "The OIDC ID token carries no subject.",
+      );
+    }
+    const externalRealmId = await resolveOidcExternalRealmId({
+      connection,
+      config,
+      clientSecret,
+      protocol,
+      tokens,
+      subject,
+    });
+    const realm = await options.store.getIdentityRealmByExternalId(connection.id, externalRealmId);
+    if (!realm || !realm.enabled) {
+      throw new IdentityBrokerError(
+        "identity_realm_not_allowed",
+        403,
+        "This identity scope is not allowed.",
+      );
+    }
+    const finalized = await finalizeIdentity({
+      providerConnectionId: connection.id,
+      providerSecurityRevision: connection.securityRevision,
+      identity: {
+        externalRealmId,
+        externalRealmKind: realm.externalRealmKind,
+        externalSubject: subject,
+        ...(stringClaim(tokens.claims, "name")
+          ? { displayName: stringClaim(tokens.claims, "name") }
+          : {}),
+        ...(stringClaim(tokens.claims, "email")
+          ? { email: stringClaim(tokens.claims, "email") }
+          : {}),
+      },
+      claims: principalClaims(tokens.claims),
+    });
+    await options.store.putIdentityOidcCredential({
+      identityPrincipalId: finalized.principal.id,
+      providerConnectionId: connection.id,
+      accessTokenEncrypted: sealOidcCredentialValue(tokens.accessToken, options.appSecretKey),
+      refreshTokenEncrypted: tokens.refreshToken
+        ? sealOidcCredentialValue(tokens.refreshToken, options.appSecretKey)
+        : null,
+      scope: tokens.scope ?? connection.scopes.join(" "),
+      accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+    });
+    return finalized;
+  }
+
+  async function resolveOidcExternalRealmId(input: {
+    connection: IdentityProviderConnection;
+    config: ReturnType<typeof oidcProviderConfig>;
+    clientSecret: string | undefined;
+    protocol: IdentityOidcProtocol;
+    tokens: { claims: Record<string, unknown>; accessToken: string };
+    subject: string;
+  }): Promise<string> {
+    const { connection } = input;
+    if (connection.externalRealmResolution === "connection") {
+      const realms = (await options.store.listIdentityRealms(connection.id)).filter(
+        (realm) => realm.enabled,
+      );
+      if (realms.length !== 1) {
+        throw new IdentityBrokerError(
+          "identity_realm_not_allowed",
+          403,
+          "Connection-wide Realm resolution needs exactly one enabled Realm.",
+        );
+      }
+      return realms[0]!.externalRealmId;
+    }
+    if (
+      (connection.externalRealmResolution !== "id_token_claim" &&
+        connection.externalRealmResolution !== "userinfo_claim") ||
+      !connection.externalRealmClaim
+    ) {
+      throw new IdentityBrokerError(
+        "identity_provider_invalid",
+        401,
+        "The OIDC Realm resolution configuration is invalid.",
+      );
+    }
+    let source = input.tokens.claims;
+    if (connection.externalRealmResolution === "userinfo_claim") {
+      try {
+        source = await input.protocol.fetchUserinfoClaims(
+          input.config,
+          input.clientSecret,
+          input.tokens.accessToken,
+          input.subject,
+        );
+      } catch {
+        throw new IdentityBrokerError(
+          "identity_oidc_exchange_failed",
+          401,
+          "The OIDC UserInfo endpoint rejected the login.",
+        );
+      }
+    }
+    const value = source[connection.externalRealmClaim];
+    const realmId =
+      typeof value === "string"
+        ? value.trim()
+        : typeof value === "number" && Number.isFinite(value)
+          ? String(value)
+          : "";
+    if (!realmId) {
+      throw new IdentityBrokerError(
+        "identity_oidc_claims_invalid",
+        401,
+        `The OIDC claim ${connection.externalRealmClaim} names no Realm for this login.`,
+      );
+    }
+    return realmId;
   }
 
   async function resolveSession(sessionToken: string) {
@@ -418,6 +674,8 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
 
   return {
     finalizeIdentity,
+    beginOidcLogin,
+    completeOidcLogin,
     resolveSession,
     issueCallerToken,
     issueOpenModeCallerToken,
@@ -426,6 +684,43 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
     getJwks,
     resolveReturnTarget,
   };
+}
+
+/**
+ * Sealing for the OIDC client secret at rest. The API's admin routes seal on
+ * write and the broker opens on use, so the derivation lives here once; the
+ * context string keeps the key separate from every other APP_SECRET_KEY use.
+ */
+export function sealIdentityProviderSecret(value: string, appSecretKey: string): string {
+  return JSON.stringify(
+    encryptSecretValue(value, identityContextKey(appSecretKey, "provider-secret")),
+  );
+}
+
+export function openIdentityProviderSecret(sealed: string, appSecretKey: string): string {
+  return decryptSecretValue(
+    JSON.parse(sealed) as Parameters<typeof decryptSecretValue>[0],
+    identityContextKey(appSecretKey, "provider-secret"),
+  );
+}
+
+export function sealOidcCredentialValue(value: string, appSecretKey: string): string {
+  return JSON.stringify(
+    encryptSecretValue(value, identityContextKey(appSecretKey, "oidc-credential")),
+  );
+}
+
+export function openOidcCredentialValue(sealed: string, appSecretKey: string): string {
+  return decryptSecretValue(
+    JSON.parse(sealed) as Parameters<typeof decryptSecretValue>[0],
+    identityContextKey(appSecretKey, "oidc-credential"),
+  );
+}
+
+function identityContextKey(appSecretKey: string, context: string): string {
+  return createHmac("sha256", appSecretKey)
+    .update(`eveland:identity:${context}:v1`)
+    .digest("base64");
 }
 
 /**

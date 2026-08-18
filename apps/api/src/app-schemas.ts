@@ -241,12 +241,7 @@ export const createIdentityProviderSchema = z.discriminatedUnion("type", [
     scopes: z.array(z.string().trim().min(1)).min(1),
     authorizationParameters: z.record(z.string(), z.string()).default({}),
     tokenEndpointAuthMethod: z.enum(["client_secret_basic", "client_secret_post", "none"]),
-    externalRealmResolution: z.enum([
-      "connection",
-      "id_token_claim",
-      "userinfo_claim",
-      "provider_api",
-    ]),
+    externalRealmResolution: z.enum(["connection", "id_token_claim", "userinfo_claim"]),
     externalRealmClaim: z.string().trim().min(1).optional(),
     enabled: z.boolean(),
   }),
@@ -262,9 +257,7 @@ export const updateIdentityProviderSchema = z.object({
   scopes: z.array(z.string().trim().min(1)).min(1).optional(),
   authorizationParameters: z.record(z.string(), z.string()).optional(),
   tokenEndpointAuthMethod: z.enum(["client_secret_basic", "client_secret_post", "none"]).optional(),
-  externalRealmResolution: z
-    .enum(["connection", "id_token_claim", "userinfo_claim", "provider_api"])
-    .optional(),
+  externalRealmResolution: z.enum(["connection", "id_token_claim", "userinfo_claim"]).optional(),
   externalRealmClaim: z.string().trim().min(1).nullable().optional(),
   enabled: z.boolean(),
 });

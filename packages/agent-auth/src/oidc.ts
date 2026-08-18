@@ -47,6 +47,10 @@ export type OidcTokenSet = {
   expiresAt: Date;
   issuer: string;
   subject: string;
+  /** The scope the token response granted, when the server reported one. */
+  scope?: string;
+  /** The verified ID token claims, where the grant carried an ID token. */
+  claims?: Record<string, unknown>;
 };
 
 export type OidcProtocol = {
@@ -73,7 +77,16 @@ export type OidcProtocol = {
     clientSecret: string | undefined,
     accessToken: string,
     expectedSubject: string,
-  ): Promise<{ subject: string }>;
+  ): Promise<{ subject: string; claims?: Record<string, unknown> }>;
+  /**
+   * The discovered authorization server metadata, for callers that run
+   * configuration preflights. Optional so hand-rolled test protocols stay
+   * valid; the openid-client implementation always provides it.
+   */
+  discoverMetadata?(
+    config: OidcAuthorizationCodeConfig,
+    clientSecret?: string,
+  ): Promise<Record<string, unknown>>;
 };
 
 export type OidcCredentialResolution =
@@ -900,6 +913,8 @@ export function createOpenIdClientProtocol(
         expiresAt: new Date(Date.now() + (tokens.expires_in ?? 300) * 1000),
         issuer: claims.iss,
         subject: claims.sub,
+        ...(tokens.scope ? { scope: tokens.scope } : {}),
+        claims: { ...claims },
       };
     },
     async refresh(config, secret, refreshToken, subject) {
@@ -927,7 +942,11 @@ export function createOpenIdClientProtocol(
         accessToken,
         expectedSubject,
       );
-      return { subject: result.sub };
+      return { subject: result.sub, claims: { ...result } };
+    },
+    async discoverMetadata(config, secret) {
+      const configuration = await getConfiguration(config, secret);
+      return { ...configuration.serverMetadata() };
     },
   };
 }
